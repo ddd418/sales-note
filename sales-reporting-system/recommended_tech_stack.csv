@@ -1,0 +1,17 @@
+﻿분야,기술/도구,선택 이유,대안,학습 난이도
+프론트엔드,React.js,컴포넌트 기반 개발로 재사용성 높음,"Vue.js, Angular",중간
+프론트엔드,TypeScript,타입 안정성으로 오류 감소,JavaScript,중간
+프론트엔드,Tailwind CSS,빠른 스타일링과 반응형 디자인,"Bootstrap, Material-UI",쉬움
+프론트엔드,React Router,단일 페이지 애플리케이션 라우팅,Next.js Router,쉬움
+백엔드,Node.js,빠른 개발과 JavaScript 생태계 활용,Python Django/Flask,쉬움
+백엔드,Express.js,경량화된 웹 프레임워크,"Fastify, Koa",쉬움
+백엔드,JWT 인증,토큰 기반 인증으로 보안성 확보,OAuth 2.0,중간
+백엔드,bcrypt,비밀번호 암호화,Argon2,쉬움
+데이터베이스,MySQL,안정성과 성능이 검증된 관계형 DB,"PostgreSQL, MongoDB",중간
+데이터베이스,Prisma ORM,타입 안전 ORM으로 개발 생산성 향상,"TypeORM, Sequelize",중간
+인프라,AWS EC2,확장성과 안정성,"Google Cloud, Azure",중간
+인프라,AWS RDS,관리형 데이터베이스 서비스,Google Cloud SQL,쉬움
+인프라,Nginx,로드 밸런싱과 프록시 서버,Apache,중간
+개발 도구,Git/GitHub,버전 관리와 협업,"GitLab, Bitbucket",쉬움
+개발 도구,VS Code,통합 개발 환경,"WebStorm, Vim",쉬움
+개발 도구,Postman,API 테스트 도구,"Insomnia, curl",쉬움

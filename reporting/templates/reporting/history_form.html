@@ -1,0 +1,387 @@
+{% extends "reporting/base.html" %} {% block title %} {% if form.instance.pk%}히스토리 수정{% else %}새 활동 기록{% endif %} - 영업 보고
+시스템 {% endblock %} {% block content %}
+
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i
+            class="fas fa-{% if form.instance.pk %}edit{% else %}plus{% endif %} me-2"
+          ></i>
+          {% if form.instance.pk %}활동 기록 수정{% else %}새 활동 기록{%endif%}
+        </h1>
+        <a
+          href="{% if form.instance.pk %}{% url 'reporting:history_detail' form.instance.pk %}{% else %}{% url 'reporting:history_list' %}{% endif %}"
+          class="btn btn-secondary"
+        >
+          <i class="fas fa-arrow-left me-1"></i>
+          {% if form.instance.pk %}상세로{% else %}목록으로{% endif %}
+        </a>
+      </div>
+
+      <!-- 일정 연관 정보 표시 (일정에서 생성하는 경우) -->
+      {% if schedule %}
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+          <h6 class="card-title mb-0">
+            <i class="fas fa-calendar me-2"></i>연관 일정 정보
+          </h6>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <strong>고객:</strong> {{ schedule.followup.customer_name|default:"고객명 미정" }}<br>
+              <strong>업체:</strong> {{ schedule.followup.company|default:"업체명 미정" }}<br>
+              <strong>담당자:</strong> {{ schedule.user.username }}
+            </div>
+            <div class="col-md-6">
+              <strong>방문 일자:</strong> {{ schedule.visit_date|date:"Y년 m월 d일" }}<br>
+              <strong>방문 시간:</strong> {{ schedule.visit_time|date:"H:i" }}<br>
+              {% if schedule.location %}
+              <strong>장소:</strong> {{ schedule.location }}
+              {% endif %}
+            </div>
+          </div>
+          {% if schedule.notes %}
+          <div class="mt-3">
+            <strong>일정 메모:</strong>
+            <div class="text-muted">{{ schedule.notes }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- 폼 카드 -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-history me-2"></i>활동 기록 정보
+          </h5>
+        </div>        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+            
+            {% if schedule %}
+            <!-- 일정에서 생성되는 경우 숨겨진 필드 추가 -->
+            <input type="hidden" name="followup" value="{{ schedule.followup.id }}">
+            <input type="hidden" name="schedule" value="{{ schedule.id }}">
+            {% endif %}
+
+            <!-- 활동 유형 -->
+            <div class="mb-4">
+              <label
+                for="{{ form.action_type.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-tag me-1"></i>활동 유형
+                <span class="text-danger">*</span>
+              </label>
+              {{ form.action_type }} {% if form.action_type.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.action_type.errors %}{{ error }}{% endfor%}
+              </div>
+              {% endif %}
+              <div class="form-text">활동의 성격을 선택해주세요.</div>
+            </div>            <!-- 관련 고객 정보 -->
+            <div class="mb-4">
+              <label for="{{ form.followup.id_for_label }}" class="form-label">
+                <i class="fas fa-user-tie me-1"></i>관련 고객 정보
+                <span class="text-danger">*</span>
+                {% if schedule %}
+                <span class="badge bg-info ms-2">일정에서 자동 설정</span>
+                {% endif %}
+              </label>
+              {% if schedule %}
+              <!-- 일정에서 생성되는 경우 읽기 전용으로 표시 -->
+              <div class="form-control bg-light" style="pointer-events: none;">
+                {{ schedule.followup.customer_name|default:"고객명 미정" }} - {{ schedule.followup.company|default:"업체명 미정" }}
+              </div>
+              <div class="form-text text-info">
+                <i class="fas fa-info-circle me-1"></i>이 값은 선택된 일정에서 자동으로 설정됩니다.
+              </div>
+              {% else %}
+              {{ form.followup }}
+              <div class="form-text">
+                이 활동과 관련된 고객 정보를 선택해주세요.
+              </div>
+              {% endif %}
+              {% if form.followup.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.followup.errors %}{{ error }}{% endfor %}
+              </div>
+              {% endif %}
+            </div>
+
+            <!-- 관련 일정 -->
+            <div class="mb-4">
+              <label for="{{ form.schedule.id_for_label }}" class="form-label">
+                <i class="fas fa-calendar me-1"></i>관련 일정
+                {% if schedule %}
+                <span class="badge bg-info ms-2">현재 일정으로 고정</span>
+                {% endif %}
+              </label>
+              {% if schedule %}
+              <!-- 일정에서 생성되는 경우 읽기 전용으로 표시 -->
+              <div class="form-control bg-light" style="pointer-events: none;">
+                {{ schedule.visit_date|date:"Y년 m월 d일" }} {{ schedule.visit_time|date:"H:i" }}
+                {% if schedule.location %} - {{ schedule.location }}{% endif %}
+              </div>
+              <div class="form-text text-info">
+                <i class="fas fa-info-circle me-1"></i>이 활동은 현재 일정과 연결됩니다.
+              </div>
+              {% else %}
+              {{ form.schedule }}
+              <div class="form-text">
+                이 활동과 관련된 일정을 선택해주세요 (선택사항).
+              </div>
+              {% endif %}
+              {% if form.schedule.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.schedule.errors %}{{ error }}{% endfor %}
+              </div>
+              {% endif %}
+            </div>            <!-- 납품 금액 (납품 일정인 경우만 표시) -->
+            <div class="mb-4" id="delivery-amount-field" style="display: none">
+              <label
+                for="{{ form.delivery_amount.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-won-sign me-1"></i>납품 금액 (원)
+              </label>
+              {{ form.delivery_amount }} {% if form.delivery_amount.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.delivery_amount.errors %}{{ error }}{%endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                납품 금액을 입력하세요. 0원도 입력 가능합니다.
+              </div>
+            </div>            <!-- 납품 품목 (납품 일정인 경우만 표시) -->
+            <div class="mb-4" id="delivery-items-field" style="display: none">
+              <label
+                for="{{ form.delivery_items.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-boxes me-1"></i>납품 품목
+              </label>
+              {{ form.delivery_items }} {% if form.delivery_items.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.delivery_items.errors %}{{ error }}{%endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                납품할 품목을 자세히 입력하세요. (예: 제품A 10개, 제품B 5개)
+              </div>
+            </div>            <!-- 납품 날짜 (납품 일정인 경우만 표시) -->
+            <div class="mb-4" id="delivery-date-field" style="display: none">
+              <label
+                for="{{ form.delivery_date.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-calendar-alt me-1"></i>납품 날짜
+                <span class="text-danger">*</span>
+              </label>
+              {{ form.delivery_date }} {% if form.delivery_date.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.delivery_date.errors %}{{ error }}{%endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                실제 납품이 이루어진 날짜를 선택하세요. (월별 집계에 사용됩니다)
+              </div>
+            </div>
+
+            <!-- 미팅 날짜 (고객 미팅인 경우만 표시) -->
+            <div class="mb-4" id="meeting-date-field" style="display: none">
+              <label
+                for="{{ form.meeting_date.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-calendar-check me-1"></i>미팅 날짜
+                <span class="text-danger">*</span>
+              </label>
+              {{ form.meeting_date }} {% if form.meeting_date.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.meeting_date.errors %}{{ error }}{%endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                실제 미팅이 이루어진 날짜를 선택하세요. (월별 집계에 사용됩니다)
+              </div>
+            </div>
+
+            <!-- 상세 설명 -->
+            <div class="mb-4">
+              <label for="{{ form.content.id_for_label }}" class="form-label">
+                <i class="fas fa-file-text me-1"></i>상세 내용
+              </label>
+              {{ form.content }} {% if form.content.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.content.errors %}{{ error }}{% endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                활동에 대한 자세한 설명을 입력해주세요.
+              </div>
+            </div>
+
+            <!-- 버튼 그룹 -->
+            <div class="d-flex justify-content-between align-items-center pt-3">
+              <div>
+                <a
+                  href="{% if form.instance.pk %}{% url 'reporting:history_detail' form.instance.pk %}{% else %}{% url 'reporting:history_list' %}{% endif %}"
+                  class="btn btn-secondary"
+                >
+                  <i class="fas fa-times me-1"></i>취소
+                </a>
+              </div>
+              <div>
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-save me-1"></i>
+                  {% if form.instance.pk %}수정 완료{% else %}등록하기{% endif%}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- 도움말 카드 -->
+      <div class="card mt-4 border-info">
+        <div class="card-header bg-info bg-opacity-10">
+          <h6 class="card-title mb-0 text-info">
+            <i class="fas fa-lightbulb me-1"></i>활동 기록 작성 도움말
+          </h6>
+        </div>
+        <div class="card-body">
+          <ul class="mb-0 small">
+            <li>
+              <strong>활동 유형:</strong> 수동으로는 "고객 정보 생성"만 기록할
+              수 있습니다. 고객 정보 수정, 일정 생성/수정은 자동으로 기록됩니다.
+            </li>
+            <li>
+              <strong>관련 고객 정보:</strong> 필수 항목입니다. 이 활동과 관련된
+              고객 정보를 선택해주세요.
+            </li>
+            <li>
+              <strong>관련 일정:</strong> 선택사항입니다. 선택한 고객 정보와
+              연결된 일정만 표시됩니다.
+            </li>
+            <li>
+              <strong>상세 내용:</strong> 활동에 대한 구체적인 설명을 작성하면
+              나중에 참고하기 좋습니다.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {    // DOM 요소 선택
+    const actionTypeField = document.getElementById('{{ form.action_type.id_for_label }}');
+    const deliveryAmountField = document.getElementById('delivery-amount-field');
+    const deliveryItemsField = document.getElementById('delivery-items-field');
+    const deliveryDateField = document.getElementById('delivery-date-field');
+    const meetingDateField = document.getElementById('meeting-date-field');
+    const followupField = document.getElementById('{{ form.followup.id_for_label }}');
+    const scheduleField = document.getElementById('{{ form.schedule.id_for_label }}');
+    const deliveryDateInput = document.getElementById('{{ form.delivery_date.id_for_label }}');
+    const meetingDateInput = document.getElementById('{{ form.meeting_date.id_for_label }}');
+
+    // 활동 유형에 따른 납품/미팅 관련 필드 표시/숨김
+    function toggleDeliveryFields() {
+        console.log('활동 유형:', actionTypeField.value); // 디버깅용
+        if (actionTypeField.value === 'delivery_schedule') {
+            deliveryAmountField.style.display = 'block';
+            deliveryItemsField.style.display = 'block';
+            deliveryDateField.style.display = 'block';
+            meetingDateField.style.display = 'none';
+            console.log('납품 필드 표시'); // 디버깅용
+        } else if (actionTypeField.value === 'customer_meeting') {
+            deliveryAmountField.style.display = 'none';
+            deliveryItemsField.style.display = 'none';
+            deliveryDateField.style.display = 'none';
+            meetingDateField.style.display = 'block';
+            console.log('미팅 필드 표시'); // 디버깅용
+        } else {
+            deliveryAmountField.style.display = 'none';
+            deliveryItemsField.style.display = 'none';
+            deliveryDateField.style.display = 'none';
+            meetingDateField.style.display = 'none';
+            console.log('모든 필드 숨김'); // 디버깅용
+        }
+    }
+
+    // 활동 유형 변경 시 납품 관련 필드 토글
+    actionTypeField.addEventListener('change', toggleDeliveryFields);
+    actionTypeField.addEventListener('input', toggleDeliveryFields);
+
+    // 초기 로드 시 실행
+    toggleDeliveryFields();
+    
+    // 약간의 지연 후 다시 실행 (DOM 완전 로드 보장)
+    setTimeout(function() {
+        toggleDeliveryFields();
+    }, 100);    // 고객 정보 선택에 따른 일정 필터링
+    function updateScheduleOptions() {
+        const followupId = followupField.value;
+
+        // 일정 필드를 비우고 로딩 상태로 설정
+        scheduleField.innerHTML = '<option value="">일정 로딩 중...</option>';
+        scheduleField.disabled = true;
+
+        if (followupId) {
+            // AJAX로 선택된 팔로우업의 일정들을 가져옴
+            fetch(`/reporting/api/followup/${followupId}/schedules/`)
+                .then(response => response.json())
+                .then(data => {
+                    scheduleField.innerHTML = '<option value="">관련 일정 없음</option>';
+                    if (data.schedules && data.schedules.length > 0) {
+                        data.schedules.forEach(schedule => {
+                            const option = document.createElement('option');
+                            option.value = schedule.id;
+                            option.textContent = schedule.text;
+                            option.dataset.visitDate = schedule.visit_date; // 일정 날짜 저장
+                            scheduleField.appendChild(option);
+                        });
+                    }
+                    scheduleField.disabled = false;
+                })
+                .catch(error => {
+                    console.error('Error loading schedules:', error);
+                    scheduleField.innerHTML = '<option value="">일정 로드 실패</option>';
+                    scheduleField.disabled = false;
+                });
+        } else {
+            scheduleField.innerHTML = '<option value="">먼저 고객 정보를 선택해주세요</option>';
+            scheduleField.disabled = true;
+        }
+    }
+
+    // 고객 정보 선택 변경 시 일정 업데이트
+    followupField.addEventListener('change', updateScheduleOptions);    // 일정 선택 시 납품/미팅 날짜 자동 설정
+    scheduleField.addEventListener('change', function() {
+        const selectedOption = scheduleField.options[scheduleField.selectedIndex];
+        if (selectedOption && selectedOption.dataset.visitDate) {
+            if (actionTypeField.value === 'delivery_schedule') {
+                deliveryDateInput.value = selectedOption.dataset.visitDate;
+            } else if (actionTypeField.value === 'customer_meeting') {
+                meetingDateInput.value = selectedOption.dataset.visitDate;
+            }
+        }
+    });
+
+    // 초기 로드 시 실행 (수정 모드에서는 기존 값 유지)
+    {% if not form.instance.pk %}
+    updateScheduleOptions();
+    {% endif %}
+});
+</script>
+{% endblock %}

@@ -1,0 +1,183 @@
+{% extends "reporting/base.html" %} {% block title %}히스토리 삭제 - 영업 보고
+시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <!-- 헤더 섹션 -->
+      <div class="page-header text-center mb-4">
+        <h1 class="page-title mb-0 text-danger">
+          <i class="fas fa-exclamation-triangle me-2"></i>활동 기록 삭제
+        </h1>
+      </div>
+
+      <!-- 삭제 확인 카드 -->
+      <div class="card shadow-sm border-danger">
+        <div class="card-header bg-danger bg-opacity-10 border-danger">
+          <h5 class="card-title mb-0 text-danger">
+            <i class="fas fa-trash me-2"></i>삭제 확인
+          </h5>
+        </div>
+
+        <div class="card-body">
+          <!-- 삭제할 히스토리 정보 미리보기 -->
+          <div class="alert alert-warning border-warning">
+            <h6 class="alert-heading mb-3">
+              <i class="fas fa-info-circle me-1"></i>삭제하려는 활동 기록
+            </h6>
+
+            <div class="row">
+              <div class="col-12 mb-3">
+                <strong>활동 유형:</strong>
+                <span
+                  class="badge {% if history.action_type == 'created_followup' %}bg-primary {% elif history.action_type == 'updated_followup' %}bg-warning {% elif history.action_type == 'status_changed_followup' %}bg-info {% elif history.action_type == 'created_schedule' %}bg-success {% elif history.action_type == 'updated_schedule' %}bg-secondary {% elif history.action_type == 'status_changed_schedule' %}bg-info {% elif history.action_type == 'note' %}bg-dark {% else %}bg-light text-dark {% endif %} ms-2"
+                >
+                  {{ history.get_action_type_display }}
+                </span>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <strong>작성자:</strong> {{ history.user.username }}
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <strong>작성일:</strong> {{ history.created_at|date:"Y-m-d H:i"}}
+              </div>
+
+              {% if history.followup %}
+              <div class="col-12 mb-3">
+                <strong>관련 팔로우업:</strong>
+                {{ history.followup.customer_name|default:"고객명 미정" }} {% if history.followup.company %} ({{ history.followup.company }})
+                {% endif %}
+              </div>
+              {% endif %} {% if history.schedule %}
+              <div class="col-12 mb-3">
+                <strong>관련 일정:</strong> {{ history.schedule.title }}
+              </div>
+              {% endif %} {% if history.description %}
+              <div class="col-12">
+                <strong>내용:</strong>
+                <div class="mt-2 p-2 bg-light rounded small">
+                  {{ history.description|truncatewords:20 }}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- 경고 메시지 -->
+          <div class="alert alert-danger border-danger">
+            <h6 class="alert-heading">
+              <i class="fas fa-exclamation-triangle me-1"></i>주의사항
+            </h6>
+            <ul class="mb-0">
+              <li>삭제된 활동 기록은 <strong>복구할 수 없습니다</strong>.</li>
+              <li>
+                관련된 팔로우업이나 일정에서 이 기록을 더 이상 볼 수 없습니다.
+              </li>
+              <li>변경 추적 정보가 영구적으로 사라집니다.</li>
+            </ul>
+          </div>
+
+          <!-- 삭제 확인 폼 -->
+          <form method="post" class="mt-4">
+            {% csrf_token %}
+
+            <div class="mb-4">
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="confirmDelete"
+                  required
+                />
+                <label class="form-check-label" for="confirmDelete">
+                  이 활동 기록을 삭제하는 것에 동의하며, 삭제 후에는 복구할 수
+                  없음을 이해합니다.
+                </label>
+              </div>
+            </div>
+
+            <!-- 버튼 그룹 -->
+            <div
+              class="d-flex justify-content-between align-items-center pt-3 border-top"
+            >
+              <a
+                href="{% url 'reporting:history_detail' history.pk %}"
+                class="btn btn-secondary"
+              >
+                <i class="fas fa-arrow-left me-1"></i>취소 (상세로)
+              </a>
+
+              <div>
+                <a
+                  href="{% url 'reporting:history_list' %}"
+                  class="btn btn-outline-secondary me-2"
+                >
+                  <i class="fas fa-list me-1"></i>목록으로
+                </a>
+                <button
+                  type="submit"
+                  class="btn btn-danger"
+                  id="deleteButton"
+                  disabled
+                >
+                  <i class="fas fa-trash me-1"></i>삭제 확정
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- 삭제 후 안내 -->
+      <div class="card mt-4 border-info">
+        <div class="card-body text-center">
+          <h6 class="text-info mb-2">
+            <i class="fas fa-lightbulb me-1"></i>삭제 대신 고려해보세요
+          </h6>
+          <p class="mb-3 small text-muted">
+            실수로 잘못 기록한 경우라면 삭제보다는 수정을 권장합니다.
+          </p>
+          <a
+            href="{% url 'reporting:history_edit' history.pk %}"
+            class="btn btn-outline-info btn-sm"
+          >
+            <i class="fas fa-edit me-1"></i>대신 수정하기
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const confirmCheckbox = document.getElementById("confirmDelete");
+    const deleteButton = document.getElementById("deleteButton");
+
+    confirmCheckbox.addEventListener("change", function () {
+      deleteButton.disabled = !this.checked;
+
+      if (this.checked) {
+        deleteButton.classList.remove("btn-danger");
+        deleteButton.classList.add("btn-danger");
+      }
+    });
+
+    // 실수 방지를 위한 더블 클릭 확인
+    deleteButton.addEventListener("click", function (e) {
+      if (!this.hasAttribute("data-confirmed")) {
+        e.preventDefault();
+        this.innerHTML =
+          '<i class="fas fa-exclamation-triangle me-1"></i>정말 삭제하시겠습니까? (다시 클릭)';
+        this.setAttribute("data-confirmed", "true");
+
+        setTimeout(() => {
+          this.innerHTML = '<i class="fas fa-trash me-1"></i>삭제 확정';
+          this.removeAttribute("data-confirmed");
+        }, 3000);
+      }
+    });
+  });
+</script>
+{% endblock %}

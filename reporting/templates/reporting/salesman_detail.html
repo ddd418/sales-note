@@ -1,0 +1,284 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ selected_user.username }} 상세 정보 - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 페이지 헤더 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <div class="d-flex align-items-center">
+            <a href="{% url 'reporting:manager_dashboard' %}?user_id={{ selected_user.id }}" class="btn btn-outline-secondary me-3">
+              <i class="fas fa-arrow-left"></i>
+            </a>
+            <div>
+              <h1 class="page-title mb-0">
+                <i class="fas fa-user me-2"></i>{{ selected_user.username }} 상세 정보
+              </h1>
+              <p class="text-muted mb-0">
+                {% if selected_user.userprofile %}
+                  {{ selected_user.userprofile.get_role_display }}
+                {% endif %}
+                · 총 {{ total_schedules }}개 일정 · {{ total_histories }}개 활동 기록
+              </p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <a href="{% url 'reporting:manager_dashboard' %}?user_id={{ selected_user.id }}" class="btn btn-primary">
+            <i class="fas fa-chart-line me-1"></i>대시보드로 돌아가기
+          </a>
+        </div>
+      </div>
+
+      <!-- 사용자 요약 정보 -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+              <div class="avatar-lg mx-auto mb-3">
+                <div class="avatar-title bg-white-10 rounded-circle">
+                  <i class="fas fa-user fa-2x"></i>
+                </div>
+              </div>
+              <h5 class="text-white">{{ selected_user.username }}</h5>
+              {% if selected_user.first_name or selected_user.last_name %}
+                <p class="text-white-50 mb-0">{{ selected_user.first_name }} {{ selected_user.last_name }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-md-9">
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4">
+                  <div class="text-center">
+                    <h4 class="text-primary">{{ followups.paginator.count }}</h4>
+                    <p class="text-muted mb-0">총 고객수</p>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-center">
+                    <h4 class="text-success">{{ total_schedules }}</h4>
+                    <p class="text-muted mb-0">총 일정수</p>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="text-center">
+                    <h4 class="text-info">{{ total_histories }}</h4>
+                    <p class="text-muted mb-0">활동 기록</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+      </div>
+
+      <!-- 바로가기 버튼 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-external-link-alt me-2"></i>빠른 이동
+              </h6>              <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}" class="btn btn-outline-primary">
+                  <i class="fas fa-history me-1"></i>활동 기록 ({{ total_histories }})
+                </a>
+                <a href="{% url 'reporting:schedule_calendar' %}?user={{ selected_user.id }}" class="btn btn-outline-success">
+                  <i class="fas fa-calendar me-1"></i>일정 관리 ({{ total_schedules }})
+                </a>
+                <a href="{% url 'reporting:schedule_list' %}?user={{ selected_user.id }}" class="btn btn-outline-info">
+                  <i class="fas fa-list me-1"></i>일정 목록
+                </a>
+                <a href="{% url 'reporting:dashboard' %}?user={{ selected_user.id }}" class="btn btn-outline-secondary">
+                  <i class="fas fa-chart-line me-1"></i>개인 대시보드
+                </a>
+                {% if selected_user.userprofile.role == 'salesman' %}
+                <a href="{% url 'reporting:followup_create' %}?assigned_to={{ selected_user.id }}" class="btn btn-outline-warning">
+                  <i class="fas fa-plus me-1"></i>새 고객 등록
+                </a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 검색 및 필터 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <form method="get" class="d-flex flex-wrap gap-3">
+                <div class="flex-grow-1">
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    name="search" 
+                    value="{{ search_query }}" 
+                    placeholder="고객명 또는 업체명으로 검색..."
+                  >
+                </div>
+                <div>
+                  <select name="status" class="form-control">
+                    <option value="">모든 상태</option>
+                    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>진행중</option>
+                    <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>완료</option>
+                    <option value="paused" {% if status_filter == 'paused' %}selected{% endif %}>일시중지</option>
+                  </select>
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-search me-1"></i>검색
+                  </button>
+                </div>
+                {% if search_query or status_filter %}
+                <div>
+                  <a href="{% url 'reporting:salesman_detail' selected_user.id %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i>초기화
+                  </a>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 팔로우업 목록 -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-users me-2"></i>고객 목록
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if followups %}
+                <div class="table-responsive">
+                  <table class="table table-hover">
+                    <thead class="table-light">
+                      <tr>
+                        <th>고객정보</th>
+                        <th>우선순위</th>
+                        <th>상태</th>
+                        <th>일정</th>
+                        <th>활동</th>
+                        <th>등록일</th>
+                        <th>작업</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for followup in followups %}
+                      <tr>
+                        <td>
+                          <div>
+                            <strong>{{ followup.customer_name|default:"고객명 미정" }}</strong>
+                            <br>
+                            <small class="text-muted">
+                              {{ followup.company|default:"업체명 미정" }}
+                              {% if followup.department %}
+                                · {{ followup.department }}
+                              {% endif %}
+                            </small>
+                          </div>
+                        </td>
+                        <td>
+                          <span class="badge bg-{% if followup.priority == 'high' %}danger{% elif followup.priority == 'medium' %}warning{% else %}secondary{% endif %}">
+                            {{ followup.get_priority_display }}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge bg-{% if followup.status == 'active' %}success{% elif followup.status == 'completed' %}primary{% else %}secondary{% endif %}">
+                            {{ followup.get_status_display }}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge bg-info">{{ followup.schedules.count }}개</span>
+                        </td>
+                        <td>
+                          <span class="badge bg-primary">{{ followup.histories.count }}개</span>
+                        </td>
+                        <td>
+                          <small class="text-muted">{{ followup.created_at|date:"Y-m-d" }}</small>
+                        </td>
+                        <td>
+                          <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                              보기
+                            </button>
+                            <ul class="dropdown-menu">
+                              <li>
+                                <a class="dropdown-item" href="{% url 'reporting:followup_detail' followup.pk %}">
+                                  <i class="fas fa-eye me-1"></i>상세 보기
+                                </a>
+                              </li>
+                              <li>
+                                <a class="dropdown-item" href="{% url 'reporting:history_by_followup' followup.pk %}">
+                                  <i class="fas fa-history me-1"></i>활동 기록
+                                </a>
+                              </li>
+                            </ul>
+                          </div>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- 페이지네이션 -->
+                {% if followups.has_other_pages %}
+                  {% include 'reporting/pagination.html' with page_obj=followups %}
+                {% endif %}
+              {% else %}
+                <div class="text-center py-5">
+                  <div class="mb-3">
+                    <i class="fas fa-users fa-3x text-muted"></i>
+                  </div>
+                  <h5 class="text-muted">고객 정보가 없습니다</h5>
+                  <p class="text-muted mb-4">
+                    {% if search_query or status_filter %}
+                      검색 조건을 변경해보세요.
+                    {% else %}
+                      아직 등록된 고객이 없습니다.
+                    {% endif %}
+                  </p>
+                  {% if search_query or status_filter %}
+                    <a href="{% url 'reporting:salesman_detail' selected_user.id %}" class="btn btn-primary">
+                      <i class="fas fa-times me-1"></i>필터 초기화
+                    </a>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.avatar-lg {
+  width: 5rem;
+  height: 5rem;
+}
+
+.avatar-title {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg-white-10 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+</style>
+{% endblock %}

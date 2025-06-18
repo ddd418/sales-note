@@ -1,0 +1,255 @@
+{% extends "reporting/base.html" %} {% block title %}히스토리 상세 - 영업 보고
+시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-history me-2"></i>활동 기록 상세
+        </h1>
+        <div>
+          <a
+            href="{% url 'reporting:history_list' %}"
+            class="btn btn-secondary me-2"
+          >
+            <i class="fas fa-arrow-left me-1"></i>목록으로
+          </a>
+          {% if user.is_authenticated and user == history.user %}
+          <a
+            href="{% url 'reporting:history_edit' history.pk %}"
+            class="btn btn-outline-primary me-2"
+          >
+            <i class="fas fa-edit me-1"></i>수정
+          </a>
+          <a
+            href="{% url 'reporting:history_delete' history.pk %}"
+            class="btn btn-outline-danger"
+          >
+            <i class="fas fa-trash me-1"></i>삭제
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 히스토리 상세 정보 -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+              <span
+                class="badge {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% else %}bg-light text-dark {% endif %} me-2"
+              >
+                <i
+                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% else %}fa-circle {% endif %} me-1"
+                ></i>
+                {{ history.get_action_type_display }}
+              </span>
+              {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %}
+              <span class="badge bg-success ms-2">
+                {% load currency_filters %}
+                <i class="fas fa-won-sign me-1"></i
+                >{{history.delivery_amount|currency_format }}원
+              </span>
+              {% endif %}
+            </h5>
+            <small class="text-muted">
+              <i class="fas fa-clock me-1"></i>
+              {{ history.created_at|date:"Y년 m월 d일 H:i" }}
+            </small>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- 기본 정보 -->
+          <div class="row mb-4">
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-user me-1"></i>작성자
+              </h6>
+              <p class="mb-3">{{ history.user.username }}</p>
+            </div>
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-calendar me-1"></i>작성일시
+              </h6>
+              <p class="mb-3">
+                {{ history.created_at|date:"Y년 m월 d일 H:i:s" }}
+              </p>
+            </div>            {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %}
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-won-sign me-1"></i>납품 금액
+              </h6>
+              <p class="mb-3">
+                {% load currency_filters %}
+                <span class="badge bg-success fs-6"
+                  >{{ history.delivery_amount|currency_format }}원</span
+                >
+              </p>
+            </div>
+            {% endif %}            {% if history.action_type == 'delivery_schedule' and history.delivery_items %}
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-boxes me-1"></i>납품 품목
+              </h6>
+              <p class="mb-3">{{ history.delivery_items }}</p>
+            </div>
+            {% endif %}            {% if history.action_type == 'delivery_schedule' and history.delivery_date %}
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-calendar-alt me-1"></i>납품 날짜
+              </h6>
+              <p class="mb-3">
+                <span class="badge bg-info fs-6">{{ history.delivery_date|date:"Y년 m월 d일" }}</span>
+              </p>
+            </div>
+            {% endif %}
+            {% if history.action_type == 'customer_meeting' and history.meeting_date %}
+            <div class="col-md-4">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-calendar-check me-1"></i>미팅 날짜
+              </h6>
+              <p class="mb-3">
+                <span class="badge bg-warning fs-6">{{ history.meeting_date|date:"Y년 m월 d일" }}</span>
+              </p>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- 관련 연결 정보 -->
+          {% if history.followup or history.schedule %}
+          <div class="row mb-4">
+            {% if history.followup %}
+            <div class="col-md-6">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-user-tie me-1"></i>관련 고객 정보
+              </h6>
+              <div class="p-3 bg-light rounded">
+                <p class="mb-2">
+                  <strong
+                    >{{ history.followup.customer_name|default:"고객명 미정"}}</strong
+                  >
+                </p>
+                <p class="mb-2 text-muted small">
+                  {{ history.followup.company|default:"업체명 미정" }} {% if history.followup.department %} -
+                  {{history.followup.department}}{% endif %}
+                </p>
+                <a
+                  href="{% url 'reporting:followup_detail' history.followup.pk %}"
+                  class="btn btn-sm btn-outline-primary"
+                >
+                  <i class="fas fa-eye me-1"></i>고객 정보 보기
+                </a>
+              </div>
+            </div>
+            {% endif %} {% if history.schedule %}
+            <div class="col-md-6">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-calendar me-1"></i>관련 일정
+              </h6>
+              <div class="p-3 bg-light rounded">
+                <p class="mb-2">
+                  <strong
+                    >{{ history.schedule.followup.customer_name|default:"고객명 미정" }} 방문</strong
+                  >
+                </p>
+                <p class="mb-1 text-muted small">
+                  <i class="fas fa-calendar me-1"></i>
+                  {{ history.schedule.visit_date|date:"Y년 m월 d일" }}
+                </p>
+                <p class="mb-1 text-muted small">
+                  <i class="fas fa-clock me-1"></i>
+                  {{ history.schedule.visit_time|date:"H:i" }}
+                </p>
+                {% if history.schedule.location %}
+                <p class="mb-2 text-muted small">
+                  <i class="fas fa-map-marker-alt me-1"></i>
+                  {{ history.schedule.location }}
+                </p>
+                {% endif %}
+                <a
+                  href="{% url 'reporting:schedule_detail' history.schedule.pk %}"
+                  class="btn btn-sm btn-outline-success"
+                >
+                  <i class="fas fa-eye me-1"></i>일정 보기
+                </a>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- 설명/내용 -->
+          {% if history.content %}
+          <div class="mb-4">
+            <h6 class="text-muted mb-2">
+              <i class="fas fa-file-text me-1"></i>상세 내용
+            </h6>
+            <div class="p-3 bg-light rounded">
+              <p class="mb-0 whitespace-pre-line">{{ history.content }}</p>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- 이전/다음 변경 사항 -->
+          {% if history.old_value or history.new_value %}
+          <div class="mb-4">
+            <h6 class="text-muted mb-3">
+              <i class="fas fa-exchange-alt me-1"></i>변경 사항
+            </h6>
+            <div class="row">
+              {% if history.old_value %}
+              <div class="col-md-6">
+                <div class="p-3 border rounded bg-light">
+                  <h6 class="text-danger mb-2">
+                    <i class="fas fa-minus-circle me-1"></i>이전 값
+                  </h6>
+                  <p class="mb-0 font-monospace">{{ history.old_value }}</p>
+                </div>
+              </div>
+              {% endif %} {% if history.new_value %}
+              <div class="col-md-6">
+                <div class="p-3 border rounded bg-light">
+                  <h6 class="text-success mb-2">
+                    <i class="fas fa-plus-circle me-1"></i>새로운 값
+                  </h6>
+                  <p class="mb-0 font-monospace">{{ history.new_value }}</p>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="card-footer bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+              <i class="fas fa-info-circle me-1"></i>
+              이 활동 기록은 {{ history.created_at|timesince }} 전에
+              생성되었습니다.
+            </small>
+            <div>
+              <a
+                href="{% url 'reporting:history_list' %}"
+                class="btn btn-secondary"
+              >
+                <i class="fas fa-arrow-left me-1"></i>목록으로
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .whitespace-pre-line {
+    white-space: pre-line;
+  }
+</style>
+{% endblock %}

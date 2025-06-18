@@ -1,0 +1,127 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }}{% endblock%} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <!-- 헤더 섹션 -->
+      <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-calendar-times me-2"></i>
+            <div>
+              <h4 class="mb-0">일정 삭제</h4>
+              <small>이 작업은 되돌릴 수 없습니다</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- 경고 메시지 -->
+          <div
+            class="alert alert-danger d-flex align-items-center"
+            role="alert"
+          >
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <div>
+              <strong>정말로 이 일정을 삭제하시겠습니까?</strong><br />
+              <small>삭제된 일정은 복구할 수 없습니다.</small>
+            </div>
+          </div>
+
+          <!-- 삭제할 일정 정보 -->
+          <h5 class="mb-3">삭제 대상 일정</h5>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">관련 팔로우업</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.followup.customer_name|default:"고객명 미정" }} 
+                ({{schedule.followup.company|default:"업체명 미정" }})
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">방문 날짜</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.visit_date|date:"Y년 m월 d일" }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">방문 시간</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.visit_time|date:"H:i" }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">상태</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.get_status_display }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">담당자</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.user.username }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">생성일</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.created_at|date:"Y년 m월 d일 H:i" }}
+              </div>
+            </div>
+
+            {% if schedule.location %}
+            <div class="col-12 mb-3">
+              <label class="form-label text-muted">장소</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.location }}
+              </div>
+            </div>
+            {% endif %} {% if schedule.notes %}
+            <div class="col-12 mb-3">
+              <label class="form-label text-muted">메모</label>
+              <div class="p-2 bg-light rounded border">
+                {{ schedule.notes }}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- 삭제 확인 폼 -->
+          <form method="post" class="mt-4">
+            {% csrf_token %}
+
+            <div class="d-flex justify-content-end">
+              <a
+                href="{% url 'reporting:schedule_detail' schedule.pk %}"
+                class="btn btn-secondary me-2"
+              >
+                <i class="fas fa-arrow-left me-1"></i>취소
+              </a>
+
+              <button type="submit" class="btn btn-danger">
+                <i class="fas fa-calendar-times me-1"></i>삭제 확인
+              </button>
+            </div>
+          </form>
+
+          <!-- 추가 정보 -->
+          <div class="mt-4 p-3 bg-light rounded">
+            <p class="text-muted mb-0">
+              <small>
+                <strong>참고:</strong>
+                일정을 삭제해도 관련된 팔로우업은 유지됩니다. 단순히 방문 일정만
+                제거되며, 필요시 새로운 일정을 다시 생성할 수 있습니다.
+              </small>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

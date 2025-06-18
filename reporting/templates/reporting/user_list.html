@@ -1,0 +1,337 @@
+{% extends "reporting/base.html" %}
+{% block title %}사용자 관리 - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<!-- CSRF 토큰을 위한 히든 폼 -->
+<form style="display: none;">
+  {% csrf_token %}
+</form>
+
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 페이지 헤더 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title mb-0">
+          <i class="fas fa-users me-2"></i>사용자 관리
+        </h1>
+        <div>
+          <a href="{% url 'reporting:user_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 사용자 추가
+          </a>
+        </div>
+      </div>
+
+      <!-- 검색 및 필터 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <form method="get" class="d-flex flex-wrap gap-3">
+                <div class="flex-grow-1">
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    name="search" 
+                    value="{{ search_query }}" 
+                    placeholder="사용자명으로 검색..."
+                  >
+                </div>
+                <div>
+                  <select name="role" class="form-control">
+                    <option value="">모든 권한</option>
+                    {% for value, label in role_choices %}
+                      <option value="{{ value }}" {% if value == role_filter %}selected{% endif %}>
+                        {{ label }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-search me-1"></i>검색
+                  </button>
+                </div>
+                {% if search_query or role_filter %}
+                <div>
+                  <a href="{% url 'reporting:user_list' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i>초기화
+                  </a>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 사용자 목록 -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              {% if users %}
+                <div class="table-responsive">
+                  <table class="table table-hover">
+                    <thead class="table-light">
+                      <tr>
+                        <th>사용자명</th>
+                        <th>이름</th>
+                        <th>권한</th>
+                        <th>생성자</th>
+                        <th>생성일</th>
+                        <th>상태</th>
+                        <th>작업</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for user in users %}
+                      <tr>
+                        <td>
+                          <strong>{{ user.username }}</strong>
+                          {% if user.email %}
+                            <br><small class="text-muted">{{ user.email }}</small>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.first_name or user.last_name %}
+                            {{ user.first_name }} {{ user.last_name }}
+                          {% else %}
+                            <span class="text-muted">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.userprofile %}
+                            <span class="badge bg-{% if user.userprofile.role == 'admin' %}danger{% elif user.userprofile.role == 'manager' %}warning{% else %}primary{% endif %}">
+                              {{ user.userprofile.get_role_display }}
+                            </span>
+                          {% else %}
+                            <span class="badge bg-secondary">프로필 없음</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.userprofile.created_by %}
+                            {{ user.userprofile.created_by.username }}
+                          {% else %}
+                            <span class="text-muted">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.userprofile %}
+                            {{ user.userprofile.created_at|date:"Y-m-d" }}
+                          {% else %}
+                            <span class="text-muted">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.is_active %}
+                            <span class="badge bg-success">활성</span>
+                          {% else %}
+                            <span class="badge bg-danger">비활성</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                              작업
+                            </button>                            <ul class="dropdown-menu">
+                              <li>
+                                <a class="dropdown-item" href="{% url 'reporting:user_edit' user.id %}">
+                                  <i class="fas fa-edit me-1"></i>편집
+                                </a>
+                              </li>
+                              {% if user.username != request.user.username %}
+                              <li>
+                                <a class="dropdown-item {% if user.is_active %}text-danger{% else %}text-success{% endif %}" 
+                                   href="#" 
+                                   onclick="toggleUserStatus({{ user.id }}, '{{ user.username }}', {{ user.is_active|yesno:'true,false' }})">
+                                  <i class="fas fa-{% if user.is_active %}ban{% else %}check{% endif %} me-1"></i>
+                                  {% if user.is_active %}비활성화{% else %}활성화{% endif %}
+                                </a>
+                              </li>
+                              <li><hr class="dropdown-divider"></li>
+                              <li>
+                                <a class="dropdown-item text-danger" 
+                                   href="#" 
+                                   onclick="deleteUser({{ user.id }}, '{{ user.username }}')">
+                                  <i class="fas fa-trash me-1"></i>삭제
+                                </a>
+                              </li>
+                              {% endif %}
+                            </ul>
+                          </div>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- 페이지네이션 -->
+                {% if users.has_other_pages %}
+                  {% include 'reporting/pagination.html' with page_obj=users %}
+                {% endif %}
+              {% else %}
+                <div class="text-center py-5">
+                  <div class="mb-3">
+                    <i class="fas fa-users fa-3x text-muted"></i>
+                  </div>
+                  <h5 class="text-muted">사용자가 없습니다</h5>
+                  <p class="text-muted mb-4">검색 조건을 변경하거나 새 사용자를 추가해보세요.</p>
+                  <a href="{% url 'reporting:user_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>새 사용자 추가
+                  </a>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleUserStatus(userId, username, isActive) {
+  const action = isActive ? '비활성화' : '활성화';
+  const message = `사용자 "${username}"을(를) ${action}하시겠습니까?`;
+  
+  if (confirm(message)) {
+    // 로딩 상태 표시
+    if (typeof GlobalLoader !== 'undefined') {
+      GlobalLoader.show();
+    }
+    
+    // CSRF 토큰 가져오기
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    // AJAX 요청
+    fetch(`/reporting/users/${userId}/toggle-active/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (typeof GlobalLoader !== 'undefined') {
+        GlobalLoader.hide();
+      }
+      
+      if (data.success) {
+        // 성공 메시지 표시
+        if (typeof showToast !== 'undefined') {
+          showToast(data.message, 'success');
+        } else {
+          alert(data.message);
+        }
+        
+        // 페이지 새로고침
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        // 에러 메시지 표시
+        if (typeof showToast !== 'undefined') {
+          showToast(data.error || '작업 중 오류가 발생했습니다.', 'error');
+        } else {
+          alert(data.error || '작업 중 오류가 발생했습니다.');
+        }
+      }
+    })
+    .catch(error => {
+      if (typeof GlobalLoader !== 'undefined') {
+        GlobalLoader.hide();
+      }
+      
+      console.error('Error:', error);
+      if (typeof showToast !== 'undefined') {
+        showToast('네트워크 오류가 발생했습니다.', 'error');
+      } else {
+        alert('네트워크 오류가 발생했습니다.');
+      }
+    });  }
+}
+
+function deleteUser(userId, username) {
+  const message = `정말로 사용자 "${username}"을(를) 삭제하시겠습니까?\n\n⚠️ 주의사항:\n• 삭제된 사용자의 모든 데이터가 함께 삭제됩니다.\n• 이 작업은 되돌릴 수 없습니다.\n• 삭제 전에 중요한 데이터를 백업하시기 바랍니다.`;
+  
+  if (confirm(message)) {
+    // 로딩 상태 표시
+    if (typeof GlobalLoader !== 'undefined') {
+      GlobalLoader.show();
+    }
+    
+    // CSRF 토큰 가져오기
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+      alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    // FormData 생성
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+
+    // AJAX 요청
+    fetch(`{% url 'reporting:user_delete' 0 %}`.replace('0', userId), {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken
+      },
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (typeof GlobalLoader !== 'undefined') {
+        GlobalLoader.hide();
+      }
+      
+      if (data.success) {
+        if (typeof showToast !== 'undefined') {
+          showToast(data.message || '사용자가 성공적으로 삭제되었습니다.', 'success');
+        } else {
+          alert(data.message || '사용자가 성공적으로 삭제되었습니다.');
+        }
+        
+        // 페이지 새로고침
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        if (typeof showToast !== 'undefined') {
+          showToast(data.error || '사용자 삭제 중 오류가 발생했습니다.', 'error');
+        } else {
+          alert(data.error || '사용자 삭제 중 오류가 발생했습니다.');
+        }
+      }
+    })
+    .catch(error => {
+      if (typeof GlobalLoader !== 'undefined') {
+        GlobalLoader.hide();
+      }
+      
+      console.error('Error:', error);
+      if (typeof showToast !== 'undefined') {
+        showToast('네트워크 오류가 발생했습니다.', 'error');
+      } else {
+        alert('네트워크 오류가 발생했습니다.');
+      }
+    });
+  }
+}
+
+function confirmAction(message) {
+  if (confirm(message)) {
+    // 기존 확인 액션
+    console.log('Action confirmed');
+  }
+}
+</script>
+{% endblock %}

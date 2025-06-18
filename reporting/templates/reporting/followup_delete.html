@@ -1,0 +1,123 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }}{%endblock%} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <!-- 헤더 섹션 -->
+      <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-trash-alt me-2"></i>
+            <div>
+              <h4 class="mb-0">팔로우업 삭제</h4>
+              <small>이 작업은 되돌릴 수 없습니다</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- 경고 메시지 -->
+          <div
+            class="alert alert-danger d-flex align-items-center"
+            role="alert"
+          >
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <div>
+              <strong>정말로 이 팔로우업을 삭제하시겠습니까?</strong><br />
+              <small
+                >삭제된 팔로우업은 복구할 수 없습니다. 관련된 모든 데이터가
+                영구적으로 제거됩니다.</small
+              >
+            </div>
+          </div>
+
+          <!-- 삭제할 팔로우업 정보 -->
+          <h5 class="mb-3">삭제 대상 팔로우업</h5>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">고객명</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.customer_name|default:"고객명 미정" }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">업체/학교명</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.company|default:"업체명 미정" }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">부서/연구실명</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.department|default:"부서명 미정" }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">상태</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.get_status_display }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">우선순위</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.get_priority_display }}
+              </div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">생성일</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.created_at|date:"Y년 m월 d일 H:i" }}
+              </div>
+            </div>
+
+            {% if followup.address %}
+            <div class="col-12 mb-3">
+              <label class="form-label text-muted">상세주소</label>
+              <div class="p-2 bg-light rounded border">
+                {{ followup.address }}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- 삭제 확인 폼 -->
+          <form method="post" class="mt-4">
+            {% csrf_token %}
+
+            <div class="d-flex justify-content-end">
+              <a
+                href="{% url 'reporting:followup_detail' followup.pk %}"
+                class="btn btn-secondary me-2"
+              >
+                <i class="fas fa-arrow-left me-1"></i>취소
+              </a>
+
+              <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash-alt me-1"></i>삭제 확인
+              </button>
+            </div>
+          </form>
+
+          <!-- 추가 정보 -->
+          <div class="mt-4 p-3 bg-light rounded">
+            <p class="text-muted mb-0">
+              <small>
+                <strong>참고:</strong>
+                팔로우업을 삭제하면 관련된 모든 히스토리와 일정 정보도 함께
+                제거됩니다. 데이터를 보존하려면 상태를 '완료' 또는 '일시중지'로
+                변경하는 것을 권장합니다.
+              </small>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

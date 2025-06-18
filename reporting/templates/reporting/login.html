@@ -1,0 +1,257 @@
+{% extends "reporting/base.html" %} {% block title %} 로그인 - 영업 보고 시스템
+{% endblock title %} 
+
+{% block content %}
+<style>
+/* 로그인 페이지 모바일 최적화 */
+@media (max-width: 768px) {
+  .login-container {
+    max-width: 90% !important;
+    margin: 20px auto !important;
+    padding: 25px 20px !important;
+  }
+
+  .login-title {
+    font-size: 24px !important;
+    margin-bottom: 30px !important;
+  }
+
+  .login-form {
+    width: 100%;
+  }
+
+  .form-group {
+    margin-bottom: 20px !important;
+  }
+
+  .form-label {
+    font-size: 16px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .form-input {
+    width: 100% !important;
+    padding: 15px !important;
+    font-size: 16px !important; /* iOS 줌 방지 */
+    border-radius: 8px !important;
+    border: 2px solid #e1e5e9 !important;
+    box-sizing: border-box !important;
+    transition: border-color 0.3s ease;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  }
+
+  .login-button {
+    width: 100% !important;
+    padding: 15px !important;
+    font-size: 18px !important;
+    min-height: 50px !important;
+    border-radius: 8px !important;
+    background-color: #2563eb !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .login-button:hover,
+  .login-button:focus {
+    background-color: #1d4ed8 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+
+  .login-button:active {
+    transform: translateY(0);
+  }
+
+  .error-message {
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+    padding: 12px 16px !important;
+    border-radius: 8px !important;
+    border: 1px solid #fecaca !important;
+    font-size: 14px !important;
+    text-align: center !important;
+    margin-bottom: 20px !important;
+  }
+
+  /* 키보드가 올라왔을 때 레이아웃 조정 */
+  .login-container {
+    min-height: auto;
+    margin-top: 10px !important;
+  }
+}
+
+/* 가로 모드에서 키보드 대응 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .login-container {
+    margin: 10px auto !important;
+    padding: 20px !important;
+  }
+
+  .login-title {
+    font-size: 20px !important;
+    margin-bottom: 20px !important;
+  }
+
+  .form-group {
+    margin-bottom: 15px !important;
+  }
+}
+</style>
+
+<div
+  class="login-container"
+  style="
+    max-width: 400px;
+    margin: 50px auto;
+    padding: 30px;
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e1e5e9;
+  "
+>
+  <h2 class="login-title" style="text-align: center; margin-bottom: 25px; color: #1f2937; font-weight: 700;">로그인</h2>
+
+  {% if form.errors %}
+  <div class="error-message" style="color: #dc2626; text-align: center; margin-bottom: 15px; padding: 12px; background-color: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;">
+    <i class="fas fa-exclamation-circle me-2"></i>아이디 또는 비밀번호가 올바르지 않습니다.
+  </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'reporting:login' %}" class="login-form">
+    {% csrf_token %}
+    <div class="form-group" style="margin-bottom: 15px">
+      <label
+        for="id_username"
+        class="form-label"
+        style="
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 500;
+          color: #374151;
+          font-size: 14px;
+        "
+        ><i class="fas fa-user me-2"></i>사용자 이름</label
+      >
+      <input
+        type="text"
+        name="username"
+        id="id_username"
+        required
+        autocomplete="username"
+        class="form-input"
+        style="
+          width: 100%;
+          padding: 12px 16px;
+          border: 2px solid #e1e5e9;
+          border-radius: 8px;
+          box-sizing: border-box;
+          font-size: 16px;
+          transition: border-color 0.3s ease;
+        "
+        placeholder="사용자 이름을 입력하세요"
+      />
+    </div>
+    <div class="form-group" style="margin-bottom: 20px">
+      <label
+        for="id_password"
+        class="form-label"
+        style="
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 500;
+          color: #374151;
+          font-size: 14px;
+        "
+        ><i class="fas fa-lock me-2"></i>비밀번호</label
+      >
+      <input
+        type="password"
+        name="password"
+        id="id_password"
+        required
+        autocomplete="current-password"
+        class="form-input"
+        style="
+          width: 100%;
+          padding: 12px 16px;
+          border: 2px solid #e1e5e9;
+          border-radius: 8px;
+          box-sizing: border-box;
+          font-size: 16px;
+          transition: border-color 0.3s ease;
+        "
+        placeholder="비밀번호를 입력하세요"
+      />
+    </div>
+    <button
+      type="submit"
+      class="btn btn-primary login-button"
+      style="
+        width: 100%; 
+        padding: 12px;
+        background-color: #2563eb;
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      "
+    >
+      <i class="fas fa-sign-in-alt me-2"></i>로그인
+    </button>
+  </form>
+</div>
+
+<script>
+// 로그인 폼 개선
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('.login-form');
+  const inputs = form.querySelectorAll('input');
+  
+  // 입력 필드 포커스 효과
+  inputs.forEach(input => {
+    input.addEventListener('focus', function() {
+      this.style.borderColor = '#2563eb';
+      this.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)';
+    });
+    
+    input.addEventListener('blur', function() {
+      this.style.borderColor = '#e1e5e9';
+      this.style.boxShadow = 'none';
+    });
+  });
+  
+  // 폼 제출 시 로딩 상태
+  form.addEventListener('submit', function() {
+    const button = this.querySelector('.login-button');
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>로그인 중...';
+    button.disabled = true;
+  });
+  
+  // 모바일에서 키보드가 나타날 때 스크롤 조정
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    const container = document.querySelector('.login-container');
+    
+    inputs.forEach(input => {
+      input.addEventListener('focus', function() {
+        setTimeout(() => {
+          this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      });
+    });
+  }
+});
+</script>
+{% endblock content %}

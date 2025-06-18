@@ -1,0 +1,530 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<style>
+/* 일정 목록 모바일 최적화 */
+@media (max-width: 768px) {
+  /* 헤더 모바일 최적화 */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+    position: sticky;
+    top: 60px;
+    background: #fcfcfc;
+    z-index: 98;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #edecec;
+  }
+
+  .page-header .btn-group {
+    width: 100%;
+  }
+
+  .page-header .btn {
+    flex: 1;
+    min-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  /* 상태별 필터 모바일 최적화 */
+  .filter-box .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filter-box .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 36px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 일정 카드 모바일 최적화 */
+  .schedule-card {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .schedule-card .card-header {
+    padding: 10px 15px;
+    font-size: 13px;
+  }
+
+  .schedule-card .card-body {
+    padding: 12px 15px;
+    font-size: 12px;
+  }
+
+  /* 액션 버튼 모바일 최적화 */
+  .action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .action-buttons .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 32px;
+  }
+
+  /* 테이블 모바일 최적화 */
+  .table-responsive {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .table th,
+  .table td {
+    font-size: 12px;
+    padding: 8px 6px;
+    white-space: nowrap;
+  }
+}
+</style>
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >        <h1 class="page-title mb-0">
+          <i class="fas fa-calendar-alt me-2"></i>{{ page_title }}
+        </h1>        {% if user.is_authenticated %}
+        {% if user.userprofile.role == 'manager' %}
+        <!-- 매니저용 데이터 보기 드롭다운 -->
+        <div class="btn-group">
+          <button
+            type="button"
+            class="btn btn-outline-primary dropdown-toggle"
+            data-bs-toggle="dropdown"
+          >
+            <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+          </button>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-user me-2"></i>고객 관리
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-calendar me-2"></i>일정 관리
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-history me-2"></i>활동 기록
+              </a>
+            </li>
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+              </a>
+            </li>            {% if selected_user %}
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
+                <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
+              </a>
+            </li>
+            {% endif %}
+          </ul>
+        </div>
+        {% else %}
+        <!-- 실무자용 추가 버튼 -->
+        <a href="{% url 'reporting:schedule_create' %}" class="btn btn-primary">
+          <i class="fas fa-plus me-1"></i>새 일정 추가
+        </a>
+        {% endif %}
+        {% endif %}
+      </div>      <!-- 필터링 버튼 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-filter me-2"></i>일정 상태별 필터
+              </h6>
+              <div class="btn-group" role="group" aria-label="일정 상태 필터">
+                <a
+                  href="{% url 'reporting:schedule_list' %}"
+                  class="btn {% if not status_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                >
+                  <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
+                </a>
+                <a
+                  href="{% url 'reporting:schedule_list' %}?status=scheduled"
+                  class="btn {% if status_filter == 'scheduled' %}btn-info{% else %}btn-outline-info{% endif %}"
+                >
+                  <i class="fas fa-clock me-1"></i>예정됨 ({{ scheduled_count}})
+                </a>
+                <a
+                  href="{% url 'reporting:schedule_list' %}?status=completed"
+                  class="btn {% if status_filter == 'completed' %}btn-success{% else %}btn-outline-success{% endif %}"
+                >
+                  <i class="fas fa-check me-1"></i>완료됨 ({{ completed_count}})
+                </a>
+                <a
+                  href="{% url 'reporting:schedule_list' %}?status=cancelled"
+                  class="btn {% if status_filter == 'cancelled' %}btn-danger{% else %}btn-outline-danger{% endif %}"
+                >
+                  <i class="fas fa-times me-1"></i>취소됨 ({{ cancelled_count}})
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 고급 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>고급 검색 및 필터
+              </h6>
+              <form method="GET" action="{% url 'reporting:schedule_list' %}">
+                <div class="row g-3">
+                  <!-- 검색어 -->
+                  <div class="col-md-4">
+                    <label for="search" class="form-label">검색어</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      id="search"
+                      name="search" 
+                      value="{{ search_query|default:'' }}"
+                      placeholder="고객명, 업체명, 장소, 메모..."
+                    >
+                  </div>
+                  
+                  <!-- 담당자 필터 -->
+                  <div class="col-md-2">
+                    <label for="user" class="form-label">담당자</label>
+                    <select class="form-control" id="user" name="user">
+                      <option value="">전체</option>
+                      {% for user_option in users %}
+                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
+                        {{ user_option.username }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
+                  <!-- 시작 날짜 -->
+                  <div class="col-md-2">
+                    <label for="date_from" class="form-label">시작 날짜</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      id="date_from"
+                      name="date_from" 
+                      value="{{ date_from|default:'' }}"
+                    >
+                  </div>
+                  
+                  <!-- 종료 날짜 -->
+                  <div class="col-md-2">
+                    <label for="date_to" class="form-label">종료 날짜</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      id="date_to"
+                      name="date_to" 
+                      value="{{ date_to|default:'' }}"
+                    >
+                  </div>
+                  
+                  <!-- 버튼들 -->
+                  <div class="col-md-2 d-flex align-items-end">
+                    <div class="btn-group w-100">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i>
+                      </button>
+                      <a href="{% url 'reporting:schedule_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 현재 필터 유지 -->
+                {% if status_filter %}
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                {% endif %}                <!-- 검색 결과 정보 -->
+                {% if search_query or user_filter or date_from or date_to %}
+                <div class="mt-3">
+                  <small class="text-muted">
+                    검색 결과: {{ total_count }}건
+                    {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
+                    {% if date_from %} | 시작: <strong>{{ date_from }}</strong>{% endif %}
+                    {% if date_to %} | 종료: <strong>{{ date_to }}</strong>{% endif %}
+                  </small>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if schedules %}
+      <div class="row">
+        {% for schedule in schedules %}
+        <div class="col-md-6 col-lg-4 mb-4">
+          <div class="card h-100 schedule-card">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h6 class="mb-0">
+                <a
+                  href="{% url 'reporting:schedule_detail' schedule.pk %}"
+                  class="text-decoration-none"
+                >
+                  {{ schedule.followup.customer_name|default:"고객명 미정" }}
+                </a>
+              </h6>
+              <span
+                class="badge {% if schedule.status == 'scheduled' %}bg-primary {% elif schedule.status == 'completed' %}bg-success {% elif schedule.status == 'cancelled' %}bg-danger {% else %}bg-secondary {% endif %}"
+              >
+                {{ schedule.get_status_display }}
+              </span>
+            </div>
+
+            <div class="card-body">
+              <p class="card-text">
+                <strong>업체:</strong>
+                {{schedule.followup.company|default:"업체명 미정" }}<br />
+                <strong>담당자:</strong>
+                {{ schedule.user.username }}<br />
+                <strong>날짜:</strong>
+                <i class="fas fa-calendar me-1"></i>
+                {{schedule.visit_date|date:"Y년 m월 d일" }}<br />
+                <strong>시간:</strong>
+                <i class="fas fa-clock me-1"></i>
+                {{schedule.visit_time|date:"H:i" }}<br />
+                {% if schedule.location %}
+                <strong>장소:</strong>
+                <i class="fas fa-map-marker-alt me-1"></i>
+                {{schedule.location|truncatechars:30 }}<br />
+                {% endif %}
+                <strong>생성일:</strong>
+                {{ schedule.created_at|date:"m월 d일"}}
+              </p>
+
+              {% if schedule.notes %}
+              <p class="card-text">
+                <small class="text-muted">
+                  <i class="fas fa-sticky-note me-1"></i>
+                  {{ schedule.notes|truncatechars:50 }}
+                </small>
+              </p>
+              {% endif %}
+            </div>            <div class="card-footer bg-transparent">
+              <div class="btn-group w-100 action-buttons" role="group">
+                <a
+                  href="{% url 'reporting:schedule_detail' schedule.pk %}"
+                  class="btn btn-sm btn-outline-primary"
+                >
+                  <i class="fas fa-eye me-1"></i>상세</a
+                >
+                <a
+                  href="{% url 'reporting:schedule_edit' schedule.pk %}"
+                  class="btn btn-sm btn-outline-secondary"
+                >
+                  <i class="fas fa-edit me-1"></i>수정</a
+                >
+                <a
+                  href="{% url 'reporting:history_create_from_schedule' schedule.pk %}"
+                  class="btn btn-sm btn-outline-success"
+                >
+                  <i class="fas fa-plus me-1"></i>활동 기록</a
+                >                <a
+                  href="{% url 'reporting:schedule_delete' schedule.pk %}"
+                  class="btn btn-sm btn-outline-danger"
+                  onclick="return confirm('정말로 이 일정을 삭제하시겠습니까?\\n\\n고객: {% if schedule.followup.customer_name %}{{ schedule.followup.customer_name }}{% else %}고객명 미정{% endif %}\\n날짜: {{ schedule.visit_date|date:'Y년 m월 d일' }}\\n\\n⚠️ 주의: 관련된 모든 활동 기록(히스토리)도 함께 삭제됩니다.\\n삭제된 데이터는 복구할 수 없습니다.')"
+                >
+                  <i class="fas fa-trash-alt me-1"></i>삭제</a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">아직 등록된 일정이 없습니다.</h5>
+          {% if user.is_authenticated %}
+          <p class="text-muted mb-3">첫 번째 일정을 추가해보세요!</p>
+          <a
+            href="{% url 'reporting:schedule_create' %}"
+            class="btn btn-primary"
+          >
+            <i class="fas fa-plus me-1"></i>첫 일정 추가하기
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<style>
+  .page-title {
+    color: #37352f;
+    font-weight: 600;
+  }
+
+  .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    transition: transform 0.2s ease-in-out;
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+  }
+
+  .badge {
+    font-size: 0.75rem;
+  }
+
+  /* 일정 목록 모바일 최적화 */
+@media (max-width: 768px) {
+  /* 헤더 모바일 최적화 */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+    position: sticky;
+    top: 60px;
+    background: #fcfcfc;
+    z-index: 98;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #edecec;
+  }
+
+  .page-header .btn-group {
+    width: 100%;
+  }
+
+  .page-header .btn {
+    flex: 1;
+    min-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  /* 상태별 필터 모바일 최적화 */
+  .filter-box .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filter-box .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 36px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 일정 카드 모바일 최적화 */
+  .schedule-card {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .schedule-card .card-header {
+    padding: 10px 15px;
+    font-size: 13px;
+  }
+
+  .schedule-card .card-body {
+    padding: 12px 15px;
+    font-size: 12px;
+  }
+
+  /* 액션 버튼 모바일 최적화 */
+  .action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .action-buttons .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 32px;
+  }
+
+  /* 테이블 모바일 최적화 */
+  .table-responsive {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .table th,
+  .table td {
+    font-size: 12px;
+    padding: 8px 6px;
+    white-space: nowrap;
+  }
+}
+
+/* 작은 화면에서 카드 한 줄에 하나씩 */
+@media (max-width: 576px) {
+  .col-md-6.col-lg-4 {
+    width: 100%;
+    max-width: none;
+    padding: 0 5px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .btn {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+}
+</style>
+{% endblock %}

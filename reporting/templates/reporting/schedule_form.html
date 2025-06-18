@@ -1,0 +1,156 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-calendar-plus me-2"></i>{{ page_title }}
+        </h1>
+        <div>
+          {% if schedule %}
+          <a
+            href="{% url 'reporting:schedule_detail' schedule.pk %}"
+            class="btn btn-secondary"
+            >취소</a
+          >
+          {% else %}
+          <a
+            href="{% url 'reporting:schedule_list' %}"
+            class="btn btn-secondary"
+            >취소</a
+          >
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 폼 카드 -->
+      <div class="card">
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+
+            <!-- 에러 메시지 -->
+            {% if form.errors %}
+            <div class="alert alert-danger" role="alert">
+              <strong>오류가 발생했습니다:</strong>
+              <ul class="mb-0 mt-2">
+                {% for field, errors in form.errors.items %} {% for error in
+                errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            <div class="row">
+              <!-- 기본 정보 섹션 -->
+              <div class="col-md-6">
+                <h3 class="mb-3 text-primary">
+                  <i class="fas fa-info-circle me-2"></i>기본 정보
+                </h3>
+
+                <div class="mb-3">
+                  {{ form.followup.label_tag }} {{ form.followup }}
+                  <small class="form-text text-muted"
+                    >방문할 팔로우업을 선택하세요</small
+                  >
+                </div>
+
+                <div class="mb-3">
+                  {{ form.visit_date.label_tag }} {{ form.visit_date }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.visit_time.label_tag }} {{ form.visit_time }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.status.label_tag }} {{ form.status }}
+                </div>
+              </div>
+
+              <!-- 추가 정보 섹션 -->
+              <div class="col-md-6">
+                <h3 class="mb-3 text-success">
+                  <i class="fas fa-map-marker-alt me-2"></i>추가 정보
+                </h3>
+
+                <div class="mb-3">
+                  {{ form.location.label_tag }} {{ form.location }}
+                  <small class="form-text text-muted">선택사항입니다</small>
+                </div>
+
+                <div class="mb-3">
+                  {{ form.notes.label_tag }} {{ form.notes }}
+                  <small class="form-text text-muted">선택사항입니다</small>
+                </div>
+              </div>
+            </div>
+
+            <!-- 버튼 섹션 -->
+            <div class="d-flex justify-content-end mt-4">
+              {% if schedule %}
+              <a
+                href="{% url 'reporting:schedule_detail' schedule.pk %}"
+                class="btn btn-secondary me-2"
+                >취소</a
+              >
+              {% else %}
+              <a
+                href="{% url 'reporting:schedule_list' %}"
+                class="btn btn-secondary me-2"
+                >취소</a
+              >
+              {% endif %}
+
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i>
+                {% if schedule %}수정하기{% else %}생성하기{% endif %}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .page-title {
+    color: #37352f;
+    font-weight: 600;
+  }
+
+  .form-control {
+    border-radius: 6px;
+    border: 1px solid #e3e2e0;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+
+  .form-control:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #37352f;
+    margin-bottom: 0.5rem;
+  }
+
+  .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}

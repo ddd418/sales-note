@@ -1,0 +1,92 @@
+{% extends "reporting/base.html" %} {% block title %}페이지를 찾을 수 없습니다 -
+영업 보고 시스템{% endblock %} {% block content %}
+<div class="error-page">
+  <div class="error-content">
+    <div class="error-icon">
+      <i class="fas fa-search fa-4x text-muted"></i>
+    </div>
+    <h1 class="error-code">404</h1>
+    <h2 class="error-title">페이지를 찾을 수 없습니다</h2>
+    <p class="error-message">
+      요청하신 페이지가 존재하지 않거나 이동되었습니다.<br />
+      URL을 다시 확인하시거나 아래 버튼을 통해 이동해주세요.
+    </p>
+
+    <div class="error-actions">
+      <a href="{% url 'reporting:dashboard' %}" class="btn btn-primary">
+        <i class="fas fa-home me-2"></i>대시보드로 이동
+      </a>
+      <button onclick="history.back()" class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-2"></i>이전 페이지로
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .error-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+  }
+
+  .error-content {
+    max-width: 500px;
+    padding: 40px 20px;
+  }
+
+  .error-icon {
+    margin-bottom: 30px;
+  }
+
+  .error-code {
+    font-size: 6rem;
+    font-weight: 700;
+    color: #2563eb;
+    margin-bottom: 20px;
+    line-height: 1;
+  }
+
+  .error-title {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #37352f;
+    margin-bottom: 15px;
+  }
+
+  .error-message {
+    font-size: 1.1rem;
+    color: #5c5a53;
+    line-height: 1.6;
+    margin-bottom: 30px;
+  }
+
+  .error-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .error-code {
+      font-size: 4rem;
+    }
+
+    .error-title {
+      font-size: 1.5rem;
+    }
+
+    .error-actions {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .error-actions .btn {
+      width: 200px;
+    }
+  }
+</style>
+{% endblock %}

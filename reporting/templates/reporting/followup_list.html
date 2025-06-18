@@ -1,0 +1,631 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} 
+
+{% block content %}
+<style>
+/* 리스트 페이지 모바일 최적화 */
+@media (max-width: 768px) {
+  /* 헤더 모바일 최적화 */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+    position: sticky;
+    top: 60px;
+    background: #fcfcfc;
+    z-index: 98;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #edecec;
+  }
+
+  .page-header .btn-group {
+    width: 100%;
+  }
+
+  .page-header .btn {
+    flex: 1;
+    min-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 검색 카드 모바일 최적화 */
+  .card {
+    margin-bottom: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-title {
+    font-size: 14px;
+    margin-bottom: 15px !important;
+  }
+  /* 검색 폼 모바일 최적화 */
+  .row.g-3 {
+    gap: 15px !important;
+  }
+
+  /* 빠른 필터 모바일 최적화 */
+  .filter-box .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filter-box .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 36px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 팔로우업 카드 모바일 최적화 */
+  .col-md-6.col-lg-4 {
+    padding: 0 8px;
+    margin-bottom: 15px;
+  }
+
+  .card.h-100 {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-header {
+    padding: 12px 15px;
+    font-size: 14px;
+  }
+
+  .card-body {
+    padding: 15px;
+    font-size: 13px;
+  }
+
+  /* 액션 버튼 모바일 최적화 */
+  .card-footer .btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 32px;
+  }
+
+  .btn-group .btn {
+    flex: 1;
+    min-width: auto;
+  }
+
+  .col-md-4,
+  .col-md-2,
+  .col-md-3 {
+    width: 100%;
+    max-width: none;
+  }
+
+  .form-label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 5px;
+  }
+
+  .form-control,
+  .form-select {
+    min-height: 44px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid #e3e2e0;
+  }
+
+  .form-control:focus,
+  .form-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  /* 버튼 모바일 최적화 */
+  .btn {
+    min-height: 44px;
+    padding: 12px 16px;
+    font-size: 16px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .btn:active {
+    transform: scale(0.98);
+  }
+
+  .btn-group .btn {
+    border-radius: 8px !important;
+  }
+
+  /* 테이블 모바일 최적화 */
+  .table-responsive {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table {
+    margin-bottom: 0;
+    font-size: 12px;
+    min-width: 600px; /* 최소 너비 보장 */
+  }
+
+  .table th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #e9ecef;
+    padding: 12px 8px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .table td {
+    padding: 12px 8px;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f3f4;
+  }
+
+  .table tbody tr:hover {
+    background-color: rgba(37, 99, 235, 0.02);
+  }
+
+  /* 테이블 액션 버튼 */
+  .table .btn {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 12px;
+    margin: 2px;
+  }
+
+  /* 배지 모바일 최적화 */
+  .badge {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+
+  /* 페이지네이션 모바일 최적화 */
+  .pagination {
+    justify-content: center;
+    margin-top: 20px;
+    gap: 5px;
+  }
+
+  .page-link {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid #e3e2e0;
+    font-size: 14px;
+  }
+
+  .page-item.active .page-link {
+    background-color: #2563eb;
+    border-color: #2563eb;
+  }
+
+  /* 모바일 카드 레이아웃 (테이블 대안) */
+  .mobile-card-list {
+    display: none;
+  }
+
+  /* 드롭다운 모바일 최적화 */
+  .dropdown-menu {
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: none;
+    margin-top: 8px;
+    min-width: 200px;
+  }
+
+  .dropdown-item {
+    padding: 12px 16px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dropdown-item:hover {
+    background-color: #f8f9fa;
+  }
+
+  /* 통계 정보 모바일 최적화 */
+  .alert {
+    border-radius: 8px;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 로딩 상태 */
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+}
+
+/* 아주 작은 화면에서는 카드 레이아웃 사용 */
+@media (max-width: 480px) {
+  .table-responsive {
+    display: none;
+  }
+
+  .mobile-card-list {
+    display: block;
+  }
+
+  .mobile-card {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
+  }
+
+  .mobile-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+
+  .mobile-card-title {
+    font-weight: 600;
+    font-size: 16px;
+    color: #1f1e1c;
+    margin: 0;
+  }
+
+  .mobile-card-subtitle {
+    color: #6c757d;
+    font-size: 14px;
+    margin: 2px 0 0 0;
+  }
+
+  .mobile-card-body {
+    margin-bottom: 15px;
+  }
+
+  .mobile-card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid #f1f3f4;
+  }
+
+  .mobile-card-row:last-child {
+    border-bottom: none;
+  }
+
+  .mobile-card-label {
+    font-weight: 500;
+    color: #5c5a53;
+    font-size: 13px;
+  }
+
+  .mobile-card-value {
+    color: #37352f;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .mobile-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .mobile-card-actions .btn {
+    flex: 1;
+    min-width: 80px;
+    font-size: 12px;
+    padding: 8px 12px;
+    min-height: 36px;
+  }
+}
+</style>
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >        <h1 class="page-title mb-0">
+          <i class="fas fa-users me-2"></i>{{ page_title }}
+        </h1>        {% if user.is_authenticated %}
+        {% if user.userprofile.role == 'manager' %}
+        <!-- 매니저용 데이터 보기 드롭다운 -->
+        <div class="btn-group">
+          <button
+            type="button"
+            class="btn btn-outline-primary dropdown-toggle"
+            data-bs-toggle="dropdown"
+          >
+            <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+          </button>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-user me-2"></i>고객 관리
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-calendar me-2"></i>일정 관리
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-history me-2"></i>활동 기록
+              </a>
+            </li>
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+              </a>
+            </li>            {% if selected_user %}
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+              <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
+                <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
+              </a>
+            </li>
+            {% endif %}
+          </ul>
+        </div>
+        {% else %}
+        <!-- 실무자용 추가 버튼 -->
+        <a href="{% url 'reporting:followup_create' %}" class="btn btn-primary">
+          <i class="fas fa-plus me-1"></i>새 고객 정보 추가
+        </a>
+        {% endif %}
+        {% endif %}
+      </div>      <!-- 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>고객 검색 및 필터
+              </h6>
+              <form method="GET" action="{% url 'reporting:followup_list' %}">
+                <div class="row g-3">
+                  <!-- 검색어 -->
+                  <div class="col-md-4">
+                    <label for="search" class="form-label">검색어</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      id="search"
+                      name="search" 
+                      value="{{ search_query|default:'' }}"
+                      placeholder="고객명, 업체명, 부서명, 메모..."
+                    >
+                  </div>
+                  
+                  <!-- 우선순위 필터 -->
+                  <div class="col-md-2">
+                    <label for="priority" class="form-label">우선순위</label>
+                    <select class="form-control" id="priority" name="priority">
+                      <option value="">전체</option>
+                      <option value="high" {% if priority_filter == 'high' %}selected{% endif %}>높음</option>
+                      <option value="medium" {% if priority_filter == 'medium' %}selected{% endif %}>보통</option>
+                      <option value="low" {% if priority_filter == 'low' %}selected{% endif %}>낮음</option>
+                    </select>
+                  </div>
+                  
+                  <!-- 담당자 필터 -->
+                  <div class="col-md-2">
+                    <label for="user" class="form-label">담당자</label>
+                    <select class="form-control" id="user" name="user">
+                      <option value="">전체</option>
+                      {% for user_option in users %}
+                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
+                        {{ user_option.username }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
+                  <!-- 버튼들 -->
+                  <div class="col-md-4 d-flex align-items-end">
+                    <div class="btn-group">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>검색
+                      </button>
+                      <a href="{% url 'reporting:followup_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>초기화
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 검색 결과 정보 -->
+                {% if search_query or priority_filter or user_filter %}
+                <div class="mt-3">
+                  <small class="text-muted">
+                    검색 결과: {{ total_count }}건
+                    {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if priority_filter %} | 우선순위: <strong>{% if priority_filter == 'high' %}높음{% elif priority_filter == 'medium' %}보통{% else %}낮음{% endif %}</strong>{% endif %}
+                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
+                  </small>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 우선순위별 필터 버튼 -->
+      <div class="row mb-4">        <div class="col-12">
+          <div class="card filter-box">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-flag me-2"></i>우선순위별 빠른 필터
+              </h6>
+              <div class="btn-group" role="group">
+                <a href="{% url 'reporting:followup_list' %}" class="btn {% if not priority_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                  <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
+                </a>
+                <a href="{% url 'reporting:followup_list' %}?priority=high" class="btn {% if priority_filter == 'high' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                  <i class="fas fa-exclamation me-1"></i>높음 ({{ high_priority_count }})
+                </a>
+                <a href="{% url 'reporting:followup_list' %}?priority=medium" class="btn {% if priority_filter == 'medium' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                  <i class="fas fa-minus me-1"></i>보통 ({{ medium_priority_count }})
+                </a>
+                <a href="{% url 'reporting:followup_list' %}?priority=low" class="btn {% if priority_filter == 'low' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                  <i class="fas fa-arrow-down me-1"></i>낮음 ({{ low_priority_count }})
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if followups %}
+      <div class="row">
+        {% for followup in followups %}
+        <div class="col-md-6 col-lg-4 mb-4">
+          <div class="card h-100">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h6 class="mb-0">
+                <a
+                  href="{% url 'reporting:followup_detail' followup.pk %}"
+                  class="text-decoration-none"
+                >
+                  {{ followup.customer_name|default:"고객명 미정" }}
+                </a>
+              </h6>
+              <span
+                class="badge bg-{% if followup.priority == 'high' %}danger{% elif followup.priority == 'medium' %}warning{% else %}secondary{% endif %}"
+              >
+                {{ followup.get_priority_display }}
+              </span>
+            </div>
+
+            <div class="card-body">
+              <p class="card-text">
+                <strong>업체:</strong> {{ followup.company|default:"업체명 미정"}}<br />
+                {% if followup.department %}
+                <strong>부서:</strong> {{ followup.department }}<br />                {% endif %}
+                <strong>담당자:</strong> {{ followup.user.username }}<br />
+                {% if followup.manager %}
+                <strong>책임자:</strong> {{ followup.manager }}<br />
+                {% endif %}
+                {% if followup.phone_number %}
+                <strong>연락처:</strong> {{ followup.phone_number }}<br />
+                {% endif %}
+                {% if followup.email %}
+                <strong>메일:</strong> <a href="mailto:{{ followup.email }}" class="text-decoration-none">{{ followup.email }}</a><br />
+                {% endif %}
+                {% if followup.address %}
+                <strong>주소:</strong> {{ followup.address|truncatechars:50}}<br />
+                {% endif %}
+                <strong>생성일:</strong> {{ followup.created_at|date:"Y년 m월 d일" }}
+              </p>
+              {% if followup.notes %}
+              <div class="alert alert-light mb-3">
+                <small>{{ followup.notes|truncatechars:100 }}</small>
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="card-footer bg-transparent">
+              <div class="btn-group w-100" role="group">
+                <a
+                  href="{% url 'reporting:followup_detail' followup.pk %}"
+                  class="btn btn-outline-primary btn-sm"
+                >
+                  <i class="fas fa-eye me-1"></i>상세
+                </a>
+                <a
+                  href="{% url 'reporting:followup_edit' followup.pk %}"
+                  class="btn btn-outline-secondary btn-sm"
+                >
+                  <i class="fas fa-edit me-1"></i>수정
+                </a>
+                <a
+                  href="{% url 'reporting:followup_delete' followup.pk %}"
+                  class="btn btn-outline-danger btn-sm"
+                >
+                  <i class="fas fa-trash me-1"></i>삭제
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body text-center py-5">
+              <i class="fas fa-users fa-3x text-muted mb-3"></i>
+              {% if search_query %}
+              <h5 class="card-title">검색 결과가 없습니다</h5>
+              <p class="card-text text-muted">
+                "<strong>{{ search_query }}</strong>"와 일치하는 고객 정보가
+                없습니다.<br />
+                다른 검색어를 시도해보세요.
+              </p>
+              <a
+                href="{% url 'reporting:followup_list' %}"
+                class="btn btn-outline-primary"
+              >
+                <i class="fas fa-times me-1"></i>검색 초기화
+              </a>
+              {% else %}
+              <h5 class="card-title">등록된 고객 정보가 없습니다</h5>
+              <p class="card-text text-muted">
+                첫 번째 고객 정보를 추가해보세요.
+              </p>
+              {% if user.is_authenticated %}
+              <a
+                href="{% url 'reporting:followup_create' %}"
+                class="btn btn-primary"
+              >
+                <i class="fas fa-plus me-1"></i>새 고객 정보 추가
+              </a>
+              {% endif %} {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

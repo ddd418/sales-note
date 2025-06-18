@@ -1,0 +1,194 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <!-- 페이지 헤더 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-user-edit me-2"></i>{{ page_title }}
+        </h1>
+        <div>
+          <a href="{% url 'reporting:user_list' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>목록으로 돌아가기
+          </a>
+        </div>
+      </div>
+
+      <!-- 사용자 정보 카드 -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-info-circle me-2"></i>현재 사용자 정보
+          </h5>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>사용자명:</strong> {{ edit_user.username }}</p>
+              <p>
+                <strong>현재 권한:</strong>
+                <span class="badge bg-primary"
+                  >{{ user_profile.get_role_display }}</span
+                >
+              </p>
+            </div>
+            <div class="col-md-6">
+              <p>
+                <strong>가입일:</strong> {{ edit_user.date_joined|date:"Y-m-d H:i" }}
+              </p>
+              <p>
+                <strong>상태:</strong>
+                {% if edit_user.is_active %}
+                <span class="badge bg-success">활성</span>
+                {% else %}
+                <span class="badge bg-danger">비활성</span>
+                {% endif %}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 편집 폼 -->
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-edit me-2"></i>사용자 정보 수정
+          </h5>
+        </div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %} {% if form.errors %}
+            <div class="alert alert-danger">
+              <strong>오류가 발생했습니다:</strong>
+              <ul class="mb-0 mt-2">
+                {% for field, errors in form.errors.items %} {% for error in errors %}
+                <li>{{ error }}</li>
+                {% endfor %} {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            <div class="row">
+              <!-- 기본 정보 -->
+              <div class="col-md-6">
+                <h6 class="text-primary mb-3">기본 정보</h6>
+
+                <div class="mb-3">
+                  {{ form.username.label_tag }} {{ form.username }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.first_name.label_tag }} {{ form.first_name }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.last_name.label_tag }} {{ form.last_name }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.role.label_tag }} {{ form.role }}
+                </div>
+              </div>
+
+              <!-- 비밀번호 변경 -->
+              <div class="col-md-6">
+                <h6 class="text-primary mb-3">비밀번호 변경</h6>
+
+                <div class="mb-3">
+                  <div class="form-check">
+                    {{ form.change_password }}
+                    <label
+                      class="form-check-label"
+                      for="{{ form.change_password.id_for_label }}"
+                    >
+                      {{ form.change_password.label }}
+                    </label>
+                  </div>
+                  <small class="text-muted"
+                    >체크하면 비밀번호를 변경할 수 있습니다.</small
+                  >
+                </div>
+
+                <div class="mb-3" id="password-fields" style="display: none">
+                  <div class="mb-3">
+                    {{ form.password1.label_tag }} {{ form.password1 }}
+                  </div>
+
+                  <div class="mb-3">
+                    {{ form.password2.label_tag }} {{ form.password2 }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-center mt-4">
+              <button type="submit" class="btn btn-primary me-2">
+                <i class="fas fa-save me-1"></i>수정하기
+              </button>
+              <a
+                href="{% url 'reporting:user_list' %}"
+                class="btn btn-secondary"
+              >
+                <i class="fas fa-times me-1"></i>취소
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const changePasswordCheckbox = document.getElementById(
+      "{{ form.change_password.id_for_label }}"
+    );
+    const passwordFields = document.getElementById("password-fields");
+    const password1 = document.getElementById(
+      "{{ form.password1.id_for_label }}"
+    );
+    const password2 = document.getElementById(
+      "{{ form.password2.id_for_label }}"
+    );
+
+    // 비밀번호 변경 체크박스 이벤트
+    changePasswordCheckbox.addEventListener("change", function () {
+      if (this.checked) {
+        passwordFields.style.display = "block";
+        password1.required = true;
+        password2.required = true;
+      } else {
+        passwordFields.style.display = "none";
+        password1.required = false;
+        password2.required = false;
+        password1.value = "";
+        password2.value = "";
+      }
+    });
+  });
+</script>
+
+<style>
+  .form-control {
+    margin-bottom: 0;
+  }
+
+  .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .text-primary {
+    color: #0d6efd !important;
+  }
+
+  .badge {
+    font-size: 0.875em;
+  }
+</style>
+{% endblock %}

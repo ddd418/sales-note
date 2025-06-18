@@ -1,0 +1,321 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-calendar-alt me-2"></i>
+          {{ schedule.followup.customer_name|default:"고객명 미정" }} 일정
+        </h1>
+        <div>
+          <a
+            href="{% url 'reporting:schedule_list' %}"
+            class="btn btn-secondary me-2"
+          >
+            <i class="fas fa-list me-1"></i>목록으로
+          </a>
+          <a
+            href="{% url 'reporting:schedule_edit' schedule.pk %}"
+            class="btn btn-primary me-2"
+          >
+            <i class="fas fa-edit me-1"></i>수정
+          </a>
+          <a
+            href="{% url 'reporting:schedule_delete' schedule.pk %}"
+            class="btn btn-danger"
+          >
+            <i class="fas fa-trash-alt me-1"></i>삭제
+          </a>
+        </div>
+      </div>
+
+      <!-- 상세 정보 카드 -->
+      <div class="card">
+        <div class="card-body">
+          <div class="row">
+            <!-- 기본 정보 섹션 -->
+            <div class="col-md-6">
+              <h3 class="mb-3 text-primary">
+                <i class="fas fa-info-circle me-2"></i>기본 정보
+              </h3>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">관련 팔로우업</label>
+                <div class="p-2 bg-light rounded border">
+                  <a
+                    href="{% url 'reporting:followup_detail' schedule.followup.pk %}"
+                    class="text-decoration-none"
+                  >
+                    <i class="fas fa-link me-1"></i>
+                    {{ schedule.followup.customer_name|default:"고객명 미정" }}
+                    ({{ schedule.followup.company|default:"업체명 미정" }})
+                  </a>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">방문 날짜</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-calendar me-1"></i>
+                  {{ schedule.visit_date|date:"Y년 m월 d일 (l)" }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">방문 시간</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-clock me-1"></i>
+                  {{ schedule.visit_time|date:"H:i" }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">담당자</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-user-tie me-1"></i>
+                  {{ schedule.user.username}}
+                </div>
+              </div>
+            </div>
+
+            <!-- 상태 및 추가 정보 섹션 -->
+            <div class="col-md-6">
+              <h3 class="mb-3 text-success">
+                <i class="fas fa-tasks me-2"></i>상태 및 추가 정보
+              </h3>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">상태</label>
+                <div class="p-2 bg-light rounded border">
+                  <span
+                    class="badge {% if schedule.status == 'scheduled' %}bg-primary {% elif schedule.status == 'completed' %}bg-success {% elif schedule.status == 'cancelled' %}bg-danger {% else %}bg-secondary {% endif %} fs-6"
+                  >
+                    {{ schedule.get_status_display }}
+                  </span>
+                </div>
+              </div>
+
+              {% if schedule.location %}
+              <div class="mb-3">
+                <label class="form-label text-muted">장소</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-map-marker-alt me-1"></i>
+                  {{ schedule.location }}
+                </div>
+              </div>
+              {% endif %}
+
+              <div class="mb-3">
+                <label class="form-label text-muted">생성일</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-calendar-plus me-1"></i>
+                  {{ schedule.created_at|date:"Y년 m월 d일 H:i" }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">수정일</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-calendar-edit me-1"></i>
+                  {{ schedule.updated_at|date:"Y년 m월 d일 H:i" }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 메모 섹션 -->
+          {% if schedule.notes %}
+          <div class="row mt-4">
+            <div class="col-12">
+              <h3 class="mb-3 text-info">
+                <i class="fas fa-sticky-note me-2"></i>메모
+              </h3>
+
+              <div class="p-3 bg-light rounded border">
+                <i class="fas fa-quote-left me-1"></i>
+                {{ schedule.notes|linebreaks }}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          <!-- 메타 정보 -->
+          <div class="row mt-4">
+            <div class="col-12">
+              <div class="border-top pt-3">
+                <small class="text-muted">
+                  <i class="fas fa-info-circle me-1"></i>
+                  일정 ID: {{ schedule.pk }} | 생성:
+                  {{schedule.created_at|date:"Y-m-d H:i" }} | 수정:
+                  {{schedule.updated_at|date:"Y-m-d H:i" }}
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 관련 히스토리 섹션 -->
+  {% if related_histories %}
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-history me-2"></i>관련 활동 히스토리
+            </h5>
+            <div>
+              <a
+                href="{% url 'reporting:history_list' %}?schedule={{ schedule.pk }}"
+                class="btn btn-outline-secondary btn-sm"
+              >
+                <i class="fas fa-list me-1"></i>전체 보기
+              </a>
+              <a
+                href="{% url 'reporting:history_create' %}?schedule={{ schedule.pk }}"
+                class="btn btn-outline-primary btn-sm"
+              >
+                <i class="fas fa-plus me-1"></i>기록 추가
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="timeline">
+            {% for history in related_histories %}
+            <div class="timeline-item">
+              <div
+                class="timeline-marker {% if history.action_type == 'created_followup' %}bg-primary {% elif history.action_type == 'updated_followup' %}bg-warning {% elif history.action_type == 'status_changed_followup' %}bg-info {% elif history.action_type == 'created_schedule' %}bg-success {% elif history.action_type == 'updated_schedule' %}bg-secondary {% elif history.action_type == 'status_changed_schedule' %}bg-info {% elif history.action_type == 'note' %}bg-dark {% else %}bg-light {% endif %}"
+              >
+                <i
+                  class="fas {% if history.action_type == 'created_followup' %}fa-user-plus {% elif history.action_type == 'updated_followup' %}fa-edit {% elif history.action_type == 'status_changed_followup' %}fa-refresh {% elif history.action_type == 'created_schedule' %}fa-calendar-plus {% elif history.action_type == 'updated_schedule' %}fa-calendar-edit {% elif history.action_type == 'status_changed_schedule' %}fa-calendar-check {% elif history.action_type == 'note' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
+                ></i>
+              </div>
+              <div class="timeline-content">
+                <div
+                  class="d-flex justify-content-between align-items-start mb-2"
+                >
+                  <h6 class="mb-0">{{ history.get_action_type_display }}</h6>
+                  <small class="text-muted"
+                    >{{ history.created_at|date:"m-d H:i" }}</small
+                  >
+                </div>
+                {% if history.content %}
+                <p class="mb-2 text-muted small">
+                  {{ history.content|truncatewords:15 }}
+                </p>
+                {% endif %}{% if history.old_value or history.new_value %}
+                <div class="small text-muted">
+                  {% if history.old_value %}
+                  <span class="text-danger"
+                    >{{ history.old_value|truncatechars:30 }}</span
+                  >
+                  {% endif %} {% if history.old_value and history.new_value %} →
+                  {% endif %} {% if history.new_value %}
+                  <span class="text-success"
+                    >{{ history.new_value|truncatechars:30 }}</span
+                  >
+                  {% endif %}
+                </div>
+                {% endif %}
+                <div class="mt-2">
+                  <a
+                    href="{% url 'reporting:history_detail' history.pk %}"
+                    class="btn btn-outline-primary btn-sm"
+                  >
+                    <i class="fas fa-eye me-1"></i>상세보기
+                  </a>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .page-title {
+    color: #37352f;
+    font-weight: 600;
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+  }
+
+  .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .badge {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .bg-light {
+    background-color: #f8f9fa !important;
+  }
+
+  /* 타임라인 스타일 */
+  .timeline {
+    position: relative;
+    padding-left: 0;
+  }
+
+  .timeline-item {
+    position: relative;
+    display: flex;
+    margin-bottom: 1.5rem;
+    padding-left: 3rem;
+  }
+
+  .timeline-item:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    top: 2.5rem;
+    bottom: -1.5rem;
+    width: 2px;
+    background-color: #e0e0e0;
+  }
+
+  .timeline-marker {
+    position: absolute;
+    left: 0.5rem;
+    top: 0.5rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+  }
+
+  .timeline-content {
+    flex: 1;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-left: 0.5rem;
+  }
+</style>
+{% endblock %}

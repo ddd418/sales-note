@@ -1,0 +1,1044 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-history me-2"></i>{{ page_title }} {% if followup %}
+          <small class="text-muted"
+            >- {{ followup.customer_name|default:"고객명 미정" }}</small
+          >
+          {% endif %}
+        </h1>        <div>
+          {% if followup %}
+          <a
+            href="{% url 'reporting:followup_detail' followup.pk %}"
+            class="btn btn-secondary me-2"
+          >
+            <i class="fas fa-arrow-left me-1"></i>팔로우업으로
+          </a>
+          {% endif %}          {% if user.is_authenticated %}
+          {% if user.userprofile.role == 'manager' %}
+          <!-- 매니저용 데이터 보기 드롭다운 -->
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+            >
+              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-user me-2"></i>고객 관리
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-calendar me-2"></i>일정 관리
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-history me-2"></i>활동 기록
+                </a>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+                </a>
+              </li>              {% if selected_user %}
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
+                  <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          {% else %}
+          <!-- 실무자용 추가 버튼 -->
+          <a
+            href="{% url 'reporting:history_create' %}"
+            class="btn btn-primary"
+          >
+            <i class="fas fa-plus me-1"></i>새 활동 기록
+          </a>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>      <!-- 필터링 버튼 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-filter me-2"></i>활동 유형별 필터
+              </h6>
+              <div class="btn-group" role="group" aria-label="활동 유형 필터">
+                <a
+                  href="{% url 'reporting:history_list' %}"
+                  class="btn {% if not action_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                >
+                  <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
+                </a>
+                <a
+                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting"
+                  class="btn {% if action_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
+                >
+                  <i class="fas fa-handshake me-1"></i>고객 미팅 ({{meeting_count }})
+                </a>
+                <a
+                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule"
+                  class="btn {% if action_type_filter == 'delivery_schedule' %}btn-success{% else %}btn-outline-success{% endif %}"
+                >
+                  <i class="fas fa-truck me-1"></i>납품 일정 ({{ delivery_count}})
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 고급 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>고급 검색 및 필터
+              </h6>
+              <form method="GET" action="{% url 'reporting:history_list' %}">
+                <div class="row g-3">
+                  <!-- 검색어 -->
+                  <div class="col-md-4">
+                    <label for="search" class="form-label">검색어</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      id="search"
+                      name="search" 
+                      value="{{ search_query|default:'' }}"
+                      placeholder="활동 내용, 고객명, 업체명..."
+                    >
+                  </div>
+                  
+                  <!-- 담당자 필터 -->
+                  <div class="col-md-2">
+                    <label for="user" class="form-label">담당자</label>
+                    <select class="form-control" id="user" name="user">
+                      <option value="">전체</option>
+                      {% for user_option in users %}
+                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
+                        {{ user_option.username }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
+                  <!-- 시작 날짜 -->
+                  <div class="col-md-2">
+                    <label for="date_from" class="form-label">시작 날짜</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      id="date_from"
+                      name="date_from" 
+                      value="{{ date_from|default:'' }}"
+                    >
+                  </div>
+                  
+                  <!-- 종료 날짜 -->
+                  <div class="col-md-2">
+                    <label for="date_to" class="form-label">종료 날짜</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      id="date_to"
+                      name="date_to" 
+                      value="{{ date_to|default:'' }}"
+                    >
+                  </div>
+                  
+                  <!-- 버튼들 -->
+                  <div class="col-md-2 d-flex align-items-end">
+                    <div class="btn-group w-100">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i>
+                      </button>
+                      <a href="{% url 'reporting:history_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 현재 필터 유지 -->
+                {% if action_type_filter %}
+                <input type="hidden" name="action_type" value="{{ action_type_filter }}">
+                {% endif %}
+                
+                <!-- 검색 결과 정보 -->
+                {% if search_query or user_filter or date_from or date_to %}
+                <div class="mt-3">
+                  <small class="text-muted">
+                    검색 결과: {{ total_count }}건
+                    {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
+                    {% if date_from %} | 시작: <strong>{{ date_from }}</strong>{% endif %}
+                    {% if date_to %} | 종료: <strong>{{ date_to }}</strong>{% endif %}
+                  </small>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if histories %}
+      <div class="row">
+        <div class="col-12">
+          <!-- 타임라인 스타일 히스토리 -->
+          <div class="timeline">
+            {% for history in histories %}
+            <div class="timeline-item">
+              <div
+                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% else %}bg-light {% endif %}"
+              >
+                <i
+                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% else %}fa-circle {% endif %} text-white"
+                ></i>
+              </div>
+
+              <div class="timeline-content">
+                <div class="card">
+                  <div class="card-body">
+                    <div
+                      class="d-flex justify-content-between align-items-start mb-2"
+                    >
+                      <h6 class="card-title mb-0">
+                        <a
+                          href="{% url 'reporting:history_detail' history.pk %}"
+                          class="text-decoration-none"
+                        >
+                          {{ history.get_action_type_display }}
+                        </a>
+                      </h6>
+                      <small class="text-muted">
+                        <i class="fas fa-clock me-1"></i>
+                        {{ history.created_at|date:"Y년 m월 d일 H:i" }}
+                      </small>
+                    </div>
+                    <p class="card-text">
+                      {% if history.followup %}
+                      <strong>팔로우업:</strong>
+                      <a
+                        href="{% url 'reporting:followup_detail' history.followup.pk %}"
+                        class="text-decoration-none"
+                      >
+                        {{ history.followup.customer_name|default:"고객명 미정"}} ({{ history.followup.company|default:"업체명 미정"}}) </a
+                      ><br />
+                      {% else %}
+                      <strong>팔로우업:</strong>
+                      <span class="text-muted">연결된 팔로우업 없음</span><br />
+                      {% endif %} {% if history.schedule %}
+                      <strong>관련 일정:</strong>
+                      <a
+                        href="{% url 'reporting:schedule_detail' history.schedule.pk %}"
+                        class="text-decoration-none"
+                      >
+                        {{ history.schedule.visit_date|date:"m월 d일" }}
+                        {{history.schedule.visit_time|date:"H:i" }} </a
+                      ><br />
+                      {% endif %}                      <strong>활동자:</strong> {{history.user.username }}                      {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %} 
+                      <div class="delivery-info">
+                        <strong>납품 금액:</strong>
+                        {% load currency_filters %}
+                        <span class="badge bg-success delivery-amount">{{ history.delivery_amount|currency_format }}원</span>
+                      </div>
+                      {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_items %}
+                      <div class="delivery-info">
+                        <strong>납품 품목:</strong>
+                        <span class="delivery-items">{{ history.delivery_items|truncatechars:50 }}</span>
+                      </div>
+                      {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_date %}
+                      <div class="delivery-info">
+                        <strong>납품 날짜:</strong>
+                        <span class="badge bg-info delivery-date">{{ history.delivery_date|date:"Y년 m월 d일" }}</span>
+                      </div>
+                      {% endif %}                      {% if history.action_type == 'customer_meeting' and history.meeting_date %}
+                      <div class="meeting-info">
+                        <strong>미팅 날짜:</strong>
+                        <span class="badge bg-warning meeting-date">{{ history.meeting_date|date:"Y년 m월 d일" }}</span>
+                      </div>
+                      {% endif %}{% if history.action_type == 'delivery_schedule' %}
+                      <div class="delivery-info">
+                        <strong>세금계산서:</strong>
+                        <span id="tax-badge-{{ history.id }}" class="badge {% if history.tax_invoice_issued %}bg-primary{% else %}bg-secondary{% endif %} tax-invoice-badge me-2">
+                          {% if history.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
+                        </span>
+                      </div>
+                      {% endif %}
+                    </p>
+
+                    {% if history.content %}
+                    <div class="alert alert-light mb-3">
+                      <i class="fas fa-quote-left me-1"></i>
+                      {{ history.content|linebreaks }}
+                    </div>
+                    {% endif %}                    <div class="d-flex justify-content-between align-items-center">
+                      <div>
+                        <!-- 왼쪽 공간은 비워둠 -->
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        {% if history.action_type == 'delivery_schedule' %}                        <button 
+                          class="btn btn-sm {% if history.tax_invoice_issued %}btn-primary{% else %}btn-outline-secondary{% endif %} tax-invoice-toggle me-2"
+                          data-history-id="{{ history.id }}"
+                          data-current-status="{{ history.tax_invoice_issued|yesno:'true,false' }}"
+                          title="세금계산서 발행 여부 토글">
+                          <i class="fas {% if history.tax_invoice_issued %}fa-check-circle{% else %}fa-circle{% endif %} me-1"></i>
+                          세금계산서
+                        </button>
+                        {% endif %}
+                        
+                        <a
+                          href="{% url 'reporting:history_detail' history.pk %}"
+                          class="btn btn-sm btn-outline-secondary me-1"
+                        >
+                          <i class="fas fa-eye me-1"></i>상세보기
+                        </a>
+                        {% if history.user == request.user or request.user.is_staff %}
+                        <a
+                          href="{% url 'reporting:history_edit' history.pk %}"
+                          class="btn btn-sm btn-outline-primary me-1"
+                        >
+                          <i class="fas fa-edit me-1"></i>수정
+                        </a>
+                        <a
+                          href="{% url 'reporting:history_delete' history.pk %}"
+                          class="btn btn-sm btn-outline-danger"
+                        >
+                          <i class="fas fa-trash-alt me-1"></i>삭제
+                        </a>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <i class="fas fa-history fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">
+            {% if followup %} 이 팔로우업에 대한 활동 기록이 없습니다. {% else%}
+            아직 등록된 활동 기록이 없습니다. {% endif %}
+          </h5>
+          {% if user.is_authenticated %}
+          <p class="text-muted mb-3">첫 번째 활동을 기록해보세요!</p>
+          <a
+            href="{% url 'reporting:history_create' %}"
+            class="btn btn-primary"
+          >
+            <i class="fas fa-plus me-1"></i>첫 활동 기록하기
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<style>
+  .page-title {
+    color: #37352f;
+    font-weight: 600;
+  }
+
+  .timeline {
+    position: relative;
+    padding-left: 30px;
+  }
+
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 20px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e9ecef;
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 30px;
+  }
+
+  .timeline-marker {
+    position: absolute;
+    left: -25px;
+    top: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .timeline-content {
+    margin-left: 30px;
+  }
+
+  .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+  }
+  .alert-light {
+    background-color: #f8f9fa;
+    border-color: #e9ecef;
+    color: #495057;
+  }
+
+  .tax-invoice-toggle {
+    transition: all 0.3s ease;
+  }
+
+  .tax-invoice-toggle:hover {
+    transform: scale(1.05);
+  }
+
+  /* 납품 관련 정보 스타일 강화 */
+.delivery-info {
+  padding: 8px 0;
+  margin: 8px 0;
+}
+
+/* 납품 관련 정보 글자 크기 적당하게 조절 */
+.delivery-info strong {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: #198754 !important;
+}
+
+/* 실제 값들 크기 적당하게 - 박스 제거 */
+.delivery-amount,
+.badge.delivery-amount,
+span.delivery-amount {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  padding: 0 !important;
+  margin-left: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #198754 !important;
+}
+
+.delivery-items,
+span.delivery-items {
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: #495057 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  margin-left: 8px !important;
+  display: inline !important;
+}
+
+.delivery-date,
+.badge.delivery-date,
+span.delivery-date {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  margin-left: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #0dcaf0 !important;
+}
+
+.tax-invoice-badge,
+.badge.tax-invoice-badge,
+span.tax-invoice-badge,
+#tax-badge-* {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  margin-left: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #6f42c1 !important;
+  transition: none !important;
+}
+
+/* 토글 후 색상 변경은 유지하되 크기는 고정 */
+span[id^="tax-badge-"] {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+span[id^="tax-badge-"].bg-primary {
+  color: #0d6efd !important;
+}
+
+span[id^="tax-badge-"].bg-secondary {
+  color: #6c757d !important;
+}
+
+/* 미팅 관련 정보 스타일 */
+.meeting-info {
+  padding: 8px 0;
+  margin: 8px 0;
+}
+
+.meeting-info strong {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: #856404 !important;
+}
+
+.meeting-date,
+.badge.meeting-date,
+span.meeting-date {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  margin-left: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #ffc107 !important;
+}
+
+@media (max-width: 768px) {
+  .delivery-info {
+    padding: 4px 0;
+    margin: 4px 0;
+  }
+  
+  .delivery-info strong {
+    font-size: 11px !important;
+  }
+  
+  .delivery-amount {
+    font-size: 12px !important;
+    padding: 3px 6px !important;
+    margin-left: 4px !important;
+  }
+  
+  .delivery-items {
+    font-size: 10px !important;
+    padding: 2px 4px !important;
+    margin-left: 4px !important;
+  }
+  
+  .delivery-date {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+    margin-left: 4px !important;
+  }
+  
+  .tax-invoice-badge {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+    margin-left: 4px !important;
+  }  /* 미팅 관련 정보 스타일 모바일 최적화 */  .meeting-info {
+    padding: 4px 0;
+    margin: 4px 0;
+  }
+  
+  .meeting-info strong {
+    font-size: 11px !important;
+  }
+  
+  .meeting-date {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+    margin-left: 4px !important;
+  }
+}
+
+/* 데스크탑에서는 버튼과 요소들 크게 */
+@media (min-width: 769px) {
+  .history-card .btn,
+  .history-card .btn-sm,
+  .history-card .btn-xs,
+  .history-card .tax-invoice-toggle,
+  .history-card .btn-outline-secondary,
+  .history-card .btn-outline-primary,
+  .history-card .btn-outline-danger,
+  .history-card .btn-primary {
+    padding: 8px 16px !important;
+    font-size: 14px !important;
+    min-height: 38px !important;
+    line-height: 1.4 !important;
+    border-radius: 6px !important;
+    margin: 4px !important;
+    max-width: none !important;
+    min-width: auto !important;
+  }
+
+  .history-card .btn i,
+  .history-card .btn .fas,
+  .history-card .btn .far {
+    font-size: 14px !important;
+    margin-right: 8px !important;
+  }
+
+  .history-card .d-flex.align-items-center.gap-2 {
+    gap: 8px !important;
+  }
+
+  .history-card .me-1 {
+    margin-right: 8px !important;
+  }
+
+  .history-card .me-2 {
+    margin-right: 12px !important;
+  }
+
+  .history-card {
+    padding: 20px !important;
+    margin-bottom: 20px !important;
+    border-radius: 12px !important;
+  }
+
+  .history-card .card-header {
+    padding: 12px 16px !important;
+    font-size: 16px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .history-card .card-body {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+
+  .history-card .card-title {
+    font-size: 18px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .history-card .card-text {
+    font-size: 14px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .text-muted {
+    font-size: 13px !important;
+  }
+
+  .badge {
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+  }
+}
+
+/* 히스토리 목록 모바일 최적화 - 강제 적용 */
+@media (max-width: 768px) {
+  /* 헤더 모바일 최적화 */
+  .page-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 15px !important;
+    position: sticky !important;
+    top: 60px !important;
+    background: #fcfcfc !important;
+    z-index: 98 !important;
+    padding: 15px 0 !important;
+    margin-bottom: 15px !important;
+    border-bottom: 1px solid #edecec !important;
+  }
+
+  .page-header .page-title {
+    font-size: 18px !important;
+    line-height: 1.3 !important;
+  }
+
+  .page-header > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+
+  .page-header .btn {
+    flex: 1 !important;
+    font-size: 12px !important;
+    padding: 8px 10px !important;
+    min-height: 36px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 활동 유형별 필터 모바일 최적화 */
+  .filter-box .btn-group {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+  }
+
+  .filter-box .btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+    min-height: 32px !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }  /* 히스토리 카드 모바일 최적화 - 카드 내부 요소 더 작게 */
+  .history-card {
+    margin-bottom: 8px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+    padding: 4px !important;
+  }
+
+  .history-card .card-header {
+    padding: 2px 4px !important;
+    font-size: 10px !important;
+    border-bottom: 1px solid #eee !important;
+    margin-bottom: 2px !important;
+    background: #f8f9fa !important;
+    border-radius: 2px !important;
+  }
+
+  .history-card .card-body {
+    padding: 0 !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+  }
+
+  .history-card .card-title {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+    line-height: 1.1 !important;
+    font-weight: 600 !important;
+  }
+
+  .history-card .card-text {
+    font-size: 9px !important;
+    margin-bottom: 2px !important;
+    color: #666 !important;
+    line-height: 1.2 !important;
+  }
+
+  /* 메타 정보 모바일 최적화 - 더 작게 */
+  .history-card .text-muted {
+    font-size: 9px !important;
+    color: #777 !important;
+  }
+
+  .history-card .badge {
+    font-size: 8px !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+  }
+
+  /* 액션 버튼 모바일 최적화 - 더 작게 */
+  .history-card .action-buttons {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 3px !important;
+    margin-top: 6px !important;
+  }
+
+  .history-card .action-buttons .btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 3px 6px !important;
+    font-size: 9px !important;
+    min-height: 24px !important;
+    line-height: 1.2 !important;
+    border-radius: 3px !important;
+  }
+
+  /* 상세 정보 모바일 최적화 - 더 작게 */
+  .history-card .detail-info dt {
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    margin-bottom: 1px !important;
+    color: #555 !important;
+  }
+
+  .history-card .detail-info dd {
+    font-size: 9px !important;
+    margin-bottom: 3px !important;
+    line-height: 1.2 !important;
+  }
+
+  /* 아이콘 크기 조정 */
+  .history-card .fas,
+  .history-card .far {
+    font-size: 9px !important;
+    margin-right: 2px !important;
+  }
+
+  /* 날짜 및 시간 정보 더 작게 */
+  .history-card .small {
+    font-size: 8px !important;
+  }
+    line-height: 1.3;
+  }
+
+  .history-card .card-text {
+    font-size: 12px;
+    margin-bottom: 8px;
+    color: #666;
+  }
+  /* 메타 정보 모바일 최적화 - 전체 페이지 */
+  .text-muted {
+    font-size: 9px !important;
+  }
+
+  .badge {
+    font-size: 8px !important;
+    padding: 2px 4px !important;
+  }
+  /* 액션 버튼 모바일 최적화 - 더욱 작게 */
+  .history-card .action-buttons {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 2px !important;
+    margin-top: 4px !important;
+  }
+
+  .history-card .action-buttons .btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 2px 4px !important;
+    font-size: 8px !important;
+    min-height: 20px !important;
+    line-height: 1.1 !important;
+    border-radius: 2px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 모든 버튼 요소 강제 적용 */
+  .history-card .btn,
+  .history-card .btn-sm,
+  .history-card .btn-xs {
+    padding: 2px 4px !important;
+    font-size: 8px !important;
+    min-height: 20px !important;
+    line-height: 1.1 !important;
+    border-radius: 2px !important;
+    margin: 1px !important;
+  }  /* 히스토리 카드 버튼들 극도로 작게 - 개선된 버전 */
+  .history-card .btn,
+  .history-card .btn-sm,
+  .history-card .btn-xs,
+  .history-card .tax-invoice-toggle,
+  .history-card .btn-outline-secondary,
+  .history-card .btn-outline-primary,
+  .history-card .btn-outline-danger,
+  .history-card .btn-primary {
+    padding: 1px 2px !important;
+    font-size: 6px !important;
+    min-height: 16px !important;
+    line-height: 1 !important;
+    border-radius: 1px !important;
+    margin: 0.5px !important;
+    border-width: 1px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 16px !important;
+    max-width: 50px !important;
+    overflow: hidden !important;
+  }
+
+  /* 세금계산서 버튼 특별 처리 - 토글 후에도 크기 유지 */
+  .history-card .tax-invoice-toggle {
+    max-width: 35px !important;
+    font-size: 5px !important;
+    padding: 1px 2px !important;
+    min-height: 16px !important;
+    line-height: 1 !important;
+  }
+
+  /* 히스토리 카드 내부 아이콘 더 작게 */
+  .history-card .btn i,
+  .history-card .btn .fas,
+  .history-card .btn .far {
+    font-size: 5px !important;
+    margin-right: 0px !important;
+    margin-left: 0px !important;
+  }
+
+  /* 버튼 텍스트 크기 조정 */
+  .history-card .btn {
+    font-weight: 400 !important;
+    letter-spacing: -0.2px !important;
+  }
+
+  /* 세금계산서 버튼 특별 처리 */
+  .history-card .tax-invoice-toggle {
+    max-width: 35px !important;
+    font-size: 5px !important;
+  }
+
+  /* 버튼 컨테이너 더 컴팩트하게 */
+  .history-card .d-flex.align-items-center.gap-2 {
+    gap: 1px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .history-card .me-1,
+  .history-card .me-2 {
+    margin-right: 1px !important;
+  }
+
+  /* 상세 정보 모바일 최적화 - 전체 페이지 */
+  .detail-info dt {
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    margin-bottom: 1px !important;
+    color: #555 !important;
+  }
+
+  .detail-info dd {
+    font-size: 9px !important;
+    margin-bottom: 3px !important;
+    line-height: 1.2 !important;
+  }
+  /* 검색 폼 모바일 최적화 */
+  .search-form .row {
+    gap: 8px !important;
+  }
+
+  .search-form .form-control,
+  .search-form .form-select {
+    font-size: 13px !important;
+    min-height: 36px !important;
+    padding: 6px 8px !important;
+  }
+
+  /* 카드 컨테이너 여백 최적화 */
+  .card {
+    margin-bottom: 8px !important;
+  }
+
+  .card-body {
+    padding: 8px !important;
+  }
+
+  /* 히스토리 목록 전체 컨테이너 */
+  .history-list-container {
+    padding: 5px !important;
+  }
+
+  .history-list-container .card {
+    margin-bottom: 6px !important;
+    border-radius: 6px !important;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // CSRF 토큰 가져오기
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
+    // 세금계산서 토글 버튼 이벤트
+    document.querySelectorAll('.tax-invoice-toggle').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const historyId = this.dataset.historyId;
+            const currentStatus = this.dataset.currentStatus === 'true';
+            
+            // 버튼 비활성화
+            this.disabled = true;
+            
+            fetch(`{% url 'reporting:toggle_tax_invoice' 0 %}`.replace('0', historyId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 버튼 상태 업데이트
+                    const newStatus = data.tax_invoice_issued;
+                    this.dataset.currentStatus = newStatus.toString();
+                      if (newStatus) {
+                        this.className = 'btn btn-sm btn-primary tax-invoice-toggle me-2';
+                        this.innerHTML = '<i class="fas fa-check-circle me-1"></i>세금계산서';
+                    } else {
+                        this.className = 'btn btn-sm btn-outline-secondary tax-invoice-toggle me-2';
+                        this.innerHTML = '<i class="fas fa-circle me-1"></i>세금계산서';
+                    }
+                      // 배지 업데이트
+                    const historyId = this.dataset.historyId;
+                    const badge = document.getElementById('tax-badge-' + historyId);
+                    if (badge) {
+                        if (newStatus) {
+                            badge.className = 'badge bg-primary fs-6 me-2';
+                            badge.textContent = '발행완료';
+                        } else {
+                            badge.className = 'badge bg-secondary fs-6 me-2';
+                            badge.textContent = '미발행';
+                        }
+                    }
+                    
+                    // 성공 메시지 (선택사항)
+                    // alert(data.message);
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('네트워크 오류가 발생했습니다.');
+            })
+            .finally(() => {
+                // 버튼 재활성화
+                this.disabled = false;
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

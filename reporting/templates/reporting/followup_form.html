@@ -1,0 +1,183 @@
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ page_title }}</h1>
+  <div>
+    {% if followup %}
+    <a
+      href="{% url 'reporting:followup_detail' followup.pk %}"
+      class="btn btn-secondary"
+      >취소</a
+    >
+    {% else %}
+    <a href="{% url 'reporting:followup_list' %}" class="btn btn-secondary"
+      >취소</a
+    >
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %} {% if form.errors %}
+      <div
+        style="
+          background-color: #ffebee;
+          color: #c62828;
+          padding: 15px;
+          border-radius: 6px;
+          margin-bottom: 20px;
+          border-left: 4px solid #f44336;
+        "
+      >
+        <strong>오류가 발생했습니다:</strong>
+        <ul style="margin: 8px 0 0 20px">
+          {% for field, errors in form.errors.items %} {% for error in errors %}
+          <li>{{ error }}</li>
+          {% endfor %} {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <div
+        style="
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 30px;
+          margin-bottom: 25px;
+        "
+      >
+        <div>
+          <h3 style="margin-bottom: 20px; color: #37352f; font-size: 18px">
+            기본 정보
+          </h3>
+          <div style="margin-bottom: 20px">
+            {{ form.customer_name.label_tag }} {{ form.customer_name }}
+            <small style="color: #6c757d; font-size: 12px"
+              >선택사항입니다</small
+            >
+          </div>
+
+          <div style="margin-bottom: 20px">
+            {{ form.company.label_tag }} {{ form.company }}
+          </div>
+          <div style="margin-bottom: 20px">
+            {{ form.department.label_tag }} {{ form.department }}
+            <small style="color: #6c757d; font-size: 12px"
+              >선택사항입니다</small
+            >
+          </div>
+
+          <div style="margin-bottom: 20px">
+            {{ form.manager.label_tag }} {{ form.manager }}
+            <small style="color: #6c757d; font-size: 12px"
+              >선택사항입니다</small
+            >
+          </div>
+
+          <div style="margin-bottom: 20px">
+            {{ form.phone_number.label_tag }} {{ form.phone_number }}
+            <small style="color: #6c757d; font-size: 12px"
+              >선택사항입니다</small
+            >
+          </div>
+
+          <div style="margin-bottom: 20px">
+            {{ form.email.label_tag }} {{ form.email }}
+            <small style="color: #6c757d; font-size: 12px"
+              >선택사항입니다</small
+            >
+          </div>
+        </div>
+
+        <div>
+          <h3 style="margin-bottom: 20px; color: #37352f; font-size: 18px">
+            상태 정보
+          </h3>
+
+          <div style="margin-bottom: 20px">
+            {{ form.status.label_tag }} {{ form.status }}
+          </div>
+
+          <div style="margin-bottom: 20px">
+            {{ form.priority.label_tag }} {{ form.priority }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 주소 필드를 별도 섹션으로 추가 -->
+      <div style="margin-bottom: 25px">
+        <h3 style="margin-bottom: 20px; color: #37352f; font-size: 18px">
+          추가 정보
+        </h3>
+        <div style="margin-bottom: 20px">
+          {{ form.address.label_tag }} {{ form.address }}
+          <small style="color: #6c757d; font-size: 12px">선택사항입니다</small>
+        </div>
+
+        <div style="margin-bottom: 20px">
+          {{ form.notes.label_tag }} {{ form.notes }}
+          <small style="color: #6c757d; font-size: 12px"
+            >팔로우업에 대한 상세 내용을 입력하세요 (선택사항)</small
+          >
+        </div>
+      </div>
+
+      <div style="text-align: center">
+        <button
+          type="submit"
+          class="btn btn-primary"
+          style="margin-right: 10px"
+        >
+          {% if followup %}수정하기{% else %}생성하기{% endif %}
+        </button>
+        {% if followup %}
+        <a
+          href="{% url 'reporting:followup_detail' followup.pk %}"
+          class="btn btn-secondary"
+          >취소</a
+        >
+        {% else %}
+        <a href="{% url 'reporting:followup_list' %}" class="btn btn-secondary"
+          >취소</a
+        >
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  /* 폼 스타일링 */
+  .form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e3e2e0;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #37352f;
+    background-color: #ffffff;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+
+  .form-control:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #37352f;
+    font-size: 14px;
+  }
+
+  select.form-control {
+    cursor: pointer;
+  }
+</style>
+{% endblock %}

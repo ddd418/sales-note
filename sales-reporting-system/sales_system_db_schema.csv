@@ -1,0 +1,33 @@
+﻿테이블명,필드명,데이터타입,설명
+users,user_id,INT PRIMARY KEY,사용자 고유 ID
+users,username,VARCHAR(50) UNIQUE,사용자명
+users,password_hash,VARCHAR(255),암호화된 비밀번호
+users,role,"ENUM(""sales"", ""manager"")",사용자 역할 (영업사원/관리자)
+users,name,VARCHAR(100),실제 이름
+users,created_at,TIMESTAMP,계정 생성일시
+follow_ups,followup_id,INT PRIMARY KEY,팔로우업 고유 ID
+follow_ups,user_id,INT,담당 영업사원 ID
+follow_ups,customer_name,VARCHAR(100),고객명
+follow_ups,company,VARCHAR(100),고객 회사명
+follow_ups,status,"ENUM(""active"", ""completed"", ""paused"")",팔로우업 상태
+follow_ups,priority,"ENUM(""high"", ""medium"", ""low"")",우선순위
+follow_ups,created_at,TIMESTAMP,팔로우업 생성일시
+schedules,schedule_id,INT PRIMARY KEY,일정 고유 ID
+schedules,user_id,INT,담당 영업사원 ID
+schedules,followup_id,INT,연관된 팔로우업 ID
+schedules,visit_date,DATE,방문 예정일
+schedules,visit_time,TIME,방문 예정시간
+schedules,location,VARCHAR(200),방문 장소
+schedules,status,"ENUM(""scheduled"", ""completed"", ""cancelled"")",일정 상태
+histories,history_id,INT PRIMARY KEY,이력 고유 ID
+histories,followup_id,INT,연관된 팔로우업 ID
+histories,user_id,INT,작성자 ID
+histories,action_type,"ENUM(""call"", ""email"", ""meeting"", ""note"")",활동 유형
+histories,content,TEXT,활동 내용
+histories,created_at,TIMESTAMP,작성일시
+pre_research,research_id,INT PRIMARY KEY,사전조사 고유 ID
+pre_research,schedule_id,INT,연관된 일정 ID
+pre_research,user_id,INT,작성자 ID
+pre_research,customer_info,TEXT,고객 정보 조사
+pre_research,market_analysis,TEXT,시장 분석
+pre_research,notes,TEXT,기타 메모

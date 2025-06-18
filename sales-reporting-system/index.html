@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영업 보고 시스템</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 로그인 페이지 -->
+    <div id="loginPage" class="page">
+        <div class="container">
+            <div class="login-container">
+                <div class="card">
+                    <div class="card__header">
+                        <h1>영업 보고 시스템</h1>
+                        <p>로그인하여 시스템에 접속하세요</p>
+                    </div>
+                    <div class="card__body">
+                        <form id="loginForm">
+                            <div class="form-group">
+                                <label class="form-label" for="username">사용자명</label>
+                                <input type="text" id="username" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="password">비밀번호</label>
+                                <input type="password" id="password" class="form-control" required>
+                            </div>
+                            <button type="submit" class="btn btn--primary btn--full-width">로그인</button>
+                        </form>
+                        <div class="login-demo">
+                            <h6>데모 계정</h6>
+                            <p><strong>영업사원:</strong> sales1 / 1234</p>
+                            <p><strong>관리자:</strong> manager1 / 1234</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 애플리케이션 -->
+    <div id="mainApp" class="page hidden">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="container">
+                <div class="header__content">
+                    <h1 class="header__title">영업 보고 시스템</h1>
+                    <div class="header__user">
+                        <span id="userInfo"></span>
+                        <button id="logoutBtn" class="btn btn--secondary btn--sm">로그아웃</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 네비게이션 -->
+        <nav class="nav">
+            <div class="container">
+                <div class="nav__tabs" id="navTabs">
+                    <!-- 탭들이 동적으로 생성됩니다 -->
+                </div>
+            </div>
+        </nav>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main">
+            <div class="container">
+                <!-- 대시보드 탭 -->
+                <div id="dashboardTab" class="tab-content">
+                    <div class="dashboard">
+                        <h2>대시보드</h2>
+                        <div class="dashboard__stats">
+                            <div class="stat-card">
+                                <h3 id="totalFollowups">0</h3>
+                                <p>총 팔로우업</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3 id="activeFollowups">0</h3>
+                                <p>진행중 팔로우업</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3 id="upcomingVisits">0</h3>
+                                <p>예정된 방문</p>
+                            </div>
+                        </div>
+                        <div class="dashboard__recent">
+                            <h3>최근 활동</h3>
+                            <div id="recentActivities" class="activity-list">
+                                <!-- 최근 활동들이 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 팔로우업 탭 -->
+                <div id="followupTab" class="tab-content hidden">
+                    <div class="followup-section">
+                        <div class="section-header">
+                            <h2>팔로우업 관리</h2>
+                            <button id="addFollowupBtn" class="btn btn--primary sales-only">새 팔로우업</button>
+                        </div>
+                        <div class="followup-list" id="followupList">
+                            <!-- 팔로우업 리스트가 여기에 표시됩니다 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 일정 탭 -->
+                <div id="scheduleTab" class="tab-content hidden">
+                    <div class="schedule-section">
+                        <div class="section-header">
+                            <h2>방문 일정</h2>
+                            <button id="addScheduleBtn" class="btn btn--primary sales-only">새 일정</button>
+                        </div>
+                        <div class="schedule-calendar">
+                            <div class="calendar-header">
+                                <button id="prevMonth" class="btn btn--secondary btn--sm">&lt;</button>
+                                <h3 id="currentMonth"></h3>
+                                <button id="nextMonth" class="btn btn--secondary btn--sm">&gt;</button>
+                            </div>
+                            <div id="calendar" class="calendar-grid">
+                                <!-- 달력이 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                        <div class="schedule-list">
+                            <h3>예정된 방문</h3>
+                            <div id="scheduleList">
+                                <!-- 일정 리스트가 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 보고서 탭 (관리자 전용) -->
+                <div id="reportTab" class="tab-content hidden">
+                    <div class="report-section">
+                        <h2>팀 보고서</h2>
+                        <div class="report-filters">
+                            <select id="salesPersonFilter" class="form-control">
+                                <option value="">전체 영업사원</option>
+                            </select>
+                        </div>
+                        <div class="report-content">
+                            <div class="report-stats">
+                                <div class="stat-card">
+                                    <h3 id="teamTotalFollowups">0</h3>
+                                    <p>팀 총 팔로우업</p>
+                                </div>
+                                <div class="stat-card">
+                                    <h3 id="teamActiveFollowups">0</h3>
+                                    <p>팀 진행중 팔로우업</p>
+                                </div>
+                                <div class="stat-card">
+                                    <h3 id="teamScheduledVisits">0</h3>
+                                    <p>팀 예정 방문</p>
+                                </div>
+                            </div>
+                            <div class="report-details">
+                                <h3>상세 활동</h3>
+                                <div id="teamActivities" class="activity-list">
+                                    <!-- 팀 활동들이 여기에 표시됩니다 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 모달들 -->
+    <!-- 팔로우업 모달 -->
+    <div id="followupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="followupModalTitle">새 팔로우업</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="followupForm">
+                    <div class="form-group">
+                        <label class="form-label">고객명</label>
+                        <input type="text" id="customerName" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">회사명</label>
+                        <input type="text" id="companyName" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">우선순위</label>
+                        <select id="priority" class="form-control">
+                            <option value="low">낮음</option>
+                            <option value="medium">보통</option>
+                            <option value="high">높음</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">상태</label>
+                        <select id="status" class="form-control">
+                            <option value="active">진행중</option>
+                            <option value="completed">완료</option>
+                            <option value="pending">대기중</option>
+                        </select>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn--secondary modal-cancel">취소</button>
+                        <button type="submit" class="btn btn--primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 일정 모달 -->
+    <div id="scheduleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="scheduleModalTitle">새 일정</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="scheduleForm">
+                    <div class="form-group">
+                        <label class="form-label">팔로우업 선택</label>
+                        <select id="scheduleFollowup" class="form-control" required>
+                            <!-- 팔로우업 옵션들이 동적으로 생성됩니다 -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">방문 날짜</label>
+                        <input type="date" id="visitDate" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">방문 시간</label>
+                        <input type="time" id="visitTime" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">방문 장소</label>
+                        <input type="text" id="visitLocation" class="form-control" required>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn--secondary modal-cancel">취소</button>
+                        <button type="submit" class="btn btn--primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 히스토리 모달 -->
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>활동 히스토리 추가</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="historyForm">
+                    <div class="form-group">
+                        <label class="form-label">활동 유형</label>
+                        <select id="actionType" class="form-control" required>
+                            <option value="call">전화</option>
+                            <option value="email">이메일</option>
+                            <option value="meeting">미팅</option>
+                            <option value="visit">방문</option>
+                            <option value="other">기타</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">내용</label>
+                        <textarea id="historyContent" class="form-control" rows="4" required></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn--secondary modal-cancel">취소</button>
+                        <button type="submit" class="btn btn--primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사전조사 모달 -->
+    <div id="researchModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>방문 전 사전조사</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="researchForm">
+                    <div class="form-group">
+                        <label class="form-label">고객 정보</label>
+                        <textarea id="customerInfo" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">시장 분석</label>
+                        <textarea id="marketAnalysis" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">추가 메모</label>
+                        <textarea id="researchNotes" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn--secondary modal-cancel">취소</button>
+                        <button type="submit" class="btn btn--primary">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

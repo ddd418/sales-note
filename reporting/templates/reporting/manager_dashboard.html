@@ -1,0 +1,825 @@
+{% extends "reporting/base.html" %} {% block title %}Manager 대시보드 - 영업
+보고 시스템{% endblock %} 
+
+{% block content %}
+<style>
+/* 매니저 대시보드 모바일 최적화 */
+@media (max-width: 768px) {
+  /* 사이드바 모바일 최적화 */
+  .col-lg-3.col-md-4 {
+    position: sticky;
+    top: 70px;
+    z-index: 100;
+    margin-bottom: 20px;
+  }
+
+  .card.sticky-top {
+    position: static;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Salesman 목록 가로 스크롤 */
+  .list-group {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+    margin-bottom: 0;
+  }
+
+  .list-group-item {
+    flex: 0 0 250px;
+    margin-right: 10px;
+    border-radius: 8px !important;
+    border: 1px solid #dee2e6;
+  }
+
+  .list-group-item:last-child {
+    margin-right: 0;
+  }
+
+  /* 성과 카드 모바일 최적화 */
+  .row.mb-4 .col-lg-3,
+  .row.mb-4 .col-md-6 {
+    margin-bottom: 15px;
+  }
+
+  .card-hover {
+    transition: transform 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .card-hover:active {
+    transform: scale(0.98);
+  }
+
+  /* 드롭다운 모바일 최적화 */
+  .btn-group .btn {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .dropdown-menu {
+    right: 0;
+    left: auto;
+    transform: translateX(0);
+  }
+
+  /* 차트 컨테이너 모바일 최적화 */
+  .col-lg-8 {
+    margin-bottom: 20px;
+  }
+
+  .card-body canvas {
+    max-height: 200px;
+  }
+
+  /* 테이블 모바일 최적화 */
+  .table-responsive {
+    border-radius: 8px;
+    margin-bottom: 15px;
+  }
+
+  .table th,
+  .table td {
+    font-size: 12px;
+    padding: 8px 6px;
+  }
+
+  /* 페이지 헤더 모바일 최적화 */
+  .page-header {
+    position: sticky;
+    top: 60px;
+    background: #fcfcfc;
+    z-index: 99;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #edecec;
+  }
+
+  .page-title {
+    font-size: 20px;
+    margin-bottom: 5px;
+  }
+
+  /* 버튼 그룹 모바일 최적화 */
+  .d-flex.gap-2 {
+    flex-direction: column;
+    gap: 10px !important;
+    align-items: stretch;
+  }
+
+  .btn-group {
+    width: 100%;
+  }
+
+  .btn-group .btn {
+    max-width: none;
+  }
+
+  /* 메인 콘텐츠 레이아웃 조정 */
+  .col-lg-9.col-md-8 {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  /* 아바타 크기 조정 */
+  .avatar-sm {
+    width: 36px;
+    height: 36px;
+  }
+
+  .avatar-title {
+    font-size: 14px;
+  }
+
+  /* 통계 수치 폰트 크기 조정 */
+  .card-body h3 {
+    font-size: 1.5rem;
+  }
+
+  .card-body h6 {
+    font-size: 0.8rem;
+  }
+}
+
+/* 아주 작은 화면 (320px 이하) */
+@media (max-width: 320px) {
+  .list-group-item {
+    flex: 0 0 200px;
+  }
+
+  .card-body h3 {
+    font-size: 1.25rem;
+  }
+
+  .btn {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .page-title {
+    font-size: 18px;
+  }
+}
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    {% if not no_salesmen %}
+    <!-- 사이드바 - Salesman 목록 -->
+    <div class="col-lg-3 col-md-4">
+      <div class="card sticky-top" style="top: 90px">
+        <div class="card-header">
+          <h6 class="card-title mb-0">
+            <i class="fas fa-users me-2"></i>SalesMan 목록
+          </h6>
+        </div>        <div class="card-body p-0">
+          <div class="list-group list-group-flush">
+            <!-- 전체보기 옵션 -->
+            <a
+              href="?view_all=true"
+              class="list-group-item list-group-item-action {% if view_all %}active{% endif %}"
+            >
+              <div class="d-flex align-items-center">
+                <div class="avatar-sm me-3">
+                  <div
+                    class="avatar-title bg-{% if view_all %}white text-primary{% else %}secondary{% endif %} rounded-circle"
+                  >
+                    <i class="fas fa-globe"></i>
+                  </div>
+                </div>
+                <div>
+                  <h6 class="mb-0">전체보기</h6>
+                  <small class="text-muted">모든 실무자 통합 현황</small>
+                </div>
+              </div>
+            </a>
+            
+            {% for salesman in salesman_users %}
+            <a
+              href="?user_id={{ salesman.id }}"
+              class="list-group-item list-group-item-action {% if salesman.id == selected_user.id and not view_all %}active{% endif %}"
+            >
+              <div class="d-flex align-items-center">
+                <div class="avatar-sm me-3">
+                  <div
+                    class="avatar-title bg-{% if salesman.id == selected_user.id and not view_all %}white text-primary{% else %}light{% endif %} rounded-circle"
+                  >
+                    {{ salesman.username|first }}
+                  </div>
+                </div>
+                <div>
+                  <h6 class="mb-0">{{ salesman.username }}</h6>
+                  {% if salesman.first_name or salesman.last_name %}
+                  <small class="text-muted"
+                    >{{ salesman.first_name }} {{ salesman.last_name }}</small
+                  >
+                  {% endif %}
+                </div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 메인 콘텐츠 -->
+    <div class="col-lg-9 col-md-8">
+      {% endif %}
+
+      <!-- 페이지 헤더 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >        <div>
+          <h1 class="page-title mb-0">
+            <i class="fas fa-chart-line me-2"></i>Manager 대시보드
+          </h1>
+          {% if not no_salesmen %}
+          <p class="text-muted mb-0">
+            {% if view_all %}
+            전체 실무자의 영업 현황 ({{ current_year }}년)
+            {% else %}
+            {{ selected_user.username }}님의 영업 현황 ({{ current_year }}년)
+            {% endif %}
+          </p>
+          {% endif %}
+        </div>
+        {% if not no_salesmen %}        <div class="d-flex gap-2">
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+            >
+              <i class="fas fa-eye me-1"></i>{% if view_all %}전체{% else %}{{ selected_user.username }}{% endif %} 데이터
+              보기
+            </button>
+            <ul class="dropdown-menu">
+              {% if not view_all %}
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:salesman_detail' selected_user.id %}"
+                >
+                  <i class="fas fa-user me-2"></i>고객 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_list' %}?user={{ selected_user.id }}"
+                >
+                  <i class="fas fa-calendar me-2"></i>일정 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}"
+                >
+                  <i class="fas fa-history me-2"></i>활동 기록
+                </a>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              {% else %}
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:followup_list' %}"
+                >
+                  <i class="fas fa-user me-2"></i>고객 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_list' %}"
+                >
+                  <i class="fas fa-calendar me-2"></i>일정 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:history_list' %}"
+                >
+                  <i class="fas fa-history me-2"></i>활동 기록
+                </a>
+              </li>
+              <li><hr class="dropdown-divider" /></li>              {% endif %}
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_calendar' %}{% if not view_all %}?user={{ selected_user.id }}{% endif %}"
+                >
+                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if no_salesmen %}
+      <!-- SalesMan이 없는 경우 -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card text-center">
+            <div class="card-body py-5">
+              <div class="mb-4">
+                <i class="fas fa-users fa-4x text-muted"></i>
+              </div>
+              <h4 class="text-muted">관리할 SalesMan이 없습니다</h4>
+              <p class="text-muted mb-4">
+                Admin에게 SalesMan 계정 생성을 요청하세요.
+              </p>
+              <a href="{% url 'reporting:dashboard' %}" class="btn btn-primary">
+                <i class="fas fa-home me-1"></i>대시보드로 돌아가기
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% else %}      <!-- 성과 요약 카드 -->
+      <div class="row mb-4 d-none d-md-flex">        <div class="col-lg-3 col-md-6 mb-3">
+          {% if view_all %}
+          <a href="{% url 'reporting:followup_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:salesman_detail' selected_user.id %}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-primary text-white card-hover">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">총 고객수</h6>
+                    <h3 class="mb-0">{{ total_followups }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-users fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+          {% if view_all %}
+          <a href="{% url 'reporting:schedule_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:schedule_list' %}?user={{ selected_user.id }}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-info text-white card-hover">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">예정 일정</h6>
+                    <h3 class="mb-0">{{ pending_schedules }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-calendar-alt fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+          {% if view_all %}
+          <a href="{% url 'reporting:history_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-success text-white card-hover">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">활동 현황</h6>
+                    <h3 class="mb-0">{{ total_histories }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-chart-line fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-3">
+          {% if view_all %}
+          <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}&action_type=delivery_schedule" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-warning text-white card-hover">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">총 납품금액</h6>
+                    <h3 class="mb-0">
+                      {{ total_delivery_amount|floatformat:0 }}원
+                    </h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-won-sign fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- 모바일 성과 카드 슬라이더 -->
+      <div class="d-md-none mb-4">
+        <div class="mobile-slider">
+          {% if view_all %}
+          <a href="{% url 'reporting:followup_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:salesman_detail' selected_user.id %}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-primary text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">총 고객수</h6>
+                    <h3 class="mb-0">{{ total_followups }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-users fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+
+          {% if view_all %}
+          <a href="{% url 'reporting:schedule_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:schedule_list' %}?user={{ selected_user.id }}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-info text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">예정 일정</h6>
+                    <h3 class="mb-0">{{ pending_schedules }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-calendar-alt fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+
+          {% if view_all %}
+          <a href="{% url 'reporting:history_list' %}" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-success text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">활동 현황</h6>
+                    <h3 class="mb-0">{{ total_histories }}</h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-chart-line fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+
+          {% if view_all %}
+          <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule" class="text-decoration-none">
+          {% else %}
+          <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}&action_type=delivery_schedule" class="text-decoration-none">
+          {% endif %}
+            <div class="card bg-warning text-white">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <h6 class="text-white-50 mb-1">총 납품금액</h6>
+                    <h3 class="mb-0">
+                      {{ total_delivery_amount|floatformat:0 }}원
+                    </h3>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-won-sign fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>      <!-- 차트 섹션 - 데스크탑 -->
+      <div class="row mb-4 d-none d-md-flex">
+        <!-- 월별 활동 추이 -->
+        <div class="col-lg-8 mb-4">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-line me-2"></i>월별 활동 추이 ({{current_year }}년)
+              </h6>
+            </div>
+            <div class="card-body">
+              <canvas id="monthlyChart" height="100"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 고객별 납품 현황 -->
+        <div class="col-lg-4 mb-4">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-pie me-2"></i>고객별 납품 현황
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if top_customers %}
+              <canvas id="customerChart" height="200"></canvas>
+              {% else %}
+              <div class="text-center py-4">
+                <i class="fas fa-chart-pie fa-2x text-muted mb-2"></i>
+                <p class="text-muted">납품 데이터가 없습니다</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 차트 섹션 - 모바일 슬라이더 -->
+      <div class="d-md-none mb-4">
+        <div class="mobile-chart-slider">
+          <!-- 월별 활동 추이 -->
+          <div class="chart-container">
+            <div class="card">
+              <div class="card-header">
+                <h6 class="card-title mb-0">
+                  <i class="fas fa-chart-line me-2"></i>월별 활동 추이 ({{current_year }}년)
+                </h6>
+              </div>
+              <div class="card-body">
+                <canvas id="monthlyChartMobile" height="150"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- 고객별 납품 현황 -->
+          <div class="chart-container">
+            <div class="card">
+              <div class="card-header">
+                <h6 class="card-title mb-0">
+                  <i class="fas fa-chart-pie me-2"></i>고객별 납품 현황
+                </h6>
+              </div>
+              <div class="card-body">
+                {% if top_customers %}
+                <canvas id="customerChartMobile" height="200"></canvas>
+                {% else %}
+                <div class="text-center py-4">
+                  <i class="fas fa-chart-pie fa-2x text-muted mb-2"></i>
+                  <p class="text-muted">납품 데이터가 없습니다</p>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 월별 상세 데이터 -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-table me-2"></i>월별 상세 현황 ({{ current_year}}년)
+              </h6>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead class="table-light">
+                    <tr>
+                      <th>월</th>
+                      <th>고객 미팅</th>
+                      <th>납품 건수</th>
+                      <th>납품 금액</th>
+                      <th>비고</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for data in monthly_data %}
+                    <tr>
+                      <td><strong>{{ data.month }}</strong></td>
+                      <td>
+                        <span class="badge bg-primary"
+                          >{{ data.meetings }}건</span
+                        >
+                      </td>
+                      <td>
+                        <span class="badge bg-success"
+                          >{{ data.deliveries }}건</span
+                        >
+                      </td>
+                      <td>
+                        <strong>{{ data.amount|floatformat:0 }}원</strong>
+                      </td>
+                      <td>
+                        {% if data.meetings == 0 and data.deliveries == 0 %}
+                        <span class="text-muted">활동 없음</span>
+                        {% elif data.deliveries == 0 %}
+                        <span class="text-warning">미팅만 진행</span>
+                        {% else %}
+                        <span class="text-success">정상 활동</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %} {% if not no_salesmen %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Chart.js 스크립트 -->
+{% if not no_salesmen %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>  document.addEventListener('DOMContentLoaded', function() {
+      // 차트 데이터 준비
+      const monthlyLabels = [{% for data in monthly_data %}'{{ data.month }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+      const meetingsData = [{% for data in monthly_data %}{{ data.meetings }}{% if not forloop.last %},{% endif %}{% endfor %}];
+      const deliveriesData = [{% for data in monthly_data %}{{ data.deliveries }}{% if not forloop.last %},{% endif %}{% endfor %}];
+      
+      // 차트 공통 옵션
+      const chartOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+              y: {
+                  beginAtZero: true
+              }
+          }
+      };
+
+      // 데스크탑 월별 활동 추이 차트
+      const monthlyCtx = document.getElementById('monthlyChart');
+      if (monthlyCtx) {
+          new Chart(monthlyCtx.getContext('2d'), {
+              type: 'line',
+              data: {
+                  labels: monthlyLabels,
+                  datasets: [{
+                      label: '고객 미팅',
+                      data: meetingsData,
+                      borderColor: 'rgb(54, 162, 235)',
+                      backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                      tension: 0.3
+                  }, {
+                      label: '납품 건수',
+                      data: deliveriesData,
+                      borderColor: 'rgb(75, 192, 192)',
+                      backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                      tension: 0.3
+                  }]
+              },
+              options: chartOptions
+          });
+      }
+
+      // 모바일 월별 활동 추이 차트
+      const monthlyMobileCtx = document.getElementById('monthlyChartMobile');
+      if (monthlyMobileCtx) {
+          new Chart(monthlyMobileCtx.getContext('2d'), {
+              type: 'line',
+              data: {
+                  labels: monthlyLabels,
+                  datasets: [{
+                      label: '고객 미팅',
+                      data: meetingsData,
+                      borderColor: 'rgb(54, 162, 235)',
+                      backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                      tension: 0.3
+                  }, {
+                      label: '납품 건수',
+                      data: deliveriesData,
+                      borderColor: 'rgb(75, 192, 192)',
+                      backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                      tension: 0.3
+                  }]
+              },
+              options: chartOptions
+          });      }
+
+      // 고객별 납품 현황 차트 (데스크탑 & 모바일)
+      {% if top_customers %}
+      const customerLabels = [{% for customer, amount in top_customers %}'{{ customer|truncatechars:10 }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+      const customerData = [{% for customer, amount in top_customers %}{{ amount }}{% if not forloop.last %},{% endif %}{% endfor %}];
+      const customerColors = [
+          '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+          '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+      ];
+
+      const customerChartOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+              legend: {
+                  position: 'bottom',
+                  labels: {
+                      padding: 10,
+                      usePointStyle: true
+                  }
+              }
+          }
+      };
+
+      // 데스크탑 고객 차트
+      const customerCtx = document.getElementById('customerChart');
+      if (customerCtx) {
+          new Chart(customerCtx.getContext('2d'), {
+              type: 'doughnut',
+              data: {
+                  labels: customerLabels,
+                  datasets: [{
+                      data: customerData,
+                      backgroundColor: customerColors
+                  }]
+              },
+              options: customerChartOptions
+          });
+      }
+
+      // 모바일 고객 차트
+      const customerMobileCtx = document.getElementById('customerChartMobile');
+      if (customerMobileCtx) {
+          new Chart(customerMobileCtx.getContext('2d'), {
+              type: 'doughnut',
+              data: {
+                  labels: customerLabels,
+                  datasets: [{
+                      data: customerData,
+                      backgroundColor: customerColors
+                  }]
+              },
+              options: customerChartOptions
+          });
+      }
+      {% endif %}
+  });
+</script>
+
+<style>
+.card-hover {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.bg-white-10 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+</style>
+
+{% endif %} {% endblock %}
