@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sales-note
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn sales_project.wsgi:application"
+    envVars:
+      - key: DEBUG
+        value: False
+      - key: DJANGO_SETTINGS_MODULE
+        value: sales_project.settings_production
+      - key: SECRET_KEY
+        generateValue: true
+  - type: pserv
+    name: sales-note-db
+    env: postgresql
+    plan: free
+    ipAllowList: []

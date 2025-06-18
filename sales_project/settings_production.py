@@ -19,7 +19,9 @@ ALLOWED_HOSTS = [
 ]
 
 # Railway 도메인 추가
-if 'RAILWAY_ENVIRONMENT' in os.environ:
+if 'RENDER' in os.environ:
+    ALLOWED_HOSTS.extend(['*.onrender.com'])
+elif 'RAILWAY_ENVIRONMENT' in os.environ:
     ALLOWED_HOSTS.extend(['*.railway.app', '*.up.railway.app'])
 
 # Application definition
