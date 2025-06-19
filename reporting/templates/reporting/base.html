@@ -1222,9 +1222,7 @@
         validation(message) {
           ToastManager.warning(message || "입력값을 확인해주세요.");
         },
-      }; 
-
-      // 로그아웃 확인 함수
+      };      // 로그아웃 확인 함수
       function confirmLogout() {
         // 커스텀 확인 다이얼로그 (더 세련된 스타일)
         const result = confirm(
@@ -1243,14 +1241,11 @@
             form.action = '{% url "reporting:logout" %}';
 
             // CSRF 토큰 추가
-            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-            if (csrfMeta) {
-              const csrfInput = document.createElement("input");
-              csrfInput.type = "hidden";
-              csrfInput.name = "csrfmiddlewaretoken";
-              csrfInput.value = csrfMeta.getAttribute("content");
-              form.appendChild(csrfInput);
-            }
+            const csrfInput = document.createElement("input");
+            csrfInput.type = "hidden";
+            csrfInput.name = "csrfmiddlewaretoken";
+            csrfInput.value = "{{ csrf_token }}";
+            form.appendChild(csrfInput);
 
             document.body.appendChild(form);
             form.submit();
