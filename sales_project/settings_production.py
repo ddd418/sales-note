@@ -76,7 +76,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'reporting.middleware.ActivityMiddleware',
+    # 'reporting.middleware.PerformanceMonitoringMiddleware',  # 임시로 비활성화
 ]
 
 ROOT_URLCONF = 'sales_project.urls'
