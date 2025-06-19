@@ -1295,17 +1295,31 @@
     function handleError(error) {
       console.error("Error:", error);
       ToastManager.error("일정 데이터를 불러오는 중 오류가 발생했습니다.");
-    }
-
-    // 일정 상세 모달 표시
+    }    // 일정 상세 모달 표시
     function showScheduleModal(schedule) {
-      // 모바일에서는 상세 페이지로 바로 이동
+      // 모바일에서는 액션 선택 다이얼로그 표시
       const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
       
       if (isMobile) {
-        // 모바일에서는 상세 페이지로 이동
-        const detailUrl = scheduleDetailUrl.replace("{id}", schedule.id);
-        window.location.href = detailUrl;
+        // 모바일에서는 액션 선택
+        const action = confirm(
+          `📅 ${schedule.customer} (${schedule.company || '회사명 없음'})\n` +
+          `📍 ${schedule.location || '장소 없음'}\n` +
+          `⏰ ${schedule.visit_date} ${schedule.time}\n\n` +
+          `❓ 어떤 작업을 하시겠습니까?\n\n` +
+          `확인: 활동 히스토리 작성\n` +
+          `취소: 일정 상세 보기`
+        );
+        
+        if (action) {
+          // 활동 히스토리 작성으로 이동
+          const historyUrl = historyCreateUrl.replace("{id}", schedule.id);
+          window.location.href = historyUrl;
+        } else {
+          // 일정 상세 보기로 이동
+          const detailUrl = scheduleDetailUrl.replace("{id}", schedule.id);
+          window.location.href = detailUrl;
+        }
         return;
       }
 
@@ -1355,12 +1369,16 @@
                   </div>
                   ` : ''}
                 </div>
-              </div>
-              <div class="modal-footer">
-                <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}" class="btn btn-primary">
-                  <i class="fas fa-edit me-1"></i>상세 보기 / 수정
-                </a>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+              </div>              <div class="modal-footer">
+                <div class="d-flex gap-2 w-100">
+                  <a href="${historyCreateUrl.replace("{id}", schedule.id)}" class="btn btn-success flex-fill">
+                    <i class="fas fa-plus me-1"></i>활동 히스토리 작성
+                  </a>
+                  <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}" class="btn btn-primary flex-fill">
+                    <i class="fas fa-edit me-1"></i>상세 보기 / 수정
+                  </a>
+                </div>
+                <button type="button" class="btn btn-secondary mt-2 w-100" data-bs-dismiss="modal">닫기</button>
               </div>
             </div>
           </div>
