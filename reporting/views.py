@@ -1680,11 +1680,19 @@ def toggle_tax_invoice(request, history_id):
         history = get_object_or_404(History, id=history_id)
         
         # 권한 체크: 자신의 히스토리이거나 접근 권한이 있는 경우
-        if not can_access_user_data(request.user, history.user):
-            return JsonResponse({
-                'success': False, 
-                'error': '접근 권한이 없습니다.'
-            }, status=403)
+        try:
+            if not can_access_user_data(request.user, history.user):
+                return JsonResponse({
+                    'success': False, 
+                    'error': '접근 권한이 없습니다.'
+                }, status=403)
+        except Exception as e:
+            # 권한 체크 실패 시 자신의 히스토리인지만 확인
+            if request.user != history.user:
+                return JsonResponse({
+                    'success': False, 
+                    'error': '접근 권한이 없습니다.'
+                }, status=403)
         
         # 납품 일정 히스토리인지 확인
         if history.action_type != 'delivery_schedule':
@@ -1704,6 +1712,8 @@ def toggle_tax_invoice(request, history_id):
         })
         
     except Exception as e:
+        import traceback
+        print(f"Error in toggle_tax_invoice: {traceback.format_exc()}")  # 로깅용
         return JsonResponse({
             'success': False,
             'error': f'오류가 발생했습니다: {str(e)}'
