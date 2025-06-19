@@ -27,6 +27,13 @@ if 'RENDER' in os.environ:
 elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
     ALLOWED_HOSTS.extend(['*.railway.app', '*.up.railway.app'])
 
+# CSRF 설정
+CSRF_TRUSTED_ORIGINS = [
+    'https://web-production-5096.up.railway.app',
+    'https://*.railway.app',
+    'https://*.up.railway.app',
+]
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',

@@ -207,6 +207,9 @@ CSRF_TRUSTED_ORIGINS = [
     'http://192.168.0.54:8000',
     'http://192.168.1.*:8000',  # 일반적인 내부 네트워크
     'http://192.168.0.*:8000',  # 현재 네트워크
+    'https://web-production-5096.up.railway.app',  # Railway URL 추가
+    'https://*.railway.app',
+    'https://*.up.railway.app',
 ]
 
 # 세션 설정 (모바일 친화적)
