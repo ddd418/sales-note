@@ -21,18 +21,37 @@ ALLOWED_HOSTS = [
     '*.up.railway.app',
 ]
 
+# CSRF 설정 (초기화)
+CSRF_TRUSTED_ORIGINS = [
+    'https://web-production-5096.up.railway.app',
+    'http://web-production-5096.up.railway.app',  # HTTP도 추가
+    'https://*.railway.app',
+    'https://*.up.railway.app',
+    'http://*.railway.app',
+    'http://*.up.railway.app',
+]
+
 # Railway 환경 감지
 if 'RENDER' in os.environ:
     ALLOWED_HOSTS.extend(['*.onrender.com'])
 elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
     ALLOWED_HOSTS.extend(['*.railway.app', '*.up.railway.app'])
+    # Railway에서 제공하는 실제 URL이 있다면 추가
+    if 'RAILWAY_PUBLIC_DOMAIN' in os.environ:
+        railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+        ALLOWED_HOSTS.append(railway_domain)
+        CSRF_TRUSTED_ORIGINS.extend([f'https://{railway_domain}', f'http://{railway_domain}'])
 
-# CSRF 설정
-CSRF_TRUSTED_ORIGINS = [
-    'https://web-production-5096.up.railway.app',
-    'https://*.railway.app',
-    'https://*.up.railway.app',
-]
+# CSRF 쿠키 설정
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = not DEBUG
+
+# Railway 환경에서 CSRF 더 관대하게 설정 (임시 디버깅용)
+if DEBUG or 'RAILWAY_ENVIRONMENT' in os.environ:
+    # 임시로 CSRF 검증을 느슨하게 설정
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_USE_SESSIONS = False
 
 # Application definition
 INSTALLED_APPS = [
