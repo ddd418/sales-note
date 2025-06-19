@@ -99,22 +99,32 @@ TEMPLATES = [
 WSGI_APPLICATION = 'sales_project.wsgi.application'
 
 # Database
-if 'DATABASE_URL' in os.environ:
-    # Railway PostgreSQL
-    DATABASES = {
-        'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
-    }
-elif 'RAILWAY_ENVIRONMENT' in os.environ:
-    # Railway PostgreSQL with individual variables
+# Railway PostgreSQL with external host (to avoid internal DNS issues)
+if 'RAILWAY_ENVIRONMENT' in os.environ:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': 'railway',
-            'USER': 'postgres',
+            'USER': 'postgres', 
             'PASSWORD': 'WbFqzWRREczQXtbpAVTfASQhZgdHtAGL',
             'HOST': 'caboose.proxy.rlwy.net',
             'PORT': '51196',
+            'OPTIONS': {
+                'connect_timeout': 10,
+            }
         }
+    }
+elif 'DATABASE_URL' in os.environ:
+    # Fallback to DATABASE_URL if available
+    database_url = os.environ.get('DATABASE_URL')
+    # Replace internal host with external host if needed
+    if 'postgres.railway.internal' in database_url:
+        database_url = database_url.replace(
+            'postgres.railway.internal:5432',
+            'caboose.proxy.rlwy.net:51196'
+        )
+    DATABASES = {
+        'default': dj_database_url.parse(database_url)
     }
 else:
     # Local SQLite
