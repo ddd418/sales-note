@@ -16,12 +16,15 @@ ALLOWED_HOSTS = [
     'localhost',
     '192.168.0.54',
     '192.168.0.1',
+    'web-production-5096.up.railway.app',  # Railway 도메인 추가
+    '*.railway.app',
+    '*.up.railway.app',
 ]
 
-# Railway 도메인 추가
+# Railway 환경 감지
 if 'RENDER' in os.environ:
     ALLOWED_HOSTS.extend(['*.onrender.com'])
-elif 'RAILWAY_ENVIRONMENT' in os.environ:
+elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
     ALLOWED_HOSTS.extend(['*.railway.app', '*.up.railway.app'])
 
 # Application definition
@@ -131,11 +134,6 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'sales_system.log',
-        },
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
@@ -143,7 +141,12 @@ LOGGING = {
     },
     'loggers': {
         'reporting': {
-            'handlers': ['file', 'console'],
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['console'],
             'level': 'INFO',
             'propagate': True,
         },
