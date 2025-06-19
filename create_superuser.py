@@ -9,13 +9,14 @@ django.setup()
 
 User = get_user_model()
 
-# 슈퍼유저가 없으면 생성
-if not User.objects.filter(is_superuser=True).exists():
+# 지정된 슈퍼유저가 없으면 생성
+username = 'ddd418'
+if not User.objects.filter(username=username).exists():
     User.objects.create_superuser(
-        username='admin',
-        email='admin@example.com',
-        password='admin123'  # 실제 운영시 강력한 비밀번호 사용
+        username=username,
+        email='admin@company.com',
+        password='1676079051aA@!@'
     )
-    print("슈퍼유저 'admin' 생성됨 (비밀번호: admin123)")
+    print(f"슈퍼유저 '{username}' 생성됨")
 else:
-    print("슈퍼유저가 이미 존재합니다")
+    print(f"사용자 '{username}'가 이미 존재합니다")
