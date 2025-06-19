@@ -1291,12 +1291,99 @@
       `
         )
         .join("");
-    }
-
-    // 에러 처리
+    }    // 에러 처리
     function handleError(error) {
       console.error("Error:", error);
       ToastManager.error("일정 데이터를 불러오는 중 오류가 발생했습니다.");
+    }
+
+    // 일정 상세 모달 표시
+    function showScheduleModal(schedule) {
+      // 모바일에서는 상세 페이지로 바로 이동
+      const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
+      
+      if (isMobile) {
+        // 모바일에서는 상세 페이지로 이동
+        const detailUrl = scheduleDetailUrl.replace("{id}", schedule.id);
+        window.location.href = detailUrl;
+        return;
+      }
+
+      // 데스크탑에서는 모달 표시
+      const modalHtml = `
+        <div class="modal fade" id="scheduleDetailModal" tabindex="-1" aria-labelledby="scheduleDetailModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="scheduleDetailModalLabel">
+                  <i class="fas fa-calendar-check me-2"></i>일정 상세
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label fw-bold">고객명</label>
+                    <p class="mb-0">${schedule.customer}</p>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold">회사명</label>
+                    <p class="mb-0">${schedule.company || '-'}</p>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label fw-bold">방문 날짜</label>
+                    <p class="mb-0">${schedule.visit_date}</p>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label fw-bold">방문 시간</label>
+                    <p class="mb-0">${schedule.time}</p>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold">방문 장소</label>
+                    <p class="mb-0">${schedule.location || '-'}</p>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold">상태</label>
+                    <span class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
+                      ${schedule.status === 'completed' ? '완료' : schedule.status === 'cancelled' ? '취소' : '예정'}
+                    </span>
+                  </div>
+                  ${schedule.notes ? `
+                  <div class="col-12">
+                    <label class="form-label fw-bold">메모</label>
+                    <p class="mb-0">${schedule.notes}</p>
+                  </div>
+                  ` : ''}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}" class="btn btn-primary">
+                  <i class="fas fa-edit me-1"></i>상세 보기 / 수정
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 기존 모달 제거
+      const existingModal = document.getElementById('scheduleDetailModal');
+      if (existingModal) {
+        existingModal.remove();
+      }
+
+      // 새 모달 추가
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+      // 모달 표시
+      const modal = new bootstrap.Modal(document.getElementById('scheduleDetailModal'));
+      modal.show();
+
+      // 모달이 닫힐 때 DOM에서 제거
+      document.getElementById('scheduleDetailModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
     }
   });
 </script>
