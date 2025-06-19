@@ -85,7 +85,7 @@
               </label>
               {{ form.action_type }} {% if form.action_type.errors %}
               <div class="invalid-feedback d-block">
-                {% for error in form.action_type.errors %}{{ error }}{% endfor%}
+                {% for error in form.action_type.errors %}{{ error }}{% endfor %}
               </div>
               {% endif %}
               <div class="form-text">활동의 성격을 선택해주세요.</div>
@@ -156,7 +156,7 @@
               </label>
               {{ form.delivery_amount }} {% if form.delivery_amount.errors %}
               <div class="invalid-feedback d-block">
-                {% for error in form.delivery_amount.errors %}{{ error}}{%endfor %}
+                {% for error in form.delivery_amount.errors %}{{ error }}{% endfor %}
               </div>
               {% endif %}
               <div class="form-text">
@@ -173,7 +173,7 @@
               </label>
               {{ form.delivery_items }} {% if form.delivery_items.errors %}
               <div class="invalid-feedback d-block">
-                {% for error in form.delivery_items.errors %}{{ error }}{%endfor%}
+                {% for error in form.delivery_items.errors %}{{ error }}{% endfor %}
               </div>
               {% endif %}
               <div class="form-text">
@@ -191,7 +191,7 @@
               </label>
               {{ form.delivery_date }} {% if form.delivery_date.errors %}
               <div class="invalid-feedback d-block">
-                {% for error in form.delivery_date.errors %}{{ error }}{%endfor%}
+                {% for error in form.delivery_date.errors %}{{ error }}{% endfor %}
               </div>
               {% endif %}
               <div class="form-text">
@@ -207,11 +207,9 @@
               >
                 <i class="fas fa-calendar-check me-1"></i>미팅 날짜
                 <span class="text-danger">*</span>
-              </label>
-              {{ form.meeting_date }} {% if form.meeting_date.errors %}
+              </label>              {{ form.meeting_date }} {% if form.meeting_date.errors %}
               <div class="invalid-feedback d-block">
-                {% for error in form.meeting_date.errors %}{{ error }}{%endfor
-                %}
+                {% for error in form.meeting_date.errors %}{{ error }}{% endfor %}
               </div>
               {% endif %}
               <div class="form-text">
