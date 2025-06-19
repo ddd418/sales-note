@@ -1712,42 +1712,81 @@ def toggle_tax_invoice(request, history_id):
 @login_required
 def history_create_from_schedule(request, schedule_id):
     """일정에서 히스토리 생성"""
-    schedule = get_object_or_404(Schedule, pk=schedule_id)
-      # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
-    if not can_access_user_data(request.user, schedule.user):
-        messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
-        return redirect('reporting:schedule_list')
-    
-    if request.method == 'POST':
-        form = HistoryForm(request.POST, user=request.user)
-        if form.is_valid():
-            history = form.save(commit=False)
-            history.user = request.user
-            history.followup = schedule.followup  # 일정의 팔로우업으로 강제 설정
-            history.schedule = schedule  # 일정 연결
-              # 납품 일정인 경우 delivery_date가 설정되지 않았다면 일정 날짜로 설정
-            if history.action_type == 'delivery_schedule' and not history.delivery_date:
-                history.delivery_date = schedule.visit_date
-            
-            # 고객 미팅인 경우 meeting_date가 설정되지 않았다면 일정 날짜로 설정
-            if history.action_type == 'customer_meeting' and not history.meeting_date:
-                history.meeting_date = schedule.visit_date
+    try:
+        schedule = get_object_or_404(Schedule, pk=schedule_id)
+        
+        # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
+        try:
+            if not can_access_user_data(request.user, schedule.user):
+                messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
+                return redirect('reporting:schedule_list')
+        except Exception as e:
+            # 권한 체크 실패 시 자신의 일정인지만 확인
+            if request.user != schedule.user:
+                messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
+                return redirect('reporting:schedule_list')
+        
+        if request.method == 'POST':
+            form = HistoryForm(request.POST, user=request.user)
+            if form.is_valid():
+                history = form.save(commit=False)
+                history.user = request.user
+                history.followup = schedule.followup  # 일정의 팔로우업으로 강제 설정
+                history.schedule = schedule  # 일정 연결
+                  # 납품 일정인 경우 delivery_date가 설정되지 않았다면 일정 날짜로 설정
+                if history.action_type == 'delivery_schedule' and not history.delivery_date:
+                    history.delivery_date = schedule.visit_date
                 
-            history.save()
-            messages.success(request, f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.')
-            return redirect('reporting:history_detail', pk=history.pk)
+                # 고객 미팅인 경우 meeting_date가 설정되지 않았다면 일정 날짜로 설정
+                if history.action_type == 'customer_meeting' and not history.meeting_date:
+                    history.meeting_date = schedule.visit_date
+                    
+                history.save()
+                messages.success(request, f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.')
+                return redirect('reporting:history_detail', pk=history.pk)
+            else:
+                messages.error(request, '입력 정보를 확인해주세요.')
+                # POST 실패 시에도 일정 정보를 유지하기 위해 폼 필드를 다시 설정
+                form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
+                form.fields['schedule'].queryset = Schedule.objects.filter(id=schedule.id)
+                form.fields['followup'].initial = schedule.followup
+                form.fields['schedule'].initial = schedule
+                # 필드를 읽기 전용으로 설정
+                form.fields['followup'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
+                form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
         else:
-            messages.error(request, '입력 정보를 확인해주세요.')
-            # POST 실패 시에도 일정 정보를 유지하기 위해 폼 필드를 다시 설정
+            # GET 요청 시 폼 초기화
+            initial_data = {
+                'followup': schedule.followup.id,
+                'schedule': schedule.id,
+                'action_type': 'customer_meeting',  # 기본값으로 고객 미팅 설정 (올바른 값)
+                'delivery_date': schedule.visit_date,  # 납품 날짜를 일정 날짜로 설정
+                'meeting_date': schedule.visit_date,  # 미팅 날짜를 일정 날짜로 설정
+            }
+            form = HistoryForm(user=request.user, initial=initial_data)
+            
+            # 팔로우업과 일정 필드를 해당 일정으로 고정
             form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
             form.fields['schedule'].queryset = Schedule.objects.filter(id=schedule.id)
-            form.fields['followup'].initial = schedule.followup
-            form.fields['schedule'].initial = schedule
-            # 필드를 읽기 전용으로 설정
+            
+            # 필드를 읽기 전용으로 설정 (disabled 대신 시각적으로 비활성화)
             form.fields['followup'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
             form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
-    else:
-        # GET 요청 시 폼 초기화
+        
+        context = {
+            'form': form,
+            'schedule': schedule,
+            'page_title': f'활동 기록 추가 - {schedule.followup.customer_name} (일정: {schedule.visit_date})'
+        }
+        return render(request, 'reporting/history_form.html', context)
+        
+    except Exception as e:
+        # 전체적인 오류 처리
+        import traceback
+        error_msg = f"오류 발생: {str(e)}"
+        print(f"Error in history_create_from_schedule: {traceback.format_exc()}")  # 로그용
+        messages.error(request, error_msg)
+        return redirect('reporting:schedule_list')
         initial_data = {
             'followup': schedule.followup.id,
             'schedule': schedule.id,
