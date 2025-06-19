@@ -104,6 +104,18 @@ if 'DATABASE_URL' in os.environ:
     DATABASES = {
         'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
     }
+elif 'RAILWAY_ENVIRONMENT' in os.environ:
+    # Railway PostgreSQL with individual variables
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'railway',
+            'USER': 'postgres',
+            'PASSWORD': 'WbFqzWRREczQXtbpAVTfASQhZgdHtAGL',
+            'HOST': 'caboose.proxy.rlwy.net',
+            'PORT': '51196',
+        }
+    }
 else:
     # Local SQLite
     DATABASES = {
