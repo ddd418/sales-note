@@ -115,6 +115,7 @@ class History(models.Model):
     ACTION_CHOICES = [
         ('customer_meeting', '고객 미팅'),
         ('delivery_schedule', '납품 일정'),
+        ('service', '서비스'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
