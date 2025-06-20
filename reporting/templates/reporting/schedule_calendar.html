@@ -1,203 +1,201 @@
 {% extends "reporting/base.html" %} {% block title %}일정 캘린더 - 영업 보고
-시스템{% endblock %} 
-
-{% block content %}
+시스템{% endblock %} {% block content %}
 <style>
-/* 일정 캘린더 모바일 최적화 */
-@media (max-width: 768px) {
-  /* 모바일에서 캘린더 완전히 숨기기 */
-  #calendar {
-    display: none !important;
-  }
-  
-  /* 헤더 모바일 최적화 */
-  .page-header {
-    flex-direction: column !important;
-    align-items: center !important;
-    text-align: center !important;
-    gap: 15px !important;
-    padding: 20px 0 !important;
-    margin-bottom: 20px !important;
-  }
-  
-  .page-header .text-muted {
-    display: none !important;
-  }
-  
-  .page-header > div:last-child {
-    width: 100% !important;
-    display: flex !important;
-    gap: 8px !important;
-    justify-content: center !important;
-  }
-  
-  .page-header .btn {
-    flex: 1 !important;
-    max-width: 150px !important;
-    font-size: 13px !important;
-    padding: 10px 15px !important;
-    min-height: 40px !important;
-  }
-    /* 모바일 안내 메시지 */
-  .mobile-calendar-notice {
-    display: block !important;
-    text-align: center !important;
-    padding: 40px 20px !important;
-    background: #f8f9fa !important;
-    border-radius: 12px !important;
-    margin: 20px 0 !important;
-    border: 2px dashed #dee2e6 !important;
-  }
-  
-  .mobile-calendar-notice h4 {
-    color: #495057 !important;
-    margin-bottom: 15px !important;
-    font-size: 20px !important;
-    font-weight: 600 !important;
-  }
-  
-  .mobile-calendar-notice p {
-    color: #6c757d !important;
-    margin-bottom: 25px !important;
-    font-size: 14px !important;
-    line-height: 1.6 !important;
-  }
-    .mobile-calendar-notice .btn {
-    padding: 15px 30px !important;
-    font-size: 16px !important;
-    min-height: 50px !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  }
-}
+  /* 일정 캘린더 모바일 최적화 */
+  @media (max-width: 768px) {
+    /* 모바일에서 캘린더 완전히 숨기기 */
+    #calendar {
+      display: none !important;
+    }
 
-/* 데스크탑에서 모바일 안내 메시지 숨기기 */
-@media (min-width: 769px) {
-  .mobile-calendar-notice {
-    display: none !important;
-  }
-}
+    /* 헤더 모바일 최적화 */
+    .page-header {
+      flex-direction: column !important;
+      align-items: center !important;
+      text-align: center !important;
+      gap: 15px !important;
+      padding: 20px 0 !important;
+      margin-bottom: 20px !important;
+    }
 
-  .page-header .text-muted {
-    display: none; /* 모바일에서 안내 텍스트 숨기기 */
+    .page-header .text-muted {
+      display: none !important;
+    }
+
+    .page-header > div:last-child {
+      width: 100% !important;
+      display: flex !important;
+      gap: 8px !important;
+      justify-content: center !important;
+    }
+
+    .page-header .btn {
+      flex: 1 !important;
+      max-width: 150px !important;
+      font-size: 13px !important;
+      padding: 10px 15px !important;
+      min-height: 40px !important;
+    }
+      /* 모바일 안내 메시지 */
+    .mobile-calendar-notice {
+      display: block !important;
+      text-align: center !important;
+      padding: 40px 20px !important;
+      background: #f8f9fa !important;
+      border-radius: 12px !important;
+      margin: 20px 0 !important;
+      border: 2px dashed #dee2e6 !important;
+    }
+
+    .mobile-calendar-notice h4 {
+      color: #495057 !important;
+      margin-bottom: 15px !important;
+      font-size: 20px !important;
+      font-weight: 600 !important;
+    }
+
+    .mobile-calendar-notice p {
+      color: #6c757d !important;
+      margin-bottom: 25px !important;
+      font-size: 14px !important;
+      line-height: 1.6 !important;
+    }
+      .mobile-calendar-notice .btn {
+      padding: 15px 30px !important;
+      font-size: 16px !important;
+      min-height: 50px !important;
+      border-radius: 8px !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+    }
   }
 
-  .page-header > div:last-child {
-    width: 100%;
-    display: flex;
-    gap: 8px;
+  /* 데스크탑에서 모바일 안내 메시지 숨기기 */
+  @media (min-width: 769px) {
+    .mobile-calendar-notice {
+      display: none !important;
+    }
   }
 
-  .page-header .btn {
-    flex: 1;
-    font-size: 12px;
-    padding: 8px 10px;
-    min-height: 36px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+    .page-header .text-muted {
+      display: none; /* 모바일에서 안내 텍스트 숨기기 */
+    }
 
-  .page-header .btn-group {
-    flex: 2;
-  }
-  /* FullCalendar 모바일 최적화 - 강제 적용 */
-  #calendar {
-    font-size: 11px !important;
-  }
+    .page-header > div:last-child {
+      width: 100%;
+      display: flex;
+      gap: 8px;
+    }
 
-  .fc-toolbar {
-    flex-direction: column !important;
-    gap: 8px !important;
-    padding: 10px 5px !important;
-  }
+    .page-header .btn {
+      flex: 1;
+      font-size: 12px;
+      padding: 8px 10px;
+      min-height: 36px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-  .fc-toolbar-chunk {
-    display: flex !important;
-    justify-content: center !important;
-    flex-wrap: wrap !important;
-    gap: 4px !important;
-  }
+    .page-header .btn-group {
+      flex: 2;
+    }
+    /* FullCalendar 모바일 최적화 - 강제 적용 */
+    #calendar {
+      font-size: 11px !important;
+    }
 
-  .fc-button {
-    padding: 4px 8px !important;
-    font-size: 11px !important;
-    min-height: 32px !important;
-    border-radius: 4px !important;
-  }
+    .fc-toolbar {
+      flex-direction: column !important;
+      gap: 8px !important;
+      padding: 10px 5px !important;
+    }
 
-  .fc-button-group {
-    display: flex !important;
-    gap: 2px !important;
-  }
+    .fc-toolbar-chunk {
+      display: flex !important;
+      justify-content: center !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
 
-  .fc-toolbar-title {
-    font-size: 16px !important;
-    font-weight: 600 !important;
-    margin: 5px 0 !important;
-  }
+    .fc-button {
+      padding: 4px 8px !important;
+      font-size: 11px !important;
+      min-height: 32px !important;
+      border-radius: 4px !important;
+    }
 
-  /* 달력 셀 모바일 최적화 - 강제 적용 */
-  .fc-daygrid-day {
-    min-height: 35px !important;
-    border: 1px solid #ddd !important;
-  }
+    .fc-button-group {
+      display: flex !important;
+      gap: 2px !important;
+    }
 
-  .fc-daygrid-day-number {
-    font-size: 11px !important;
-    padding: 2px 4px !important;
-    font-weight: 500 !important;
-  }
+    .fc-toolbar-title {
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      margin: 5px 0 !important;
+    }
 
-  .fc-daygrid-day-top {
-    flex-direction: row !important;
-    justify-content: center !important;
-  }
+    /* 달력 셀 모바일 최적화 - 강제 적용 */
+    .fc-daygrid-day {
+      min-height: 35px !important;
+      border: 1px solid #ddd !important;
+    }
 
-  /* 이벤트 모바일 최적화 - 강제 적용 */
-  .fc-event {
-    font-size: 9px !important;
-    padding: 1px 3px !important;
-    margin: 1px 0 !important;
-    border-radius: 3px !important;
-    line-height: 1.2 !important;
-  }
-    font-size: 9px;
-    padding: 1px 3px;
-    margin: 1px 0;
-    border-radius: 3px;
-    line-height: 1.2;
-  }
+    .fc-daygrid-day-number {
+      font-size: 11px !important;
+      padding: 2px 4px !important;
+      font-weight: 500 !important;
+    }
 
-  .fc-event-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+    .fc-daygrid-day-top {
+      flex-direction: row !important;
+      justify-content: center !important;
+    }
 
-  /* 월 보기 강제 */
-  .fc-dayGridMonth-button {
-    display: none;
-  }
+    /* 이벤트 모바일 최적화 - 강제 적용 */
+    .fc-event {
+      font-size: 9px !important;
+      padding: 1px 3px !important;
+      margin: 1px 0 !important;
+      border-radius: 3px !important;
+      line-height: 1.2 !important;
+    }
+      font-size: 9px;
+      padding: 1px 3px;
+      margin: 1px 0;
+      border-radius: 3px;
+      line-height: 1.2;
+    }
 
-  .fc-listWeek-button,
-  .fc-timeGridWeek-button,
-  .fc-timeGridDay-button {
-    display: none;
-  }
+    .fc-event-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-  /* 모바일에서 주말 강조 */
-  .fc-day-sat,
-  .fc-day-sun {
-    background-color: #f8f9fa;
-  }
+    /* 월 보기 강제 */
+    .fc-dayGridMonth-button {
+      display: none;
+    }
 
-  .fc-day-sat .fc-daygrid-day-number,
-  .fc-day-sun .fc-daygrid-day-number {
-    color: #dc3545;
-    font-weight: 600;
+    .fc-listWeek-button,
+    .fc-timeGridWeek-button,
+    .fc-timeGridDay-button {
+      display: none;
+    }
+
+    /* 모바일에서 주말 강조 */
+    .fc-day-sat,
+    .fc-day-sun {
+      background-color: #f8f9fa;
+    }
+
+    .fc-day-sat .fc-daygrid-day-number,
+    .fc-day-sun .fc-daygrid-day-number {
+      color: #dc3545;
+      font-weight: 600;
+    }
   }
-}
 </style>
 
 <div class="container">
@@ -220,13 +218,14 @@
             날짜로 이동할 수 있습니다.</small
           >
         </div>
-        <div>          <a
+        <div>
+          <a
             href="{% url 'reporting:schedule_list' %}"
             class="btn btn-outline-secondary me-2"
           >
             <i class="fas fa-list me-1"></i>목록 보기
-          </a>          {% if user.is_authenticated %}
-          {% if user.userprofile.role == 'manager' %}
+          </a>
+          {% if user.is_authenticated %} {% if user.userprofile.role == 'manager' %}
           <!-- 매니저용 데이터 보기 드롭다운 -->
           <div class="btn-group">
             <button
@@ -234,33 +233,49 @@
               class="btn btn-outline-primary dropdown-toggle"
               data-bs-toggle="dropdown"
             >
-              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif%}
             </button>
             <ul class="dropdown-menu">
               <li>
-                <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
                   <i class="fas fa-user me-2"></i>고객 관리
                 </a>
               </li>
               <li>
-                <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
                   <i class="fas fa-calendar me-2"></i>일정 관리
                 </a>
               </li>
               <li>
-                <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
                   <i class="fas fa-history me-2"></i>활동 기록
                 </a>
               </li>
               <li><hr class="dropdown-divider" /></li>
               <li>
-                <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
                   <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
                 </a>
-              </li>              {% if selected_user %}
+              </li>
+              {% if selected_user %}
               <li><hr class="dropdown-divider" /></li>
               <li>
-                <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}"
+                >
                   <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
                 </a>
               </li>
@@ -275,8 +290,7 @@
           >
             <i class="fas fa-plus me-1"></i>새 일정 추가
           </a>
-          {% endif %}
-          {% endif %}
+          {% endif %} {% endif %}
         </div>
       </div>
 
@@ -304,20 +318,25 @@
             </div>
           </div>
         </div>
-      </div>      <!-- 캘린더 -->
+      </div>
+      <!-- 캘린더 -->
       <div class="row">
-        <div class="col-12">          <!-- 모바일 안내 메시지 (모바일에서만 표시) -->
+        <div class="col-12">
+          <!-- 모바일 안내 메시지 (모바일에서만 표시) -->
           <div class="mobile-calendar-notice">
             <h4><i class="fas fa-mobile-alt me-2"></i>모바일 버전 안내</h4>
             <p>
-              캘린더는 모바일에서 최적화되지 않아 사용이 어렵습니다.<br>
+              캘린더는 모바일에서 최적화되지 않아 사용이 어렵습니다.<br />
               대신 일정 목록에서 편리하게 일정을 확인하고 관리하세요.
             </p>
-            <a href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}" class="btn btn-primary">
+            <a
+              href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+              class="btn btn-primary"
+            >
               <i class="fas fa-list me-2"></i>일정 목록으로 이동
             </a>
           </div>
-          
+
           <div class="card">
             <div class="card-body p-0">
               <div id="calendar" class="table-responsive">
@@ -892,7 +911,7 @@
         console.log("응답 상태:", response.status);
         console.log("응답 URL:", response.url);
         console.log("응답 헤더:", response.headers.get('content-type'));
-        
+
         if (!response.ok) {
           // 상태 코드에 따른 상세 오류 메시지
           let errorMessage = `HTTP 오류! 상태: ${response.status}`;
@@ -905,7 +924,7 @@
           }
           throw new Error(errorMessage);
         }
-        
+
         return response.text().then(text => {
           try {
             return JSON.parse(text);
@@ -918,7 +937,7 @@
       })
       .then((data) => {
         console.log("응답 데이터:", data);
-        
+
         if (data.success) {
           // 성공 메시지 표시
           if (typeof showToast !== "undefined") {
@@ -943,7 +962,7 @@
         .catch((error) => {
           console.error("일정 삭제 오류:", error);
           console.error("오류 세부 정보:", error.message);
-          
+
           // 상세한 오류 메시지 생성
           let userErrorMessage = "일정 삭제 중 오류가 발생했습니다.";
           if (error.message.includes("서버 내부 오류")) {
@@ -955,7 +974,7 @@
           } else {
             userErrorMessage += `\n상세 오류: ${error.message}`;
           }
-          
+
           if (typeof showToast !== "undefined") {
             showToast(userErrorMessage, "error");
           } else {
@@ -971,7 +990,7 @@
   }  document.addEventListener("DOMContentLoaded", function () {
     // 서버에서 일정 데이터 로드
     loadSchedules();
-    
+
     // renderCalendar 함수를 전역 변수에 할당
     renderCalendar = function() {
       const year = currentDate.getFullYear();
@@ -1208,12 +1227,26 @@
           row.appendChild(cell);
         }
 
-        calendarBody.appendChild(row);
-
-        // 모든 날짜를 렌더링했으면 중단
+        calendarBody.appendChild(row);        // 모든 날짜를 렌더링했으면 중단
         if (date > lastDay.getDate()) break;
       }
     }
+
+    // 월 이동 버튼 이벤트 핸들러 설정
+    document.getElementById("prevMonth").addEventListener("click", function() {
+      currentDate.setMonth(currentDate.getMonth() - 1);
+      renderCalendar();
+    });
+
+    document.getElementById("nextMonth").addEventListener("click", function() {
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      renderCalendar();
+    });
+
+    document.getElementById("todayBtn").addEventListener("click", function() {
+      currentDate = new Date();
+      renderCalendar();
+    });
 
     function getSchedulesForDate(year, month, date) {
       return schedules.filter((schedule) => {
@@ -1299,7 +1332,7 @@
     function showScheduleModal(schedule) {
       // 모바일에서는 액션 선택 다이얼로그 표시
       const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
-      
+
       if (isMobile) {
         // 모바일에서는 액션 선택
         const action = confirm(
@@ -1310,7 +1343,7 @@
           `확인: 활동 히스토리 작성\n` +
           `취소: 일정 상세 보기`
         );
-        
+
         if (action) {
           // 활동 히스토리 작성으로 이동
           const historyUrl = historyCreateUrl.replace("{id}", schedule.id);
