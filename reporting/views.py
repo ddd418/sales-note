@@ -449,6 +449,9 @@ def dashboard_view(request):
     activity_stats = histories_current_year.values('action_type').annotate(
         count=Count('id')
     ).order_by('action_type')
+    
+    # 서비스 통계 추가
+    service_count = histories_current_year.filter(action_type='service').count()
       # 최근 활동 (현재 연도, 최근 5개)
     recent_activities = histories_current_year.order_by('-created_at')[:5]
     
@@ -533,6 +536,13 @@ def dashboard_view(request):
         created_at__month=current_month,
         created_at__year=current_year
     ).count()
+    
+    # 이번 달 서비스 수
+    monthly_services = histories.filter(
+        action_type='service',
+        created_at__month=current_month,
+        created_at__year=current_year
+    ).count()
       # 납품 전환율 (현재 연도 기준 미팅 대비 납품 비율)
     total_meetings = histories_current_year.filter(action_type='customer_meeting').count()
     total_deliveries = histories_current_year.filter(action_type='delivery_schedule').count()
@@ -589,6 +599,8 @@ def dashboard_view(request):
         'today_schedules': today_schedules,        'recent_customers': recent_customers,
         'monthly_revenue': monthly_revenue,
         'monthly_meetings': monthly_meetings,
+        'monthly_services': monthly_services,
+        'service_count': service_count,
         'conversion_rate': conversion_rate,
         'avg_deal_size': avg_deal_size,
         'monthly_revenue_data': monthly_revenue_data,
@@ -1611,10 +1623,12 @@ def manager_dashboard(request):
     # 히스토리 통계 (현재 연도)
     total_histories = histories.count()
     delivery_histories = histories.filter(action_type='delivery_schedule')
+    service_histories = histories.filter(action_type='service')
     total_delivery_amount = delivery_histories.aggregate(
-        total=Sum('delivery_amount')    )['total'] or 0
+        total=Sum('delivery_amount')
+    )['total'] or 0
     
-    # 월별 데이터 (납품 날짜 기준)
+    # 월별 데이터 (날짜 기준)
     monthly_data = []
     monthly_delivery = []
     for month in range(1, 13):
@@ -1630,10 +1644,14 @@ def manager_dashboard(request):
             (Q(delivery_date__isnull=True) & Q(created_at__month=month))
         )
         
+        # 서비스는 created_at 기준으로 집계
+        month_services = service_histories.filter(created_at__month=month)
+        
         monthly_data.append({
             'month': f'{month}월',
             'meetings': month_meetings.count(),
             'deliveries': month_deliveries.count(),
+            'services': month_services.count(),
             'amount': month_deliveries.aggregate(total=Sum('delivery_amount'))['total'] or 0
         })
         
@@ -1662,6 +1680,7 @@ def manager_dashboard(request):
         'pending_schedules': pending_schedules,
         'total_histories': total_histories,
         'total_delivery_amount': total_delivery_amount,
+        'total_services': service_histories.count(),
         'monthly_data': monthly_data,
         'monthly_delivery': monthly_delivery,
         'top_customers': top_customers,
@@ -1672,43 +1691,89 @@ def manager_dashboard(request):
 @role_required(['manager', 'admin'])
 def salesman_detail(request, user_id):
     """특정 Salesman의 상세 정보 조회 (Manager, Admin 전용)"""
-    # 접근 권한 확인
-    accessible_users = get_accessible_users(request.user)
-    selected_user = get_object_or_404(accessible_users, id=user_id)
-    
-    # 해당 사용자의 데이터만 필터링
-    followups = FollowUp.objects.filter(user=selected_user)
-    schedules = Schedule.objects.filter(user=selected_user)
-    histories = History.objects.filter(user=selected_user)
-    
-    # 검색 및 필터링
-    search_query = request.GET.get('search', '')
-    status_filter = request.GET.get('status', '')
-    
-    if search_query:
-        followups = followups.filter(
-            Q(customer_name__icontains=search_query) |
-            Q(company__icontains=search_query)
-        )
-    
-    if status_filter:
-        followups = followups.filter(status=status_filter)
-    
-    # 페이지네이션
-    paginator = Paginator(followups, 10)
-    page_number = request.GET.get('page')
-    followups = paginator.get_page(page_number)
-    
-    context = {
-        'selected_user': selected_user,
-        'followups': followups,
-        'search_query': search_query,
-        'status_filter': status_filter,
-        'total_schedules': schedules.count(),
-        'total_histories': histories.count(),
-        'page_title': f'{selected_user.username} 상세 정보'
-    }
-    return render(request, 'reporting/salesman_detail.html', context)
+    try:
+        # 먼저 user_id가 유효한 정수인지 확인
+        try:
+            user_id = int(user_id)
+        except (ValueError, TypeError):
+            messages.error(request, '잘못된 사용자 ID입니다.')
+            return redirect('reporting:manager_dashboard')
+        
+        # 접근 권한 확인
+        accessible_users = get_accessible_users(request.user)
+        
+        # 해당 사용자가 존재하고 접근 가능한지 확인
+        try:
+            selected_user = accessible_users.get(id=user_id)
+        except User.DoesNotExist:
+            messages.error(request, '해당 사용자를 찾을 수 없거나 접근 권한이 없습니다.')
+            return redirect('reporting:manager_dashboard')
+        
+        # 사용자 프로필 확인
+        try:
+            user_profile = selected_user.userprofile
+        except UserProfile.DoesNotExist:
+            messages.error(request, '사용자 프로필이 설정되지 않았습니다.')
+            return redirect('reporting:manager_dashboard')
+        
+        # 해당 사용자의 데이터만 필터링 (select_related로 성능 최적화)
+        followups = FollowUp.objects.filter(user=selected_user).select_related('user')
+        schedules = Schedule.objects.filter(user=selected_user).select_related('user', 'followup')
+        histories = History.objects.filter(user=selected_user).select_related('user', 'followup', 'schedule')
+        
+        # 검색 및 필터링
+        search_query = request.GET.get('search', '').strip()
+        status_filter = request.GET.get('status', '').strip()
+        
+        if search_query:
+            followups = followups.filter(
+                Q(customer_name__icontains=search_query) |
+                Q(company__icontains=search_query)
+            )
+        
+        if status_filter and status_filter in ['initial', 'in_progress', 'visited', 'closed']:
+            followups = followups.filter(status=status_filter)
+        
+        # 정렬 추가
+        followups = followups.order_by('-updated_at')
+        
+        # 페이지네이션
+        paginator = Paginator(followups, 10)
+        page_number = request.GET.get('page', 1)
+        try:
+            page_number = int(page_number)
+        except (ValueError, TypeError):
+            page_number = 1
+        followups = paginator.get_page(page_number)
+        
+        # 집계 값들을 안전하게 계산
+        try:
+            total_schedules = schedules.count()
+            total_histories = histories.count()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"집계 계산 중 오류: {str(e)}")
+            total_schedules = 0
+            total_histories = 0
+        
+        context = {
+            'selected_user': selected_user,
+            'followups': followups,
+            'search_query': search_query,
+            'status_filter': status_filter,
+            'total_schedules': total_schedules,
+            'total_histories': total_histories,
+            'page_title': f'{selected_user.username} 상세 정보'
+        }
+        return render(request, 'reporting/salesman_detail.html', context)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"salesman_detail 오류 - user_id: {user_id}, user: {request.user}, error: {str(e)}")
+        messages.error(request, f'사용자 상세 정보를 불러오는 중 오류가 발생했습니다. 관리자에게 문의하세요.')
+        return redirect('reporting:manager_dashboard')
 
 @role_required(['admin'])
 @require_POST

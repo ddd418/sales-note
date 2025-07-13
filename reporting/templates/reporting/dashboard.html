@@ -3,6 +3,61 @@
 
 {% block content %}
 <style>
+/* 5개 카드를 위한 그리드 레이아웃 */
+.col-lg-2-4 {
+  flex: 0 0 auto;
+  width: 20%;
+}
+
+@media (max-width: 992px) {
+  .col-lg-2-4 {
+    width: 50%;
+  }
+}
+
+@media (max-width: 576px) {
+  .col-lg-2-4 {
+    width: 100%;
+  }
+}
+
+/* 보라색 테마 */
+.text-purple {
+  color: #6f42c1 !important;
+}
+
+.bg-purple {
+  background-color: #6f42c1 !important;
+}
+
+.btn-purple {
+  color: #fff;
+  background-color: #6f42c1;
+  border-color: #6f42c1;
+}
+
+.btn-purple:hover {
+  color: #fff;
+  background-color: #5a32a3;
+  border-color: #5a32a3;
+}
+
+.btn-outline-purple {
+  color: #6f42c1;
+  border-color: #6f42c1;
+}
+
+.btn-outline-purple:hover {
+  color: #fff;
+  background-color: #6f42c1;
+  border-color: #6f42c1;
+}
+
+/* 보라색 배지 */
+.bg-purple {
+  background-color: #6f42c1 !important;
+}
+
 /* 일반 대시보드 모바일 최적화 */
 @media (max-width: 768px) {
   /* 헤더 모바일 최적화 */
@@ -226,9 +281,35 @@
               </div>
             </div>
           </div>
+
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <h6 class="card-title text-muted mb-1 fs-6">
+                    <i class="fas fa-concierge-bell me-1"></i>서비스 ({{ current_year }}년)
+                  </h6>
+                  <h3 class="mb-0 text-purple fs-4">
+                    {{ service_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                  <small class="text-muted fs-6">이번 달 {{ this_month_service_count }}건</small>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a href="{% url 'reporting:history_list' %}?action_type=service" class="btn btn-outline-purple btn-sm flex-fill py-1">
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a href="{% url 'reporting:history_create' %}" class="btn btn-purple btn-sm flex-fill py-1">
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-        <div class="col-3">
+        <div class="col-12 col-sm-6 col-lg-2-4">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div
@@ -270,7 +351,7 @@
           </div>
         </div>
 
-        <div class="col-3">
+        <div class="col-12 col-sm-6 col-lg-2-4">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div
@@ -297,7 +378,6 @@
                   <a
                     href="{% url 'reporting:schedule_list' %}"
                     class="btn btn-outline-success btn-sm flex-fill py-1"
-                  >
                     <i class="fas fa-list me-1"></i>목록
                   </a>
                   <a
@@ -312,7 +392,7 @@
           </div>
         </div>
 
-        <div class="col-3">
+        <div class="col-12 col-sm-6 col-lg-2-4">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div
@@ -354,7 +434,48 @@
           </div>
         </div>
 
-        <div class="col-3">
+        <div class="col-12 col-sm-6 col-lg-2-4">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div
+                class="d-flex justify-content-between align-items-start mb-2"
+              >
+                <div class="flex-grow-1">
+                  <h6 class="card-title text-muted mb-1 fs-6">
+                    <i class="fas fa-concierge-bell me-1"></i>서비스 ({{ current_year }}년)
+                  </h6>
+                  <h3 class="mb-0 text-purple fs-4">
+                    {{ service_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                  <small class="text-muted fs-6">이번 달 {{ this_month_service_count }}건</small>
+                </div>
+                <div
+                  class="icon-wrapper bg-purple flex-shrink-0 d-none d-md-block"
+                >
+                  <i class="fas fa-concierge-bell text-white"></i>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:history_list' %}?action_type=service"
+                    class="btn btn-outline-purple btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-purple btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-lg-2-4">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div
@@ -439,6 +560,15 @@
                   >
                     <i class="fas fa-plus-circle mb-2"></i>
                     <small>활동 기록</small>
+                  </a>
+                </div>
+                <div class="col-6 col-md-4 col-lg-2">
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-outline-purple w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-concierge-bell mb-2"></i>
+                    <small>서비스 기록</small>
                   </a>
                 </div>
                 <div class="col-6 col-md-4 col-lg-2">
@@ -570,7 +700,7 @@
       </div>
       <!-- 통계 차트 -->
       <div class="row g-4 mb-4">
-        <div class="col-lg-6">
+        <div class="col-lg-4">
           <div class="card h-100">
             <div class="card-header">
               <h6 class="card-title mb-0">
@@ -600,7 +730,7 @@
           </div>
         </div>
 
-        <div class="col-lg-6">
+        <div class="col-lg-4">
           <div class="card h-100">
             <div class="card-header">
               <h6 class="card-title mb-0">
@@ -628,6 +758,41 @@
                   class="btn btn-primary btn-sm"
                 >
                   <i class="fas fa-plus me-1"></i>첫 활동 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-concierge-bell me-2"></i>월별 서비스 현황
+              </h6>
+              <small class="text-muted">{{ current_year }}년 월별 서비스 처리 현황</small>
+            </div>
+            <div class="card-body d-flex flex-column">
+              {% if monthly_service_data %}
+              <div style="position: relative; height: 250px">
+                <canvas id="monthlyServiceChart"></canvas>
+              </div>
+              {% else %}
+              <div
+                class="text-center py-4 flex-grow-1 d-flex flex-column justify-content-center"
+              >
+                <i class="fas fa-concierge-bell fa-3x text-muted mb-3"></i>
+                <h6 class="text-muted mb-2">서비스 데이터가 없습니다</h6>
+                <p class="text-muted small mb-3">
+                  서비스 활동을 기록하면<br />
+                  월별 처리 현황을 확인할 수 있습니다.
+                </p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-purple btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 서비스 기록하기
                 </a>
               </div>
               {% endif %}
@@ -700,13 +865,16 @@
                       {% elif stat.action_type == 'delivery_schedule' %}
                       <i class="fas fa-truck text-success me-2"></i>
                       <span>납품 일정</span>
+                      {% elif stat.action_type == 'service' %}
+                      <i class="fas fa-concierge-bell text-purple me-2"></i>
+                      <span>서비스</span>
                       {% else %}
                       <i class="fas fa-circle text-muted me-2"></i>
                       <span>{{ stat.action_type }}</span>
                       {% endif %}
                     </div>
                     <span
-                      class="badge {% if stat.action_type == 'customer_meeting' %}bg-primary{% elif stat.action_type == 'delivery_schedule' %}bg-success{% else %}bg-secondary{% endif %} fs-6"
+                      class="badge {% if stat.action_type == 'customer_meeting' %}bg-primary{% elif stat.action_type == 'delivery_schedule' %}bg-success{% elif stat.action_type == 'service' %}bg-purple{% else %}bg-secondary{% endif %} fs-6"
                     >
                       {{ stat.count }}건
                     </span>
@@ -758,12 +926,14 @@
                   <div class="d-flex">
                     <div class="flex-shrink-0 me-3">
                       <div
-                        class="timeline-icon-simple {% if activity.action_type == 'customer_meeting' %}bg-primary{% elif activity.action_type == 'delivery_schedule' %}bg-success{% else %}bg-secondary{% endif %}"
+                        class="timeline-icon-simple {% if activity.action_type == 'customer_meeting' %}bg-primary{% elif activity.action_type == 'delivery_schedule' %}bg-success{% elif activity.action_type == 'service' %}bg-purple{% else %}bg-secondary{% endif %}"
                       >
                         {% if activity.action_type == 'customer_meeting' %}
                         <i class="fas fa-handshake"></i>
                         {% elif activity.action_type == 'delivery_schedule' %}
                         <i class="fas fa-truck"></i>
+                        {% elif activity.action_type == 'service' %}
+                        <i class="fas fa-concierge-bell"></i>
                         {% else %}
                         <i class="fas fa-circle"></i>
                         {% endif %}
@@ -1147,6 +1317,44 @@
               }
             });
             {% endif %}
+          }
+
+          // 월별 서비스 현황 차트
+          const monthlyServiceChart = document.getElementById('monthlyServiceChart');
+          if (monthlyServiceChart) {
+            {% if monthly_service_data %}
+            const ctx = monthlyServiceChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: {{ monthly_service_labels|safe }},
+                datasets: [{
+                  label: '서비스 건수',
+                  data: {{ monthly_service_data|safe }},
+                  backgroundColor: 'rgba(111, 66, 193, 0.8)',
+                  borderColor: '#6f42c1',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      stepSize: 1
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
           }      // 일정 완료율 차트
           const completionRateChart = document.getElementById('completionRateChart');
           if (completionRateChart) {
@@ -1200,6 +1408,8 @@
                     '고객 미팅'{% if not forloop.last %},{% endif %}
                   {% elif stat.action_type == 'delivery_schedule' %}
                     '납품 일정'{% if not forloop.last %},{% endif %}
+                  {% elif stat.action_type == 'service' %}
+                    '서비스'{% if not forloop.last %},{% endif %}
                   {% else %}
                     '{{ stat.action_type }}'{% if not forloop.last %},{% endif %}
                   {% endif %}
@@ -1217,6 +1427,8 @@
                       '#0d6efd'{% if not forloop.last %},{% endif %}
                     {% elif stat.action_type == 'delivery_schedule' %}
                       '#198754'{% if not forloop.last %},{% endif %}
+                    {% elif stat.action_type == 'service' %}
+                      '#6f42c1'{% if not forloop.last %},{% endif %}
                     {% else %}
                       '#6c757d'{% if not forloop.last %},{% endif %}
                     {% endif %}
