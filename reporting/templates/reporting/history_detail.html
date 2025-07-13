@@ -47,8 +47,7 @@
                 ></i>
                 {{ history.get_action_type_display }}
               </span>
-              {% if history.action_type == 'delivery_schedule' and
-              history.delivery_amount is not None %}
+              {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %}
               <span class="badge bg-success ms-2">
                 {% load currency_filters %}
                 <i class="fas fa-won-sign me-1"></i
@@ -80,8 +79,7 @@
                 {{ history.created_at|date:"Y년 m월 d일 H:i:s" }}
               </p>
             </div>
-            {% if history.action_type == 'delivery_schedule' and
-            history.delivery_amount is not None %}
+            {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %}
             <div class="col-md-4">
               <h6 class="text-muted mb-2">
                 <i class="fas fa-won-sign me-1"></i>납품 금액
@@ -93,16 +91,14 @@
                 >
               </p>
             </div>
-            {% endif %} {% if history.action_type == 'delivery_schedule' and
-            history.delivery_items %}
+            {% endif %} {% if history.action_type == 'delivery_schedule' and history.delivery_items %}
             <div class="col-md-4">
               <h6 class="text-muted mb-2">
                 <i class="fas fa-boxes me-1"></i>납품 품목
               </h6>
               <p class="mb-3">{{ history.delivery_items }}</p>
             </div>
-            {% endif %} {% if history.action_type == 'delivery_schedule' and
-            history.delivery_date %}
+            {% endif %} {% if history.action_type == 'delivery_schedule' and history.delivery_date %}
             <div class="col-md-4">
               <h6 class="text-muted mb-2">
                 <i class="fas fa-calendar-alt me-1"></i>납품 날짜
@@ -113,8 +109,7 @@
                 >
               </p>
             </div>
-            {% endif %} {% if history.action_type == 'customer_meeting' and
-            history.meeting_date %}
+            {% endif %} {% if history.action_type == 'customer_meeting' and history.meeting_date %}
             <div class="col-md-4">
               <h6 class="text-muted mb-2">
                 <i class="fas fa-calendar-check me-1"></i>미팅 날짜
@@ -139,13 +134,11 @@
               <div class="p-3 bg-light rounded">
                 <p class="mb-2">
                   <strong
-                    >{{ history.followup.customer_name|default:"고객명
-                    미정"}}</strong
+                    >{{ history.followup.customer_name|default:"고객명 미정"}}</strong
                   >
                 </p>
                 <p class="mb-2 text-muted small">
-                  {{ history.followup.company|default:"업체명 미정" }} {% if
-                  history.followup.department %} -
+                  {{ history.followup.company|default:"업체명 미정" }} {% if history.followup.department %} -
                   {{history.followup.department}}{% endif %}
                 </p>
                 <a
@@ -164,8 +157,7 @@
               <div class="p-3 bg-light rounded">
                 <p class="mb-2">
                   <strong
-                    >{{ history.schedule.followup.customer_name|default:"고객명
-                    미정" }} 방문</strong
+                    >{{ history.schedule.followup.customer_name|default:"고객명 미정" }} 방문</strong
                   >
                 </p>
                 <p class="mb-1 text-muted small">

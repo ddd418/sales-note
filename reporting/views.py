@@ -1201,6 +1201,38 @@ def api_followup_schedules(request, followup_pk):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@login_required
+def schedule_histories_api(request, schedule_id):
+    """특정 일정의 관련 활동 기록을 JSON으로 반환"""
+    try:
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        
+        # 관련 활동 기록 조회
+        histories = History.objects.filter(schedule=schedule).order_by('-created_at')[:10]
+        
+        histories_data = []
+        for history in histories:
+            histories_data.append({
+                'id': history.id,
+                'action_type': history.action_type,
+                'action_type_display': history.get_action_type_display(),
+                'content': history.content or '',
+                'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
+                'user': history.user.username,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'histories': histories_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 # ============ 인증 관련 뷰들 ============
 
 class CustomLoginView(LoginView):
