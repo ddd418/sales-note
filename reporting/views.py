@@ -221,10 +221,17 @@ def followup_list_view(request):
     if priority_filter:
         followups = followups.filter(priority=priority_filter)
     
-    # 담당자 필터링
+    # 담당자 필터링 - 권한 체크 추가
     user_filter = request.GET.get('user')
     if user_filter:
-        followups = followups.filter(user_id=user_filter)
+        # 접근 권한이 있는 사용자인지 확인
+        accessible_users = get_accessible_users(request.user)
+        try:
+            filter_user = accessible_users.get(id=user_filter)
+            followups = followups.filter(user=filter_user)
+        except User.DoesNotExist:
+            # 접근 권한이 없는 사용자인 경우 필터링하지 않음
+            pass
       # 정렬 (최신순)
     followups = followups.order_by('-created_at')
     
@@ -236,19 +243,26 @@ def followup_list_view(request):
         medium_priority_count=Count('id', filter=DbQ(priority='medium')),
         low_priority_count=Count('id', filter=DbQ(priority='low'))
     )
-      # 담당자 목록 (필터용)
-    if request.user.is_staff or request.user.is_superuser:
-        from django.contrib.auth.models import User
-        users = User.objects.filter(followup__isnull=False).distinct()
+      # 담당자 목록 (필터용) - 권한 기반으로 수정
+    user_profile = get_user_profile(request.user)
+    if user_profile.can_view_all_users():
+        # Admin이나 Manager는 접근 가능한 사용자 목록
+        accessible_users = get_accessible_users(request.user)
+        users = accessible_users.filter(followup__isnull=False).distinct()
     else:
+        # Salesman은 자기 자신만
         users = [request.user]
     
-    # 선택된 사용자 정보
+    # 선택된 사용자 정보 - 권한 체크 추가
     selected_user = None
     if user_filter:
         try:
             from django.contrib.auth.models import User
-            selected_user = User.objects.get(id=user_filter)
+            candidate_user = User.objects.get(id=user_filter)
+            # 접근 권한이 있는 사용자인지 확인
+            accessible_users = get_accessible_users(request.user)
+            if candidate_user in accessible_users:
+                selected_user = candidate_user
         except (User.DoesNotExist, ValueError):
             pass
     
