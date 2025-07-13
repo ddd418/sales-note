@@ -20,6 +20,7 @@ urlpatterns = [
     path('schedules/create/', views.schedule_create_view, name='schedule_create'),
     path('schedules/<int:pk>/edit/', views.schedule_edit_view, name='schedule_edit'),
     path('schedules/<int:pk>/move/', views.schedule_move_api, name='schedule_move_api'),
+    path('schedules/<int:schedule_id>/status/', views.schedule_status_update_api, name='schedule_status_update'),
     path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),

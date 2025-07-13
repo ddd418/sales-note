@@ -249,7 +249,14 @@
           </p>
           {% endif %}
         </div>
-        {% if not no_salesmen %}        <div class="d-flex gap-2">
+        {% if not no_salesmen %}        
+        <div class="d-flex gap-2">
+          <!-- 일정 캘린더 버튼을 메인으로 이동 -->
+          <a href="{% url 'reporting:schedule_calendar' %}{% if not view_all %}?user={{ selected_user.id }}
+          {% endif %}" 
+          class="btn btn-outline-success">
+            <i class="fas fa-calendar-alt me-1"></i>일정 캘린더</a>
+          
           <div class="btn-group">
             <button
               type="button"
@@ -285,7 +292,6 @@
                   <i class="fas fa-history me-2"></i>활동 기록
                 </a>
               </li>
-              <li><hr class="dropdown-divider" /></li>
               {% else %}
               <li>
                 <a
@@ -310,16 +316,8 @@
                 >
                   <i class="fas fa-history me-2"></i>활동 기록
                 </a>
-              </li>
-              <li><hr class="dropdown-divider" /></li>              {% endif %}
-              <li>
-                <a
-                  class="dropdown-item"
-                  href="{% url 'reporting:schedule_calendar' %}{% if not view_all %}?user={{ selected_user.id }}{% endif %}"
-                >
-                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-                </a>
-              </li>
+              </li>              
+              {% endif %}
             </ul>
           </div>
         </div>

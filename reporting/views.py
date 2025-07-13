@@ -713,9 +713,13 @@ def schedule_detail_view(request, pk):
     # 관련 히스토리 조회 (최신순)
     related_histories = History.objects.filter(schedule=schedule).order_by('-created_at')[:10]
     
+    # 이전 페이지 정보 (캘린더에서 온 경우)
+    from_page = request.GET.get('from', 'list')  # 기본값은 'list'
+    
     context = {
         'schedule': schedule,
         'related_histories': related_histories,
+        'from_page': from_page,
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }
     return render(request, 'reporting/schedule_detail.html', context)
@@ -1010,24 +1014,31 @@ def history_list_view(request):
     total_count = base_queryset.count()
     meeting_count = base_queryset.filter(action_type='customer_meeting').count()
     delivery_count = base_queryset.filter(action_type='delivery_schedule').count()
-      # 담당자 목록 (필터용)
-    if request.user.is_staff or request.user.is_superuser:
-        from django.contrib.auth.models import User
-        users = User.objects.filter(history__isnull=False).distinct()
+      # 담당자 목록 (필터용) - 권한 기반으로 수정
+    user_profile = get_user_profile(request.user)
+    if user_profile.can_view_all_users():
+        # Admin이나 Manager는 접근 가능한 사용자 목록
+        accessible_users = get_accessible_users(request.user)
+        users = accessible_users.filter(history__isnull=False).distinct()
     else:
+        # Salesman은 자기 자신만
         users = [request.user]
     
-    # 선택된 사용자 정보
+    # 선택된 사용자 정보 - 권한 체크 추가
     selected_user = None
     if user_filter:
         try:
             from django.contrib.auth.models import User
-            selected_user = User.objects.get(id=user_filter)
+            candidate_user = User.objects.get(id=user_filter)
+            # 접근 권한이 있는 사용자인지 확인
+            accessible_users = get_accessible_users(request.user)
+            if candidate_user in accessible_users:
+                selected_user = candidate_user
         except (User.DoesNotExist, ValueError):
             pass
     
-    # 페이지네이션 처리
-    paginator = Paginator(histories, 10) # 페이지당 10개 항목
+    # 페이지네이션 처리 - 페이지당 항목 수 증가
+    paginator = Paginator(histories, 50) # 페이지당 50개 항목으로 증가
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -1057,8 +1068,17 @@ def history_detail_view(request, pk):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:history_list')
     
+    # 사용자 필터 정보 추가 (Manager가 특정 사용자의 활동을 보고 있는 경우)
+    user_filter = request.GET.get('user_filter', '')
+    if not user_filter and request.user != history.user:
+        # Manager가 다른 사용자의 활동을 보고 있다면 해당 사용자 필터 설정
+        user_profile = get_user_profile(request.user)
+        if user_profile.can_view_all_users():
+            user_filter = history.user.id
+    
     context = {
         'history': history,
+        'user_filter': user_filter,
         'page_title': f'활동 상세 - {history.followup.customer_name}'
     }
     return render(request, 'reporting/history_detail.html', context)
@@ -1617,9 +1637,9 @@ def manager_dashboard(request):
     }
     return render(request, 'reporting/manager_dashboard.html', context)
 
-@role_required(['manager'])
+@role_required(['manager', 'admin'])
 def salesman_detail(request, user_id):
-    """특정 Salesman의 상세 정보 조회 (Manager 전용)"""
+    """특정 Salesman의 상세 정보 조회 (Manager, Admin 전용)"""
     # 접근 권한 확인
     accessible_users = get_accessible_users(request.user)
     selected_user = get_object_or_404(accessible_users, id=user_id)
@@ -1877,3 +1897,38 @@ def schedule_move_api(request, pk):
         return JsonResponse({'success': False, 'error': '잘못된 JSON 데이터입니다.'}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'일정 이동 중 오류가 발생했습니다: {str(e)}'}, status=500)
+
+@login_required
+@require_POST
+def schedule_status_update_api(request, schedule_id):
+    """일정 상태 업데이트 API"""
+    try:
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        
+        new_status = request.POST.get('status')
+        if new_status not in ['scheduled', 'completed', 'cancelled']:
+            return JsonResponse({'error': '잘못된 상태값입니다.'}, status=400)
+        
+        old_status = schedule.status
+        schedule.status = new_status
+        schedule.save()
+        
+        status_display = {
+            'scheduled': '예정됨',
+            'completed': '완료됨', 
+            'cancelled': '취소됨'
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'new_status': new_status,
+            'status_display': status_display[new_status],
+            'message': f'일정 상태가 "{status_display[new_status]}"로 변경되었습니다.'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

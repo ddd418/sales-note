@@ -225,7 +225,8 @@
           >
             <i class="fas fa-list me-1"></i>목록 보기
           </a>
-          {% if user.is_authenticated %} {% if user.userprofile.role == 'manager' %}
+          {% if user.is_authenticated %} {% if user.userprofile.role ==
+          'manager' %}
           <!-- 매니저용 데이터 보기 드롭다운 -->
           <div class="btn-group">
             <button
@@ -233,7 +234,9 @@
               class="btn btn-outline-primary dropdown-toggle"
               data-bs-toggle="dropdown"
             >
-              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif%}
+              <i class="fas fa-eye me-1"></i>{% if selected_user
+              %}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{%
+              endif%}
             </button>
             <ul class="dropdown-menu">
               <li>
@@ -1071,7 +1074,11 @@
           daySchedules.forEach((schedule) => {
             const scheduleElement = document.createElement("div");
             scheduleElement.className = `schedule-item ${schedule.status}`;
-            scheduleElement.textContent = `${schedule.time} ${schedule.customer}`;
+            // 업체명 + 고객명 형태로 표시
+            const displayName = schedule.company ?
+              `${schedule.company} ${schedule.customer}` :
+              schedule.customer;
+            scheduleElement.textContent = `${schedule.time} ${displayName}`;
             scheduleElement.draggable = true;
             scheduleElement.dataset.scheduleId = schedule.id;
             scheduleElement.dataset.originalDate = `${cellYear}-${String(
@@ -1351,7 +1358,7 @@
         } else {
           // 일정 상세 보기로 이동
           const detailUrl = scheduleDetailUrl.replace("{id}", schedule.id);
-          window.location.href = detailUrl;
+          window.location.href = detailUrl + "?from=calendar";
         }
         return;
       }
@@ -1391,9 +1398,19 @@
                   </div>
                   <div class="col-12">
                     <label class="form-label fw-bold">상태</label>
-                    <span class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
-                      ${schedule.status === 'completed' ? '완료' : schedule.status === 'cancelled' ? '취소' : '예정'}
-                    </span>
+                    <div class="d-flex align-items-center gap-2">
+                      <span id="statusBadge-${schedule.id}" class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
+                        ${schedule.status === 'completed' ? '완료' : schedule.status === 'cancelled' ? '취소' : '예정'}
+                      </span>
+                      <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-outline-primary ${schedule.status === 'scheduled' ? 'active' : ''}"
+                                onclick="updateScheduleStatus(${schedule.id}, 'scheduled')">예정</button>
+                        <button class="btn btn-sm btn-outline-success ${schedule.status === 'completed' ? 'active' : ''}"
+                                onclick="updateScheduleStatus(${schedule.id}, 'completed')">완료</button>
+                        <button class="btn btn-sm btn-outline-danger ${schedule.status === 'cancelled' ? 'active' : ''}"
+                                onclick="updateScheduleStatus(${schedule.id}, 'cancelled')">취소</button>
+                      </div>
+                    </div>
                   </div>
                   ${schedule.notes ? `
                   <div class="col-12">
@@ -1401,13 +1418,23 @@
                     <p class="mb-0">${schedule.notes}</p>
                   </div>
                   ` : ''}
+                  <div class="col-12">
+                    <label class="form-label fw-bold">관련 활동 기록</label>
+                    <div id="scheduleHistories-${schedule.id}">
+                      <div class="text-center py-2">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                          <span class="visually-hidden">로딩중...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>              <div class="modal-footer">
                 <div class="d-flex gap-2 w-100">
                   <a href="${historyCreateUrl.replace("{id}", schedule.id)}" class="btn btn-success flex-fill">
                     <i class="fas fa-plus me-1"></i>활동 히스토리 작성
                   </a>
-                  <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}" class="btn btn-primary flex-fill">
+                  <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
                   </a>
                 </div>
@@ -1435,6 +1462,92 @@
       document.getElementById('scheduleDetailModal').addEventListener('hidden.bs.modal', function() {
         this.remove();
       });
+
+      // 활동 기록 로딩
+      loadScheduleHistories(schedule.id);
+    }
+
+    // 일정 상태 업데이트 함수
+    function updateScheduleStatus(scheduleId, newStatus) {
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                       document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+      if (!csrfToken) {
+        alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('csrfmiddlewaretoken', csrfToken);
+      formData.append('status', newStatus);
+
+      fetch(`{% url 'reporting:schedule_status_update' 999 %}`.replace('999', scheduleId), {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken,
+        },
+        body: formData,
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // 상태 배지 업데이트
+          const badge = document.getElementById(`statusBadge-${scheduleId}`);
+          if (badge) {
+            badge.className = `badge bg-${newStatus === 'completed' ? 'success' : newStatus === 'cancelled' ? 'danger' : 'primary'}`;
+            badge.textContent = data.status_display;
+          }
+
+          // 버튼 상태 업데이트
+          document.querySelectorAll(`#scheduleDetailModal .btn-group button`).forEach(btn => {
+            btn.classList.remove('active');
+          });
+          event.target.classList.add('active');
+
+          // 캘린더 다시 로드하여 변경사항 반영
+          loadSchedules();
+
+          alert(data.message);
+        } else {
+          alert('오류: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('상태 업데이트 중 오류가 발생했습니다.');
+      });
+    }
+
+    // 일정 관련 활동 기록 로딩
+    function loadScheduleHistories(scheduleId) {
+      fetch(`{% url 'reporting:history_list' %}?schedule=${scheduleId}&format=json`)
+        .then(response => response.json())
+        .then(data => {
+          const container = document.getElementById(`scheduleHistories-${scheduleId}`);
+          if (data.histories && data.histories.length > 0) {
+            container.innerHTML = data.histories.map(history => `
+              <div class="border rounded p-2 mb-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <span class="badge bg-${history.action_type === 'customer_meeting' ? 'primary' : 'success'} me-2">
+                      ${history.action_type_display}
+                    </span>
+                    <small class="text-muted">${history.created_at}</small>
+                  </div>
+                </div>
+                ${history.content ? `<p class="mb-0 mt-1 small">${history.content}</p>` : ''}
+              </div>
+            `).join('');
+          } else {
+            container.innerHTML = '<p class="text-muted small mb-0">관련 활동 기록이 없습니다.</p>';
+          }
+        })
+        .catch(error => {
+          console.error('Error loading histories:', error);
+          const container = document.getElementById(`scheduleHistories-${scheduleId}`);
+          container.innerHTML = '<p class="text-muted small mb-0">활동 기록을 불러올 수 없습니다.</p>';
+        });
     }
   });
 </script>
