@@ -1211,8 +1211,8 @@ def schedule_histories_api(request, schedule_id):
         if not can_access_user_data(request.user, schedule.user):
             return JsonResponse({'error': '권한이 없습니다.'}, status=403)
         
-        # 관련 활동 기록 조회
-        histories = History.objects.filter(schedule=schedule).order_by('-created_at')[:10]
+        # 관련 활동 기록 조회 (해당 고객의 모든 일정 관련 활동 기록을 일정 날짜 기준 내림차순으로)
+        histories = History.objects.filter(followup=schedule.followup).order_by('-schedule__visit_date', '-created_at')[:10]
         
         histories_data = []
         for history in histories:
