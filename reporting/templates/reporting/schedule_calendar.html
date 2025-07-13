@@ -225,8 +225,7 @@
           >
             <i class="fas fa-list me-1"></i>목록 보기
           </a>
-          {% if user.is_authenticated %} {% if user.userprofile.role ==
-          'manager' %}
+          {% if user.is_authenticated %} {% if user.userprofile.role == 'manager' %}
           <!-- 매니저용 데이터 보기 드롭다운 -->
           <div class="btn-group">
             <button
@@ -234,9 +233,7 @@
               class="btn btn-outline-primary dropdown-toggle"
               data-bs-toggle="dropdown"
             >
-              <i class="fas fa-eye me-1"></i>{% if
-              selected_user%}{{selected_user.username }} 데이터 보기{% else
-              %}데이터 보기{% endif %}
+              <i class="fas fa-eye me-1"></i>{% if selected_user%}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
             </button>
             <ul class="dropdown-menu">
               <li>
