@@ -2068,10 +2068,8 @@ def schedule_move_api(request, pk):
         return JsonResponse({'success': False, 'error': '이 일정을 이동할 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
     
     try:
-        # POST 데이터에서 새로운 날짜 정보 가져오기
-        import json
-        data = json.loads(request.body)
-        new_date = data.get('new_date')  # 'YYYY-MM-DD' 형식
+        # POST 데이터에서 새로운 날짜 정보 가져오기 (FormData 형식)
+        new_date = request.POST.get('new_date')  # 'YYYY-MM-DD' 형식
         
         if not new_date:
             return JsonResponse({'success': False, 'error': '새로운 날짜가 제공되지 않았습니다.'}, status=400)
@@ -2095,8 +2093,6 @@ def schedule_move_api(request, pk):
             'new_date': new_visit_date.strftime('%Y-%m-%d')
         })
         
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': '잘못된 JSON 데이터입니다.'}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': f'일정 이동 중 오류가 발생했습니다: {str(e)}'}, status=500)
 
