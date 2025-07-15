@@ -1755,14 +1755,31 @@ def salesman_detail(request, user_id):
         # 정렬 추가
         followups = followups.order_by('-updated_at')
         
-        # 페이지네이션
-        paginator = Paginator(followups, 10)
-        page_number = request.GET.get('page', 1)
+        # 페이지네이션 전에 총 개수 계산 (안전하게)
         try:
-            page_number = int(page_number)
-        except (ValueError, TypeError):
-            page_number = 1
-        followups = paginator.get_page(page_number)
+            total_followups = followups.count()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"팔로우업 개수 계산 중 오류: {str(e)}")
+            total_followups = 0
+        
+        # 페이지네이션 처리 (단순화)
+        try:
+            from django.core.paginator import Paginator
+            paginator = Paginator(followups, 10)
+            page_number = request.GET.get('page', 1)
+            try:
+                page_number = int(page_number)
+            except (ValueError, TypeError):
+                page_number = 1
+            followups = paginator.get_page(page_number)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"페이지네이션 처리 중 오류: {str(e)}")
+            # 페이지네이션 실패 시 원본 쿼리셋 유지하되 첫 10개만
+            followups = followups[:10]
         
         # 집계 값들을 안전하게 계산
         try:
@@ -1780,6 +1797,7 @@ def salesman_detail(request, user_id):
             'followups': followups,
             'search_query': search_query,
             'status_filter': status_filter,
+            'total_followups': total_followups,
             'total_schedules': total_schedules,
             'total_histories': total_histories,
             'page_title': f'{selected_user.username} 상세 정보'

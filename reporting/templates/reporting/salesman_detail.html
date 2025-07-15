@@ -1,5 +1,5 @@
 {% extends "reporting/base.html" %}
-{# Updated: 2025-07-15 - Fixed userprofile access safety #}
+{# Updated: 2025-07-15 - Fixed pagination count issue #}
 {% load currency_filters %}
 {% block title %}{{ selected_user.username }} 상세 정보 - 영업 보고 시스템{% endblock %}
 
@@ -59,7 +59,7 @@
               <div class="row">
                 <div class="col-md-4">
                   <div class="text-center">
-                    <h4 class="text-primary">{{ followups.paginator.count }}</h4>
+                    <h4 class="text-primary">{{ total_followups|default:0 }}</h4>
                     <p class="text-muted mb-0">총 고객수</p>
                   </div>
                 </div>
@@ -236,8 +236,8 @@
                   </table>
                 </div>
 
-                <!-- 페이지네이션 -->
-                {% if followups.has_other_pages %}
+                <!-- 페이지네이션 (안전한 접근으로 수정) -->
+                {% if followups.has_other_pages|default:False %}
                   {% include 'reporting/pagination.html' with page_obj=followups %}
                 {% endif %}
               {% else %}
