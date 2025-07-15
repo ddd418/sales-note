@@ -625,6 +625,81 @@
         </div>
       </div>
       {% endif %}
+      
+      <!-- 페이지네이션 -->
+      {% if followups.has_other_pages %}
+      <div class="row mt-4">
+        <div class="col-12">
+          <nav aria-label="팔로우업 목록 페이지네이션">
+            <ul class="pagination justify-content-center">
+              <!-- 첫 페이지 -->
+              {% if followups.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page=1" aria-label="첫 페이지">
+                  <span aria-hidden="true">&laquo;&laquo;</span>
+                </a>
+              </li>
+              <!-- 이전 페이지 -->
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ followups.previous_page_number }}" aria-label="이전 페이지">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">&laquo;&laquo;</span>
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link">&laquo;</span>
+              </li>
+              {% endif %}
+              
+              <!-- 페이지 번호들 -->
+              {% for num in followups.paginator.page_range %}
+                {% if followups.number|add:'-5' <= num <= followups.number|add:'5' %}
+                  {% if num == followups.number %}
+                  <li class="page-item active">
+                    <span class="page-link">{{ num }}</span>
+                  </li>
+                  {% else %}
+                  <li class="page-item">
+                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ num }}">{{ num }}</a>
+                  </li>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              
+              <!-- 다음 페이지 -->
+              {% if followups.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ followups.next_page_number }}" aria-label="다음 페이지">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+              <!-- 마지막 페이지 -->
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ followups.paginator.num_pages }}" aria-label="마지막 페이지">
+                  <span aria-hidden="true">&raquo;&raquo;</span>
+                </a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">&raquo;</span>
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link">&raquo;&raquo;</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+          
+          <!-- 페이지 정보 -->
+          <div class="text-center text-muted small mt-2">
+            {{ followups.start_index }}~{{ followups.end_index }}번 (전체 {{ followups.paginator.count }}개)
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
