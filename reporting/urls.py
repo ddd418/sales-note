@@ -33,7 +33,8 @@ urlpatterns = [
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     # API 엔드포인트들
-    path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),    # 사용자 관리 URL들 (Admin 전용)
+    path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
+    path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),    # 사용자 관리 URL들 (Admin 전용)
     path('users/', views.user_list, name='user_list'),
     path('users/create/', views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),

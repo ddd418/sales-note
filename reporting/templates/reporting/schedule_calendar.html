@@ -1650,7 +1650,15 @@
                 <div class="row g-3">
                   <div class="col-12">
                     <label class="form-label fw-bold">고객명</label>
-                    <p class="mb-0">${schedule.customer}</p>
+                    <p class="mb-0">
+                      <a href="#" class="text-decoration-none customer-name-link" 
+                         data-followup-id="${schedule.followup_id}" 
+                         data-customer-name="${schedule.customer}"
+                         onclick="showCustomerHistories(${schedule.followup_id}, '${schedule.customer}'); return false;">
+                        ${schedule.customer}
+                        <i class="fas fa-external-link-alt ms-1 text-muted" style="font-size: 0.8em;"></i>
+                      </a>
+                    </p>
                   </div>
                   <div class="col-12">
                     <label class="form-label fw-bold">회사명</label>
@@ -1739,7 +1747,237 @@
       loadScheduleHistories(schedule.id);
     }
 
+    // 고객 활동기록 모달 표시 함수
+    window.showCustomerHistories = function(followupId, customerName) {
+      // 기존 모달 제거
+      const existingModal = document.getElementById('customerHistoriesModal');
+      if (existingModal) {
+        existingModal.remove();
+      }
 
+      // 모달 HTML 생성
+      const modalHtml = `
+        <div class="modal fade" id="customerHistoriesModal" tabindex="-1" aria-labelledby="customerHistoriesModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="customerHistoriesModalLabel">
+                  <i class="fas fa-history me-2"></i>${customerName} 활동 기록
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div id="customerHistoriesContent">
+                  <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">로딩중...</span>
+                    </div>
+                    <p class="mt-2">활동 기록을 불러오는 중...</p>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <a href="{% url 'reporting:followup_detail' 0 %}".replace('0', followupId) class="btn btn-primary">
+                  <i class="fas fa-external-link-alt me-1"></i>고객 상세보기
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 새 모달 추가
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+      // 모달 표시
+      const modal = new bootstrap.Modal(document.getElementById('customerHistoriesModal'));
+      modal.show();
+
+      // 모달이 닫힐 때 DOM에서 제거
+      document.getElementById('customerHistoriesModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
+
+      // 활동 기록 로딩
+      loadCustomerHistories(followupId);
+    };
+
+    // 고객 활동기록 로드 함수
+    function loadCustomerHistories(followupId) {
+      fetch(`/reporting/api/followup/${followupId}/histories/`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            displayCustomerHistories(data);
+          } else {
+            document.getElementById('customerHistoriesContent').innerHTML = 
+              '<div class="alert alert-danger">활동 기록을 불러오는데 실패했습니다.</div>';
+          }
+        })
+        .catch(error => {
+          console.error('Error loading customer histories:', error);
+          document.getElementById('customerHistoriesContent').innerHTML = 
+            '<div class="alert alert-danger">활동 기록을 불러오는 중 오류가 발생했습니다.</div>';
+        });
+    }
+
+    // 고객 활동기록 표시 함수
+    function displayCustomerHistories(data) {
+      const content = document.getElementById('customerHistoriesContent');
+      
+      if (data.histories.length === 0) {
+        content.innerHTML = `
+          <div class="text-center py-4">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h6 class="text-muted">등록된 활동 기록이 없습니다</h6>
+            <p class="text-muted small">아직 ${data.customer_name}님과 관련된 활동 기록이 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let historiesHtml = `
+        <div class="mb-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+              <i class="fas fa-building me-1"></i>${data.company}
+              <span class="text-muted">·</span>
+              <span class="text-primary">${data.customer_name}</span>
+            </h6>
+            <small class="text-muted">총 ${data.total_count}개 활동</small>
+          </div>
+        </div>
+      `;
+
+      // 각 활동기록을 카드 형태로 표시 (일정 상세 모달과 동일한 형식)
+      data.histories.forEach((history, index) => {
+        const badgeClass = history.action_type === 'delivery_schedule' ? 'bg-success' : 
+                          history.action_type === 'customer_meeting' ? 'bg-primary' : 
+                          history.action_type === 'service' ? 'bg-info' : 'bg-secondary';
+        
+        historiesHtml += `
+          <div class="card mb-3 border-start border-${badgeClass.replace('bg-', '')} border-3">
+            <div class="card-header bg-light py-2">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                  <span class="badge ${badgeClass} me-2">${history.action_type_display}</span>
+                  <small class="text-muted">
+                    <i class="fas fa-user me-1"></i>${history.user}
+                  </small>
+                </div>
+                <small class="text-muted">${history.created_at}</small>
+              </div>
+            </div>
+            <div class="card-body">
+              ${history.content ? `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">활동 내용:</label>
+                  <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.content)}</div>
+                </div>
+              ` : ''}
+              
+              ${history.action_type === 'delivery_schedule' ? `
+                ${history.delivery_date ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 날짜:</label>
+                    <div class="form-control-plaintext">${history.delivery_date}</div>
+                  </div>
+                ` : ''}
+                
+                ${history.delivery_amount ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 금액:</label>
+                    <div class="form-control-plaintext text-success fw-bold">
+                      ${parseInt(history.delivery_amount).toLocaleString()}원
+                    </div>
+                  </div>
+                ` : ''}
+                
+                ${history.delivery_items ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 품목:</label>
+                    <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.delivery_items)}</div>
+                  </div>
+                ` : ''}
+                
+                <div class="mb-2">
+                  <label class="form-label fw-bold">세금계산서:</label>
+                  <span class="badge ${history.tax_invoice_issued ? 'bg-success' : 'bg-warning'}">
+                    ${history.tax_invoice_issued ? '발행완료' : '미발행'}
+                  </span>
+                </div>
+              ` : ''}
+              
+              ${history.action_type === 'customer_meeting' && history.meeting_date ? `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">미팅 날짜:</label>
+                  <div class="form-control-plaintext">${history.meeting_date}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      content.innerHTML = historiesHtml;
+    }
+
+    // 텍스트 포맷팅 함수 (일정 상세 모달과 동일)
+    function formatText(text) {
+      if (!text) return '';
+      
+      // 1. 모든 종류의 공백과 줄바꿈을 정규화
+      let formattedText = text
+        .replace(/\r\n/g, '\n')  // Windows 줄바꿈을 Unix 형식으로 통일
+        .replace(/\r/g, '\n')    // Mac 줄바꿈을 Unix 형식으로 통일
+        .trim();                 // 전체 텍스트의 앞뒤 공백 제거
+      
+      // 2. 각 줄을 분할하고 처리
+      let lines = formattedText.split('\n');
+      
+      // 3. 각 줄의 불필요한 공백 제거 (단, 의도적인 들여쓰기는 유지)
+      lines = lines.map(line => {
+        if (line.trim() === '') return '';
+        return line.trimEnd();
+      });
+      
+      // 4. 처음과 끝의 빈 줄 완전 제거
+      while (lines.length > 0 && lines[0] === '') {
+        lines.shift();
+      }
+      while (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+      
+      // 5. 중간의 연속된 빈 줄을 하나로 통합
+      let cleanedLines = [];
+      let previousEmpty = false;
+      
+      for (let line of lines) {
+        if (line === '') {
+          if (!previousEmpty) {
+            cleanedLines.push(line);
+            previousEmpty = true;
+          }
+        } else {
+          cleanedLines.push(line);
+          previousEmpty = false;
+        }
+      }
+      
+      // 6. HTML로 변환 (줄바꿈을 <br>로 변환하고 HTML 이스케이프)
+      const escapedText = cleanedLines
+        .map(line => {
+          // HTML 이스케이프
+          const div = document.createElement('div');
+          div.textContent = line;
+          return div.innerHTML;
+        })
+        .join('<br>');
+      
+      return escapedText;
+    }
 
   });
 </script>

@@ -60,6 +60,21 @@ def can_access_user_data(request_user, target_user):
     # Salesman은 자신의 데이터만 접근 가능
     return request_user == target_user
 
+def can_modify_user_data(request_user, target_user):
+    """현재 사용자가 대상 사용자의 데이터를 수정/추가/삭제할 수 있는지 확인"""
+    user_profile = get_user_profile(request_user)
+    
+    # Admin은 모든 데이터 수정 가능
+    if user_profile.is_admin():
+        return True
+    
+    # Manager는 읽기만 가능하고 수정 불가
+    if user_profile.is_manager():
+        return False
+    
+    # Salesman은 자신의 데이터만 수정 가능
+    return request_user == target_user
+
 def get_accessible_users(request_user):
     """현재 사용자가 접근할 수 있는 사용자 목록을 반환"""
     user_profile = get_user_profile(request_user)
@@ -335,9 +350,9 @@ def followup_edit_view(request, pk):
     """팔로우업 수정"""
     followup = get_object_or_404(FollowUp, pk=pk)
     
-    # 권한 체크: 자신의 팔로우업이거나 관리자인 경우만 수정 가능
-    if not (request.user.is_staff or request.user.is_superuser or followup.user == request.user):
-        messages.error(request, '수정 권한이 없습니다.')
+    # 권한 체크: 수정 권한이 있는 경우만 수정 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, followup.user):
+        messages.error(request, '수정 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:followup_list')
     
     if request.method == 'POST':
@@ -364,9 +379,9 @@ def followup_delete_view(request, pk):
     """팔로우업 삭제"""
     followup = get_object_or_404(FollowUp, pk=pk)
     
-    # 권한 체크: 자신의 팔로우업이거나 관리자인 경우만 삭제 가능
-    if not (request.user.is_staff or request.user.is_superuser or followup.user == request.user):
-        messages.error(request, '삭제 권한이 없습니다.')
+    # 권한 체크: 삭제 권한이 있는 경우만 삭제 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, followup.user):
+        messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:followup_list')
     
     if request.method == 'POST':
@@ -779,9 +794,9 @@ def schedule_edit_view(request, pk):
     """일정 수정"""
     schedule = get_object_or_404(Schedule, pk=pk)
     
-    # 권한 체크
-    if not (request.user.is_staff or request.user.is_superuser or schedule.user == request.user):
-        messages.error(request, '수정 권한이 없습니다.')
+    # 권한 체크: 수정 권한이 있는 경우만 수정 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, schedule.user):
+        messages.error(request, '수정 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:schedule_list')
     
     if request.method == 'POST':
@@ -817,14 +832,14 @@ def schedule_delete_view(request, pk):
         
         schedule = get_object_or_404(Schedule, pk=pk)
         logger.info(f"일정 정보 - 고객: {schedule.followup.customer_name}, 날짜: {schedule.visit_date}")
-          # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
-        if not can_access_user_data(request.user, schedule.user):
+          # 권한 체크: 삭제 권한이 있는 경우만 허용 (Manager는 읽기 전용)
+        if not can_modify_user_data(request.user, schedule.user):
             logger.warning(f"권한 없음 - 요청자: {request.user.username}, 일정 소유자: {schedule.user.username}")
             # AJAX 요청 감지 - X-Requested-With 헤더 확인
             is_ajax = request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
             if is_ajax:
-                return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'}, status=403)
-            messages.error(request, '삭제 권한이 없습니다.')
+                return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
+            messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
             return redirect('reporting:schedule_list')
         
         if request.method == 'POST':
@@ -949,6 +964,7 @@ def schedule_api_view(request):
     for schedule in schedules:
         schedule_data.append({
             'id': schedule.id,
+            'followup_id': schedule.followup.id,  # 팔로우업 ID 추가
             'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
             'time': schedule.visit_time.strftime('%H:%M'),
             'customer': schedule.followup.customer_name or '고객명 미정',
@@ -1122,9 +1138,9 @@ def history_edit_view(request, pk):
     """히스토리 수정"""
     history = get_object_or_404(History, pk=pk)
     
-    # 권한 체크
-    if not (request.user.is_staff or request.user.is_superuser or history.user == request.user):
-        messages.error(request, '수정 권한이 없습니다.')
+    # 권한 체크: 수정 권한이 있는 경우만 수정 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, history.user):
+        messages.error(request, '수정 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
@@ -1150,9 +1166,9 @@ def history_delete_view(request, pk):
     """히스토리 삭제"""
     history = get_object_or_404(History, pk=pk)
     
-    # 권한 체크
-    if not (request.user.is_staff or request.user.is_superuser or history.user == request.user):
-        messages.error(request, '삭제 권한이 없습니다.')
+    # 권한 체크: 삭제 권한이 있는 경우만 삭제 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, history.user):
+        messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
@@ -1258,6 +1274,59 @@ def schedule_histories_api(request, schedule_id):
         return JsonResponse({
             'success': True,
             'histories': histories_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+def followup_histories_api(request, followup_id):
+    """특정 팔로우업의 모든 활동 기록을 JSON으로 반환"""
+    try:
+        followup = get_object_or_404(FollowUp, id=followup_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, followup.user):
+            return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        
+        # 해당 팔로우업의 모든 활동 기록 조회 (최신순)
+        histories = History.objects.filter(followup=followup).order_by('-created_at')
+        
+        histories_data = []
+        for history in histories:
+            # 활동 타입에 따른 추가 정보 포함
+            history_data = {
+                'id': history.id,
+                'action_type': history.action_type,
+                'action_type_display': history.get_action_type_display(),
+                'content': history.content or '',
+                'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
+                'user': history.user.username,
+            }
+            
+            # 납품 일정인 경우 추가 정보
+            if history.action_type == 'delivery_schedule':
+                history_data.update({
+                    'delivery_amount': history.delivery_amount,
+                    'delivery_items': history.delivery_items or '',
+                    'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
+                    'tax_invoice_issued': history.tax_invoice_issued,
+                })
+            
+            # 고객 미팅인 경우 추가 정보
+            elif history.action_type == 'customer_meeting':
+                history_data.update({
+                    'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
+                })
+            
+            histories_data.append(history_data)
+        
+        return JsonResponse({
+            'success': True,
+            'customer_name': followup.customer_name or '고객명 미정',
+            'company': followup.company or '업체명 미정',
+            'histories': histories_data,
+            'total_count': len(histories_data)
         })
         
     except Exception as e:
@@ -1846,19 +1915,19 @@ def toggle_tax_invoice(request, history_id):
     try:
         history = get_object_or_404(History, id=history_id)
         
-        # 권한 체크: 자신의 히스토리이거나 접근 권한이 있는 경우
+        # 권한 체크: 수정 권한이 있는 경우만 토글 가능 (Manager는 읽기 전용)
         try:
-            if not can_access_user_data(request.user, history.user):
+            if not can_modify_user_data(request.user, history.user):
                 return JsonResponse({
                     'success': False, 
-                    'error': '접근 권한이 없습니다.'
+                    'error': '수정 권한이 없습니다. Manager는 읽기 전용입니다.'
                 }, status=403)
         except Exception as e:
             # 권한 체크 실패 시 자신의 히스토리인지만 확인
             if request.user != history.user:
                 return JsonResponse({
                     'success': False, 
-                    'error': '접근 권한이 없습니다.'
+                    'error': '수정 권한이 없습니다.'
                 }, status=403)
         
         # 납품 일정 히스토리인지 확인
@@ -1994,9 +2063,9 @@ def schedule_move_api(request, pk):
     """일정을 다른 날짜로 이동하는 API"""
     schedule = get_object_or_404(Schedule, pk=pk)
     
-    # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
-    if not can_access_user_data(request.user, schedule.user):
-        return JsonResponse({'success': False, 'error': '이 일정을 이동할 권한이 없습니다.'}, status=403)
+    # 권한 체크: 수정 권한이 있는 경우만 이동 가능 (Manager는 읽기 전용)
+    if not can_modify_user_data(request.user, schedule.user):
+        return JsonResponse({'success': False, 'error': '이 일정을 이동할 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
     
     try:
         # POST 데이터에서 새로운 날짜 정보 가져오기
@@ -2038,9 +2107,9 @@ def schedule_status_update_api(request, schedule_id):
     try:
         schedule = get_object_or_404(Schedule, id=schedule_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, schedule.user):
-            return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        # 권한 체크: 수정 권한이 있는 경우만 상태 변경 가능 (Manager는 읽기 전용)
+        if not can_modify_user_data(request.user, schedule.user):
+            return JsonResponse({'error': '수정 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
         
         new_status = request.POST.get('status')
         if new_status not in ['scheduled', 'completed', 'cancelled']:
