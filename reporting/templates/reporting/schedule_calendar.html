@@ -26,14 +26,120 @@
 
   /* 일정 캘린더 모바일 최적화 */
   @media (max-width: 768px) {
-    /* 모바일에서 캘린더 완전히 숨기기 */
+    /* 모바일 캘린더 최적화 */
     #calendar {
-      display: none !important;
+      font-size: 11px !important;
+      width: 100% !important;
+      min-height: 400px !important;
     }
 
+    /* FullCalendar 모바일 최적화 */
+    .fc-toolbar {
+      flex-direction: column !important;
+      gap: 8px !important;
+      padding: 10px 5px !important;
+    }
+
+    .fc-toolbar-chunk {
+      display: flex !important;
+      justify-content: center !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+    }
+
+    .fc-button {
+      padding: 6px 10px !important;
+      font-size: 12px !important;
+      min-height: 36px !important;
+      border-radius: 4px !important;
+    }
+
+    .fc-button-group {
+      gap: 2px !important;
+    }
+
+    .fc-daygrid-day {
+      min-height: 40px !important;
+    }
+
+    .fc-daygrid-day-number {
+      font-size: 12px !important;
+      padding: 2px !important;
+    }
+
+    .fc-event {
+      font-size: 10px !important;
+      padding: 1px 3px !important;
+      margin: 1px 0 !important;
+      border-radius: 3px !important;
+      line-height: 1.2 !important;
+    }
+
+    .fc-event-title {
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    /* 월 뷰 셀 크기 조정 */
+    .fc-daygrid-day-frame {
+      min-height: 40px !important;
+    }
+
+    /* 주말 스타일 */
+    .fc-day-sat .fc-daygrid-day-number {
+      color: #007bff !important;
+    }
+
+    .fc-day-sun .fc-daygrid-day-number {
+      color: #dc3545 !important;
+    }
+
+  @media (max-width: 768px) {
     /* 헤더 모바일 최적화 */
     .page-header {
       flex-direction: column !important;
+      gap: 10px !important;
+    }
+
+    .page-header .d-flex {
+      flex-direction: column !important;
+      gap: 8px !important;
+    }
+
+    .btn-group {
+      width: 100% !important;
+    }
+
+    .btn-group .btn {
+      flex: 1 !important;
+      font-size: 12px !important;
+      padding: 8px 4px !important;
+    }
+    
+    .schedule-event.completed {
+      background-color: #e8f5e8;
+      color: #2e7d32;
+    }
+    
+    .schedule-event.cancelled {
+      background-color: #fce4ec;
+      color: #c2185b;
+    }
+    
+    .more-schedules {
+      font-size: 9px;
+      color: #666;
+      text-align: center;
+      padding: 1px;
+      background-color: #f5f5f5;
+      border-radius: 2px;
+      margin-top: 1px;
+    }
+    
+    .calendar-day:hover {
+      background-color: #f0f8ff;
+    }
       align-items: center !important;
       text-align: center !important;
       gap: 15px !important;
@@ -59,164 +165,285 @@
       padding: 10px 15px !important;
       min-height: 40px !important;
     }
-      /* 모바일 안내 메시지 */
-    .mobile-calendar-notice {
-      display: block !important;
+      /* 모바일 헤더 개선 */
+    
+    /* 페이지 헤더 버튼 추가 최적화 */
+    .page-header .btn-group .btn {
+      font-size: 11px !important;
+      padding: 8px 12px !important;
+    }
+
+    .page-header .dropdown-menu {
+      font-size: 12px !important;
+    }
+
+    /* 캘린더 컨테이너 모바일 최적화 */
+    .container-fluid {
+      padding: 10px !important;
+    }
+
+    /* 캘린더 테이블 모바일 최적화 */
+    .calendar-table {
+      font-size: 11px !important;
+      table-layout: fixed !important;
+      width: 100% !important;
+    }
+
+    .calendar-table th,
+    .calendar-table td {
+      padding: 4px 2px !important;
+      border: 1px solid #dee2e6 !important;
+      vertical-align: top !important;
+      width: 14.28% !important;
+      min-height: 80px !important;
+      height: 80px !important;
+      max-height: 80px !important;
+      overflow: hidden !important;
+    }
+
+    .calendar-header {
+      font-size: 12px !important;
+      font-weight: 600 !important;
       text-align: center !important;
-      padding: 40px 20px !important;
-      background: #f8f9fa !important;
-      border-radius: 12px !important;
-      margin: 20px 0 !important;
-      border: 2px dashed #dee2e6 !important;
+      padding: 8px 4px !important;
+      background-color: #f8f9fa !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      max-height: 40px !important;
     }
 
-    .mobile-calendar-notice h4 {
-      color: #495057 !important;
-      margin-bottom: 15px !important;
-      font-size: 20px !important;
-      font-weight: 600 !important;
+    .calendar-day {
+      position: relative !important;
+      cursor: pointer !important;
+      min-height: 80px !important;
+      height: 80px !important;
+      max-height: 80px !important;
     }
 
-    .mobile-calendar-notice p {
-      color: #6c757d !important;
-      margin-bottom: 25px !important;
-      font-size: 14px !important;
-      line-height: 1.6 !important;
-    }
-      .mobile-calendar-notice .btn {
-      padding: 15px 30px !important;
-      font-size: 16px !important;
-      min-height: 50px !important;
-      border-radius: 8px !important;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-    }
-  }
-
-  /* 데스크탑에서 모바일 안내 메시지 숨기기 */
-  @media (min-width: 769px) {
-    .mobile-calendar-notice {
-      display: none !important;
-    }
-  }
-
-    .page-header .text-muted {
-      display: none; /* 모바일에서 안내 텍스트 숨기기 */
+    .calendar-day:hover {
+      background-color: #f0f0f0 !important;
     }
 
-    .page-header > div:last-child {
-      width: 100%;
-      display: flex;
-      gap: 8px;
-    }
-
-    .page-header .btn {
-      flex: 1;
-      font-size: 12px;
-      padding: 8px 10px;
-      min-height: 36px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .page-header .btn-group {
-      flex: 2;
-    }
-    /* FullCalendar 모바일 최적화 - 강제 적용 */
-    #calendar {
+    /* 날짜 숫자 스타일 */
+    .date-number {
       font-size: 11px !important;
-    }
-
-    .fc-toolbar {
-      flex-direction: column !important;
-      gap: 8px !important;
-      padding: 10px 5px !important;
-    }
-
-    .fc-toolbar-chunk {
-      display: flex !important;
-      justify-content: center !important;
-      flex-wrap: wrap !important;
-      gap: 4px !important;
-    }
-
-    .fc-button {
-      padding: 4px 8px !important;
-      font-size: 11px !important;
-      min-height: 32px !important;
-      border-radius: 4px !important;
-    }
-
-    .fc-button-group {
-      display: flex !important;
-      gap: 2px !important;
-    }
-
-    .fc-toolbar-title {
-      font-size: 16px !important;
-      font-weight: 600 !important;
-      margin: 5px 0 !important;
-    }
-
-    /* 달력 셀 모바일 최적화 - 강제 적용 */
-    .fc-daygrid-day {
-      min-height: 35px !important;
-      border: 1px solid #ddd !important;
-    }
-
-    .fc-daygrid-day-number {
-      font-size: 11px !important;
-      padding: 2px 4px !important;
       font-weight: 500 !important;
+      margin-bottom: 2px !important;
+      text-align: center !important;
+      display: block !important;
     }
 
-    .fc-daygrid-day-top {
-      flex-direction: row !important;
-      justify-content: center !important;
+    /* 오늘 날짜 강조 */
+    .calendar-day.today {
+      background-color: #e3f2fd !important;
     }
 
-    /* 이벤트 모바일 최적화 - 강제 적용 */
-    .fc-event {
-      font-size: 9px !important;
-      padding: 1px 3px !important;
+    .calendar-day.today .date-number {
+      background-color: #2196f3 !important;
+      color: white !important;
+      border-radius: 50% !important;
+      width: 20px !important;
+      height: 20px !important;
+      line-height: 18px !important;
+      margin: 0 auto 2px !important;
+    }
+
+    /* 다른 월 날짜 */
+    .calendar-day.other-month {
+      color: #ccc !important;
+      background-color: #fafafa !important;
+    }
+
+    /* 주말 스타일 */
+    .calendar-table th:first-child,
+    .calendar-table td:first-child {
+      color: #dc3545 !important;
+    }
+
+    .calendar-table th:last-child,
+    .calendar-table td:last-child {
+      color: #007bff !important;
+    }
+
+    /* 일정 이벤트 모바일 최적화 */
+    .schedule-event {
+      font-size: 8px !important;
+      padding: 1px 2px !important;
       margin: 1px 0 !important;
-      border-radius: 3px !important;
-      line-height: 1.2 !important;
-    }
-      font-size: 9px;
-      padding: 1px 3px;
-      margin: 1px 0;
-      border-radius: 3px;
-      line-height: 1.2;
-    }
-
-    .fc-event-title {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      border-radius: 2px !important;
+      line-height: 1.1 !important;
+      display: block !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      cursor: pointer !important;
     }
 
-    /* 월 보기 강제 */
-    .fc-dayGridMonth-button {
-      display: none;
+    /* 추가 일정 표시 */
+    .more-schedules {
+      font-size: 7px !important;
+      color: #666 !important;
+      text-align: center !important;
+      margin-top: 2px !important;
+      cursor: pointer !important;
+      background-color: #f8f9fa !important;
+      border-radius: 2px !important;
+      padding: 1px !important;
     }
 
-    .fc-listWeek-button,
-    .fc-timeGridWeek-button,
-    .fc-timeGridDay-button {
-      display: none;
+    .schedule-event.status-scheduled {
+      background-color: #007bff !important;
+      color: white !important;
+    }
+
+    .schedule-event.status-completed {
+      background-color: #28a745 !important;
+      color: white !important;
+    }
+
+    .schedule-event.status-cancelled {
+      background-color: #dc3545 !important;
+      color: white !important;
+    }
+
+    /* FullCalendar 툴바 개선 -> 캘린더 헤더 최적화 */
+    .calendar-header-controls {
+      text-align: center !important;
+      padding: 15px 10px !important;
+      background-color: #f8f9fa !important;
+      border-radius: 8px !important;
+      margin-bottom: 15px !important;
+    }
+
+    .calendar-header-controls h4 {
+      font-size: 18px !important;
+      margin: 0 !important;
+      font-weight: 600 !important;
+    }
+
+    .calendar-nav-buttons {
+      display: flex !important;
+      justify-content: center !important;
+      gap: 10px !important;
+      margin-top: 10px !important;
+    }
+
+    .calendar-nav-buttons .btn {
+      font-size: 12px !important;
+      padding: 6px 12px !important;
+    }
+
+    /* 캘린더 네비게이션 모바일 최적화 */
+    .card-header .d-flex {
+      flex-direction: column !important;
+      gap: 10px !important;
+      align-items: center !important;
+    }
+
+    .card-header .d-flex > div {
+      display: flex !important;
+      gap: 5px !important;
+      align-items: center !important;
+    }
+
+    #prevMonth, #nextMonth {
+      padding: 8px 12px !important;
+      font-size: 14px !important;
+    }
+
+    #currentMonth {
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      order: -1 !important;
+      margin-bottom: 10px !important;
+    }
+
+    #todayBtn {
+      padding: 8px 16px !important;
+      font-size: 12px !important;
+    }
+
+    /* 달력 셀 최적화 */
+    .calendar-day-events {
+      max-height: 35px !important;
+      overflow: hidden !important;
+    }
+
+    /* 이벤트 텍스트 최적화 */
+    .schedule-event-title {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+
+    /* 모바일에서 선택된 날짜 스타일 */
+    .calendar-day.selected {
+      background-color: #fff3cd !important;
+      border: 2px solid #ffc107 !important;
     }
 
     /* 모바일에서 주말 강조 */
-    .fc-day-sat,
-    .fc-day-sun {
-      background-color: #f8f9fa;
+    .calendar-day.weekend {
+      background-color: #f8f9fa !important;
     }
 
-    .fc-day-sat .fc-daygrid-day-number,
-    .fc-day-sun .fc-daygrid-day-number {
-      color: #dc3545;
-      font-weight: 600;
+    .calendar-day.weekend .date-number {
+      color: #dc3545 !important;
+      font-weight: 600 !important;
+    }
+
+    /* 모달 모바일 최적화 */
+    .modal-dialog {
+      margin: 10px !important;
+      max-width: calc(100% - 20px) !important;
+    }
+
+    .modal-content {
+      border-radius: 8px !important;
+    }
+
+    .modal-header {
+      padding: 15px !important;
+    }
+
+    .modal-body {
+      padding: 15px !important;
+      max-height: 60vh !important;
+      overflow-y: auto !important;
+    }
+
+    .modal-footer {
+      padding: 10px 15px !important;
+      gap: 8px !important;
+    }
+
+    .modal-footer .btn {
+      flex: 1 !important;
+      font-size: 12px !important;
+      padding: 10px !important;
+    }
+
+    /* 선택된 날짜 일정 리스트 모바일 최적화 */
+    .selected-date-schedules {
+      max-height: 300px !important;
+      overflow-y: auto !important;
+    }
+
+    .schedule-item {
+      padding: 10px !important;
+      margin-bottom: 8px !important;
+      border-radius: 6px !important;
+      font-size: 12px !important;
+    }
+
+    .schedule-item h6 {
+      font-size: 13px !important;
+      margin-bottom: 5px !important;
+    }
+
+    .schedule-item .btn {
+      font-size: 10px !important;
+      padding: 4px 8px !important;
     }
   }
 </style>
@@ -345,21 +572,6 @@
       <!-- 캘린더 -->
       <div class="row">
         <div class="col-12">
-          <!-- 모바일 안내 메시지 (모바일에서만 표시) -->
-          <div class="mobile-calendar-notice">
-            <h4><i class="fas fa-mobile-alt me-2"></i>모바일 버전 안내</h4>
-            <p>
-              캘린더는 모바일에서 최적화되지 않아 사용이 어렵습니다.<br />
-              대신 일정 목록에서 편리하게 일정을 확인하고 관리하세요.
-            </p>
-            <a
-              href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
-              class="btn btn-primary"
-            >
-              <i class="fas fa-list me-2"></i>일정 목록으로 이동
-            </a>
-          </div>
-
           <div class="card">
             <div class="card-body p-0">
               <div id="calendar" class="table-responsive">
@@ -429,6 +641,33 @@
   </div>
 </div>
 
+<!-- 날짜별 일정 목록 모달 (모바일 전용) -->
+<div class="modal fade" id="dateSchedulesModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dateSchedulesModalLabel">일정 목록</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <div id="dateSchedulesList">
+          <!-- 날짜별 일정 목록이 여기에 로드됩니다 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-primary" id="addScheduleFromModal">
+          <i class="fas fa-plus me-1"></i>일정 추가
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   /* 캘린더 컨테이너 스타일 */
   #calendar .table-responsive {
@@ -470,6 +709,23 @@
     min-width: 100px;
     font-weight: 600;
     text-align: center;
+    height: 40px;
+    padding: 8px;
+  }
+
+  /* 데스크톱 캘린더 셀 기본 크기 */
+  @media (min-width: 769px) {
+    .calendar-table td {
+      height: 120px;
+      min-height: 120px;
+      padding: 8px;
+    }
+    
+    .day-number {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
   }
 
   .calendar-day {
@@ -522,29 +778,32 @@
     background-color: #fff1a8;
   }
 
-  /* 더블클릭 힌트 */
-  .calendar-day::after {
-    content: "더블클릭으로 일정 추가";
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 9px;
-    color: #6c757d;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-    white-space: nowrap;
-  }
+  /* 더블클릭 힌트 (데스크톱 전용) */
+  @media (min-width: 769px) {
+    .calendar-day::after {
+      content: "더블클릭으로 일정 추가";
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: #6c757d;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
 
-  .calendar-day:hover::after {
-    opacity: 0.7;
+    .calendar-day:hover::after {
+      opacity: 0.7;
+    }
   }
 
   .day-number {
     font-weight: 600;
     margin-bottom: 4px;
   }
+  
   .schedule-item {
     background-color: #0d6efd;
     color: white;
@@ -673,15 +932,19 @@
       font-size: 12px;
     }
 
-    .calendar-header,
-    .calendar-day {
+    .calendar-header {
       min-height: 40px;
       padding: 5px;
     }
 
-    .calendar-day {
-      min-height: 80px;
+    /* 모바일에서만 캘린더 셀 크기 조정 */
+    .calendar-table .calendar-day {
+      min-height: 80px !important;
+      height: 80px !important;
+      padding: 2px !important;
+      font-size: 12px !important;
       cursor: pointer;
+      min-width: 50px !important;
     }
 
     .calendar-day:hover {
@@ -1156,6 +1419,18 @@
       });
   }
 
+  // 날짜별 일정 필터링 함수 - 전역 스코프로 이동
+  function getSchedulesForDate(year, month, date) {
+    return schedules.filter((schedule) => {
+      const scheduleDate = new Date(schedule.visit_date);
+      return (
+        scheduleDate.getFullYear() === year &&
+        scheduleDate.getMonth() === month &&
+        scheduleDate.getDate() === date
+      );
+    });
+  }
+
   function deleteSchedule(scheduleId, customerName, visitDate) {
     // 삭제 확인 (히스토리 삭제 안내 추가)
     const confirmMessage = `정말로 이 일정을 삭제하시겠습니까?\n\n고객: ${customerName}\n날짜: ${visitDate}\n\n⚠️ 주의: 관련된 모든 활동 기록(히스토리)도 함께 삭제됩니다.\n삭제된 데이터는 복구할 수 없습니다.`;
@@ -1422,111 +1697,110 @@
             cellMonth,
             cellDate
           );
-          daySchedules.forEach((schedule) => {
-            const scheduleElement = document.createElement("div");
-            scheduleElement.className = `schedule-item ${schedule.status}`;
-            // 업체명 + 고객명 형태로 표시
-            const displayName = schedule.company ?
-              `${schedule.company} ${schedule.customer}` :
-              schedule.customer;
-            const fullScheduleText = `${schedule.time} ${displayName}`;
-            scheduleElement.textContent = fullScheduleText;
-            
-            // 툴팁 추가 - 전체 일정 정보를 표시
-            scheduleElement.title = fullScheduleText;
-            
-            scheduleElement.draggable = true;
-            scheduleElement.dataset.scheduleId = schedule.id;
-            scheduleElement.dataset.originalDate = `${cellYear}-${String(
-              cellMonth + 1
-            ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
+          
+          // 모바일에서는 최대 1개의 일정만 표시, 나머지는 "+N개" 형태로 표시
+          const isMobile = window.innerWidth <= 768;
+          
+          if (isMobile) {
+            // 모바일: 최대 1개만 표시
+            if (daySchedules.length > 0) {
+              const firstSchedule = daySchedules[0];
+              const scheduleElement = document.createElement("div");
+              scheduleElement.className = `schedule-event ${firstSchedule.status}`;
+              
+              const displayName = firstSchedule.company ?
+                `${firstSchedule.company} ${firstSchedule.customer}` :
+                firstSchedule.customer;
+              scheduleElement.textContent = `${firstSchedule.time} ${displayName}`;
+              scheduleElement.title = `${firstSchedule.time} ${displayName}`;
+              cell.appendChild(scheduleElement);
+              
+              // 추가 일정이 있는 경우 "+N개" 표시
+              if (daySchedules.length > 1) {
+                const moreElement = document.createElement("div");
+                moreElement.className = "more-schedules";
+                moreElement.textContent = `+${daySchedules.length - 1}개`;
+                cell.appendChild(moreElement);
+              }
+            }
+          } else {
+            // 데스크톱: 모든 일정 표시 (기존 로직)
+            daySchedules.forEach((schedule) => {
+              const scheduleElement = document.createElement("div");
+              scheduleElement.className = `schedule-item ${schedule.status}`;
+              const displayName = schedule.company ?
+                `${schedule.company} ${schedule.customer}` :
+                schedule.customer;
+              const fullScheduleText = `${schedule.time} ${displayName}`;
+              scheduleElement.textContent = fullScheduleText;
+              scheduleElement.title = fullScheduleText;
+              scheduleElement.draggable = true;
+              scheduleElement.dataset.scheduleId = schedule.id;
+              scheduleElement.dataset.originalDate = `${cellYear}-${String(
+                cellMonth + 1
+              ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
 
-            // 클릭 이벤트 (상세 모달)
-            scheduleElement.onclick = (e) => {
-              e.stopPropagation();
-              showScheduleModal(schedule);
-            };
+              // 클릭 이벤트 (상세 모달)
+              scheduleElement.onclick = (e) => {
+                e.stopPropagation();
+                showScheduleModal(schedule);
+              };
 
-            // 드래그 시작 이벤트
-            scheduleElement.ondragstart = (e) => {
-              e.stopPropagation();
-              scheduleElement.classList.add("dragging");
-              e.dataTransfer.setData(
-                "text/plain",
-                JSON.stringify({
-                  scheduleId: schedule.id,
-                  originalDate: scheduleElement.dataset.originalDate,
-                  scheduleData: schedule,
-                })
-              );
-              e.dataTransfer.effectAllowed = "move";
-            };
-
-            // 드래그 종료 이벤트
-            scheduleElement.ondragend = (e) => {
-              scheduleElement.classList.remove("dragging");
-              // 모든 드래그 오버 스타일 제거
-              document.querySelectorAll(".calendar-day").forEach((day) => {
-                day.classList.remove("drag-over", "drag-target");
-              });
-            };
-
-            cell.appendChild(scheduleElement);
-          }); // 날짜 클릭 이벤트
-          let clickTimeout;
-          cell.onclick = (e) => {
-            // 모바일 기기 감지
-            const isMobile =
-              window.innerWidth <= 768 || "ontouchstart" in window;
-
-            if (isMobile) {
-              // 모바일에서는 단일 클릭으로 일정 추가 옵션 제공
-              clearTimeout(clickTimeout);
-              clickTimeout = setTimeout(() => {
-                const dateString = `${cellYear}-${String(
-                  cellMonth + 1
-                ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
-
-                // 간단한 선택 메뉴
-                const choice = confirm(
-                  `${cellYear}년 ${
-                    cellMonth + 1
-                  }월 ${cellDate}일\n\n확인: 일정 추가\n취소: 날짜 선택만`
+              // 드래그 시작 이벤트
+              scheduleElement.ondragstart = (e) => {
+                e.stopPropagation();
+                scheduleElement.classList.add("dragging");
+                e.dataTransfer.setData(
+                  "text/plain",
+                  JSON.stringify({
+                    scheduleId: schedule.id,
+                    originalDate: scheduleElement.dataset.originalDate,
+                    scheduleData: schedule,
+                  })
                 );
+                e.dataTransfer.effectAllowed = "move";
+              };
 
-                if (choice) {
-                  if (typeof GlobalLoader !== "undefined") {
-                    GlobalLoader.show();
-                  }
-                  window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
-                } else {
-                  selectDate(cellYear, cellMonth, cellDate);
-                }
-              }, 200);
-            } else {
-              // 데스크톱에서는 기존대로 날짜 선택
-              selectDate(cellYear, cellMonth, cellDate);
+              // 드래그 종료 이벤트
+              scheduleElement.ondragend = (e) => {
+                scheduleElement.classList.remove("dragging");
+                document.querySelectorAll(".calendar-day").forEach((day) => {
+                  day.classList.remove("drag-over", "drag-target");
+                });
+              };
+
+              cell.appendChild(scheduleElement);
+            });
+          } // 날짜 클릭 이벤트
+          cell.onclick = (e) => {
+            // 일정 클릭이 아닌 경우에만 처리
+            if (e.target === cell || e.target.classList.contains('date-number')) {
+              e.stopPropagation();
+              const clickedDate = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
+              
+              // 모바일에서는 날짜 일정 모달 표시
+              if (window.innerWidth <= 768) {
+                showDateSchedulesModal(clickedDate);
+              } else {
+                // 데스크톱에서는 기존 방식 (직접 날짜 선택)
+                selectDate(cellYear, cellMonth, cellDate);
+              }
             }
           };
 
           // 더블클릭 이벤트 (데스크톱 전용)
           cell.ondblclick = (e) => {
             e.preventDefault();
-            clearTimeout(clickTimeout); // 단일 클릭 취소
+            if (window.innerWidth > 768) { // 데스크톱에서만
+              const dateString = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
 
-            const dateString = `${cellYear}-${String(cellMonth + 1).padStart(
-              2,
-              "0"
-            )}-${String(cellDate).padStart(2, "0")}`;
-
-            const confirmMessage = `📅 ${cellYear}년 ${
-              cellMonth + 1
-            }월 ${cellDate}일에 새 일정을 추가하시겠습니까?`;
-            if (confirm(confirmMessage)) {
-              if (typeof GlobalLoader !== "undefined") {
-                GlobalLoader.show();
+              const confirmMessage = `📅 ${cellYear}년 ${cellMonth + 1}월 ${cellDate}일에 새 일정을 추가하시겠습니까?`;
+              if (confirm(confirmMessage)) {
+                if (typeof GlobalLoader !== "undefined") {
+                  GlobalLoader.show();
+                }
+                window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
               }
-              window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
             }
           }; // 호버 효과 개선
           cell.addEventListener("mouseenter", () => {
@@ -1611,15 +1885,71 @@
       renderCalendar();
     });
 
-    function getSchedulesForDate(year, month, date) {
-      return schedules.filter((schedule) => {
-        const scheduleDate = new Date(schedule.visit_date);
-        return (
-          scheduleDate.getFullYear() === year &&
-          scheduleDate.getMonth() === month &&
-          scheduleDate.getDate() === date
-        );
-      });
+    // 모바일 날짜 일정 모달 표시 함수
+    function showDateSchedulesModal(dateString) {
+      const [year, month, day] = dateString.split('-').map(Number);
+      const daySchedules = getSchedulesForDate(year, month - 1, day);
+      
+      // 모달 제목 설정
+      document.getElementById('dateSchedulesModalLabel').textContent = 
+        `${year}년 ${month}월 ${day}일 일정`;
+      
+      // 일정 목록 컨테이너
+      const schedulesList = document.getElementById('dateSchedulesList');
+      schedulesList.innerHTML = '';
+      
+      if (daySchedules.length === 0) {
+        schedulesList.innerHTML = '<p class="text-muted text-center py-3">등록된 일정이 없습니다.</p>';
+      } else {
+        daySchedules.forEach(schedule => {
+          const scheduleCard = document.createElement('div');
+          scheduleCard.className = 'card mb-2';
+          
+          const displayName = schedule.company ? 
+            `${schedule.company} ${schedule.customer}` : 
+            schedule.customer;
+          
+          scheduleCard.innerHTML = `
+            <div class="card-body py-2">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>${schedule.time}</strong> 
+                  <span class="text-primary">${displayName}</span>
+                </div>
+                <span class="badge ${schedule.status === 'completed' ? 'bg-success' : 
+                  schedule.status === 'pending' ? 'bg-warning' : 'bg-secondary'}">${
+                  schedule.status === 'completed' ? '완료' : 
+                  schedule.status === 'pending' ? '예정' : '기타'
+                }</span>
+              </div>
+              ${schedule.notes ? `<small class="text-muted">${schedule.notes}</small>` : ''}
+            </div>
+          `;
+          
+          // 클릭시 상세 모달 표시
+          scheduleCard.style.cursor = 'pointer';
+          scheduleCard.onclick = () => {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dateSchedulesModal'));
+            modal.hide();
+            setTimeout(() => showScheduleModal(schedule), 300);
+          };
+          
+          schedulesList.appendChild(scheduleCard);
+        });
+      }
+      
+      // 일정 추가 버튼 URL 설정
+      const addScheduleBtn = document.getElementById('addScheduleFromModal');
+      addScheduleBtn.onclick = () => {
+        if (typeof GlobalLoader !== "undefined") {
+          GlobalLoader.show();
+        }
+        window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
+      };
+      
+      // 모달 표시
+      const modal = new bootstrap.Modal(document.getElementById('dateSchedulesModal'));
+      modal.show();
     }
 
     function selectDate(year, month, date) {
@@ -1628,8 +1958,13 @@
         cell.classList.remove("selected");
       });
 
-      // 새로운 선택
-      event.currentTarget.classList.add("selected");
+      // 해당 날짜 셀 찾아서 선택 표시
+      const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+      const targetCell = document.querySelector(`[data-date="${dateString}"]`);
+      if (targetCell) {
+        targetCell.classList.add('selected');
+      }
+      
       selectedDate = new Date(year, month, date);
 
       // 선택된 날짜 표시 업데이트
