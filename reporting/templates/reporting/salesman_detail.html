@@ -1,4 +1,6 @@
 {% extends "reporting/base.html" %}
+{# Updated: 2025-07-15 - Fixed elif template syntax issue #}
+{% load currency_filters %}
 {% block title %}{{ selected_user.username }} 상세 정보 - 영업 보고 시스템{% endblock %}
 
 {% block content %}
@@ -189,12 +191,12 @@
                           </div>
                         </td>
                         <td>
-                          <span class="badge bg-{% if followup.priority == 'high' %}danger{% else %}{% if followup.priority == 'medium' %}warning{% else %}secondary{% endif %}{% endif %}">
+                          <span class="badge bg-{{ followup.priority|priority_badge_class }}">
                             {{ followup.get_priority_display }}
                           </span>
                         </td>
                         <td>
-                          <span class="badge bg-{% if followup.status == 'active' %}success{% else %}{% if followup.status == 'completed' %}primary{% else %}secondary{% endif %}{% endif %}">
+                          <span class="badge bg-{{ followup.status|status_badge_class }}">
                             {{ followup.get_status_display }}
                           </span>
                         </td>
