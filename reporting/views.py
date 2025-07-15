@@ -1223,19 +1223,37 @@ def schedule_histories_api(request, schedule_id):
         if not can_access_user_data(request.user, schedule.user):
             return JsonResponse({'error': '권한이 없습니다.'}, status=403)
         
-        # 관련 활동 기록 조회 (해당 고객의 모든 일정 관련 활동 기록을 일정 날짜 기준 내림차순으로)
-        histories = History.objects.filter(followup=schedule.followup).order_by('-schedule__visit_date', '-created_at')[:10]
+        # 해당 일정에 직접 연결된 활동 기록만 조회 (최신순)
+        histories = History.objects.filter(schedule=schedule).order_by('-created_at')
         
         histories_data = []
         for history in histories:
-            histories_data.append({
+            # 활동 타입에 따른 추가 정보 포함
+            history_data = {
                 'id': history.id,
                 'action_type': history.action_type,
                 'action_type_display': history.get_action_type_display(),
                 'content': history.content or '',
                 'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
                 'user': history.user.username,
-            })
+            }
+            
+            # 납품 일정인 경우 추가 정보
+            if history.action_type == 'delivery_schedule':
+                history_data.update({
+                    'delivery_amount': history.delivery_amount,
+                    'delivery_items': history.delivery_items or '',
+                    'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
+                    'tax_invoice_issued': history.tax_invoice_issued,
+                })
+            
+            # 고객 미팅인 경우 추가 정보
+            elif history.action_type == 'customer_meeting':
+                history_data.update({
+                    'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
+                })
+            
+            histories_data.append(history_data)
         
         return JsonResponse({
             'success': True,

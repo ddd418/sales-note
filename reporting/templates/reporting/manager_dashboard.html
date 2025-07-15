@@ -431,7 +431,7 @@
                   <div class="flex-grow-1">
                     <h6 class="text-white-50 mb-1">총 납품금액</h6>
                     <h3 class="mb-0">
-                      {{ total_delivery_amount|floatformat:0 }}원
+                      {% load currency_filters %}{{ total_delivery_amount|floatformat:0|currency_format }}원
                     </h3>
                   </div>
                   <div class="avatar-sm">
@@ -553,7 +553,7 @@
                   <div class="flex-grow-1">
                     <h6 class="text-white-50 mb-1">총 납품금액</h6>
                     <h3 class="mb-0">
-                      {{ total_delivery_amount|floatformat:0 }}원
+                      {% load currency_filters %}{{ total_delivery_amount|floatformat:0|currency_format }}원
                     </h3>
                   </div>
                   <div class="avatar-sm">
@@ -686,7 +686,7 @@
                         >
                       </td>
                       <td>
-                        <strong>{{ data.amount|floatformat:0 }}원</strong>
+                        <strong>{% load currency_filters %}{{ data.amount|floatformat:0|currency_format }}원</strong>
                       </td>
                       <td>
                         {% if data.meetings == 0 and data.deliveries == 0 and data.services == 0 %}

@@ -1,6 +1,29 @@
 {% extends "reporting/base.html" %} {% block title %}일정 캘린더 - 영업 보고
 시스템{% endblock %} {% block content %}
 <style>
+  /* 보라색 테마 */
+  .bg-purple {
+    background-color: #6f42c1 !important;
+  }
+  
+  .text-purple {
+    color: #6f42c1 !important;
+  }
+
+  /* 활동 기록 표시 스타일 개선 */
+  .form-control-plaintext.content-display {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    line-height: 1.5 !important;
+    min-height: auto !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
   /* 일정 캘린더 모바일 최적화 */
   @media (max-width: 768px) {
     /* 모바일에서 캘린더 완전히 숨기기 */
@@ -910,32 +933,190 @@
 
   // 일정 관련 활동 기록 로딩 - 전역 스코프로 이동
   function loadScheduleHistories(scheduleId) {
+    // HTML 이스케이프 함수
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 텍스트 포맷팅 함수 (줄바꿈 처리 및 공백 정리)
+    function formatText(text) {
+      if (!text) return '';
+      
+      console.log('Original text:', JSON.stringify(text)); // 디버깅용
+      
+      // 1. 모든 종류의 공백과 줄바꿈을 정규화
+      let formattedText = text
+        .replace(/\r\n/g, '\n')  // Windows 줄바꿈을 Unix 형식으로 통일
+        .replace(/\r/g, '\n')    // Mac 줄바꿈을 Unix 형식으로 통일
+        .trim();                 // 전체 텍스트의 앞뒤 공백 제거
+      
+      // 2. 각 줄을 분할하고 처리
+      let lines = formattedText.split('\n');
+      
+      // 3. 각 줄의 불필요한 공백 제거 (단, 의도적인 들여쓰기는 유지)
+      lines = lines.map(line => {
+        // 완전히 빈 줄은 그대로 유지
+        if (line.trim() === '') return '';
+        // 내용이 있는 줄은 오른쪽 공백만 제거 (왼쪽 들여쓰기는 유지)
+        return line.trimEnd();
+      });
+      
+      // 4. 처음과 끝의 빈 줄 완전 제거
+      while (lines.length > 0 && lines[0] === '') {
+        lines.shift();
+      }
+      while (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+      
+      // 5. 중간의 연속된 빈 줄을 하나로 통합
+      let cleanedLines = [];
+      let previousEmpty = false;
+      
+      for (let line of lines) {
+        if (line === '') {
+          if (!previousEmpty) {
+            cleanedLines.push('');
+            previousEmpty = true;
+          }
+        } else {
+          cleanedLines.push(line);
+          previousEmpty = false;
+        }
+      }
+      
+      // 6. 최종 텍스트 생성
+      formattedText = cleanedLines.join('\n');
+      
+      console.log('Processed text:', JSON.stringify(formattedText)); // 디버깅용
+      
+      // 7. HTML 이스케이프 적용
+      formattedText = escapeHtml(formattedText);
+      
+      // 8. 줄바꿈을 <br> 태그로 변환
+      return formattedText.replace(/\n/g, '<br>');
+    }
+
     fetch(`{% url 'reporting:schedule_histories_api' 999 %}`.replace('999', scheduleId))
       .then(response => response.json())
       .then(data => {
         const container = document.getElementById(`scheduleHistories-${scheduleId}`);
         if (data.success && data.histories && data.histories.length > 0) {
-          container.innerHTML = data.histories.map(history => `
-            <div class="border rounded p-2 mb-2">
-              <div class="d-flex justify-content-between align-items-start">
-                <div>
-                  <span class="badge bg-${history.action_type === 'customer_meeting' ? 'primary' : history.action_type === 'delivery_schedule' ? 'success' : 'secondary'} me-2">
-                    ${history.action_type_display}
-                  </span>
-                  <small class="text-muted">${history.created_at}</small>
+          container.innerHTML = data.histories.map(history => {
+            // 활동 타입에 따른 색상 설정
+            let badgeColor = 'secondary';
+            let iconClass = 'fas fa-circle';
+            
+            if (history.action_type === 'customer_meeting') {
+              badgeColor = 'primary';
+              iconClass = 'fas fa-handshake';
+            } else if (history.action_type === 'delivery_schedule') {
+              badgeColor = 'success';
+              iconClass = 'fas fa-truck';
+            } else if (history.action_type === 'service') {
+              badgeColor = 'purple';
+              iconClass = 'fas fa-concierge-bell';
+            }
+            
+            // 기본 정보 HTML
+            let historyHtml = `
+              <div class="card border mb-3">
+                <div class="card-header bg-light">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <span class="badge bg-${badgeColor} me-2">
+                        <i class="${iconClass} me-1"></i>
+                        ${escapeHtml(history.action_type_display)}
+                      </span>
+                      <small class="text-muted">작성: ${escapeHtml(history.created_at)}</small>
+                    </div>
+                    <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
+                  </div>
                 </div>
-              </div>
-              ${history.content ? `<p class="mb-0 mt-1 small">${history.content}</p>` : ''}
-            </div>
-          `).join('');
+                <div class="card-body">`;
+            
+            // 활동 내용
+            if (history.content) {
+              historyHtml += `
+                <div class="mb-3">
+                  <label class="form-label fw-bold">활동 내용:</label>
+                  <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.content)}</div>
+                </div>`;
+            }
+            
+            // 납품 일정 관련 추가 정보
+            if (history.action_type === 'delivery_schedule') {
+              if (history.delivery_date) {
+                historyHtml += `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 날짜:</label>
+                    <div class="form-control-plaintext">${history.delivery_date}</div>
+                  </div>`;
+              }
+              
+              if (history.delivery_amount !== null && history.delivery_amount !== undefined) {
+                historyHtml += `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 금액:</label>
+                    <div class="form-control-plaintext text-success fw-bold">
+                      ${new Intl.NumberFormat('ko-KR').format(history.delivery_amount)}원
+                    </div>
+                  </div>`;
+              }
+              
+              if (history.delivery_items) {
+                historyHtml += `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">납품 품목:</label>
+                    <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.delivery_items)}</div>
+                  </div>`;
+              }
+              
+              if (history.tax_invoice_issued !== undefined) {
+                historyHtml += `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">세금계산서:</label>
+                    <span class="badge ${history.tax_invoice_issued ? 'bg-success' : 'bg-warning'}">
+                      ${history.tax_invoice_issued ? '발행완료' : '미발행'}
+                    </span>
+                  </div>`;
+              }
+            }
+            
+            // 고객 미팅 관련 추가 정보
+            if (history.action_type === 'customer_meeting' && history.meeting_date) {
+              historyHtml += `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">미팅 날짜:</label>
+                  <div class="form-control-plaintext">${history.meeting_date}</div>
+                </div>`;
+            }
+            
+            historyHtml += `
+                </div>
+              </div>`;
+            
+            return historyHtml;
+          }).join('');
         } else {
-          container.innerHTML = '<p class="text-muted small mb-0">관련 활동 기록이 없습니다.</p>';
+          container.innerHTML = `
+            <div class="text-center text-muted py-4">
+              <i class="fas fa-clipboard-list fa-2x mb-2"></i>
+              <p class="mb-0">이 일정에 대한 활동 기록이 없습니다.</p>
+              <p class="small">활동을 기록하면 여기에 표시됩니다.</p>
+            </div>`;
         }
       })
       .catch(error => {
         console.error('Error loading histories:', error);
         const container = document.getElementById(`scheduleHistories-${scheduleId}`);
-        container.innerHTML = '<p class="text-muted small mb-0">활동 기록을 불러올 수 없습니다.</p>';
+        container.innerHTML = `
+          <div class="alert alert-warning mb-0">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            활동 기록을 불러올 수 없습니다.
+          </div>`;
       });
   }  // 전역 함수 정의
   function loadSchedules() {
