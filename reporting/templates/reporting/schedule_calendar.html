@@ -580,6 +580,20 @@
     z-index: 1000;
   }
 
+  /* 일정 아이템 툴팁 스타일 개선 */
+  .schedule-item {
+    position: relative;
+  }
+
+  .schedule-item[title] {
+    cursor: help;
+  }
+
+  .schedule-item[title]:hover {
+    position: relative;
+    z-index: 999;
+  }
+
   .calendar-day.drag-over {
     background-color: #e3f2fd !important;
     border: 2px dashed #2196f3 !important;
@@ -1337,7 +1351,7 @@
           const dayNumber = document.createElement("div");
           dayNumber.className = "day-number";
           dayNumber.textContent = cellDate;
-          cell.appendChild(dayNumber); // 해당 날짜의 일정들 (모든 달에 대해 표시)
+          cell.appendChild(dayNumber);          // 해당 날짜의 일정들 (모든 달에 대해 표시)
           const daySchedules = getSchedulesForDate(
             cellYear,
             cellMonth,
@@ -1350,7 +1364,12 @@
             const displayName = schedule.company ?
               `${schedule.company} ${schedule.customer}` :
               schedule.customer;
-            scheduleElement.textContent = `${schedule.time} ${displayName}`;
+            const fullScheduleText = `${schedule.time} ${displayName}`;
+            scheduleElement.textContent = fullScheduleText;
+            
+            // 툴팁 추가 - 전체 일정 정보를 표시
+            scheduleElement.title = fullScheduleText;
+            
             scheduleElement.draggable = true;
             scheduleElement.dataset.scheduleId = schedule.id;
             scheduleElement.dataset.originalDate = `${cellYear}-${String(
