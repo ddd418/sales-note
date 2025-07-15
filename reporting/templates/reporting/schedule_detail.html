@@ -34,7 +34,7 @@
             <i class="fas fa-edit me-1"></i>수정
           </a>
           <a
-            href="{% url 'reporting:schedule_delete' schedule.pk %}"
+            href="{% url 'reporting:schedule_delete' schedule.pk %}{% if from_page == 'calendar' %}?from=calendar{% endif %}"
             class="btn btn-danger"
           >
             <i class="fas fa-trash-alt me-1"></i>삭제

@@ -8,7 +8,7 @@ from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, History, UserProfile # UserProfile 모델 추가
 from django.contrib.auth.views import LoginView, LogoutView
-from django.urls import reverse_lazy
+from django.urls import reverse_lazy, reverse
 from functools import wraps
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
@@ -884,7 +884,19 @@ def schedule_delete_view(request, pk):
                 success_message += f' (관련 활동 기록 {history_count}개도 함께 삭제되었습니다.)'
             
             messages.success(request, success_message)
-            return redirect('reporting:schedule_list')
+            
+            # 이전 페이지 정보 확인 (캘린더에서 온 경우)
+            from_page = request.GET.get('from', 'list')
+            user_filter = request.GET.get('user', '')  # user 파라미터로 수정
+            
+            # 캘린더에서 온 경우 캘린더로 돌아가기
+            if from_page == 'calendar':
+                if user_filter:
+                    return redirect(f"{reverse('reporting:schedule_calendar')}?user={user_filter}")
+                else:
+                    return redirect('reporting:schedule_calendar')
+            else:
+                return redirect('reporting:schedule_list')
         
         # GET 요청인 경우
         context = {
@@ -1016,6 +1028,10 @@ def history_list_view(request):
     if user_filter:
         histories = histories.filter(user_id=user_filter)
     
+    # 활동 유형별 카운트 계산 (활동 유형 필터 적용 전 기준)
+    # 사용자 필터와 검색만 적용된 상태에서 카운트 계산
+    base_queryset_for_counts = histories
+    
     # 날짜 범위 필터링
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
@@ -1024,6 +1040,7 @@ def history_list_view(request):
         try:
             from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
             histories = histories.filter(created_at__date__gte=from_date)
+            base_queryset_for_counts = base_queryset_for_counts.filter(created_at__date__gte=from_date)
         except ValueError:
             pass
     
@@ -1031,17 +1048,23 @@ def history_list_view(request):
         try:
             to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
             histories = histories.filter(created_at__date__lte=to_date)
+            base_queryset_for_counts = base_queryset_for_counts.filter(created_at__date__lte=to_date)
         except ValueError:
             pass
+    
+    # 활동 유형 필터링 (카운트 계산 후에 적용)
+    action_type_filter = request.GET.get('action_type')
+    if action_type_filter:
+        histories = histories.filter(action_type=action_type_filter)
     
     # 정렬 (최신순)
     histories = histories.order_by('-created_at')
     
-    # 활동 유형별 카운트
-    base_queryset = histories
-    total_count = base_queryset.count()
-    meeting_count = base_queryset.filter(action_type='customer_meeting').count()
-    delivery_count = base_queryset.filter(action_type='delivery_schedule').count()
+    # 활동 유형별 카운트 (활동 유형 필터 적용 전 데이터로 계산)
+    total_count = base_queryset_for_counts.count()
+    meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
+    delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
+    service_count = base_queryset_for_counts.filter(action_type='service').count()
       # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
@@ -1077,6 +1100,7 @@ def history_list_view(request):
         'total_count': total_count,
         'meeting_count': meeting_count,
         'delivery_count': delivery_count,
+        'service_count': service_count,
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,

@@ -84,22 +84,28 @@
               </h6>
               <div class="btn-group" role="group" aria-label="활동 유형 필터">
                 <a
-                  href="{% url 'reporting:history_list' %}"
+                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
                   class="btn {% if not action_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting"
+                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting{% if user_filter %}&user={{ user_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
                   <i class="fas fa-handshake me-1"></i>고객 미팅 ({{meeting_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule"
+                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'delivery_schedule' %}btn-success{% else %}btn-outline-success{% endif %}"
                 >
                   <i class="fas fa-truck me-1"></i>납품 일정 ({{ delivery_count}})
+                </a>
+                <a
+                  href="{% url 'reporting:history_list' %}?action_type=service{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  class="btn {% if action_type_filter == 'service' %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                >
+                  <i class="fas fa-cogs me-1"></i>서비스 ({{ service_count }})
                 </a>
               </div>
             </div>

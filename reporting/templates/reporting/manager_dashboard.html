@@ -671,19 +671,37 @@
                     <tr>
                       <td><strong>{{ data.month }}</strong></td>
                       <td>
-                        <span class="badge bg-primary"
-                          >{{ data.meetings }}건</span
-                        >
+                        {% if view_all %}
+                        <a href="{% url 'reporting:history_list' %}?action_type=customer_meeting" class="text-decoration-none">
+                        {% else %}
+                        <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}&action_type=customer_meeting" class="text-decoration-none">
+                        {% endif %}
+                          <span class="badge bg-primary"
+                            >{{ data.meetings }}건</span
+                          >
+                        </a>
                       </td>
                       <td>
-                        <span class="badge bg-success"
-                          >{{ data.deliveries }}건</span
-                        >
+                        {% if view_all %}
+                        <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule" class="text-decoration-none">
+                        {% else %}
+                        <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}&action_type=delivery_schedule" class="text-decoration-none">
+                        {% endif %}
+                          <span class="badge bg-success"
+                            >{{ data.deliveries }}건</span
+                          >
+                        </a>
                       </td>
                       <td>
-                        <span class="badge bg-info"
-                          >{{ data.services }}건</span
-                        >
+                        {% if view_all %}
+                        <a href="{% url 'reporting:history_list' %}?action_type=service" class="text-decoration-none">
+                        {% else %}
+                        <a href="{% url 'reporting:history_list' %}?user={{ selected_user.id }}&action_type=service" class="text-decoration-none">
+                        {% endif %}
+                          <span class="badge bg-info"
+                            >{{ data.services }}건</span
+                          >
+                        </a>
                       </td>
                       <td>
                         <strong>{% load currency_filters %}{{ data.amount|floatformat:0|currency_format }}원</strong>

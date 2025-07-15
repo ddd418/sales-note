@@ -875,7 +875,7 @@
   // 전역 변수와 URL 패턴 정의
   const scheduleDetailUrl = "{% url 'reporting:schedule_detail' 999 %}".replace("999", "{id}");
   const scheduleEditUrl = "{% url 'reporting:schedule_edit' 999 %}".replace("999", "{id}");
-  const scheduleDeleteUrl = "{% url 'reporting:schedule_delete' 999 %}".replace("999", "{id}");
+  const scheduleDeleteUrl = "{% url 'reporting:schedule_delete' 999 %}".replace("999", "{id}") + "?from=calendar{% if user_filter %}&user={{ user_filter }}{% endif %}";
   const historyCreateUrl = "{% url 'reporting:history_create_from_schedule' 999 %}".replace("999", "{id}");
     let currentDate = new Date();
   let selectedDate = null;
