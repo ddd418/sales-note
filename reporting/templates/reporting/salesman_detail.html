@@ -1,5 +1,5 @@
 {% extends "reporting/base.html" %}
-{# Updated: 2025-07-15 - Fixed elif template syntax issue #}
+{# Updated: 2025-07-15 - Fixed userprofile access safety #}
 {% load currency_filters %}
 {% block title %}{{ selected_user.username }} 상세 정보 - 영업 보고 시스템{% endblock %}
 
@@ -20,7 +20,9 @@
               </h1>
               <p class="text-muted mb-0">
                 {% if selected_user.userprofile %}
-                  {{ selected_user.userprofile.get_role_display }}
+                  {{ selected_user.userprofile.get_role_display|default:"역할 미정" }}
+                {% else %}
+                  역할 정보 없음
                 {% endif %}
                 · 총 {{ total_schedules }}개 일정 · {{ total_histories }}개 활동 기록
               </p>
@@ -99,7 +101,7 @@
                 <a href="{% url 'reporting:dashboard' %}?user={{ selected_user.id }}" class="btn btn-outline-secondary">
                   <i class="fas fa-chart-line me-1"></i>개인 대시보드
                 </a>
-                {% if selected_user.userprofile.role == 'salesman' %}
+                {% if selected_user.userprofile and selected_user.userprofile.role == 'salesman' %}
                 <a href="{% url 'reporting:followup_create' %}?assigned_to={{ selected_user.id }}" class="btn btn-outline-warning">
                   <i class="fas fa-plus me-1"></i>새 고객 등록
                 </a>
