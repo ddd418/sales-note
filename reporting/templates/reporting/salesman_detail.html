@@ -74,6 +74,7 @@
               </div>
             </div>
           </div>
+        </div>
       </div>
 
       <!-- 바로가기 버튼 -->
@@ -188,12 +189,12 @@
                           </div>
                         </td>
                         <td>
-                          <span class="badge bg-{% if followup.priority == 'high' %}danger{% elif followup.priority == 'medium' %}warning{% else %}secondary{% endif %}">
+                          <span class="badge bg-{% if followup.priority == 'high' %}danger{% else %}{% if followup.priority == 'medium' %}warning{% else %}secondary{% endif %}{% endif %}">
                             {{ followup.get_priority_display }}
                           </span>
                         </td>
                         <td>
-                          <span class="badge bg-{% if followup.status == 'active' %}success{% elif followup.status == 'completed' %}primary{% else %}secondary{% endif %}">
+                          <span class="badge bg-{% if followup.status == 'active' %}success{% else %}{% if followup.status == 'completed' %}primary{% else %}secondary{% endif %}{% endif %}">
                             {{ followup.get_status_display }}
                           </span>
                         </td>
