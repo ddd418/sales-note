@@ -58,8 +58,8 @@ class ScheduleAdmin(admin.ModelAdmin):
 # History 모델 관리자 설정
 @admin.register(History)
 class HistoryAdmin(admin.ModelAdmin):
-    list_display = ('followup', 'user', 'action_type', 'delivery_amount', 'delivery_items_short', 'created_at_formatted', 'schedule')
-    list_filter = ('action_type', 'user', 'created_at', 'tax_invoice_issued')
+    list_display = ('followup', 'user', 'action_type', 'service_status', 'delivery_amount', 'delivery_items_short', 'created_at_formatted', 'schedule')
+    list_filter = ('action_type', 'service_status', 'user', 'created_at', 'tax_invoice_issued')
     search_fields = ('followup__customer_name', 'user__username', 'content', 'delivery_items')
     date_hierarchy = 'created_at'
     autocomplete_fields = ['followup', 'user', 'schedule']
@@ -67,7 +67,7 @@ class HistoryAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('기본 정보', {
-            'fields': ('user', 'followup', 'schedule', 'action_type', 'content', 'created_at')
+            'fields': ('user', 'followup', 'schedule', 'action_type', 'service_status', 'content', 'created_at')
         }),
         ('납품 관련 정보', {
             'fields': ('delivery_amount', 'delivery_items', 'delivery_date', 'tax_invoice_issued'),

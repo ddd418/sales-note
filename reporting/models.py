@@ -118,10 +118,18 @@ class History(models.Model):
         ('service', '서비스'),
     ]
     
+    SERVICE_STATUS_CHOICES = [
+        ('received', '접수'),
+        ('in_progress', '진행중'),
+        ('cancelled', '취소'),
+        ('completed', '완료'),
+    ]
+    
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보")
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, verbose_name="활동 유형")
+    service_status = models.CharField(max_length=20, choices=SERVICE_STATUS_CHOICES, default='received', blank=True, null=True, verbose_name="서비스 상태", help_text="서비스 활동인 경우에만 해당")
     content = models.TextField(blank=True, null=True, verbose_name="내용")
     delivery_amount = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="납품 금액 (원)", help_text="납품 일정인 경우 금액을 입력하세요 (0원 입력 가능)")
     delivery_items = models.TextField(blank=True, null=True, verbose_name="납품 품목", help_text="납품 일정인 경우 품목을 입력하세요")

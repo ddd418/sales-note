@@ -154,11 +154,12 @@ class ScheduleForm(forms.ModelForm):
 class HistoryForm(forms.ModelForm):
     class Meta:
         model = History
-        fields = ['followup', 'schedule', 'action_type', 'content', 'delivery_amount', 'delivery_items', 'delivery_date', 'meeting_date']
+        fields = ['followup', 'schedule', 'action_type', 'service_status', 'content', 'delivery_amount', 'delivery_items', 'delivery_date', 'meeting_date']
         widgets = {
             'followup': forms.Select(attrs={'class': 'form-control'}),
             'schedule': forms.Select(attrs={'class': 'form-control'}),
             'action_type': forms.Select(attrs={'class': 'form-control'}),
+            'service_status': forms.Select(attrs={'class': 'form-control'}),
             'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '활동 내용을 입력하세요'}),
             'delivery_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '납품 금액을 입력하세요 (원)', 'min': '0'}),
             'delivery_items': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '납품 품목을 입력하세요 (예: 제품A 10개, 제품B 5개)'}),
@@ -169,6 +170,7 @@ class HistoryForm(forms.ModelForm):
             'followup': '관련 고객 정보',
             'schedule': '관련 일정',
             'action_type': '활동 유형',
+            'service_status': '서비스 상태',
             'content': '활동 내용',
             'delivery_amount': '납품 금액 (원)',
             'delivery_items': '납품 품목',
@@ -231,11 +233,6 @@ def followup_list_view(request):
             Q(notes__icontains=search_query)
         )
     
-    # 우선순위 필터링
-    priority_filter = request.GET.get('priority')
-    if priority_filter:
-        followups = followups.filter(priority=priority_filter)
-    
     # 담당자 필터링 - 권한 체크 추가
     user_filter = request.GET.get('user')
     if user_filter:
@@ -247,10 +244,8 @@ def followup_list_view(request):
         except User.DoesNotExist:
             # 접근 권한이 없는 사용자인 경우 필터링하지 않음
             pass
-      # 정렬 (최신순)
-    followups = followups.order_by('-created_at')
     
-    # 우선순위별 카운트 (효율적인 쿼리)
+    # 우선순위별 카운트 (우선순위 필터 적용 전 기준)
     from django.db.models import Count, Q as DbQ
     stats = followups.aggregate(
         total_count=Count('id'),
@@ -258,6 +253,13 @@ def followup_list_view(request):
         medium_priority_count=Count('id', filter=DbQ(priority='medium')),
         low_priority_count=Count('id', filter=DbQ(priority='low'))
     )
+    
+    # 우선순위 필터링 (카운트 계산 후에 적용)
+    priority_filter = request.GET.get('priority')
+    if priority_filter:
+        followups = followups.filter(priority=priority_filter)
+      # 정렬 (최신순)
+    followups = followups.order_by('-created_at')
       # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
@@ -426,8 +428,10 @@ def dashboard_view(request):
     if user_profile.is_manager() and not selected_user:
         return redirect('reporting:manager_dashboard')
     
-    # 현재 연도 가져오기
-    current_year = timezone.now().year
+    # 현재 연도와 월 가져오기
+    now = timezone.now()
+    current_year = now.year
+    current_month = now.month
     
     # 권한에 따른 데이터 필터링
     if user_profile.is_admin() and not selected_user:
@@ -465,8 +469,16 @@ def dashboard_view(request):
         count=Count('id')
     ).order_by('action_type')
     
-    # 서비스 통계 추가
-    service_count = histories_current_year.filter(action_type='service').count()
+    # 서비스 통계 추가 (완료된 서비스만 카운팅)
+    service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
+    
+    # 이번 달 서비스 수 (완료된 것만)
+    this_month_service_count = histories.filter(
+        action_type='service',
+        service_status='completed',
+        created_at__month=current_month,
+        created_at__year=current_year
+    ).count()
       # 최근 활동 (현재 연도, 최근 5개)
     recent_activities = histories_current_year.order_by('-created_at')[:5]
     
@@ -552,9 +564,10 @@ def dashboard_view(request):
         created_at__year=current_year
     ).count()
     
-    # 이번 달 서비스 수
+    # 이번 달 서비스 수 (완료된 것만)
     monthly_services = histories.filter(
         action_type='service',
+        service_status='completed',
         created_at__month=current_month,
         created_at__year=current_year
     ).count()
@@ -596,6 +609,21 @@ def dashboard_view(request):
     customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company'] or '미정'})" for item in customer_revenue_data]
     customer_amounts = [float(item['total_revenue']) for item in customer_revenue_data]
 
+    # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만)
+    monthly_service_data = []
+    monthly_service_labels = []
+    for i in range(5, -1, -1):
+        target_date = now - timedelta(days=30*i)
+        service_count_monthly = histories.filter(
+            action_type='service',
+            service_status='completed',
+            created_at__month=target_date.month,
+            created_at__year=target_date.year
+        ).count()
+        
+        monthly_service_data.append(service_count_monthly)
+        monthly_service_labels.append(f"{target_date.year}년 {target_date.month}월")
+
     context = {        'page_title': '대시보드',
         'current_year': current_year,  # 현재 연도 정보 추가
         'selected_user': selected_user,  # 선택된 사용자 정보
@@ -616,11 +644,14 @@ def dashboard_view(request):
         'monthly_meetings': monthly_meetings,
         'monthly_services': monthly_services,
         'service_count': service_count,
+        'this_month_service_count': this_month_service_count,
         'conversion_rate': conversion_rate,
         'avg_deal_size': avg_deal_size,
         'monthly_revenue_data': monthly_revenue_data,
         'monthly_revenue_labels': monthly_revenue_labels,        'customer_revenue_labels': customer_labels,
         'customer_revenue_data': customer_amounts,
+        'monthly_service_data': monthly_service_data,
+        'monthly_service_labels': monthly_service_labels,
     }
     return render(request, 'reporting/dashboard.html', context)
 
@@ -653,11 +684,6 @@ def schedule_list_view(request):
             Q(notes__icontains=search_query)
         )
     
-    # 상태별 필터링
-    status_filter = request.GET.get('status')
-    if status_filter:
-        schedules = schedules.filter(status=status_filter)
-    
     # 담당자 필터링
     user_filter = request.GET.get('user')
     if user_filter:
@@ -681,15 +707,20 @@ def schedule_list_view(request):
         except ValueError:
             pass
     
-    # 정렬 (방문 날짜순)
-    schedules = schedules.order_by('visit_date', 'visit_time')
+    # 상태별 카운트 계산 (상태 필터 적용 전 기준)
+    base_queryset_for_counts = schedules
+    total_count = base_queryset_for_counts.count()
+    scheduled_count = base_queryset_for_counts.filter(status='scheduled').count()
+    completed_count = base_queryset_for_counts.filter(status='completed').count()
+    cancelled_count = base_queryset_for_counts.filter(status='cancelled').count()
     
-    # 상태별 카운트
-    base_queryset = schedules
-    total_count = base_queryset.count()
-    scheduled_count = base_queryset.filter(status='scheduled').count()
-    completed_count = base_queryset.filter(status='completed').count()
-    cancelled_count = base_queryset.filter(status='cancelled').count()    # 담당자 목록 (필터용)
+    # 상태별 필터링 (카운트 계산 후에 적용)
+    status_filter = request.GET.get('status')
+    if status_filter:
+        schedules = schedules.filter(status=status_filter)
+    
+    # 정렬 (방문 날짜순)
+    schedules = schedules.order_by('visit_date', 'visit_time')    # 담당자 목록 (필터용)
     if request.user.is_staff or request.user.is_superuser:
         from django.contrib.auth.models import User
         users = User.objects.filter(schedule__isnull=False).distinct()
@@ -1018,19 +1049,10 @@ def history_list_view(request):
             Q(followup__company__icontains=search_query)
         )
     
-    # 활동 유형 필터링
-    action_type_filter = request.GET.get('action_type')
-    if action_type_filter:
-        histories = histories.filter(action_type=action_type_filter)
-    
     # 담당자 필터링
     user_filter = request.GET.get('user')
     if user_filter:
         histories = histories.filter(user_id=user_filter)
-    
-    # 활동 유형별 카운트 계산 (활동 유형 필터 적용 전 기준)
-    # 사용자 필터와 검색만 적용된 상태에서 카운트 계산
-    base_queryset_for_counts = histories
     
     # 날짜 범위 필터링
     date_from = request.GET.get('date_from')
@@ -1040,7 +1062,6 @@ def history_list_view(request):
         try:
             from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
             histories = histories.filter(created_at__date__gte=from_date)
-            base_queryset_for_counts = base_queryset_for_counts.filter(created_at__date__gte=from_date)
         except ValueError:
             pass
     
@@ -1048,9 +1069,15 @@ def history_list_view(request):
         try:
             to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
             histories = histories.filter(created_at__date__lte=to_date)
-            base_queryset_for_counts = base_queryset_for_counts.filter(created_at__date__lte=to_date)
         except ValueError:
             pass
+    
+    # 활동 유형별 카운트 계산 (활동 유형 필터 적용 전 기준)
+    base_queryset_for_counts = histories
+    total_count = base_queryset_for_counts.count()
+    meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
+    delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
+    service_count = base_queryset_for_counts.filter(action_type='service', service_status='completed').count()
     
     # 활동 유형 필터링 (카운트 계산 후에 적용)
     action_type_filter = request.GET.get('action_type')
@@ -1059,12 +1086,6 @@ def history_list_view(request):
     
     # 정렬 (최신순)
     histories = histories.order_by('-created_at')
-    
-    # 활동 유형별 카운트 (활동 유형 필터 적용 전 데이터로 계산)
-    total_count = base_queryset_for_counts.count()
-    meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
-    delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
-    service_count = base_queryset_for_counts.filter(action_type='service').count()
       # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
@@ -1734,7 +1755,7 @@ def manager_dashboard(request):
     # 히스토리 통계 (현재 연도)
     total_histories = histories.count()
     delivery_histories = histories.filter(action_type='delivery_schedule')
-    service_histories = histories.filter(action_type='service')
+    service_histories = histories.filter(action_type='service', service_status='completed')
     total_delivery_amount = delivery_histories.aggregate(
         total=Sum('delivery_amount')
     )['total'] or 0
@@ -1755,8 +1776,12 @@ def manager_dashboard(request):
             (Q(delivery_date__isnull=True) & Q(created_at__month=month))
         )
         
-        # 서비스는 created_at 기준으로 집계
-        month_services = service_histories.filter(created_at__month=month)
+        # 서비스는 완료된 것만 집계
+        month_services = histories.filter(
+            action_type='service',
+            service_status='completed',
+            created_at__month=month
+        )
         
         monthly_data.append({
             'month': f'{month}월',

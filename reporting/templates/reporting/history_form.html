@@ -90,6 +90,25 @@
               {% endif %}
               <div class="form-text">활동의 성격을 선택해주세요.</div>
             </div>
+
+            <!-- 서비스 상태 (서비스인 경우만 표시) -->
+            <div class="mb-4" id="service-status-field" style="display: none">
+              <label
+                for="{{ form.service_status.id_for_label }}"
+                class="form-label"
+              >
+                <i class="fas fa-tasks me-1"></i>서비스 상태
+                <span class="text-danger">*</span>
+              </label>
+              {{ form.service_status }} {% if form.service_status.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.service_status.errors %}{{ error }}{% endfor %}
+              </div>
+              {% endif %}
+              <div class="form-text">
+                서비스의 진행 상태를 선택해주세요.
+              </div>
+            </div>
             <!-- 관련 고객 정보 -->
             <div class="mb-4">
               <label for="{{ form.followup.id_for_label }}" class="form-label">
@@ -286,8 +305,9 @@
 </div>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function() {    // DOM 요소 선택 - 안전한 방식으로
+  document.addEventListener('DOMContentLoaded', function() {      // DOM 요소 선택 - 안전한 방식으로
       const actionTypeField = document.getElementById('{{ form.action_type.id_for_label }}');
+      const serviceStatusField = document.getElementById('service-status-field');
       const deliveryAmountField = document.getElementById('delivery-amount-field');
       const deliveryItemsField = document.getElementById('delivery-items-field');
       const deliveryDateField = document.getElementById('delivery-date-field');
@@ -303,44 +323,46 @@
           return;
       }
 
-      // 활동 유형에 따른 납품/미팅 관련 필드 표시/숨김
-      function toggleDeliveryFields() {
+      // 활동 유형에 따른 관련 필드 표시/숨김
+      function toggleActivityFields() {
           console.log('활동 유형:', actionTypeField.value); // 디버깅용
 
-          // 각 필드가 존재하는지 확인 후 조작
-          if (actionTypeField.value === 'delivery_schedule') {
+          // 모든 필드 초기화
+          if (serviceStatusField) serviceStatusField.style.display = 'none';
+          if (deliveryAmountField) deliveryAmountField.style.display = 'none';
+          if (deliveryItemsField) deliveryItemsField.style.display = 'none';
+          if (deliveryDateField) deliveryDateField.style.display = 'none';
+          if (meetingDateField) meetingDateField.style.display = 'none';
+
+          // 각 활동 유형에 따른 필드 표시
+          if (actionTypeField.value === 'service') {
+              if (serviceStatusField) serviceStatusField.style.display = 'block';
+              console.log('서비스 필드 표시'); // 디버깅용
+          } else if (actionTypeField.value === 'delivery_schedule') {
               if (deliveryAmountField) deliveryAmountField.style.display = 'block';
               if (deliveryItemsField) deliveryItemsField.style.display = 'block';
               if (deliveryDateField) deliveryDateField.style.display = 'block';
-              if (meetingDateField) meetingDateField.style.display = 'none';
               console.log('납품 필드 표시'); // 디버깅용
           } else if (actionTypeField.value === 'customer_meeting') {
-              if (deliveryAmountField) deliveryAmountField.style.display = 'none';
-              if (deliveryItemsField) deliveryItemsField.style.display = 'none';
-              if (deliveryDateField) deliveryDateField.style.display = 'none';
               if (meetingDateField) meetingDateField.style.display = 'block';
               console.log('미팅 필드 표시'); // 디버깅용
           } else {
-              if (deliveryAmountField) deliveryAmountField.style.display = 'none';
-              if (deliveryItemsField) deliveryItemsField.style.display = 'none';
-              if (deliveryDateField) deliveryDateField.style.display = 'none';
-              if (meetingDateField) meetingDateField.style.display = 'none';
               console.log('모든 필드 숨김'); // 디버깅용
           }
       }
 
-      // 활동 유형 변경 시 납품 관련 필드 토글
+      // 활동 유형 변경 시 관련 필드 토글
       if (actionTypeField) {
-          actionTypeField.addEventListener('change', toggleDeliveryFields);
-          actionTypeField.addEventListener('input', toggleDeliveryFields);
+          actionTypeField.addEventListener('change', toggleActivityFields);
+          actionTypeField.addEventListener('input', toggleActivityFields);
       }
 
       // 초기 로드 시 실행
-      toggleDeliveryFields();
+      toggleActivityFields();
 
       // 약간의 지연 후 다시 실행 (DOM 완전 로드 보장)
       setTimeout(function() {
-          toggleDeliveryFields();
+          toggleActivityFields();
       }, 100);    // 고객 정보 선택에 따른 일정 필터링
       function updateScheduleOptions() {
           const followupId = followupField.value;
@@ -394,11 +416,11 @@
       }
 
       // 초기 로드 시 실행
-      toggleDeliveryFields();
+      toggleActivityFields();
 
       // 약간의 지연 후 다시 실행 (DOM 완전 로드 보장)
       setTimeout(function() {
-          toggleDeliveryFields();
+          toggleActivityFields();
       }, 100);
 
       // 초기 로드 시 일정 업데이트 (수정 모드에서는 기존 값 유지)

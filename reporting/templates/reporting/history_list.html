@@ -264,7 +264,20 @@
                         {{ history.schedule.visit_date|date:"m월 d일" }}
                         {{history.schedule.visit_time|date:"H:i" }} </a
                       ><br />
-                      {% endif %}                      <strong>활동자:</strong> {{history.user.username }}                      {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %} 
+                      {% endif %}                      <strong>활동자:</strong> {{history.user.username }}
+
+                      {% if history.action_type == 'service' and history.service_status %}
+                      <div class="service-info">
+                        <strong>서비스 상태:</strong>
+                        <span class="badge 
+                          {% if history.service_status == 'completed' %}bg-success
+                          {% elif history.service_status == 'in_progress' %}bg-primary
+                          {% elif history.service_status == 'cancelled' %}bg-danger
+                          {% else %}bg-secondary{% endif %} service-status">
+                          {{ history.get_service_status_display }}
+                        </span>
+                      </div>
+                      {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_amount is not None %} 
                       <div class="delivery-info">
                         <strong>납품 금액:</strong>
                         {% load currency_filters %}
