@@ -438,7 +438,11 @@ def dashboard_view(request):
         # Admin은 모든 데이터 접근 가능
         followup_count = FollowUp.objects.count()
         schedule_count = Schedule.objects.filter(status='scheduled').count()
-        history_count = History.objects.filter(created_at__year=current_year).count()
+        # 영업 기록 (미팅, 납품만 카운팅 - 서비스 제외)
+        sales_record_count = History.objects.filter(
+            created_at__year=current_year, 
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
         histories = History.objects.all()
         histories_current_year = History.objects.filter(created_at__year=current_year)
         schedules = Schedule.objects.all()
@@ -447,7 +451,12 @@ def dashboard_view(request):
         # 특정 사용자 또는 본인의 데이터만 접근
         followup_count = FollowUp.objects.filter(user=target_user).count()
         schedule_count = Schedule.objects.filter(user=target_user, status='scheduled').count()
-        history_count = History.objects.filter(user=target_user, created_at__year=current_year).count()
+        # 영업 기록 (미팅, 납품만 카운팅 - 서비스 제외)
+        sales_record_count = History.objects.filter(
+            user=target_user, 
+            created_at__year=current_year, 
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
         histories = History.objects.filter(user=target_user)
         histories_current_year = History.objects.filter(user=target_user, created_at__year=current_year)
         schedules = Schedule.objects.filter(user=target_user)
@@ -513,21 +522,24 @@ def dashboard_view(request):
     completion_rate = 0
     if schedule_stats['total'] > 0:
         completion_rate = round((schedule_stats['completed'] / schedule_stats['total']) * 100, 1)
-      # 활동 히스토리 추이 (최근 30일, 현재 연도만)
-    thirty_days_ago = now - timedelta(days=30)
+      # 영업 기록 추이 (최근 14일, 미팅/납품만 - 서비스 제외)
+    fourteen_days_ago = now - timedelta(days=14)
     daily_activities = []
-    for i in range(30):
-        day = thirty_days_ago + timedelta(days=i)
+    for i in range(14):
+        day = fourteen_days_ago + timedelta(days=i)
         day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
         
+        # 영업 활동만 카운팅 (미팅, 납품 - 서비스 제외)
         activity_count = histories_current_year.filter(
             created_at__gte=day_start,
-            created_at__lt=day_end
+            created_at__lt=day_end,
+            action_type__in=['customer_meeting', 'delivery_schedule']
         ).count()
         
         daily_activities.append({
             'date': day.strftime('%m/%d'),
+            'full_date': day.strftime('%Y-%m-%d'),
             'count': activity_count
         })
     
@@ -630,7 +642,7 @@ def dashboard_view(request):
         'target_user': target_user,  # 실제 대상 사용자
         'followup_count': followup_count,
         'schedule_count': schedule_count,
-        'history_count': history_count,
+        'sales_record_count': sales_record_count,
         'total_delivery_amount': total_delivery_amount,
         'delivery_count': delivery_count,
         'activity_stats': activity_stats,
@@ -1084,8 +1096,8 @@ def history_list_view(request):
     if action_type_filter:
         histories = histories.filter(action_type=action_type_filter)
     
-    # 정렬 (최신순)
-    histories = histories.order_by('-created_at')
+    # 정렬 (관련 일정 날짜 기준 최신순, 일정이 없는 경우 작성일 기준)
+    histories = histories.order_by('-schedule__visit_date', '-created_at')
       # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
