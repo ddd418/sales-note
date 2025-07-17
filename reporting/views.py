@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile # UserProfile 모델 추가
+from .models import FollowUp, Schedule, History, UserProfile, Company # UserProfile 모델 추가
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -94,10 +94,10 @@ def get_accessible_users(request_user):
 class FollowUpForm(forms.ModelForm):
     class Meta:
         model = FollowUp
-        fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority']
+        fields = ['customer_name', 'company_name', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority']
         widgets = {
             'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)'}),
-            'company': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '업체/학교명을 입력하세요'}),
+            'company_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '업체/학교명을 입력하세요'}),
             'department': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '부서/연구실명을 입력하세요 (선택사항)'}),
             'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)'}),
             'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '010-0000-0000 (선택사항)'}),
@@ -108,7 +108,7 @@ class FollowUpForm(forms.ModelForm):
         }
         labels = {
             'customer_name': '고객명',
-            'company': '업체/학교명',
+            'company_name': '업체/학교명',
             'department': '부서/연구실명',
             'manager': '책임자',
             'phone_number': '핸드폰 번호',
@@ -228,7 +228,7 @@ def followup_list_view(request):
     if search_query:
         followups = followups.filter(
             Q(customer_name__icontains=search_query) |
-            Q(company__icontains=search_query) |
+            Q(company_name__icontains=search_query) |
             Q(department__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
@@ -388,7 +388,7 @@ def followup_delete_view(request, pk):
     
     if request.method == 'POST':
         customer_name = followup.customer_name or "고객명 미정"
-        company_name = followup.company or "업체명 미정"
+        company_name = followup.company_name or "업체명 미정"
         followup.delete()
         messages.success(request, f'{customer_name} ({company_name}) 팔로우업이 삭제되었습니다.')
         return redirect('reporting:followup_list')
@@ -614,11 +614,11 @@ def dashboard_view(request):
         action_type='delivery_schedule',
         delivery_amount__isnull=False,
         followup__isnull=False
-    ).values('followup__customer_name', 'followup__company').annotate(
+    ).values('followup__customer_name', 'followup__company_name').annotate(
         total_revenue=Sum('delivery_amount')
     ).order_by('-total_revenue')[:5]
     
-    customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company'] or '미정'})" for item in customer_revenue_data]
+    customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company_name'] or '미정'})" for item in customer_revenue_data]
     customer_amounts = [float(item['total_revenue']) for item in customer_revenue_data]
 
     # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만)
@@ -691,7 +691,7 @@ def schedule_list_view(request):
     if search_query:
         schedules = schedules.filter(
             Q(followup__customer_name__icontains=search_query) |
-            Q(followup__company__icontains=search_query) |
+            Q(followup__company_name__icontains=search_query) |
             Q(location__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
@@ -1023,7 +1023,7 @@ def schedule_api_view(request):
             'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
             'time': schedule.visit_time.strftime('%H:%M'),
             'customer': schedule.followup.customer_name or '고객명 미정',
-            'company': schedule.followup.company or '업체명 미정',
+            'company': schedule.followup.company_name or '업체명 미정',
             'location': schedule.location or '',
             'status': schedule.status,
             'status_display': schedule.get_status_display(),
@@ -1058,7 +1058,7 @@ def history_list_view(request):
         histories = histories.filter(
             Q(content__icontains=search_query) |
             Q(followup__customer_name__icontains=search_query) |
-            Q(followup__company__icontains=search_query)
+            Q(followup__company_name__icontains=search_query)
         )
     
     # 담당자 필터링
@@ -1381,7 +1381,7 @@ def followup_histories_api(request, followup_id):
         return JsonResponse({
             'success': True,
             'customer_name': followup.customer_name or '고객명 미정',
-            'company': followup.company or '업체명 미정',
+            'company': followup.company_name or '업체명 미정',
             'histories': histories_data,
             'total_count': len(histories_data)
         })
@@ -1415,6 +1415,67 @@ class CustomLogoutView(LogoutView):
             messages.info(request, f'{username}님, 성공적으로 로그아웃되었습니다.')
             return response
         return super().dispatch(request, *args, **kwargs)
+
+# 회사 로그인 뷰
+from django.contrib.auth import login
+from .forms import CompanyLoginForm
+
+class CompanyLoginView(LoginView):
+    """
+    회사코드 + 사번 + 비밀번호로 로그인하는 뷰
+    """
+    form_class = CompanyLoginForm
+    template_name = 'registration/company_login.html'
+    success_url = reverse_lazy('reporting:dashboard')
+    
+    def form_valid(self, form):
+        """폼이 유효할 때 실행"""
+        user = form.get_user()
+        login(self.request, user)
+        
+        # 로그인 성공 메시지
+        user_profile = user.userprofile
+        messages.success(
+            self.request, 
+            f'안녕하세요, {user_profile.company.company_name}의 {user_profile.employee_id}님!'
+        )
+        
+        return super().form_valid(form)
+    
+    def form_invalid(self, form):
+        """폼이 유효하지 않을 때 실행"""
+        messages.error(self.request, '로그인에 실패했습니다. 입력 정보를 확인해주세요.')
+        return super().form_invalid(form)
+
+def company_login_view(request):
+    """
+    회사 로그인 뷰 (함수형)
+    """
+    if request.user.is_authenticated:
+        return redirect('reporting:dashboard')
+    
+    if request.method == 'POST':
+        form = CompanyLoginForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            
+            # 로그인 성공 메시지
+            user_profile = user.userprofile
+            messages.success(
+                request, 
+                f'안녕하세요, {user_profile.company.company_name}의 {user_profile.employee_id}님!'
+            )
+            
+            # next 매개변수가 있으면 해당 페이지로, 없으면 대시보드로
+            next_page = request.GET.get('next', 'reporting:dashboard')
+            return redirect(next_page)
+        else:
+            messages.error(request, '로그인에 실패했습니다. 입력 정보를 확인해주세요.')
+    else:
+        form = CompanyLoginForm()
+    
+    return render(request, 'registration/company_login.html', {'form': form})
 
 # ============ 사용자 관리 뷰들 ============
 
@@ -1808,7 +1869,7 @@ def manager_dashboard(request):
     # 고객별 납품 현황 (현재 연도)
     customer_delivery = {}
     for history in delivery_histories:
-        customer = history.followup.customer_name or history.followup.company or "고객명 미정"
+        customer = history.followup.customer_name or history.followup.company_name or "고객명 미정"
         if customer in customer_delivery:
             customer_delivery[customer] += history.delivery_amount or 0
         else:
@@ -1876,7 +1937,7 @@ def salesman_detail(request, user_id):
         if search_query:
             followups = followups.filter(
                 Q(customer_name__icontains=search_query) |
-                Q(company__icontains=search_query)
+                Q(company_name__icontains=search_query)
             )
         
         if status_filter and status_filter in ['initial', 'in_progress', 'visited', 'closed']:
@@ -2191,3 +2252,197 @@ def schedule_status_update_api(request, schedule_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# ============ Super Admin 전용 회사 관리 뷰들 ============
+
+from .models import Company
+
+# 회사 목록 폼
+class CompanyForm(forms.ModelForm):
+    class Meta:
+        model = Company
+        fields = ['company_name']
+        widgets = {
+            'company_name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '회사명을 입력하세요'
+            })
+        }
+
+@role_required(['super_admin'])
+def company_list(request):
+    """회사 목록 (Super Admin 전용)"""
+    companies = Company.objects.all().order_by('company_name')
+    
+    # 검색 기능
+    search_query = request.GET.get('search', '')
+    if search_query:
+        companies = companies.filter(
+            Q(company_name__icontains=search_query) |
+            Q(company_code__icontains=search_query)
+        )
+    
+    # 각 회사별 사용자 수 계산
+    for company in companies:
+        company.user_count = UserProfile.objects.filter(company=company).count()
+    
+    # 페이지네이션
+    paginator = Paginator(companies, 10)
+    page_number = request.GET.get('page')
+    companies = paginator.get_page(page_number)
+    
+    context = {
+        'companies': companies,
+        'search_query': search_query,
+        'page_title': '회사 관리'
+    }
+    return render(request, 'reporting/company_list.html', context)
+
+@role_required(['super_admin'])
+def company_create(request):
+    """회사 생성 (Super Admin 전용)"""
+    if request.method == 'POST':
+        form = CompanyForm(request.POST)
+        if form.is_valid():
+            company = form.save()
+            messages.success(request, f'회사 "{company.company_name}" (코드: {company.company_code})이 성공적으로 생성되었습니다.')
+            return redirect('reporting:company_list')
+        else:
+            messages.error(request, '입력 정보를 확인해주세요.')
+    else:
+        form = CompanyForm()
+    
+    context = {
+        'form': form,
+        'page_title': '새 회사 생성'
+    }
+    return render(request, 'reporting/company_form.html', context)
+
+@role_required(['super_admin'])
+def company_edit(request, company_id):
+    """회사 정보 수정 (Super Admin 전용)"""
+    company = get_object_or_404(Company, id=company_id)
+    
+    if request.method == 'POST':
+        form = CompanyForm(request.POST, instance=company)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'회사 "{company.company_name}"의 정보가 성공적으로 수정되었습니다.')
+            return redirect('reporting:company_list')
+        else:
+            messages.error(request, '입력 정보를 확인해주세요.')
+    else:
+        form = CompanyForm(instance=company)
+    
+    context = {
+        'form': form,
+        'company': company,
+        'page_title': f'회사 수정 - {company.company_name}'
+    }
+    return render(request, 'reporting/company_form.html', context)
+
+@role_required(['super_admin'])
+def company_delete(request, company_id):
+    """회사 삭제 (Super Admin 전용)"""
+    company = get_object_or_404(Company, id=company_id)
+    
+    if request.method == 'POST':
+        company_name = company.company_name
+        user_count = UserProfile.objects.filter(company=company).count()
+        
+        # 관련 데이터가 있는 경우 경고
+        if user_count > 0:
+            messages.warning(request, f'회사 "{company_name}"에 {user_count}명의 사용자가 있습니다. 모든 관련 데이터가 함께 삭제됩니다.')
+        
+        company.delete()
+        messages.success(request, f'회사 "{company_name}"이 성공적으로 삭제되었습니다.')
+        return redirect('reporting:company_list')
+    
+    # 관련 정보 조회
+    user_count = UserProfile.objects.filter(company=company).count()
+    followup_count = FollowUp.objects.filter(user__userprofile__company=company).count()
+    
+    context = {
+        'company': company,
+        'user_count': user_count,
+        'followup_count': followup_count,
+        'page_title': f'회사 삭제 - {company.company_name}'
+    }
+    return render(request, 'reporting/company_delete.html', context)
+
+@role_required(['super_admin'])
+def company_detail(request, company_id):
+    """회사 상세 정보 (Super Admin 전용)"""
+    company = get_object_or_404(Company, id=company_id)
+    
+    # 회사 사용자들
+    users = UserProfile.objects.filter(company=company).select_related('user')
+    
+    # 통계 정보
+    total_users = users.count()
+    admin_count = users.filter(role='company_admin').count()
+    manager_count = users.filter(role='manager').count()
+    salesman_count = users.filter(role='salesman').count()
+    
+    # 활동 통계 (현재 연도)
+    from datetime import datetime
+    current_year = datetime.now().year
+    
+    company_users = User.objects.filter(userprofile__company=company)
+    total_followups = FollowUp.objects.filter(user__in=company_users).count()
+    total_schedules = Schedule.objects.filter(user__in=company_users).count()
+    total_histories = History.objects.filter(
+        user__in=company_users, 
+        created_at__year=current_year
+    ).count()
+    
+    context = {
+        'company': company,
+        'users': users,
+        'total_users': total_users,
+        'admin_count': admin_count,
+        'manager_count': manager_count,
+        'salesman_count': salesman_count,
+        'total_followups': total_followups,
+        'total_schedules': total_schedules,
+        'total_histories': total_histories,
+        'page_title': f'회사 상세 - {company.company_name}'
+    }
+    return render(request, 'reporting/company_detail.html', context)
+
+@role_required(['super_admin'])
+def super_admin_dashboard(request):
+    """Super Admin 전용 대시보드"""
+    # 전체 통계
+    total_companies = Company.objects.count()
+    total_users = User.objects.count()
+    active_users = User.objects.filter(is_active=True).count()
+    
+    # 회사별 사용자 수
+    companies = Company.objects.all()
+    company_stats = []
+    for company in companies:
+        user_count = UserProfile.objects.filter(company=company).count()
+        company_stats.append({
+            'company': company,
+            'user_count': user_count
+        })
+    
+    # 권한별 사용자 수
+    role_stats = UserProfile.objects.values('role').annotate(
+        count=Count('id')
+    ).order_by('role')
+    
+    # 최근 생성된 회사들
+    recent_companies = Company.objects.order_by('-created_at')[:5]
+    
+    context = {
+        'total_companies': total_companies,
+        'total_users': total_users,
+        'active_users': active_users,
+        'company_stats': company_stats,
+        'role_stats': role_stats,
+        'recent_companies': recent_companies,
+        'page_title': 'Super Admin 대시보드'
+    }
+    return render(request, 'reporting/super_admin_dashboard.html', context)

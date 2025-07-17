@@ -140,8 +140,16 @@ STATICFILES_DIRS = [
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-LOGIN_URL = 'reporting:login' # reporting 앱의 login URL을 사용하도록 변경
-LOGIN_REDIRECT_URL = 'reporting:dashboard' # 로그인 후 대시보드로 리디렉션
+# 커스텀 인증 백엔드 설정
+AUTHENTICATION_BACKENDS = [
+    'reporting.authentication.CompanyAuthenticationBackend',  # 회사 기반 인증
+    'django.contrib.auth.backends.ModelBackend',  # 기본 Django 인증 (관리자용)
+]
+
+# 로그인/로그아웃 URL 설정
+LOGIN_URL = 'reporting:company_login'  # 회사 로그인 페이지
+LOGIN_REDIRECT_URL = 'reporting:dashboard'  # 로그인 후 대시보드로 리디렉션
+LOGOUT_REDIRECT_URL = 'reporting:company_login'  # 로그아웃 후 로그인 페이지로
 LOGOUT_REDIRECT_URL = 'reporting:login' # 로그아웃 후 로그인 페이지로 리디렉션
 
 # Django Messages 설정

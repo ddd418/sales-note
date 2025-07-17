@@ -537,7 +537,7 @@
 
             <div class="card-body">
               <p class="card-text">
-                <strong>업체:</strong> {{ followup.company|default:"업체명 미정"}}<br />
+                <strong>업체:</strong> {{ followup.company_name|default:"업체명 미정"}}<br />
                 {% if followup.department %}
                 <strong>부서:</strong> {{ followup.department }}<br />                {% endif %}
                 <strong>담당자:</strong> {{ followup.user.username }}<br />

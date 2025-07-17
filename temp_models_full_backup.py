@@ -4,12 +4,26 @@ import uuid
 import string
 import random
 
-# 회사 (Company) 모델 - 간단한 버전
+# 회사 (Company) 모델 - 다중 테넌트 지원
 class Company(models.Model):
+    PLAN_CHOICES = [
+        ('free', '무료 플랜'),
+        ('basic', '기본 플랜'),
+        ('premium', '프리미엄 플랜'),
+        ('enterprise', '엔터프라이즈 플랜'),
+    ]
+    
     company_code = models.CharField(max_length=10, unique=True, verbose_name="회사 코드")
     company_name = models.CharField(max_length=100, verbose_name="회사명")
+    business_number = models.CharField(max_length=20, blank=True, null=True, verbose_name="사업자등록번호")
+    address = models.TextField(blank=True, null=True, verbose_name="회사 주소")
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="대표 전화")
+    email = models.EmailField(blank=True, null=True, verbose_name="대표 이메일")
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free', verbose_name="요금제")
+    max_users = models.IntegerField(default=5, verbose_name="최대 사용자 수")
     is_active = models.BooleanField(default=True, verbose_name="활성 상태")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def save(self, *args, **kwargs):
         if not self.company_code:
@@ -23,6 +37,14 @@ class Company(models.Model):
             if not Company.objects.filter(company_code=code).exists():
                 return code
     
+    def get_user_count(self):
+        """현재 회사의 사용자 수"""
+        return self.users.count()
+    
+    def can_add_user(self):
+        """새 사용자를 추가할 수 있는지 확인"""
+        return self.get_user_count() < self.max_users
+    
     def __str__(self):
         return f"{self.company_name} ({self.company_code})"
     
@@ -31,40 +53,29 @@ class Company(models.Model):
         verbose_name_plural = "회사 목록"
         ordering = ['company_name']
 
-# 사용자 프로필 (UserProfile) 모델 - 기존 구조 유지하면서 필드 추가
+# 사용자 프로필 (UserProfile) 모델 - 권한 관리
 class UserProfile(models.Model):
     ROLE_CHOICES = [
-        ('super_admin', 'Super Admin (최고관리자)'),
-        ('company_admin', 'Company Admin (회사관리자)'),
+        ('admin', 'Admin (관리자)'),
         ('manager', 'Manager (매니저)'),
         ('salesman', 'SalesMan (실무자)'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="사용자")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='users', verbose_name="소속 회사")
+    employee_id = models.CharField(max_length=20, verbose_name="사번")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='salesman', verbose_name="권한")
+    is_company_admin = models.BooleanField(default=False, verbose_name="회사 관리자 여부")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                    related_name='created_users', verbose_name="계정 생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
-    # 회사 관련 필드들
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
-    employee_id = models.CharField(max_length=20, null=True, blank=True, verbose_name="사번")
-    
     def __str__(self):
-        if self.company and self.employee_id:
-            return f"{self.company.company_name} - {self.employee_id} ({self.user.username})"
-        return f"{self.user.username} - {self.get_role_display()}"
-    
-    def is_super_admin(self):
-        return self.role == 'super_admin'
-    
-    def is_company_admin(self):
-        return self.role == 'company_admin'
+        return f"{self.user.username} ({self.company.company_name} - {self.get_role_display()})"
     
     def is_admin(self):
-        """이전 버전과의 호환성을 위해 유지 (company_admin과 동일)"""
-        return self.role in ['super_admin', 'company_admin']
+        return self.role == 'admin' or self.is_company_admin
     
     def is_manager(self):
         return self.role == 'manager'
@@ -72,22 +83,32 @@ class UserProfile(models.Model):
     def is_salesman(self):
         return self.role == 'salesman'
     
-    def can_manage_companies(self):
-        """회사 생성/삭제 권한"""
-        return self.role == 'super_admin'
-    
     def can_view_all_users(self):
-        """모든 사용자 데이터 조회 권한"""
-        return self.role in ['super_admin', 'company_admin', 'manager']
+        """모든 사용자 데이터를 볼 수 있는지 확인 (같은 회사 내에서만)"""
+        return self.role in ['admin', 'manager'] or self.is_company_admin
     
-    def can_manage_users(self):
-        """사용자 관리 권한 (회사 내에서)"""
-        return self.role in ['super_admin', 'company_admin']
+    def can_create_users(self):
+        """사용자를 생성할 수 있는지 확인"""
+        return self.is_company_admin or self.role == 'admin'
+    
+    def can_edit_user(self, target_user):
+        """특정 사용자를 편집할 수 있는지 확인"""
+        if self.is_company_admin:
+            # 회사 관리자는 같은 회사 내 모든 사용자 편집 가능
+            return target_user.userprofile.company == self.company
+        if self.role == 'admin':
+            return True
+        return self.user == target_user
+    
+    def get_company_users(self):
+        """같은 회사의 모든 사용자 조회"""
+        return UserProfile.objects.filter(company=self.company)
     
     class Meta:
         verbose_name = "사용자 프로필"
         verbose_name_plural = "사용자 프로필 목록"
-        ordering = ['role', 'user__username']
+        ordering = ['company', 'role', 'user__username']
+        # unique_together = ['company', 'employee_id']  # 회사 내에서 사번 중복 방지 - 임시 주석
 
 # 팔로우업 (FollowUp) 모델
 class FollowUp(models.Model):
@@ -103,6 +124,7 @@ class FollowUp(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
+    user_company = models.ForeignKey(Company, on_delete=models.CASCADE, verbose_name="소속 회사")
     customer_name = models.CharField(max_length=100, blank=True, null=True, verbose_name="고객명")
     company_name = models.CharField(max_length=100, blank=True, null=True, verbose_name="업체/학교명")  # 기존 company 필드를 company_name으로 변경
     department = models.CharField(max_length=100, blank=True, null=True, verbose_name="부서/연구실명")
@@ -135,6 +157,7 @@ class Schedule(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
+    user_company = models.ForeignKey(Company, on_delete=models.CASCADE, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업")
     visit_date = models.DateField(verbose_name="방문 날짜")
     visit_time = models.TimeField(verbose_name="방문 시간")
@@ -168,6 +191,7 @@ class History(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
+    user_company = models.ForeignKey(Company, on_delete=models.CASCADE, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보")
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, verbose_name="활동 유형")

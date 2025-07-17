@@ -619,7 +619,7 @@
                     </a>
                   </h6>
                   <small class="text-muted"
-                    >{{ schedule.followup.company|default:"업체명 미정"}}</small
+                    >{{ schedule.followup.company_name|default:"업체명 미정"}}</small
                   >
                 </div>
                 <div class="text-end">
@@ -957,7 +957,7 @@
                             <strong>고객:</strong>
                             {{activity.followup.customer_name|default:"고객명 미정"}}
                             <span class="text-muted"
-                              >({{ activity.followup.company|default:"업체명 미정"}})</span
+                              >({{ activity.followup.company_name|default:"업체명 미정"}})</span
                             >
                           </p>
                           {% if activity.action_type == 'delivery_schedule' and activity.delivery_amount %}

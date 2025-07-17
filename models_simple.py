@@ -34,8 +34,7 @@ class Company(models.Model):
 # 사용자 프로필 (UserProfile) 모델 - 기존 구조 유지하면서 필드 추가
 class UserProfile(models.Model):
     ROLE_CHOICES = [
-        ('super_admin', 'Super Admin (최고관리자)'),
-        ('company_admin', 'Company Admin (회사관리자)'),
+        ('admin', 'Admin (관리자)'),
         ('manager', 'Manager (매니저)'),
         ('salesman', 'SalesMan (실무자)'),
     ]
@@ -47,42 +46,21 @@ class UserProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
-    # 회사 관련 필드들
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
-    employee_id = models.CharField(max_length=20, null=True, blank=True, verbose_name="사번")
+    # 새로 추가할 필드들 (나중에 추가)
+    # company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
+    # employee_id = models.CharField(max_length=20, null=True, blank=True, verbose_name="사번")
     
     def __str__(self):
-        if self.company and self.employee_id:
-            return f"{self.company.company_name} - {self.employee_id} ({self.user.username})"
         return f"{self.user.username} - {self.get_role_display()}"
     
-    def is_super_admin(self):
-        return self.role == 'super_admin'
-    
-    def is_company_admin(self):
-        return self.role == 'company_admin'
-    
     def is_admin(self):
-        """이전 버전과의 호환성을 위해 유지 (company_admin과 동일)"""
-        return self.role in ['super_admin', 'company_admin']
+        return self.role == 'admin'
     
     def is_manager(self):
         return self.role == 'manager'
     
     def is_salesman(self):
         return self.role == 'salesman'
-    
-    def can_manage_companies(self):
-        """회사 생성/삭제 권한"""
-        return self.role == 'super_admin'
-    
-    def can_view_all_users(self):
-        """모든 사용자 데이터 조회 권한"""
-        return self.role in ['super_admin', 'company_admin', 'manager']
-    
-    def can_manage_users(self):
-        """사용자 관리 권한 (회사 내에서)"""
-        return self.role in ['super_admin', 'company_admin']
     
     class Meta:
         verbose_name = "사용자 프로필"

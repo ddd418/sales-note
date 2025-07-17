@@ -4,12 +4,26 @@ import uuid
 import string
 import random
 
-# 회사 (Company) 모델 - 간단한 버전
+# 회사 (Company) 모델 - 다중 테넌트 지원
 class Company(models.Model):
+    PLAN_CHOICES = [
+        ('free', '무료 플랜'),
+        ('basic', '기본 플랜'),
+        ('premium', '프리미엄 플랜'),
+        ('enterprise', '엔터프라이즈 플랜'),
+    ]
+    
     company_code = models.CharField(max_length=10, unique=True, verbose_name="회사 코드")
     company_name = models.CharField(max_length=100, verbose_name="회사명")
+    business_number = models.CharField(max_length=20, blank=True, null=True, verbose_name="사업자등록번호")
+    address = models.TextField(blank=True, null=True, verbose_name="회사 주소")
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="대표 전화")
+    email = models.EmailField(blank=True, null=True, verbose_name="대표 이메일")
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='free', verbose_name="요금제")
+    max_users = models.IntegerField(default=5, verbose_name="최대 사용자 수")
     is_active = models.BooleanField(default=True, verbose_name="활성 상태")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def save(self, *args, **kwargs):
         if not self.company_code:
@@ -23,6 +37,14 @@ class Company(models.Model):
             if not Company.objects.filter(company_code=code).exists():
                 return code
     
+    def get_user_count(self):
+        """현재 회사의 사용자 수"""
+        return self.users.count()
+    
+    def can_add_user(self):
+        """새 사용자를 추가할 수 있는지 확인"""
+        return self.get_user_count() < self.max_users
+    
     def __str__(self):
         return f"{self.company_name} ({self.company_code})"
     
@@ -31,11 +53,10 @@ class Company(models.Model):
         verbose_name_plural = "회사 목록"
         ordering = ['company_name']
 
-# 사용자 프로필 (UserProfile) 모델 - 기존 구조 유지하면서 필드 추가
+# 사용자 프로필 (UserProfile) 모델 - 권한 관리
 class UserProfile(models.Model):
     ROLE_CHOICES = [
-        ('super_admin', 'Super Admin (최고관리자)'),
-        ('company_admin', 'Company Admin (회사관리자)'),
+        ('admin', 'Admin (관리자)'),
         ('manager', 'Manager (매니저)'),
         ('salesman', 'SalesMan (실무자)'),
     ]
@@ -47,24 +68,11 @@ class UserProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
-    # 회사 관련 필드들
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
-    employee_id = models.CharField(max_length=20, null=True, blank=True, verbose_name="사번")
-    
     def __str__(self):
-        if self.company and self.employee_id:
-            return f"{self.company.company_name} - {self.employee_id} ({self.user.username})"
         return f"{self.user.username} - {self.get_role_display()}"
     
-    def is_super_admin(self):
-        return self.role == 'super_admin'
-    
-    def is_company_admin(self):
-        return self.role == 'company_admin'
-    
     def is_admin(self):
-        """이전 버전과의 호환성을 위해 유지 (company_admin과 동일)"""
-        return self.role in ['super_admin', 'company_admin']
+        return self.role == 'admin'
     
     def is_manager(self):
         return self.role == 'manager'
@@ -72,17 +80,19 @@ class UserProfile(models.Model):
     def is_salesman(self):
         return self.role == 'salesman'
     
-    def can_manage_companies(self):
-        """회사 생성/삭제 권한"""
-        return self.role == 'super_admin'
-    
     def can_view_all_users(self):
-        """모든 사용자 데이터 조회 권한"""
-        return self.role in ['super_admin', 'company_admin', 'manager']
+        """모든 사용자 데이터를 볼 수 있는지 확인"""
+        return self.role in ['admin', 'manager']
     
-    def can_manage_users(self):
-        """사용자 관리 권한 (회사 내에서)"""
-        return self.role in ['super_admin', 'company_admin']
+    def can_create_users(self):
+        """사용자를 생성할 수 있는지 확인"""
+        return self.role == 'admin'
+    
+    def can_edit_user(self, target_user):
+        """특정 사용자를 편집할 수 있는지 확인"""
+        if self.role == 'admin':
+            return True
+        return self.user == target_user
     
     class Meta:
         verbose_name = "사용자 프로필"

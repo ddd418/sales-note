@@ -39,9 +39,9 @@ class UserProfileAdmin(admin.ModelAdmin):
 # FollowUp 모델 관리자 설정
 @admin.register(FollowUp)
 class FollowUpAdmin(admin.ModelAdmin):
-    list_display = ('customer_name', 'company', 'user', 'status', 'priority', 'created_at', 'updated_at')
+    list_display = ('customer_name', 'company_name', 'user', 'status', 'priority', 'created_at', 'updated_at')
     list_filter = ('status', 'priority', 'user')
-    search_fields = ('customer_name', 'company', 'user__username')
+    search_fields = ('customer_name', 'company_name', 'user__username')
     date_hierarchy = 'created_at'
     list_per_page = 20
 
@@ -50,7 +50,7 @@ class FollowUpAdmin(admin.ModelAdmin):
 class ScheduleAdmin(admin.ModelAdmin):
     list_display = ('followup', 'user', 'visit_date', 'visit_time', 'location', 'status', 'created_at')
     list_filter = ('status', 'user', 'visit_date')
-    search_fields = ('followup__customer_name', 'followup__company', 'user__username', 'location')
+    search_fields = ('followup__customer_name', 'followup__company_name', 'user__username', 'location')
     date_hierarchy = 'visit_date'
     autocomplete_fields = ['followup', 'user'] # ForeignKey 필드 검색 기능 향상
     list_per_page = 20
