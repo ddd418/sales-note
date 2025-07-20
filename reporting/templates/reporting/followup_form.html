@@ -60,13 +60,22 @@
           </div>
 
           <div style="margin-bottom: 20px">
-            {{ form.company.label_tag }} {{ form.company }}
+            <label for="id_company" class="form-label">업체/학교명 *</label>
+            <div style="position: relative;">
+              <input type="text" id="company-search" class="form-control" placeholder="업체/학교명을 입력하세요..." autocomplete="off">
+              <input type="hidden" id="id_company" name="company" value="{{ form.company.value|default:'' }}">
+              <div id="company-suggestions" class="autocomplete-suggestions" style="display: none;"></div>
+              <button type="button" id="add-new-company" class="btn btn-sm btn-outline-primary" style="position: absolute; right: 5px; top: 5px; padding: 2px 8px; font-size: 11px;">+ 새로 추가</button>
+            </div>
           </div>
           <div style="margin-bottom: 20px">
-            {{ form.department.label_tag }} {{ form.department }}
-            <small style="color: #6c757d; font-size: 12px"
-              >선택사항입니다</small
-            >
+            <label for="id_department" class="form-label">부서/연구실명</label>
+            <div style="position: relative;">
+              <input type="text" id="department-search" class="form-control" placeholder="먼저 업체/학교를 선택하세요..." autocomplete="off" disabled>
+              <input type="hidden" id="id_department" name="department" value="{{ form.department.value|default:'' }}">
+              <div id="department-suggestions" class="autocomplete-suggestions" style="display: none;"></div>
+              <button type="button" id="add-new-department" class="btn btn-sm btn-outline-primary" style="position: absolute; right: 5px; top: 5px; padding: 2px 8px; font-size: 11px; display: none;">+ 새로 추가</button>
+            </div>
           </div>
 
           <div style="margin-bottom: 20px">
@@ -179,5 +188,372 @@
   select.form-control {
     cursor: pointer;
   }
+
+  /* 자동완성 스타일 */
+  .autocomplete-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e3e2e0;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .autocomplete-suggestion {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+  }
+
+  .autocomplete-suggestion:hover,
+  .autocomplete-suggestion.active {
+    background-color: #f8f9fa;
+  }
+
+  .autocomplete-suggestion:last-child {
+    border-bottom: none;
+  }
+
+  .autocomplete-no-results {
+    padding: 10px 12px;
+    color: #6c757d;
+    font-style: italic;
+  }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // CSRF 토큰 가져오기
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    const csrftoken = getCookie('csrftoken');
+
+    // 자동완성 기능 구현
+    function setupAutocomplete(inputId, suggestionsId, hiddenInputId, apiUrl, onSelect, minLength = 1) {
+        const input = document.getElementById(inputId);
+        const suggestions = document.getElementById(suggestionsId);
+        const hiddenInput = document.getElementById(hiddenInputId);
+        let timeoutId = null;
+        let currentSelectedIndex = -1;
+        let suggestionItems = [];
+
+        input.addEventListener('input', function() {
+            const query = this.value.trim();
+            currentSelectedIndex = -1;
+            
+            if (query.length < minLength) {
+                suggestions.style.display = 'none';
+                hiddenInput.value = '';
+                return;
+            }
+
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                fetch(`${apiUrl}?q=${encodeURIComponent(query)}${apiUrl.includes('department') && selectedCompanyId ? '&company_id=' + selectedCompanyId : ''}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestions.innerHTML = '';
+                        suggestionItems = [];
+                        
+                        if (data.results && data.results.length > 0) {
+                            data.results.forEach((item, index) => {
+                                const div = document.createElement('div');
+                                div.className = 'autocomplete-suggestion';
+                                div.textContent = item.text;
+                                div.addEventListener('click', () => {
+                                    selectItem(item);
+                                });
+                                suggestions.appendChild(div);
+                                suggestionItems.push(item);
+                            });
+                            suggestions.style.display = 'block';
+                        } else {
+                            const div = document.createElement('div');
+                            div.className = 'autocomplete-no-results';
+                            div.textContent = '검색 결과가 없습니다.';
+                            suggestions.appendChild(div);
+                            suggestions.style.display = 'block';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        suggestions.style.display = 'none';
+                    });
+            }, 300);
+        });
+
+        // 키보드 이벤트 처리
+        input.addEventListener('keydown', function(e) {
+            const suggestionElements = suggestions.querySelectorAll('.autocomplete-suggestion:not(.autocomplete-no-results)');
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                currentSelectedIndex = Math.min(currentSelectedIndex + 1, suggestionElements.length - 1);
+                updateSelection(suggestionElements);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                currentSelectedIndex = Math.max(currentSelectedIndex - 1, -1);
+                updateSelection(suggestionElements);
+            } else if (e.key === 'Enter') {
+                if (suggestions.style.display === 'block' && currentSelectedIndex >= 0 && suggestionItems[currentSelectedIndex]) {
+                    e.preventDefault();
+                    selectItem(suggestionItems[currentSelectedIndex]);
+                }
+            } else if (e.key === 'Escape') {
+                suggestions.style.display = 'none';
+                currentSelectedIndex = -1;
+            }
+        });
+
+        function updateSelection(elements) {
+            elements.forEach((el, index) => {
+                if (index === currentSelectedIndex) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function selectItem(item) {
+            input.value = apiUrl.includes('department') ? item.department_name : item.text;
+            hiddenInput.value = item.id;
+            suggestions.style.display = 'none';
+            currentSelectedIndex = -1;
+            if (onSelect) onSelect(item);
+        }
+
+        // 외부 클릭 시 자동완성 숨기기
+        document.addEventListener('click', function(e) {
+            if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+                suggestions.style.display = 'none';
+                currentSelectedIndex = -1;
+            }
+        });
+    }
+
+    let selectedCompanyId = null;
+
+    // 회사 자동완성 설정
+    setupAutocomplete('company-search', 'company-suggestions', 'id_company', '/reporting/api/companies/autocomplete/', function(item) {
+        selectedCompanyId = item.id;
+        // 부서 입력 활성화
+        const deptInput = document.getElementById('department-search');
+        const deptAddBtn = document.getElementById('add-new-department');
+        deptInput.disabled = false;
+        deptInput.placeholder = '부서/연구실명을 입력하세요...';
+        deptAddBtn.style.display = 'block';
+        
+        // 기존 부서 선택 초기화
+        document.getElementById('department-search').value = '';
+        document.getElementById('id_department').value = '';
+    });
+
+    // 부서 자동완성 설정
+    setupAutocomplete('department-search', 'department-suggestions', 'id_department', '/reporting/api/departments/autocomplete/');
+
+    // 새 회사 추가 기능
+    document.getElementById('add-new-company').addEventListener('click', function() {
+        const companyName = document.getElementById('company-search').value.trim();
+        if (!companyName) {
+            alert('업체/학교명을 입력해주세요.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('name', companyName);
+
+        // 버튼 비활성화
+        this.disabled = true;
+        this.innerHTML = '처리중...';
+
+        fetch('/reporting/api/companies/create/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': csrftoken,
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                document.getElementById('id_company').value = data.company.id;
+                selectedCompanyId = data.company.id;
+                
+                // 부서 입력 활성화
+                const deptInput = document.getElementById('department-search');
+                const deptAddBtn = document.getElementById('add-new-department');
+                deptInput.disabled = false;
+                deptInput.placeholder = '부서/연구실명을 입력하세요...';
+                deptAddBtn.style.display = 'block';
+                
+                alert(data.message);
+            } else {
+                alert(data.error || '오류가 발생했습니다.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.');
+        })
+        .finally(() => {
+            // 버튼 다시 활성화
+            this.disabled = false;
+            this.innerHTML = '+ 새로 추가';
+        });
+    });
+
+    // 새 부서 추가 기능
+    document.getElementById('add-new-department').addEventListener('click', function() {
+        const departmentName = document.getElementById('department-search').value.trim();
+        if (!departmentName) {
+            alert('부서/연구실명을 입력해주세요.');
+            return;
+        }
+        
+        if (!selectedCompanyId) {
+            alert('먼저 업체/학교를 선택해주세요.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('name', departmentName);
+        formData.append('company_id', selectedCompanyId);
+
+        // 버튼 비활성화
+        this.disabled = true;
+        this.innerHTML = '처리중...';
+
+        fetch('/reporting/api/departments/create/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': csrftoken,
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                document.getElementById('id_department').value = data.department.id;
+                alert(data.message);
+            } else {
+                alert(data.error || '오류가 발생했습니다.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.');
+        })
+        .finally(() => {
+            // 버튼 다시 활성화
+            this.disabled = false;
+            this.innerHTML = '+ 새로 추가';
+        });
+    });
+
+    // 폼 제출 시 업체/학교 필수 체크 (제거 - 서버사이드에서 처리)
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const submitBtn = this.querySelector('button[type="submit"]');
+        
+        // 제출 버튼 비활성화 (중복 제출 방지)
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>처리중...';
+            
+            // 3초 후에 다시 활성화 (네트워크 오류 등을 대비)
+            setTimeout(function() {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '{% if followup %}수정하기{% else %}생성하기{% endif %}';
+                }
+            }, 3000);
+        }
+        
+        // 서버에서 유효성 검사를 처리하도록 함
+        return true;
+    });
+
+    // 폼 수정 시 기존 값 설정 또는 POST 데이터 복원
+    {% if followup %}
+        {% if followup.company %}
+            document.getElementById('company-search').value = '{{ followup.company.name|escapejs }}';
+            selectedCompanyId = {{ followup.company.id }};
+            
+            // 부서 입력 활성화
+            const deptInput = document.getElementById('department-search');
+            const deptAddBtn = document.getElementById('add-new-department');
+            deptInput.disabled = false;
+            deptInput.placeholder = '부서/연구실명을 입력하세요...';
+            deptAddBtn.style.display = 'block';
+        {% endif %}
+        
+        {% if followup.department %}
+            document.getElementById('department-search').value = '{{ followup.department.name|escapejs }}';
+        {% endif %}
+    {% else %}
+        // POST 데이터 복원 (유효성 검사 실패 시)
+        {% if form.company.value %}
+            // 회사 정보 복원
+            fetch('/reporting/api/companies/{{ form.company.value }}/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('company-search').value = data.company.name;
+                        selectedCompanyId = data.company.id;
+                        
+                        // 부서 입력 활성화
+                        const deptInput = document.getElementById('department-search');
+                        const deptAddBtn = document.getElementById('add-new-department');
+                        deptInput.disabled = false;
+                        deptInput.placeholder = '부서/연구실명을 입력하세요...';
+                        deptAddBtn.style.display = 'block';
+                    }
+                })
+                .catch(error => console.error('Error loading company:', error));
+        {% endif %}
+        
+        {% if form.department.value %}
+            // 부서 정보 복원
+            fetch('/reporting/api/departments/{{ form.department.value }}/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('department-search').value = data.department.name;
+                    }
+                })
+                .catch(error => console.error('Error loading department:', error));
+        {% endif %}
+    {% endif %}
+});
+</script>
 {% endblock %}

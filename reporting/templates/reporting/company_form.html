@@ -1,0 +1,50 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title">{{ page_title }}</h1>
+        <a href="{% url 'reporting:company_list' %}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left me-1"></i>목록으로
+        </a>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            
+            {% if messages %}
+              {% for message in messages %}
+              <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+              {% endfor %}
+            {% endif %}
+
+            <div class="mb-3">
+              <label for="name" class="form-label">업체/학교명 *</label>
+              <input type="text" class="form-control" id="name" name="name" 
+                     value="{% if company %}{{ company.name }}{% endif %}" 
+                     placeholder="업체/학교명을 입력하세요..." required>
+            </div>
+
+            <div class="text-center">
+              <button type="submit" class="btn btn-primary me-2">
+                <i class="fas fa-save me-1"></i>{% if company %}수정하기{% else %}추가하기{% endif %}
+              </button>
+              <a href="{% url 'reporting:company_list' %}" class="btn btn-secondary">
+                <i class="fas fa-times me-1"></i>취소
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

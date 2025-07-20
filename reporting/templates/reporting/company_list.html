@@ -1,0 +1,201 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title mb-0">
+          <i class="fas fa-building me-2"></i>{{ page_title }}
+        </h1>
+        {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
+        <a href="{% url 'reporting:company_create' %}" class="btn btn-primary">
+          <i class="fas fa-plus me-1"></i>새 업체/학교 추가
+        </a>
+        {% endif %}
+      </div>
+
+      <!-- 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>업체/학교 검색
+              </h6>
+              <form method="GET" action="{% if is_readonly %}{% url 'reporting:manager_company_list' %}{% else %}{% url 'reporting:company_list' %}{% endif %}">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <input type="text" class="form-control" name="search" 
+                           value="{{ search_query|default:'' }}" 
+                           placeholder="업체/학교명을 입력하세요...">
+                  </div>
+                  <div class="col-md-6">
+                    <div class="btn-group">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>검색
+                      </button>
+                      <a href="{% if is_readonly %}{% url 'reporting:manager_company_list' %}{% else %}{% url 'reporting:company_list' %}{% endif %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>초기화
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 업체 목록 -->
+      {% if companies %}
+      <div class="card">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>업체/학교명</th>
+                  <th>부서/연구실 수</th>
+                  <th>고객 정보 수</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for company in companies %}
+                <tr>
+                  <td>
+                    <a href="{% if is_readonly %}{% url 'reporting:manager_company_detail' company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" 
+                       class="text-decoration-none fw-bold">
+                      {{ company.name }}
+                    </a>
+                  </td>
+                  <td>
+                    <span class="badge bg-info">{{ company.department_count }}개</span>
+                  </td>
+                  <td>
+                    <span class="badge bg-success">{{ company.followup_count }}개</span>
+                  </td>
+                  <td>
+                    <div class="btn-group">
+                      <a href="{% if is_readonly %}{% url 'reporting:manager_company_detail' company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" 
+                         class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye me-1"></i>상세
+                      </a>
+                      {% if not is_readonly and user.userprofile.role == 'admin' or company.created_by == user %}
+                      <a href="{% url 'reporting:company_edit' company.pk %}" 
+                         class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-edit me-1"></i>수정
+                      </a>
+                      <a href="{% url 'reporting:company_delete' company.pk %}" 
+                         class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-trash me-1"></i>삭제
+                      </a>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 페이지네이션 -->
+      {% if companies.has_other_pages %}
+      <div class="row mt-4">
+        <div class="col-12">
+          <nav aria-label="업체 목록 페이지네이션">
+            <ul class="pagination justify-content-center">
+              {% if companies.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}page=1" aria-label="첫 페이지">
+                  <span aria-hidden="true">&laquo;&laquo;</span>
+                </a>
+              </li>
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}page={{ companies.previous_page_number }}" aria-label="이전 페이지">
+                  <span aria-hidden="true">&laquo;</span>
+                </a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">&laquo;&laquo;</span>
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link">&laquo;</span>
+              </li>
+              {% endif %}
+              
+              {% for num in companies.paginator.page_range %}
+                {% if companies.number|add:'-5' <= num <= companies.number|add:'5' %}
+                  {% if num == companies.number %}
+                  <li class="page-item active">
+                    <span class="page-link">{{ num }}</span>
+                  </li>
+                  {% else %}
+                  <li class="page-item">
+                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}page={{ num }}">{{ num }}</a>
+                  </li>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              
+              {% if companies.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}page={{ companies.next_page_number }}" aria-label="다음 페이지">
+                  <span aria-hidden="true">&raquo;</span>
+                </a>
+              </li>
+              <li class="page-item">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}page={{ companies.paginator.num_pages }}" aria-label="마지막 페이지">
+                  <span aria-hidden="true">&raquo;&raquo;</span>
+                </a>
+              </li>
+              {% else %}
+              <li class="page-item disabled">
+                <span class="page-link">&raquo;</span>
+              </li>
+              <li class="page-item disabled">
+                <span class="page-link">&raquo;&raquo;</span>
+              </li>
+              {% endif %}
+            </ul>
+          </nav>
+        </div>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <i class="fas fa-building fa-3x text-muted mb-3"></i>
+          {% if search_query %}
+          <h5 class="card-title">검색 결과가 없습니다</h5>
+          <p class="card-text text-muted">
+            "{{ search_query }}"와 일치하는 업체/학교가 없습니다.
+          </p>
+          <a href="{% url 'reporting:company_list' %}" class="btn btn-outline-primary">
+            <i class="fas fa-times me-1"></i>검색 초기화
+          </a>
+          {% else %}
+          <h5 class="card-title">등록된 업체/학교가 없습니다</h5>
+          <p class="card-text text-muted">
+            첫 번째 업체/학교를 추가해보세요.
+          </p>
+          {% if user.userprofile.role == 'admin' %}
+          <a href="{% url 'reporting:company_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 업체/학교 추가
+          </a>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

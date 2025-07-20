@@ -1,0 +1,166 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h1 class="page-title mb-0">
+            <i class="fas fa-building me-2"></i>{{ company.name }}
+          </h1>
+          <small class="text-muted">부서/연구실 관리</small>
+        </div>
+        <div>
+          {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
+          <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-primary me-2">
+            <i class="fas fa-plus me-1"></i>새 부서/연구실 추가
+          </a>
+          {% endif %}
+          <a href="{% if is_readonly %}{% url 'reporting:manager_company_list' %}{% else %}{% url 'reporting:company_list' %}{% endif %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>목록으로
+          </a>
+        </div>
+      </div>
+
+      <!-- 업체 정보 카드 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-8">
+                  <h5 class="card-title">{{ company.name }}</h5>
+                  <p class="text-muted mb-0">부서/연구실 {{ company.departments.count }}개 | 고객 정보 {{ company.followup_companies.count }}개</p>
+                </div>
+                <div class="col-md-4 text-end">
+                  {% if not is_readonly and user.userprofile.role == 'admin' or company.created_by == user %}
+                  <div class="btn-group">
+                    <a href="{% url 'reporting:company_edit' company.pk %}" class="btn btn-outline-primary">
+                      <i class="fas fa-edit me-1"></i>업체 수정
+                    </a>
+                    <a href="{% url 'reporting:company_delete' company.pk %}" class="btn btn-outline-danger">
+                      <i class="fas fa-trash me-1"></i>업체 삭제
+                    </a>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 부서 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>부서/연구실 검색
+              </h6>
+              <form method="GET" action="{% url 'reporting:company_detail' company.pk %}">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <input type="text" class="form-control" name="dept_search" 
+                           value="{{ dept_search|default:'' }}" 
+                           placeholder="부서/연구실명을 입력하세요...">
+                  </div>
+                  <div class="col-md-6">
+                    <div class="btn-group">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>검색
+                      </button>
+                      <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>초기화
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 부서/연구실 목록 -->
+      {% if departments %}
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">부서/연구실 목록 ({{ departments|length }}개)</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>부서/연구실명</th>
+                  <th>고객 정보 수</th>
+                  {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
+                  <th>관리</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for department in departments %}
+                <tr>
+                  <td>
+                    <strong>{{ department.name }}</strong>
+                  </td>
+                  <td>
+                    <span class="badge bg-success">{{ department.followup_count }}개</span>
+                  </td>
+                  {% if not is_readonly and user.userprofile.role == 'admin' or department.created_by == user %}
+                  <td>
+                    <div class="btn-group">
+                      <a href="{% url 'reporting:department_edit' department.pk %}" 
+                         class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-edit me-1"></i>수정
+                      </a>
+                      <a href="{% url 'reporting:department_delete' department.pk %}" 
+                         class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-trash me-1"></i>삭제
+                      </a>
+                    </div>
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <i class="fas fa-sitemap fa-3x text-muted mb-3"></i>
+          {% if dept_search %}
+          <h5 class="card-title">검색 결과가 없습니다</h5>
+          <p class="card-text text-muted">
+            "{{ dept_search }}"와 일치하는 부서/연구실이 없습니다.
+          </p>
+          <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-times me-1"></i>검색 초기화
+          </a>
+          {% else %}
+          <h5 class="card-title">등록된 부서/연구실이 없습니다</h5>
+          <p class="card-text text-muted">
+            {{ company.name }}에 첫 번째 부서/연구실을 추가해보세요.
+          </p>
+          {% if user.userprofile.role == 'admin' %}
+          <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 부서/연구실 추가
+          </a>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

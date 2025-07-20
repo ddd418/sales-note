@@ -909,6 +909,17 @@
         </li>
         {% endif %}
 
+        <!-- Admin & Salesman 업체 관리 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'admin' or user.is_authenticated and user.userprofile.role == 'salesman' %}
+        <li>
+          <a
+            href="{% url 'reporting:company_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':7' == 'company' or request.resolver_match.url_name|slice:':10' == 'department' %}active{% endif %}"
+            ><i class="fas fa-building me-2"></i>업체 관리</a
+          >
+        </li>
+        {% endif %}
+
         <!-- Manager 전용 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'manager' %}
         <li>
@@ -916,6 +927,13 @@
             href="{% url 'reporting:manager_dashboard' %}"
             class="{% if request.resolver_match.url_name == 'manager_dashboard' %}active{% endif %}"
             ><i class="fas fa-chart-line me-2"></i>Manager 대시보드</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:manager_company_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}"
+            ><i class="fas fa-building me-2"></i>업체 조회</a
           >
         </li>
         {% endif %}

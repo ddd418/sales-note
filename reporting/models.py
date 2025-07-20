@@ -1,6 +1,38 @@
 from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
 
+# 업체/학교 (Company) 모델
+class Company(models.Model):
+    name = models.CharField(max_length=200, unique=True, verbose_name="업체/학교명")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="생성자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "업체/학교"
+        verbose_name_plural = "업체/학교 목록"
+        ordering = ['name']
+
+# 부서/연구실 (Department) 모델
+class Department(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='departments', verbose_name="업체/학교")
+    name = models.CharField(max_length=100, verbose_name="부서/연구실명")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="생성자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.company.name} - {self.name}"
+
+    class Meta:
+        verbose_name = "부서/연구실"
+        verbose_name_plural = "부서/연구실 목록"
+        unique_together = ['company', 'name']
+        ordering = ['company__name', 'name']
+
 # 사용자 프로필 (UserProfile) 모델 - 권한 관리
 class UserProfile(models.Model):
     ROLE_CHOICES = [
@@ -62,8 +94,8 @@ class FollowUp(models.Model):
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     customer_name = models.CharField(max_length=100, blank=True, null=True, verbose_name="고객명")
-    company = models.CharField(max_length=100, blank=True, null=True, verbose_name="업체/학교명")
-    department = models.CharField(max_length=100, blank=True, null=True, verbose_name="부서/연구실명")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='followup_companies', verbose_name="업체/학교명")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='followup_departments', verbose_name="부서/연구실명")
     manager = models.CharField(max_length=100, blank=True, null=True, verbose_name="책임자")
     phone_number = models.CharField(max_length=20, blank=True, null=True, verbose_name="핸드폰 번호")
     email = models.EmailField(blank=True, null=True, verbose_name="메일 주소")
@@ -76,7 +108,7 @@ class FollowUp(models.Model):
 
     def __str__(self):
         display_name = self.customer_name or "고객명 미정"
-        company_name = self.company or "업체명 미정"
+        company_name = self.company.name if self.company else "업체명 미정"
         return f"{display_name} ({company_name}) - {self.user.username}"
 
     class Meta:

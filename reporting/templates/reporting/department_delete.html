@@ -1,0 +1,75 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title">{{ page_title }}</h1>
+        <a href="{% url 'reporting:company_detail' department.company.pk %}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left me-1"></i>업체로 돌아가기
+        </a>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="alert alert-warning" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>주의:</strong> 부서/연구실을 삭제하면 되돌릴 수 없습니다.
+          </div>
+
+          <h5>삭제할 부서/연구실 정보</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered">
+              <tr>
+                <th class="bg-light" width="30%">업체/학교명</th>
+                <td>{{ department.company.name }}</td>
+              </tr>
+              <tr>
+                <th class="bg-light">부서/연구실명</th>
+                <td>{{ department.name }}</td>
+              </tr>
+              <tr>
+                <th class="bg-light">관련 고객 정보 수</th>
+                <td>
+                  <span class="badge bg-success">{{ followup_count }}개</span>
+                  {% if followup_count > 0 %}
+                  <small class="text-danger ms-2">※ 관련 고객 정보가 있어 삭제할 수 없습니다.</small>
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          {% if followup_count > 0 %}
+          <div class="alert alert-danger" role="alert">
+            <i class="fas fa-ban me-2"></i>
+            <strong>삭제 불가:</strong> 이 부서/연구실을 사용하는 고객 정보가 {{ followup_count }}개 있습니다. 
+            먼저 관련 고객 정보를 다른 부서/연구실로 변경하거나 삭제한 후 다시 시도해주세요.
+          </div>
+          
+          <div class="text-center">
+            <a href="{% url 'reporting:company_detail' department.company.pk %}" class="btn btn-secondary">
+              <i class="fas fa-arrow-left me-1"></i>업체로 돌아가기
+            </a>
+          </div>
+          {% else %}
+          <form method="post">
+            {% csrf_token %}
+            <div class="text-center">
+              <button type="submit" class="btn btn-danger me-2">
+                <i class="fas fa-trash me-1"></i>삭제하기
+              </button>
+              <a href="{% url 'reporting:company_detail' department.company.pk %}" class="btn btn-secondary">
+                <i class="fas fa-times me-1"></i>취소
+              </a>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

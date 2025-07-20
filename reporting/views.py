@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile # UserProfile 모델 추가
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department # Company, Department 모델 추가
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -92,13 +92,25 @@ def get_accessible_users(request_user):
 
 # 팔로우업 폼 클래스
 class FollowUpForm(forms.ModelForm):
+    # 자동완성을 위한 hidden 필드들
+    company = forms.ModelChoiceField(
+        queryset=Company.objects.all(),
+        widget=forms.HiddenInput(),
+        required=True,
+        error_messages={'required': '업체/학교를 선택해주세요.'}
+    )
+    department = forms.ModelChoiceField(
+        queryset=Department.objects.all(),
+        widget=forms.HiddenInput(),
+        required=True,
+        error_messages={'required': '부서/연구실명은 필수 입력사항입니다.'}
+    )
+    
     class Meta:
         model = FollowUp
         fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority']
         widgets = {
             'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)'}),
-            'company': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '업체/학교명을 입력하세요'}),
-            'department': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '부서/연구실명을 입력하세요 (선택사항)'}),
             'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)'}),
             'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '010-0000-0000 (선택사항)'}),
             'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@company.com (선택사항)'}),
@@ -117,6 +129,18 @@ class FollowUpForm(forms.ModelForm):
             'notes': '상세 내용',
             'priority': '우선순위',
         }
+        
+    def clean_company(self):
+        company = self.cleaned_data.get('company')
+        if not company:
+            raise forms.ValidationError('업체/학교를 선택해주세요.')
+        return company
+
+    def clean_department(self):
+        department = self.cleaned_data.get('department')
+        if not department:
+            raise forms.ValidationError('부서/연구실명은 필수 입력사항입니다.')
+        return department
 
 # 일정 폼 클래스
 class ScheduleForm(forms.ModelForm):
@@ -218,18 +242,18 @@ def followup_list_view(request):
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 모든 또는 접근 가능한 사용자의 데이터 조회
         accessible_users = get_accessible_users(request.user)
-        followups = FollowUp.objects.filter(user__in=accessible_users).select_related('user').prefetch_related('schedules', 'histories')
+        followups = FollowUp.objects.filter(user__in=accessible_users).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     else:
         # Salesman은 자신의 데이터만 조회
-        followups = FollowUp.objects.filter(user=request.user).select_related('user').prefetch_related('schedules', 'histories')
+        followups = FollowUp.objects.filter(user=request.user).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     
     # 고객명/업체명 검색 기능
     search_query = request.GET.get('search')
     if search_query:
         followups = followups.filter(
             Q(customer_name__icontains=search_query) |
-            Q(company__icontains=search_query) |
-            Q(department__icontains=search_query) |
+            Q(company__name__icontains=search_query) |
+            Q(department__name__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
     
@@ -245,22 +269,26 @@ def followup_list_view(request):
             # 접근 권한이 없는 사용자인 경우 필터링하지 않음
             pass
     
-    # 우선순위별 카운트 (우선순위 필터 적용 전 기준)
+    # 업체별 카운트 (업체 필터 적용 전 기준)
     from django.db.models import Count, Q as DbQ
     stats = followups.aggregate(
         total_count=Count('id'),
-        high_priority_count=Count('id', filter=DbQ(priority='high')),
-        medium_priority_count=Count('id', filter=DbQ(priority='medium')),
-        low_priority_count=Count('id', filter=DbQ(priority='low'))
+        active_count=Count('id', filter=DbQ(status='active')),
+        completed_count=Count('id', filter=DbQ(status='completed')),
+        paused_count=Count('id', filter=DbQ(status='paused'))
     )
     
-    # 우선순위 필터링 (카운트 계산 후에 적용)
-    priority_filter = request.GET.get('priority')
-    if priority_filter:
-        followups = followups.filter(priority=priority_filter)
-      # 정렬 (최신순)
+    # 업체 필터링 (카운트 계산 후에 적용)
+    company_filter = request.GET.get('company')
+    if company_filter:
+        followups = followups.filter(
+            Q(company_id=company_filter) | Q(department__company_id=company_filter)
+        )
+      
+    # 정렬 (최신순)
     followups = followups.order_by('-created_at')
-      # 담당자 목록 (필터용) - 권한 기반으로 수정
+    
+    # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자 목록
@@ -269,6 +297,12 @@ def followup_list_view(request):
     else:
         # Salesman은 자기 자신만
         users = [request.user]
+    
+    # 업체 목록 (필터용)
+    companies = Company.objects.filter(
+        Q(followup_companies__user__in=get_accessible_users(request.user)) |
+        Q(departments__followup_departments__user__in=get_accessible_users(request.user))
+    ).distinct().order_by('name')
     
     # 선택된 사용자 정보 - 권한 체크 추가
     selected_user = None
@@ -283,6 +317,18 @@ def followup_list_view(request):
         except (User.DoesNotExist, ValueError):
             pass
     
+    # 선택된 업체 정보
+    selected_company = None
+    if company_filter:
+        try:
+            selected_company = Company.objects.get(id=company_filter)
+        except (Company.DoesNotExist, ValueError):
+            pass
+            if candidate_user in accessible_users:
+                selected_user = candidate_user
+        except (User.DoesNotExist, ValueError):
+            pass
+    
     # 페이지네이션 처리
     paginator = Paginator(followups, 10) # 페이지당 10개 항목
     page_number = request.GET.get('page')
@@ -292,13 +338,16 @@ def followup_list_view(request):
         'followups': page_obj,
         'page_title': '팔로우업 목록', # 템플릿에 전달할 페이지 제목
         'search_query': search_query,
-        'priority_filter': priority_filter,
-        'user_filter': user_filter,        'selected_user': selected_user,
+        'company_filter': company_filter,
+        'user_filter': user_filter,
+        'selected_user': selected_user,
+        'selected_company': selected_company,
         'total_count': stats['total_count'],
-        'high_priority_count': stats['high_priority_count'],
-        'medium_priority_count': stats['medium_priority_count'],
-        'low_priority_count': stats['low_priority_count'],
+        'active_count': stats['active_count'],
+        'completed_count': stats['completed_count'],
+        'paused_count': stats['paused_count'],
         'users': users,
+        'companies': companies,
     }
     return render(request, 'reporting/followup_list.html', context)
 
@@ -2191,3 +2240,431 @@ def schedule_status_update_api(request, schedule_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+# 자동완성 API 뷰들
+@login_required
+def company_autocomplete(request):
+    """업체/학교명 자동완성 API"""
+    query = request.GET.get('q', '').strip()
+    if len(query) < 1:
+        return JsonResponse({'results': []})
+    
+    companies = Company.objects.filter(
+        name__icontains=query
+    ).order_by('name')[:10]
+    
+    results = []
+    for company in companies:
+        results.append({
+            'id': company.id,
+            'text': company.name
+        })
+    
+    return JsonResponse({'results': results})
+
+@login_required
+def department_autocomplete(request):
+    """부서/연구실명 자동완성 API"""
+    query = request.GET.get('q', '').strip()
+    company_id = request.GET.get('company_id')
+    
+    if len(query) < 1:
+        return JsonResponse({'results': []})
+    
+    departments = Department.objects.filter(name__icontains=query)
+    
+    # 회사가 선택된 경우 해당 회사의 부서만 필터링
+    if company_id:
+        departments = departments.filter(company_id=company_id)
+    
+    departments = departments.select_related('company').order_by('company__name', 'name')[:10]
+    
+    results = []
+    for dept in departments:
+        results.append({
+            'id': dept.id,
+            'text': f"{dept.company.name} - {dept.name}",
+            'company_id': dept.company.id,
+            'company_name': dept.company.name,
+            'department_name': dept.name
+        })
+    
+    return JsonResponse({'results': results})
+
+@login_required
+@require_POST
+def company_create_api(request):
+    """새 업체/학교 생성 API"""
+    name = request.POST.get('name', '').strip()
+    
+    if not name:
+        return JsonResponse({'error': '업체/학교명을 입력해주세요.'}, status=400)
+    
+    # 중복 체크
+    if Company.objects.filter(name=name).exists():
+        return JsonResponse({'error': '이미 존재하는 업체/학교명입니다.'}, status=400)
+    
+    try:
+        company = Company.objects.create(name=name, created_by=request.user)
+        return JsonResponse({
+            'success': True,
+            'company': {
+                'id': company.id,
+                'name': company.name
+            },
+            'message': f'"{name}" 업체/학교가 추가되었습니다.'
+        })
+    except Exception as e:
+        return JsonResponse({'error': f'업체/학교 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
+
+@login_required
+@require_POST
+def department_create_api(request):
+    """새 부서/연구실 생성 API"""
+    name = request.POST.get('name', '').strip()
+    company_id = request.POST.get('company_id')
+    
+    if not name:
+        return JsonResponse({'error': '부서/연구실명을 입력해주세요.'}, status=400)
+    
+    if not company_id:
+        return JsonResponse({'error': '업체/학교를 먼저 선택해주세요.'}, status=400)
+    
+    try:
+        company = Company.objects.get(id=company_id)
+        
+        # 중복 체크
+        if Department.objects.filter(company=company, name=name).exists():
+            return JsonResponse({'error': f'{company.name}에 이미 존재하는 부서/연구실명입니다.'}, status=400)
+        
+        department = Department.objects.create(company=company, name=name, created_by=request.user)
+        return JsonResponse({
+            'success': True,
+            'department': {
+                'id': department.id,
+                'name': department.name,
+                'company_id': company.id,
+                'company_name': company.name
+            },
+            'message': f'"{company.name} - {name}" 부서/연구실이 추가되었습니다.'
+        })
+        
+    except Company.DoesNotExist:
+        return JsonResponse({'error': '존재하지 않는 업체/학교입니다.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'부서/연구실 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
+
+
+# ============ 업체/부서 관리 뷰들 ============
+
+@role_required(['admin', 'salesman'])
+def company_list_view(request):
+    """업체/학교 목록 (Admin, Salesman 전용)"""
+    companies = Company.objects.annotate(
+        department_count=Count('departments'),
+        followup_count=Count('followup_companies')
+    ).order_by('name')
+    
+    # 검색 기능
+    search_query = request.GET.get('search', '')
+    if search_query:
+        companies = companies.filter(name__icontains=search_query)
+    
+    # 페이지네이션
+    paginator = Paginator(companies, 20)
+    page_number = request.GET.get('page')
+    companies = paginator.get_page(page_number)
+    
+    context = {
+        'companies': companies,
+        'search_query': search_query,
+        'page_title': '업체/학교 관리'
+    }
+    return render(request, 'reporting/company_list.html', context)
+
+@role_required(['admin', 'salesman'])
+def company_create_view(request):
+    """업체/학교 생성 (Admin, Salesman 전용)"""
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, '업체/학교명을 입력해주세요.')
+        elif Company.objects.filter(name=name).exists():
+            messages.error(request, '이미 존재하는 업체/학교명입니다.')
+        else:
+            Company.objects.create(name=name, created_by=request.user)
+            messages.success(request, f'"{name}" 업체/학교가 추가되었습니다.')
+            return redirect('reporting:company_list')
+    
+    context = {
+        'page_title': '새 업체/학교 추가'
+    }
+    return render(request, 'reporting/company_form.html', context)
+
+@role_required(['admin', 'salesman'])
+def company_edit_view(request, pk):
+    """업체/학교 수정 (Admin, 생성자 전용)"""
+    company = get_object_or_404(Company, pk=pk)
+    
+    # 권한 체크: 관리자이거나 생성자만 수정 가능
+    user_profile = get_user_profile(request.user)
+    if not (user_profile.role == 'admin' or company.created_by == request.user):
+        messages.error(request, '이 업체/학교를 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+        return redirect('reporting:company_list')
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, '업체/학교명을 입력해주세요.')
+        elif Company.objects.filter(name=name).exclude(pk=company.pk).exists():
+            messages.error(request, '이미 존재하는 업체/학교명입니다.')
+        else:
+            company.name = name
+            company.save()
+            messages.success(request, f'"{name}" 업체/학교 정보가 수정되었습니다.')
+            return redirect('reporting:company_list')
+    
+    context = {
+        'company': company,
+        'page_title': f'업체/학교 수정 - {company.name}'
+    }
+    return render(request, 'reporting/company_form.html', context)
+
+@role_required(['admin', 'salesman'])
+def company_delete_view(request, pk):
+    """업체/학교 삭제 (Admin, 생성자 전용)"""
+    company = get_object_or_404(Company, pk=pk)
+    
+    # 권한 체크: 관리자이거나 생성자만 삭제 가능
+    user_profile = get_user_profile(request.user)
+    if not (user_profile.role == 'admin' or company.created_by == request.user):
+        messages.error(request, '이 업체/학교를 삭제할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+        return redirect('reporting:company_list')
+    
+    # 관련 데이터 개수 확인
+    department_count = company.departments.count()
+    followup_count = company.followup_companies.count()
+    
+    if request.method == 'POST':
+        company_name = company.name
+        
+        if followup_count > 0:
+            messages.error(request, f'이 업체/학교를 사용하는 고객 정보가 {followup_count}개 있어 삭제할 수 없습니다.')
+            return redirect('reporting:company_list')
+        
+        company.delete()
+        messages.success(request, f'"{company_name}" 업체/학교가 삭제되었습니다.')
+        return redirect('reporting:company_list')
+    
+    context = {
+        'company': company,
+        'department_count': department_count,
+        'followup_count': followup_count,
+        'page_title': f'업체/학교 삭제 - {company.name}'
+    }
+    return render(request, 'reporting/company_delete.html', context)
+
+@role_required(['admin', 'salesman'])
+def company_detail_view(request, pk):
+    """업체/학교 상세 (부서 목록 포함) (Admin, Salesman 전용)"""
+    company = get_object_or_404(Company, pk=pk)
+    
+    # 해당 업체의 부서 목록
+    departments = company.departments.annotate(
+        followup_count=Count('followup_departments')
+    ).order_by('name')
+    
+    # 검색 기능 (부서명)
+    dept_search = request.GET.get('dept_search', '')
+    if dept_search:
+        departments = departments.filter(name__icontains=dept_search)
+    
+    context = {
+        'company': company,
+        'departments': departments,
+        'dept_search': dept_search,
+        'page_title': f'{company.name} - 부서/연구실 관리'
+    }
+    return render(request, 'reporting/company_detail.html', context)
+
+@role_required(['admin', 'salesman'])
+def department_create_view(request, company_pk):
+    """부서/연구실 생성 (Admin, Salesman 전용)"""
+    company = get_object_or_404(Company, pk=company_pk)
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, '부서/연구실명을 입력해주세요.')
+        elif Department.objects.filter(company=company, name=name).exists():
+            messages.error(request, f'{company.name}에 이미 존재하는 부서/연구실명입니다.')
+        else:
+            Department.objects.create(company=company, name=name, created_by=request.user)
+            messages.success(request, f'"{company.name} - {name}" 부서/연구실이 추가되었습니다.')
+            return redirect('reporting:company_detail', pk=company.pk)
+    
+    context = {
+        'company': company,
+        'page_title': f'{company.name} - 새 부서/연구실 추가'
+    }
+    return render(request, 'reporting/department_form.html', context)
+
+@role_required(['admin', 'salesman'])
+def department_edit_view(request, pk):
+    """부서/연구실 수정 (Admin, 생성자 전용)"""
+    department = get_object_or_404(Department, pk=pk)
+    
+    # 권한 체크: 관리자이거나 생성자만 수정 가능
+    user_profile = get_user_profile(request.user)
+    if not (user_profile.role == 'admin' or department.created_by == request.user):
+        messages.error(request, '이 부서/연구실을 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+        return redirect('reporting:company_detail', pk=department.company.pk)
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, '부서/연구실명을 입력해주세요.')
+        elif Department.objects.filter(company=department.company, name=name).exclude(pk=department.pk).exists():
+            messages.error(request, f'{department.company.name}에 이미 존재하는 부서/연구실명입니다.')
+        else:
+            department.name = name
+            department.save()
+            messages.success(request, f'"{department.company.name} - {name}" 부서/연구실 정보가 수정되었습니다.')
+            return redirect('reporting:company_detail', pk=department.company.pk)
+    
+    context = {
+        'department': department,
+        'page_title': f'{department.company.name} - 부서/연구실 수정'
+    }
+    return render(request, 'reporting/department_form.html', context)
+
+@role_required(['admin', 'salesman'])
+def department_delete_view(request, pk):
+    """부서/연구실 삭제 (Admin, 생성자 전용)"""
+    department = get_object_or_404(Department, pk=pk)
+    
+    # 권한 체크: 관리자이거나 생성자만 삭제 가능
+    user_profile = get_user_profile(request.user)
+    if not (user_profile.role == 'admin' or department.created_by == request.user):
+        messages.error(request, '이 부서/연구실을 삭제할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+        return redirect('reporting:company_detail', pk=department.company.pk)
+    
+    # 관련 데이터 개수 확인
+    followup_count = department.followup_departments.count()
+    
+    if request.method == 'POST':
+        department_name = department.name
+        company_name = department.company.name
+        company_pk = department.company.pk
+        
+        if followup_count > 0:
+            messages.error(request, f'이 부서/연구실을 사용하는 고객 정보가 {followup_count}개 있어 삭제할 수 없습니다.')
+            return redirect('reporting:company_detail', pk=company_pk)
+        
+        department.delete()
+        messages.success(request, f'"{company_name} - {department_name}" 부서/연구실이 삭제되었습니다.')
+        return redirect('reporting:company_detail', pk=company_pk)
+    
+    context = {
+        'department': department,
+        'followup_count': followup_count,
+        'page_title': f'{department.company.name} - 부서/연구실 삭제'
+    }
+    return render(request, 'reporting/department_delete.html', context)
+
+# ============ 매니저용 읽기 전용 업체/부서 뷰들 ============
+
+@role_required(['manager'])
+def manager_company_list_view(request):
+    """매니저용 업체/학교 목록 (읽기 전용)"""
+    companies = Company.objects.annotate(
+        department_count=Count('departments'),
+        followup_count=Count('followup_companies')
+    ).order_by('name')
+    
+    # 검색 기능
+    search_query = request.GET.get('search', '')
+    if search_query:
+        companies = companies.filter(name__icontains=search_query)
+    
+    # 페이지네이션
+    paginator = Paginator(companies, 20)
+    page_number = request.GET.get('page')
+    companies = paginator.get_page(page_number)
+    
+    context = {
+        'companies': companies,
+        'search_query': search_query,
+        'page_title': '업체/학교 목록 (조회)',
+        'is_readonly': True
+    }
+    return render(request, 'reporting/company_list.html', context)
+
+@role_required(['manager'])
+def manager_company_detail_view(request, pk):
+    """매니저용 업체/학교 상세 (읽기 전용)"""
+    company = get_object_or_404(Company, pk=pk)
+    
+    # 해당 업체의 부서 목록
+    departments = company.departments.annotate(
+        followup_count=Count('followup_departments')
+    ).order_by('name')
+    
+    # 검색 기능 (부서명)
+    dept_search = request.GET.get('dept_search', '')
+    if dept_search:
+        departments = departments.filter(name__icontains=dept_search)
+    
+    # 페이지네이션 (부서)
+    paginator = Paginator(departments, 10)
+    page_number = request.GET.get('page')
+    departments = paginator.get_page(page_number)
+    
+    context = {
+        'company': company,
+        'departments': departments,
+        'dept_search': dept_search,
+        'page_title': f'{company.name} - 상세 정보 (조회)',
+        'is_readonly': True
+    }
+    return render(request, 'reporting/company_detail.html', context)
+
+# ============ 추가 API 엔드포인트들 ============
+
+@login_required
+def api_company_detail(request, pk):
+    """개별 회사 정보 조회 API"""
+    try:
+        company = get_object_or_404(Company, pk=pk)
+        return JsonResponse({
+            'success': True,
+            'company': {
+                'id': company.id,
+                'name': company.name
+            }
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required  
+def api_department_detail(request, pk):
+    """개별 부서 정보 조회 API"""
+    try:
+        department = get_object_or_404(Department, pk=pk)
+        return JsonResponse({
+            'success': True,
+            'department': {
+                'id': department.id,
+                'name': department.name,
+                'company_id': department.company.id,
+                'company_name': department.company.name
+            }
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })

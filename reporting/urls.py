@@ -34,7 +34,31 @@ urlpatterns = [
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     # API 엔드포인트들
     path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
-    path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),    # 사용자 관리 URL들 (Admin 전용)
+    path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),
+    
+    # 자동완성 API 엔드포인트들
+    path('api/companies/autocomplete/', views.company_autocomplete, name='company_autocomplete'),
+    path('api/departments/autocomplete/', views.department_autocomplete, name='department_autocomplete'),
+    path('api/companies/create/', views.company_create_api, name='company_create_api'),
+    path('api/departments/create/', views.department_create_api, name='department_create_api'),
+    
+    # 개별 조회 API 엔드포인트들
+    path('api/companies/<int:pk>/', views.api_company_detail, name='api_company_detail'),
+    path('api/departments/<int:pk>/', views.api_department_detail, name='api_department_detail'),
+    
+    # 업체/부서 관리 URL들
+    path('companies/', views.company_list_view, name='company_list'),
+    path('companies/create/', views.company_create_view, name='company_create'),
+    path('companies/<int:pk>/', views.company_detail_view, name='company_detail'),
+    path('companies/<int:pk>/edit/', views.company_edit_view, name='company_edit'),
+    path('companies/<int:pk>/delete/', views.company_delete_view, name='company_delete'),
+    path('companies/<int:company_pk>/departments/create/', views.department_create_view, name='department_create'),
+    path('departments/<int:pk>/edit/', views.department_edit_view, name='department_edit'),
+    path('departments/<int:pk>/delete/', views.department_delete_view, name='department_delete'),
+
+    # 매니저용 읽기 전용 업체 관리 URL들
+    path('manager/companies/', views.manager_company_list_view, name='manager_company_list'),
+    path('manager/companies/<int:pk>/', views.manager_company_detail_view, name='manager_company_detail'),    # 사용자 관리 URL들 (Admin 전용)
     path('users/', views.user_list, name='user_list'),
     path('users/create/', views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
