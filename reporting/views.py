@@ -144,11 +144,21 @@ class FollowUpForm(forms.ModelForm):
 
 # 일정 폼 클래스
 class ScheduleForm(forms.ModelForm):
+    followup = forms.ModelChoiceField(
+        queryset=FollowUp.objects.none(),  # 초기에는 비어있음
+        widget=forms.Select(attrs={
+            'class': 'form-control followup-autocomplete',
+            'data-placeholder': '팔로우업을 검색하세요...',
+            'data-url': '',  # JavaScript에서 설정됨
+        }),
+        label='관련 팔로우업',
+        help_text='고객명, 업체명 또는 부서명으로 검색할 수 있습니다.'
+    )
+    
     class Meta:
         model = Schedule
         fields = ['followup', 'visit_date', 'visit_time', 'location', 'status', 'activity_type', 'notes']
         widgets = {
-            'followup': forms.Select(attrs={'class': 'form-control'}),
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)'}),
@@ -157,7 +167,6 @@ class ScheduleForm(forms.ModelForm):
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)'}),
         }
         labels = {
-            'followup': '관련 팔로우업',
             'visit_date': '방문 날짜',
             'visit_time': '방문 시간',
             'location': '장소',
@@ -172,9 +181,19 @@ class ScheduleForm(forms.ModelForm):
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
             if user.is_staff or user.is_superuser:
-                self.fields['followup'].queryset = FollowUp.objects.all()
+                self.fields['followup'].queryset = FollowUp.objects.all().select_related('company', 'department')
             else:
-                self.fields['followup'].queryset = FollowUp.objects.filter(user=user)
+                self.fields['followup'].queryset = FollowUp.objects.filter(user=user).select_related('company', 'department')
+                
+            # 자동완성 URL 설정
+            from django.urls import reverse
+            self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
+            
+            # 기존 인스턴스가 있는 경우 해당 팔로우업을 미리 로드
+            if self.instance.pk and self.instance.followup:
+                self.fields['followup'].queryset = FollowUp.objects.filter(
+                    pk=self.instance.followup.pk
+                ).union(self.fields['followup'].queryset)
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -2306,6 +2325,52 @@ def department_autocomplete(request):
             'company_id': dept.company.id,
             'company_name': dept.company.name,
             'department_name': dept.name
+        })
+    
+    return JsonResponse({'results': results})
+
+@login_required
+def followup_autocomplete(request):
+    """팔로우업 자동완성 API (일정 생성용)"""
+    query = request.GET.get('q', '').strip()
+    if len(query) < 1:
+        return JsonResponse({'results': []})
+    
+    # 현재 사용자의 권한에 따른 팔로우업 필터링
+    user_profile = get_user_profile(request.user)
+    if user_profile.can_view_all_users():
+        accessible_users = get_accessible_users(request.user)
+        followups = FollowUp.objects.filter(user__in=accessible_users)
+    else:
+        followups = FollowUp.objects.filter(user=request.user)
+    
+    # 검색어로 필터링 (고객명, 업체명, 부서명으로 검색)
+    followups = followups.filter(
+        Q(customer_name__icontains=query) |
+        Q(company__name__icontains=query) |
+        Q(department__name__icontains=query)
+    ).select_related('company', 'department', 'user').order_by('company__name', 'customer_name')[:15]
+    
+    results = []
+    for followup in followups:
+        # 표시 텍스트 구성
+        company_name = str(followup.company) if followup.company else '업체명 미정'
+        department_name = str(followup.department) if followup.department else '부서명 미정'
+        customer_name = followup.customer_name or '고객명 미정'
+        
+        display_text = f"{company_name} - {department_name} | {customer_name}"
+        
+        # 관리자/매니저인 경우 담당자 정보도 표시
+        if user_profile.can_view_all_users() and followup.user != request.user:
+            display_text += f" ({followup.user.username})"
+        
+        results.append({
+            'id': followup.id,
+            'text': display_text,
+            'customer_name': customer_name,
+            'company_name': company_name,
+            'department_name': department_name,
+            'user_name': followup.user.username
         })
     
     return JsonResponse({'results': results})

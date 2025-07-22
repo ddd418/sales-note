@@ -39,6 +39,7 @@ urlpatterns = [
     # 자동완성 API 엔드포인트들
     path('api/companies/autocomplete/', views.company_autocomplete, name='company_autocomplete'),
     path('api/departments/autocomplete/', views.department_autocomplete, name='department_autocomplete'),
+    path('api/followups/autocomplete/', views.followup_autocomplete, name='followup_autocomplete'),
     path('api/companies/create/', views.company_create_api, name='company_create_api'),
     path('api/departments/create/', views.department_create_api, name='department_create_api'),
     

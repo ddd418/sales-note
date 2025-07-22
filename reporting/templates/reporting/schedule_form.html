@@ -157,5 +157,200 @@
     font-size: 1.1rem;
     font-weight: 600;
   }
+
+  /* 자동완성 스타일 */
+  .autocomplete-container {
+    position: relative;
+  }
+
+  .autocomplete-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e3e2e0;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+  }
+
+  .autocomplete-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f5f5f5;
+    transition: background-color 0.2s;
+  }
+
+  .autocomplete-item:hover,
+  .autocomplete-item.active {
+    background-color: #f8f9fa;
+  }
+
+  .autocomplete-item:last-child {
+    border-bottom: none;
+  }
+
+  .autocomplete-no-results {
+    padding: 12px 16px;
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .followup-autocomplete.loading {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 11-6.219-8.56'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const followupField = document.querySelector('.followup-autocomplete');
+    if (!followupField) return;
+
+    const container = document.createElement('div');
+    container.className = 'autocomplete-container';
+    followupField.parentNode.insertBefore(container, followupField);
+    container.appendChild(followupField);
+
+    const resultsDiv = document.createElement('div');
+    resultsDiv.className = 'autocomplete-results';
+    container.appendChild(resultsDiv);
+
+    let timeout;
+    let currentSelection = -1;
+    let results = [];
+
+    // 원래 select를 input으로 변경
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = followupField.className;
+    input.placeholder = followupField.dataset.placeholder || '팔로우업을 검색하세요...';
+    input.name = followupField.name + '_search';
+    
+    // 기존 선택값이 있으면 표시
+    const selectedOption = followupField.querySelector('option:checked');
+    if (selectedOption && selectedOption.value) {
+        input.value = selectedOption.textContent;
+    }
+
+    followupField.style.display = 'none';
+    container.insertBefore(input, resultsDiv);
+
+    function searchFollowups(query) {
+        if (query.length < 1) {
+            resultsDiv.style.display = 'none';
+            return;
+        }
+
+        input.classList.add('loading');
+
+        fetch(followupField.dataset.url + '?q=' + encodeURIComponent(query))
+            .then(response => response.json())
+            .then(data => {
+                input.classList.remove('loading');
+                results = data.results || [];
+                displayResults(results);
+            })
+            .catch(error => {
+                input.classList.remove('loading');
+                console.error('검색 오류:', error);
+                resultsDiv.innerHTML = '<div class="autocomplete-no-results">검색 중 오류가 발생했습니다.</div>';
+                resultsDiv.style.display = 'block';
+            });
+    }
+
+    function displayResults(results) {
+        if (results.length === 0) {
+            resultsDiv.innerHTML = '<div class="autocomplete-no-results">검색 결과가 없습니다.</div>';
+        } else {
+            resultsDiv.innerHTML = results.map((item, index) => 
+                `<div class="autocomplete-item" data-id="${item.id}" data-index="${index}">${item.text}</div>`
+            ).join('');
+        }
+        resultsDiv.style.display = 'block';
+        currentSelection = -1;
+    }
+
+    function selectItem(item) {
+        input.value = item.text;
+        followupField.value = item.id;
+        resultsDiv.style.display = 'none';
+        currentSelection = -1;
+    }
+
+    // 이벤트 리스너
+    input.addEventListener('input', function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            searchFollowups(this.value);
+        }, 300);
+    });
+
+    input.addEventListener('keydown', function(e) {
+        const items = resultsDiv.querySelectorAll('.autocomplete-item');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            currentSelection = Math.min(currentSelection + 1, items.length - 1);
+            updateSelection();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            currentSelection = Math.max(currentSelection - 1, -1);
+            updateSelection();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (currentSelection >= 0 && results[currentSelection]) {
+                selectItem(results[currentSelection]);
+            }
+        } else if (e.key === 'Escape') {
+            resultsDiv.style.display = 'none';
+            currentSelection = -1;
+        }
+    });
+
+    function updateSelection() {
+        const items = resultsDiv.querySelectorAll('.autocomplete-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('active', index === currentSelection);
+        });
+    }
+
+    // 클릭 이벤트
+    resultsDiv.addEventListener('click', function(e) {
+        if (e.target.classList.contains('autocomplete-item')) {
+            const index = parseInt(e.target.dataset.index);
+            if (results[index]) {
+                selectItem(results[index]);
+            }
+        }
+    });
+
+    // 외부 클릭시 결과 숨김
+    document.addEventListener('click', function(e) {
+        if (!container.contains(e.target)) {
+            resultsDiv.style.display = 'none';
+            currentSelection = -1;
+        }
+    });
+
+    // 포커스시 기존 검색 결과 표시
+    input.addEventListener('focus', function() {
+        if (results.length > 0) {
+            resultsDiv.style.display = 'block';
+        }
+    });
+});
+</script>
 {% endblock %}
