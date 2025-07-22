@@ -809,8 +809,18 @@ def schedule_list_view(request):
     if status_filter:
         schedules = schedules.filter(status=status_filter)
     
-    # 정렬 (방문 날짜순)
-    schedules = schedules.order_by('visit_date', 'visit_time')    # 담당자 목록 (필터용)
+    # 정렬 (예정됨 우선, 그 다음 최신 날짜순)
+    # Django의 Case를 사용해서 상태별 우선순위 설정
+    from django.db.models import Case, When, IntegerField
+    schedules = schedules.annotate(
+        status_priority=Case(
+            When(status='scheduled', then=1),    # 예정됨: 최우선
+            When(status='completed', then=2),    # 완료됨: 두번째
+            When(status='cancelled', then=3),    # 취소됨: 마지막
+            default=4,
+            output_field=IntegerField()
+        )
+    ).order_by('status_priority', '-visit_date', '-visit_time')  # 상태 우선순위 → 최신 날짜순 → 최신 시간순    # 담당자 목록 (필터용)
     if request.user.is_staff or request.user.is_superuser:
         from django.contrib.auth.models import User
         users = User.objects.filter(schedule__isnull=False).distinct()
