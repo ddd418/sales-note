@@ -146,13 +146,14 @@ class FollowUpForm(forms.ModelForm):
 class ScheduleForm(forms.ModelForm):
     class Meta:
         model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'location', 'status', 'notes']
+        fields = ['followup', 'visit_date', 'visit_time', 'location', 'status', 'activity_type', 'notes']
         widgets = {
             'followup': forms.Select(attrs={'class': 'form-control'}),
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
+            'activity_type': forms.Select(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)'}),
         }
         labels = {
@@ -161,6 +162,7 @@ class ScheduleForm(forms.ModelForm):
             'visit_time': '방문 시간',
             'location': '장소',
             'status': '상태',
+            'activity_type': '활동 유형',
             'notes': '메모',
         }
 
@@ -298,11 +300,19 @@ def followup_list_view(request):
         # Salesman은 자기 자신만
         users = [request.user]
     
-    # 업체 목록 (필터용)
+    # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
+    accessible_users = get_accessible_users(request.user)
     companies = Company.objects.filter(
-        Q(followup_companies__user__in=get_accessible_users(request.user)) |
-        Q(departments__followup_departments__user__in=get_accessible_users(request.user))
+        Q(followup_companies__user__in=accessible_users) |
+        Q(departments__followup_departments__user__in=accessible_users)
     ).distinct().order_by('name')
+    
+    # 각 업체별 팔로우업 개수 계산
+    for company in companies:
+        company.followup_count = FollowUp.objects.filter(
+            Q(company=company) | Q(department__company=company),
+            user__in=accessible_users
+        ).count()
     
     # 선택된 사용자 정보 - 권한 체크 추가
     selected_user = None
@@ -1044,45 +1054,54 @@ def schedule_calendar_view(request):
 @login_required
 def schedule_api_view(request):
     """일정 데이터 API (JSON 응답) - 권한 기반 필터링 적용"""
-    user_profile = get_user_profile(request.user)
-    
-    # 권한에 따른 데이터 필터링
-    if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user)
-        schedules = Schedule.objects.filter(user__in=accessible_users)
+    try:
+        user_profile = get_user_profile(request.user)
         
-        # URL 파라미터로 특정 사용자 필터링
-        user_filter = request.GET.get('user')
-        if user_filter:
-            try:
-                user_filter_int = int(user_filter)
-                schedules = schedules.filter(user_id=user_filter_int)
-            except (ValueError, TypeError):
-                pass
-    else:
-        # Salesman은 자신의 데이터만 조회
-        schedules = Schedule.objects.filter(user=request.user)
+        # 권한에 따른 데이터 필터링
+        if user_profile.can_view_all_users():
+            # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
+            accessible_users = get_accessible_users(request.user)
+            schedules = Schedule.objects.filter(user__in=accessible_users)
+        
+            
+            # URL 파라미터로 특정 사용자 필터링
+            user_filter = request.GET.get('user')
+            if user_filter:
+                try:
+                    user_filter_int = int(user_filter)
+                    schedules = schedules.filter(user_id=user_filter_int)
+                except (ValueError, TypeError):
+                    pass
+        else:
+            # Salesman은 자신의 데이터만 조회
+            schedules = Schedule.objects.filter(user=request.user)
+        
+        schedule_data = []
+        for schedule in schedules:
+            schedule_data.append({
+                'id': schedule.id,
+                'followup_id': schedule.followup.id,  # 팔로우업 ID 추가
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'time': schedule.visit_time.strftime('%H:%M'),
+                'customer': schedule.followup.customer_name or '고객명 미정',
+                'company': str(schedule.followup.company) if schedule.followup.company else '업체명 미정',
+                'location': schedule.location or '',
+                'status': schedule.status,
+                'status_display': schedule.get_status_display(),
+                'notes': schedule.notes or '',
+                'user_name': schedule.user.username,
+            })
+        
+        return JsonResponse(schedule_data, safe=False)
     
-    schedule_data = []
-    for schedule in schedules:
-        schedule_data.append({
-            'id': schedule.id,
-            'followup_id': schedule.followup.id,  # 팔로우업 ID 추가
-            'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
-            'time': schedule.visit_time.strftime('%H:%M'),
-            'customer': schedule.followup.customer_name or '고객명 미정',
-            'company': schedule.followup.company or '업체명 미정',
-            'location': schedule.location or '',
-            'status': schedule.status,
-            'status_display': schedule.get_status_display(),
-            'notes': schedule.notes or '',
-            'user_name': schedule.user.username,
-        })
-    
-    return JsonResponse(schedule_data, safe=False)
-
-# ============ 히스토리(History) 관련 뷰들 ============
+    except Exception as e:
+        # 에러 디버깅을 위한 JSON 응답
+        import traceback
+        return JsonResponse({
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'message': 'schedule_api_view에서 오류가 발생했습니다.'
+        }, status=500)# ============ 히스토리(History) 관련 뷰들 ============
 
 @login_required
 def history_list_view(request):
@@ -2371,7 +2390,7 @@ def company_list_view(request):
         companies = companies.filter(name__icontains=search_query)
     
     # 페이지네이션
-    paginator = Paginator(companies, 20)
+    paginator = Paginator(companies, 10)
     page_number = request.GET.get('page')
     companies = paginator.get_page(page_number)
     
@@ -2588,7 +2607,7 @@ def manager_company_list_view(request):
         companies = companies.filter(name__icontains=search_query)
     
     # 페이지네이션
-    paginator = Paginator(companies, 20)
+    paginator = Paginator(companies, 10)
     page_number = request.GET.get('page')
     companies = paginator.get_page(page_number)
     
