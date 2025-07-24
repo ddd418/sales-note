@@ -2236,9 +2236,9 @@ def history_create_from_schedule(request, schedule_id):
                         'history_id': history.id
                     })
                 else:
-                    # 일반 폼 제출인 경우 기존 동작
+                    # 일반 폼 제출인 경우 일정 상세 페이지로 리다이렉트
                     messages.success(request, f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.')
-                    return redirect('reporting:history_detail', pk=history.pk)
+                    return redirect('reporting:schedule_detail', pk=schedule.pk)
             else:
                 # 폼 검증 실패
                 print(f"Form errors: {form.errors}")

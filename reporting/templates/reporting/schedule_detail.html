@@ -12,21 +12,6 @@
           {{ schedule.followup.customer_name|default:"고객명 미정" }} 일정
         </h1>
         <div>
-          {% if from_page == 'calendar' %}
-          <a
-            href="{% url 'reporting:schedule_calendar' %}"
-            class="btn btn-secondary me-2"
-          >
-            <i class="fas fa-calendar-alt me-1"></i>캘린더로
-          </a>
-          {% else %}
-          <a
-            href="{% url 'reporting:schedule_list' %}"
-            class="btn btn-secondary me-2"
-          >
-            <i class="fas fa-list me-1"></i>목록으로
-          </a>
-          {% endif %}
           <a
             href="{% url 'reporting:schedule_edit' schedule.pk %}"
             class="btn btn-primary me-2"
@@ -34,7 +19,7 @@
             <i class="fas fa-edit me-1"></i>수정
           </a>
           <a
-            href="{% url 'reporting:schedule_delete' schedule.pk %}{% if from_page == 'calendar' %}?from=calendar{% endif %}"
+            href="{% url 'reporting:schedule_delete' schedule.pk %}"
             class="btn btn-danger"
           >
             <i class="fas fa-trash-alt me-1"></i>삭제
@@ -181,13 +166,7 @@
             </h5>
             <div>
               <a
-                href="{% url 'reporting:history_list' %}?schedule={{ schedule.pk }}"
-                class="btn btn-outline-secondary btn-sm"
-              >
-                <i class="fas fa-list me-1"></i>전체 보기
-              </a>
-              <a
-                href="{% url 'reporting:history_create' %}?schedule={{ schedule.pk }}"
+                href="{% url 'reporting:history_create_from_schedule' schedule.pk %}"
                 class="btn btn-outline-primary btn-sm"
               >
                 <i class="fas fa-plus me-1"></i>기록 추가

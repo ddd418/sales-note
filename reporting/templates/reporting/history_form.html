@@ -15,11 +15,11 @@
           {% if form.instance.pk %}활동 기록 수정{% else %}새 활동 기록{%endif%}
         </h1>
         <a
-          href="{% if form.instance.pk %}{% url 'reporting:history_detail' form.instance.pk %}{% else %}{% url 'reporting:history_list' %}{% endif %}"
+          href="{% if form.instance.pk %}{% url 'reporting:history_detail' form.instance.pk %}{% elif schedule %}{% url 'reporting:schedule_detail' schedule.pk %}{% else %}{% url 'reporting:history_list' %}{% endif %}"
           class="btn btn-secondary"
         >
           <i class="fas fa-arrow-left me-1"></i>
-          {% if form.instance.pk %}상세로{% else %}목록으로{% endif %}
+          {% if form.instance.pk %}상세로{% elif schedule %}일정으로{% else %}목록으로{% endif %}
         </a>
       </div>
 
