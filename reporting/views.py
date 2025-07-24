@@ -157,21 +157,21 @@ class ScheduleForm(forms.ModelForm):
     
     class Meta:
         model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'location', 'status', 'activity_type', 'notes']
+        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
+            'activity_type': forms.Select(attrs={'class': 'form-control'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
-            'activity_type': forms.Select(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)'}),
         }
         labels = {
             'visit_date': '방문 날짜',
             'visit_time': '방문 시간',
+            'activity_type': '일정 유형',
             'location': '장소',
             'status': '상태',
-            'activity_type': '활동 유형',
             'notes': '메모',
         }
 
@@ -181,19 +181,25 @@ class ScheduleForm(forms.ModelForm):
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
             if user.is_staff or user.is_superuser:
-                self.fields['followup'].queryset = FollowUp.objects.all().select_related('company', 'department')
+                base_queryset = FollowUp.objects.all()
             else:
-                self.fields['followup'].queryset = FollowUp.objects.filter(user=user).select_related('company', 'department')
+                base_queryset = FollowUp.objects.filter(user=user)
+                
+            # 기존 인스턴스가 있는 경우 해당 팔로우업도 포함
+            if self.instance.pk and self.instance.followup:
+                # Q 객체를 사용하여 기존 팔로우업과 사용자 팔로우업을 OR 조건으로 결합
+                from django.db.models import Q
+                if user.is_staff or user.is_superuser:
+                    queryset_filter = Q()  # 모든 팔로우업
+                else:
+                    queryset_filter = Q(user=user) | Q(pk=self.instance.followup.pk)
+                self.fields['followup'].queryset = FollowUp.objects.filter(queryset_filter).select_related('company', 'department').distinct()
+            else:
+                self.fields['followup'].queryset = base_queryset.select_related('company', 'department')
                 
             # 자동완성 URL 설정
             from django.urls import reverse
             self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
-            
-            # 기존 인스턴스가 있는 경우 해당 팔로우업을 미리 로드
-            if self.instance.pk and self.instance.followup:
-                self.fields['followup'].queryset = FollowUp.objects.filter(
-                    pk=self.instance.followup.pk
-                ).union(self.fields['followup'].queryset)
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -246,6 +252,24 @@ class HistoryForm(forms.ModelForm):
             elif self.instance.pk:
                 # 수정 시에는 해당 인스턴스의 팔로우업에 연결된 일정들을 표시
                 self.fields['schedule'].queryset = self.instance.followup.schedules.all()
+                
+            # 선택된 일정이 있으면 해당 일정의 activity_type에 맞게 action_type 매핑
+            if 'schedule' in self.data and self.data.get('schedule'):
+                try:
+                    schedule_id = int(self.data.get('schedule'))
+                    selected_schedule = Schedule.objects.get(id=schedule_id)
+                    # 일정의 activity_type을 히스토리의 action_type으로 매핑
+                    activity_mapping = {
+                        'customer_meeting': 'customer_meeting',
+                        'delivery': 'delivery_schedule',
+                        'service': 'service',
+                    }
+                    # Schedule 모델의 activity_type을 확인하여 매핑
+                    if hasattr(selected_schedule, 'activity_type'):
+                        mapped_action = activity_mapping.get(selected_schedule.activity_type, 'customer_meeting')
+                        self.fields['action_type'].initial = mapped_action
+                except (ValueError, TypeError, Schedule.DoesNotExist):
+                    pass
         
         # 일정은 선택사항으로 설정
         self.fields['schedule'].required = False
@@ -1117,6 +1141,8 @@ def schedule_api_view(request):
                 'location': schedule.location or '',
                 'status': schedule.status,
                 'status_display': schedule.get_status_display(),
+                'activity_type': schedule.activity_type,
+                'activity_type_display': schedule.get_activity_type_display(),
                 'notes': schedule.notes or '',
                 'user_name': schedule.user.username,
             })
@@ -1322,15 +1348,46 @@ def history_delete_view(request, pk):
     
     # 권한 체크: 삭제 권한이 있는 경우만 삭제 가능 (Manager는 읽기 전용)
     if not can_modify_user_data(request.user, history.user):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'success': False,
+                'error': '삭제 권한이 없습니다. Manager는 읽기 전용입니다.'
+            })
         messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
         customer_name = history.followup.customer_name or "고객명 미정"
         action_display = history.get_action_type_display()
-        history.delete()
-        messages.success(request, f'{customer_name} ({action_display}) 활동 기록이 삭제되었습니다.')
-        return redirect('reporting:history_list')
+        
+        try:
+            history.delete()
+            success_message = f'{customer_name} ({action_display}) 활동 기록이 삭제되었습니다.'
+            
+            # AJAX 요청인 경우 JSON 응답
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': True,
+                    'message': success_message
+                })
+            
+            # 일반 요청인 경우 기존 방식
+            messages.success(request, success_message)
+            return redirect('reporting:history_list')
+            
+        except Exception as e:
+            error_message = f'활동 기록 삭제 중 오류가 발생했습니다: {str(e)}'
+            
+            # AJAX 요청인 경우 JSON 응답
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': False,
+                    'error': error_message
+                })
+            
+            # 일반 요청인 경우 기존 방식
+            messages.error(request, error_message)
+            return redirect('reporting:history_list')
     
     context = {
         'history': history,
@@ -1421,6 +1478,13 @@ def schedule_histories_api(request, schedule_id):
             elif history.action_type == 'customer_meeting':
                 history_data.update({
                     'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
+                })
+            
+            # 서비스인 경우 추가 정보
+            elif history.action_type == 'service':
+                history_data.update({
+                    'service_status': history.service_status or '',
+                    'service_status_display': history.get_service_status_display() if history.service_status else '',
                 })
             
             histories_data.append(history_data)
@@ -2122,22 +2186,39 @@ def history_create_from_schedule(request, schedule_id):
         # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
         try:
             if not can_access_user_data(request.user, schedule.user):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': '이 일정에 대한 히스토리를 생성할 권한이 없습니다.'})
                 messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
                 return redirect('reporting:schedule_list')
         except Exception as e:
             # 권한 체크 실패 시 자신의 일정인지만 확인
             if request.user != schedule.user:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': '이 일정에 대한 히스토리를 생성할 권한이 없습니다.'})
                 messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
                 return redirect('reporting:schedule_list')
         
         if request.method == 'POST':
-            form = HistoryForm(request.POST, user=request.user)
+            # AJAX 요청인지 확인
+            is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            
+            # 디버깅용 로그
+            print(f"POST data: {request.POST}")
+            print(f"Is AJAX: {is_ajax}")
+            
+            # 인라인 폼에서 온 데이터를 위해 followup과 schedule을 자동 설정
+            post_data = request.POST.copy()
+            post_data['followup'] = schedule.followup.id
+            post_data['schedule'] = schedule.id
+            
+            form = HistoryForm(post_data, user=request.user)
             if form.is_valid():
                 history = form.save(commit=False)
                 history.user = request.user
                 history.followup = schedule.followup  # 일정의 팔로우업으로 강제 설정
                 history.schedule = schedule  # 일정 연결
-                  # 납품 일정인 경우 delivery_date가 설정되지 않았다면 일정 날짜로 설정
+                  
+                # 납품 일정인 경우 delivery_date가 설정되지 않았다면 일정 날짜로 설정
                 if history.action_type == 'delivery_schedule' and not history.delivery_date:
                     history.delivery_date = schedule.visit_date
                 
@@ -2146,18 +2227,44 @@ def history_create_from_schedule(request, schedule_id):
                     history.meeting_date = schedule.visit_date
                     
                 history.save()
-                messages.success(request, f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.')
-                return redirect('reporting:history_detail', pk=history.pk)
+                
+                if is_ajax:
+                    # AJAX 요청인 경우 JSON 응답
+                    return JsonResponse({
+                        'success': True,
+                        'message': f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.',
+                        'history_id': history.id
+                    })
+                else:
+                    # 일반 폼 제출인 경우 기존 동작
+                    messages.success(request, f'"{schedule.followup.customer_name}" 일정에 대한 활동 히스토리가 성공적으로 기록되었습니다.')
+                    return redirect('reporting:history_detail', pk=history.pk)
             else:
-                messages.error(request, '입력 정보를 확인해주세요.')
-                # POST 실패 시에도 일정 정보를 유지하기 위해 폼 필드를 다시 설정
-                form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
-                form.fields['schedule'].queryset = Schedule.objects.filter(id=schedule.id)
-                form.fields['followup'].initial = schedule.followup
-                form.fields['schedule'].initial = schedule
-                # 필드를 읽기 전용으로 설정
-                form.fields['followup'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
-                form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
+                # 폼 검증 실패
+                print(f"Form errors: {form.errors}")
+                if is_ajax:
+                    # AJAX 요청인 경우 오류 응답
+                    errors = []
+                    for field, field_errors in form.errors.items():
+                        for error in field_errors:
+                            field_label = form.fields.get(field, {}).get('label', field) if hasattr(form.fields, 'get') else field
+                            errors.append(f"{field_label}: {error}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': '입력 정보를 확인해주세요: ' + ', '.join(errors),
+                        'form_errors': form.errors
+                    })
+                else:
+                    # 일반 폼 제출인 경우 기존 동작
+                    messages.error(request, '입력 정보를 확인해주세요.')
+                    # POST 실패 시에도 일정 정보를 유지하기 위해 폼 필드를 다시 설정
+                    form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
+                    form.fields['schedule'].queryset = Schedule.objects.filter(id=schedule.id)
+                    form.fields['followup'].initial = schedule.followup
+                    form.fields['schedule'].initial = schedule
+                    # 필드를 읽기 전용으로 설정
+                    form.fields['followup'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
+                    form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
         else:
             # GET 요청 시 폼 초기화
             initial_data = {
@@ -2189,6 +2296,10 @@ def history_create_from_schedule(request, schedule_id):
         import traceback
         error_msg = f"오류 발생: {str(e)}"
         print(f"Error in history_create_from_schedule: {traceback.format_exc()}")  # 로그용
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': error_msg})
+        
         messages.error(request, error_msg)
         return redirect('reporting:schedule_list')
         initial_data = {
@@ -2384,6 +2495,30 @@ def followup_autocomplete(request):
         })
     
     return JsonResponse({'results': results})
+
+@login_required
+def schedule_activity_type(request):
+    """일정의 activity_type을 반환하는 API"""
+    schedule_id = request.GET.get('schedule_id')
+    if schedule_id:
+        try:
+            schedule = Schedule.objects.get(id=schedule_id, user=request.user)
+            # 일정의 activity_type을 히스토리의 action_type으로 매핑
+            activity_mapping = {
+                'customer_meeting': 'customer_meeting',
+                'delivery': 'delivery_schedule',
+                'service': 'service',
+            }
+            mapped_action = activity_mapping.get(schedule.activity_type, 'customer_meeting')
+            return JsonResponse({
+                'success': True,
+                'activity_type': schedule.activity_type,
+                'mapped_action_type': mapped_action
+            })
+        except Schedule.DoesNotExist:
+            return JsonResponse({'success': False, 'error': '일정을 찾을 수 없습니다.'})
+    
+    return JsonResponse({'success': False, 'error': '일정 ID가 필요합니다.'})
 
 @login_required
 @require_POST
@@ -2761,4 +2896,132 @@ def api_department_detail(request, pk):
         return JsonResponse({
             'success': False,
             'error': str(e)
+        })
+
+@login_required
+def history_detail_api(request, history_id):
+    """히스토리 상세 정보를 JSON으로 반환하는 API"""
+    try:
+        history = get_object_or_404(History, id=history_id)
+        
+        # 접근 권한 확인
+        user_profile = get_user_profile(request.user)
+        if user_profile.role == 'salesman' and history.user != request.user:
+            return JsonResponse({
+                'success': False,
+                'error': '이 기록에 접근할 권한이 없습니다.'
+            })
+        
+        # 히스토리 데이터 직렬화
+        history_data = {
+            'id': history.id,
+            'content': history.content or '',
+            'action_type': history.action_type,
+            'action_type_display': history.get_action_type_display(),
+            'created_at': history.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'user': history.user.get_full_name() or history.user.username,
+            'followup_id': history.followup.id if history.followup else None,
+            'schedule_id': history.schedule.id if history.schedule else None,
+            
+            # 납품 일정 관련 필드
+            'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
+            'delivery_amount': history.delivery_amount,
+            'delivery_items': history.delivery_items or '',
+            'tax_invoice_issued': history.tax_invoice_issued,
+            
+            # 고객 미팅 관련 필드
+            'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
+            
+            # 서비스 관련 필드
+            'service_status': history.service_status or '',
+            'service_status_display': history.get_service_status_display() if history.service_status else '',
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'history': history_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'히스토리 정보를 불러올 수 없습니다: {str(e)}'
+        })
+
+@login_required
+@require_POST
+def history_update_api(request, history_id):
+    """히스토리 업데이트 API"""
+    try:
+        history = get_object_or_404(History, id=history_id)
+        
+        # 접근 권한 확인
+        user_profile = get_user_profile(request.user)
+        if user_profile.role == 'salesman' and history.user != request.user:
+            return JsonResponse({
+                'success': False,
+                'error': '이 기록을 수정할 권한이 없습니다.'
+            })
+        
+        # 폼 데이터 처리
+        content = request.POST.get('content', '').strip()
+        if not content:
+            return JsonResponse({
+                'success': False,
+                'error': '활동 내용을 입력해주세요.'
+            })
+        
+        # 기본 필드 업데이트
+        history.content = content
+        
+        # 활동 유형별 추가 필드 처리
+        if history.action_type == 'delivery_schedule':
+            delivery_date = request.POST.get('delivery_date')
+            if delivery_date:
+                try:
+                    from datetime import datetime
+                    history.delivery_date = datetime.strptime(delivery_date, '%Y-%m-%d').date()
+                except ValueError:
+                    history.delivery_date = None
+            else:
+                history.delivery_date = None
+            
+            delivery_amount = request.POST.get('delivery_amount')
+            if delivery_amount:
+                try:
+                    history.delivery_amount = int(delivery_amount)
+                except (ValueError, TypeError):
+                    history.delivery_amount = None
+            else:
+                history.delivery_amount = None
+            
+            history.delivery_items = request.POST.get('delivery_items', '').strip()
+            history.tax_invoice_issued = request.POST.get('tax_invoice_issued') == 'on'
+            
+        elif history.action_type == 'customer_meeting':
+            meeting_date = request.POST.get('meeting_date')
+            if meeting_date:
+                try:
+                    from datetime import datetime
+                    history.meeting_date = datetime.strptime(meeting_date, '%Y-%m-%d').date()
+                except ValueError:
+                    history.meeting_date = None
+            else:
+                history.meeting_date = None
+                
+        elif history.action_type == 'service':
+            history.service_status = request.POST.get('service_status', '')
+        
+        # 변경사항 저장
+        history.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': '활동 기록이 성공적으로 수정되었습니다.'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'활동 기록 수정 중 오류가 발생했습니다: {str(e)}'
         })

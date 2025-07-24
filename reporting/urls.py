@@ -32,6 +32,10 @@ urlpatterns = [
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
+    
+    # 히스토리 API 엔드포인트들
+    path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
+    path('api/histories/<int:history_id>/update/', views.history_update_api, name='history_update_api'),
     # API 엔드포인트들
     path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
     path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),
@@ -42,6 +46,7 @@ urlpatterns = [
     path('api/followups/autocomplete/', views.followup_autocomplete, name='followup_autocomplete'),
     path('api/companies/create/', views.company_create_api, name='company_create_api'),
     path('api/departments/create/', views.department_create_api, name='department_create_api'),
+    path('api/schedule/activity-type/', views.schedule_activity_type, name='schedule_activity_type'),
     
     # 개별 조회 API 엔드포인트들
     path('api/companies/<int:pk>/', views.api_company_detail, name='api_company_detail'),

@@ -125,10 +125,9 @@ class Schedule(models.Model):
     ]
     
     ACTIVITY_TYPE_CHOICES = [
-        ('meeting', '미팅'),
-        ('visit', '방문'),
-        ('call', '통화'),
-        ('other', '기타'),
+        ('customer_meeting', '고객 미팅'),
+        ('delivery', '납품 일정'),
+        ('service', '서비스'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
@@ -137,7 +136,7 @@ class Schedule(models.Model):
     visit_time = models.TimeField(verbose_name="방문 시간")
     location = models.CharField(max_length=200, blank=True, null=True, verbose_name="장소")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled', verbose_name="상태")
-    activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPE_CHOICES, default='meeting', verbose_name="활동 유형")
+    activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPE_CHOICES, default='customer_meeting', verbose_name="일정 유형")
     notes = models.TextField(blank=True, null=True, verbose_name="메모")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")

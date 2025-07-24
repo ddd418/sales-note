@@ -1299,7 +1299,7 @@
             
             // 기본 정보 HTML
             let historyHtml = `
-              <div class="card border mb-3">
+              <div class="card border mb-3" id="history-${history.id}">
                 <div class="card-header bg-light">
                   <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -1309,10 +1309,18 @@
                       </span>
                       <small class="text-muted">작성: ${escapeHtml(history.created_at)}</small>
                     </div>
-                    <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
+                    <div class="d-flex align-items-center gap-2">
+                      <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
+                      <button class="btn btn-sm btn-outline-primary" onclick="editHistory(${history.id}, ${scheduleId})" title="수정">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                      <button class="btn btn-sm btn-outline-danger" onclick="deleteHistory(${history.id}, ${scheduleId})" title="삭제">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div class="card-body">`;
+                <div class="card-body" id="historyContent-${history.id}">`;
             
             // 활동 내용
             if (history.content) {
@@ -1360,6 +1368,32 @@
                     </span>
                   </div>`;
               }
+            }
+            
+            // 서비스 관련 추가 정보
+            if (history.action_type === 'service' && history.service_status) {
+              // 서비스 상태별 색상 매핑
+              let statusBadgeColor = 'secondary';
+              switch(history.service_status) {
+                case 'received':
+                  statusBadgeColor = 'info';
+                  break;
+                case 'in_progress':
+                  statusBadgeColor = 'warning';
+                  break;
+                case 'completed':
+                  statusBadgeColor = 'success';
+                  break;
+                case 'cancelled':
+                  statusBadgeColor = 'danger';
+                  break;
+              }
+              
+              historyHtml += `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">서비스 상태:</label>
+                  <span class="badge bg-${statusBadgeColor}">${history.service_status_display || history.service_status}</span>
+                </div>`;
             }
             
             // 고객 미팅 관련 추가 정보
@@ -1614,6 +1648,463 @@
         GlobalLoader.hide();
       }
     });
+  }
+
+  // 히스토리 편집 함수 - 전역 스코프로 이동
+  function editHistory(historyId, scheduleId) {
+    // 현재 히스토리 데이터를 가져와서 편집 폼으로 변환
+    fetch(`{% url 'reporting:history_detail_api' 0 %}`.replace('0', historyId))
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showHistoryEditForm(data.history, scheduleId);
+        } else {
+          showErrorMessage('히스토리 정보를 불러올 수 없습니다.');
+        }
+      })
+      .catch(error => {
+        console.error('Error loading history:', error);
+        showErrorMessage('히스토리 정보를 불러오는 중 오류가 발생했습니다.');
+      });
+  }
+
+  // 히스토리 삭제 함수 - 전역 스코프로 이동
+  function deleteHistory(historyId, scheduleId) {
+    // 삭제 확인
+    if (!confirm('이 활동 기록을 삭제하시겠습니까?\n\n삭제된 기록은 복구할 수 없습니다.')) {
+      return;
+    }
+
+    // CSRF 토큰 가져오기
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!csrfToken) {
+      showErrorMessage('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    // 삭제 요청을 위한 폼 데이터 생성
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+
+    // 삭제 요청
+    fetch(`{% url 'reporting:history_delete' 0 %}`.replace('0', historyId), {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken,
+      },
+      body: formData,
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showSuccessMessage('활동 기록이 성공적으로 삭제되었습니다.');
+        // 히스토리 목록 새로고침
+        loadScheduleHistories(scheduleId);
+        // 캘린더 새로고침
+        if (typeof loadSchedules === 'function') {
+          loadSchedules();
+        }
+      } else {
+        showErrorMessage(data.error || '활동 기록 삭제 중 오류가 발생했습니다.');
+      }
+    })
+    .catch(error => {
+      console.error('Error deleting history:', error);
+      showErrorMessage(`활동 기록 삭제 중 오류가 발생했습니다: ${error.message}`);
+    });
+  }
+
+  // 히스토리 편집 폼 표시
+  function showHistoryEditForm(history, scheduleId) {
+    const contentDiv = document.getElementById(`historyContent-${history.id}`);
+    
+    // 편집 폼 HTML 생성
+    let editFormHtml = `
+      <form id="historyEditForm-${history.id}" onsubmit="return updateHistory(event, ${history.id}, ${scheduleId});">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-bold">활동 내용</label>
+            <textarea class="form-control" name="content" rows="3" required>${history.content || ''}</textarea>
+          </div>
+    `;
+    
+    // 활동 유형별 추가 필드
+    if (history.action_type === 'delivery_schedule') {
+      editFormHtml += `
+        <div class="col-6">
+          <label class="form-label fw-bold">납품 날짜</label>
+          <input type="date" class="form-control" name="delivery_date" value="${history.delivery_date || ''}">
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-bold">납품 금액</label>
+          <input type="number" class="form-control" name="delivery_amount" value="${history.delivery_amount || ''}">
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-bold">납품 품목</label>
+          <textarea class="form-control" name="delivery_items" rows="2">${history.delivery_items || ''}</textarea>
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-bold">세금계산서</label>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="editTaxInvoice-${history.id}" ${history.tax_invoice_issued ? 'checked' : ''}>
+            <label class="form-check-label" for="editTaxInvoice-${history.id}">
+              발행 완료
+            </label>
+          </div>
+        </div>
+      `;
+    } else if (history.action_type === 'customer_meeting') {
+      editFormHtml += `
+        <div class="col-6">
+          <label class="form-label fw-bold">미팅 날짜</label>
+          <input type="date" class="form-control" name="meeting_date" value="${history.meeting_date || ''}">
+        </div>
+      `;
+    } else if (history.action_type === 'service') {
+      editFormHtml += `
+        <div class="col-6">
+          <label class="form-label fw-bold">서비스 상태</label>
+          <select class="form-select" name="service_status">
+            <option value="">선택해주세요</option>
+            <option value="received" ${history.service_status === 'received' ? 'selected' : ''}>접수</option>
+            <option value="in_progress" ${history.service_status === 'in_progress' ? 'selected' : ''}>진행중</option>
+            <option value="cancelled" ${history.service_status === 'cancelled' ? 'selected' : ''}>취소</option>
+            <option value="completed" ${history.service_status === 'completed' ? 'selected' : ''}>완료</option>
+          </select>
+        </div>
+      `;
+    }
+    
+    editFormHtml += `
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="fas fa-save me-1"></i>저장
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="cancelHistoryEdit(${history.id}, ${scheduleId})">
+            <i class="fas fa-times me-1"></i>취소
+          </button>
+        </div>
+      </form>
+    `;
+    
+    // 기존 내용을 편집 폼으로 교체
+    contentDiv.innerHTML = editFormHtml;
+  }
+
+  // 히스토리 편집 취소
+  function cancelHistoryEdit(historyId, scheduleId) {
+    // 히스토리 목록을 다시 로드하여 원래 상태로 복원
+    loadScheduleHistories(scheduleId);
+  }
+
+  // 히스토리 업데이트
+  function updateHistory(event, historyId, scheduleId) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    const form = document.getElementById(`historyEditForm-${historyId}`);
+    if (!form) {
+      console.error('편집 폼을 찾을 수 없습니다:', `historyEditForm-${historyId}`);
+      return false;
+    }
+    
+    const formData = new FormData(form);
+    
+    // CSRF 토큰 추가
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name=csrf-token]')?.getAttribute('content') ||
+                     '{{ csrf_token }}';
+    
+    if (csrfToken && csrfToken !== '{{ csrf_token }}') {
+      formData.append('csrfmiddlewaretoken', csrfToken);
+    }
+    
+    // 버튼 비활성화
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장중...';
+    
+    // AJAX로 히스토리 업데이트
+    fetch(`{% url 'reporting:history_update_api' 0 %}`.replace('0', historyId), {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showSuccessMessage('활동 기록이 성공적으로 수정되었습니다.');
+        // 히스토리 목록 새로고침
+        loadScheduleHistories(scheduleId);
+      } else {
+        showErrorMessage(data.error || '활동 기록 수정 중 오류가 발생했습니다.');
+        // 버튼 복원
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }
+    })
+    .catch(error => {
+      console.error('Error updating history:', error);
+      showErrorMessage(`활동 기록 수정 중 오류가 발생했습니다: ${error.message}`);
+      // 버튼 복원
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    });
+    
+    return false;
+  }
+
+  // 인라인 히스토리 폼에서 활동 유형에 따라 필드 표시/숨김 - 전역 스코프로 이동
+  function toggleInlineActivityFields(scheduleId) {
+    const actionTypeInput = document.getElementById(`actionType-${scheduleId}`);
+    const actionType = actionTypeInput.value;
+    
+    // 모든 활동 필드 숨김
+    const deliveryFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .delivery-fields`);
+    const serviceFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .service-fields`);
+    
+    deliveryFields.forEach(field => field.style.display = 'none');
+    serviceFields.forEach(field => field.style.display = 'none');
+    
+    // 활동 유형에 따라 제목과 필드 업데이트
+    const titleElement = document.querySelector(`#inlineHistoryForm-${scheduleId}`).closest('.card').querySelector('.card-title');
+    
+    switch(actionType) {
+      case 'customer_meeting':
+        titleElement.innerHTML = '<i class="fas fa-users me-2"></i>고객 미팅 기록 작성';
+        // 고객 미팅은 활동 내용만 필요 (이미 표시됨)
+        break;
+      case 'delivery_schedule':
+        titleElement.innerHTML = '<i class="fas fa-truck me-2"></i>납품 일정 기록 작성';
+        deliveryFields.forEach(field => field.style.display = 'block');
+        break;
+      case 'service':
+        titleElement.innerHTML = '<i class="fas fa-cog me-2"></i>서비스 기록 작성';
+        serviceFields.forEach(field => field.style.display = 'block');
+        break;
+      default:
+        titleElement.innerHTML = '<i class="fas fa-plus me-2"></i>새 활동 기록 작성';
+        break;
+    }
+  }
+
+  // 인라인 히스토리 폼 제출 - 전역 스코프로 이동
+  function submitInlineHistory(event, scheduleId) {
+    // 기본 폼 제출 동작을 완전히 차단
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    console.log('=== 히스토리 폼 제출 시작 ===');
+    console.log('Schedule ID:', scheduleId);
+    console.log('Event prevented:', !!event);
+    
+    const form = event ? event.target : document.getElementById(`inlineHistoryForm-${scheduleId}`);
+    if (!form) {
+      console.error('폼을 찾을 수 없습니다:', `inlineHistoryForm-${scheduleId}`);
+      return false;
+    }
+    
+    const formData = new FormData(form);
+    
+    // 폼 데이터 상세 로그
+    console.log('Form element:', form);
+    console.log('Form data entries:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
+    
+    // CSRF 토큰 추가 (여러 방법으로 시도)
+    const csrfToken1 = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    const csrfToken2 = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+    const csrfToken3 = '{{ csrf_token }}';
+    
+    console.log('CSRF 토큰 확인:');
+    console.log('  Method 1 (form):', csrfToken1);
+    console.log('  Method 2 (meta):', csrfToken2);
+    console.log('  Method 3 (template):', csrfToken3);
+    
+    const csrfToken = csrfToken1 || csrfToken2 || csrfToken3;
+    console.log('  선택된 CSRF 토큰:', csrfToken);
+    
+    if (csrfToken && csrfToken !== '{{ csrf_token }}') {
+      formData.append('csrfmiddlewaretoken', csrfToken);
+      console.log('CSRF 토큰이 FormData에 추가됨');
+    } else {
+      console.error('유효한 CSRF 토큰을 찾을 수 없음!');
+    }
+    
+    // 버튼 비활성화
+    const submitBtn = form.querySelector('button.btn-success') || form.querySelector('button[type="submit"]');
+    if (!submitBtn) {
+      console.error('저장 버튼을 찾을 수 없습니다');
+      return false;
+    }
+    
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장중...';
+    
+    // 최종 폼 데이터 확인
+    console.log('최종 전송될 데이터:');
+    for (let [key, value] of formData.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
+    
+    const submitUrl = `{% url 'reporting:history_create_from_schedule' 0 %}`.replace('0', scheduleId);
+    console.log('Submit URL:', submitUrl);
+    
+    // AJAX로 히스토리 생성
+    fetch(submitUrl, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken
+      }
+    })
+    .then(response => {
+      console.log('=== 서버 응답 수신 ===');
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      console.log('Response ok:', response.ok);
+      
+      if (!response.ok) {
+        return response.text().then(text => {
+          console.error('Error response text:', text);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('=== JSON 응답 데이터 ===');
+      console.log('Response data:', data);
+      
+      if (data.success) {
+        console.log('✅ 성공: 히스토리 저장 완료');
+        // 성공 메시지 표시
+        showSuccessMessage('활동 기록이 성공적으로 저장되었습니다.');
+        
+        // 폼 초기화
+        resetInlineHistoryForm(scheduleId);
+        
+        // 관련 히스토리 목록 새로고침
+        loadScheduleHistories(scheduleId);
+        
+        // 캘린더 새로고침 (전역 함수가 있는 경우)
+        if (typeof loadSchedules === 'function') {
+          loadSchedules();
+        }
+      } else {
+        console.error('❌ 실패: 서버 응답 오류');
+        console.error('Error message:', data.error);
+        console.error('Form errors:', data.form_errors);
+        // 오류 메시지 표시
+        showErrorMessage(data.error || '활동 기록 저장 중 오류가 발생했습니다.');
+      }
+    })
+    .catch(error => {
+      console.error('=== 요청 실패 ===');
+      console.error('Error:', error);
+      console.error('Error stack:', error.stack);
+      showErrorMessage(`활동 기록 저장 중 오류가 발생했습니다: ${error.message}`);
+    })
+    .finally(() => {
+      console.log('=== 요청 완료 (정리) ===');
+      // 버튼 복원
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+      }
+    });
+    
+    // 기본 폼 제출 동작 차단을 확실히 하기 위해 false 반환
+    return false;
+  }
+
+  // 인라인 히스토리 폼 초기화 - 전역 스코프로 이동
+  function resetInlineHistoryForm(scheduleId) {
+    const form = document.getElementById(`inlineHistoryForm-${scheduleId}`);
+    form.reset();
+    toggleInlineActivityFields(scheduleId);
+  }
+
+  // 성공 메시지 표시 - 전역 스코프로 이동
+  function showSuccessMessage(message) {
+    // Bootstrap toast 또는 alert 표시
+    const alertHtml = `
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle me-2"></i>${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    `;
+    
+    // 모달이 존재하는지 확인 후 메시지 삽입
+    const modalBody = document.querySelector('#scheduleDetailModal .modal-body');
+    if (modalBody) {
+      // 기존 알림 메시지가 있다면 제거
+      const existingAlert = modalBody.querySelector('.alert');
+      if (existingAlert) {
+        existingAlert.remove();
+      }
+      modalBody.insertAdjacentHTML('afterbegin', alertHtml);
+      
+      // 3초 후 자동 제거
+      setTimeout(() => {
+        const alert = modalBody.querySelector('.alert-success');
+        if (alert) {
+          alert.remove();
+        }
+      }, 3000);
+    } else {
+      // 모달이 없으면 일반 alert 사용
+      alert(message);
+    }
+  }
+
+  // 오류 메시지 표시 - 전역 스코프로 이동
+  function showErrorMessage(message) {
+    // Bootstrap toast 또는 alert 표시
+    const alertHtml = `
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-circle me-2"></i>${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    `;
+    
+    // 모달이 존재하는지 확인 후 메시지 삽입
+    const modalBody = document.querySelector('#scheduleDetailModal .modal-body');
+    if (modalBody) {
+      // 기존 알림 메시지가 있다면 제거
+      const existingAlert = modalBody.querySelector('.alert');
+      if (existingAlert) {
+        existingAlert.remove();
+      }
+      modalBody.insertAdjacentHTML('afterbegin', alertHtml);
+      
+      // 5초 후 자동 제거
+      setTimeout(() => {
+        const alert = modalBody.querySelector('.alert-danger');
+        if (alert) {
+          alert.remove();
+        }
+      }, 5000);
+    } else {
+      // 모달이 없으면 일반 alert 사용
+      alert(message);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -2096,6 +2587,12 @@
                     <p class="mb-0">${schedule.location || '-'}</p>
                   </div>
                   <div class="col-12">
+                    <label class="form-label fw-bold">일정 유형</label>
+                    <p class="mb-0">
+                      <span class="badge bg-info">${schedule.activity_type_display || '미정'}</span>
+                    </p>
+                  </div>
+                  <div class="col-12">
                     <label class="form-label fw-bold">상태</label>
                     <div class="d-flex align-items-center gap-2">
                       <span id="statusBadge-${schedule.id}" class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
@@ -2127,12 +2624,78 @@
                       </div>
                     </div>
                   </div>
+                  
+                  <!-- 인라인 히스토리 생성 폼 -->
+                  <div class="col-12">
+                    <div class="card border-success">
+                      <div class="card-header bg-light">
+                        <h6 class="card-title mb-0 text-success">
+                          <i class="fas fa-plus me-2"></i>새 활동 기록 작성
+                        </h6>
+                      </div>
+                      <div class="card-body">
+                        <form id="inlineHistoryForm-${schedule.id}" onsubmit="return submitInlineHistory(event, ${schedule.id});">
+                          <div class="row g-3">
+                            <!-- 숨겨진 필수 필드들 -->
+                            <input type="hidden" name="followup" value="${schedule.followup_id}">
+                            <input type="hidden" name="schedule" value="${schedule.id}">
+                            <input type="hidden" name="action_type" id="actionType-${schedule.id}" value="">
+                            
+                            <div class="col-12">
+                              <label class="form-label">활동 내용</label>
+                              <textarea class="form-control" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
+                            </div>
+                            
+                            <!-- 납품 일정용 필드들 -->
+                            <div class="col-6 activity-field delivery-fields" style="display: none;">
+                              <label class="form-label">납품 금액</label>
+                              <input type="number" class="form-control" name="delivery_amount" placeholder="0">
+                            </div>
+                            <div class="col-6 activity-field delivery-fields" style="display: none;">
+                              <label class="form-label">납품 품목</label>
+                              <textarea class="form-control" name="delivery_items" rows="2" placeholder="납품 품목을 입력하세요"></textarea>
+                            </div>
+                            <div class="col-6 activity-field delivery-fields" style="display: none;">
+                              <label class="form-label">납품 날짜</label>
+                              <input type="date" class="form-control" name="delivery_date">
+                            </div>
+                            <div class="col-6 activity-field delivery-fields" style="display: none;">
+                              <label class="form-label">세금계산서</label>
+                              <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="taxInvoice-${schedule.id}">
+                                <label class="form-check-label" for="taxInvoice-${schedule.id}">
+                                  발행 완료
+                                </label>
+                              </div>
+                            </div>
+                            
+                            <!-- 서비스용 필드들 -->
+                            <div class="col-6 activity-field service-fields" style="display: none;">
+                              <label class="form-label">서비스 상태</label>
+                              <select class="form-select" name="service_status">
+                                <option value="">선택해주세요</option>
+                                <option value="received">접수</option>
+                                <option value="in_progress">진행중</option>
+                                <option value="cancelled">취소</option>
+                                <option value="completed">완료</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div class="d-flex gap-2 mt-3">
+                            <button type="button" class="btn btn-success" onclick="submitInlineHistory(null, ${schedule.id})">
+                              <i class="fas fa-save me-1"></i>기록 저장
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="resetInlineHistoryForm(${schedule.id})">
+                              <i class="fas fa-undo me-1"></i>초기화
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>              <div class="modal-footer">
                 <div class="d-flex gap-2 w-100">
-                  <a href="${historyCreateUrl.replace("{id}", schedule.id)}" class="btn btn-success flex-fill">
-                    <i class="fas fa-plus me-1"></i>활동 히스토리 작성
-                  </a>
                   <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
                   </a>
@@ -2156,6 +2719,23 @@
       // 모달 표시
       const modal = new bootstrap.Modal(document.getElementById('scheduleDetailModal'));
       modal.show();
+
+      // 모달이 표시된 후 인라인 히스토리 폼 초기화
+      modal._element.addEventListener('shown.bs.modal', function() {
+        // 일정의 activity_type에 따라 자동으로 활동 유형 설정
+        const actionTypeInput = document.getElementById(`actionType-${schedule.id}`);
+        if (actionTypeInput && schedule.activity_type) {
+          // 일정 유형을 히스토리 활동 유형으로 매핑
+          const activityMapping = {
+            'customer_meeting': 'customer_meeting',
+            'delivery': 'delivery_schedule',
+            'service': 'service'
+          };
+          const mappedAction = activityMapping[schedule.activity_type] || 'customer_meeting';
+          actionTypeInput.value = mappedAction;
+          toggleInlineActivityFields(schedule.id);
+        }
+      });
 
       // 모달이 닫힐 때 DOM에서 제거
       document.getElementById('scheduleDetailModal').addEventListener('hidden.bs.modal', function() {
