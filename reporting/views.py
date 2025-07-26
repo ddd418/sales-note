@@ -587,8 +587,8 @@ def dashboard_view(request):
     
     total_delivery_amount = delivery_stats['total_amount'] or 0
     delivery_count = delivery_stats['delivery_count'] or 0
-      # 활동 유형별 통계 (현재 연도만)
-    activity_stats = histories_current_year.values('action_type').annotate(
+      # 활동 유형별 통계 (현재 연도만, 메모 제외)
+    activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
         count=Count('id')
     ).order_by('action_type')
     
@@ -602,8 +602,8 @@ def dashboard_view(request):
         created_at__month=current_month,
         created_at__year=current_year
     ).count()
-      # 최근 활동 (현재 연도, 최근 5개)
-    recent_activities = histories_current_year.order_by('-created_at')[:5]
+      # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
+    recent_activities = histories_current_year.exclude(action_type='memo').order_by('-created_at')[:5]
     
     # 월별 고객 추가 현황 (최근 6개월)
     now = timezone.now()
@@ -697,7 +697,7 @@ def dashboard_view(request):
         created_at__month=current_month,
         created_at__year=current_year
     ).count()
-      # 납품 전환율 (현재 연도 기준 미팅 대비 납품 비율)
+      # 납품 전환율 (현재 연도 기준 미팅 대비 납품 비율, 메모 제외)
     total_meetings = histories_current_year.filter(action_type='customer_meeting').count()
     total_deliveries = histories_current_year.filter(action_type='delivery_schedule').count()
     conversion_rate = (total_deliveries / total_meetings * 100) if total_meetings > 0 else 0
@@ -1226,7 +1226,7 @@ def history_list_view(request):
         except ValueError:
             pass
     
-    # 활동 유형별 카운트 계산 (활동 유형 필터 적용 전 기준)
+    # 활동 유형별 카운트 계산
     base_queryset_for_counts = histories
     total_count = base_queryset_for_counts.count()
     meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
@@ -1234,7 +1234,7 @@ def history_list_view(request):
     service_count = base_queryset_for_counts.filter(action_type='service', service_status='completed').count()
     memo_count = base_queryset_for_counts.filter(action_type='memo').count()
     
-    # 활동 유형 필터링 (카운트 계산 후에 적용)
+    # 활동 유형 필터링
     action_type_filter = request.GET.get('action_type')
     if action_type_filter:
         histories = histories.filter(action_type=action_type_filter)
@@ -1322,6 +1322,23 @@ def history_detail_view(request, pk):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:history_list')
     
+    # 매니저 메모 추가 처리
+    user_profile = get_user_profile(request.user)
+    if request.method == 'POST' and user_profile.is_manager():
+        manager_memo = request.POST.get('manager_memo', '').strip()
+        if manager_memo:
+            # 매니저 메모를 새로운 히스토리로 생성
+            memo_history = History.objects.create(
+                followup=history.followup,
+                user=history.user,  # 원래 실무자를 유지
+                action_type='memo',
+                content=f"[매니저 메모 - {request.user.username}] {manager_memo}",
+                created_by=request.user,  # 실제 작성자는 매니저
+                schedule=history.schedule if history.schedule else None
+            )
+            messages.success(request, '매니저 메모가 추가되었습니다.')
+            return redirect('reporting:history_detail', pk=pk)
+    
     # 사용자 필터 정보 추가 (Manager가 특정 사용자의 활동을 보고 있는 경우)
     user_filter = request.GET.get('user_filter', '')
     if not user_filter and request.user != history.user:
@@ -1330,9 +1347,16 @@ def history_detail_view(request, pk):
         if user_profile.can_view_all_users():
             user_filter = history.user.id
     
+    # 동일한 팔로우업의 최근 히스토리들 가져오기 (메모 포함)
+    related_histories = History.objects.filter(
+        followup=history.followup
+    ).select_related('user', 'created_by', 'schedule').order_by('-created_at')[:10]
+    
     context = {
         'history': history,
+        'related_histories': related_histories,
         'user_filter': user_filter,
+        'can_add_memo': user_profile.is_manager(),
         'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_detail.html', context)
@@ -1509,6 +1533,7 @@ def schedule_histories_api(request, schedule_id):
                 'content': history.content or '',
                 'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
                 'user': history.user.username,
+                'created_by': history.created_by.username if history.created_by else history.user.username,
             }
             
             # 납품 일정인 경우 추가 정보
@@ -1573,6 +1598,7 @@ def followup_histories_api(request, followup_id):
                     'content': history.content or '',
                     'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
                     'user': history.user.username if history.user else '사용자 미정',
+                    'created_by': history.created_by.username if history.created_by else (history.user.username if history.user else '사용자 미정'),
                 }
                 
                 # 납품 일정인 경우 추가 정보
@@ -1988,8 +2014,8 @@ def manager_dashboard(request):
     completed_schedules = schedules.filter(status='completed').count()
     pending_schedules = schedules.filter(status='scheduled').count()
     
-    # 히스토리 통계 (현재 연도)
-    total_histories = histories.count()
+    # 히스토리 통계 (현재 연도, 메모 제외)
+    total_histories = histories.exclude(action_type='memo').count()
     delivery_histories = histories.filter(action_type='delivery_schedule')
     service_histories = histories.filter(action_type='service', service_status='completed')
     total_delivery_amount = delivery_histories.aggregate(
@@ -2463,6 +2489,49 @@ def schedule_status_update_api(request, schedule_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@login_required
+@require_POST
+def schedule_add_memo_api(request, schedule_id):
+    """일정에 매니저 메모 추가 API"""
+    try:
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        user_profile = get_user_profile(request.user)
+        
+        # 권한 체크: 매니저만 메모 추가 가능하고, 해당 실무자의 일정에만 접근 가능
+        if not user_profile.is_manager():
+            return JsonResponse({'error': '매니저만 메모를 추가할 수 있습니다.'}, status=403)
+        
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'error': '이 일정에 접근할 권한이 없습니다.'}, status=403)
+        
+        memo_content = request.POST.get('memo', '').strip()
+        if not memo_content:
+            return JsonResponse({'error': '메모 내용을 입력해주세요.'}, status=400)
+        
+        # 매니저 메모를 히스토리로 생성
+        memo_history = History.objects.create(
+            followup=schedule.followup,
+            user=request.user,  # 매니저가 작성자
+            action_type='memo',
+            content=memo_content,  # 매니저 메모 표시 제거
+            created_by=request.user,  # 실제 작성자는 매니저
+            schedule=schedule
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': '매니저 메모가 추가되었습니다.',
+            'memo': {
+                'id': memo_history.id,
+                'content': memo_history.content,
+                'created_at': memo_history.created_at.strftime('%Y-%m-%d %H:%M'),
+                'created_by': request.user.username
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': f'메모 추가 중 오류가 발생했습니다: {str(e)}'}, status=500)
+
 # 자동완성 API 뷰들
 @login_required
 def company_autocomplete(request):
@@ -2880,8 +2949,23 @@ def manager_company_list_view(request):
     if search_query:
         companies = companies.filter(name__icontains=search_query)
     
+    # 각 업체별 담당자 정보 추가
+    companies_with_salesmen = []
+    for company in companies:
+        # 해당 업체를 담당하는 실무자들 조회
+        followups_in_company = FollowUp.objects.filter(
+            Q(company=company) | Q(department__company=company)
+        ).select_related('user').distinct()
+        
+        # 담당자 목록 (중복 제거)
+        salesmen = list(set(followup.user for followup in followups_in_company))
+        
+        # 회사 객체에 담당자 정보 추가
+        company.salesmen = salesmen
+        companies_with_salesmen.append(company)
+    
     # 페이지네이션
-    paginator = Paginator(companies, 10)
+    paginator = Paginator(companies_with_salesmen, 10)
     page_number = request.GET.get('page')
     companies = paginator.get_page(page_number)
     
@@ -2908,6 +2992,41 @@ def manager_company_detail_view(request, pk):
     if dept_search:
         departments = departments.filter(name__icontains=dept_search)
     
+    # 해당 업체를 관리하는 실무자들 조회
+    followups_in_company = FollowUp.objects.filter(
+        Q(company=company) | Q(department__company=company)
+    ).select_related('user', 'user__userprofile')
+    
+    # 실무자별 담당 고객 수 집계
+    salesmen_stats = {}
+    for followup in followups_in_company:
+        user = followup.user
+        if user not in salesmen_stats:
+            salesmen_stats[user] = {
+                'user': user,
+                'followup_count': 0,
+                'recent_activity': None
+            }
+        salesmen_stats[user]['followup_count'] += 1
+        
+        # 가장 최근 활동 히스토리 찾기 (메모 제외)
+        recent_history = History.objects.filter(
+            followup=followup
+        ).exclude(action_type='memo').order_by('-created_at').first()
+        
+        if recent_history and (
+            not salesmen_stats[user]['recent_activity'] or
+            recent_history.created_at > salesmen_stats[user]['recent_activity'].created_at
+        ):
+            salesmen_stats[user]['recent_activity'] = recent_history
+    
+    # 실무자 목록 (담당 고객 수 순으로 정렬)
+    salesmen_list = sorted(
+        salesmen_stats.values(), 
+        key=lambda x: x['followup_count'], 
+        reverse=True
+    )
+    
     # 페이지네이션 (부서)
     paginator = Paginator(departments, 10)
     page_number = request.GET.get('page')
@@ -2917,6 +3036,7 @@ def manager_company_detail_view(request, pk):
         'company': company,
         'departments': departments,
         'dept_search': dept_search,
+        'salesmen_list': salesmen_list,
         'page_title': f'{company.name} - 상세 정보 (조회)',
         'is_readonly': True
     }

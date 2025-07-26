@@ -17,7 +17,7 @@
           >
             <i class="fas fa-arrow-left me-1"></i>목록으로
           </a>
-          {% if user.is_authenticated and user == history.user %}
+          {% if user.is_authenticated and user == history.user and user.userprofile.role != 'manager' and history.created_by == history.user %}
           <a
             href="{% url 'reporting:history_edit' history.pk %}"
             class="btn btn-outline-primary me-2"
@@ -254,6 +254,39 @@
         </div>
 
         <div class="card-footer bg-white">
+          <!-- 관련 히스토리 목록 -->
+          {% if related_histories %}
+          <div class="related-histories mb-3">
+            <h6 class="text-muted mb-2">
+              <i class="fas fa-history me-1"></i>관련 활동 기록
+            </h6>
+            <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+              {% for related in related_histories %}
+              <div class="list-group-item border-0 px-0 py-2 {% if related.id == history.id %}bg-light{% endif %}">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div class="flex-grow-1">
+                    <h6 class="mb-1 {% if related.id == history.id %}text-primary{% endif %}">
+                      {{ related.get_action_type_display }}
+                      {% if related.created_by and related.created_by != related.user %}
+                      <span class="badge bg-info ms-1">{{ related.created_by.username }}</span>
+                      {% endif %}
+                    </h6>
+                    <p class="mb-1 text-muted small">{{ related.content|truncatechars:100 }}</p>
+                    <small class="text-muted">{{ related.created_at|date:"m-d H:i" }}</small>
+                  </div>
+                  {% if related.id != history.id %}
+                  <a href="{% url 'reporting:history_detail' related.id %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <hr>
+          {% endif %}
+
           <div class="d-flex justify-content-between align-items-center">
             <small class="text-muted">
               <i class="fas fa-info-circle me-1"></i>
@@ -280,4 +313,5 @@
     white-space: pre-line;
   }
 </style>
+
 {% endblock %}

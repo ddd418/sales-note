@@ -53,6 +53,66 @@
         </div>
       </div>
 
+      <!-- 매니저 전용: 담당 실무자 정보 -->
+      {% if is_readonly and salesmen_list %}
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">
+                <i class="fas fa-users me-2"></i>담당 실무자 현황
+              </h5>
+            </div>
+            <div class="card-body">
+              {% if salesmen_list %}
+              <div class="row">
+                {% for salesman in salesmen_list %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                  <div class="border rounded p-3">
+                    <div class="d-flex align-items-center mb-2">
+                      <div class="avatar-sm me-2">
+                        <div class="avatar-title bg-primary rounded-circle">
+                          {{ salesman.user.username|first }}
+                        </div>
+                      </div>
+                      <div>
+                        <h6 class="mb-0">{{ salesman.user.username }}</h6>
+                        <small class="text-muted">{{ salesman.user.userprofile.get_role_display }}</small>
+                      </div>
+                    </div>
+                    <div class="text-muted small">
+                      <div class="mb-1">
+                        <i class="fas fa-user-friends me-1"></i>담당 고객: {{ salesman.followup_count }}개
+                      </div>
+                      {% if salesman.recent_activity %}
+                      <div class="mb-1">
+                        <i class="fas fa-clock me-1"></i>최근 활동: {{ salesman.recent_activity.created_at|date:"Y-m-d" }}
+                      </div>
+                      <div class="text-truncate">
+                        <i class="fas fa-comment me-1"></i>{{ salesman.recent_activity.get_action_type_display }}
+                      </div>
+                      {% else %}
+                      <div class="text-muted">
+                        <i class="fas fa-exclamation-circle me-1"></i>활동 기록 없음
+                      </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-user-slash fa-2x mb-2"></i>
+                <p>이 업체를 담당하는 실무자가 없습니다.</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- 부서 검색 섹션 -->
       <div class="row mb-4">
         <div class="col-12">

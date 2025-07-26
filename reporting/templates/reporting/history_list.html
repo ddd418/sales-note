@@ -63,12 +63,6 @@
               {% endif %}
             </ul>
           </div>
-          <a
-            href="{% url 'reporting:memo_create' %}"
-            class="btn btn-success ms-2"
-          >
-            <i class="fas fa-sticky-note me-1"></i>메모 추가
-          </a>
           {% else %}
           <!-- 실무자용 추가 버튼 -->
           <a
@@ -366,7 +360,7 @@
                         >
                           <i class="fas fa-eye me-1"></i>상세보기
                         </a>
-                        {% if history.user == request.user or request.user.is_staff %}
+                        {% if history.user == request.user and user.userprofile.role != 'manager' and history.created_by == history.user or request.user.is_staff %}
                         <a
                           href="{% url 'reporting:history_edit' history.pk %}"
                           class="btn btn-sm btn-outline-primary me-1"

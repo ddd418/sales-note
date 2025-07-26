@@ -178,6 +178,9 @@ class History(models.Model):
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행 여부")
     old_value = models.TextField(blank=True, null=True, verbose_name="이전 값")
     new_value = models.TextField(blank=True, null=True, verbose_name="새로운 값")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, 
+                                   related_name='created_histories', verbose_name="실제 작성자",
+                                   help_text="매니저가 작성한 메모인 경우 매니저 정보가 저장됩니다")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="활동 시간")
 
     def __str__(self):

@@ -60,6 +60,9 @@
                   <th>업체/학교명</th>
                   <th>부서/연구실 수</th>
                   <th>고객 정보 수</th>
+                  {% if is_readonly %}
+                  <th>담당자</th>
+                  {% endif %}
                   <th>관리</th>
                 </tr>
               </thead>
@@ -78,6 +81,18 @@
                   <td>
                     <span class="badge bg-success">{{ company.followup_count }}개</span>
                   </td>
+                  {% if is_readonly %}
+                  <td>
+                    {% if company.salesmen %}
+                      {% for salesman in company.salesmen %}
+                        <span class="badge bg-primary me-1">{{ salesman.username }}</span>
+                        {% if not forloop.last and forloop.counter|divisibleby:2 %}<br>{% endif %}
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted">담당자 없음</span>
+                    {% endif %}
+                  </td>
+                  {% endif %}
                   <td>
                     <div class="btn-group">
                       <a href="{% if is_readonly %}{% url 'reporting:manager_company_detail' company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" 

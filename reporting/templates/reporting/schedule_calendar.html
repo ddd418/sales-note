@@ -448,6 +448,11 @@
   }
 </style>
 
+<!-- CSRF 토큰을 위한 히든 폼 -->
+<form style="display: none;">
+  {% csrf_token %}
+</form>
+
 <div class="container">
   <div class="row">
     <div class="col-12">
@@ -845,6 +850,31 @@
   .schedule-item[title]:hover {
     position: relative;
     z-index: 999;
+  }
+
+  /* 더보기 버튼 스타일 */
+  .more-schedules {
+    background-color: #f8f9fa !important;
+    color: #007bff !important;
+    border: 1px solid #dee2e6 !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-size: 10px !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    margin-top: 2px !important;
+    transition: all 0.2s ease !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .more-schedules:hover {
+    background-color: #e9ecef !important;
+    color: #0056b3 !important;
+    border-color: #adb5bd !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
   }
 
   .calendar-day.drag-over {
@@ -1305,12 +1335,15 @@
                     </div>
                     <div class="d-flex align-items-center gap-2">
                       <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
+                      {% if user.userprofile.role != 'manager' %}
+                      ${(history.created_by === '{{ user.username }}' || (!history.created_by && history.user === '{{ user.username }}')) ? `
                       <button class="btn btn-sm btn-outline-primary" onclick="editHistory(${history.id}, ${scheduleId})" title="수정">
                         <i class="fas fa-edit"></i>
                       </button>
                       <button class="btn btn-sm btn-outline-danger" onclick="deleteHistory(${history.id}, ${scheduleId})" title="삭제">
                         <i class="fas fa-trash"></i>
-                      </button>
+                      </button>` : ''}
+                      {% endif %}
                     </div>
                   </div>
                 </div>
@@ -2166,6 +2199,75 @@
     }
   }
 
+  // 매니저 메모 제출 함수
+  function submitManagerMemo(event, scheduleId) {
+    event.preventDefault();
+    
+    const form = document.getElementById(`managerMemoForm-${scheduleId}`);
+    if (!form) {
+      showErrorMessage('매니저 메모 폼을 찾을 수 없습니다.');
+      return false;
+    }
+    
+    const formData = new FormData(form);
+    
+    // CSRF 토큰 가져오기 (페이지의 히든 폼에서)
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    
+    if (!csrfToken) {
+      showErrorMessage('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return false;
+    }
+    
+    // FormData에 CSRF 토큰 추가
+    formData.set('csrfmiddlewaretoken', csrfToken);
+    
+    console.log('Submitting manager memo for schedule:', scheduleId);
+    console.log('CSRF Token:', csrfToken);
+    console.log('Memo content:', formData.get('memo'));
+    
+    // 매니저 메모를 위한 API 호출
+    const apiUrl = "{% url 'reporting:schedule_add_memo' 0 %}".replace('0', scheduleId);
+    
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken,
+      },
+      body: formData,
+    })
+    .then(response => {
+      console.log('Response status:', response.status);
+      return response.json();
+    })
+    .then(data => {
+      console.log('Response data:', data);
+      if (data.success) {
+        showSuccessMessage('매니저 메모가 성공적으로 추가되었습니다.');
+        resetManagerMemoForm(scheduleId);
+        // 활동 기록 새로고침
+        loadScheduleHistories(scheduleId);
+      } else {
+        showErrorMessage('매니저 메모 추가에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
+      }
+    })
+    .catch(error => {
+      console.error('Manager memo submission error:', error);
+      showErrorMessage('매니저 메모 추가 중 오류가 발생했습니다: ' + error.message);
+    });
+    
+    return false;
+  }
+
+  // 매니저 메모 폼 초기화 함수
+  function resetManagerMemoForm(scheduleId) {
+    const form = document.getElementById(`managerMemoForm-${scheduleId}`);
+    if (form) {
+      form.reset();
+    }
+  }
+
   // 오류 메시지 표시 - 전역 스코프로 이동
   function showErrorMessage(message) {
     // Bootstrap toast 또는 alert 표시
@@ -2281,47 +2383,34 @@
             cellDate
           );
           
-          // 모바일에서는 최대 1개의 일정만 표시, 나머지는 "+N개" 형태로 표시
-          const isMobile = window.innerWidth <= 768;
+          // 모바일과 데스크톱 모두 최대 3개까지만 표시
+          const maxVisibleSchedules = 3;
           
-          if (isMobile) {
-            // 모바일: 최대 1개만 표시
-            if (daySchedules.length > 0) {
-              const firstSchedule = daySchedules[0];
+          if (daySchedules.length > 0) {
+            // 표시할 일정들 (최대 3개)
+            const visibleSchedules = daySchedules.slice(0, maxVisibleSchedules);
+            
+            visibleSchedules.forEach((schedule) => {
               const scheduleElement = document.createElement("div");
-              scheduleElement.className = `schedule-event ${firstSchedule.status}`;
+              const isMobile = window.innerWidth <= 768;
               
-              const displayName = firstSchedule.company ?
-                `${firstSchedule.company}·${firstSchedule.department || ''} ${firstSchedule.customer}` :
-                firstSchedule.customer;
-              scheduleElement.textContent = `${firstSchedule.time} ${displayName}`;
-              scheduleElement.title = `${firstSchedule.time} ${displayName}`;
-              cell.appendChild(scheduleElement);
-              
-              // 추가 일정이 있는 경우 "+N개" 표시
-              if (daySchedules.length > 1) {
-                const moreElement = document.createElement("div");
-                moreElement.className = "more-schedules";
-                moreElement.textContent = `+${daySchedules.length - 1}개`;
-                cell.appendChild(moreElement);
+              if (isMobile) {
+                scheduleElement.className = `schedule-event ${schedule.status}`;
+              } else {
+                scheduleElement.className = `schedule-item ${schedule.status}`;
+                scheduleElement.draggable = true;
+                scheduleElement.dataset.scheduleId = schedule.id;
+                scheduleElement.dataset.originalDate = `${cellYear}-${String(
+                  cellMonth + 1
+                ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
               }
-            }
-          } else {
-            // 데스크톱: 모든 일정 표시 (기존 로직)
-            daySchedules.forEach((schedule) => {
-              const scheduleElement = document.createElement("div");
-              scheduleElement.className = `schedule-item ${schedule.status}`;
+              
               const displayName = schedule.company ?
                 `${schedule.company}·${schedule.department || ''} ${schedule.customer}` :
                 schedule.customer;
               const fullScheduleText = `${schedule.time} ${displayName}`;
               scheduleElement.textContent = fullScheduleText;
               scheduleElement.title = fullScheduleText;
-              scheduleElement.draggable = true;
-              scheduleElement.dataset.scheduleId = schedule.id;
-              scheduleElement.dataset.originalDate = `${cellYear}-${String(
-                cellMonth + 1
-              ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
 
               // 클릭 이벤트 (상세 모달)
               scheduleElement.onclick = (e) => {
@@ -2329,31 +2418,57 @@
                 showScheduleModal(schedule);
               };
 
-              // 드래그 시작 이벤트
-              scheduleElement.ondragstart = (e) => {
-                e.stopPropagation();
-                scheduleElement.classList.add("dragging");
-                e.dataTransfer.setData(
-                  "text/plain",
-                  JSON.stringify({
-                    scheduleId: schedule.id,
-                    originalDate: scheduleElement.dataset.originalDate,
-                    scheduleData: schedule,
-                  })
-                );
-                e.dataTransfer.effectAllowed = "move";
-              };
+              if (!isMobile) {
+                // 드래그 시작 이벤트 (데스크톱만)
+                scheduleElement.ondragstart = (e) => {
+                  e.stopPropagation();
+                  scheduleElement.classList.add("dragging");
+                  e.dataTransfer.setData(
+                    "text/plain",
+                    JSON.stringify({
+                      scheduleId: schedule.id,
+                      originalDate: scheduleElement.dataset.originalDate,
+                      scheduleData: schedule,
+                    })
+                  );
+                  e.dataTransfer.effectAllowed = "move";
+                };
 
-              // 드래그 종료 이벤트
-              scheduleElement.ondragend = (e) => {
-                scheduleElement.classList.remove("dragging");
-                document.querySelectorAll(".calendar-day").forEach((day) => {
-                  day.classList.remove("drag-over", "drag-target");
-                });
-              };
+                // 드래그 종료 이벤트 (데스크톱만)
+                scheduleElement.ondragend = (e) => {
+                  scheduleElement.classList.remove("dragging");
+                  document.querySelectorAll(".calendar-day").forEach((day) => {
+                    day.classList.remove("drag-over", "drag-target");
+                  });
+                };
+              }
 
               cell.appendChild(scheduleElement);
             });
+            
+            // 추가 일정이 있는 경우 "+N개 더보기" 표시
+            if (daySchedules.length > maxVisibleSchedules) {
+              const moreElement = document.createElement("div");
+              moreElement.className = "more-schedules";
+              moreElement.textContent = `+${daySchedules.length - maxVisibleSchedules}개 더보기`;
+              moreElement.style.cursor = "pointer";
+              moreElement.style.color = "#007bff";
+              moreElement.style.fontSize = "11px";
+              moreElement.style.textAlign = "center";
+              moreElement.style.padding = "2px";
+              moreElement.style.marginTop = "2px";
+              moreElement.style.borderRadius = "3px";
+              moreElement.style.backgroundColor = "#f8f9fa";
+              
+              // 더보기 클릭 이벤트
+              moreElement.onclick = (e) => {
+                e.stopPropagation();
+                const clickedDate = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
+                showDateSchedulesModal(clickedDate);
+              };
+              
+              cell.appendChild(moreElement);
+            }
           } // 날짜 클릭 이벤트
           cell.onclick = (e) => {
             // 일정 클릭이 아닌 경우에만 처리
@@ -2700,6 +2815,7 @@
                       <span id="statusBadge-${schedule.id}" class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
                         ${schedule.status === 'completed' ? '완료' : schedule.status === 'cancelled' ? '취소' : '예정'}
                       </span>
+                      {% if user.userprofile.role != 'manager' %}
                       <div class="btn-group" role="group">
                         <button class="btn btn-sm btn-outline-primary ${schedule.status === 'scheduled' ? 'active' : ''}"
                                 onclick="updateScheduleStatus(${schedule.id}, 'scheduled')">예정</button>
@@ -2708,6 +2824,7 @@
                         <button class="btn btn-sm btn-outline-danger ${schedule.status === 'cancelled' ? 'active' : ''}"
                                 onclick="updateScheduleStatus(${schedule.id}, 'cancelled')">취소</button>
                       </div>
+                      {% endif %}
                     </div>
                   </div>
                   ${schedule.notes ? `
@@ -2727,6 +2844,38 @@
                     </div>
                   </div>
                   
+                  {% if user.userprofile.role == 'manager' %}
+                  <!-- 매니저 메모 추가 폼 -->
+                  <div class="col-12">
+                    <div class="card border-info">
+                      <div class="card-header bg-light">
+                        <h6 class="card-title mb-0 text-info">
+                          <i class="fas fa-sticky-note me-2"></i>매니저 메모 작성
+                        </h6>
+                      </div>
+                      <div class="card-body">
+                        <form id="managerMemoForm-${schedule.id}" onsubmit="return submitManagerMemo(event, ${schedule.id});">
+                          <div class="row g-3">
+                            <div class="col-12">
+                              <label class="form-label">메모 내용</label>
+                              <textarea class="form-control" name="memo" rows="3" placeholder="일정에 대한 매니저 메모를 작성해주세요" required></textarea>
+                            </div>
+                            <div class="col-12">
+                              <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-info">
+                                  <i class="fas fa-save me-1"></i>메모 저장
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="resetManagerMemoForm(${schedule.id})">
+                                  <i class="fas fa-undo me-1"></i>초기화
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                  {% else %}
                   <!-- 인라인 히스토리 생성 폼 -->
                   <div class="col-12">
                     <div class="card border-success">
@@ -2795,15 +2944,18 @@
                       </div>
                     </div>
                   </div>
+                  {% endif %}
                 </div>
               </div>              <div class="modal-footer">
                 <div class="d-flex gap-2 w-100">
                   <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
                   </a>
+                  {% if user.userprofile.role != 'manager' %}
                   <button type="button" class="btn btn-danger flex-fill" onclick="deleteScheduleFromModal(${schedule.id}, '${schedule.customer}', '${schedule.visit_date}')">
                     <i class="fas fa-trash-alt me-1"></i>일정 삭제
                   </button>
+                  {% endif %}
                 </div>
                 <button type="button" class="btn btn-secondary mt-2 w-100" data-bs-dismiss="modal">닫기</button>
               </div>
