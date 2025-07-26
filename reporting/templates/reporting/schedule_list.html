@@ -312,8 +312,16 @@
 
             <div class="card-body">
               <p class="card-text">
+                <strong>고객명:</strong>
+                {{ schedule.followup.customer_name|default:"고객명 미정" }}<br />
                 <strong>업체:</strong>
                 {{schedule.followup.company|default:"업체명 미정" }}<br />
+                <strong>부서:</strong>
+                {{schedule.followup.department|default:"부서명 미정" }}<br />
+                {% if schedule.followup.manager %}
+                <strong>책임자:</strong>
+                {{ schedule.followup.manager }}<br />
+                {% endif %}
                 <strong>담당자:</strong>
                 {{ schedule.user.username }}<br />
                 <strong>날짜:</strong>

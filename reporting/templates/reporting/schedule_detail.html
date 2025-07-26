@@ -52,6 +52,40 @@
               </div>
 
               <div class="mb-3">
+                <label class="form-label text-muted">고객명</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-user me-1"></i>
+                  {{ schedule.followup.customer_name|default:"고객명 미정" }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">회사명</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-building me-1"></i>
+                  {{ schedule.followup.company|default:"업체명 미정" }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label text-muted">부서명</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-sitemap me-1"></i>
+                  {{ schedule.followup.department|default:"부서명 미정" }}
+                </div>
+              </div>
+
+              {% if schedule.followup.manager %}
+              <div class="mb-3">
+                <label class="form-label text-muted">책임자</label>
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-user-tie me-1"></i>
+                  {{ schedule.followup.manager }}
+                </div>
+              </div>
+              {% endif %}
+
+              <div class="mb-3">
                 <label class="form-label text-muted">방문 날짜</label>
                 <div class="p-2 bg-light rounded border">
                   <i class="fas fa-calendar me-1"></i>

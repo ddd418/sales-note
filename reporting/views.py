@@ -1150,6 +1150,8 @@ def schedule_api_view(request):
                 'time': schedule.visit_time.strftime('%H:%M'),
                 'customer': schedule.followup.customer_name or '고객명 미정',
                 'company': str(schedule.followup.company) if schedule.followup.company else '업체명 미정',
+                'department': str(schedule.followup.department) if schedule.followup.department else '부서명 미정',
+                'manager': schedule.followup.manager or '',
                 'location': schedule.location or '',
                 'status': schedule.status,
                 'status_display': schedule.get_status_display(),
@@ -2526,11 +2528,12 @@ def followup_autocomplete(request):
     else:
         followups = FollowUp.objects.filter(user=request.user)
     
-    # 검색어로 필터링 (고객명, 업체명, 부서명으로 검색)
+    # 검색어로 필터링 (고객명, 업체명, 부서명, 책임자명으로 검색)
     followups = followups.filter(
         Q(customer_name__icontains=query) |
         Q(company__name__icontains=query) |
-        Q(department__name__icontains=query)
+        Q(department__name__icontains=query) |
+        Q(manager__icontains=query)
     ).select_related('company', 'department', 'user').order_by('company__name', 'customer_name')[:15]
     
     results = []

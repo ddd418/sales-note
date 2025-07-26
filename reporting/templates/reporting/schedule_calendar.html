@@ -2194,7 +2194,7 @@
               scheduleElement.className = `schedule-event ${firstSchedule.status}`;
               
               const displayName = firstSchedule.company ?
-                `${firstSchedule.company} ${firstSchedule.customer}` :
+                `${firstSchedule.company}·${firstSchedule.department || ''} ${firstSchedule.customer}` :
                 firstSchedule.customer;
               scheduleElement.textContent = `${firstSchedule.time} ${displayName}`;
               scheduleElement.title = `${firstSchedule.time} ${displayName}`;
@@ -2214,7 +2214,7 @@
               const scheduleElement = document.createElement("div");
               scheduleElement.className = `schedule-item ${schedule.status}`;
               const displayName = schedule.company ?
-                `${schedule.company} ${schedule.customer}` :
+                `${schedule.company}·${schedule.department || ''} ${schedule.customer}` :
                 schedule.customer;
               const fullScheduleText = `${schedule.time} ${displayName}`;
               scheduleElement.textContent = fullScheduleText;
@@ -2391,7 +2391,7 @@
           scheduleCard.className = 'card mb-2';
           
           const displayName = schedule.company ? 
-            `${schedule.company} ${schedule.customer}` : 
+            `${schedule.company}·${schedule.department || ''} ${schedule.customer}` : 
             schedule.customer;
           
           scheduleCard.innerHTML = `
@@ -2519,7 +2519,7 @@
       if (isMobile) {
         // 모바일에서는 액션 선택
         const action = confirm(
-          `📅 ${schedule.customer} (${schedule.company || '회사명 없음'})\n` +
+          `📅 ${schedule.customer} (${schedule.company || '회사명 없음'}·${schedule.department || '부서명 없음'})\n` +
           `📍 ${schedule.location || '장소 없음'}\n` +
           `⏰ ${schedule.visit_date} ${schedule.time}\n\n` +
           `❓ 어떤 작업을 하시겠습니까?\n\n` +
@@ -2568,6 +2568,16 @@
                     <label class="form-label fw-bold">회사명</label>
                     <p class="mb-0">${schedule.company || '-'}</p>
                   </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold">부서명</label>
+                    <p class="mb-0">${schedule.department || '-'}</p>
+                  </div>
+                  ${schedule.manager ? `
+                  <div class="col-12">
+                    <label class="form-label fw-bold">책임자</label>
+                    <p class="mb-0">${schedule.manager}</p>
+                  </div>
+                  ` : ''}
                   <div class="col-6">
                     <label class="form-label fw-bold">방문 날짜</label>
                     <p class="mb-0">${schedule.visit_date}</p>
