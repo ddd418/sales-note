@@ -33,6 +33,9 @@ urlpatterns = [
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
+    # 메모 URL들
+    path('memo/create/', views.memo_create_view, name='memo_create'),
+    
     # 히스토리 API 엔드포인트들
     path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
     path('api/histories/<int:history_id>/update/', views.history_update_api, name='history_update_api'),

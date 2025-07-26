@@ -12,12 +12,6 @@
         </h1>
         <div>
           <a
-            href="{% url 'reporting:followup_list' %}"
-            class="btn btn-secondary me-2"
-          >
-            <i class="fas fa-list me-1"></i>목록으로
-          </a>
-          <a
             href="{% url 'reporting:followup_edit' followup.pk %}"
             class="btn btn-primary me-2"
           >
@@ -166,7 +160,6 @@
   </div>
 
   <!-- 관련 히스토리 섹션 -->
-  {% if related_histories %}
   <div class="row mt-4">
     <div class="col-12">
       <div class="card">
@@ -178,22 +171,29 @@
             <div>
               <a
                 href="{% url 'reporting:history_create' %}?followup={{ followup.pk }}"
-                class="btn btn-outline-primary btn-sm"
+                class="btn btn-outline-primary btn-sm me-2"
               >
                 <i class="fas fa-plus me-1"></i>기록 추가
+              </a>
+              <a
+                href="{% url 'reporting:memo_create' %}?followup={{ followup.pk }}"
+                class="btn btn-outline-secondary btn-sm"
+              >
+                <i class="fas fa-sticky-note me-1"></i>메모 추가
               </a>
             </div>
           </div>
         </div>
         <div class="card-body">
+          {% if related_histories %}
           <div class="timeline">
             {% for history in related_histories %}
             <div class="timeline-item">
               <div
-                class="timeline-marker {% if history.action_type == 'created_followup' %}bg-primary {% elif history.action_type == 'updated_followup' %}bg-warning {% elif history.action_type == 'status_changed_followup' %}bg-info {% elif history.action_type == 'created_schedule' %}bg-success {% elif history.action_type == 'updated_schedule' %}bg-secondary {% elif history.action_type == 'status_changed_schedule' %}bg-info {% elif history.action_type == 'note' %}bg-dark {% else %}bg-light {% endif %}"
+                class="timeline-marker {% if history.action_type == 'created_followup' %}bg-primary {% elif history.action_type == 'updated_followup' %}bg-warning {% elif history.action_type == 'status_changed_followup' %}bg-info {% elif history.action_type == 'created_schedule' %}bg-success {% elif history.action_type == 'updated_schedule' %}bg-secondary {% elif history.action_type == 'status_changed_schedule' %}bg-info {% elif history.action_type == 'memo' %}bg-info {% elif history.action_type == 'note' %}bg-info {% elif history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'service' %}bg-warning {% else %}bg-light {% endif %}"
               >
                 <i
-                  class="fas {% if history.action_type == 'created_followup' %}fa-user-plus {% elif history.action_type == 'updated_followup' %}fa-edit {% elif history.action_type == 'status_changed_followup' %}fa-refresh {% elif history.action_type == 'created_schedule' %}fa-calendar-plus {% elif history.action_type == 'updated_schedule' %}fa-calendar-edit {% elif history.action_type == 'status_changed_schedule' %}fa-calendar-check {% elif history.action_type == 'note' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
+                  class="fas {% if history.action_type == 'created_followup' %}fa-user-plus {% elif history.action_type == 'updated_followup' %}fa-edit {% elif history.action_type == 'status_changed_followup' %}fa-refresh {% elif history.action_type == 'created_schedule' %}fa-calendar-plus {% elif history.action_type == 'updated_schedule' %}fa-calendar-edit {% elif history.action_type == 'status_changed_schedule' %}fa-calendar-check {% elif history.action_type == 'memo' %}fa-sticky-note {% elif history.action_type == 'note' %}fa-sticky-note {% elif history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'service' %}fa-cogs {% else %}fa-circle {% endif %} text-white"
                 ></i>
               </div>
               <div class="timeline-content">
@@ -235,11 +235,17 @@
             </div>
             {% endfor %}
           </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="fas fa-history fa-2x mb-3"></i>
+            <p>아직 기록된 활동이 없습니다.</p>
+            <p class="small">위의 버튼을 사용하여 첫 번째 기록이나 메모를 추가해보세요!</p>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
-  {% endif %}
 </div>
 <style>
   .page-title {

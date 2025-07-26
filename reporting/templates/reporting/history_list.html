@@ -8,15 +8,15 @@
         class="page-header d-flex justify-content-between align-items-center mb-4"
       >
         <h1 class="page-title mb-0">
-          <i class="fas fa-history me-2"></i>{{ page_title }} {% if followup %}
+          <i class="fas fa-history me-2"></i>{{ page_title }} {% if selected_followup %}
           <small class="text-muted"
-            >- {{ followup.customer_name|default:"고객명 미정" }}</small
+            >- {{ selected_followup.customer_name|default:"고객명 미정" }}</small
           >
           {% endif %}
         </h1>        <div>
-          {% if followup %}
+          {% if selected_followup %}
           <a
-            href="{% url 'reporting:followup_detail' followup.pk %}"
+            href="{% url 'reporting:followup_detail' selected_followup.pk %}"
             class="btn btn-secondary me-2"
           >
             <i class="fas fa-arrow-left me-1"></i>팔로우업으로
@@ -63,18 +63,44 @@
               {% endif %}
             </ul>
           </div>
+          <a
+            href="{% url 'reporting:memo_create' %}"
+            class="btn btn-success ms-2"
+          >
+            <i class="fas fa-sticky-note me-1"></i>메모 추가
+          </a>
           {% else %}
           <!-- 실무자용 추가 버튼 -->
           <a
             href="{% url 'reporting:history_create' %}"
-            class="btn btn-primary"
+            class="btn btn-primary me-2"
           >
             <i class="fas fa-plus me-1"></i>새 활동 기록
+          </a>
+          <a
+            href="{% url 'reporting:memo_create' %}"
+            class="btn btn-success"
+          >
+            <i class="fas fa-sticky-note me-1"></i>메모 추가
           </a>
           {% endif %}
           {% endif %}
         </div>
-      </div>      <!-- 필터링 버튼 섹션 -->
+      </div>
+
+      <!-- 특정 팔로우업 필터링 알림 -->
+      {% if selected_followup %}
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>{{ selected_followup.customer_name|default:"고객명 미정" }}</strong> 팔로우업과 관련된 모든 활동 기록을 보고 있습니다.
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- 필터링 버튼 섹션 -->
       <div class="row mb-4">
         <div class="col-12">
           <div class="card">
@@ -106,6 +132,12 @@
                   class="btn {% if action_type_filter == 'service' %}btn-warning{% else %}btn-outline-warning{% endif %}"
                 >
                   <i class="fas fa-cogs me-1"></i>서비스 ({{ service_count }})
+                </a>
+                <a
+                  href="{% url 'reporting:history_list' %}?action_type=memo{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  class="btn {% if action_type_filter == 'memo' %}btn-info{% else %}btn-outline-info{% endif %}"
+                >
+                  <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
                 </a>
               </div>
             </div>
@@ -217,10 +249,10 @@
             {% for history in histories %}
             <div class="timeline-item">
               <div
-                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% else %}bg-light {% endif %}"
+                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
               >
                 <i
-                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% else %}fa-circle {% endif %} text-white"
+                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
                 ></i>
               </div>
 

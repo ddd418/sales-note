@@ -155,6 +155,7 @@ class History(models.Model):
         ('customer_meeting', '고객 미팅'),
         ('delivery_schedule', '납품 일정'),
         ('service', '서비스'),
+        ('memo', '메모'),
     ]
     
     SERVICE_STATUS_CHOICES = [
@@ -165,7 +166,7 @@ class History(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
-    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보")
+    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, verbose_name="활동 유형")
     service_status = models.CharField(max_length=20, choices=SERVICE_STATUS_CHOICES, default='received', blank=True, null=True, verbose_name="서비스 상태", help_text="서비스 활동인 경우에만 해당")
@@ -180,7 +181,8 @@ class History(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="활동 시간")
 
     def __str__(self):
-        return f"{self.followup.customer_name} - {self.get_action_type_display()} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+        followup_name = self.followup.customer_name if self.followup else "일반 메모"
+        return f"{followup_name} - {self.get_action_type_display()} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
 
     class Meta:
         verbose_name = "활동 히스토리"

@@ -275,6 +275,12 @@ class HistoryForm(forms.ModelForm):
         self.fields['schedule'].required = False
         self.fields['schedule'].empty_label = "관련 일정 없음"
         
+        # 활동 유형에서 메모 제외 (메모는 별도 폼에서만 생성 가능)
+        self.fields['action_type'].choices = [
+            choice for choice in self.fields['action_type'].choices 
+            if choice[0] != 'memo'
+        ]
+        
         # 납품 금액은 선택사항으로 설정
         self.fields['delivery_amount'].required = False
 
@@ -416,8 +422,14 @@ def followup_detail_view(request, pk):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:followup_list')
     
-    # 관련 히스토리 조회 (최신순)
-    related_histories = History.objects.filter(followup=followup).order_by('-created_at')[:10]
+    # 관련 히스토리 조회 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
+    from django.db.models import Case, When, F
+    related_histories = History.objects.filter(followup=followup).annotate(
+        sort_date=Case(
+            When(schedule__isnull=False, then=F('schedule__visit_date')),
+            default=F('created_at__date')
+        )
+    ).order_by('-sort_date', '-created_at')[:10]
     
     context = {
         'followup': followup,
@@ -1189,6 +1201,11 @@ def history_list_view(request):
     if user_filter:
         histories = histories.filter(user_id=user_filter)
     
+    # 팔로우업 필터링 (특정 팔로우업의 모든 히스토리 보기)
+    followup_filter = request.GET.get('followup')
+    if followup_filter:
+        histories = histories.filter(followup_id=followup_filter)
+    
     # 날짜 범위 필터링
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
@@ -1213,14 +1230,21 @@ def history_list_view(request):
     meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
     delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
     service_count = base_queryset_for_counts.filter(action_type='service', service_status='completed').count()
+    memo_count = base_queryset_for_counts.filter(action_type='memo').count()
     
     # 활동 유형 필터링 (카운트 계산 후에 적용)
     action_type_filter = request.GET.get('action_type')
     if action_type_filter:
         histories = histories.filter(action_type=action_type_filter)
     
-    # 정렬 (관련 일정 날짜 기준 최신순, 일정이 없는 경우 작성일 기준)
-    histories = histories.order_by('-schedule__visit_date', '-created_at')
+    # 정렬 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
+    from django.db.models import Case, When, F
+    histories = histories.annotate(
+        sort_date=Case(
+            When(schedule__isnull=False, then=F('schedule__visit_date')),
+            default=F('created_at__date')
+        )
+    ).order_by('-sort_date', '-created_at')
       # 담당자 목록 (필터용) - 권한 기반으로 수정
     user_profile = get_user_profile(request.user)
     if user_profile.can_view_all_users():
@@ -1244,6 +1268,23 @@ def history_list_view(request):
         except (User.DoesNotExist, ValueError):
             pass
     
+    # 선택된 팔로우업 정보
+    selected_followup = None
+    if followup_filter:
+        try:
+            candidate_followup = FollowUp.objects.get(id=followup_filter)
+            # 접근 권한이 있는지 확인
+            if can_access_user_data(request.user, candidate_followup.user):
+                selected_followup = candidate_followup
+        except (FollowUp.DoesNotExist, ValueError):
+            pass
+    
+    # 페이지 제목 동적 설정
+    if selected_followup:
+        page_title = f'{selected_followup.customer_name or "고객명 미정"} 활동 히스토리'
+    else:
+        page_title = '활동 히스토리'
+    
     # 페이지네이션 처리 - 페이지당 항목 수 증가
     paginator = Paginator(histories, 50) # 페이지당 50개 항목으로 증가
     page_number = request.GET.get('page')
@@ -1251,15 +1292,18 @@ def history_list_view(request):
     
     context = {
         'histories': page_obj,
-        'page_title': '활동 히스토리',
+        'page_title': page_title,
         'action_type_filter': action_type_filter,
         'total_count': total_count,
         'meeting_count': meeting_count,
         'delivery_count': delivery_count,
         'service_count': service_count,
+        'memo_count': memo_count,
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,
+        'followup_filter': followup_filter,
+        'selected_followup': selected_followup,
         'date_from': date_from,
         'date_to': date_to,
         'users': users,
@@ -1287,7 +1331,7 @@ def history_detail_view(request, pk):
     context = {
         'history': history,
         'user_filter': user_filter,
-        'page_title': f'활동 상세 - {history.followup.customer_name}'
+        'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_detail.html', context)
 
@@ -1337,7 +1381,7 @@ def history_edit_view(request, pk):
     context = {
         'form': form,
         'history': history,
-        'page_title': f'활동 수정 - {history.followup.customer_name}'
+        'page_title': f'활동 수정 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_form.html', context)
 
@@ -1357,7 +1401,7 @@ def history_delete_view(request, pk):
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
-        customer_name = history.followup.customer_name or "고객명 미정"
+        customer_name = history.followup.customer_name or "고객명 미정" if history.followup else "일반 메모"
         action_display = history.get_action_type_display()
         
         try:
@@ -1391,7 +1435,7 @@ def history_delete_view(request, pk):
     
     context = {
         'history': history,
-        'page_title': f'활동 삭제 - {history.followup.customer_name or "고객명 미정"}'
+        'page_title': f'활동 삭제 - {history.followup.customer_name or "고객명 미정" if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_delete.html', context)
 
@@ -1503,52 +1547,69 @@ def followup_histories_api(request, followup_id):
     try:
         followup = get_object_or_404(FollowUp, id=followup_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, followup.user):
-            return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        # 권한 체크 - followup.user가 None인 경우를 처리
+        if followup.user:
+            if not can_access_user_data(request.user, followup.user):
+                return JsonResponse({'error': '권한이 없습니다.'}, status=403)
+        else:
+            # followup.user가 None인 경우, 현재 사용자가 관리자이거나 매니저인 경우만 접근 허용
+            user_profile = get_user_profile(request.user)
+            if not (user_profile.is_admin() or user_profile.is_manager()):
+                return JsonResponse({'error': '권한이 없습니다.'}, status=403)
         
         # 해당 팔로우업의 모든 활동 기록 조회 (최신순)
         histories = History.objects.filter(followup=followup).order_by('-created_at')
         
         histories_data = []
         for history in histories:
-            # 활동 타입에 따른 추가 정보 포함
-            history_data = {
-                'id': history.id,
-                'action_type': history.action_type,
-                'action_type_display': history.get_action_type_display(),
-                'content': history.content or '',
-                'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
-                'user': history.user.username,
-            }
-            
-            # 납품 일정인 경우 추가 정보
-            if history.action_type == 'delivery_schedule':
-                history_data.update({
-                    'delivery_amount': history.delivery_amount,
-                    'delivery_items': history.delivery_items or '',
-                    'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
-                    'tax_invoice_issued': history.tax_invoice_issued,
-                })
-            
-            # 고객 미팅인 경우 추가 정보
-            elif history.action_type == 'customer_meeting':
-                history_data.update({
-                    'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
-                })
-            
-            histories_data.append(history_data)
+            try:
+                # 활동 타입에 따른 추가 정보 포함
+                history_data = {
+                    'id': history.id,
+                    'action_type': history.action_type,
+                    'action_type_display': history.get_action_type_display(),
+                    'content': history.content or '',
+                    'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'user': history.user.username if history.user else '사용자 미정',
+                }
+                
+                # 납품 일정인 경우 추가 정보
+                if history.action_type == 'delivery_schedule':
+                    history_data.update({
+                        'delivery_amount': history.delivery_amount,
+                        'delivery_items': history.delivery_items or '',
+                        'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
+                        'tax_invoice_issued': history.tax_invoice_issued,
+                    })
+                
+                # 고객 미팅인 경우 추가 정보
+                elif history.action_type == 'customer_meeting':
+                    history_data.update({
+                        'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else '',
+                    })
+                
+                histories_data.append(history_data)
+                
+            except Exception as history_error:
+                # 개별 히스토리 처리 중 에러가 발생해도 계속 진행
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"History {history.id} processing error: {str(history_error)}")
+                continue
         
         return JsonResponse({
             'success': True,
             'customer_name': followup.customer_name or '고객명 미정',
-            'company': followup.company or '업체명 미정',
+            'company': followup.company.name if followup.company else '업체명 미정',
             'histories': histories_data,
             'total_count': len(histories_data)
         })
         
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"followup_histories_api error for followup_id={followup_id}: {str(e)}", exc_info=True)
+        return JsonResponse({'error': f'서버 에러: {str(e)}'}, status=500)
 
 # ============ 인증 관련 뷰들 ============
 
@@ -1969,7 +2030,7 @@ def manager_dashboard(request):
     # 고객별 납품 현황 (현재 연도)
     customer_delivery = {}
     for history in delivery_histories:
-        customer = history.followup.customer_name or history.followup.company or "고객명 미정"
+        customer = history.followup.customer_name or history.followup.company or "고객명 미정" if history.followup else "일반 메모"
         if customer in customer_delivery:
             customer_delivery[customer] += history.delivery_amount or 0
         else:
@@ -3025,3 +3086,50 @@ def history_update_api(request, history_id):
             'success': False,
             'error': f'활동 기록 수정 중 오류가 발생했습니다: {str(e)}'
         })
+
+# ============ 메모 관련 뷰들 ============
+
+@login_required
+def memo_create_view(request):
+    """메모 생성 (팔로우업 연결 선택사항)"""
+    followup_id = request.GET.get('followup')
+    followup = None
+    
+    if followup_id:
+        try:
+            followup = get_object_or_404(FollowUp, pk=followup_id)
+            # 권한 체크 (팔로우업이 있는 경우만)
+            if not can_modify_user_data(request.user, followup.user):
+                messages.error(request, '메모 작성 권한이 없습니다.')
+                return redirect('reporting:followup_detail', pk=followup.pk)
+        except FollowUp.DoesNotExist:
+            followup = None
+    
+    if request.method == 'POST':
+        content = request.POST.get('content', '').strip()
+        
+        if not content:
+            messages.error(request, '메모 내용을 입력해주세요.')
+        else:
+            # 메모 히스토리 생성
+            history = History.objects.create(
+                user=request.user,
+                followup=followup,  # followup이 None일 수도 있음
+                action_type='memo',
+                content=content,
+                schedule=None  # 메모는 일정과 연결되지 않음
+            )
+            
+            messages.success(request, '메모가 성공적으로 추가되었습니다.')
+            
+            # 팔로우업이 있으면 팔로우업 상세로, 없으면 히스토리 목록으로
+            if followup:
+                return redirect('reporting:followup_detail', pk=followup.pk)
+            else:
+                return redirect('reporting:history_list')
+    
+    context = {
+        'followup': followup,
+        'page_title': f'메모 추가{" - " + followup.customer_name if followup else ""}',
+    }
+    return render(request, 'reporting/memo_form.html', context)
