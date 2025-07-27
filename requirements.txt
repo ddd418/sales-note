@@ -21,6 +21,7 @@ psycopg2-binary==2.9.10
 Pygments==2.19.1
 python-dateutil==2.9.0.post0
 python-slugify==8.0.4
+pytz==2023.3
 PyYAML==6.0.2
 requests==2.32.4
 rich==14.0.0
