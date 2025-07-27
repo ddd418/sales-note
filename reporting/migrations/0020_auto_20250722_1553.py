@@ -11,8 +11,5 @@ class Migration(migrations.Migration):
 
     operations = [
         # activity_type 필드가 이미 데이터베이스에 존재하므로 fake 마이그레이션으로 처리
-        migrations.RunSQL(
-            "-- activity_type field already exists in database",
-            reverse_sql="-- no reverse operation needed"
-        ),
+        # 실제로는 아무것도 하지 않는 마이그레이션
     ]
