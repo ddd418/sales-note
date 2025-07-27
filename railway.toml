@@ -9,4 +9,4 @@ startCommand = "python manage.py migrate && gunicorn sales_project.wsgi:applicat
 # 매일 한국시간 오전 8시에 PostgreSQL 백업 실행
 [cron.backup]
 schedule = "0 23 * * *"  # UTC 23:00 = KST 08:00
-command = "python railway_backup_scheduler.py"
+command = "python railway_backup_simple.py"

@@ -12,6 +12,7 @@ from django.urls import reverse_lazy, reverse
 from functools import wraps
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 
 # 권한 체크 데코레이터
@@ -2659,6 +2660,7 @@ def schedule_activity_type(request):
     return JsonResponse({'success': False, 'error': '일정 ID가 필요합니다.'})
 
 @login_required
+@csrf_exempt
 @require_POST
 def company_create_api(request):
     """새 업체/학교 생성 API"""
@@ -2685,6 +2687,7 @@ def company_create_api(request):
         return JsonResponse({'error': f'업체/학교 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
 
 @login_required
+@csrf_exempt
 @require_POST
 def department_create_api(request):
     """새 부서/연구실 생성 API"""
