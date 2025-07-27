@@ -125,9 +125,9 @@ def create_backup():
     start_time = datetime.datetime.now()
     
     # 환경변수에서 데이터베이스 URL 가져오기
-    database_url = os.environ.get('DATABASE_URL')
+    database_url = os.environ.get('DATABASE_PUBLIC_URL')
     if not database_url:
-        error_msg = "DATABASE_URL 환경변수가 설정되지 않았습니다."
+        error_msg = "DATABASE_PUBLIC_URL 환경변수가 설정되지 않았습니다."
         print(f"❌ {error_msg}")
         send_backup_failure_notification(error_msg, is_manual=True)
         return False

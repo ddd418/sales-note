@@ -28,9 +28,9 @@ class BackupManager:
     def create_postgres_dump(self):
         """PostgreSQL 덤프 생성 (압축 포함)"""
         try:
-            database_url = os.environ.get('DATABASE_URL')
+            database_url = os.environ.get('DATABASE_PUBLIC_URL')
             if not database_url:
-                raise Exception("DATABASE_URL 환경변수를 찾을 수 없습니다.")
+                raise Exception("DATABASE_PUBLIC_URL 환경변수를 찾을 수 없습니다.")
             
             # 덤프 파일 경로
             sql_file = self.temp_dir / f"{self.backup_filename}.sql"

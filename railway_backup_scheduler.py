@@ -62,10 +62,10 @@ def create_postgres_dump():
         now = datetime.datetime.now()
         timestamp = now.strftime("%Y%m%d_%H%M%S")
         
-        # Railway에서 환경변수로 제공되는 DATABASE_URL 사용
-        database_url = os.environ.get('DATABASE_URL')
+        # Railway에서 환경변수로 제공되는 DATABASE_PUBLIC_URL 사용
+        database_url = os.environ.get('DATABASE_PUBLIC_URL')
         if not database_url:
-            print("❌ DATABASE_URL 환경변수를 찾을 수 없습니다.")
+            print("❌ DATABASE_PUBLIC_URL 환경변수를 찾을 수 없습니다.")
             return False
         
         # 백업 파일명
