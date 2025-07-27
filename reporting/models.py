@@ -25,7 +25,7 @@ class Department(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
     def __str__(self):
-        return f"{self.company.name} - {self.name}"
+        return self.name
 
     class Meta:
         verbose_name = "부서/연구실"

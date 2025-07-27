@@ -162,8 +162,7 @@
                   >
                 </p>
                 <p class="mb-2 text-muted small">
-                  {{ history.followup.company|default:"업체명 미정" }} {% if history.followup.department %} -
-                  {{history.followup.department}}{% endif %}
+                  {{ history.followup.company|default:"업체명 미정" }}{% if history.followup.department %} - {{ history.followup.department }}{% endif %}
                 </p>
                 <a
                   href="{% url 'reporting:followup_detail' history.followup.pk %}"
