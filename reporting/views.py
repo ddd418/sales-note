@@ -834,17 +834,41 @@ def schedule_list_view(request):
         except ValueError:
             pass
     
-    # 상태별 카운트 계산 (상태 필터 적용 전 기준)
-    base_queryset_for_counts = schedules
-    total_count = base_queryset_for_counts.count()
-    scheduled_count = base_queryset_for_counts.filter(status='scheduled').count()
-    completed_count = base_queryset_for_counts.filter(status='completed').count()
-    cancelled_count = base_queryset_for_counts.filter(status='cancelled').count()
-    
-    # 상태별 필터링 (카운트 계산 후에 적용)
+    # 필터 값 가져오기
     status_filter = request.GET.get('status')
+    activity_type_filter = request.GET.get('activity_type')
+    
+    # 기본 쿼리셋 (검색, 담당자, 날짜 필터가 적용된 상태)
+    base_queryset = schedules
+    
+    # 상태별 카운트 계산 (활동 유형 필터만 적용된 상태에서)
+    if activity_type_filter:
+        status_count_queryset = base_queryset.filter(activity_type=activity_type_filter)
+    else:
+        status_count_queryset = base_queryset
+    
+    total_count = status_count_queryset.count()
+    scheduled_count = status_count_queryset.filter(status='scheduled').count()
+    completed_count = status_count_queryset.filter(status='completed').count()
+    cancelled_count = status_count_queryset.filter(status='cancelled').count()
+    
+    # 활동 유형별 카운트 계산 (상태 필터만 적용된 상태에서)
+    if status_filter:
+        activity_count_queryset = base_queryset.filter(status=status_filter)
+    else:
+        activity_count_queryset = base_queryset
+    
+    activity_total_count = activity_count_queryset.count()  # 활동 유형 필터용 전체 카운트
+    meeting_count = activity_count_queryset.filter(activity_type='customer_meeting').count()
+    delivery_count = activity_count_queryset.filter(activity_type='delivery').count()
+    service_count = activity_count_queryset.filter(activity_type='service').count()
+    
+    # 두 필터 모두 적용
     if status_filter:
         schedules = schedules.filter(status=status_filter)
+    
+    if activity_type_filter:
+        schedules = schedules.filter(activity_type=activity_type_filter)
     
     # 정렬 (예정됨 우선, 그 다음 최신 날짜순)
     # Django의 Case를 사용해서 상태별 우선순위 설정
@@ -882,10 +906,15 @@ def schedule_list_view(request):
         'schedules': page_obj,
         'page_title': '일정 목록',
         'status_filter': status_filter,
+        'activity_type_filter': activity_type_filter,
         'total_count': total_count,
         'scheduled_count': scheduled_count,
         'completed_count': completed_count,
         'cancelled_count': cancelled_count,
+        'activity_total_count': activity_total_count,
+        'meeting_count': meeting_count,
+        'delivery_count': delivery_count,
+        'service_count': service_count,
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,
