@@ -271,13 +271,17 @@
                     </div>
                     <p class="card-text">
                       {% if history.followup %}
-                      <strong>팔로우업:</strong>
+                      <strong>고객:</strong>
                       <a
                         href="{% url 'reporting:followup_detail' history.followup.pk %}"
                         class="text-decoration-none"
                       >
-                        {{ history.followup.customer_name|default:"고객명 미정"}} ({{ history.followup.company|default:"업체명 미정"}}) </a
-                      ><br />
+                        {{ history.followup.customer_name|default:"고객명 미정"}}
+                      </a><br />
+                      <strong>업체:</strong> {{ history.followup.company.name|default:"업체명 미정" }}<br />
+                      {% if history.followup.department %}
+                      <strong>부서:</strong> {{ history.followup.department.name }}<br />
+                      {% endif %}
                       {% else %}
                       <strong>팔로우업:</strong>
                       <span class="text-muted">연결된 팔로우업 없음</span><br />

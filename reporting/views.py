@@ -1189,6 +1189,11 @@ def history_list_view(request):
         # Salesman은 자신의 데이터만 조회
         histories = History.objects.filter(user=request.user)
     
+    # 관련 객체들을 미리 로드하여 성능 최적화
+    histories = histories.select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule'
+    )
+    
     # 검색 기능
     search_query = request.GET.get('search')
     if search_query:
@@ -2723,8 +2728,8 @@ def department_create_api(request):
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
     companies = Company.objects.annotate(
-        department_count=Count('departments'),
-        followup_count=Count('followup_companies')
+        department_count=Count('departments', distinct=True),
+        followup_count=Count('followup_companies', distinct=True)
     ).order_by('name')
     
     # 검색 기능
@@ -2940,8 +2945,8 @@ def department_delete_view(request, pk):
 def manager_company_list_view(request):
     """매니저용 업체/학교 목록 (읽기 전용)"""
     companies = Company.objects.annotate(
-        department_count=Count('departments'),
-        followup_count=Count('followup_companies')
+        department_count=Count('departments', distinct=True),
+        followup_count=Count('followup_companies', distinct=True)
     ).order_by('name')
     
     # 검색 기능
