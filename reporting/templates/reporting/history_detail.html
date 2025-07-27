@@ -17,19 +17,48 @@
           >
             <i class="fas fa-arrow-left me-1"></i>목록으로
           </a>
-          {% if user.is_authenticated and user == history.user and user.userprofile.role != 'manager' and history.created_by == history.user %}
-          <a
-            href="{% url 'reporting:history_edit' history.pk %}"
-            class="btn btn-outline-primary me-2"
-          >
-            <i class="fas fa-edit me-1"></i>수정
-          </a>
-          <a
-            href="{% url 'reporting:history_delete' history.pk %}"
-            class="btn btn-outline-danger"
-          >
-            <i class="fas fa-trash me-1"></i>삭제
-          </a>
+          {% if user.is_authenticated and user == history.user and user.userprofile.role != 'manager' %}
+            {% if history.followup or history.action_type != 'memo' %}
+              <!-- 팔로우업이 있거나 메모가 아닌 경우 기존 수정/삭제 버튼 -->
+              <a
+                href="{% url 'reporting:history_edit' history.pk %}"
+                class="btn btn-outline-primary me-2"
+              >
+                <i class="fas fa-edit me-1"></i>수정
+              </a>
+            {% else %}
+              <!-- 팔로우업이 없는 메모의 경우 인라인 편집 버튼 -->
+              <button
+                id="edit-memo-btn"
+                class="btn btn-outline-primary me-2"
+                onclick="toggleEditMode()"
+              >
+                <i class="fas fa-edit me-1"></i>수정
+              </button>
+              <button
+                id="save-memo-btn"
+                class="btn btn-success me-2"
+                style="display: none;"
+                onclick="saveMemo()"
+              >
+                <i class="fas fa-save me-1"></i>저장
+              </button>
+              <button
+                id="cancel-memo-btn"
+                class="btn btn-outline-secondary me-2"
+                style="display: none;"
+                onclick="cancelEdit()"
+              >
+                <i class="fas fa-times me-1"></i>취소
+              </button>
+            {% endif %}
+            <a
+              href="{% url 'reporting:history_delete' history.pk %}"
+              class="btn btn-outline-danger"
+              onclick="return confirm('정말로 이 활동 기록을 삭제하시겠습니까?\\n\\n삭제된 데이터는 복구할 수 없습니다.')"
+            >
+              <i class="fas fa-trash me-1"></i>삭제
+            </a>
           {% endif %}
         </div>
       </div>
@@ -216,7 +245,18 @@
               <i class="fas fa-file-text me-1"></i>상세 내용
             </h6>
             <div class="p-3 bg-light rounded">
-              <p class="mb-0 whitespace-pre-line">{{ history.content }}</p>
+              {% if not history.followup and history.action_type == 'memo' and user.is_authenticated and user == history.user and user.userprofile.role != 'manager' %}
+                <!-- 팔로우업이 없는 메모의 경우 인라인 편집 가능 -->
+                <div id="memo-display">
+                  <p class="mb-0 whitespace-pre-line">{{ history.content }}</p>
+                </div>
+                <div id="memo-edit" style="display: none;">
+                  <textarea id="memo-content" class="form-control" rows="6">{{ history.content }}</textarea>
+                </div>
+              {% else %}
+                <!-- 일반 히스토리의 경우 읽기 전용 -->
+                <p class="mb-0 whitespace-pre-line">{{ history.content }}</p>
+              {% endif %}
             </div>
           </div>
           {% endif %}
@@ -253,8 +293,8 @@
         </div>
 
         <div class="card-footer bg-white">
-          <!-- 관련 히스토리 목록 -->
-          {% if related_histories %}
+          <!-- 관련 히스토리 목록 (팔로우업이 있는 경우만 표시) -->
+          {% if related_histories and history.followup %}
           <div class="related-histories mb-3">
             <h6 class="text-muted mb-2">
               <i class="fas fa-history me-1"></i>관련 활동 기록
@@ -286,20 +326,12 @@
           <hr>
           {% endif %}
 
-          <div class="d-flex justify-content-between align-items-center">
+          <div class="text-center">
             <small class="text-muted">
               <i class="fas fa-info-circle me-1"></i>
               이 활동 기록은 {{ history.created_at|timesince }} 전에
               생성되었습니다.
             </small>
-            <div>
-              <a
-                href="{% url 'reporting:history_list' %}"
-                class="btn btn-secondary"
-              >
-                <i class="fas fa-arrow-left me-1"></i>목록으로
-              </a>
-            </div>
           </div>
         </div>
       </div>
@@ -311,6 +343,133 @@
   .whitespace-pre-line {
     white-space: pre-line;
   }
+  
+  #memo-content {
+    resize: vertical;
+    min-height: 120px;
+  }
 </style>
+
+<script>
+let originalContent = '';
+
+function toggleEditMode() {
+    const displayDiv = document.getElementById('memo-display');
+    const editDiv = document.getElementById('memo-edit');
+    const editBtn = document.getElementById('edit-memo-btn');
+    const saveBtn = document.getElementById('save-memo-btn');
+    const cancelBtn = document.getElementById('cancel-memo-btn');
+    const textarea = document.getElementById('memo-content');
+    
+    // 현재 화면에 표시된 내용을 원본으로 저장 (수정된 내용 반영)
+    const currentDisplayContent = document.querySelector('#memo-display p').textContent;
+    textarea.value = currentDisplayContent;
+    originalContent = currentDisplayContent;
+    
+    // UI 토글
+    displayDiv.style.display = 'none';
+    editDiv.style.display = 'block';
+    editBtn.style.display = 'none';
+    saveBtn.style.display = 'inline-block';
+    cancelBtn.style.display = 'inline-block';
+    
+    // 텍스트영역에 포커스
+    textarea.focus();
+}
+
+function cancelEdit() {
+    const displayDiv = document.getElementById('memo-display');
+    const editDiv = document.getElementById('memo-edit');
+    const editBtn = document.getElementById('edit-memo-btn');
+    const saveBtn = document.getElementById('save-memo-btn');
+    const cancelBtn = document.getElementById('cancel-memo-btn');
+    const textarea = document.getElementById('memo-content');
+    
+    // 원본 내용으로 복원
+    textarea.value = originalContent;
+    
+    // UI 토글
+    displayDiv.style.display = 'block';
+    editDiv.style.display = 'none';
+    editBtn.style.display = 'inline-block';
+    saveBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+}
+
+function saveMemo() {
+    const textarea = document.getElementById('memo-content');
+    const newContent = textarea.value.trim();
+    
+    if (!newContent) {
+        alert('내용을 입력해주세요.');
+        return;
+    }
+    
+    // 저장 버튼 비활성화
+    const saveBtn = document.getElementById('save-memo-btn');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+    
+    // AJAX 요청으로 서버에 업데이트
+    fetch(`{% url 'reporting:history_update_memo' history.pk %}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            content: newContent
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 성공 시 화면 업데이트
+            const displayP = document.querySelector('#memo-display p');
+            displayP.textContent = newContent;
+            
+            // 편집 모드 종료
+            cancelEdit();
+            
+            // 성공 메시지
+            showSuccessMessage('메모가 성공적으로 수정되었습니다.');
+        } else {
+            throw new Error(data.error || '저장 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        alert('저장 중 오류가 발생했습니다: ' + error.message);
+    })
+    .finally(() => {
+        // 버튼 복원
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+    });
+}
+
+function showSuccessMessage(message) {
+    // 간단한 성공 메시지 표시
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // 페이지 상단에 메시지 삽입
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // 3초 후 자동 제거
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+</script>
+
+<!-- CSRF 토큰 (AJAX 요청용) -->
+{% csrf_token %}
 
 {% endblock %}

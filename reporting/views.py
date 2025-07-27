@@ -252,7 +252,11 @@ class HistoryForm(forms.ModelForm):
                     pass  # 잘못된 입력인 경우 무시
             elif self.instance.pk:
                 # 수정 시에는 해당 인스턴스의 팔로우업에 연결된 일정들을 표시
-                self.fields['schedule'].queryset = self.instance.followup.schedules.all()
+                if self.instance.followup:
+                    self.fields['schedule'].queryset = self.instance.followup.schedules.all()
+                else:
+                    # 팔로우업이 없는 경우 (일반 메모 등) 빈 쿼리셋 유지
+                    self.fields['schedule'].queryset = Schedule.objects.none()
                 
             # 선택된 일정이 있으면 해당 일정의 activity_type에 맞게 action_type 매핑
             if 'schedule' in self.data and self.data.get('schedule'):
@@ -3293,3 +3297,58 @@ def memo_create_view(request):
         'page_title': f'메모 추가{" - " + followup.customer_name if followup else ""}',
     }
     return render(request, 'reporting/memo_form.html', context)
+
+
+# ============ 인라인 메모 편집 API ============
+
+@login_required
+@require_POST
+@csrf_exempt
+def history_update_memo(request, pk):
+    """AJAX 요청으로 메모 내용 업데이트"""
+    import json
+    
+    try:
+        history = get_object_or_404(History, pk=pk, action_type='memo')
+        
+        # 권한 체크
+        if not can_modify_user_data(request.user, history.user):
+            return JsonResponse({
+                'success': False,
+                'error': '메모 수정 권한이 없습니다.'
+            })
+        
+        # 요청 데이터 파싱
+        data = json.loads(request.body)
+        new_content = data.get('content', '').strip()
+        
+        if not new_content:
+            return JsonResponse({
+                'success': False,
+                'error': '메모 내용을 입력해주세요.'
+            })
+        
+        # 메모 내용 업데이트
+        history.content = new_content
+        history.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': '메모가 성공적으로 수정되었습니다.'
+        })
+        
+    except History.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': '메모를 찾을 수 없습니다.'
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': '잘못된 요청 형식입니다.'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'메모 수정 중 오류가 발생했습니다: {str(e)}'
+        })

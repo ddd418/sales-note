@@ -40,6 +40,7 @@ urlpatterns = [
     # 히스토리 API 엔드포인트들
     path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
     path('api/histories/<int:history_id>/update/', views.history_update_api, name='history_update_api'),
+    path('api/histories/<int:pk>/update-memo/', views.history_update_memo, name='history_update_memo'),
     # API 엔드포인트들
     path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
     path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),
