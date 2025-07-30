@@ -887,9 +887,16 @@
 
     <!-- 토스트 메시지 컨테이너 -->
     <div id="toastContainer" class="toast-container"></div>    <nav class="main-nav" id="mainNav">
+      <!-- 로고 링크 - 로그인 상태에 따라 다르게 -->
+      {% if user.is_authenticated %}
       <a href="{% url 'reporting:dashboard' %}" class="logo">Sales System</a>
+      {% else %}
+      <a href="{% url 'reporting:login' %}" class="logo">Sales System</a>
+      {% endif %}
       <!-- 로고 링크 대시보드로 변경 -->
       <ul>
+        <!-- 대시보드 메뉴 - 로그인한 사용자만 -->
+        {% if user.is_authenticated %}
         <li>
           <a
             href="{% url 'reporting:dashboard' %}"
@@ -897,6 +904,7 @@
             ><i class="fas fa-home me-2"></i>대시보드</a
           >
         </li>
+        {% endif %}
 
         <!-- Admin 전용 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'admin' %}
@@ -1135,7 +1143,7 @@
         {% endif %} 
         
         <!-- 퀵 네비게이션 바 (대시보드 제외) -->
-        {% if request.resolver_match.url_name != 'dashboard' and request.resolver_match.url_name != 'manager_dashboard' %}
+        {% if user.is_authenticated and request.resolver_match.url_name != 'dashboard' and request.resolver_match.url_name != 'manager_dashboard' %}
         <div class="quick-nav-bar mb-4">
           <div class="d-flex flex-wrap gap-2 justify-content-center">
             <a href="{% url 'reporting:dashboard' %}" class="btn btn-sm btn-outline-dark">
