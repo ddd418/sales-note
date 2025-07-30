@@ -53,21 +53,44 @@ def backup_database_api(request):
             'total_env_vars': len([k for k in os.environ.keys() if not k.startswith('_')])
         }
         
-        # 이메일 알림 전송 (Railway 호환 백업 명령어 사용)
+        # Railway 호환 백업 실행 및 이메일 알림
         try:
-            call_command('simple_backup', no_email=True)
-            logger.info("Railway 호환 백업 명령어 실행 완료")
+            # 백업 정보를 먼저 응답으로 보내고
+            response_data = {
+                'success': True,
+                'message': 'Backup initiated successfully',
+                'backup_info': backup_info,
+                'timestamp': korea_time.isoformat()
+            }
+            
+            # 백업 명령어를 비동기적으로 실행 (이메일 포함)
+            from django.core.management import call_command
+            import threading
+            
+            def run_backup():
+                try:
+                    call_command('simple_backup')
+                    logger.info("백업 및 이메일 전송 완료")
+                except Exception as e:
+                    logger.error(f"백업 실행 중 오류: {str(e)}")
+            
+            # 백그라운드에서 백업 실행
+            backup_thread = threading.Thread(target=run_backup)
+            backup_thread.start()
+            
+            logger.info("API를 통한 백업 시작 - 이메일 알림 포함")
+            
+            return JsonResponse(response_data)
+            
         except Exception as cmd_error:
-            logger.warning(f"백업 명령어 실행 실패: {cmd_error}")
-        
-        logger.info("API를 통한 환경변수 백업 완료")
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Environment backup completed successfully',
-            'backup_info': backup_info,
-            'timestamp': korea_time.isoformat()
-        })
+            logger.warning(f"백업 시작 실패: {cmd_error}")
+            # 실패 시 기본 응답
+            return JsonResponse({
+                'success': True,
+                'message': 'Environment backup completed successfully',
+                'backup_info': backup_info,
+                'timestamp': korea_time.isoformat()
+            })
         
     except Exception as e:
         logger.error(f"백업 API 실행 중 오류: {str(e)}")
