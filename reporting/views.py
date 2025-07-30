@@ -810,7 +810,8 @@ def schedule_list_view(request):
     if search_query:
         schedules = schedules.filter(
             Q(followup__customer_name__icontains=search_query) |
-            Q(followup__company__icontains=search_query) |
+            Q(followup__company__name__icontains=search_query) |
+            Q(followup__department__name__icontains=search_query) |
             Q(location__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
