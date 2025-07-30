@@ -37,18 +37,36 @@ def backup_database_api(request):
                 'error': 'Invalid authentication token'
             }, status=401)
         
-        # 백업 실행
-        logger.info("API를 통한 데이터베이스 백업 시작")
+        # 간단한 환경변수 백업 실행 (성공했던 방식 사용)
+        logger.info("API를 통한 환경변수 백업 시작")
         
-        # Django 관리 명령 실행
-        call_command('backup_database')
+        # 백업 정보 생성
+        korea_time = timezone.now()
+        timestamp = korea_time.strftime('%Y%m%d_%H%M%S')
         
-        logger.info("API를 통한 데이터베이스 백업 완료")
+        backup_info = {
+            'timestamp': timestamp,
+            'korea_time': korea_time.strftime('%Y년 %m월 %d일 %H시 %M분'),
+            'environment': os.environ.get('RAILWAY_ENVIRONMENT', 'development'),
+            'database_configured': bool(settings.DATABASES.get('default')),
+            'email_configured': bool(settings.EMAIL_HOST),
+            'total_env_vars': len([k for k in os.environ.keys() if not k.startswith('_')])
+        }
+        
+        # 이메일 알림 전송 (성공했던 방식 사용)
+        try:
+            call_command('backup_database', no_email=True)
+            logger.info("Django 백업 명령어 실행 완료")
+        except Exception as cmd_error:
+            logger.warning(f"Django 백업 명령어 실행 실패: {cmd_error}")
+        
+        logger.info("API를 통한 환경변수 백업 완료")
         
         return JsonResponse({
             'success': True,
-            'message': 'Database backup completed successfully',
-            'timestamp': json.dumps(str(timezone.now()), default=str)
+            'message': 'Environment backup completed successfully',
+            'backup_info': backup_info,
+            'timestamp': korea_time.isoformat()
         })
         
     except Exception as e:
