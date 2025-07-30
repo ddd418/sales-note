@@ -97,11 +97,11 @@ class Command(BaseCommand):
     def get_database_stats(self):
         """데이터베이스 통계 정보 조회"""
         try:
-            from reporting.models import Followup, Schedule, History
+            from reporting.models import FollowUp, Schedule, History
             from django.contrib.auth.models import User
             
             stats = []
-            stats.append(f"• 팔로우업: {Followup.objects.count():,}개")
+            stats.append(f"• 팔로우업: {FollowUp.objects.count():,}개")
             stats.append(f"• 일정: {Schedule.objects.count():,}개")
             stats.append(f"• 기록: {History.objects.count():,}개")
             stats.append(f"• 사용자: {User.objects.count():,}개")
