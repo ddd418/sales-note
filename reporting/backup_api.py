@@ -53,12 +53,12 @@ def backup_database_api(request):
             'total_env_vars': len([k for k in os.environ.keys() if not k.startswith('_')])
         }
         
-        # 이메일 알림 전송 (성공했던 방식 사용)
+        # 이메일 알림 전송 (Railway 호환 백업 명령어 사용)
         try:
-            call_command('backup_database', no_email=True)
-            logger.info("Django 백업 명령어 실행 완료")
+            call_command('simple_backup', no_email=True)
+            logger.info("Railway 호환 백업 명령어 실행 완료")
         except Exception as cmd_error:
-            logger.warning(f"Django 백업 명령어 실행 실패: {cmd_error}")
+            logger.warning(f"백업 명령어 실행 실패: {cmd_error}")
         
         logger.info("API를 통한 환경변수 백업 완료")
         
