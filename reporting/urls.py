@@ -1,6 +1,7 @@
 # reporting/urls.py
 from django.urls import path
 from . import views
+from . import backup_api
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
@@ -84,4 +85,8 @@ urlpatterns = [
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
     path('dashboard/', views.dashboard_view, name='dashboard'),
+    
+    # 백업 API URL들
+    path('backup/database/', backup_api.backup_database_api, name='backup_database_api'),
+    path('backup/status/', backup_api.backup_status_api, name='backup_status_api'),
 ]

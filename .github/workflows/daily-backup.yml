@@ -1,0 +1,41 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    # 매일 오전 8시 (한국시간 기준, UTC 23시)
+    - cron: '0 23 * * *'
+  workflow_dispatch: # 수동 실행도 가능
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Execute Database Backup
+      run: |
+        echo "Executing database backup via API..."
+        response=$(curl -s -w "%{http_code}" \
+          -X POST \
+          -H "Authorization: Bearer ${{ secrets.BACKUP_API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          "${{ secrets.RAILWAY_APP_URL }}/backup/database/")
+        
+        echo "Response: $response"
+        
+        # HTTP 상태 코드 확인
+        http_code="${response: -3}"
+        if [ "$http_code" -eq 200 ]; then
+          echo "✅ Backup completed successfully"
+        else
+          echo "❌ Backup failed with status code: $http_code"
+          exit 1
+        fi
+        
+    - name: Check Backup Status
+      if: failure()
+      run: |
+        echo "Checking backup system status..."
+        curl -s -X GET "${{ secrets.RAILWAY_APP_URL }}/backup/status/" | jq .
