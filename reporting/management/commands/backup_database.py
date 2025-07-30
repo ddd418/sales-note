@@ -65,9 +65,9 @@ class Command(BaseCommand):
         """실제 백업 수행"""
         try:
             # Railway PostgreSQL 연결 정보 가져오기
-            database_url = os.environ.get('DATABASE_URL')
+            database_url = os.environ.get('DATABASE_PUBLIC_URL') or os.environ.get('DATABASE_URL')
             if not database_url:
-                raise Exception("DATABASE_URL 환경변수가 설정되지 않았습니다.")
+                raise Exception("DATABASE_PUBLIC_URL 또는 DATABASE_URL 환경변수가 설정되지 않았습니다.")
 
             # 백업 파일명 생성 (타임스탬프 포함)
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -184,7 +184,7 @@ Sales System Auto Backup
     def get_database_stats(self):
         """데이터베이스 통계 정보 조회"""
         try:
-            database_url = os.environ.get('DATABASE_URL')
+            database_url = os.environ.get('DATABASE_PUBLIC_URL') or os.environ.get('DATABASE_URL')
             if not database_url:
                 return "데이터베이스 연결 정보가 없습니다."
             
