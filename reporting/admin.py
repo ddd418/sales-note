@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import FollowUp, Schedule, History, UserProfile
+from .models import FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile
 
 # UserProfile 인라인 관리자
 class UserProfileInline(admin.StackedInline):
@@ -96,3 +96,34 @@ class HistoryAdmin(admin.ModelAdmin):
             return obj.delivery_items[:50] + '...' if len(obj.delivery_items) > 50 else obj.delivery_items
         return '-'
     delivery_items_short.short_description = '납품 품목'
+
+# HistoryFile 모델 관리자 설정
+@admin.register(HistoryFile)
+class HistoryFileAdmin(admin.ModelAdmin):
+    list_display = ('original_filename', 'history', 'file_size_display', 'uploaded_by', 'uploaded_at')
+    list_filter = ('uploaded_by', 'uploaded_at')
+    search_fields = ('original_filename', 'history__followup__customer_name', 'uploaded_by__username')
+    date_hierarchy = 'uploaded_at'
+    autocomplete_fields = ['history', 'uploaded_by']
+    readonly_fields = ('file_size', 'uploaded_at')
+    list_per_page = 20
+    
+    def file_size_display(self, obj):
+        return obj.get_file_size_display()
+    file_size_display.short_description = '파일 크기'
+
+
+# ScheduleFile 모델 관리자 설정
+@admin.register(ScheduleFile)
+class ScheduleFileAdmin(admin.ModelAdmin):
+    list_display = ('original_filename', 'schedule', 'file_size_display', 'uploaded_by', 'uploaded_at')
+    list_filter = ('uploaded_by', 'uploaded_at')
+    search_fields = ('original_filename', 'schedule__followup__customer_name', 'uploaded_by__username')
+    date_hierarchy = 'uploaded_at'
+    autocomplete_fields = ['schedule', 'uploaded_by']
+    readonly_fields = ('file_size', 'uploaded_at')
+    list_per_page = 20
+    
+    def file_size_display(self, obj):
+        return obj.get_file_size_display()
+    file_size_display.short_description = '파일 크기'

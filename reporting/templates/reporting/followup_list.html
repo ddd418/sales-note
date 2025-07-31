@@ -388,51 +388,97 @@
           <i class="fas fa-users me-2"></i>{{ page_title }}
         </h1>        {% if user.is_authenticated %}
         {% if user.userprofile.role == 'manager' %}
-        <!-- 매니저용 데이터 보기 드롭다운 -->
-        <div class="btn-group">
-          <button
-            type="button"
-            class="btn btn-outline-primary dropdown-toggle"
-            data-bs-toggle="dropdown"
-          >
-            <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-          </button>
-          <ul class="dropdown-menu">
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-user me-2"></i>고객 관리
-              </a>
-            </li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-calendar me-2"></i>일정 관리
-              </a>
-            </li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-history me-2"></i>활동 기록
-              </a>
-            </li>
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-              </a>
-            </li>            {% if selected_user %}
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
-                <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
-              </a>
-            </li>
-            {% endif %}
-          </ul>
+        <!-- 매니저용 데이터 보기 드롭다운 및 엑셀 다운로드 -->
+        <div class="btn-group" role="group">
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+            >
+              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-user me-2"></i>고객 관리
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-calendar me-2"></i>일정 관리
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-history me-2"></i>활동 기록
+                </a>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
+                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+                </a>
+              </li>            {% if selected_user %}
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
+                  <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          
+          <!-- 매니저용 엑셀 다운로드 드롭다운 -->
+          <div class="btn-group">
+            <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_excel_download' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+                  <i class="fas fa-file-excel me-2"></i>전체 다운로드
+                  <small class="text-muted d-block">고객정보 + 활동이력 포함</small>
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_basic_excel_download' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+                  <i class="fas fa-file-alt me-2"></i>기본 정보 다운로드
+                  <small class="text-muted d-block">고객 기본정보만</small>
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
         {% else %}
-        <!-- 실무자용 추가 버튼 -->
-        <a href="{% url 'reporting:followup_create' %}" class="btn btn-primary">
-          <i class="fas fa-plus me-1"></i>새 고객 정보 추가
-        </a>
+        <!-- 실무자용 추가 버튼 및 엑셀 다운로드 -->
+        <div class="btn-group" role="group">
+          <a href="{% url 'reporting:followup_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 고객 정보 추가
+          </a>
+          
+          <!-- 엑셀 다운로드 드롭다운 -->
+          <div class="btn-group" role="group">
+            <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_excel_download' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+                  <i class="fas fa-file-excel me-2"></i>전체 다운로드
+                  <small class="text-muted d-block">고객정보 + 활동이력 포함</small>
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="{% url 'reporting:followup_basic_excel_download' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+                  <i class="fas fa-file-alt me-2"></i>기본 정보 다운로드
+                  <small class="text-muted d-block">고객 기본정보만</small>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
         {% endif %}
         {% endif %}
       </div>      <!-- 검색 섹션 -->

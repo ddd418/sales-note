@@ -135,6 +135,10 @@ STATICFILES_DIRS = [
     BASE_DIR / "theme" / "static",  # theme 앱의 static 폴더
 ]
 
+# Media files (user uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'  # 미디어 파일 저장 디렉토리
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

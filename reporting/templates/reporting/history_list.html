@@ -343,7 +343,25 @@
                       <i class="fas fa-quote-left me-1"></i>
                       {{ history.content|linebreaks }}
                     </div>
-                    {% endif %}                    <div class="d-flex justify-content-between align-items-center">
+                    {% endif %}
+
+                    <!-- 첨부파일 정보 -->
+                    {% with history.files.count as file_count %}
+                    <div class="file-info mb-2">
+                      <strong>첨부파일:</strong>
+                      {% if file_count == 0 %}
+                        <span class="text-muted">없음</span>
+                      {% elif file_count == 1 %}
+                        {% with history.files.first as first_file %}
+                        <span class="text-primary">"{{ first_file.original_filename }}"</span>
+                        {% endwith %}
+                      {% else %}
+                        {% with history.files.first as first_file %}
+                        <span class="text-primary">"{{ first_file.original_filename }}" 외 {{ file_count|add:"-1" }}개</span>
+                        {% endwith %}
+                      {% endif %}
+                    </div>
+                    {% endwith %}                    <div class="d-flex justify-content-between align-items-center">
                       <div>
                         <!-- 왼쪽 공간은 비워둠 -->
                       </div>

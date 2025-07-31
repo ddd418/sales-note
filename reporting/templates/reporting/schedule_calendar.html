@@ -1432,6 +1432,41 @@
                 </div>`;
             }
             
+            // 첨부파일 정보
+            if (history.files && history.files.length > 0) {
+              historyHtml += `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">
+                    <i class="fas fa-paperclip me-1"></i>첨부파일:
+                  </label>
+                  <div class="attachments-list">`;
+              
+              history.files.forEach(file => {
+                historyHtml += `
+                  <div class="d-flex justify-content-between align-items-center p-2 border rounded mb-1 bg-light">
+                    <div>
+                      <a href="/reporting/files/${file.id}/download/" 
+                         class="text-decoration-none fw-bold" style="font-size: 0.9em;">
+                        <i class="fas fa-file me-1"></i>${escapeHtml(file.filename)}
+                      </a>
+                      <small class="text-muted d-block" style="font-size: 0.8em;">${file.size}</small>
+                    </div>
+                    {% if user.userprofile.role != 'manager' %}
+                    ${(history.created_by === '{{ user.username }}' || (!history.created_by && history.user === '{{ user.username }}')) ? `
+                    <button class="btn btn-sm btn-outline-danger" style="font-size: 0.75em; padding: 0.15rem 0.3rem;" 
+                            onclick="deleteHistoryFile(${file.id}, ${history.id}, ${scheduleId})" 
+                            title="파일 삭제">
+                        <i class="fas fa-trash"></i>
+                    </button>` : ''}
+                    {% endif %}
+                  </div>`;
+              });
+              
+              historyHtml += `
+                  </div>
+                </div>`;
+            }
+            
             historyHtml += `
                 </div>
               </div>`;
@@ -2163,6 +2198,13 @@
   function resetInlineHistoryForm(scheduleId) {
     const form = document.getElementById(`inlineHistoryForm-${scheduleId}`);
     form.reset();
+    
+    // 파일 입력 초기화
+    const fileInput = document.getElementById(`history-files-${scheduleId}`);
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    
     toggleInlineActivityFields(scheduleId);
   }
 
@@ -2935,6 +2977,24 @@
                                 <option value="completed">완료</option>
                               </select>
                             </div>
+                            
+                            <!-- 파일 첨부 필드 -->
+                            <div class="col-12">
+                              <label class="form-label">
+                                <i class="fas fa-paperclip me-1"></i>파일 첨부 (선택사항)
+                              </label>
+                              <input 
+                                type="file" 
+                                class="form-control" 
+                                id="history-files-${schedule.id}" 
+                                name="files" 
+                                multiple 
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar"
+                              >
+                              <div class="form-text">
+                                최대 5개 파일, 각 10MB 이하 (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, JPG, JPEG, PNG, GIF, ZIP, RAR)
+                              </div>
+                            </div>
                           </div>
                           <div class="d-flex gap-2 mt-3">
                             <button type="button" class="btn btn-success" onclick="submitInlineHistory(null, ${schedule.id})">
@@ -3241,6 +3301,74 @@
         .join('<br>');
       
       return escapedText;
+    }
+
+    // 히스토리 파일 삭제 (모달용)
+    function deleteHistoryFile(fileId, historyId, scheduleId) {
+      if (!confirm('이 파일을 삭제하시겠습니까?')) {
+        return;
+      }
+      
+      fetch(`/reporting/files/${fileId}/delete/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+          'Content-Type': 'application/json',
+        },
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          loadScheduleHistories(scheduleId); // 히스토리 목록 새로고침
+          showModalSuccessMessage('파일이 삭제되었습니다.');
+        } else {
+          alert('파일 삭제 실패: ' + data.error);
+        }
+      })
+      .catch(error => {
+        alert('파일 삭제 중 오류가 발생했습니다: ' + error.message);
+      });
+    }
+
+    // 모달에서 첨부파일 목록 로드 (사용하지 않으므로 제거됨)
+    function loadModalAttachedFiles(scheduleId) {
+      // 이 함수는 더 이상 사용하지 않습니다.
+      // 히스토리별 첨부파일은 loadScheduleHistories에서 처리됩니다.
+    }
+
+    // 모달에서 파일 업로드 폼 설정 (사용하지 않으므로 제거됨)
+    function setupModalFileUpload(scheduleId) {
+      // 이 함수는 더 이상 사용하지 않습니다.
+      // 파일 업로드는 히스토리 작성 시 함께 처리됩니다.
+    }
+
+    // 모달에서 파일 삭제 (사용하지 않으므로 제거됨)
+    function deleteModalFile(scheduleId, fileId) {
+      // 이 함수는 더 이상 사용하지 않습니다.
+      // 히스토리 파일 삭제는 deleteHistoryFile 함수를 사용합니다.
+    }
+
+    // 모달 내 성공 메시지 표시
+    function showModalSuccessMessage(message) {
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+      alertDiv.style.top = '20px';
+      alertDiv.style.right = '20px';
+      alertDiv.style.zIndex = '9999';
+      alertDiv.style.fontSize = '0.9em';
+      alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      `;
+      
+      document.body.appendChild(alertDiv);
+      
+      // 3초 후 자동 제거
+      setTimeout(() => {
+        if (alertDiv.parentNode) {
+          alertDiv.remove();
+        }
+      }, 3000);
     }
 
   });

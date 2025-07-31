@@ -13,6 +13,8 @@ urlpatterns = [
     path('followups/create/', views.followup_create_view, name='followup_create'),
     path('followups/<int:pk>/edit/', views.followup_edit_view, name='followup_edit'),
     path('followups/<int:pk>/delete/', views.followup_delete_view, name='followup_delete'),
+    path('followups/excel-download/', views.followup_excel_download, name='followup_excel_download'),
+    path('followups/basic-excel-download/', views.followup_basic_excel_download, name='followup_basic_excel_download'),
       # 일정 URL들
     path('schedules/', views.schedule_list_view, name='schedule_list'),
     path('schedules/calendar/', views.schedule_calendar_view, name='schedule_calendar'),
@@ -42,6 +44,17 @@ urlpatterns = [
     path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
     path('api/histories/<int:history_id>/update/', views.history_update_api, name='history_update_api'),
     path('api/histories/<int:pk>/update-memo/', views.history_update_memo, name='history_update_memo'),
+    path('api/histories/<int:history_id>/files/', views.history_files_api, name='history_files_api'),
+    
+    # 파일 관리 URL들
+    path('files/<int:file_id>/download/', views.file_download_view, name='file_download'),
+    path('files/<int:file_id>/delete/', views.file_delete_view, name='file_delete'),
+    
+    # 일정 파일 관리 URL들
+    path('schedules/<int:schedule_id>/files/upload/', views.schedule_file_upload, name='schedule_file_upload'),
+    path('schedule-files/<int:file_id>/download/', views.schedule_file_download, name='schedule_file_download'),
+    path('schedule-files/<int:file_id>/delete/', views.schedule_file_delete, name='schedule_file_delete'),
+    path('api/schedules/<int:schedule_id>/files/', views.schedule_files_api, name='schedule_files_api'),
     # API 엔드포인트들
     path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
     path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),

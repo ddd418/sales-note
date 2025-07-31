@@ -3,10 +3,10 @@ from django.contrib.auth.decorators import login_required # 로그인 요구 데
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django import forms
-from django.http import JsonResponse, HttpResponseForbidden
+from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department # Company, Department 모델 추가
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile # HistoryFile 모델 추가
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -14,6 +14,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+import os
+import mimetypes
 
 # 권한 체크 데코레이터
 def role_required(allowed_roles):
@@ -60,6 +62,55 @@ def can_access_user_data(request_user, target_user):
     
     # Salesman은 자신의 데이터만 접근 가능
     return request_user == target_user
+
+# 파일 업로드 관련 헬퍼 함수들
+def validate_file_upload(file):
+    """업로드된 파일의 유효성을 검사"""
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    ALLOWED_EXTENSIONS = [
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', 
+        '.txt', '.jpg', '.jpeg', '.png', '.gif', '.zip', '.rar'
+    ]
+    
+    # 파일 크기 검사
+    if file.size > MAX_FILE_SIZE:
+        return False, f"파일 크기가 너무 큽니다. 최대 {MAX_FILE_SIZE // (1024*1024)}MB까지 업로드 가능합니다."
+    
+    # 파일 확장자 검사
+    file_extension = os.path.splitext(file.name)[1].lower()
+    if file_extension not in ALLOWED_EXTENSIONS:
+        return False, f"지원하지 않는 파일 형식입니다. 허용된 확장자: {', '.join(ALLOWED_EXTENSIONS)}"
+    
+    return True, "유효한 파일입니다."
+
+def handle_file_uploads(files, history, user):
+    """여러 파일 업로드를 처리"""
+    MAX_FILES = 5
+    uploaded_files = []
+    errors = []
+    
+    if len(files) > MAX_FILES:
+        return [], [f"최대 {MAX_FILES}개의 파일만 업로드할 수 있습니다."]
+    
+    for file in files:
+        is_valid, message = validate_file_upload(file)
+        if not is_valid:
+            errors.append(f"{file.name}: {message}")
+            continue
+            
+        try:
+            history_file = HistoryFile.objects.create(
+                history=history,
+                file=file,
+                original_filename=file.name,
+                file_size=file.size,
+                uploaded_by=user
+            )
+            uploaded_files.append(history_file)
+        except Exception as e:
+            errors.append(f"{file.name}: 업로드 중 오류가 발생했습니다.")
+    
+    return uploaded_files, errors
 
 def can_modify_user_data(request_user, target_user):
     """현재 사용자가 대상 사용자의 데이터를 수정/추가/삭제할 수 있는지 확인"""
@@ -204,6 +255,17 @@ class ScheduleForm(forms.ModelForm):
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
+    # 파일 업로드 필드 (JavaScript로 여러 파일 처리)
+    files = forms.FileField(
+        required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar'
+        }),
+        label='첨부파일',
+        help_text='최대 10MB, 최대 5개 파일까지 업로드 가능'
+    )
+    
     class Meta:
         model = History
         fields = ['followup', 'schedule', 'action_type', 'service_status', 'content', 'delivery_amount', 'delivery_items', 'delivery_date', 'meeting_date']
@@ -1405,12 +1467,29 @@ def history_detail_view(request, pk):
 def history_create_view(request):
     """히스토리 생성"""
     if request.method == 'POST':
-        form = HistoryForm(request.POST, user=request.user)
+        form = HistoryForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             history = form.save(commit=False)
             history.user = request.user
             history.save()
-            messages.success(request, '활동 히스토리가 성공적으로 기록되었습니다.')
+            
+            # 파일 업로드 처리
+            uploaded_files = request.FILES.getlist('files')
+            if uploaded_files:
+                uploaded_file_objects, file_errors = handle_file_uploads(uploaded_files, history, request.user)
+                
+                if uploaded_file_objects:
+                    file_count = len(uploaded_file_objects)
+                    messages.success(request, f'활동 히스토리가 성공적으로 기록되었습니다. ({file_count}개 파일 업로드됨)')
+                else:
+                    messages.success(request, '활동 히스토리가 성공적으로 기록되었습니다.')
+                
+                # 파일 업로드 오류가 있는 경우 경고 메시지 표시
+                for error in file_errors:
+                    messages.warning(request, f'파일 업로드 오류: {error}')
+            else:
+                messages.success(request, '활동 히스토리가 성공적으로 기록되었습니다.')
+            
             return redirect('reporting:history_detail', pk=history.pk)
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
@@ -1434,10 +1513,27 @@ def history_edit_view(request, pk):
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
-        form = HistoryForm(request.POST, instance=history, user=request.user)
+        form = HistoryForm(request.POST, request.FILES, instance=history, user=request.user)
         if form.is_valid():
             form.save()
-            messages.success(request, '활동 히스토리가 성공적으로 수정되었습니다.')
+            
+            # 새로운 파일 업로드 처리
+            uploaded_files = request.FILES.getlist('files')
+            if uploaded_files:
+                uploaded_file_objects, file_errors = handle_file_uploads(uploaded_files, history, request.user)
+                
+                if uploaded_file_objects:
+                    file_count = len(uploaded_file_objects)
+                    messages.success(request, f'활동 히스토리가 성공적으로 수정되었습니다. ({file_count}개 파일 추가 업로드됨)')
+                else:
+                    messages.success(request, '활동 히스토리가 성공적으로 수정되었습니다.')
+                
+                # 파일 업로드 오류가 있는 경우 경고 메시지 표시
+                for error in file_errors:
+                    messages.warning(request, f'파일 업로드 오류: {error}')
+            else:
+                messages.success(request, '활동 히스토리가 성공적으로 수정되었습니다.')
+            
             return redirect('reporting:history_detail', pk=history.pk)
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
@@ -1575,6 +1671,18 @@ def schedule_histories_api(request, schedule_id):
                 'user': history.user.username,
                 'created_by': history.created_by.username if history.created_by else history.user.username,
             }
+            
+            # 첨부파일 정보 추가
+            files_data = []
+            for file_obj in history.files.all():
+                files_data.append({
+                    'id': file_obj.id,
+                    'filename': file_obj.original_filename,
+                    'size': file_obj.get_file_size_display(),
+                    'uploaded_at': file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M'),
+                    'uploaded_by': file_obj.uploaded_by.username,
+                })
+            history_data['files'] = files_data
             
             # 납품 일정인 경우 추가 정보
             if history.action_type == 'delivery_schedule':
@@ -2356,6 +2464,30 @@ def history_create_from_schedule(request, schedule_id):
                     history.meeting_date = schedule.visit_date
                     
                 history.save()
+                
+                # 파일 업로드 처리
+                uploaded_files = request.FILES.getlist('files')
+                for uploaded_file in uploaded_files:
+                    if uploaded_file:  # 빈 파일 체크
+                        # 파일 크기 제한 (10MB)
+                        max_size = 10 * 1024 * 1024  # 10MB
+                        if uploaded_file.size > max_size:
+                            continue  # 큰 파일은 건너뛰기
+                        
+                        # 파일 확장자 검증
+                        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.hwp']
+                        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+                        if file_extension not in allowed_extensions:
+                            continue  # 허용되지 않은 확장자는 건너뛰기
+                        
+                        # HistoryFile 생성
+                        HistoryFile.objects.create(
+                            history=history,
+                            file=uploaded_file,
+                            original_filename=uploaded_file.name,
+                            file_size=uploaded_file.size,
+                            uploaded_by=request.user
+                        )
                 
                 if is_ajax:
                     # AJAX 요청인 경우 JSON 응답
@@ -3353,3 +3485,299 @@ def history_update_memo(request, pk):
             'success': False,
             'error': f'메모 수정 중 오류가 발생했습니다: {str(e)}'
         })
+
+
+@login_required
+def followup_excel_download(request):
+    """팔로우업 전체 정보 엑셀 다운로드"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    import io
+    from datetime import datetime
+    
+    user_profile = get_user_profile(request.user)
+    
+    # 권한에 따른 데이터 필터링 (기존 로직과 동일)
+    if user_profile.can_view_all_users():
+        accessible_users = get_accessible_users(request.user)
+        followups = FollowUp.objects.filter(user__in=accessible_users).select_related(
+            'user', 'company', 'department'
+        ).prefetch_related('schedules', 'histories')
+    else:
+        followups = FollowUp.objects.filter(user=request.user).select_related(
+            'user', 'company', 'department'
+        ).prefetch_related('schedules', 'histories')
+    
+    # 검색 필터 적용
+    search_query = request.GET.get('search')
+    if search_query:
+        followups = followups.filter(
+            Q(customer_name__icontains=search_query) |
+            Q(company__name__icontains=search_query) |
+            Q(department__name__icontains=search_query) |
+            Q(notes__icontains=search_query)
+        )
+    
+    # 담당자 필터 적용
+    user_filter = request.GET.get('user')
+    if user_filter:
+        accessible_users = get_accessible_users(request.user)
+        try:
+            filter_user = accessible_users.get(id=user_filter)
+            followups = followups.filter(user=filter_user)
+        except User.DoesNotExist:
+            pass
+    
+    # 엑셀 파일 생성
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "팔로우업 전체 정보"
+    
+    # 스타일 정의
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="2F5F8F", end_color="2F5F8F", fill_type="solid")
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    center_alignment = Alignment(horizontal='center', vertical='center')
+    wrap_alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+    
+    # 최대 히스토리 개수 계산
+    max_histories = 0
+    for followup in followups:
+        history_count = followup.histories.count()
+        max_histories = max(max_histories, history_count)
+    
+    # 헤더 생성
+    headers = [
+        '고객명', '업체/학교명', '부서/연구실명', '책임자', '핸드폰 번호', 
+        '메일 주소', '상세 주소', '상세 내용'
+    ]
+    
+    # 히스토리 컬럼 추가
+    for i in range(1, max_histories + 1):
+        headers.append(f'관련 활동 히스토리 {i}')
+    
+    # 헤더 스타일 적용
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = center_alignment
+    
+        # 데이터 입력
+    for row_num, followup in enumerate(followups, 2):
+        # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
+        manager_name = followup.manager or ''
+        
+        # 기본 정보
+        data = [
+            followup.customer_name or '',
+            followup.company.name if followup.company else '',
+            followup.department.name if followup.department else '',
+            manager_name,  # FollowUp의 책임자 필드에서 가져오기
+            followup.phone_number or '',
+            followup.email or '',
+            followup.address or '',
+            followup.notes or ''
+        ]
+        
+        # 히스토리 정보 추가
+        histories = list(followup.histories.all().order_by('-created_at'))
+        for i in range(max_histories):
+            if i < len(histories):
+                history = histories[i]
+                history_text = f"[{history.created_at.strftime('%Y-%m-%d')}] {history.get_action_type_display()}: {history.content or ''}"
+                data.append(history_text)
+            else:
+                data.append('')
+        
+        # 데이터 셀에 값 입력 및 스타일 적용
+        for col_num, value in enumerate(data, 1):
+            cell = ws.cell(row=row_num, column=col_num, value=value)
+            cell.border = border
+            cell.alignment = wrap_alignment
+    
+    # 컬럼 너비 자동 조정 (개선된 버전)
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        
+        for cell in column:
+            try:
+                cell_value = str(cell.value) if cell.value is not None else ''
+                # 한글과 영문의 너비 차이를 고려
+                korean_chars = len([c for c in cell_value if ord(c) > 127])
+                english_chars = len(cell_value) - korean_chars
+                adjusted_length = korean_chars * 2 + english_chars
+                
+                if adjusted_length > max_length:
+                    max_length = adjusted_length
+            except:
+                pass
+        
+        # 최소 8, 최대 60 문자로 제한하고, 여유분 추가
+        adjusted_width = min(max(max_length + 3, 8), 60)
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # 응답 생성
+    today = datetime.now().strftime('%Y%m%d')
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f"전체정보_{today}.xlsx"
+    
+    # 한글 파일명을 올바르게 인코딩
+    from urllib.parse import quote
+    encoded_filename = quote(filename.encode('utf-8'))
+    response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_filename}'
+    
+    # 엑셀 파일을 메모리에서 저장
+    excel_file = io.BytesIO()
+    wb.save(excel_file)
+    excel_file.seek(0)
+    response.write(excel_file.getvalue())
+    
+    return response
+
+
+@login_required
+def followup_basic_excel_download(request):
+    """팔로우업 기본 정보 엑셀 다운로드"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    import io
+    from datetime import datetime
+    
+    user_profile = get_user_profile(request.user)
+    
+    # 권한에 따른 데이터 필터링 (기존 로직과 동일)
+    if user_profile.can_view_all_users():
+        accessible_users = get_accessible_users(request.user)
+        followups = FollowUp.objects.filter(user__in=accessible_users).select_related(
+            'user', 'company', 'department'
+        )
+    else:
+        followups = FollowUp.objects.filter(user=request.user).select_related(
+            'user', 'company', 'department'
+        )
+    
+    # 검색 필터 적용
+    search_query = request.GET.get('search')
+    if search_query:
+        followups = followups.filter(
+            Q(customer_name__icontains=search_query) |
+            Q(company__name__icontains=search_query) |
+            Q(department__name__icontains=search_query) |
+            Q(notes__icontains=search_query)
+        )
+    
+    # 담당자 필터 적용
+    user_filter = request.GET.get('user')
+    if user_filter:
+        accessible_users = get_accessible_users(request.user)
+        try:
+            filter_user = accessible_users.get(id=user_filter)
+            followups = followups.filter(user=filter_user)
+        except User.DoesNotExist:
+            pass
+    
+    # 엑셀 파일 생성
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "팔로우업 기본 정보"
+    
+    # 스타일 정의
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="2F5F8F", end_color="2F5F8F", fill_type="solid")
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    center_alignment = Alignment(horizontal='center', vertical='center')
+    left_alignment = Alignment(horizontal='left', vertical='center')
+    
+    # 헤더 생성
+    headers = ['고객명', '업체/학교명', '부서/연구실명', '책임자', '핸드폰 번호', '메일 주소']
+    
+    # 헤더 스타일 적용
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = center_alignment
+    
+    # 데이터 입력
+    for row_num, followup in enumerate(followups, 2):
+        # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
+        manager_name = followup.manager or ''
+        
+        data = [
+            followup.customer_name or '',
+            followup.company.name if followup.company else '',
+            followup.department.name if followup.department else '',
+            manager_name,  # FollowUp의 책임자 필드에서 가져오기
+            followup.phone_number or '',
+            followup.email or ''
+        ]
+        
+        # 데이터 셀에 값 입력 및 스타일 적용
+        for col_num, value in enumerate(data, 1):
+            cell = ws.cell(row=row_num, column=col_num, value=value)
+            cell.border = border
+            cell.alignment = left_alignment
+    
+    # 컬럼 너비 자동 조정 (개선된 버전)
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        
+        for cell in column:
+            try:
+                cell_value = str(cell.value) if cell.value is not None else ''
+                # 한글과 영문의 너비 차이를 고려
+                korean_chars = len([c for c in cell_value if ord(c) > 127])
+                english_chars = len(cell_value) - korean_chars
+                adjusted_length = korean_chars * 2 + english_chars
+                
+                if adjusted_length > max_length:
+                    max_length = adjusted_length
+            except:
+                pass
+        
+        # 최소 8, 최대 50 문자로 제한하고, 여유분 추가
+        adjusted_width = min(max(max_length + 3, 8), 50)
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # 응답 생성
+    today = datetime.now().strftime('%Y%m%d')
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f"기본정보_{today}.xlsx"
+    
+    # 한글 파일명을 올바르게 인코딩
+    from urllib.parse import quote
+    encoded_filename = quote(filename.encode('utf-8'))
+    response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_filename}'
+    
+    # 엑셀 파일을 메모리에서 저장
+    excel_file = io.BytesIO()
+    wb.save(excel_file)
+    excel_file.seek(0)
+    response.write(excel_file.getvalue())
+    
+    return response
+
+# 파일 관리 뷰들을 별도 모듈에서 import
+from .file_views import (
+    file_download_view, file_delete_view, history_files_api,
+    schedule_file_upload, schedule_file_download, schedule_file_delete, schedule_files_api
+) 

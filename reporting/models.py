@@ -187,7 +187,73 @@ class History(models.Model):
         followup_name = self.followup.customer_name if self.followup else "일반 메모"
         return f"{followup_name} - {self.get_action_type_display()} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
 
+    def get_files_summary(self):
+        """첨부파일 요약 정보 반환"""
+        file_count = self.files.count()
+        if file_count == 0:
+            return "파일: 없음"
+        elif file_count == 1:
+            first_file = self.files.first()
+            return f'파일: "{first_file.original_filename}"'
+        else:
+            first_file = self.files.first()
+            return f'파일: "{first_file.original_filename}" 외 {file_count - 1}개'
+
     class Meta:
         verbose_name = "활동 히스토리"
         verbose_name_plural = "활동 히스토리 목록"
         ordering = ['-created_at']
+
+# 히스토리 첨부파일 (HistoryFile) 모델
+class HistoryFile(models.Model):
+    history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='files', verbose_name="관련 히스토리")
+    file = models.FileField(upload_to='history_files/%Y/%m/', verbose_name="첨부파일")
+    original_filename = models.CharField(max_length=255, verbose_name="원본 파일명")
+    file_size = models.PositiveIntegerField(verbose_name="파일 크기 (bytes)")
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="업로드한 사용자")
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="업로드 시간")
+
+    def __str__(self):
+        return f"{self.original_filename} ({self.history})"
+
+    def get_file_size_display(self):
+        """파일 크기를 읽기 쉬운 형태로 표시"""
+        size = self.file_size
+        if size < 1024:
+            return f"{size} bytes"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        else:
+            return f"{size / (1024 * 1024):.1f} MB"
+
+    class Meta:
+        verbose_name = "히스토리 첨부파일"
+        verbose_name_plural = "히스토리 첨부파일 목록"
+        ordering = ['-uploaded_at']
+
+
+class ScheduleFile(models.Model):
+    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, related_name='files', verbose_name="관련 일정")
+    file = models.FileField(upload_to='schedule_files/%Y/%m/', verbose_name="첨부파일")
+    original_filename = models.CharField(max_length=255, verbose_name="원본 파일명")
+    file_size = models.PositiveIntegerField(verbose_name="파일 크기 (bytes)")
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="업로드한 사용자")
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="업로드 시간")
+
+    def __str__(self):
+        return f"{self.original_filename} ({self.schedule})"
+
+    def get_file_size_display(self):
+        """파일 크기를 읽기 쉬운 형태로 표시"""
+        size = self.file_size
+        if size < 1024:
+            return f"{size} bytes"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        else:
+            return f"{size / (1024 * 1024):.1f} MB"
+
+    class Meta:
+        verbose_name = "일정 첨부파일"
+        verbose_name_plural = "일정 첨부파일 목록"
+        ordering = ['-uploaded_at']
