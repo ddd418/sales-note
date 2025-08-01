@@ -162,12 +162,12 @@ class FollowUpForm(forms.ModelForm):
         model = FollowUp
         fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority']
         widgets = {
-            'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)'}),
-            'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)'}),
-            'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '010-0000-0000 (선택사항)'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@company.com (선택사항)'}),
-            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '상세주소를 입력하세요 (선택사항)'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '상세 내용을 입력하세요 (선택사항)'}),
+            'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
+            'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
+            'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '010-0000-0000 (선택사항)', 'autocomplete': 'off'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@company.com (선택사항)', 'autocomplete': 'off'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '상세주소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '상세 내용을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             'priority': forms.Select(attrs={'class': 'form-control'}),
         }
         labels = {
@@ -214,9 +214,9 @@ class ScheduleForm(forms.ModelForm):
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
             'activity_type': forms.Select(attrs={'class': 'form-control'}),
-            'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)'}),
+            'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
         }
         labels = {
             'visit_date': '방문 날짜',
@@ -274,9 +274,9 @@ class HistoryForm(forms.ModelForm):
             'schedule': forms.Select(attrs={'class': 'form-control'}),
             'action_type': forms.Select(attrs={'class': 'form-control'}),
             'service_status': forms.Select(attrs={'class': 'form-control'}),
-            'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '활동 내용을 입력하세요'}),
-            'delivery_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '납품 금액을 입력하세요 (원)', 'min': '0'}),
-            'delivery_items': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '납품 품목을 입력하세요 (예: 제품A 10개, 제품B 5개)'}),
+            'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '활동 내용을 입력하세요', 'autocomplete': 'off'}),
+            'delivery_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '납품 금액을 입력하세요 (원)', 'min': '0', 'autocomplete': 'off'}),
+            'delivery_items': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '납품 품목을 입력하세요 (예: 제품A 10개, 제품B 5개)', 'autocomplete': 'off'}),
             'delivery_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date', 'placeholder': 'YYYY-MM-DD'}),
             'meeting_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date', 'placeholder': 'YYYY-MM-DD'}),
         }
@@ -1821,15 +1821,15 @@ class CustomLogoutView(LogoutView):
 class UserCreationForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
         label='사용자 이름'
     )
     password1 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
         label='비밀번호'
     )
     password2 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
         label='비밀번호 확인'
     )
     role = forms.ChoiceField(
@@ -1846,13 +1846,13 @@ class UserCreationForm(forms.Form):
     first_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
         label='성'
     )
     last_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
         label='이름'
     )
     
@@ -1867,7 +1867,7 @@ class UserCreationForm(forms.Form):
 class UserEditForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
         label='사용자 이름'
     )
     role = forms.ChoiceField(
@@ -1884,13 +1884,13 @@ class UserEditForm(forms.Form):
     first_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
         label='성'
     )
     last_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)'}),
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
         label='이름'
     )
     change_password = forms.BooleanField(
@@ -1900,12 +1900,12 @@ class UserEditForm(forms.Form):
     )
     password1 = forms.CharField(
         required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
         label='새 비밀번호'
     )
     password2 = forms.CharField(
         required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control'}),
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
         label='새 비밀번호 확인'
     )
     
