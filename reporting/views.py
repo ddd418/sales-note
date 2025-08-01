@@ -3295,6 +3295,7 @@ def history_detail_api(request, history_id):
             'action_type_display': history.get_action_type_display(),
             'created_at': history.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             'user': history.user.get_full_name() or history.user.username,
+            'created_by': history.created_by.username if history.created_by else '',
             'followup_id': history.followup.id if history.followup else None,
             'schedule_id': history.schedule.id if history.schedule else None,
             
@@ -3310,7 +3311,28 @@ def history_detail_api(request, history_id):
             # 서비스 관련 필드
             'service_status': history.service_status or '',
             'service_status_display': history.get_service_status_display() if history.service_status else '',
+            
+            # 첨부파일 정보
+            'files': []
         }
+        
+        # 첨부파일 정보 추가
+        for file in history.files.all():
+            # 파일 크기를 읽기 쉬운 형태로 변환
+            file_size = file.file_size
+            if file_size < 1024:
+                size_str = f"{file_size} bytes"
+            elif file_size < 1024 * 1024:
+                size_str = f"{file_size/1024:.1f} KB"
+            else:
+                size_str = f"{file_size/(1024*1024):.1f} MB"
+            
+            history_data['files'].append({
+                'id': file.id,
+                'filename': file.original_filename,
+                'size': size_str,
+                'uploaded_at': file.uploaded_at.strftime('%Y-%m-%d %H:%M')
+            })
         
         return JsonResponse({
             'success': True,
@@ -3389,6 +3411,76 @@ def history_update_api(request, history_id):
         
         # 변경사항 저장
         history.save()
+        
+        # 기존 파일 삭제 처리
+        delete_file_ids = request.POST.getlist('delete_files')
+        if delete_file_ids:
+            try:
+                # 삭제할 파일들 조회 및 삭제
+                files_to_delete = HistoryFile.objects.filter(
+                    id__in=delete_file_ids,
+                    history=history
+                )
+                for file_obj in files_to_delete:
+                    # 실제 파일 삭제
+                    if file_obj.file and os.path.exists(file_obj.file.path):
+                        os.remove(file_obj.file.path)
+                    # DB에서 삭제
+                    file_obj.delete()
+                    
+            except Exception as delete_error:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'파일 삭제 중 오류가 발생했습니다: {str(delete_error)}'
+                })
+        
+        # 새로운 파일 첨부 처리
+        uploaded_files = request.FILES.getlist('files')
+        if uploaded_files:
+            try:
+                # 현재 파일 개수 확인 (삭제 후)
+                current_file_count = history.files.count()
+                total_files_after_upload = current_file_count + len(uploaded_files)
+                
+                # 파일 개수 제한 (최대 5개)
+                if total_files_after_upload > 5:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'파일은 최대 5개까지만 첨부할 수 있습니다. (현재 {current_file_count}개, 추가 {len(uploaded_files)}개)'
+                    })
+                
+                # 각 파일 유효성 검사 및 저장
+                for file in uploaded_files:
+                    # 파일 크기 검사 (10MB)
+                    if file.size > 10 * 1024 * 1024:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'파일 {file.name}이 10MB를 초과합니다.'
+                        })
+                    
+                    # 파일 확장자 검사
+                    allowed_extensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.jpg', '.jpeg', '.png', '.gif', '.zip', '.rar']
+                    file_extension = os.path.splitext(file.name)[1].lower()
+                    if file_extension not in allowed_extensions:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'파일 {file.name}은 지원되지 않는 형식입니다.'
+                        })
+                    
+                    # 파일 저장
+                    history_file = HistoryFile.objects.create(
+                        history=history,
+                        file=file,
+                        original_filename=file.name,
+                        file_size=file.size,
+                        uploaded_by=request.user
+                    )
+                    
+            except Exception as file_error:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'파일 업로드 중 오류가 발생했습니다: {str(file_error)}'
+                })
         
         return JsonResponse({
             'success': True,

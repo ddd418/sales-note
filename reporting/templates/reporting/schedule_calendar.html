@@ -1884,9 +1884,24 @@
     });
   }
 
+  // HTML 이스케이프 함수 - 전역 스코프로 이동
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   // 히스토리 편집 폼 표시
   function showHistoryEditForm(history, scheduleId) {
+    console.log('=== showHistoryEditForm 시작 ===');
+    console.log('History data:', history);
+    console.log('Schedule ID:', scheduleId);
+    
     const contentDiv = document.getElementById(`historyContent-${history.id}`);
+    if (!contentDiv) {
+      console.error('Content div를 찾을 수 없습니다:', `historyContent-${history.id}`);
+      return;
+    }
     
     // 편집 폼 HTML 생성
     let editFormHtml = `
@@ -1945,6 +1960,54 @@
       `;
     }
     
+    // 파일 첨부 필드 추가
+    editFormHtml += `
+          <!-- 기존 첨부파일 표시 -->
+          ${history.files && history.files.length > 0 ? `
+          <div class="col-12">
+            <label class="form-label fw-bold">기존 첨부파일</label>
+            <div class="existing-files border rounded p-2 bg-light">
+              ${history.files.map(file => `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <div>
+                    <a href="/reporting/files/${file.id}/download/" target="_blank" class="text-decoration-none">
+                      <i class="fas fa-file me-1"></i>${escapeHtml(file.filename)}
+                    </a>
+                    <small class="text-muted d-block" style="font-size: 0.8em;">${file.size}</small>
+                  </div>
+                  ${currentUser.role !== 'manager' ? `
+                  ${(history.created_by === currentUser.username || (!history.created_by && history.user === currentUser.username)) ? `
+                  <button class="btn btn-sm btn-outline-danger" style="font-size: 0.75em; padding: 0.15rem 0.3rem;" 
+                          onclick="deleteHistoryFile(${file.id}, ${history.id}, ${scheduleId})" 
+                          title="파일 삭제">
+                      <i class="fas fa-trash"></i>
+                  </button>` : ''}
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+          
+          <!-- 파일 첨부 필드 -->
+          <div class="col-12">
+            <label class="form-label fw-bold">
+              <i class="fas fa-paperclip me-1"></i>새 파일 첨부 (선택사항)
+            </label>
+            <input 
+              type="file" 
+              class="form-control" 
+              id="edit-history-files-${history.id}" 
+              name="files" 
+              multiple 
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar"
+            >
+            <div class="form-text">
+              최대 5개 파일, 각 10MB 이하 (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, JPG, JPEG, PNG, GIF, ZIP, RAR)
+            </div>
+          </div>
+    `;
+    
     editFormHtml += `
         </div>
         <div class="d-flex gap-2 mt-3">
@@ -1970,6 +2033,11 @@
 
   // 히스토리 업데이트
   function updateHistory(event, historyId, scheduleId) {
+    console.log('=== updateHistory 시작 ===');
+    console.log('Event:', event);
+    console.log('History ID:', historyId);
+    console.log('Schedule ID:', scheduleId);
+    
     if (event) {
       event.preventDefault();
       event.stopPropagation();
@@ -1981,15 +2049,56 @@
       return false;
     }
     
+    console.log('Form found:', form);
+    
     const formData = new FormData(form);
+    
+    // FormData 내용 로깅
+    console.log('=== FormData 내용 ===');
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}:`, value);
+    }
+    
+    // 삭제할 파일 정보 추가
+    const deleteCheckboxes = form.querySelectorAll('input[name="delete_file"]:checked');
+    console.log('Delete checkboxes found:', deleteCheckboxes.length);
+    deleteCheckboxes.forEach(checkbox => {
+      console.log('Adding delete_files:', checkbox.value);
+      formData.append('delete_files', checkbox.value);
+    });
+    
+    // 파일 업로드 정보 확인
+    const fileInput = form.querySelector('input[type="file"]');
+    if (fileInput && fileInput.files.length > 0) {
+      console.log('=== 파일 업로드 정보 ===');
+      console.log('File input found:', fileInput);
+      console.log('Files selected:', fileInput.files.length);
+      for (let i = 0; i < fileInput.files.length; i++) {
+        console.log(`File ${i + 1}:`, fileInput.files[i].name, fileInput.files[i].size);
+      }
+    } else {
+      console.log('파일이 선택되지 않았습니다.');
+    }
     
     // CSRF 토큰 추가
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                      document.querySelector('meta[name=csrf-token]')?.getAttribute('content') ||
                      '{{ csrf_token }}';
     
+    console.log('CSRF Token:', csrfToken);
+    
     if (csrfToken && csrfToken !== '{{ csrf_token }}') {
       formData.append('csrfmiddlewaretoken', csrfToken);
+    }
+    
+    // 최종 FormData 내용 확인
+    console.log('=== 최종 FormData 내용 ===');
+    for (let [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(`${key}: File(${value.name}, ${value.size} bytes)`);
+      } else {
+        console.log(`${key}: ${value}`);
+      }
     }
     
     // 버튼 비활성화
@@ -1998,8 +2107,12 @@
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장중...';
     
+    console.log('=== AJAX 요청 시작 ===');
+    const updateUrl = `{% url 'reporting:history_update_api' 0 %}`.replace('0', historyId);
+    console.log('Update URL:', updateUrl);
+    
     // AJAX로 히스토리 업데이트
-    fetch(`{% url 'reporting:history_update_api' 0 %}`.replace('0', historyId), {
+    fetch(updateUrl, {
       method: 'POST',
       body: formData,
       headers: {
@@ -2007,13 +2120,31 @@
         'X-CSRFToken': csrfToken
       }
     })
-    .then(response => response.json())
+    .then(response => {
+      console.log('=== 서버 응답 수신 ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
+      if (!response.ok) {
+        return response.text().then(text => {
+          console.error('Error response text:', text);
+          throw new Error(`HTTP ${response.status}: ${text}`);
+        });
+      }
+      return response.json();
+    })
     .then(data => {
+      console.log('=== JSON 응답 데이터 ===');
+      console.log('Response data:', data);
+      
       if (data.success) {
+        console.log('✅ 성공: 히스토리 업데이트 완료');
         showSuccessMessage('활동 기록이 성공적으로 수정되었습니다.');
         // 히스토리 목록 새로고침
         loadScheduleHistories(scheduleId);
       } else {
+        console.error('❌ 실패: 서버 응답 오류');
+        console.error('Error message:', data.error);
         showErrorMessage(data.error || '활동 기록 수정 중 오류가 발생했습니다.');
         // 버튼 복원
         submitBtn.disabled = false;
@@ -2021,7 +2152,9 @@
       }
     })
     .catch(error => {
-      console.error('Error updating history:', error);
+      console.error('=== 요청 실패 ===');
+      console.error('Error:', error);
+      console.error('Error stack:', error.stack);
       showErrorMessage(`활동 기록 수정 중 오류가 발생했습니다: ${error.message}`);
       // 버튼 복원
       submitBtn.disabled = false;
