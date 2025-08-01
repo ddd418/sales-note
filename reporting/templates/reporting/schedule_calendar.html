@@ -1164,7 +1164,14 @@
   const scheduleEditUrl = "{% url 'reporting:schedule_edit' 999 %}".replace("999", "{id}");
   const scheduleDeleteUrl = "{% url 'reporting:schedule_delete' 999 %}".replace("999", "{id}") + "?from=calendar{% if user_filter %}&user={{ user_filter }}{% endif %}";
   const historyCreateUrl = "{% url 'reporting:history_create_from_schedule' 999 %}".replace("999", "{id}");
-    let currentDate = new Date();
+  
+  // 사용자 정보 전역 변수
+  const currentUser = {
+    username: '{{ user.username }}',
+    role: '{{ user.userprofile.role }}'
+  };
+  
+  let currentDate = new Date();
   let selectedDate = null;
   let schedules = [];
   let renderCalendar; // 전역 변수로 함수 참조 저장
@@ -1335,15 +1342,15 @@
                     </div>
                     <div class="d-flex align-items-center gap-2">
                       <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
-                      {% if user.userprofile.role != 'manager' %}
-                      ${(history.created_by === '{{ user.username }}' || (!history.created_by && history.user === '{{ user.username }}')) ? `
+                      ${currentUser.role !== 'manager' ? `
+                      ${(history.created_by === currentUser.username || (!history.created_by && history.user === currentUser.username)) ? `
                       <button class="btn btn-sm btn-outline-primary" onclick="editHistory(${history.id}, ${scheduleId})" title="수정">
                         <i class="fas fa-edit"></i>
                       </button>
                       <button class="btn btn-sm btn-outline-danger" onclick="deleteHistory(${history.id}, ${scheduleId})" title="삭제">
                         <i class="fas fa-trash"></i>
                       </button>` : ''}
-                      {% endif %}
+                      ` : ''}
                     </div>
                   </div>
                 </div>
@@ -1451,14 +1458,14 @@
                       </a>
                       <small class="text-muted d-block" style="font-size: 0.8em;">${file.size}</small>
                     </div>
-                    {% if user.userprofile.role != 'manager' %}
-                    ${(history.created_by === '{{ user.username }}' || (!history.created_by && history.user === '{{ user.username }}')) ? `
+                    ${currentUser.role !== 'manager' ? `
+                    ${(history.created_by === currentUser.username || (!history.created_by && history.user === currentUser.username)) ? `
                     <button class="btn btn-sm btn-outline-danger" style="font-size: 0.75em; padding: 0.15rem 0.3rem;" 
                             onclick="deleteHistoryFile(${file.id}, ${history.id}, ${scheduleId})" 
                             title="파일 삭제">
                         <i class="fas fa-trash"></i>
                     </button>` : ''}
-                    {% endif %}
+                    ` : ''}
                   </div>`;
               });
               
@@ -2867,7 +2874,7 @@
                       <span id="statusBadge-${schedule.id}" class="badge bg-${schedule.status === 'completed' ? 'success' : schedule.status === 'cancelled' ? 'danger' : 'primary'}">
                         ${schedule.status === 'completed' ? '완료' : schedule.status === 'cancelled' ? '취소' : '예정'}
                       </span>
-                      {% if user.userprofile.role != 'manager' %}
+                      ${currentUser.role !== 'manager' ? `
                       <div class="btn-group" role="group">
                         <button class="btn btn-sm btn-outline-primary ${schedule.status === 'scheduled' ? 'active' : ''}"
                                 onclick="updateScheduleStatus(${schedule.id}, 'scheduled')">예정</button>
@@ -2876,7 +2883,7 @@
                         <button class="btn btn-sm btn-outline-danger ${schedule.status === 'cancelled' ? 'active' : ''}"
                                 onclick="updateScheduleStatus(${schedule.id}, 'cancelled')">취소</button>
                       </div>
-                      {% endif %}
+                      ` : ''}
                     </div>
                   </div>
                   ${schedule.notes ? `
@@ -2896,7 +2903,7 @@
                     </div>
                   </div>
                   
-                  {% if user.userprofile.role == 'manager' %}
+                  ${currentUser.role === 'manager' ? `
                   <!-- 매니저 메모 추가 폼 -->
                   <div class="col-12">
                     <div class="card border-info">
@@ -2927,7 +2934,7 @@
                       </div>
                     </div>
                   </div>
-                  {% else %}
+                  ` : `
                   <!-- 인라인 히스토리 생성 폼 -->
                   <div class="col-12">
                     <div class="card border-success">
@@ -3014,18 +3021,18 @@
                       </div>
                     </div>
                   </div>
-                  {% endif %}
+                  `}
                 </div>
               </div>              <div class="modal-footer">
                 <div class="d-flex gap-2 w-100">
                   <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
                   </a>
-                  {% if user.userprofile.role != 'manager' %}
+                  ${currentUser.role !== 'manager' ? `
                   <button type="button" class="btn btn-danger flex-fill" onclick="deleteScheduleFromModal(${schedule.id}, '${schedule.customer}', '${schedule.visit_date}')">
                     <i class="fas fa-trash-alt me-1"></i>일정 삭제
                   </button>
-                  {% endif %}
+                  ` : ''}
                 </div>
                 <button type="button" class="btn btn-secondary mt-2 w-100" data-bs-dismiss="modal">닫기</button>
               </div>
@@ -3309,8 +3316,8 @@
       return escapedText;
     }
 
-    // 히스토리 파일 삭제 (모달용)
-    function deleteHistoryFile(fileId, historyId, scheduleId) {
+    // 히스토리 파일 삭제 (모달용) - 전역 함수로 설정
+    window.deleteHistoryFile = function(fileId, historyId, scheduleId) {
       if (!confirm('이 파일을 삭제하시겠습니까?')) {
         return;
       }
@@ -3334,7 +3341,7 @@
       .catch(error => {
         alert('파일 삭제 중 오류가 발생했습니다: ' + error.message);
       });
-    }
+    };
 
     // 모달에서 첨부파일 목록 로드 (사용하지 않으므로 제거됨)
     function loadModalAttachedFiles(scheduleId) {
