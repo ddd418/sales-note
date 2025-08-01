@@ -36,7 +36,7 @@
               <label for="name" class="form-label">부서/연구실명 *</label>
               <input type="text" class="form-control" id="name" name="name" 
                      value="{% if department %}{{ department.name }}{% endif %}" 
-                     placeholder="부서/연구실명을 입력하세요..." required>
+                     placeholder="부서/연구실명을 입력하세요..." autocomplete="off" required>
             </div>
 
             <div class="text-center">

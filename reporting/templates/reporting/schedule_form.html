@@ -238,6 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
     input.className = followupField.className;
     input.placeholder = followupField.dataset.placeholder || '팔로우업을 검색하세요...';
     input.name = followupField.name + '_search';
+    input.autocomplete = 'off'; // 브라우저 자동완성 비활성화
     
     // 기존 선택값이 있으면 표시
     const selectedOption = followupField.querySelector('option:checked');
