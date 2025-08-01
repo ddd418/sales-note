@@ -212,6 +212,51 @@
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
+  
+  /* 날짜/시간 입력 필드 개선 스타일 */
+  input[type="date"], 
+  input[type="time"] {
+    cursor: pointer !important;
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  
+  input[type="date"]:hover, 
+  input[type="time"]:hover {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
+    transform: translateY(-1px);
+  }
+  
+  input[type="date"]:focus, 
+  input[type="time"]:focus {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25) !important;
+    outline: none;
+  }
+  
+  /* 날짜/시간 필드에 클릭 가능함을 나타내는 시각적 힌트 */
+  input[type="date"]::before, 
+  input[type="time"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    transition: all 0.2s ease;
+  }
+  
+  /* 모바일에서도 클릭하기 쉽게 최소 높이 설정 */
+  @media (max-width: 768px) {
+    input[type="date"], 
+    input[type="time"] {
+      min-height: 48px;
+      font-size: 16px; /* iOS 줌 방지 */
+    }
+  }
 </style>
 
 <script>
@@ -350,6 +395,123 @@ document.addEventListener('DOMContentLoaded', function() {
     input.addEventListener('focus', function() {
         if (results.length > 0) {
             resultsDiv.style.display = 'block';
+        }
+    });
+});
+
+// 날짜/시간 입력 필드 사용자 경험 개선
+document.addEventListener('DOMContentLoaded', function() {
+    // showPicker() 메서드 지원 여부 확인 함수
+    function supportsShowPicker() {
+        const input = document.createElement('input');
+        input.type = 'date';
+        return typeof input.showPicker === 'function';
+    }
+    
+    // 안전한 showPicker 호출 함수
+    function safeShowPicker(element) {
+        try {
+            if (supportsShowPicker() && element.showPicker) {
+                element.showPicker();
+            } else {
+                // showPicker를 지원하지 않는 브라우저의 경우 포커스로 대체
+                element.focus();
+                // 추가적으로 클릭 이벤트 트리거
+                const clickEvent = new MouseEvent('click', {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true
+                });
+                element.dispatchEvent(clickEvent);
+            }
+        } catch (error) {
+            console.warn('날짜/시간 선택기를 열 수 없습니다:', error);
+            // 실패 시 포커스로 대체
+            element.focus();
+        }
+    }
+    
+    // 날짜 입력 필드 개선
+    const dateField = document.querySelector('input[type="date"]');
+    if (dateField) {
+        // 입력 필드 전체를 클릭 가능하게 만들기
+        dateField.style.cursor = 'pointer';
+        dateField.setAttribute('title', '클릭하여 날짜를 선택하세요');
+        
+        // 입력 필드 클릭 시 날짜 선택기 열기
+        dateField.addEventListener('click', function(e) {
+            e.preventDefault();
+            safeShowPicker(this);
+        });
+        
+        // 입력 필드에 포커스가 갈 때도 날짜 선택기 열기
+        dateField.addEventListener('focus', function(e) {
+            // 약간의 지연을 두어 자연스럽게 열기
+            setTimeout(() => {
+                safeShowPicker(this);
+            }, 150);
+        });
+        
+        // 키보드 접근성 개선
+        dateField.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                safeShowPicker(this);
+            }
+        });
+    }
+    
+    // 시간 입력 필드 개선
+    const timeField = document.querySelector('input[type="time"]');
+    if (timeField) {
+        // 입력 필드 전체를 클릭 가능하게 만들기
+        timeField.style.cursor = 'pointer';
+        timeField.setAttribute('title', '클릭하여 시간을 선택하세요');
+        
+        // 입력 필드 클릭 시 시간 선택기 열기
+        timeField.addEventListener('click', function(e) {
+            e.preventDefault();
+            safeShowPicker(this);
+        });
+        
+        // 입력 필드에 포커스가 갈 때도 시간 선택기 열기
+        timeField.addEventListener('focus', function(e) {
+            // 약간의 지연을 두어 자연스럽게 열기
+            setTimeout(() => {
+                safeShowPicker(this);
+            }, 150);
+        });
+        
+        // 키보드 접근성 개선
+        timeField.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                safeShowPicker(this);
+            }
+        });
+    }
+    
+    // 날짜/시간 필드의 스타일 개선
+    [dateField, timeField].forEach(field => {
+        if (field) {
+            // 호버 효과 추가
+            field.addEventListener('mouseenter', function() {
+                this.style.borderColor = '#0d6efd';
+                this.style.boxShadow = '0 0 0 0.2rem rgba(13, 110, 253, 0.25)';
+            });
+            
+            field.addEventListener('mouseleave', function() {
+                if (this !== document.activeElement) {
+                    this.style.borderColor = '#ced4da';
+                    this.style.boxShadow = 'none';
+                }
+            });
+            
+            // 포커스 아웃 시 스타일 정리
+            field.addEventListener('blur', function() {
+                this.style.borderColor = '#ced4da';
+                this.style.boxShadow = 'none';
+            });
         }
     });
 });
