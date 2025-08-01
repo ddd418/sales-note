@@ -1250,6 +1250,7 @@ def schedule_api_view(request):
                 'company': str(schedule.followup.company) if schedule.followup.company else '업체명 미정',
                 'department': str(schedule.followup.department) if schedule.followup.department else '부서명 미정',
                 'manager': schedule.followup.manager or '',
+                'address': schedule.followup.address or '',
                 'location': schedule.location or '',
                 'status': schedule.status,
                 'status_display': schedule.get_status_display(),

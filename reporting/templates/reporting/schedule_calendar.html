@@ -2837,6 +2837,12 @@
                     <p class="mb-0">${schedule.manager}</p>
                   </div>
                   ` : ''}
+                  ${schedule.address ? `
+                  <div class="col-12">
+                    <label class="form-label fw-bold">상세주소</label>
+                    <p class="mb-0">${schedule.address.replace(/\n/g, '<br>')}</p>
+                  </div>
+                  ` : ''}
                   <div class="col-6">
                     <label class="form-label fw-bold">방문 날짜</label>
                     <p class="mb-0">${schedule.visit_date}</p>
