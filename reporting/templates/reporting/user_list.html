@@ -78,6 +78,7 @@
                         <th>사용자명</th>
                         <th>이름</th>
                         <th>권한</th>
+                        <th>엑셀 다운로드</th>
                         <th>생성자</th>
                         <th>생성일</th>
                         <th>상태</th>
@@ -107,6 +108,25 @@
                             </span>
                           {% else %}
                             <span class="badge bg-secondary">프로필 없음</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.userprofile %}
+                            {% if user.userprofile.role == 'admin' %}
+                              <span class="badge bg-success">
+                                <i class="fas fa-check me-1"></i>항상 가능
+                              </span>
+                            {% elif user.userprofile.can_download_excel %}
+                              <span class="badge bg-success">
+                                <i class="fas fa-check me-1"></i>허용
+                              </span>
+                            {% else %}
+                              <span class="badge bg-secondary">
+                                <i class="fas fa-times me-1"></i>제한
+                              </span>
+                            {% endif %}
+                          {% else %}
+                            <span class="badge bg-secondary">-</span>
                           {% endif %}
                         </td>
                         <td>

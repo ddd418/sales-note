@@ -474,6 +474,7 @@ def followup_list_view(request):
         'paused_count': stats['paused_count'],
         'users': users,
         'companies': companies,
+        'user_profile': user_profile,  # 사용자 프로필 추가
     }
     return render(request, 'reporting/followup_list.html', context)
 
@@ -1836,6 +1837,12 @@ class UserCreationForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-control'}),
         label='권한'
     )
+    can_download_excel = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='엑셀 다운로드 권한',
+        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다'
+    )
     first_name = forms.CharField(
         max_length=30,
         required=False,
@@ -1867,6 +1874,12 @@ class UserEditForm(forms.Form):
         choices=[('admin', 'Admin (최고권한자)'), ('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
         widget=forms.Select(attrs={'class': 'form-control'}),
         label='권한'
+    )
+    can_download_excel = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='엑셀 다운로드 권한',
+        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다 (관리자는 항상 가능)'
     )
     first_name = forms.CharField(
         max_length=30,
@@ -1961,6 +1974,7 @@ def user_create(request):
             UserProfile.objects.create(
                 user=user,
                 role=form.cleaned_data['role'],
+                can_download_excel=form.cleaned_data['can_download_excel'],
                 created_by=request.user
             )
             
@@ -1997,6 +2011,7 @@ def user_edit(request, user_id):
             
             # 권한 수정
             user_profile.role = form.cleaned_data['role']
+            user_profile.can_download_excel = form.cleaned_data['can_download_excel']
             user_profile.save()
             
             messages.success(request, f'사용자 "{user.username}"의 정보가 성공적으로 수정되었습니다.')
@@ -2008,6 +2023,7 @@ def user_edit(request, user_id):
             'first_name': user.first_name,
             'last_name': user.last_name,
             'role': user_profile.role,
+            'can_download_excel': user_profile.can_download_excel,
         })
     
     context = {
@@ -3489,7 +3505,14 @@ def history_update_memo(request, pk):
 
 @login_required
 def followup_excel_download(request):
-    """팔로우업 전체 정보 엑셀 다운로드"""
+    """팔로우업 전체 정보 엑셀 다운로드 (권한 체크)"""
+    user_profile = get_user_profile(request.user)
+    
+    # 엑셀 다운로드 권한 체크
+    if not user_profile.can_excel_download():
+        messages.error(request, '엑셀 다운로드 권한이 없습니다. 관리자에게 문의해주세요.')
+        return redirect('reporting:followup_list')
+    
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     from openpyxl.utils import get_column_letter
@@ -3647,7 +3670,14 @@ def followup_excel_download(request):
 
 @login_required
 def followup_basic_excel_download(request):
-    """팔로우업 기본 정보 엑셀 다운로드"""
+    """팔로우업 기본 정보 엑셀 다운로드 (권한 체크)"""
+    user_profile = get_user_profile(request.user)
+    
+    # 엑셀 다운로드 권한 체크
+    if not user_profile.can_excel_download():
+        messages.error(request, '엑셀 다운로드 권한이 없습니다. 관리자에게 문의해주세요.')
+        return redirect('reporting:followup_list')
+    
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     from openpyxl.utils import get_column_letter

@@ -431,6 +431,7 @@
           </div>
           
           <!-- 매니저용 엑셀 다운로드 드롭다운 -->
+          {% if user_profile.can_excel_download %}
           <div class="btn-group">
             <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
               <i class="fas fa-download me-1"></i>엑셀 다운로드
@@ -450,6 +451,14 @@
               </li>
             </ul>
           </div>
+          {% else %}
+          <div class="btn-group">
+            <button type="button" class="btn btn-secondary" disabled title="엑셀 다운로드 권한이 필요합니다">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
+              <i class="fas fa-lock ms-1"></i>
+            </button>
+          </div>
+          {% endif %}
         </div>
         {% else %}
         <!-- 실무자용 추가 버튼 및 엑셀 다운로드 -->
@@ -459,6 +468,7 @@
           </a>
           
           <!-- 엑셀 다운로드 드롭다운 -->
+          {% if user_profile.is_admin %}
           <div class="btn-group" role="group">
             <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
               <i class="fas fa-download me-1"></i>엑셀 다운로드
@@ -478,6 +488,14 @@
               </li>
             </ul>
           </div>
+          {% else %}
+          <div class="btn-group" role="group">
+            <button type="button" class="btn btn-secondary" onclick="showAdminRequiredAlert()" title="관리자 권한이 필요합니다">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
+              <i class="fas fa-lock ms-1"></i>
+            </button>
+          </div>
+          {% endif %}
         </div>
         {% endif %}
         {% endif %}
@@ -979,6 +997,11 @@ document.addEventListener('DOMContentLoaded', function() {
     showPage(currentPage);
     updatePagination();
 });
+
+// 관리자 권한 필요 알림 함수
+function showAdminRequiredAlert() {
+    alert('엑셀 다운로드는 관리자 권한이 필요합니다.\n관리자에게 문의해주세요.');
+}
 </script>
 
 {% endblock %}

@@ -43,6 +43,7 @@ class UserProfile(models.Model):
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="사용자")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='salesman', verbose_name="권한")
+    can_download_excel = models.BooleanField(default=False, verbose_name="엑셀 다운로드 권한")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                    related_name='created_users', verbose_name="계정 생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
@@ -63,6 +64,10 @@ class UserProfile(models.Model):
     def can_view_all_users(self):
         """모든 사용자 데이터를 볼 수 있는지 확인"""
         return self.role in ['admin', 'manager']
+    
+    def can_excel_download(self):
+        """엑셀 다운로드가 가능한지 확인 (관리자는 항상 가능, 다른 사용자는 개별 권한)"""
+        return self.role == 'admin' or self.can_download_excel
     
     def can_create_users(self):
         """사용자를 생성할 수 있는지 확인"""
