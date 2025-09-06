@@ -1,8 +1,96 @@
 {% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
 보고 시스템{% endblock %} {% block content %}
+
+<!-- 월별 필터 사이드바 -->
+<div class="month-filter-sidebar">
+  <div class="filter-header">
+    <h6 class="mb-0">
+      <i class="fas fa-calendar me-2"></i>월별 필터
+      <small class="float-end" style="font-size: 0.7em; opacity: 0.8;">
+        <i class="fas fa-arrows-alt me-1"></i>드래그 가능
+      </small>
+    </h6>
+  </div>
+  <div class="filter-body">
+    <!-- 전체 선택 버튼 -->
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" id="month-all">
+      <label class="form-check-label fw-bold" for="month-all">
+        전체 선택/해제
+      </label>
+    </div>
+    <hr class="my-2">
+    
+    <!-- 월별 체크박스 -->
+    <div class="month-checkboxes">
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-1" value="1">
+        <label class="form-check-label" for="month-1">1월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-2" value="2">
+        <label class="form-check-label" for="month-2">2월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-3" value="3">
+        <label class="form-check-label" for="month-3">3월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-4" value="4">
+        <label class="form-check-label" for="month-4">4월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-5" value="5">
+        <label class="form-check-label" for="month-5">5월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-6" value="6">
+        <label class="form-check-label" for="month-6">6월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-7" value="7">
+        <label class="form-check-label" for="month-7">7월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-8" value="8">
+        <label class="form-check-label" for="month-8">8월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-9" value="9">
+        <label class="form-check-label" for="month-9">9월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-10" value="10">
+        <label class="form-check-label" for="month-10">10월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-11" value="11">
+        <label class="form-check-label" for="month-11">11월</label>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input month-checkbox" type="checkbox" 
+               id="month-12" value="12">
+        <label class="form-check-label" for="month-12">12월</label>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="container">
-  <div class="row">
-    <div class="col-12">
+  <div class="main-content-with-sidebar">
+    <div class="row">
+      <div class="col-12">
       <!-- 헤더 섹션 -->
       <div
         class="page-header d-flex justify-content-between align-items-center mb-4"
@@ -96,7 +184,7 @@
 
       <!-- 필터링 버튼 섹션 -->
       <div class="row mb-4">
-        <div class="col-12">
+        <div class="col-12 mb-3">
           <div class="card">
             <div class="card-body">
               <h6 class="card-title mb-3">
@@ -104,31 +192,31 @@
               </h6>
               <div class="btn-group" role="group" aria-label="활동 유형 필터">
                 <a
-                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}{% if month_filter %}{% if user_filter %}&{% else %}?{% endif %}months={{ month_filter }}{% endif %}"
                   class="btn {% if not action_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
                   <i class="fas fa-handshake me-1"></i>고객 미팅 ({{meeting_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'delivery_schedule' %}btn-success{% else %}btn-outline-success{% endif %}"
                 >
                   <i class="fas fa-truck me-1"></i>납품 일정 ({{ delivery_count}})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=service{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=service{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'service' %}btn-warning{% else %}btn-outline-warning{% endif %}"
                 >
                   <i class="fas fa-cogs me-1"></i>서비스 ({{ service_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=memo{% if user_filter %}&user={{ user_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=memo{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'memo' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
                   <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
@@ -137,7 +225,9 @@
             </div>
           </div>
         </div>
-      </div>
+        
+        </div> <!-- col-lg-9 닫기 -->
+      </div> <!-- 전체 row 닫기 -->
 
       <!-- 고급 검색 섹션 -->
       <div class="row mb-4">
@@ -251,7 +341,7 @@
               </div>
 
               <div class="timeline-content">
-                <div class="card">
+                <div class="card" data-visit-month="{% if history.schedule %}{{ history.schedule.visit_date.month }}{% else %}{{ history.created_at.month }}{% endif %}">
                   <div class="card-body">
                     <div
                       class="d-flex justify-content-between align-items-start mb-2"
@@ -436,13 +526,13 @@
               <!-- 첫 페이지 -->
               {% if histories.has_previous %}
               <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page=1" aria-label="첫 페이지">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page=1" aria-label="첫 페이지">
                   <span aria-hidden="true">&laquo;&laquo;</span>
                 </a>
               </li>
               <!-- 이전 페이지 -->
               <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ histories.previous_page_number }}" aria-label="이전 페이지">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.previous_page_number }}" aria-label="이전 페이지">
                   <span aria-hidden="true">&laquo;</span>
                 </a>
               </li>
@@ -464,7 +554,7 @@
                   </li>
                   {% else %}
                   <li class="page-item">
-                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
+                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ num }}">{{ num }}</a>
                   </li>
                   {% endif %}
                 {% endif %}
@@ -473,13 +563,13 @@
               <!-- 다음 페이지 -->
               {% if histories.has_next %}
               <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ histories.next_page_number }}" aria-label="다음 페이지">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.next_page_number }}" aria-label="다음 페이지">
                   <span aria-hidden="true">&raquo;</span>
                 </a>
               </li>
               <!-- 마지막 페이지 -->
               <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ histories.paginator.num_pages }}" aria-label="마지막 페이지">
+                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.paginator.num_pages }}" aria-label="마지막 페이지">
                   <span aria-hidden="true">&raquo;&raquo;</span>
                 </a>
               </li>
@@ -503,6 +593,7 @@
       {% endif %}
     </div>
   </div>
+</div>
 </div>
 
 <style>
@@ -1099,7 +1190,48 @@ span.meeting-date {
     margin-bottom: 6px !important;
     border-radius: 6px !important;
   }
-}
+
+  /* 월별 필터 사이드바 스타일 */
+  .month-filter-sidebar {
+    position: fixed;
+    left: 280px;
+    top: 200px;
+    width: 200px;
+    background: #ffffff;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1050;
+    max-height: 70vh;
+    overflow-y: auto;
+    cursor: move;
+  }
+
+  .month-filter-sidebar .filter-header {
+    background: #007bff;
+    color: white;
+    padding: 12px 16px;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 6px 6px 0 0;
+  }
+
+  .month-filter-sidebar .filter-body {
+    padding: 16px;
+  }
+
+  .main-content-with-sidebar {
+    margin-left: 0; /* 화면을 밀지 않도록 margin-left 제거 */
+  }
+
+  @media (max-width: 1200px) {
+    .month-filter-sidebar {
+      display: none;
+    }
+    
+    .main-content-with-sidebar {
+      margin-left: 0;
+    }
+  }
 </style>
 
 <script>
@@ -1208,5 +1340,239 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
         });
     });
 });
+
+// 월별 필터 기능
+document.addEventListener('DOMContentLoaded', function() {
+    const monthCheckboxes = document.querySelectorAll('.month-checkbox');
+    const monthAllCheckbox = document.getElementById('month-all');
+    
+    // URL에서 현재 선택된 월 파라미터 읽기
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedMonths = urlParams.get('months') ? urlParams.get('months').split(',') : [];
+    
+    // 페이지 로드 시 저장된 월 선택 상태 복원
+    if (selectedMonths.length > 0) {
+        selectedMonths.forEach(month => {
+            const checkbox = document.getElementById('month-' + month);
+            if (checkbox) checkbox.checked = true;
+        });
+        filterBySelectedMonths();
+    }
+    
+    // 전체 선택/해제 체크박스 이벤트
+    if (monthAllCheckbox) {
+        monthAllCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // 전체 선택
+                monthCheckboxes.forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+            } else {
+                // 전체 해제
+                monthCheckboxes.forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+            }
+            filterBySelectedMonths();
+            updateUrlWithMonthFilter();
+        });
+    }
+    
+    // 개별 월 체크박스 이벤트
+    monthCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            // 전체 선택 체크박스 상태 업데이트
+            const checkedCount = document.querySelectorAll('.month-checkbox:checked').length;
+            const totalCount = monthCheckboxes.length;
+            
+            if (monthAllCheckbox) {
+                if (checkedCount === 0) {
+                    monthAllCheckbox.checked = false;
+                    monthAllCheckbox.indeterminate = false;
+                } else if (checkedCount === totalCount) {
+                    monthAllCheckbox.checked = true;
+                    monthAllCheckbox.indeterminate = false;
+                } else {
+                    monthAllCheckbox.checked = false;
+                    monthAllCheckbox.indeterminate = true;
+                }
+            }
+            
+            filterBySelectedMonths();
+            updateUrlWithMonthFilter();
+        });
+    });
+    
+    // 선택된 월에 따라 히스토리 필터링
+    function filterBySelectedMonths() {
+        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
+                                   .map(cb => cb.value);
+        
+        // 모든 timeline-item 찾기
+        const timelineItems = document.querySelectorAll('.timeline-item');
+        
+        timelineItems.forEach((timelineItem, index) => {
+            // card 요소 찾기
+            const card = timelineItem.querySelector('.card');
+            
+            if (card) {
+                const itemMonth = card.getAttribute('data-visit-month');
+                
+                // 필터링 로직 - 타입 변환하여 비교
+                const shouldShow = selectedMonths.length === 0 || 
+                                  selectedMonths.includes(itemMonth) || 
+                                  selectedMonths.includes(String(itemMonth)) ||
+                                  selectedMonths.map(m => parseInt(m)).includes(parseInt(itemMonth));
+                
+                if (shouldShow) {
+                    timelineItem.style.display = 'block';
+                } else {
+                    timelineItem.style.display = 'none';
+                }
+            }
+        });
+        
+        // 결과 카운트 업데이트
+        updateVisibleCount();
+    }
+    
+    // 보이는 히스토리 개수 업데이트
+    function updateVisibleCount() {
+        const visibleItems = document.querySelectorAll('.timeline-item:not([style*="display: none"])');
+        const countElement = document.querySelector('.visible-count');
+        if (countElement) {
+            countElement.textContent = visibleItems.length;
+        }
+    }
+    
+    // URL에 월 필터 파라미터 추가
+    function updateUrlWithMonthFilter() {
+        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
+                                   .map(cb => cb.value);
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        if (selectedMonths.length > 0 && selectedMonths.length < 12) {
+            urlParams.set('months', selectedMonths.join(','));
+        } else {
+            urlParams.delete('months');
+        }
+        
+        // 월별 필터 변경 시 페이지를 1로 리셋
+        urlParams.set('page', '1');
+        
+        // URL 업데이트 (페이지 새로고침 없이)
+        const newUrl = window.location.pathname + '?' + urlParams.toString();
+        window.history.replaceState({}, '', newUrl);
+    }
+
+    // 월별 필터 박스 드래그 기능
+    function makeFilterDraggable() {
+        const filterBox = document.querySelector('.month-filter-sidebar');
+        if (!filterBox) return;
+
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        filterBox.addEventListener('mousedown', function(e) {
+            // 체크박스나 입력 요소를 클릭한 경우 드래그하지 않음
+            if (e.target.closest('.form-check') || e.target.closest('input')) {
+                return;
+            }
+            
+            // 헤더나 박스 자체를 클릭한 경우만 드래그 시작
+            if (e.target === filterBox || e.target.closest('.filter-header')) {
+                isDragging = true;
+                
+                const rect = filterBox.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                
+                filterBox.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                e.preventDefault();
+                
+                let newX = e.clientX - dragOffsetX;
+                let newY = e.clientY - dragOffsetY;
+                
+                // 화면 경계 체크
+                const boxWidth = filterBox.offsetWidth;
+                const boxHeight = filterBox.offsetHeight;
+                
+                if (newX < 0) newX = 0;
+                if (newY < 0) newY = 0;
+                if (newX + boxWidth > window.innerWidth) newX = window.innerWidth - boxWidth;
+                if (newY + boxHeight > window.innerHeight) newY = window.innerHeight - boxHeight;
+                
+                // 위치 설정
+                filterBox.style.left = newX + 'px';
+                filterBox.style.top = newY + 'px';
+                filterBox.style.transform = 'none';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                filterBox.style.cursor = 'move';
+            }
+        });
+    }
+
+    // 드래그 기능 초기화
+    makeFilterDraggable();
+    
+    // 테스트 함수 (브라우저 콘솔에서 사용 가능)
+    window.testHistoryFilter = function() {
+        console.log('=== 히스토리 필터 테스트 ===');
+        const timelineItems = document.querySelectorAll('.timeline-item');
+        console.log('총 히스토리 아이템:', timelineItems.length);
+        
+        const selected = Array.from(document.querySelectorAll('.month-checkbox:checked')).map(cb => cb.value);
+        console.log('선택된 월:', selected.length > 0 ? selected : '없음 (전체 표시)');
+        
+        const visible = document.querySelectorAll('.timeline-item:not([style*="display: none"])').length;
+        console.log('표시된 아이템:', visible);
+    };
+    
+    // 페이지 로드 시 초기 필터링 실행
+    filterBySelectedMonths();
+});
 </script>
+
+<style>
+/* 월별 필터 스타일 */
+.sticky-filter {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.month-filter-container {
+  max-height: 400px;
+}
+
+.month-checkboxes {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.form-check {
+  padding-left: 1.25rem;
+}
+
+.form-check-input {
+  margin-left: -1.25rem;
+}
+
+.form-check-label {
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+</style>
 {% endblock %}

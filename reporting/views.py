@@ -1343,6 +1343,26 @@ def history_list_view(request):
     if action_type_filter:
         histories = histories.filter(action_type=action_type_filter)
     
+    # 월별 필터링 추가
+    months_filter = request.GET.get('months')
+    month_filter = None
+    if months_filter:
+        try:
+            selected_months = [int(month.strip()) for month in months_filter.split(',') if month.strip().isdigit()]
+            if selected_months:
+                month_filter = months_filter  # 템플릿에서 사용할 원본 문자열
+                # 관련 일정이 있는 경우 일정 월, 없는 경우 생성 월로 필터링
+                from django.db.models import Q, Case, When, IntegerField, Extract
+                histories = histories.annotate(
+                    filter_month=Case(
+                        When(schedule__isnull=False, then=Extract('schedule__visit_date', 'month')),
+                        default=Extract('created_at', 'month'),
+                        output_field=IntegerField()
+                    )
+                ).filter(filter_month__in=selected_months)
+        except (ValueError, TypeError):
+            pass
+    
     # 정렬 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
     from django.db.models import Case, When, F
     histories = histories.annotate(
@@ -1400,6 +1420,7 @@ def history_list_view(request):
         'histories': page_obj,
         'page_title': page_title,
         'action_type_filter': action_type_filter,
+        'month_filter': month_filter,
         'total_count': total_count,
         'meeting_count': meeting_count,
         'delivery_count': delivery_count,
