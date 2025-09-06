@@ -28,6 +28,12 @@ Thumbs.db
 # Backup files
 backups/
 *.bak
+*.dump
+*.sql.gz
+railway_backup_*.dump
+railway_backup_*.json
+*_backup_*.json
+emergency_backup*.json
 
 # Static files (will be collected in production)
 staticfiles/
