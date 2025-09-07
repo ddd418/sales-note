@@ -1351,8 +1351,11 @@ def history_list_view(request):
             selected_months = [int(month.strip()) for month in months_filter.split(',') if month.strip().isdigit()]
             if selected_months:
                 month_filter = months_filter  # 템플릿에서 사용할 원본 문자열
-                # 관련 일정이 있는 경우 일정 월, 없는 경우 생성 월로 필터링
-                from django.db.models import Q, Case, When, IntegerField, Extract
+                # 월별 필터링 적용 순서:
+                # 1. 관련 일정이 있는 경우 → 일정의 visit_date 월로 필터링
+                # 2. 관련 일정이 없는 경우 → 히스토리 생성일자(created_at) 월로 필터링
+                from django.db.models import Q, Case, When, IntegerField
+                from django.db.models.functions import Extract
                 histories = histories.annotate(
                     filter_month=Case(
                         When(schedule__isnull=False, then=Extract('schedule__visit_date', 'month')),
@@ -1411,8 +1414,8 @@ def history_list_view(request):
     else:
         page_title = '활동 히스토리'
     
-    # 페이지네이션 처리 - 페이지당 항목 수 증가
-    paginator = Paginator(histories, 50) # 페이지당 50개 항목으로 증가
+    # 페이지네이션 처리
+    paginator = Paginator(histories, 10)  # 페이지당 10개 항목으로 설정
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
