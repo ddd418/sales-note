@@ -416,6 +416,15 @@
       </div>
 
       {% if schedules %}
+      <!-- 일정 개수 표시 -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <div class="text-center text-muted small">
+            <span id="filtered-count">전체 {{ schedules.count }}개</span>
+          </div>
+        </div>
+      </div>
+      
       <div class="row">
         {% for schedule in schedules %}
         <div class="col-md-6 col-lg-4 mb-4" data-visit-month="{{ schedule.visit_date.month }}">
@@ -539,81 +548,6 @@
             <i class="fas fa-plus me-1"></i>첫 일정 추가하기
           </a>
           {% endif %}
-        </div>
-      </div>
-      {% endif %}
-      
-      <!-- 페이지네이션 -->
-      {% if schedules.has_other_pages %}
-      <div class="row mt-4">
-        <div class="col-12">
-          <nav aria-label="일정 목록 페이지네이션">
-            <ul class="pagination justify-content-center">
-              <!-- 첫 페이지 -->
-              {% if schedules.has_previous %}
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page=1" aria-label="첫 페이지">
-                  <span aria-hidden="true">&laquo;&laquo;</span>
-                </a>
-              </li>
-              <!-- 이전 페이지 -->
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ schedules.previous_page_number }}" aria-label="이전 페이지">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% else %}
-              <li class="page-item disabled">
-                <span class="page-link">&laquo;&laquo;</span>
-              </li>
-              <li class="page-item disabled">
-                <span class="page-link">&laquo;</span>
-              </li>
-              {% endif %}
-              
-              <!-- 페이지 번호들 -->
-              {% for num in schedules.paginator.page_range %}
-                {% if schedules.number|add:'-5' <= num <= schedules.number|add:'5' %}
-                  {% if num == schedules.number %}
-                  <li class="page-item active">
-                    <span class="page-link">{{ num }}</span>
-                  </li>
-                  {% else %}
-                  <li class="page-item">
-                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ num }}">{{ num }}</a>
-                  </li>
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-              
-              <!-- 다음 페이지 -->
-              {% if schedules.has_next %}
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ schedules.next_page_number }}" aria-label="다음 페이지">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-              <!-- 마지막 페이지 -->
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}page={{ schedules.paginator.num_pages }}" aria-label="마지막 페이지">
-                  <span aria-hidden="true">&raquo;&raquo;</span>
-                </a>
-              </li>
-              {% else %}
-              <li class="page-item disabled">
-                <span class="page-link">&raquo;</span>
-              </li>
-              <li class="page-item disabled">
-                <span class="page-link">&raquo;&raquo;</span>
-              </li>
-              {% endif %}
-            </ul>
-          </nav>
-          
-          <!-- 페이지 정보 -->
-          <div class="text-center text-muted small mt-2">
-            {{ schedules.start_index }}~{{ schedules.end_index }}번 (전체 {{ schedules.paginator.count }}개)
-          </div>
         </div>
       </div>
       {% endif %}
@@ -780,47 +714,68 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 
-.month-filter-container {
-  max-height: 400px;
+.month-filter-sidebar .filter-header {
+  padding: 16px 20px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  border-radius: 15px 15px 0 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
 }
 
-.month-checkboxes {
+.month-filter-sidebar .filter-header i {
+  margin-right: 8px;
+  font-size: 1.1rem;
+}
+
+.month-filter-sidebar .filter-body {
+  padding: 16px;
+}
+
+.month-filter-sidebar .month-checkboxes {
   max-height: 320px;
   overflow-y: auto;
   padding-right: 8px;
 }
 
-.month-checkboxes::-webkit-scrollbar {
+.month-filter-sidebar .month-checkboxes::-webkit-scrollbar {
   width: 6px;
 }
 
-.month-checkboxes::-webkit-scrollbar-track {
+.month-filter-sidebar .month-checkboxes::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
-.month-checkboxes::-webkit-scrollbar-thumb {
+.month-filter-sidebar .month-checkboxes::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.3);
   border-radius: 3px;
 }
 
-.month-checkboxes::-webkit-scrollbar-thumb:hover {
+.month-filter-sidebar .month-checkboxes::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
-.form-check {
-  padding: 8px 16px;
-  margin: 4px 0;
+.month-filter-sidebar .form-check {
+  padding: 8px 12px;
+  margin: 2px 0;
   border-radius: 8px;
   transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
 
-.form-check:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateX(5px);
+.month-filter-sidebar .form-check:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateX(3px);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
-.form-check-input {
+.month-filter-sidebar .form-check-input {
   margin-left: 0;
   margin-right: 10px;
   width: 18px;
@@ -829,53 +784,35 @@
   background: transparent;
   border-radius: 4px;
   transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
 }
 
-.form-check-input:checked {
+.month-filter-sidebar .form-check-input:checked {
   background: linear-gradient(45deg, #ff6b6b, #ffa726);
   border-color: #fff;
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
-.form-check-input:focus {
+.month-filter-sidebar .form-check-input:focus {
   box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+  outline: none;
 }
 
-.form-check-label {
+.month-filter-sidebar .form-check-label {
   cursor: pointer;
   font-size: 0.95rem;
   font-weight: 500;
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
+  flex: 1;
+  user-select: none;
 }
-
-.form-check:hover .form-check-label {
+.month-filter-sidebar .form-check:hover .form-check-label {
   color: #fff;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-.filter-header {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
-  color: white;
-  padding: 16px 20px;
-  margin: 0;
-  border-radius: 15px 15px 0 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  text-align: center;
-  font-weight: 600;
-  font-size: 1.1rem;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(5px);
-}
-
-.filter-header i {
-  margin-right: 8px;
-  font-size: 1.2rem;
-}
-
-.filter-body {
-  padding: 16px 8px 20px 8px;
 }
 
 /* 메인 컨텐츠 영역 조정 */
@@ -945,6 +882,44 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // 전체 선택 체크박스 이벤트
+    if (monthAllCheckbox) {
+        monthAllCheckbox.addEventListener('change', function(e) {
+            // 이벤트 전파 중지
+            e.stopPropagation();
+            
+            // 모든 월 체크박스 상태 변경
+            monthCheckboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            
+            // URL 업데이트
+            updateUrlWithMonthFilter();
+        });
+        
+        // 전체 선택 체크박스의 전체 박스 영역을 클릭 가능하게 만들기
+        const allFormCheck = monthAllCheckbox.closest('.form-check');
+        if (allFormCheck) {
+            allFormCheck.style.cursor = 'pointer';
+            allFormCheck.addEventListener('click', function(e) {
+                // 체크박스나 라벨을 직접 클릭한 경우는 중복 처리 방지
+                if (e.target === monthAllCheckbox || e.target.tagName === 'LABEL') {
+                    return;
+                }
+                
+                // 기본 동작 방지
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 체크박스 상태 토글
+                monthAllCheckbox.checked = !monthAllCheckbox.checked;
+                
+                // change 이벤트 트리거
+                monthAllCheckbox.dispatchEvent(new Event('change'));
+            });
+        }
+    }
+    
     // 개별 월 체크박스 이벤트
     monthCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', function(e) {
@@ -955,64 +930,47 @@ document.addEventListener('DOMContentLoaded', function() {
             const checkedCount = document.querySelectorAll('.month-checkbox:checked').length;
             const totalCount = monthCheckboxes.length;
             
-            if (checkedCount === 0) {
-                monthAllCheckbox.checked = false;
-                monthAllCheckbox.indeterminate = false;
-            } else if (checkedCount === totalCount) {
-                monthAllCheckbox.checked = true;
-                monthAllCheckbox.indeterminate = false;
-            } else {
-                monthAllCheckbox.checked = false;
-                monthAllCheckbox.indeterminate = true;
+            if (monthAllCheckbox) {
+                if (checkedCount === 0) {
+                    monthAllCheckbox.checked = false;
+                    monthAllCheckbox.indeterminate = false;
+                } else if (checkedCount === totalCount) {
+                    monthAllCheckbox.checked = true;
+                    monthAllCheckbox.indeterminate = false;
+                } else {
+                    monthAllCheckbox.checked = false;
+                    monthAllCheckbox.indeterminate = true;
+                }
             }
             
-            // 페이지 새로고침으로 서버사이드 필터링만 적용
+            // URL 업데이트
             updateUrlWithMonthFilter();
         });
         
-        // 라벨 클릭 시에도 체크박스 토글
-        const label = document.querySelector(`label[for="${checkbox.id}"]`);
-        if (label) {
-            label.addEventListener('click', function(e) {
-                // 기본 동작 방지 (중복 클릭 방지)
+        // 각 월의 전체 박스 영역을 클릭 가능하게 만들기
+        const formCheck = checkbox.closest('.form-check');
+        if (formCheck) {
+            formCheck.style.cursor = 'pointer';
+            formCheck.addEventListener('click', function(e) {
+                // 체크박스나 라벨을 직접 클릭한 경우는 중복 처리 방지
+                if (e.target === checkbox || e.target.tagName === 'LABEL') {
+                    return;
+                }
+                
+                // 기본 동작 방지
                 e.preventDefault();
+                e.stopPropagation();
+                
                 // 체크박스 상태 토글
                 checkbox.checked = !checkbox.checked;
+                
                 // change 이벤트 트리거
                 checkbox.dispatchEvent(new Event('change'));
             });
         }
     });
     
-    // 선택된 월에 따라 일정 필터링
-    function filterBySelectedMonths() {
-        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
-                                   .map(cb => cb.value);
-        
-        scheduleCards.forEach(card => {
-            const cardMonth = card.getAttribute('data-visit-month');
-            
-            if (selectedMonths.length === 0 || selectedMonths.includes(cardMonth)) {
-                card.style.display = 'block';
-            } else {
-                card.style.display = 'none';
-            }
-        });
-        
-        // 결과 카운트 업데이트
-        updateVisibleCount();
-    }
-    
-    // 보이는 일정 개수 업데이트
-    function updateVisibleCount() {
-        const visibleCards = document.querySelectorAll('[data-visit-month]:not([style*="display: none"])');
-        const countElement = document.querySelector('.visible-count');
-        if (countElement) {
-            countElement.textContent = visibleCards.length;
-        }
-    }
-    
-    // URL에 월 필터 파라미터 추가
+    // URL에 월 필터 파라미터 추가 (클라이언트사이드 필터링)
     function updateUrlWithMonthFilter() {
         const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
                                    .map(cb => cb.value);
@@ -1028,6 +986,55 @@ document.addEventListener('DOMContentLoaded', function() {
         // URL 업데이트 (페이지 새로고침 없이)
         const newUrl = window.location.pathname + '?' + urlParams.toString();
         window.history.replaceState({}, '', newUrl);
+        
+        // 클라이언트사이드 필터링 적용
+        filterBySelectedMonths();
+    }
+    
+    // 선택된 월에 따라 일정 필터링 (클라이언트사이드)
+    function filterBySelectedMonths() {
+        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
+                                   .map(cb => cb.value);
+        
+        const scheduleCards = document.querySelectorAll('[data-visit-month]');
+        let visibleCount = 0;
+        
+        scheduleCards.forEach(card => {
+            const cardMonth = card.getAttribute('data-visit-month');
+            
+            // 필터링 로직 - 선택된 월이 없거나 해당 월이 선택된 경우 표시
+            const shouldShow = selectedMonths.length === 0 || 
+                              selectedMonths.includes(cardMonth) || 
+                              selectedMonths.includes(String(cardMonth));
+            
+            if (shouldShow) {
+                card.style.display = 'block';
+                card.setAttribute('data-filtered', 'visible');
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
+                card.setAttribute('data-filtered', 'hidden');
+            }
+        });
+        
+        // 결과 카운트 업데이트
+        updateVisibleCount(visibleCount);
+    }
+    
+    // 보이는 일정 개수 업데이트
+    function updateVisibleCount(count) {
+        // 필터된 개수 업데이트
+        const filteredCountElement = document.getElementById('filtered-count');
+        if (filteredCountElement) {
+            const totalCount = document.querySelectorAll('[data-visit-month]').length;
+            filteredCountElement.textContent = `${count}개 표시 (전체 ${totalCount}개)`;
+        }
+        
+        // 기타 개수 표시 요소 업데이트
+        const countElement = document.querySelector('.visible-count');
+        if (countElement) {
+            countElement.textContent = count || document.querySelectorAll('[data-visit-month][data-filtered="visible"]').length;
+        }
     }
 
     // 월별 필터 박스 드래그 기능
@@ -1091,6 +1098,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 드래그 기능 초기화
     makeFilterDraggable();
+    
+    // 테스트 함수 (브라우저 콘솔에서 사용 가능)
+    window.testScheduleFilter = function() {
+        console.log('=== 일정 필터 테스트 ===');
+        const scheduleCards = document.querySelectorAll('[data-visit-month]');
+        console.log('총 일정 카드:', scheduleCards.length);
+        
+        const selected = Array.from(document.querySelectorAll('.month-checkbox:checked')).map(cb => cb.value);
+        console.log('선택된 월:', selected.length > 0 ? selected : '없음 (전체 표시)');
+        
+        const visible = document.querySelectorAll('[data-visit-month]:not([style*="display: none"])').length;
+        console.log('표시된 카드:', visible);
+    };
+    
 });
 </script>
 {% endblock %}

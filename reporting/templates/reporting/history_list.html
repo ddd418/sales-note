@@ -519,79 +519,10 @@
       {% if histories.paginator.count > 0 %}
       <div class="row mt-4">
         <div class="col-12">
-          <!-- 페이지 정보 -->
+          <!-- 전체 데이터 개수 정보 -->
           <div class="text-center text-muted small mb-3">
-            {% if months_filter %}
-            <span id="filtered-count">전체 {{ histories.paginator.count }}개</span>
-            {% else %}
-            {{ histories.start_index }}~{{ histories.end_index }}번 (전체 {{ histories.paginator.count }}개)
-            {% endif %}
+            <span id="filtered-count">전체 {{ histories.count }}개</span>
           </div>
-          
-          {% if histories.has_other_pages and not months_filter %}
-          <nav aria-label="활동 기록 페이지네이션">
-            <ul class="pagination justify-content-center">
-              <!-- 첫 페이지 -->
-              {% if histories.has_previous %}
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page=1" aria-label="첫 페이지">
-                  <span aria-hidden="true">&laquo;&laquo;</span>
-                </a>
-              </li>
-              <!-- 이전 페이지 -->
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.previous_page_number }}" aria-label="이전 페이지">
-                  <span aria-hidden="true">&laquo;</span>
-                </a>
-              </li>
-              {% else %}
-              <li class="page-item disabled">
-                <span class="page-link">&laquo;&laquo;</span>
-              </li>
-              <li class="page-item disabled">
-                <span class="page-link">&laquo;</span>
-              </li>
-              {% endif %}
-              
-              <!-- 페이지 번호들 -->
-              {% for num in histories.paginator.page_range %}
-                {% if histories.number|add:'-5' <= num <= histories.number|add:'5' %}
-                  {% if num == histories.number %}
-                  <li class="page-item active">
-                    <span class="page-link">{{ num }}</span>
-                  </li>
-                  {% else %}
-                  <li class="page-item">
-                    <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ num }}">{{ num }}</a>
-                  </li>
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-              
-              <!-- 다음 페이지 -->
-              {% if histories.has_next %}
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.next_page_number }}" aria-label="다음 페이지">
-                  <span aria-hidden="true">&raquo;</span>
-                </a>
-              </li>
-              <!-- 마지막 페이지 -->
-              <li class="page-item">
-                <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if action_type_filter %}action_type={{ action_type_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if month_filter %}months={{ month_filter }}&{% endif %}page={{ histories.paginator.num_pages }}" aria-label="마지막 페이지">
-                  <span aria-hidden="true">&raquo;&raquo;</span>
-                </a>
-              </li>
-              {% else %}
-              <li class="page-item disabled">
-                <span class="page-link">&raquo;</span>
-              </li>
-              <li class="page-item disabled">
-                <span class="page-link">&raquo;&raquo;</span>
-              </li>
-              {% endif %}
-            </ul>
-          </nav>
-          {% endif %}
         </div>
       </div>
       {% endif %}
@@ -1588,9 +1519,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 클라이언트사이드 필터링 적용
         filterBySelectedMonths();
-        
-        // 클라이언트사이드 페이지네이션 재계산
-        updatePagination();
     }
     
     // 선택된 월에 따라 히스토리 필터링 (클라이언트사이드)
@@ -1642,31 +1570,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const countElement = document.querySelector('.visible-count');
         if (countElement) {
             countElement.textContent = count || document.querySelectorAll('.timeline-item[data-filtered="visible"]').length;
-        }
-    }
-    
-    // 클라이언트사이드 페이지네이션 업데이트
-    function updatePagination() {
-        const visibleItems = document.querySelectorAll('.timeline-item[data-filtered="visible"]');
-        const itemsPerPage = 10;
-        const totalPages = Math.ceil(visibleItems.length / itemsPerPage);
-        const currentPage = 1; // 필터 변경 시 항상 1페이지로
-        
-        // 현재 페이지의 아이템만 표시
-        visibleItems.forEach((item, index) => {
-            const page = Math.floor(index / itemsPerPage) + 1;
-            if (page === currentPage) {
-                item.style.display = 'block';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-        
-        // 페이지네이션 UI 업데이트 (기존 페이지네이션 숨기고 클라이언트 사이드 페이지네이션 표시)
-        const paginationContainer = document.querySelector('.pagination');
-        if (paginationContainer && totalPages > 1) {
-            // 추후 클라이언트사이드 페이지네이션 구현 가능
-            paginationContainer.style.display = 'none';
         }
     }
 
