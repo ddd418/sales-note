@@ -4,12 +4,10 @@
 <!-- 월별 필터 사이드바 -->
 <div class="month-filter-sidebar">
   <div class="filter-header">
-    <h6 class="mb-0">
-      <i class="fas fa-calendar me-2"></i>월별 필터
-      <small class="float-end" style="font-size: 0.7em; opacity: 0.8;">
-        <i class="fas fa-arrows-alt me-1"></i>드래그 가능
-      </small>
-    </h6>
+    <i class="fas fa-calendar-alt"></i>월별 필터
+    <div style="font-size: 0.8em; opacity: 0.9; margin-top: 4px;">
+      <i class="fas fa-hand-paper" style="font-size: 0.7em;"></i> 드래그 가능
+    </div>
   </div>
   <div class="filter-body">
     <!-- 전체 선택 버튼 -->
@@ -523,10 +521,14 @@
         <div class="col-12">
           <!-- 페이지 정보 -->
           <div class="text-center text-muted small mb-3">
+            {% if months_filter %}
+            <span id="filtered-count">전체 {{ histories.paginator.count }}개</span>
+            {% else %}
             {{ histories.start_index }}~{{ histories.end_index }}번 (전체 {{ histories.paginator.count }}개)
+            {% endif %}
           </div>
           
-          {% if histories.has_other_pages %}
+          {% if histories.has_other_pages and not months_filter %}
           <nav aria-label="활동 기록 페이지네이션">
             <ul class="pagination justify-content-center">
               <!-- 첫 페이지 -->
@@ -1198,27 +1200,116 @@ span.meeting-date {
     position: fixed;
     left: 280px;
     top: 200px;
-    width: 200px;
-    background: #ffffff;
-    border: 2px solid #007bff;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 1050;
+    width: 220px;
     max-height: 70vh;
-    overflow-y: auto;
+    overflow: hidden;
+    z-index: 1050;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     cursor: move;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+  }
+
+  .month-filter-sidebar:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   }
 
   .month-filter-sidebar .filter-header {
-    background: #007bff;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
     color: white;
-    padding: 12px 16px;
-    border-bottom: 1px solid #dee2e6;
-    border-radius: 6px 6px 0 0;
+    padding: 16px 20px;
+    margin: 0;
+    border-radius: 15px 15px 0 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(5px);
+  }
+
+  .month-filter-sidebar .filter-header i {
+    margin-right: 8px;
+    font-size: 1.2rem;
   }
 
   .month-filter-sidebar .filter-body {
-    padding: 16px;
+    padding: 16px 8px 20px 8px;
+  }
+
+  .month-filter-sidebar .month-checkboxes {
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .month-filter-sidebar .month-checkboxes::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .month-filter-sidebar .month-checkboxes::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+
+  .month-filter-sidebar .month-checkboxes::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+  }
+
+  .month-filter-sidebar .month-checkboxes::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .month-filter-sidebar .form-check {
+    padding: 8px 16px;
+    margin: 4px 0;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .month-filter-sidebar .form-check:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(5px);
+  }
+
+  .month-filter-sidebar .form-check-input {
+    margin-left: 0;
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    background: transparent;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .month-filter-sidebar .form-check-input:checked {
+    background: linear-gradient(45deg, #ff6b6b, #ffa726);
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+
+  .month-filter-sidebar .form-check-input:focus {
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+  }
+
+  .month-filter-sidebar .form-check-label {
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+  }
+
+  .month-filter-sidebar .form-check:hover .form-check-label {
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   }
 
   .main-content-with-sidebar {
@@ -1348,6 +1439,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const monthCheckboxes = document.querySelectorAll('.month-checkbox');
     const monthAllCheckbox = document.getElementById('month-all');
     
+    // 저장된 필터 박스 위치 복원
+    const filterBox = document.querySelector('.month-filter-sidebar');
+    if (filterBox) {
+        const savedLeft = sessionStorage.getItem('filterBoxLeft');
+        const savedTop = sessionStorage.getItem('filterBoxTop');
+        if (savedLeft && savedLeft !== 'null' && savedLeft !== 'auto') {
+            filterBox.style.left = savedLeft;
+            sessionStorage.removeItem('filterBoxLeft');
+        }
+        if (savedTop && savedTop !== 'null' && savedTop !== 'auto') {
+            filterBox.style.top = savedTop;
+            sessionStorage.removeItem('filterBoxTop');
+        }
+    }
+    
     // URL에서 현재 선택된 월 파라미터 읽기
     const urlParams = new URLSearchParams(window.location.search);
     const selectedMonths = urlParams.get('months') ? urlParams.get('months').split(',') : [];
@@ -1358,12 +1464,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const checkbox = document.getElementById('month-' + month);
             if (checkbox) checkbox.checked = true;
         });
+        
+        // 초기 필터링 적용
         filterBySelectedMonths();
+        updatePagination();
+    } else {
+        // 필터가 없으면 모든 아이템을 표시 상태로 설정
+        document.querySelectorAll('.timeline-item').forEach(item => {
+            item.setAttribute('data-filtered', 'visible');
+        });
     }
     
     // 전체 선택/해제 체크박스 이벤트
     if (monthAllCheckbox) {
-        monthAllCheckbox.addEventListener('change', function() {
+        monthAllCheckbox.addEventListener('change', function(e) {
+            // 이벤트 전파 중지
+            e.stopPropagation();
+            
             if (this.checked) {
                 // 전체 선택
                 monthCheckboxes.forEach(checkbox => {
@@ -1375,14 +1492,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     checkbox.checked = false;
                 });
             }
-            filterBySelectedMonths();
+            // 페이지 새로고침으로 서버사이드 필터링만 적용
             updateUrlWithMonthFilter();
         });
+        
+        // 전체 선택/해제 박스 전체 영역을 클릭 가능하게 만들기
+        const allFormCheck = monthAllCheckbox.closest('.form-check');
+        if (allFormCheck) {
+            allFormCheck.style.cursor = 'pointer';
+            allFormCheck.addEventListener('click', function(e) {
+                // 체크박스나 라벨을 직접 클릭한 경우는 중복 처리 방지
+                if (e.target === monthAllCheckbox || e.target.tagName === 'LABEL') {
+                    return;
+                }
+                
+                // 기본 동작 방지
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 체크박스 상태 토글
+                monthAllCheckbox.checked = !monthAllCheckbox.checked;
+                
+                // change 이벤트 트리거
+                monthAllCheckbox.dispatchEvent(new Event('change'));
+            });
+        }
     }
     
     // 개별 월 체크박스 이벤트
     monthCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
+        checkbox.addEventListener('change', function(e) {
+            // 이벤트 전파 중지
+            e.stopPropagation();
+            
             // 전체 선택 체크박스 상태 업데이트
             const checkedCount = document.querySelectorAll('.month-checkbox:checked').length;
             const totalCount = monthCheckboxes.length;
@@ -1400,54 +1542,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
             
-            filterBySelectedMonths();
+            // 페이지 새로고침으로 서버사이드 필터링만 적용
             updateUrlWithMonthFilter();
         });
+        
+        // 각 월의 전체 박스 영역을 클릭 가능하게 만들기
+        const formCheck = checkbox.closest('.form-check');
+        if (formCheck) {
+            formCheck.style.cursor = 'pointer';
+            formCheck.addEventListener('click', function(e) {
+                // 체크박스나 라벨을 직접 클릭한 경우는 중복 처리 방지
+                if (e.target === checkbox || e.target.tagName === 'LABEL') {
+                    return;
+                }
+                
+                // 기본 동작 방지
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // 체크박스 상태 토글
+                checkbox.checked = !checkbox.checked;
+                
+                // change 이벤트 트리거
+                checkbox.dispatchEvent(new Event('change'));
+            });
+        }
     });
     
-    // 선택된 월에 따라 히스토리 필터링
-    function filterBySelectedMonths() {
-        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
-                                   .map(cb => cb.value);
-        
-        // 모든 timeline-item 찾기
-        const timelineItems = document.querySelectorAll('.timeline-item');
-        
-        timelineItems.forEach((timelineItem, index) => {
-            // card 요소 찾기
-            const card = timelineItem.querySelector('.card');
-            
-            if (card) {
-                const itemMonth = card.getAttribute('data-visit-month');
-                
-                // 필터링 로직 - 타입 변환하여 비교
-                const shouldShow = selectedMonths.length === 0 || 
-                                  selectedMonths.includes(itemMonth) || 
-                                  selectedMonths.includes(String(itemMonth)) ||
-                                  selectedMonths.map(m => parseInt(m)).includes(parseInt(itemMonth));
-                
-                if (shouldShow) {
-                    timelineItem.style.display = 'block';
-                } else {
-                    timelineItem.style.display = 'none';
-                }
-            }
-        });
-        
-        // 결과 카운트 업데이트
-        updateVisibleCount();
-    }
-    
-    // 보이는 히스토리 개수 업데이트
-    function updateVisibleCount() {
-        const visibleItems = document.querySelectorAll('.timeline-item:not([style*="display: none"])');
-        const countElement = document.querySelector('.visible-count');
-        if (countElement) {
-            countElement.textContent = visibleItems.length;
-        }
-    }
-    
-    // URL에 월 필터 파라미터 추가
+    // URL에 월 필터 파라미터 추가 (클라이언트사이드 필터링 - 페이지 새로고침 없음)
     function updateUrlWithMonthFilter() {
         const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
                                    .map(cb => cb.value);
@@ -1460,12 +1582,92 @@ document.addEventListener('DOMContentLoaded', function() {
             urlParams.delete('months');
         }
         
-        // 월별 필터 변경 시 페이지를 1로 리셋
-        urlParams.set('page', '1');
-        
-        // 페이지 새로고침하여 서버사이드 필터링 적용
+        // URL 업데이트 (페이지 새로고침 없이)
         const newUrl = window.location.pathname + '?' + urlParams.toString();
-        window.location.href = newUrl;
+        window.history.replaceState({}, '', newUrl);
+        
+        // 클라이언트사이드 필터링 적용
+        filterBySelectedMonths();
+        
+        // 클라이언트사이드 페이지네이션 재계산
+        updatePagination();
+    }
+    
+    // 선택된 월에 따라 히스토리 필터링 (클라이언트사이드)
+    function filterBySelectedMonths() {
+        const selectedMonths = Array.from(document.querySelectorAll('.month-checkbox:checked'))
+                                   .map(cb => cb.value);
+        
+        // 모든 timeline-item 찾기
+        const timelineItems = document.querySelectorAll('.timeline-item');
+        let visibleCount = 0;
+        
+        timelineItems.forEach((timelineItem) => {
+            // card 요소 찾기
+            const card = timelineItem.querySelector('.card');
+            
+            if (card) {
+                const itemMonth = card.getAttribute('data-visit-month');
+                
+                // 필터링 로직 - 선택된 월이 없거나 해당 월이 선택된 경우 표시
+                const shouldShow = selectedMonths.length === 0 || 
+                                  selectedMonths.includes(itemMonth) || 
+                                  selectedMonths.includes(String(itemMonth));
+                
+                if (shouldShow) {
+                    timelineItem.style.display = 'block';
+                    timelineItem.setAttribute('data-filtered', 'visible');
+                    visibleCount++;
+                } else {
+                    timelineItem.style.display = 'none';
+                    timelineItem.setAttribute('data-filtered', 'hidden');
+                }
+            }
+        });
+        
+        // 결과 카운트 업데이트
+        updateVisibleCount(visibleCount);
+    }
+    
+    // 보이는 히스토리 개수 업데이트
+    function updateVisibleCount(count) {
+        // 페이지 상단의 필터된 개수 업데이트
+        const filteredCountElement = document.getElementById('filtered-count');
+        if (filteredCountElement) {
+            const totalCount = document.querySelectorAll('.timeline-item').length;
+            filteredCountElement.textContent = `${count}개 표시 (전체 ${totalCount}개)`;
+        }
+        
+        // 기타 개수 표시 요소 업데이트
+        const countElement = document.querySelector('.visible-count');
+        if (countElement) {
+            countElement.textContent = count || document.querySelectorAll('.timeline-item[data-filtered="visible"]').length;
+        }
+    }
+    
+    // 클라이언트사이드 페이지네이션 업데이트
+    function updatePagination() {
+        const visibleItems = document.querySelectorAll('.timeline-item[data-filtered="visible"]');
+        const itemsPerPage = 10;
+        const totalPages = Math.ceil(visibleItems.length / itemsPerPage);
+        const currentPage = 1; // 필터 변경 시 항상 1페이지로
+        
+        // 현재 페이지의 아이템만 표시
+        visibleItems.forEach((item, index) => {
+            const page = Math.floor(index / itemsPerPage) + 1;
+            if (page === currentPage) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+        
+        // 페이지네이션 UI 업데이트 (기존 페이지네이션 숨기고 클라이언트 사이드 페이지네이션 표시)
+        const paginationContainer = document.querySelector('.pagination');
+        if (paginationContainer && totalPages > 1) {
+            // 추후 클라이언트사이드 페이지네이션 구현 가능
+            paginationContainer.style.display = 'none';
+        }
     }
 
     // 월별 필터 박스 드래그 기능
@@ -1543,8 +1745,6 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('표시된 아이템:', visible);
     };
     
-    // 페이지 로드 시 초기 필터링 실행
-    filterBySelectedMonths();
 });
 </script>
 

@@ -158,16 +158,13 @@
       
       <!-- 월별 필터 사이드바 -->
       <div class="month-filter-sidebar">
-        <div class="card">
-          <div class="card-header">
-            <h6 class="mb-0">
-              <i class="fas fa-calendar me-2"></i>월별 필터
-              <small class="float-end" style="font-size: 0.7em; opacity: 0.8;">
-                <i class="fas fa-arrows-alt me-1"></i>드래그 가능
-              </small>
-            </h6>
+        <div class="filter-header">
+          <i class="fas fa-calendar-alt"></i>월별 필터
+          <div style="font-size: 0.8em; opacity: 0.9; margin-top: 4px;">
+            <i class="fas fa-hand-paper" style="font-size: 0.7em;"></i> 드래그 가능
           </div>
-          <div class="card-body p-2">
+        </div>
+        <div class="filter-body">
             <div class="month-filter-container">
               <!-- 전체 선택 버튼 -->
               <div class="form-check mb-2">
@@ -243,7 +240,6 @@
               </div>
             </div>
           </div>
-        </div>
       </div>
       
       <!-- 메인 컨텐츠 영역 -->
@@ -766,15 +762,22 @@
   position: fixed;
   left: 280px;
   top: 200px;
-  width: 200px;
+  width: 220px;
   max-height: 70vh;
-  overflow-y: auto;
+  overflow: hidden;
   z-index: 1050;
-  background: white;
-  border: 2px solid #007bff;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   cursor: move;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.month-filter-sidebar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 
 .month-filter-container {
@@ -782,34 +785,97 @@
 }
 
 .month-checkboxes {
-  max-height: 300px;
+  max-height: 320px;
   overflow-y: auto;
+  padding-right: 8px;
+}
+
+.month-checkboxes::-webkit-scrollbar {
+  width: 6px;
+}
+
+.month-checkboxes::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.month-checkboxes::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.month-checkboxes::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .form-check {
-  padding-left: 1.25rem;
+  padding: 8px 16px;
+  margin: 4px 0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.form-check:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(5px);
 }
 
 .form-check-input {
-  margin-left: -1.25rem;
+  margin-left: 0;
+  margin-right: 10px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: transparent;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.form-check-input:checked {
+  background: linear-gradient(45deg, #ff6b6b, #ffa726);
+  border-color: #fff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.form-check-input:focus {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
 }
 
 .form-check-label {
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.form-check:hover .form-check-label {
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
 .filter-header {
-  background: #007bff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
   color: white;
-  padding: 12px 16px;
-  margin: -1px -1px 0 -1px;
-  border-radius: 6px 6px 0 0;
-  border-bottom: 1px solid #dee2e6;
+  padding: 16px 20px;
+  margin: 0;
+  border-radius: 15px 15px 0 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(5px);
+}
+
+.filter-header i {
+  margin-right: 8px;
+  font-size: 1.2rem;
 }
 
 .filter-body {
-  padding: 16px;
+  padding: 16px 8px 20px 8px;
 }
 
 /* 메인 컨텐츠 영역 조정 */
@@ -850,7 +916,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // 전체 선택/해제 체크박스 이벤트
-    monthAllCheckbox.addEventListener('change', function() {
+    monthAllCheckbox.addEventListener('change', function(e) {
+        // 이벤트 전파 중지
+        e.stopPropagation();
+        
         if (this.checked) {
             // 전체 선택
             monthCheckboxes.forEach(checkbox => {
@@ -862,13 +931,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 checkbox.checked = false;
             });
         }
-        filterBySelectedMonths();
+        // 페이지 새로고침으로 서버사이드 필터링만 적용
         updateUrlWithMonthFilter();
     });
     
+    // 전체 선택/해제 라벨 클릭 이벤트
+    const allLabel = document.querySelector('label[for="month-all"]');
+    if (allLabel) {
+        allLabel.addEventListener('click', function(e) {
+            e.preventDefault();
+            monthAllCheckbox.checked = !monthAllCheckbox.checked;
+            monthAllCheckbox.dispatchEvent(new Event('change'));
+        });
+    }
+    
     // 개별 월 체크박스 이벤트
     monthCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
+        checkbox.addEventListener('change', function(e) {
+            // 이벤트 전파 중지
+            e.stopPropagation();
+            
             // 전체 선택 체크박스 상태 업데이트
             const checkedCount = document.querySelectorAll('.month-checkbox:checked').length;
             const totalCount = monthCheckboxes.length;
@@ -884,9 +966,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 monthAllCheckbox.indeterminate = true;
             }
             
-            filterBySelectedMonths();
+            // 페이지 새로고침으로 서버사이드 필터링만 적용
             updateUrlWithMonthFilter();
         });
+        
+        // 라벨 클릭 시에도 체크박스 토글
+        const label = document.querySelector(`label[for="${checkbox.id}"]`);
+        if (label) {
+            label.addEventListener('click', function(e) {
+                // 기본 동작 방지 (중복 클릭 방지)
+                e.preventDefault();
+                // 체크박스 상태 토글
+                checkbox.checked = !checkbox.checked;
+                // change 이벤트 트리거
+                checkbox.dispatchEvent(new Event('change'));
+            });
+        }
     });
     
     // 선택된 월에 따라 일정 필터링

@@ -1414,16 +1414,35 @@ def history_list_view(request):
     else:
         page_title = '활동 히스토리'
     
-    # 페이지네이션 처리
-    paginator = Paginator(histories, 10)  # 페이지당 10개 항목으로 설정
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    # 페이지네이션 처리 - 월별 필터가 있으면 모든 데이터 로드
+    months_filter = request.GET.get('months')
+    if months_filter:
+        # 월별 필터가 있는 경우 클라이언트사이드에서 필터링하므로 모든 데이터 로드
+        page_obj = histories
+        # 페이지네이션 객체처럼 보이게 하기 위한 속성 추가
+        page_obj.paginator = type('MockPaginator', (), {
+            'count': histories.count(),
+            'num_pages': 1,
+            'page_range': [1]
+        })()
+        page_obj.number = 1
+        page_obj.has_previous = lambda: False
+        page_obj.has_next = lambda: False
+        page_obj.has_other_pages = lambda: False
+        page_obj.start_index = lambda: 1 if histories.exists() else 0
+        page_obj.end_index = lambda: histories.count()
+    else:
+        # 월별 필터가 없는 경우 기존 페이지네이션 사용
+        paginator = Paginator(histories, 10)  # 페이지당 10개 항목으로 설정
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
     
     context = {
         'histories': page_obj,
         'page_title': page_title,
         'action_type_filter': action_type_filter,
         'month_filter': month_filter,
+        'months_filter': months_filter,  # 월별 필터 상태 추가
         'total_count': total_count,
         'meeting_count': meeting_count,
         'delivery_count': delivery_count,
