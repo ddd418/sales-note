@@ -238,7 +238,11 @@
               <form method="GET" action="{% url 'reporting:history_list' %}">
                 <div class="row g-3">
                   <!-- 검색어 -->
-                  <div class="col-md-4">
+                  {% if user.userprofile.role in 'admin,manager' %}
+                  <div class="col-md-6">
+                  {% else %}
+                  <div class="col-md-8">
+                  {% endif %}
                     <label for="search" class="form-label">검색어</label>
                     <input 
                       type="text" 
@@ -246,11 +250,12 @@
                       id="search"
                       name="search" 
                       value="{{ search_query|default:'' }}"
-                      placeholder="활동 내용, 고객명, 업체명..."
+                      placeholder="활동 내용, 고객명, 업체명, 책임자..."
                     >
                   </div>
                   
-                  <!-- 담당자 필터 -->
+                  <!-- 담당자 필터 (매니저/어드민만) -->
+                  {% if user.userprofile.role in 'admin,manager' %}
                   <div class="col-md-2">
                     <label for="user" class="form-label">담당자</label>
                     <select class="form-control" id="user" name="user">
@@ -262,39 +267,17 @@
                       {% endfor %}
                     </select>
                   </div>
-                  
-                  <!-- 시작 날짜 -->
-                  <div class="col-md-2">
-                    <label for="date_from" class="form-label">시작 날짜</label>
-                    <input 
-                      type="date" 
-                      class="form-control" 
-                      id="date_from"
-                      name="date_from" 
-                      value="{{ date_from|default:'' }}"
-                    >
-                  </div>
-                  
-                  <!-- 종료 날짜 -->
-                  <div class="col-md-2">
-                    <label for="date_to" class="form-label">종료 날짜</label>
-                    <input 
-                      type="date" 
-                      class="form-control" 
-                      id="date_to"
-                      name="date_to" 
-                      value="{{ date_to|default:'' }}"
-                    >
-                  </div>
+                  {% endif %}
                   
                   <!-- 버튼들 -->
-                  <div class="col-md-2 d-flex align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label> <!-- 빈 라벨로 높이 맞춤 -->
                     <div class="btn-group w-100">
                       <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search"></i>
+                        <i class="fas fa-search"></i> 검색
                       </button>
                       <a href="{% url 'reporting:history_list' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-times"></i>
+                        <i class="fas fa-times"></i> 초기화
                       </a>
                     </div>
                   </div>
@@ -306,14 +289,12 @@
                 {% endif %}
                 
                 <!-- 검색 결과 정보 -->
-                {% if search_query or user_filter or date_from or date_to %}
+                {% if search_query or user_filter %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_count }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
                     {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
-                    {% if date_from %} | 시작: <strong>{{ date_from }}</strong>{% endif %}
-                    {% if date_to %} | 종료: <strong>{{ date_to }}</strong>{% endif %}
                   </small>
                 </div>
                 {% endif %}

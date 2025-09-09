@@ -1274,6 +1274,7 @@ def history_list_view(request):
     """히스토리 목록 보기 (권한 기반 필터링 적용)"""
     from django.utils import timezone
     from datetime import datetime, timedelta
+    from django.db.models import Q
     
     user_profile = get_user_profile(request.user)
     
@@ -1291,18 +1292,20 @@ def history_list_view(request):
         'user', 'followup', 'followup__company', 'followup__department', 'schedule'
     )
     
-    # 검색 기능
+    # 검색 기능 (책임자 검색 추가)
     search_query = request.GET.get('search')
     if search_query:
         histories = histories.filter(
             Q(content__icontains=search_query) |
             Q(followup__customer_name__icontains=search_query) |
-            Q(followup__company__icontains=search_query)
+            Q(followup__company__name__icontains=search_query) |
+            Q(followup__manager__icontains=search_query)
         )
     
-    # 담당자 필터링
+    # 담당자 필터링 (매니저/어드민만 사용 가능)
     user_filter = request.GET.get('user')
-    if user_filter:
+    user_profile = get_user_profile(request.user)
+    if user_filter and user_profile.can_view_all_users():
         histories = histories.filter(user_id=user_filter)
     
     # 팔로우업 필터링 (특정 팔로우업의 모든 히스토리 보기)
@@ -1310,23 +1313,23 @@ def history_list_view(request):
     if followup_filter:
         histories = histories.filter(followup_id=followup_filter)
     
-    # 날짜 범위 필터링
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
+    # 날짜 범위 필터링 제거
+    # date_from = request.GET.get('date_from')
+    # date_to = request.GET.get('date_to')
     
-    if date_from:
-        try:
-            from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-            histories = histories.filter(created_at__date__gte=from_date)
-        except ValueError:
-            pass
+    # if date_from:
+    #     try:
+    #         from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+    #         histories = histories.filter(created_at__date__gte=from_date)
+    #     except ValueError:
+    #         pass
     
-    if date_to:
-        try:
-            to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-            histories = histories.filter(created_at__date__lte=to_date)
-        except ValueError:
-            pass
+    # if date_to:
+    #     try:
+    #         to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+    #         histories = histories.filter(created_at__date__lte=to_date)
+    #     except ValueError:
+    #         pass
     
     # 활동 유형별 카운트 계산
     base_queryset_for_counts = histories
@@ -1372,28 +1375,26 @@ def history_list_view(request):
             default=F('created_at__date')
         )
     ).order_by('-sort_date', '-created_at')
-      # 담당자 목록 (필터용) - 권한 기반으로 수정
+    # 담당자 목록 (매니저/어드민용 필터)
+    users = []
+    selected_user = None
     user_profile = get_user_profile(request.user)
+    
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자 목록
         accessible_users = get_accessible_users(request.user)
         users = accessible_users.filter(history__isnull=False).distinct()
-    else:
-        # Salesman은 자기 자신만
-        users = [request.user]
-    
-    # 선택된 사용자 정보 - 권한 체크 추가
-    selected_user = None
-    if user_filter:
-        try:
-            from django.contrib.auth.models import User
-            candidate_user = User.objects.get(id=user_filter)
-            # 접근 권한이 있는 사용자인지 확인
-            accessible_users = get_accessible_users(request.user)
-            if candidate_user in accessible_users:
-                selected_user = candidate_user
-        except (User.DoesNotExist, ValueError):
-            pass
+        
+        # 선택된 사용자 정보 - 권한 체크 추가
+        if user_filter:
+            try:
+                from django.contrib.auth.models import User
+                candidate_user = User.objects.get(id=user_filter)
+                # 접근 권한이 있는 사용자인지 확인
+                if candidate_user in accessible_users:
+                    selected_user = candidate_user
+            except (User.DoesNotExist, ValueError):
+                pass
     
     # 선택된 팔로우업 정보
     selected_followup = None
@@ -1430,8 +1431,6 @@ def history_list_view(request):
         'selected_user': selected_user,
         'followup_filter': followup_filter,
         'selected_followup': selected_followup,
-        'date_from': date_from,
-        'date_to': date_to,
         'users': users,
     }
     return render(request, 'reporting/history_list.html', context)
