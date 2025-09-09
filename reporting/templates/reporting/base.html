@@ -1126,6 +1126,13 @@
             ><i class="fas fa-history me-2"></i>히스토리</a
           >
         </li>
+        <li>
+          <a
+            href="{% url 'reporting:customer_report' %}"
+            class="{% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}"
+            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
+          >
+        </li>
         {% endif %}
       </ul>
     </nav>

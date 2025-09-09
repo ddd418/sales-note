@@ -1,0 +1,482 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+{% block content %}
+
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title mb-0">
+          <i class="fas fa-chart-line me-2"></i>{{ page_title }}
+        </h1>
+        <div class="header-actions">
+          <a href="{% url 'reporting:customer_report' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>목록으로
+          </a>
+          <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-outline-info">
+            <i class="fas fa-user me-2"></i>고객 정보
+          </a>
+        </div>
+      </div>
+
+      <!-- 고객 기본 정보 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <h5 class="card-title text-primary">
+                    <i class="fas fa-user me-2"></i>{{ followup.customer_name|default:"고객명 미정" }}
+                  </h5>
+                  <p class="mb-2">
+                    <strong>업체:</strong> {{ followup.company.name }}
+                    {% if followup.department %} / {{ followup.department.name }}{% endif %}
+                  </p>
+                  {% if followup.manager %}
+                  <p class="mb-2">
+                    <strong>책임자:</strong> {{ followup.manager }}
+                  </p>
+                  {% endif %}
+                  <p class="mb-0">
+                    <strong>담당자:</strong> {{ followup.user.username }}
+                  </p>
+                </div>
+                <div class="col-md-6">
+                  {% if followup.phone_number or followup.email %}
+                  <h6 class="text-muted">연락처 정보</h6>
+                  {% if followup.phone_number %}
+                  <p class="mb-2">
+                    <i class="fas fa-phone me-2"></i>{{ followup.phone_number }}
+                  </p>
+                  {% endif %}
+                  {% if followup.email %}
+                  <p class="mb-0">
+                    <i class="fas fa-envelope me-2"></i>{{ followup.email }}
+                  </p>
+                  {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 통계 요약 카드 -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card text-center bg-primary text-white">
+            <div class="card-body">
+              <h5 class="card-title">
+                <i class="fas fa-handshake"></i> 총 미팅
+              </h5>
+              <h3>{{ total_meetings }}회</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center bg-success text-white">
+            <div class="card-body">
+              <h5 class="card-title">
+                <i class="fas fa-truck"></i> 총 납품
+              </h5>
+              <h3>{{ total_deliveries }}건</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center bg-warning text-white">
+            <div class="card-body">
+              <h5 class="card-title">
+                <i class="fas fa-won-sign"></i> 총 금액
+              </h5>
+              <h3>
+                {% load currency_filters %}
+                {{ total_amount|currency_format }}원
+              </h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center bg-info text-white">
+            <div class="card-body">
+              <h5 class="card-title">
+                <i class="fas fa-file-invoice"></i> 세금계산서
+              </h5>
+              <h6>발행 {{ tax_invoices_issued }}건</h6>
+              <h6>미발행 {{ tax_invoices_pending }}건</h6>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 월별 활동 트렌드 차트 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-chart-area me-2"></i>월별 활동 트렌드 (최근 12개월)
+              </h6>
+              <canvas id="activityChart" height="100"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭 메뉴 -->
+      <div class="row">
+        <div class="col-12">
+          <ul class="nav nav-tabs" id="reportTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="delivery-tab" data-bs-toggle="tab" 
+                      data-bs-target="#delivery" type="button" role="tab">
+                <i class="fas fa-truck me-2"></i>납품 내역
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="meeting-tab" data-bs-toggle="tab" 
+                      data-bs-target="#meeting" type="button" role="tab">
+                <i class="fas fa-handshake me-2"></i>미팅 기록
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="timeline-tab" data-bs-toggle="tab" 
+                      data-bs-target="#timeline" type="button" role="tab">
+                <i class="fas fa-history me-2"></i>전체 타임라인
+              </button>
+            </li>
+          </ul>
+          
+          <div class="tab-content mt-3" id="reportTabsContent">
+            <!-- 납품 내역 탭 -->
+            <div class="tab-pane fade show active" id="delivery" role="tabpanel">
+              <div class="card">
+                <div class="card-body">
+                  {% if delivery_histories %}
+                  <div class="table-responsive">
+                    <table class="table table-hover">
+                      <thead class="table-light">
+                        <tr>
+                          <th>납품일</th>
+                          <th>품목</th>
+                          <th class="text-end">금액</th>
+                          <th class="text-center">세금계산서</th>
+                          <th>내용</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for history in delivery_histories %}
+                        <tr>
+                          <td>
+                            {% if history.delivery_date %}
+                              {{ history.delivery_date|date:"Y-m-d" }}
+                            {% else %}
+                              <span class="text-muted">미정</span>
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% if history.delivery_items %}
+                              {{ history.delivery_items|truncatechars:30 }}
+                            {% else %}
+                              <span class="text-muted">-</span>
+                            {% endif %}
+                          </td>
+                          <td class="text-end">
+                            {% if history.delivery_amount %}
+                              <strong class="text-success">
+                                {% load currency_filters %}
+                                {{ history.delivery_amount|currency_format }}원
+                              </strong>
+                            {% else %}
+                              <span class="text-muted">-</span>
+                            {% endif %}
+                          </td>
+                          <td class="text-center">
+                            {% if history.tax_invoice_issued %}
+                              <span class="badge bg-primary">발행완료</span>
+                            {% else %}
+                              <span class="badge bg-secondary">미발행</span>
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% if history.content %}
+                              {{ history.content|truncatechars:50 }}
+                            {% else %}
+                              <span class="text-muted">-</span>
+                            {% endif %}
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% else %}
+                  <div class="text-center text-muted py-4">
+                    <i class="fas fa-truck fa-2x mb-3"></i>
+                    <p>납품 기록이 없습니다.</p>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            
+            <!-- 미팅 기록 탭 -->
+            <div class="tab-pane fade" id="meeting" role="tabpanel">
+              <div class="card">
+                <div class="card-body">
+                  {% if meeting_histories %}
+                  <div class="table-responsive">
+                    <table class="table table-hover">
+                      <thead class="table-light">
+                        <tr>
+                          <th>미팅일</th>
+                          <th>내용</th>
+                          <th>등록일</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for history in meeting_histories %}
+                        <tr>
+                          <td>
+                            {% if history.meeting_date %}
+                              {{ history.meeting_date|date:"Y-m-d" }}
+                            {% else %}
+                              <span class="text-muted">미정</span>
+                            {% endif %}
+                          </td>
+                          <td>
+                            {% if history.content %}
+                              {{ history.content|truncatechars:100 }}
+                            {% else %}
+                              <span class="text-muted">내용 없음</span>
+                            {% endif %}
+                          </td>
+                          <td>
+                            <small class="text-muted">{{ history.created_at|date:"Y-m-d H:i" }}</small>
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% else %}
+                  <div class="text-center text-muted py-4">
+                    <i class="fas fa-handshake fa-2x mb-3"></i>
+                    <p>미팅 기록이 없습니다.</p>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            
+            <!-- 전체 타임라인 탭 -->
+            <div class="tab-pane fade" id="timeline" role="tabpanel">
+              <div class="card">
+                <div class="card-body">
+                  {% if histories %}
+                  <div class="timeline">
+                    {% for history in histories %}
+                    <div class="timeline-item">
+                      <div class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}">
+                        <i class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"></i>
+                      </div>
+                      <div class="timeline-content">
+                        <div class="card">
+                          <div class="card-body">
+                            <h6 class="card-title">
+                              {{ history.get_action_type_display }}
+                              <small class="text-muted ms-2">{{ history.created_at|date:"Y-m-d H:i" }}</small>
+                            </h6>
+                            {% if history.content %}
+                            <p class="card-text">{{ history.content|linebreaks }}</p>
+                            {% endif %}
+                            
+                            <!-- 납품 정보 -->
+                            {% if history.action_type == 'delivery_schedule' %}
+                            <div class="delivery-details">
+                              {% if history.delivery_amount %}
+                              <p class="mb-1">
+                                <strong>금액:</strong> 
+                                {% load currency_filters %}
+                                {{ history.delivery_amount|currency_format }}원
+                              </p>
+                              {% endif %}
+                              {% if history.delivery_items %}
+                              <p class="mb-1">
+                                <strong>품목:</strong> {{ history.delivery_items }}
+                              </p>
+                              {% endif %}
+                              {% if history.delivery_date %}
+                              <p class="mb-1">
+                                <strong>납품일:</strong> {{ history.delivery_date|date:"Y-m-d" }}
+                              </p>
+                              {% endif %}
+                            </div>
+                            {% endif %}
+                            
+                            <!-- 미팅 정보 -->
+                            {% if history.action_type == 'customer_meeting' and history.meeting_date %}
+                            <p class="mb-1">
+                              <strong>미팅일:</strong> {{ history.meeting_date|date:"Y-m-d" }}
+                            </p>
+                            {% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <div class="text-center text-muted py-4">
+                    <i class="fas fa-history fa-2x mb-3"></i>
+                    <p>활동 기록이 없습니다.</p>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Chart.js 설정
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ chart_data.labels|safe }},
+            datasets: [
+                {
+                    label: '미팅 횟수',
+                    data: {{ chart_data.meetings|safe }},
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    yAxisID: 'y'
+                },
+                {
+                    label: '납품 건수',
+                    data: {{ chart_data.deliveries|safe }},
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    yAxisID: 'y'
+                },
+                {
+                    label: '납품 금액 (만원)',
+                    data: {{ chart_data.amounts|safe }}.map(amount => amount / 10000),
+                    borderColor: 'rgb(255, 206, 86)',
+                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '월'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: '건수/횟수'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: '금액 (만원)'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: '월별 활동 및 매출 추이'
+                }
+            }
+        }
+    });
+});
+</script>
+
+<style>
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #dee2e6;
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 30px;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: -22px;
+    top: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.timeline-content {
+    margin-left: 15px;
+}
+
+.delivery-details p {
+    font-size: 0.9em;
+    margin-bottom: 0.25rem;
+}
+
+.nav-tabs .nav-link {
+    color: #6c757d;
+}
+
+.nav-tabs .nav-link.active {
+    color: #007bff;
+    font-weight: 500;
+}
+</style>
+
+{% endblock %}

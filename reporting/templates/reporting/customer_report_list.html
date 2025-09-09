@@ -1,0 +1,386 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+{% block content %}
+
+<div class="container-fluid">
+  <div class="row justify-content-center">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title mb-0">
+          <i class="fas fa-chart-bar me-2"></i>{{ page_title }}
+        </h1>
+      </div>
+
+      <!-- 전체 통계 카드 -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title text-primary">
+                <i class="fas fa-users"></i> 총 고객 수
+              </h5>
+              <h3 class="text-primary">{{ total_customers }}명</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title text-success">
+                <i class="fas fa-handshake"></i> 총 미팅 수
+              </h5>
+              <h3 class="text-success">{{ total_meetings_sum }}회</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title text-info">
+                <i class="fas fa-truck"></i> 총 납품 수
+              </h5>
+              <h3 class="text-info">{{ total_deliveries_sum }}건</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title text-warning">
+                <i class="fas fa-won-sign"></i> 총 납품 금액
+              </h5>
+              <h3 class="text-warning">
+                {% load currency_filters %}
+                {{ total_amount_sum|currency_format }}원
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 검색 및 필터 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>검색 및 필터
+              </h6>
+              <form method="GET" action="{% url 'reporting:customer_report' %}">
+                <div class="row g-3">
+                  <!-- 검색어 -->
+                  {% if user.userprofile.role in 'admin,manager' %}
+                  <div class="col-md-6">
+                  {% else %}
+                  <div class="col-md-8">
+                  {% endif %}
+                    <label for="search" class="form-label">검색어</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      id="search"
+                      name="search" 
+                      value="{{ search_query|default:'' }}"
+                      placeholder="고객명, 업체명, 책임자..."
+                    >
+                  </div>
+                  
+                  <!-- 담당자 필터 (매니저/어드민만) -->
+                  {% if user.userprofile.role in 'admin,manager' %}
+                  <div class="col-md-2">
+                    <label for="user" class="form-label">담당자</label>
+                    <select class="form-control" id="user" name="user">
+                      <option value="">전체</option>
+                      {% for user_option in users %}
+                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
+                        {{ user_option.username }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  {% endif %}
+                  
+                  <!-- 버튼들 -->
+                  <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <div class="btn-group w-100">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> 검색
+                      </button>
+                      <a href="{% url 'reporting:customer_report' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i> 초기화
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 검색 결과 정보 -->
+                {% if search_query or user_filter %}
+                <div class="mt-3">
+                  <small class="text-muted">
+                    검색 결과: {{ total_customers }}건
+                    {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
+                  </small>
+                </div>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 고객 리포트 테이블 -->
+      {% if followups %}
+      <div class="row">
+        <div class="col-12">
+          <div class="card customer-report-table-card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-table me-2"></i>고객별 활동 요약
+              </h6>
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead class="table-light">
+                    <tr>
+                      <th>고객정보</th>
+                      <th class="text-center">미팅 횟수</th>
+                      <th class="text-center">납품 횟수</th>
+                      <th class="text-end">총 납품 금액</th>
+                      <th class="text-center">최근 접촉일</th>
+                      <th class="text-center">담당자</th>
+                      <th class="text-center">액션</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for followup in followups %}
+                    <tr>
+                      <td>
+                        <div class="customer-info">
+                          <span class="customer-name">
+                            <strong>{{ followup.customer_name|default:"고객명 미정" }}</strong>
+                          </span>
+                          <span class="company-info text-muted ms-2">
+                            {{ followup.company.name }}{% if followup.department %} / {{ followup.department.name }}{% endif %}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <span class="badge bg-primary">{{ followup.total_meetings }}회</span>
+                      </td>
+                      <td class="text-center">
+                        <span class="badge bg-success">{{ followup.total_deliveries }}건</span>
+                      </td>
+                      <td class="text-end">
+                        <strong class="text-warning">
+                          {% if followup.total_amount %}
+                            {% load currency_filters %}
+                            {{ followup.total_amount|currency_format }}원
+                          {% else %}
+                            -
+                          {% endif %}
+                        </strong>
+                      </td>
+                      <td class="text-center">
+                        {% if followup.last_contact %}
+                          <small>{{ followup.last_contact|date:"Y-m-d" }}</small>
+                        {% else %}
+                          <span class="text-muted">-</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-center">
+                        <small class="text-muted">{{ followup.user.username }}</small>
+                      </td>
+                      <td class="text-center">
+                        <div class="btn-group" role="group">
+                          <a href="{% url 'reporting:customer_detail_report' followup.id %}" 
+                             class="btn btn-sm btn-outline-primary" title="상세 리포트">
+                            <i class="fas fa-chart-line"></i>
+                          </a>
+                          <a href="{% url 'reporting:followup_detail' followup.id %}" 
+                             class="btn btn-sm btn-outline-info" title="고객 정보">
+                            <i class="fas fa-user"></i>
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="row">
+        <div class="col-12">
+          <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle me-2"></i>
+            {% if search_query or user_filter %}
+              검색 조건에 맞는 고객이 없습니다.
+            {% else %}
+              등록된 고객이 없습니다.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<style>
+/* 전체 컨테이너 중앙 정렬 */
+.container-fluid {
+  max-width: 1400px; /* 최대 너비 설정 */
+  margin: 0 auto; /* 중앙 정렬 */
+  padding: 0 20px; /* 좌우 여백 */
+}
+
+/* 카드 컨테이너도 중앙 정렬 */
+.row {
+  justify-content: center;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+.badge {
+  font-size: 0.75em;
+}
+
+/* 테이블이 화면에 맞도록 자동 조정 */
+.table {
+  width: 100%;
+  table-layout: auto;
+  margin-bottom: 0;
+  min-width: 100%; /* 카드 너비에 맞게 최소 너비 설정 */
+}
+
+/* 고객 리포트 테이블을 포함하는 카드 전용 스타일 */
+.customer-report-table-card {
+  width: max-content; /* 내용에 맞게 카드 크기 조정 */
+  min-width: 100%;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.customer-report-table-card .card-body {
+  padding: 0; /* 테이블이 카드 경계에 딱 맞도록 패딩 제거 */
+  overflow: visible;
+}
+
+.customer-report-table-card .table-responsive {
+  overflow: visible;
+  margin: 0;
+}
+
+/* 테이블 헤더에 패딩 복원 */
+.customer-report-table-card .card-body h6 {
+  padding: 20px 20px 15px 20px;
+  margin-bottom: 0;
+}
+
+/* 테이블 자체는 카드 내부에서 꽉 차게 */
+.customer-report-table-card .table {
+  margin: 0;
+  border-radius: 0;
+}
+
+/* 테이블 반응형 스크롤 제거 */
+.table-responsive {
+  overflow-x: visible;
+  margin: -1px; /* 테이블이 카드 경계에 딱 맞도록 */
+}
+
+/* 텍스트 오버플로우 처리 - 중요한 열만 적용 */
+.table th,
+.table td {
+  padding: 12px 8px; /* 패딩 조정으로 공간 확보 */
+}
+
+/* 고객정보 열 - 한 줄 표시 */
+.customer-info {
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.customer-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.company-info {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+
+.customer-info span {
+  display: inline-block;
+}
+
+/* 고객정보가 너무 길 경우 말줄임 처리 */
+.customer-info {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 숫자 열들은 더 작게 */
+.table .text-center {
+  white-space: nowrap;
+}
+
+/* 금액 열 */
+.table .text-end {
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+/* 액션 버튼 */
+.btn-group {
+  white-space: nowrap;
+}
+
+/* 통계 카드들도 중앙 정렬 */
+.row.mb-4 {
+  justify-content: center;
+}
+
+/* 검색 섹션도 중앙 정렬 */
+.row.mb-4 .col-12 .card {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* 모바일에서는 스크롤 허용 */
+@media (max-width: 768px) {
+  .container-fluid {
+    max-width: 100%;
+    padding: 0 15px;
+  }
+  
+  .table-responsive {
+    overflow-x: auto;
+  }
+  
+  .table {
+    min-width: 700px;
+  }
+}
+
+/* 큰 화면에서 컨테이너 최적화 */
+@media (min-width: 1200px) {
+  .container-fluid {
+    max-width: 1600px; /* 큰 화면에서 더 넓게 */
+  }
+}
+</style>
+
+{% endblock %}

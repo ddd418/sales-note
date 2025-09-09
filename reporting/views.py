@@ -3923,3 +3923,186 @@ from .file_views import (
     file_download_view, file_delete_view, history_files_api,
     schedule_file_upload, schedule_file_download, schedule_file_delete, schedule_files_api
 ) 
+
+# ============ 고객 리포트 관련 뷰들 ============
+
+@login_required
+def customer_report_view(request):
+    """고객별 활동 요약 리포트 목록"""
+    from django.db.models import Count, Sum, Max, Q
+    from decimal import Decimal
+    
+    user_profile = get_user_profile(request.user)
+    
+    # 권한에 따른 데이터 필터링
+    if user_profile.can_view_all_users():
+        # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
+        accessible_users = get_accessible_users(request.user)
+        followups = FollowUp.objects.filter(user__in=accessible_users)
+    else:
+        # Salesman은 자신의 데이터만 조회
+        followups = FollowUp.objects.filter(user=request.user)
+    
+    # 각 고객별 활동 통계 집계
+    followups_with_stats = followups.annotate(
+        # 미팅 횟수
+        total_meetings=Count('histories', filter=Q(histories__action_type='customer_meeting')),
+        # 납품 횟수
+        total_deliveries=Count('histories', filter=Q(histories__action_type='delivery_schedule')),
+        # 총 납품 금액
+        total_amount=Sum('histories__delivery_amount'),
+        # 최근 접촉일
+        last_contact=Max('histories__created_at')
+    ).select_related('user', 'company', 'department').order_by('-last_contact')
+    
+    # 검색 기능
+    search_query = request.GET.get('search')
+    if search_query:
+        followups_with_stats = followups_with_stats.filter(
+            Q(customer_name__icontains=search_query) |
+            Q(company__name__icontains=search_query) |
+            Q(manager__icontains=search_query)
+        )
+    
+    # 담당자 필터링 (매니저/어드민만)
+    user_filter = request.GET.get('user')
+    users = []
+    selected_user = None
+    
+    if user_profile.can_view_all_users():
+        accessible_users_list = get_accessible_users(request.user)
+        users = accessible_users_list.filter(followup__isnull=False).distinct()
+        
+        if user_filter:
+            try:
+                from django.contrib.auth.models import User
+                candidate_user = User.objects.get(id=user_filter)
+                if candidate_user in accessible_users_list:
+                    selected_user = candidate_user
+                    followups_with_stats = followups_with_stats.filter(user=candidate_user)
+            except (User.DoesNotExist, ValueError):
+                pass
+    
+    # 전체 통계
+    total_customers = followups_with_stats.count()
+    total_amount_sum = followups_with_stats.aggregate(
+        total=Sum('total_amount')
+    )['total'] or Decimal('0')
+    total_meetings_sum = followups_with_stats.aggregate(
+        total=Sum('total_meetings')
+    )['total'] or 0
+    total_deliveries_sum = followups_with_stats.aggregate(
+        total=Sum('total_deliveries')
+    )['total'] or 0
+    
+    context = {
+        'followups': followups_with_stats,
+        'total_customers': total_customers,
+        'total_amount_sum': total_amount_sum,
+        'total_meetings_sum': total_meetings_sum,
+        'total_deliveries_sum': total_deliveries_sum,
+        'search_query': search_query,
+        'user_filter': user_filter,
+        'selected_user': selected_user,
+        'users': users,
+        'page_title': '고객 리포트',
+    }
+    
+    return render(request, 'reporting/customer_report_list.html', context)
+
+@login_required
+def customer_detail_report_view(request, followup_id):
+    """특정 고객의 상세 활동 리포트"""
+    from django.db.models import Count, Sum, Q
+    from datetime import datetime, timedelta
+    import json
+    
+    # 권한 확인 및 팔로우업 조회
+    try:
+        followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, followup.user):
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:customer_report')
+            
+    except FollowUp.DoesNotExist:
+        messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
+        return redirect('reporting:customer_report')
+    
+    # 해당 고객의 모든 히스토리
+    histories = History.objects.filter(followup=followup).select_related(
+        'user', 'schedule'
+    ).order_by('-created_at')
+    
+    # 기본 통계
+    total_meetings = histories.filter(action_type='customer_meeting').count()
+    total_deliveries = histories.filter(action_type='delivery_schedule').count()
+    total_amount = histories.filter(action_type='delivery_schedule').aggregate(
+        total=Sum('delivery_amount')
+    )['total'] or 0
+    
+    # 세금계산서 현황
+    tax_invoices_issued = histories.filter(
+        action_type='delivery_schedule',
+        tax_invoice_issued=True
+    ).count()
+    tax_invoices_pending = histories.filter(
+        action_type='delivery_schedule',
+        tax_invoice_issued=False
+    ).count()
+    
+    # 월별 활동 통계 (최근 12개월)
+    from django.db.models.functions import TruncMonth
+    monthly_stats = histories.filter(
+        created_at__gte=datetime.now() - timedelta(days=365)
+    ).annotate(
+        month=TruncMonth('created_at')
+    ).values('month').annotate(
+        meetings=Count('id', filter=Q(action_type='customer_meeting')),
+        deliveries=Count('id', filter=Q(action_type='delivery_schedule')),
+        amount=Sum('delivery_amount')
+    ).order_by('month')
+    
+    # Chart.js용 데이터 준비
+    chart_labels = []
+    chart_meetings = []
+    chart_deliveries = []
+    chart_amounts = []
+    
+    for stat in monthly_stats:
+        chart_labels.append(stat['month'].strftime('%Y-%m'))
+        chart_meetings.append(stat['meetings'])
+        chart_deliveries.append(stat['deliveries'])
+        chart_amounts.append(float(stat['amount'] or 0))
+    
+    # 납품 내역 상세
+    delivery_histories = histories.filter(
+        action_type='delivery_schedule'
+    ).order_by('-delivery_date', '-created_at')
+    
+    # 미팅 기록
+    meeting_histories = histories.filter(
+        action_type='customer_meeting'
+    ).order_by('-meeting_date', '-created_at')
+    
+    context = {
+        'followup': followup,
+        'histories': histories,
+        'total_meetings': total_meetings,
+        'total_deliveries': total_deliveries,
+        'total_amount': total_amount,
+        'tax_invoices_issued': tax_invoices_issued,
+        'tax_invoices_pending': tax_invoices_pending,
+        'delivery_histories': delivery_histories,
+        'meeting_histories': meeting_histories,
+        'chart_data': {
+            'labels': json.dumps(chart_labels),
+            'meetings': json.dumps(chart_meetings),
+            'deliveries': json.dumps(chart_deliveries),
+            'amounts': json.dumps(chart_amounts),
+        },
+        'page_title': f'{followup.customer_name or "고객명 미정"} 상세 리포트',
+    }
+    
+    return render(request, 'reporting/customer_detail_report.html', context)

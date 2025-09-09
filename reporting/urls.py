@@ -37,6 +37,10 @@ urlpatterns = [
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
+    # 고객 리포트 URL들
+    path('customer-report/', views.customer_report_view, name='customer_report'),
+    path('customer-report/<int:followup_id>/', views.customer_detail_report_view, name='customer_detail_report'),
+    
     # 메모 URL들
     path('memo/create/', views.memo_create_view, name='memo_create'),
     
