@@ -3952,7 +3952,12 @@ def customer_report_view(request):
         # 총 납품 금액
         total_amount=Sum('histories__delivery_amount'),
         # 최근 접촉일
-        last_contact=Max('histories__created_at')
+        last_contact=Max('histories__created_at'),
+        # 미결제건 (세금계산서 미발행)
+        unpaid_count=Count('histories', filter=Q(
+            histories__action_type='delivery_schedule',
+            histories__tax_invoice_issued=False
+        ))
     ).select_related('user', 'company', 'department').order_by('-last_contact')
     
     # 검색 기능
@@ -3994,6 +3999,9 @@ def customer_report_view(request):
     total_deliveries_sum = followups_with_stats.aggregate(
         total=Sum('total_deliveries')
     )['total'] or 0
+    total_unpaid_sum = followups_with_stats.aggregate(
+        total=Sum('unpaid_count')
+    )['total'] or 0
     
     context = {
         'followups': followups_with_stats,
@@ -4001,6 +4009,7 @@ def customer_report_view(request):
         'total_amount_sum': total_amount_sum,
         'total_meetings_sum': total_meetings_sum,
         'total_deliveries_sum': total_deliveries_sum,
+        'total_unpaid_sum': total_unpaid_sum,
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,

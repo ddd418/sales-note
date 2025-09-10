@@ -14,46 +14,56 @@
 
       <!-- 전체 통계 카드 -->
       <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center">
             <div class="card-body">
-              <h5 class="card-title text-primary">
+              <h6 class="card-title text-primary" style="font-size: 0.85rem;">
                 <i class="fas fa-users"></i> 총 고객 수
-              </h5>
+              </h6>
               <h3 class="text-primary">{{ total_customers }}명</h3>
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center">
             <div class="card-body">
-              <h5 class="card-title text-success">
+              <h6 class="card-title text-success" style="font-size: 0.85rem;">
                 <i class="fas fa-handshake"></i> 총 미팅 수
-              </h5>
+              </h6>
               <h3 class="text-success">{{ total_meetings_sum }}회</h3>
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center">
             <div class="card-body">
-              <h5 class="card-title text-info">
+              <h6 class="card-title text-info" style="font-size: 0.85rem;">
                 <i class="fas fa-truck"></i> 총 납품 수
-              </h5>
+              </h6>
               <h3 class="text-info">{{ total_deliveries_sum }}건</h3>
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center">
             <div class="card-body">
-              <h5 class="card-title text-warning">
+              <h6 class="card-title text-warning" style="font-size: 0.85rem;">
                 <i class="fas fa-won-sign"></i> 총 납품 금액
-              </h5>
+              </h6>
               <h3 class="text-warning">
                 {% load currency_filters %}
                 {{ total_amount_sum|currency_format }}원
               </h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2-4">
+          <div class="card text-center">
+            <div class="card-body">
+              <h6 class="card-title text-danger" style="font-size: 0.85rem;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 0.8rem;"></i> 총 미결제건
+              </h6>
+              <h3 class="text-danger">{{ total_unpaid_sum }}건</h3>
             </div>
           </div>
         </div>
@@ -141,15 +151,32 @@
                 <i class="fas fa-table me-2"></i>고객별 활동 요약
               </h6>
               <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-hover" id="customerTable">
                   <thead class="table-light">
                     <tr>
-                      <th>고객정보</th>
-                      <th class="text-center">미팅 횟수</th>
-                      <th class="text-center">납품 횟수</th>
-                      <th class="text-end">총 납품 금액</th>
-                      <th class="text-center">최근 접촉일</th>
-                      <th class="text-center">담당자</th>
+                      <th class="sortable" data-column="0" data-type="text">
+                        고객정보 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-center sortable" data-column="1" data-type="number">
+                        미팅 횟수 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-center sortable" data-column="2" data-type="number">
+                        납품 횟수 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-end sortable" data-column="3" data-type="currency">
+                        총 납품 금액 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-center sortable" data-column="4" data-type="number">
+                        미결제건 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-center sortable" data-column="5" data-type="date">
+                        최근 접촉일 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      {% if user.userprofile.role in 'admin,manager' %}
+                      <th class="text-center sortable" data-column="6" data-type="text">
+                        담당자 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      {% endif %}
                       <th class="text-center">액션</th>
                     </tr>
                   </thead>
@@ -183,15 +210,24 @@
                         </strong>
                       </td>
                       <td class="text-center">
+                        {% if followup.unpaid_count > 0 %}
+                          <span class="badge bg-danger">{{ followup.unpaid_count }}건</span>
+                        {% else %}
+                          <span class="badge bg-success">완납</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-center">
                         {% if followup.last_contact %}
                           <small>{{ followup.last_contact|date:"Y-m-d" }}</small>
                         {% else %}
                           <span class="text-muted">-</span>
                         {% endif %}
                       </td>
+                      {% if user.userprofile.role in 'admin,manager' %}
                       <td class="text-center">
                         <small class="text-muted">{{ followup.user.username }}</small>
                       </td>
+                      {% endif %}
                       <td class="text-center">
                         <div class="btn-group" role="group">
                           <a href="{% url 'reporting:customer_detail_report' followup.id %}" 
@@ -248,8 +284,44 @@
   vertical-align: middle;
 }
 
+/* 5개 카드 레이아웃을 위한 클래스 */
+.col-md-2-4 {
+  flex: 0 0 20%;
+  max-width: 20%;
+}
+
 .badge {
   font-size: 0.75em;
+}
+
+/* 정렬 가능한 헤더 스타일 */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.sortable:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.sort-icon {
+  margin-left: 5px;
+  opacity: 0.5;
+  font-size: 0.8em;
+}
+
+.sortable.asc .sort-icon:before {
+  content: "\f0de"; /* fa-sort-up */
+  opacity: 1;
+  color: #007bff;
+}
+
+.sortable.desc .sort-icon:before {
+  content: "\f0dd"; /* fa-sort-down */
+  opacity: 1;
+  color: #007bff;
 }
 
 /* 테이블이 화면에 맞도록 자동 조정 */
@@ -382,5 +454,81 @@
   }
 }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('customerTable');
+    const headers = table.querySelectorAll('.sortable');
+    const isManager = {% if user.userprofile.role in 'admin,manager' %}true{% else %}false{% endif %};
+    
+    headers.forEach(header => {
+        header.addEventListener('click', function() {
+            const column = parseInt(this.dataset.column);
+            const type = this.dataset.type;
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // 현재 정렬 상태 확인
+            const isAsc = this.classList.contains('asc');
+            
+            // 모든 헤더에서 정렬 클래스 제거
+            headers.forEach(h => h.classList.remove('asc', 'desc'));
+            
+            // 현재 헤더에 정렬 클래스 추가
+            this.classList.add(isAsc ? 'desc' : 'asc');
+            
+            // 행 정렬
+            rows.sort((a, b) => {
+                let aVal = getCellValue(a, column, type);
+                let bVal = getCellValue(b, column, type);
+                
+                if (type === 'number' || type === 'currency') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                } else if (type === 'date') {
+                    aVal = new Date(aVal || '1900-01-01');
+                    bVal = new Date(bVal || '1900-01-01');
+                }
+                
+                if (aVal < bVal) return isAsc ? 1 : -1;
+                if (aVal > bVal) return isAsc ? -1 : 1;
+                return 0;
+            });
+            
+            // 정렬된 행들을 테이블에 다시 추가
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    });
+    
+    function getCellValue(row, column, type) {
+        // 매니저가 아닌 경우 담당자 열이 없으므로 마지막 액션 열 제외하고 접근
+        const cell = row.cells[column];
+        if (!cell) return '';
+        
+        let value = cell.textContent.trim();
+        
+        if (type === 'number') {
+            // 숫자 추출 (예: "5회" -> "5")
+            const match = value.match(/(\d+)/);
+            return match ? match[1] : '0';
+        } else if (type === 'currency') {
+            // 금액에서 숫자만 추출 (예: "1,000,000원" -> "1000000")
+            if (value === '-') return '0';
+            return value.replace(/[^\d]/g, '');
+        } else if (type === 'date') {
+            // 날짜 형식 처리 (예: "2024-01-15")
+            if (value === '-') return '';
+            return value;
+        } else {
+            // 텍스트의 경우 고객명만 추출
+            if (column === 0) {
+                const strongTag = cell.querySelector('strong');
+                return strongTag ? strongTag.textContent.trim() : value;
+            }
+            return value;
+        }
+    }
+});
+</script>
 
 {% endblock %}

@@ -1082,9 +1082,9 @@
         {% if user.is_authenticated and user.userprofile.role == 'manager' %}
         <li>
           <a
-            href="{% url 'reporting:manager_dashboard' %}"
-            class="{% if request.resolver_match.url_name == 'manager_dashboard' %}active{% endif %}"
-            ><i class="fas fa-chart-line me-2"></i>Manager 대시보드</a
+            href="{% url 'reporting:customer_report' %}"
+            class="{% if request.resolver_match.url_name == 'customer_report' or request.resolver_match.url_name == 'customer_detail_report' %}active{% endif %}"
+            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
           >
         </li>
         <li>

@@ -194,7 +194,6 @@
                 </div>
                 <div>
                   <h6 class="mb-0">전체보기</h6>
-                  <small class="text-muted">모든 실무자 통합 현황</small>
                 </div>
               </div>
             </a>
@@ -357,7 +356,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">총 고객수</h6>
+                    <small class="text-white-50 mb-1 d-block">총 고객수</small>
                     <h3 class="mb-0">{{ total_followups }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -381,7 +380,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">예정 일정</h6>
+                    <small class="text-white-50 mb-1 d-block">예정 일정</small>
                     <h3 class="mb-0">{{ pending_schedules }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -405,7 +404,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">활동 현황</h6>
+                    <small class="text-white-50 mb-1 d-block">활동 현황</small>
                     <h3 class="mb-0">{{ total_histories }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -429,7 +428,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">총 납품금액</h6>
+                    <small class="text-white-50 mb-1 d-block">총 납품금액</small>
                     <h3 class="mb-0">
                       {% load currency_filters %}{{ total_delivery_amount|floatformat:0|currency_format }}원
                     </h3>
@@ -458,7 +457,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">서비스 현황</h6>
+                    <small class="text-white-50 mb-1 d-block">서비스 현황</small>
                     <h3 class="mb-0">{{ total_services }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -485,7 +484,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">총 고객수</h6>
+                    <small class="text-white-50 mb-1 d-block">총 고객수</small>
                     <h3 class="mb-0">{{ total_followups }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -507,7 +506,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">예정 일정</h6>
+                    <small class="text-white-50 mb-1 d-block">예정 일정</small>
                     <h3 class="mb-0">{{ pending_schedules }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -529,7 +528,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">활동 현황</h6>
+                    <small class="text-white-50 mb-1 d-block">활동 현황</small>
                     <h3 class="mb-0">{{ total_histories }}</h3>
                   </div>
                   <div class="avatar-sm">
@@ -551,7 +550,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center">
                   <div class="flex-grow-1">
-                    <h6 class="text-white-50 mb-1">총 납품금액</h6>
+                    <small class="text-white-50 mb-1 d-block">총 납품금액</small>
                     <h3 class="mb-0">
                       {% load currency_filters %}{{ total_delivery_amount|floatformat:0|currency_format }}원
                     </h3>
