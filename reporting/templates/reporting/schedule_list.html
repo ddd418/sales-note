@@ -256,24 +256,28 @@
                 <a
                   href="?{% if activity_type_filter %}activity_type={{ activity_type_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
                   class="btn {% if not status_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
                 </a>
                 <a
                   href="?status=scheduled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'scheduled' %}btn-info{% else %}btn-outline-info{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-clock me-1"></i>예정됨 ({{ scheduled_count}})
                 </a>
                 <a
                   href="?status=completed{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'completed' %}btn-success{% else %}btn-outline-success{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-check me-1"></i>완료됨 ({{ completed_count}})
                 </a>
                 <a
                   href="?status=cancelled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'cancelled' %}btn-danger{% else %}btn-outline-danger{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-times me-1"></i>취소됨 ({{ cancelled_count}})
                 </a>
@@ -293,24 +297,28 @@
                 <a
                   href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
                   class="btn {% if not activity_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ activity_total_count }})
                 </a>
                 <a
                   href="?activity_type=customer_meeting{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-handshake me-1"></i>미팅 ({{ meeting_count }})
                 </a>
                 <a
                   href="?activity_type=delivery{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'delivery' %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-truck me-1"></i>납품 ({{ delivery_count }})
                 </a>
                 <a
                   href="?activity_type=service{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'service' %}btn-success{% else %}btn-outline-success{% endif %}"
+                  style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-tools me-1"></i>서비스 ({{ service_count }})
                 </a>
