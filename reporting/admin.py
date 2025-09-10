@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile
+from .models import FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem
 
 # UserProfile 인라인 관리자
 class UserProfileInline(admin.StackedInline):
@@ -127,3 +127,15 @@ class ScheduleFileAdmin(admin.ModelAdmin):
     def file_size_display(self, obj):
         return obj.get_file_size_display()
     file_size_display.short_description = '파일 크기'
+
+# DeliveryItem 모델 관리자 설정
+@admin.register(DeliveryItem)
+class DeliveryItemAdmin(admin.ModelAdmin):
+    list_display = ('schedule', 'item_name', 'quantity', 'unit', 'unit_price', 'total_price', 'created_at')
+    list_filter = ('schedule__activity_type', 'unit', 'created_at')
+    search_fields = ('item_name', 'schedule__followup__customer_name', 'notes')
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('schedule', 'schedule__followup') 

@@ -2483,6 +2483,282 @@
     }
   }
 
+  // 납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)
+  let currentScheduleId = null;
+  let deliveryItemIndex = 0;
+  let deliveryItemsData = [];
+
+  function openDeliveryItemsModal(scheduleId) {
+    currentScheduleId = scheduleId;
+    deliveryItemsData = []; // 초기화
+    
+    // 모달 HTML 생성
+    const modalHtml = `
+      <div class="modal fade" id="deliveryItemsModal" tabindex="-1" aria-labelledby="deliveryItemsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+          <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+              <h5 class="modal-title" id="deliveryItemsModalLabel">
+                <i class="fas fa-boxes me-2"></i>납품 품목 관리
+              </h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="alert alert-info mb-0 flex-grow-1 me-3">
+                  <i class="fas fa-info-circle me-2"></i>
+                  품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 부가세 10%가 자동으로 포함된 총액이 계산됩니다.
+                </div>
+                <button type="button" class="btn btn-success" onclick="addCalendarDeliveryItem()">
+                  <i class="fas fa-plus me-1"></i>품목 추가
+                </button>
+              </div>
+              
+              <div id="calendar-delivery-items-container">
+                <!-- 동적으로 생성되는 품목들 -->
+              </div>
+              
+              <!-- 총액 표시 -->
+              <div class="row mt-4">
+                <div class="col-12">
+                  <div class="card bg-light">
+                    <div class="card-body">
+                      <div class="row">
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span>소계:</span>
+                            <span id="calendar-subtotal-amount" class="fw-bold">0원</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span>부가세 (10%):</span>
+                            <span id="calendar-tax-amount" class="fw-bold">0원</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span class="fs-5">총액:</span>
+                            <span id="calendar-total-amount" class="fw-bold text-primary fs-5">0원</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                <i class="fas fa-times me-1"></i>취소
+              </button>
+              <button type="button" class="btn btn-primary" onclick="saveCalendarDeliveryItems()">
+                <i class="fas fa-save me-1"></i>적용
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 기존 모달 제거
+    const existingModal = document.getElementById('deliveryItemsModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    // 새 모달 추가
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    modal.show();
+
+    // 기본 품목 하나 추가
+    addCalendarDeliveryItem();
+  }
+
+  function addCalendarDeliveryItem(itemData = {}) {
+    const container = document.getElementById('calendar-delivery-items-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
+    newItem.innerHTML = `
+      <div class="col-md-4">
+        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+        <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
+        <input type="number" class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" placeholder="수량" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">단가 (부가세 별도)</label>
+        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-bold">금액 (부가세 포함)</label>
+        <div class="form-control-plaintext">
+          <span class="item-total fw-bold text-primary">0원</span>
+        </div>
+      </div>
+      <div class="col-md-1 d-flex align-items-end">
+        <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeCalendarDeliveryItem(this)" title="삭제">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    `;
+    
+    container.appendChild(newItem);
+    deliveryItemIndex++;
+    
+    // 이벤트 리스너 추가
+    const quantityInput = newItem.querySelector('.quantity-input');
+    const unitPriceInput = newItem.querySelector('.unit-price-input');
+    
+    quantityInput.addEventListener('input', calculateCalendarItemTotal);
+    unitPriceInput.addEventListener('input', calculateCalendarItemTotal);
+    
+    // 초기 계산
+    if (itemData.quantity && itemData.unit_price) {
+      calculateCalendarItemTotal({ target: quantityInput });
+    }
+    
+    // 애니메이션 효과
+    newItem.style.opacity = '0';
+    newItem.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+      newItem.style.transition = 'all 0.3s ease';
+      newItem.style.opacity = '1';
+      newItem.style.transform = 'translateY(0)';
+    }, 10);
+  }
+
+  function removeCalendarDeliveryItem(button) {
+    if (document.querySelectorAll('#calendar-delivery-items-container .delivery-item').length <= 1) {
+      alert('최소 하나의 품목은 있어야 합니다.');
+      return;
+    }
+    
+    const item = button.closest('.delivery-item');
+    item.style.transition = 'all 0.3s ease';
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+      item.remove();
+      calculateCalendarTotal();
+    }, 300);
+  }
+
+  function calculateCalendarItemTotal(event) {
+    const item = event.target.closest('.delivery-item');
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    // 부가세 포함 계산: (단가 * 수량) * 1.1
+    const subtotal = quantity * unitPrice;
+    const total = subtotal * 1.1;
+    
+    item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+    calculateCalendarTotal();
+  }
+
+  function calculateCalendarTotal() {
+    const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
+    let subtotal = 0;
+    
+    items.forEach(item => {
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      subtotal += quantity * unitPrice;
+    });
+    
+    const tax = subtotal * 0.1;
+    const total = subtotal + tax;
+    
+    // 화면 업데이트
+    document.getElementById('calendar-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+    document.getElementById('calendar-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+    document.getElementById('calendar-total-amount').textContent = Math.round(total).toLocaleString() + '원';
+  }
+
+  function saveCalendarDeliveryItems() {
+    const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
+    deliveryItemsData = [];
+    let itemsText = [];
+    let totalAmount = 0;
+    
+    // 기존 숨겨진 입력 필드들 제거
+    const form = document.querySelector(`form#inlineHistoryForm-${currentScheduleId}`);
+    if (form) {
+      const existingHiddenFields = form.querySelectorAll('input[name^="delivery_items["]');
+      existingHiddenFields.forEach(field => field.remove());
+    }
+    
+    items.forEach((item, index) => {
+      const itemName = item.querySelector('.item-name').value.trim();
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      
+      if (itemName && quantity > 0) {
+        const subtotal = quantity * unitPrice;
+        const total = subtotal * 1.1;
+        
+        deliveryItemsData.push({
+          item_name: itemName,
+          quantity: quantity,
+          unit_price: unitPrice,
+          total_price: total
+        });
+        
+        totalAmount += total;
+        itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        
+        // 서버로 전송될 숨겨진 필드들 생성 (기존 뷰와 호환)
+        if (form) {
+          // 품목명
+          const nameInput = document.createElement('input');
+          nameInput.type = 'hidden';
+          nameInput.name = `delivery_items[${index}][name]`;
+          nameInput.value = itemName;
+          form.appendChild(nameInput);
+          
+          // 수량
+          const quantityInput = document.createElement('input');
+          quantityInput.type = 'hidden';
+          quantityInput.name = `delivery_items[${index}][quantity]`;
+          quantityInput.value = quantity;
+          form.appendChild(quantityInput);
+          
+          // 단가
+          const unitPriceInput = document.createElement('input');
+          unitPriceInput.type = 'hidden';
+          unitPriceInput.name = `delivery_items[${index}][unit_price]`;
+          unitPriceInput.value = unitPrice;
+          form.appendChild(unitPriceInput);
+        }
+      }
+    });
+    
+    // 원래 폼에 데이터 적용
+    const deliveryItemsField = document.querySelector(`form#inlineHistoryForm-${currentScheduleId} textarea[name="delivery_items"]`);
+    const deliveryAmountField = document.querySelector(`form#inlineHistoryForm-${currentScheduleId} input[name="delivery_amount"]`);
+    
+    if (deliveryItemsField) {
+      deliveryItemsField.value = itemsText.join('\\n');
+    }
+    
+    if (deliveryAmountField) {
+      deliveryAmountField.value = Math.round(totalAmount);
+    }
+    
+    // 모달 닫기
+    const modal = bootstrap.Modal.getInstance(document.getElementById('deliveryItemsModal'));
+    modal.hide();
+    
+    showMessage('납품 품목이 적용되었습니다.', 'success');
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     // 서버에서 일정 데이터 로드
     loadSchedules();
@@ -2910,7 +3186,9 @@
     function handleError(error) {
       console.error("Error:", error);
       ToastManager.error("일정 데이터를 불러오는 중 오류가 발생했습니다.");
-    }    // 일정 상세 모달 표시
+    }
+
+    // 일정 상세 모달 표시
     function showScheduleModal(schedule) {
       // 모바일에서는 액션 선택 다이얼로그 표시
       const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
@@ -3091,12 +3369,18 @@
                             
                             <!-- 납품 일정용 필드들 -->
                             <div class="col-6 activity-field delivery-fields" style="display: none;">
-                              <label class="form-label">납품 금액</label>
-                              <input type="number" class="form-control" name="delivery_amount" placeholder="0">
+                              <label class="form-label">납품 금액 (부가세 포함)</label>
+                              <input type="number" class="form-control" name="delivery_amount" placeholder="0" readonly>
+                              <small class="text-muted">납품 품목에서 자동 계산됩니다</small>
                             </div>
                             <div class="col-6 activity-field delivery-fields" style="display: none;">
                               <label class="form-label">납품 품목</label>
-                              <textarea class="form-control" name="delivery_items" rows="2" placeholder="납품 품목을 입력하세요"></textarea>
+                              <div class="d-flex gap-2">
+                                <textarea class="form-control" name="delivery_items" rows="2" placeholder="품목 관리 버튼을 클릭하세요" readonly></textarea>
+                                <button type="button" class="btn btn-outline-primary" onclick="openDeliveryItemsModal(${schedule.id})" title="납품 품목 관리">
+                                  <i class="fas fa-boxes"></i>
+                                </button>
+                              </div>
                             </div>
                             <div class="col-6 activity-field delivery-fields" style="display: none;">
                               <label class="form-label">납품 날짜</label>
@@ -3519,4 +3803,7 @@
 
   });
 </script>
+
+<!-- 납품 품목 관리 모달은 JavaScript에서 동적으로 생성됩니다 -->
+
 {% endblock %}

@@ -22,6 +22,7 @@ urlpatterns = [
     path('schedules/<int:pk>/', views.schedule_detail_view, name='schedule_detail'),
     path('schedules/create/', views.schedule_create_view, name='schedule_create'),
     path('schedules/<int:pk>/edit/', views.schedule_edit_view, name='schedule_edit'),
+    path('schedules/<int:pk>/update-delivery-items/', views.schedule_update_delivery_items, name='schedule_update_delivery_items'),
     path('schedules/<int:pk>/move/', views.schedule_move_api, name='schedule_move_api'),
     path('schedules/<int:schedule_id>/status/', views.schedule_status_update_api, name='schedule_status_update'),
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),

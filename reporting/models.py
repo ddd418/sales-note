@@ -262,3 +262,31 @@ class ScheduleFile(models.Model):
         verbose_name = "일정 첨부파일"
         verbose_name_plural = "일정 첨부파일 목록"
         ordering = ['-uploaded_at']
+
+# 납품 품목 (DeliveryItem) 모델
+class DeliveryItem(models.Model):
+    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, related_name='delivery_items_set', verbose_name="일정", blank=True, null=True)
+    history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='delivery_items_set', verbose_name="히스토리", blank=True, null=True)
+    item_name = models.CharField(max_length=200, verbose_name="품목명")
+    quantity = models.PositiveIntegerField(verbose_name="수량")
+    unit = models.CharField(max_length=50, default="개", verbose_name="단위")
+    unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="단가")
+    total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
+    notes = models.TextField(blank=True, null=True, verbose_name="비고")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def save(self, *args, **kwargs):
+        # 총액 자동 계산 (부가세 10% 포함)
+        if self.unit_price and self.quantity:
+            subtotal = self.unit_price * self.quantity
+            self.total_price = subtotal * 1.1  # 부가세 10% 추가
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.item_name} ({self.quantity}{self.unit})"
+
+    class Meta:
+        verbose_name = "납품 품목"
+        verbose_name_plural = "납품 품목 목록"
+        ordering = ['created_at']

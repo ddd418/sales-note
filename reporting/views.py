@@ -17,6 +17,72 @@ from django.conf import settings
 import os
 import mimetypes
 
+# 납품 품목 처리 함수
+def save_delivery_items(request, instance_obj):
+    """납품 품목 데이터를 저장하는 함수 (스케줄 또는 히스토리)"""
+    from .models import DeliveryItem
+    
+    # 인스턴스 타입 확인
+    from .models import Schedule, History
+    is_schedule = isinstance(instance_obj, Schedule)
+    is_history = isinstance(instance_obj, History)
+    
+    if not (is_schedule or is_history):
+        return
+    
+    # 기존 품목들 삭제 (수정 시)
+    if is_schedule:
+        instance_obj.delivery_items_set.all().delete()
+    else:  # is_history
+        instance_obj.delivery_items_set.all().delete()
+    
+    # 새로운 형태의 POST 데이터 처리 (delivery_items[0][name] 형태)
+    delivery_items_data = {}
+    for key, value in request.POST.items():
+        if key.startswith('delivery_items[') and '][' in key:
+            # delivery_items[0][name] -> index=0, field=name
+            try:
+                start = key.find('[') + 1
+                end = key.find(']')
+                index = int(key[start:end])
+                
+                field_start = key.rfind('[') + 1
+                field_end = key.rfind(']')
+                field = key[field_start:field_end]
+                
+                if index not in delivery_items_data:
+                    delivery_items_data[index] = {}
+                delivery_items_data[index][field] = value
+            except (ValueError, IndexError):
+                continue
+    
+    # 납품 품목 저장
+    for index, item_data in delivery_items_data.items():
+        item_name = item_data.get('name', '').strip()
+        quantity = item_data.get('quantity', '').strip()
+        unit_price = item_data.get('unit_price', '').strip()
+        
+        if item_name and quantity:
+            try:
+                delivery_item = DeliveryItem(
+                    item_name=item_name,
+                    quantity=int(quantity),
+                    unit='개',  # 기본값
+                )
+                
+                # 스케줄 또는 히스토리 연결
+                if is_schedule:
+                    delivery_item.schedule = instance_obj
+                else:
+                    delivery_item.history = instance_obj
+                
+                if unit_price:
+                    delivery_item.unit_price = float(unit_price)
+                
+                delivery_item.save()
+            except (ValueError, TypeError):
+                continue  # 잘못된 데이터는 무시
+
 # 권한 체크 데코레이터
 def role_required(allowed_roles):
     """특정 역할을 가진 사용자만 접근할 수 있도록 하는 데코레이터"""
@@ -1009,6 +1075,7 @@ def schedule_detail_view(request, pk):
     context = {
         'schedule': schedule,
         'related_histories': related_histories,
+        'delivery_items': schedule.delivery_items_set.all(),
         'from_page': from_page,
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }
@@ -1188,6 +1255,29 @@ def schedule_delete_view(request, pk):
         # 일반 요청인 경우 에러 메시지와 함께 리다이렉트
         messages.error(request, f'일정 삭제 중 오류가 발생했습니다: {error_msg}')
         return redirect('reporting:schedule_list')
+
+@login_required
+def schedule_update_delivery_items(request, pk):
+    """일정의 납품 품목 업데이트"""
+    schedule = get_object_or_404(Schedule, pk=pk)
+    
+    # 권한 체크: 수정 권한이 있는 경우만 수정 가능
+    if not can_modify_user_data(request.user, schedule.user):
+        messages.error(request, '수정 권한이 없습니다.')
+        return redirect('reporting:schedule_detail', pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            # 납품 품목 저장
+            save_delivery_items(request, schedule)
+            messages.success(request, '납품 품목이 성공적으로 업데이트되었습니다.')
+        except Exception as e:
+            messages.error(request, f'납품 품목 업데이트 중 오류가 발생했습니다: {str(e)}')
+        
+        return redirect('reporting:schedule_detail', pk=pk)
+    
+    # GET 요청은 허용하지 않음
+    return redirect('reporting:schedule_detail', pk=pk)
 
 @login_required
 def schedule_calendar_view(request):
@@ -1494,6 +1584,9 @@ def history_create_view(request):
             history.user = request.user
             history.save()
             
+            # 납품 품목 저장
+            save_delivery_items(request, history)
+            
             # 파일 업로드 처리
             uploaded_files = request.FILES.getlist('files')
             if uploaded_files:
@@ -1538,6 +1631,9 @@ def history_edit_view(request, pk):
         if form.is_valid():
             form.save()
             
+            # 납품 품목 저장
+            save_delivery_items(request, history)
+            
             # 새로운 파일 업로드 처리
             uploaded_files = request.FILES.getlist('files')
             if uploaded_files:
@@ -1564,6 +1660,7 @@ def history_edit_view(request, pk):
     context = {
         'form': form,
         'history': history,
+        'existing_delivery_items': history.delivery_items_set.all(),
         'page_title': f'활동 수정 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_form.html', context)

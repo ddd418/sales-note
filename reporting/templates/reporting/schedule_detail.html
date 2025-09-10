@@ -1,4 +1,6 @@
-{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+{% extends "reporting/base.html" %}
+{% load currency_filters %}
+{% block title %}{{ page_title }} - 영업
 보고 시스템{% endblock %} {% block content %}
 <div class="container">
   <div class="row justify-content-center">
@@ -163,6 +165,165 @@
                   <i class="fas fa-calendar-edit me-1"></i>
                   {{ schedule.updated_at|date:"Y년 m월 d일 H:i" }}
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 납품 품목 섹션 -->
+          <div class="row mt-4">
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="mb-0 text-warning">
+                  <i class="fas fa-boxes me-2"></i>납품 품목
+                </h3>
+                {% if user.userprofile.role != 'manager' %}
+                <button type="button" class="btn btn-outline-primary btn-sm" id="edit-delivery-items">
+                  <i class="fas fa-edit me-1"></i>품목 수정
+                </button>
+                {% endif %}
+              </div>
+
+              <!-- 기존 납품 품목 표시 -->
+              <div id="delivery-items-display">
+                {% if delivery_items %}
+                <div class="table-responsive">
+                  <table class="table table-striped table-hover">
+                    <thead class="table-light">
+                      <tr>
+                        <th scope="col" style="font-size: 0.85rem;">
+                          <i class="fas fa-box me-1"></i>품목명
+                        </th>
+                        <th scope="col" class="text-center" style="font-size: 0.85rem;">
+                          <i class="fas fa-sort-numeric-up me-1"></i>수량
+                        </th>
+                        <th scope="col" class="text-end" style="font-size: 0.85rem;">
+                          <i class="fas fa-won-sign me-1"></i>단가
+                        </th>
+                        <th scope="col" class="text-end" style="font-size: 0.85rem;">
+                          <i class="fas fa-calculator me-1"></i>금액
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for item in delivery_items %}
+                      <tr>
+                        <td style="font-size: 0.85rem;">
+                          <strong>{{ item.item_name }}</strong>
+                        </td>
+                        <td class="text-center" style="font-size: 0.85rem;">
+                          {{ item.quantity|floatformat:0 }}{{ item.unit }}
+                        </td>
+                        <td class="text-end" style="font-size: 0.85rem;">
+                          {% if item.unit_price %}
+                            {{ item.unit_price|currency_format }}원
+                          {% else %}
+                            <span class="text-muted">-</span>
+                          {% endif %}
+                        </td>
+                        <td class="text-end" style="font-size: 0.85rem;">
+                          {% if item.unit_price %}
+                            <strong class="text-primary">{{ item.total_price|currency_format }}원</strong>
+                          {% else %}
+                            <span class="text-muted">-</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                      <tr>
+                        <th colspan="3" class="text-end" style="font-size: 0.9rem;">
+                          <i class="fas fa-receipt me-1"></i>총 금액:
+                        </th>
+                        <th class="text-end" style="font-size: 0.9rem;">
+                          {% with total=delivery_items|sum_total_price %}
+                            {% if total > 0 %}
+                              <strong class="text-success fs-5">{{ total|currency_format }}원</strong>
+                            {% else %}
+                              <span class="text-muted">-</span>
+                            {% endif %}
+                          {% endwith %}
+                        </th>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                  <i class="fas fa-info-circle me-2"></i>
+                  등록된 납품 품목이 없습니다.
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- 납품 품목 편집 모달 -->
+          <div class="modal fade" id="deliveryItemsModal" tabindex="-1" aria-labelledby="deliveryItemsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+              <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                  <h5 class="modal-title" id="deliveryItemsModalLabel">
+                    <i class="fas fa-boxes me-2"></i>납품 품목 관리
+                  </h5>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="delivery-items-form" method="post" action="{% url 'reporting:schedule_update_delivery_items' schedule.pk %}">
+                  {% csrf_token %}
+                  <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                      <div class="alert alert-info mb-0 flex-grow-1 me-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 부가세 10%가 자동으로 포함된 총액이 계산됩니다.
+                      </div>
+                      <button type="button" class="btn btn-success" id="add-delivery-item">
+                        <i class="fas fa-plus me-1"></i>품목 추가
+                      </button>
+                    </div>
+                    
+                    <div id="delivery-items-container">
+                      <!-- 동적으로 생성되는 품목들 -->
+                    </div>
+                    
+                    <!-- 총액 표시 -->
+                    <div class="row mt-4">
+                      <div class="col-12">
+                        <div class="card bg-light">
+                          <div class="card-body">
+                            <div class="row">
+                              <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                  <span>소계:</span>
+                                  <span id="subtotal-amount" class="fw-bold">0원</span>
+                                </div>
+                              </div>
+                              <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                  <span>부가세 (10%):</span>
+                                  <span id="tax-amount" class="fw-bold">0원</span>
+                                </div>
+                              </div>
+                              <div class="col-md-4">
+                                <div class="d-flex justify-content-between">
+                                  <span class="fs-5">총액:</span>
+                                  <span id="total-amount" class="fw-bold text-primary fs-5">0원</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                      <i class="fas fa-times me-1"></i>취소
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                      <i class="fas fa-save me-1"></i>저장
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
@@ -380,6 +541,159 @@ function showSuccessMessage(message) {
             alertDiv.remove();
         }
     }, 3000);
+}
+
+// 납품 품목 편집 기능
+let deliveryItemIndex = 0;
+
+document.addEventListener('DOMContentLoaded', function() {
+    const editButton = document.getElementById('edit-delivery-items');
+    const addItemButton = document.getElementById('add-delivery-item');
+    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+
+    if (editButton) {
+        editButton.addEventListener('click', function() {
+            loadExistingItems();
+            modal.show();
+        });
+    }
+
+    if (addItemButton) {
+        addItemButton.addEventListener('click', function() {
+            addDeliveryItem();
+        });
+    }
+});
+
+function loadExistingItems() {
+    const container = document.getElementById('delivery-items-container');
+    container.innerHTML = '';
+    deliveryItemIndex = 0;
+    
+    // 기존 품목들 로드
+    {% if delivery_items %}
+        {% for item in delivery_items %}
+            addDeliveryItem({
+                item_name: '{{ item.item_name|escapejs }}',
+                quantity: {{ item.quantity }},
+                unit_price: {{ item.unit_price|default_if_none:"0" }}
+            });
+        {% endfor %}
+    {% else %}
+        // 기본 품목 하나 추가
+        addDeliveryItem();
+    {% endif %}
+    
+    calculateTotal();
+}
+
+function addDeliveryItem(itemData = {}) {
+    const container = document.getElementById('delivery-items-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
+    newItem.innerHTML = `
+        <div class="col-md-4">
+            <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+            <input type="text" name="delivery_items[${deliveryItemIndex}][name]" class="form-control" 
+                   value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
+            <input type="number" name="delivery_items[${deliveryItemIndex}][quantity]" 
+                   class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" 
+                   placeholder="수량" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-bold">단가 (부가세 별도)</label>
+            <input type="number" name="delivery_items[${deliveryItemIndex}][unit_price]" 
+                   class="form-control unit-price-input" step="0.01" min="0" 
+                   value="${itemData.unit_price || ''}" placeholder="0">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">금액 (부가세 포함)</label>
+            <div class="form-control-plaintext">
+                <span class="item-total fw-bold text-primary">0원</span>
+            </div>
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+            <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeDeliveryItem(this)" title="삭제">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+    
+    container.appendChild(newItem);
+    deliveryItemIndex++;
+    
+    // 이벤트 리스너 추가
+    const quantityInput = newItem.querySelector('.quantity-input');
+    const unitPriceInput = newItem.querySelector('.unit-price-input');
+    
+    quantityInput.addEventListener('input', calculateItemTotal);
+    unitPriceInput.addEventListener('input', calculateItemTotal);
+    
+    // 초기 계산
+    if (itemData.quantity && itemData.unit_price) {
+        calculateItemTotal({ target: quantityInput });
+    }
+    
+    // 애니메이션 효과
+    newItem.style.opacity = '0';
+    newItem.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+        newItem.style.transition = 'all 0.3s ease';
+        newItem.style.opacity = '1';
+        newItem.style.transform = 'translateY(0)';
+    }, 10);
+}
+
+function removeDeliveryItem(button) {
+    if (document.querySelectorAll('.delivery-item').length <= 1) {
+        alert('최소 하나의 품목은 있어야 합니다.');
+        return;
+    }
+    
+    const item = button.closest('.delivery-item');
+    item.style.transition = 'all 0.3s ease';
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+        item.remove();
+        calculateTotal();
+    }, 300);
+}
+
+function calculateItemTotal(event) {
+    const item = event.target.closest('.delivery-item');
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    // 부가세 포함 계산: (단가 * 수량) * 1.1
+    const subtotal = quantity * unitPrice;
+    const total = subtotal * 1.1;
+    
+    item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+    calculateTotal();
+}
+
+function calculateTotal() {
+    const items = document.querySelectorAll('.delivery-item');
+    let subtotal = 0;
+    
+    items.forEach(item => {
+        const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+        const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+        subtotal += quantity * unitPrice;
+    });
+    
+    const tax = subtotal * 0.1;
+    const total = subtotal + tax;
+    
+    // 화면 업데이트
+    document.getElementById('subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+    document.getElementById('tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+    document.getElementById('total-amount').textContent = Math.round(total).toLocaleString() + '원';
 }
 </script>
 

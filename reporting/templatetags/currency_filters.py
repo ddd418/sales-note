@@ -31,3 +31,18 @@ def status_badge_class(status):
         return 'primary'
     else:
         return 'secondary'
+
+@register.filter
+def sum_total_price(delivery_items):
+    """납품 품목들의 총 금액 계산"""
+    if not delivery_items:
+        return 0
+    
+    total = 0
+    for item in delivery_items:
+        if hasattr(item, 'total_price') and item.total_price:
+            total += item.total_price
+        elif hasattr(item, 'unit_price') and item.unit_price and hasattr(item, 'quantity'):
+            total += (item.unit_price * item.quantity)
+    
+    return total
