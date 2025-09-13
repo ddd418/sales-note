@@ -446,6 +446,23 @@
       padding: 4px 8px !important;
     }
   }
+
+  /* 납품 품목 표시 스타일 */
+  .delivery-items-display {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.5 !important;
+  }
+
+  .delivery-item-line {
+    margin-bottom: 2px;
+    line-height: 1.4;
+  }
+
+  .delivery-item-line:last-child {
+    margin-bottom: 0;
+  }
 </style>
 
 <!-- CSRF 토큰을 위한 히든 폼 -->
@@ -1307,6 +1324,24 @@
       return formattedText.replace(/\n/g, '<br>');
     }
 
+    // 납품 품목 전용 포맷팅 함수
+    function formatDeliveryItems(text) {
+      if (!text) return '';
+      
+      // 텍스트를 줄 단위로 분할
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0) return '';
+      
+      // 각 줄을 div로 래핑하여 명확한 줄바꿈 보장
+      const formattedLines = lines.map(line => {
+        const escapedLine = escapeHtml(line.trim());
+        return `<div class="delivery-item-line">${escapedLine}</div>`;
+      });
+      
+      return formattedLines.join('');
+    }
+
     fetch(`{% url 'reporting:schedule_histories_api' 999 %}`.replace('999', scheduleId))
       .then(response => response.json())
       .then(data => {
@@ -1389,7 +1424,7 @@
                 historyHtml += `
                   <div class="mb-2">
                     <label class="form-label fw-bold">납품 품목:</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.delivery_items)}</div>
+                    <div class="form-control-plaintext border rounded p-2 bg-light content-display delivery-items-display">${formatDeliveryItems(history.delivery_items)}</div>
                   </div>`;
               }
               
@@ -1924,9 +1959,26 @@
           <label class="form-label fw-bold">납품 금액</label>
           <input type="number" class="form-control" name="delivery_amount" value="${history.delivery_amount || ''}">
         </div>
-        <div class="col-6">
+        <div class="col-12">
           <label class="form-label fw-bold">납품 품목</label>
-          <textarea class="form-control" name="delivery_items" rows="2">${history.delivery_items || ''}</textarea>
+          <!-- 기존 텍스트 입력 방식 숨김 -->
+          <textarea class="form-control" name="delivery_items" id="edit-delivery-items-${history.id}" rows="2" style="display:none;">${history.delivery_items || ''}</textarea>
+          
+          <!-- 납품 품목 모달 관리 방식 -->
+          <div class="card border-warning">
+            <div class="card-body p-2">
+              <div class="row align-items-center">
+                <div class="col-md-8">
+                  <textarea id="edit-delivery-items-display-${history.id}" class="form-control form-control-sm" rows="2" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 관리하세요.">${history.delivery_items || ''}</textarea>
+                </div>
+                <div class="col-md-4">
+                  <button type="button" class="btn btn-warning btn-sm w-100" onclick="openEditDeliveryItemsModal(${history.id})">
+                    <i class="fas fa-boxes me-1"></i>품목 관리
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="col-6">
           <label class="form-label fw-bold">세금계산서</label>
@@ -2574,8 +2626,57 @@
     const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
     modal.show();
 
-    // 기본 품목 하나 추가
-    addCalendarDeliveryItem();
+    // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
+    loadExistingCalendarDeliveryItems() || addCalendarDeliveryItem();
+  }
+
+  function loadExistingCalendarDeliveryItems() {
+    // 현재 일정의 기존 납품 품목 데이터 가져오기
+    // schedules 배열에서 현재 scheduleId에 해당하는 데이터 찾기
+    if (typeof schedules !== 'undefined' && currentScheduleId) {
+      const schedule = schedules.find(s => s.id == currentScheduleId);
+      
+      if (schedule && schedule.delivery_items && schedule.delivery_items.trim()) {
+        const deliveryItemsText = schedule.delivery_items.trim();
+        console.log('기존 납품 품목 데이터:', deliveryItemsText);
+        
+        const lines = deliveryItemsText.split('\n');
+        let hasData = false;
+        
+        lines.forEach(line => {
+          if (line.trim()) {
+            // "품목명: 수량개 (금액원)" 형태 파싱
+            const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+            if (match) {
+              const itemName = match[1].trim();
+              const quantity = parseInt(match[2]);
+              const totalPriceStr = match[3].replace(/,/g, '');
+              const totalPrice = parseInt(totalPriceStr);
+              
+              // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+              const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+              
+              console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+              
+              addCalendarDeliveryItem({
+                item_name: itemName,
+                quantity: quantity,
+                unit_price: unitPrice
+              });
+              hasData = true;
+            }
+          }
+        });
+        
+        if (hasData) {
+          console.log('기존 납품 품목 로드 완료');
+        }
+        return hasData;
+      }
+    }
+    
+    console.log('기존 납품 품목 데이터 없음');
+    return false;
   }
 
   function addCalendarDeliveryItem(itemData = {}) {
@@ -2754,6 +2855,334 @@
     
     // 모달 닫기
     const modal = bootstrap.Modal.getInstance(document.getElementById('deliveryItemsModal'));
+    modal.hide();
+    
+    showMessage('납품 품목이 적용되었습니다.', 'success');
+  }
+
+  // 편집 모드 납품 품목 모달 관련 함수들
+  let currentEditHistoryId = null;
+  let editDeliveryItemIndex = 0;
+  let editDeliveryItemsData = [];
+
+  function openEditDeliveryItemsModal(historyId) {
+    currentEditHistoryId = historyId;
+    editDeliveryItemsData = []; // 초기화
+    
+    // 모달 HTML 생성
+    const modalHtml = `
+      <div class="modal fade" id="editDeliveryItemsModal" tabindex="-1" aria-labelledby="editDeliveryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+          <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+              <h5 class="modal-title" id="editDeliveryModalLabel">
+                <i class="fas fa-boxes me-2"></i>납품 품목 수정
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="alert alert-info mb-0 flex-grow-1 me-3">
+                  <i class="fas fa-info-circle me-2"></i>
+                  품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 부가세 10%가 자동으로 포함된 총액이 계산됩니다.
+                </div>
+                <button type="button" class="btn btn-success" onclick="addEditDeliveryItem()">
+                  <i class="fas fa-plus me-1"></i>품목 추가
+                </button>
+              </div>
+              
+              <div id="edit-delivery-items-container">
+                <!-- 동적으로 생성되는 품목들 -->
+              </div>
+              
+              <!-- 총액 표시 -->
+              <div class="row mt-4">
+                <div class="col-12">
+                  <div class="card bg-light">
+                    <div class="card-body">
+                      <div class="row">
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span>소계:</span>
+                            <span id="edit-subtotal-amount" class="fw-bold">0원</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span>부가세 (10%):</span>
+                            <span id="edit-tax-amount" class="fw-bold">0원</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="d-flex justify-content-between">
+                            <span class="fs-5">총액:</span>
+                            <span id="edit-total-amount" class="fw-bold text-primary fs-5">0원</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                <i class="fas fa-times me-1"></i>취소
+              </button>
+              <button type="button" class="btn btn-primary" onclick="saveEditDeliveryItems()">
+                <i class="fas fa-save me-1"></i>적용
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 기존 모달 제거
+    const existingModal = document.getElementById('editDeliveryItemsModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+
+    // 새 모달 추가
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('editDeliveryItemsModal'));
+    modal.show();
+
+    // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
+    loadExistingEditDeliveryItems() || addEditDeliveryItem();
+  }
+
+  function loadExistingEditDeliveryItems() {
+    // 현재 편집 중인 히스토리의 기존 납품 품목 데이터 가져오기
+    const deliveryItemsField = document.getElementById(`edit-delivery-items-${currentEditHistoryId}`);
+    
+    if (deliveryItemsField && deliveryItemsField.value.trim()) {
+      // 기존 데이터가 있는 경우 파싱해서 로드
+      const deliveryItemsText = deliveryItemsField.value.trim();
+      console.log('기존 납품 품목 데이터:', deliveryItemsText);
+      
+      const lines = deliveryItemsText.split('\n');
+      let hasData = false;
+      
+      lines.forEach(line => {
+        if (line.trim()) {
+          // "품목명: 수량개 (금액원)" 형태 파싱
+          const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+          if (match) {
+            const itemName = match[1].trim();
+            const quantity = parseInt(match[2]);
+            const totalPriceStr = match[3].replace(/,/g, '');
+            const totalPrice = parseInt(totalPriceStr);
+            
+            // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+            const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+            
+            console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+            
+            addEditDeliveryItem({
+              item_name: itemName,
+              quantity: quantity,
+              unit_price: unitPrice
+            });
+            hasData = true;
+          }
+        }
+      });
+      
+      if (hasData) {
+        console.log('기존 납품 품목 로드 완료');
+      }
+      return hasData;
+    }
+    
+    console.log('기존 납품 품목 데이터 없음');
+    return false;
+  }
+
+  function addEditDeliveryItem(itemData = {}) {
+    const container = document.getElementById('edit-delivery-items-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
+    newItem.innerHTML = `
+      <div class="col-md-4">
+        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+        <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
+        <input type="number" class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" placeholder="수량" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-bold">단가 (부가세 별도)</label>
+        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-bold">금액 (부가세 포함)</label>
+        <div class="form-control-plaintext">
+          <span class="item-total fw-bold text-primary">0원</span>
+        </div>
+      </div>
+      <div class="col-md-1 d-flex align-items-end">
+        <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeEditDeliveryItem(this)" title="삭제">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    `;
+    
+    container.appendChild(newItem);
+    editDeliveryItemIndex++;
+    
+    // 이벤트 리스너 추가
+    const quantityInput = newItem.querySelector('.quantity-input');
+    const unitPriceInput = newItem.querySelector('.unit-price-input');
+    
+    quantityInput.addEventListener('input', calculateEditItemTotal);
+    unitPriceInput.addEventListener('input', calculateEditItemTotal);
+    
+    // 초기 계산
+    if (itemData.quantity && itemData.unit_price) {
+      calculateEditItemTotal({ target: quantityInput });
+    }
+    
+    // 애니메이션 효과
+    newItem.style.opacity = '0';
+    newItem.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+      newItem.style.transition = 'all 0.3s ease';
+      newItem.style.opacity = '1';
+      newItem.style.transform = 'translateY(0)';
+    }, 10);
+  }
+
+  function removeEditDeliveryItem(button) {
+    if (document.querySelectorAll('#edit-delivery-items-container .delivery-item').length <= 1) {
+      alert('최소 하나의 품목은 있어야 합니다.');
+      return;
+    }
+    
+    const item = button.closest('.delivery-item');
+    item.style.transition = 'all 0.3s ease';
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+      item.remove();
+      calculateEditTotal();
+    }, 300);
+  }
+
+  function calculateEditItemTotal(event) {
+    const item = event.target.closest('.delivery-item');
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    // 부가세 포함 계산: (단가 * 수량) * 1.1
+    const subtotal = quantity * unitPrice;
+    const total = subtotal * 1.1;
+    
+    item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+    calculateEditTotal();
+  }
+
+  function calculateEditTotal() {
+    const items = document.querySelectorAll('#edit-delivery-items-container .delivery-item');
+    let subtotal = 0;
+    
+    items.forEach(item => {
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      subtotal += quantity * unitPrice;
+    });
+    
+    const tax = subtotal * 0.1;
+    const total = subtotal + tax;
+    
+    // 화면 업데이트
+    document.getElementById('edit-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+    document.getElementById('edit-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+    document.getElementById('edit-total-amount').textContent = Math.round(total).toLocaleString() + '원';
+  }
+
+  function saveEditDeliveryItems() {
+    const items = document.querySelectorAll('#edit-delivery-items-container .delivery-item');
+    editDeliveryItemsData = [];
+    let itemsText = [];
+    let totalAmount = 0;
+    
+    // 기존 숨겨진 입력 필드들 제거
+    const form = document.getElementById(`historyEditForm-${currentEditHistoryId}`);
+    if (form) {
+      const existingHiddenFields = form.querySelectorAll('input[name^="delivery_items["]');
+      existingHiddenFields.forEach(field => field.remove());
+    }
+    
+    items.forEach((item, index) => {
+      const itemName = item.querySelector('.item-name').value.trim();
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      
+      if (itemName && quantity > 0) {
+        const subtotal = quantity * unitPrice;
+        const total = subtotal * 1.1;
+        
+        editDeliveryItemsData.push({
+          item_name: itemName,
+          quantity: quantity,
+          unit_price: unitPrice,
+          total_price: total
+        });
+        
+        totalAmount += total;
+        itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        
+        // 서버로 전송될 숨겨진 필드들 생성 (기존 뷰와 호환)
+        if (form) {
+          // 품목명
+          const nameInput = document.createElement('input');
+          nameInput.type = 'hidden';
+          nameInput.name = `delivery_items[${index}][name]`;
+          nameInput.value = itemName;
+          form.appendChild(nameInput);
+          
+          // 수량
+          const quantityInput = document.createElement('input');
+          quantityInput.type = 'hidden';
+          quantityInput.name = `delivery_items[${index}][quantity]`;
+          quantityInput.value = quantity;
+          form.appendChild(quantityInput);
+          
+          // 단가
+          const unitPriceInput = document.createElement('input');
+          unitPriceInput.type = 'hidden';
+          unitPriceInput.name = `delivery_items[${index}][unit_price]`;
+          unitPriceInput.value = unitPrice;
+          form.appendChild(unitPriceInput);
+        }
+      }
+    });
+    
+    // 폼에 데이터 적용
+    const deliveryItemsField = document.getElementById(`edit-delivery-items-${currentEditHistoryId}`);
+    const deliveryDisplayField = document.getElementById(`edit-delivery-items-display-${currentEditHistoryId}`);
+    const deliveryAmountField = document.querySelector(`#historyEditForm-${currentEditHistoryId} input[name="delivery_amount"]`);
+    
+    if (deliveryItemsField) {
+      deliveryItemsField.value = itemsText.join('\\n');
+    }
+    
+    if (deliveryDisplayField) {
+      deliveryDisplayField.value = itemsText.join('\\n');
+    }
+    
+    if (deliveryAmountField) {
+      deliveryAmountField.value = Math.round(totalAmount);
+    }
+    
+    // 모달 닫기
+    const modal = bootstrap.Modal.getInstance(document.getElementById('editDeliveryItemsModal'));
     modal.hide();
     
     showMessage('납품 품목이 적용되었습니다.', 'success');
@@ -3188,6 +3617,41 @@
       ToastManager.error("일정 데이터를 불러오는 중 오류가 발생했습니다.");
     }
 
+    // 일정 모달용 납품 품목 포맷팅 함수
+    function formatDeliveryItemsForSchedule(text) {
+      if (!text) return '';
+      
+      console.log('Original delivery items:', JSON.stringify(text)); // 디버깅
+      
+      // 모든 종류의 줄바꿈 패턴을 처리
+      let processedText = text
+        .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
+        .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
+        .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
+        .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
+        .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+      
+      console.log('Processed delivery items:', JSON.stringify(processedText)); // 디버깅
+      
+      // 텍스트를 줄 단위로 분할
+      const lines = processedText.split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0) return processedText; // 줄 분할이 안되면 원본 반환
+      
+      console.log('Lines:', lines); // 디버깅
+      
+      // HTML 이스케이프 후 각 줄을 div로 래핑
+      const formattedLines = lines.map((line, index) => {
+        const trimmedLine = line.trim();
+        const div = document.createElement('div');
+        div.textContent = trimmedLine;
+        return div.innerHTML; // 이스케이프된 HTML
+      });
+      
+      // 줄바꿈으로 연결하거나 div로 래핑
+      return formattedLines.join('<br>');
+    }
+
     // 일정 상세 모달 표시
     function showScheduleModal(schedule) {
       // 모바일에서는 액션 선택 다이얼로그 표시
@@ -3301,6 +3765,12 @@
                   <div class="col-12">
                     <label class="form-label fw-bold">메모</label>
                     <p class="mb-0">${schedule.notes}</p>
+                  </div>
+                  ` : ''}
+                  ${schedule.delivery_items ? `
+                  <div class="col-12">
+                    <label class="form-label fw-bold">납품 품목</label>
+                    <div class="form-control-plaintext border rounded p-2 bg-light" style="white-space: pre-line; line-height: 1.5;">${schedule.delivery_items.replace(/\\n/g, '\n')}</div>
                   </div>
                   ` : ''}
                   <div class="col-12">
@@ -3651,7 +4121,7 @@
                 ${history.delivery_items ? `
                   <div class="mb-2">
                     <label class="form-label fw-bold">납품 품목:</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.delivery_items)}</div>
+                    <div class="form-control-plaintext border rounded p-2 bg-light content-display delivery-items-display">${formatDeliveryItems(history.delivery_items)}</div>
                   </div>
                 ` : ''}
                 
@@ -3731,6 +4201,25 @@
         .join('<br>');
       
       return escapedText;
+    }
+
+    // 납품 품목 전용 포맷팅 함수 (히스토리 모달용)
+    function formatDeliveryItems(text) {
+      if (!text) return '';
+      
+      // 텍스트를 줄 단위로 분할
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0) return '';
+      
+      // 각 줄을 div로 래핑하여 명확한 줄바꿈 보장
+      const formattedLines = lines.map(line => {
+        const div = document.createElement('div');
+        div.textContent = line.trim();
+        return `<div class="delivery-item-line">${div.innerHTML}</div>`;
+      });
+      
+      return formattedLines.join('');
     }
 
     // 히스토리 파일 삭제 (모달용) - 전역 함수로 설정

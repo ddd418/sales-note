@@ -1134,6 +1134,10 @@ def schedule_edit_view(request, pk):
         if form.is_valid():
             updated_schedule = form.save()
             
+            # 납품 품목 처리 (활동 유형이 납품인 경우)
+            if updated_schedule.activity_type == 'delivery':
+                save_delivery_items(request, updated_schedule)
+            
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
             return redirect('reporting:schedule_detail', pk=schedule.pk)
         else:

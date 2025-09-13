@@ -97,6 +97,97 @@
             </div>
 
             <!-- 납품 정보 섹션 (납품 일정일 때만 표시) -->
+            <div class="delivery-section" id="delivery-section" style="display: none;">
+              <div class="row">
+                <div class="col-12">
+                  <h3 class="mb-3 text-warning">
+                    <i class="fas fa-truck me-2"></i>납품 정보
+                  </h3>
+                </div>
+              </div>
+
+              <div class="row">
+                <!-- 납품 금액 -->
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    {{ form.delivery_amount.label_tag }}
+                    {{ form.delivery_amount }}
+                    {% if form.delivery_amount.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.delivery_amount.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="form-text">
+                      납품 금액을 입력하세요. 0원도 입력 가능합니다.
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 납품 날짜 -->
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    {{ form.delivery_date.label_tag }}
+                    {{ form.delivery_date }}
+                    {% if form.delivery_date.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.delivery_date.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="form-text">
+                      실제 납품할 날짜를 입력하세요.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 납품 품목 (모달 방식) -->
+              <div class="mb-4">
+                <!-- 기존 텍스트 입력 방식 숨김 -->
+                <div style="display: none;">
+                  <label for="{{ form.delivery_items.id_for_label }}" class="form-label">
+                    <i class="fas fa-boxes me-1"></i>납품 품목
+                  </label>
+                  {{ form.delivery_items }}
+                </div>
+                
+                <!-- 납품 품목 요약 및 관리 버튼 -->
+                <div class="card">
+                  <div class="card-header d-flex justify-content-between align-items-center bg-warning text-dark">
+                    <div>
+                      <h5 class="mb-0">
+                        <i class="fas fa-boxes me-2"></i>납품 품목
+                      </h5>
+                      <small class="schedule-delivery-items-summary text-muted">납품 품목을 추가해주세요.</small>
+                    </div>
+                    <button type="button" class="btn btn-dark btn-sm" onclick="openScheduleDeliveryModal()">
+                      <i class="fas fa-edit me-1"></i>품목 관리
+                    </button>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <div class="col-md-8">
+                        <label class="form-label fw-bold">납품 품목 내역</label>
+                        <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 추가해주세요."></textarea>
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label fw-bold">총 납품 금액 (부가세 포함)</label>
+                        <div class="input-group">
+                          <input type="number" id="schedule-delivery-total-amount" class="form-control" readonly value="0">
+                          <span class="input-group-text">원</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {% if form.delivery_items.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for error in form.delivery_items.errors %}{{ error }}{% endfor %}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+
             <!-- 버튼 섹션 -->
             <div class="d-flex justify-content-end mt-4">
               {% if schedule %}
@@ -510,6 +601,390 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+    
+    // 활동 유형 변경 시 납품 섹션 표시/숨김
+    const activityTypeField = document.querySelector('[name="activity_type"]');
+    if (activityTypeField) {
+        // 초기 상태 설정
+        toggleDeliverySection();
+        
+        // 변경 이벤트 리스너 추가
+        activityTypeField.addEventListener('change', toggleDeliverySection);
+    }
+    
+    function toggleDeliverySection() {
+        const deliverySection = document.getElementById('delivery-section');
+        const selectedValue = activityTypeField.value;
+        
+        if (selectedValue === 'delivery') {
+            deliverySection.style.display = 'block';
+        } else {
+            deliverySection.style.display = 'none';
+        }
+    }
 });
+
+// 납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)
+let scheduleDeliveryItemIndex = 0;
+let scheduleDeliveryItemsData = [];
+
+function openScheduleDeliveryModal() {
+  scheduleDeliveryItemsData = []; // 초기화
+  
+  // 모달 HTML 생성
+  const modalHtml = `
+    <div class="modal fade" id="scheduleDeliveryItemsModal" tabindex="-1" aria-labelledby="scheduleDeliveryModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header bg-warning text-dark">
+            <h5 class="modal-title" id="scheduleDeliveryModalLabel">
+              <i class="fas fa-boxes me-2"></i>납품 품목 관리
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div class="alert alert-info mb-0 flex-grow-1 me-3">
+                <i class="fas fa-info-circle me-2"></i>
+                품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 부가세 10%가 자동으로 포함된 총액이 계산됩니다.
+              </div>
+              <button type="button" class="btn btn-success" onclick="addScheduleDeliveryItem()">
+                <i class="fas fa-plus me-1"></i>품목 추가
+              </button>
+            </div>
+            
+            <div id="schedule-delivery-items-container">
+              <!-- 동적으로 생성되는 품목들 -->
+            </div>
+            
+            <!-- 총액 표시 -->
+            <div class="row mt-4">
+              <div class="col-12">
+                <div class="card bg-light">
+                  <div class="card-body">
+                    <div class="row">
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span>소계:</span>
+                          <span id="schedule-subtotal-amount" class="fw-bold">0원</span>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span>부가세 (10%):</span>
+                          <span id="schedule-tax-amount" class="fw-bold">0원</span>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span class="fs-5">총액:</span>
+                          <span id="schedule-total-amount" class="fw-bold text-primary fs-5">0원</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="fas fa-times me-1"></i>취소
+            </button>
+            <button type="button" class="btn btn-primary" onclick="saveScheduleDeliveryItems()">
+              <i class="fas fa-save me-1"></i>적용
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 기존 모달 제거
+  const existingModal = document.getElementById('scheduleDeliveryItemsModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  // 새 모달 추가
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  // 모달 표시
+  const modal = new bootstrap.Modal(document.getElementById('scheduleDeliveryItemsModal'));
+  modal.show();
+
+  // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
+  loadExistingScheduleDeliveryItems() || addScheduleDeliveryItem();
+}
+
+function loadExistingScheduleDeliveryItems() {
+  const deliveryItemsField = document.querySelector('[name="delivery_items"]');
+  const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
+  
+  if (deliveryItemsField && deliveryItemsField.value.trim()) {
+    // 기존 데이터가 있는 경우 파싱해서 로드
+    const deliveryItemsText = deliveryItemsField.value.trim();
+    console.log('기존 납품 품목 데이터:', deliveryItemsText);
+    
+    const lines = deliveryItemsText.split('\n');
+    let hasData = false;
+    
+    lines.forEach(line => {
+      if (line.trim()) {
+        // "품목명: 수량개 (금액원)" 형태 파싱
+        const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+        if (match) {
+          const itemName = match[1].trim();
+          const quantity = parseInt(match[2]);
+          const totalPriceStr = match[3].replace(/,/g, '');
+          const totalPrice = parseInt(totalPriceStr);
+          
+          // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+          const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+          
+          console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+          
+          addScheduleDeliveryItem({
+            item_name: itemName,
+            quantity: quantity,
+            unit_price: unitPrice
+          });
+          hasData = true;
+        }
+      }
+    });
+    
+    if (hasData) {
+      console.log('기존 납품 품목 로드 완료');
+    }
+    return hasData;
+  }
+  
+  console.log('기존 납품 품목 데이터 없음');
+  return false;
+}
+
+function addScheduleDeliveryItem(itemData = {}) {
+  const container = document.getElementById('schedule-delivery-items-container');
+  const newItem = document.createElement('div');
+  newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
+  newItem.innerHTML = `
+    <div class="col-md-4">
+      <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+      <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
+      <input type="number" class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" placeholder="수량" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-bold">단가 (부가세 별도)</label>
+      <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold">금액 (부가세 포함)</label>
+      <div class="form-control-plaintext">
+        <span class="item-total fw-bold text-primary">0원</span>
+      </div>
+    </div>
+    <div class="col-md-1 d-flex align-items-end">
+      <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeScheduleDeliveryItem(this)" title="삭제">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+  `;
+  
+  container.appendChild(newItem);
+  scheduleDeliveryItemIndex++;
+  
+  // 이벤트 리스너 추가
+  const quantityInput = newItem.querySelector('.quantity-input');
+  const unitPriceInput = newItem.querySelector('.unit-price-input');
+  
+  quantityInput.addEventListener('input', calculateScheduleItemTotal);
+  unitPriceInput.addEventListener('input', calculateScheduleItemTotal);
+  
+  // 초기 계산
+  if (itemData.quantity && itemData.unit_price) {
+    calculateScheduleItemTotal({ target: quantityInput });
+  }
+  
+  // 애니메이션 효과
+  newItem.style.opacity = '0';
+  newItem.style.transform = 'translateY(-10px)';
+  setTimeout(() => {
+    newItem.style.transition = 'all 0.3s ease';
+    newItem.style.opacity = '1';
+    newItem.style.transform = 'translateY(0)';
+  }, 10);
+}
+
+function removeScheduleDeliveryItem(button) {
+  if (document.querySelectorAll('#schedule-delivery-items-container .delivery-item').length <= 1) {
+    alert('최소 하나의 품목은 있어야 합니다.');
+    return;
+  }
+  
+  const item = button.closest('.delivery-item');
+  item.style.transition = 'all 0.3s ease';
+  item.style.opacity = '0';
+  item.style.transform = 'translateY(-10px)';
+  
+  setTimeout(() => {
+    item.remove();
+    calculateScheduleTotal();
+  }, 300);
+}
+
+function calculateScheduleItemTotal(event) {
+  const item = event.target.closest('.delivery-item');
+  const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+  const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+  
+  // 부가세 포함 계산: (단가 * 수량) * 1.1
+  const subtotal = quantity * unitPrice;
+  const total = subtotal * 1.1;
+  
+  item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+  calculateScheduleTotal();
+}
+
+function calculateScheduleTotal() {
+  const items = document.querySelectorAll('#schedule-delivery-items-container .delivery-item');
+  let subtotal = 0;
+  
+  items.forEach(item => {
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    subtotal += quantity * unitPrice;
+  });
+  
+  const tax = subtotal * 0.1;
+  const total = subtotal + tax;
+  
+  // 화면 업데이트
+  document.getElementById('schedule-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+  document.getElementById('schedule-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+  document.getElementById('schedule-total-amount').textContent = Math.round(total).toLocaleString() + '원';
+}
+
+function saveScheduleDeliveryItems() {
+  const items = document.querySelectorAll('#schedule-delivery-items-container .delivery-item');
+  scheduleDeliveryItemsData = [];
+  let itemsText = [];
+  let totalAmount = 0;
+  
+  // 기존 숨겨진 입력 필드들 제거
+  const existingHiddenFields = document.querySelectorAll('input[name^="delivery_items["]');
+  existingHiddenFields.forEach(field => field.remove());
+  
+  items.forEach((item, index) => {
+    const itemName = item.querySelector('.item-name').value.trim();
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    if (itemName && quantity > 0) {
+      const subtotal = quantity * unitPrice;
+      const total = subtotal * 1.1;
+      
+      scheduleDeliveryItemsData.push({
+        item_name: itemName,
+        quantity: quantity,
+        unit_price: unitPrice,
+        total_price: total
+      });
+      
+      totalAmount += total;
+      itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+      
+      // 서버로 전송될 숨겨진 필드들 생성 (기존 뷰와 호환)
+      const form = document.querySelector('form');
+      
+      // 품목명
+      const nameInput = document.createElement('input');
+      nameInput.type = 'hidden';
+      nameInput.name = `delivery_items[${index}][name]`;
+      nameInput.value = itemName;
+      form.appendChild(nameInput);
+      
+      // 수량
+      const quantityInput = document.createElement('input');
+      quantityInput.type = 'hidden';
+      quantityInput.name = `delivery_items[${index}][quantity]`;
+      quantityInput.value = quantity;
+      form.appendChild(quantityInput);
+      
+      // 단가
+      const unitPriceInput = document.createElement('input');
+      unitPriceInput.type = 'hidden';
+      unitPriceInput.name = `delivery_items[${index}][unit_price]`;
+      unitPriceInput.value = unitPrice;
+      form.appendChild(unitPriceInput);
+    }
+  });
+  
+  // 폼에 데이터 적용
+  const deliveryItemsField = document.querySelector('[name="delivery_items"]');
+  const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
+  const deliveryDisplayField = document.getElementById('schedule-delivery-items-display');
+  const deliveryTotalField = document.getElementById('schedule-delivery-total-amount');
+  const deliverySummary = document.querySelector('.schedule-delivery-items-summary');
+  
+  if (deliveryItemsField) {
+    deliveryItemsField.value = itemsText.join('\\n');
+  }
+  
+  if (deliveryAmountField) {
+    deliveryAmountField.value = Math.round(totalAmount);
+  }
+  
+  if (deliveryDisplayField) {
+    deliveryDisplayField.value = itemsText.join('\\n');
+  }
+  
+  if (deliveryTotalField) {
+    deliveryTotalField.value = Math.round(totalAmount);
+  }
+  
+  if (deliverySummary) {
+    deliverySummary.textContent = `총 ${scheduleDeliveryItemsData.length}개 품목, ${Math.round(totalAmount).toLocaleString()}원`;
+  }
+  
+  // 모달 닫기
+  const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleDeliveryItemsModal'));
+  modal.hide();
+  
+  // 성공 메시지
+  alert('납품 품목이 적용되었습니다.');
+}
+
+// 페이지 로드 시 기존 납품 품목 데이터 표시
+document.addEventListener('DOMContentLoaded', function() {
+    const deliveryItemsField = document.querySelector('[name="delivery_items"]');
+    const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
+    const deliveryDisplayField = document.getElementById('schedule-delivery-items-display');
+    const deliveryTotalField = document.getElementById('schedule-delivery-total-amount');
+    const deliverySummary = document.querySelector('.schedule-delivery-items-summary');
+    
+    // 기존 데이터가 있다면 표시
+    if (deliveryItemsField && deliveryItemsField.value.trim()) {
+        const itemsText = deliveryItemsField.value;
+        const totalAmount = deliveryAmountField ? (deliveryAmountField.value || 0) : 0;
+        
+        if (deliveryDisplayField) {
+            deliveryDisplayField.value = itemsText;
+        }
+        
+        if (deliveryTotalField) {
+            deliveryTotalField.value = totalAmount;
+        }
+        
+        if (deliverySummary && itemsText) {
+            const itemCount = itemsText.split('\\n').filter(line => line.trim()).length;
+            deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원`;
+        }
+    }
+});
+
 </script>
 {% endblock %}

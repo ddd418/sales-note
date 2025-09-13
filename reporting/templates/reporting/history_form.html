@@ -387,6 +387,7 @@
       // 기존 파일 목록 로드 (수정 모드에서만)
       {% if form.instance.pk %}
       loadExistingFiles();
+      loadExistingDeliveryItems(); // 기존 납품 품목 표시
       {% endif %}
 
       // 필수 요소가 없으면 함수 실행 중단
@@ -568,6 +569,50 @@
       {% endif %}
   }
 
+  // 기존 납품 품목 로드 및 표시 함수
+  function loadExistingDeliveryItems() {
+    const deliveryItemsField = document.getElementById('{{ form.delivery_items.id_for_label }}');
+    const deliveryItemsDisplay = document.getElementById('delivery-items-display');
+    const deliveryTotalAmount = document.getElementById('delivery-total-amount');
+    
+    if (deliveryItemsField && deliveryItemsField.value.trim()) {
+      const deliveryItemsText = deliveryItemsField.value.trim();
+      deliveryItemsDisplay.value = deliveryItemsText;
+      
+      // 총액 계산
+      let totalAmount = 0;
+      const lines = deliveryItemsText.split('\n');
+      
+      lines.forEach(line => {
+        if (line.trim()) {
+          // "품목명: 수량개 (금액원)" 형태에서 금액 추출
+          const match = line.match(/\((.+?)원\)/);
+          if (match) {
+            const priceStr = match[1].replace(/,/g, '');
+            const price = parseInt(priceStr);
+            if (!isNaN(price)) {
+              totalAmount += price;
+            }
+          }
+        }
+      });
+      
+      if (deliveryTotalAmount) {
+        deliveryTotalAmount.value = totalAmount;
+      }
+      
+      console.log('기존 납품 품목 표시 완료:', deliveryItemsText);
+    } else {
+      // 데이터가 없는 경우 기본 메시지 유지
+      if (deliveryItemsDisplay) {
+        deliveryItemsDisplay.placeholder = "품목 관리 버튼을 클릭하여 납품 품목을 추가해주세요.";
+      }
+      if (deliveryTotalAmount) {
+        deliveryTotalAmount.value = 0;
+      }
+    }
+  }
+
   // 파일 삭제 함수
   function deleteFile(fileId, filename) {
       if (!confirm(`"${filename}" 파일을 삭제하시겠습니까?`)) {
@@ -612,6 +657,9 @@
   // 납품 품목 관련 함수들 (모달 방식)
   let historyDeliveryItemIndex = 0;
   let historyDeliveryItemsData = [];
+  
+  // 하위 호환용 변수 (기존 인라인 함수들이 사용)
+  let deliveryItemIndex = 0;
 
   function openHistoryDeliveryModal() {
     historyDeliveryItemsData = []; // 초기화
@@ -698,8 +746,55 @@
     const modal = new bootstrap.Modal(document.getElementById('historyDeliveryItemsModal'));
     modal.show();
 
-    // 기본 품목 하나 추가
-    addHistoryDeliveryItem();
+    // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
+    loadExistingHistoryDeliveryItems() || addHistoryDeliveryItem();
+  }
+
+  function loadExistingHistoryDeliveryItems() {
+    // 편집 모드인 경우 기존 납품 품목 데이터 가져오기
+    const deliveryItemsField = document.getElementById('{{ form.delivery_items.id_for_label }}');
+    
+    if (deliveryItemsField && deliveryItemsField.value.trim()) {
+      // 기존 데이터가 있는 경우 파싱해서 로드
+      const deliveryItemsText = deliveryItemsField.value.trim();
+      console.log('기존 납품 품목 데이터:', deliveryItemsText);
+      
+      const lines = deliveryItemsText.split('\n');
+      let hasData = false;
+      
+      lines.forEach(line => {
+        if (line.trim()) {
+          // "품목명: 수량개 (금액원)" 형태 파싱
+          const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+          if (match) {
+            const itemName = match[1].trim();
+            const quantity = parseInt(match[2]);
+            const totalPriceStr = match[3].replace(/,/g, '');
+            const totalPrice = parseInt(totalPriceStr);
+            
+            // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+            const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+            
+            console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+            
+            addHistoryDeliveryItem({
+              item_name: itemName,
+              quantity: quantity,
+              unit_price: unitPrice
+            });
+            hasData = true;
+          }
+        }
+      });
+      
+      if (hasData) {
+        console.log('기존 납품 품목 로드 완료');
+      }
+      return hasData;
+    }
+    
+    console.log('기존 납품 품목 데이터 없음');
+    return false;
   }
 
   function addHistoryDeliveryItem(itemData = {}) {
@@ -734,6 +829,7 @@
     
     container.appendChild(newItem);
     historyDeliveryItemIndex++;
+    deliveryItemIndex++; // 동기화
     
     // 이벤트 리스너 추가
     const quantityInput = newItem.querySelector('.quantity-input');
@@ -900,7 +996,15 @@
 
   // 기존 인라인 함수들 (하위 호환용으로 유지)
   function addDeliveryItem() {
-      const container = document.getElementById('delivery-items-container');
+      // 히스토리 폼에서는 history-delivery-items-container 사용
+      const container = document.getElementById('history-delivery-items-container') || 
+                        document.getElementById('delivery-items-container');
+      
+      if (!container) {
+          console.error('Delivery items container not found');
+          return;
+      }
+      
       const newItem = document.createElement('div');
       newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
       newItem.innerHTML = `
@@ -931,13 +1035,20 @@
       
       container.appendChild(newItem);
       deliveryItemIndex++;
+      historyDeliveryItemIndex++; // 동기화
       
       // 이벤트 리스너 추가
       const quantityInput = newItem.querySelector('.quantity-input');
       const unitPriceInput = newItem.querySelector('.unit-price-input');
       
-      quantityInput.addEventListener('input', calculateItemTotal);
-      unitPriceInput.addEventListener('input', calculateItemTotal);
+      // 히스토리 폼에서는 calculateHistoryItemTotal 사용
+      if (typeof calculateHistoryItemTotal === 'function') {
+          quantityInput.addEventListener('input', calculateHistoryItemTotal);
+          unitPriceInput.addEventListener('input', calculateHistoryItemTotal);
+      } else {
+          quantityInput.addEventListener('input', calculateItemTotal);
+          unitPriceInput.addEventListener('input', calculateItemTotal);
+      }
       
       // 애니메이션 효과
       newItem.style.opacity = '0';
@@ -950,6 +1061,13 @@
   }
 
   function removeDeliveryItem(button) {
+      // 최소 1개 품목 유지 체크 (히스토리 컨테이너 기준)
+      const historyContainer = document.getElementById('history-delivery-items-container');
+      if (historyContainer && historyContainer.querySelectorAll('.delivery-item').length <= 1) {
+          alert('최소 하나의 품목은 있어야 합니다.');
+          return;
+      }
+      
       const item = button.closest('.delivery-item');
       item.style.transition = 'all 0.3s ease';
       item.style.opacity = '0';
@@ -957,7 +1075,12 @@
       
       setTimeout(() => {
           item.remove();
-          calculateTotal();
+          // 히스토리 폼에서는 calculateHistoryTotal 사용
+          if (typeof calculateHistoryTotal === 'function') {
+              calculateHistoryTotal();
+          } else if (typeof calculateTotal === 'function') {
+              calculateTotal();
+          }
       }, 300);
   }
 
@@ -971,7 +1094,13 @@
       const total = subtotal * 1.1;
       
       item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
-      calculateTotal();
+      
+      // 히스토리 폼에서는 calculateHistoryTotal 사용
+      if (typeof calculateHistoryTotal === 'function') {
+          calculateHistoryTotal();
+      } else if (typeof calculateTotal === 'function') {
+          calculateTotal();
+      }
   }
 
   function calculateTotal() {

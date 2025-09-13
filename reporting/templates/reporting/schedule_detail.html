@@ -251,7 +251,20 @@
                 {% else %}
                 <div class="alert alert-info">
                   <i class="fas fa-info-circle me-2"></i>
-                  등록된 납품 품목이 없습니다.
+                  {% if schedule.delivery_items %}
+                    <!-- 텍스트 형태의 납품 품목 정보 표시 -->
+                    <div class="mb-2">기존 납품 품목 정보:</div>
+                    <div class="card bg-light">
+                      <div class="card-body">
+                        <pre class="mb-0">{{ schedule.delivery_items }}</pre>
+                      </div>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                      * 위 정보는 이전 형태로 저장된 데이터입니다. '품목 수정' 버튼을 클릭하여 새로운 형태로 변경할 수 있습니다.
+                    </div>
+                  {% else %}
+                    등록된 납품 품목이 없습니다.
+                  {% endif %}
                 </div>
                 {% endif %}
               </div>
