@@ -1328,18 +1328,29 @@
     function formatDeliveryItems(text) {
       if (!text) return '';
       
+      console.log('formatDeliveryItems original:', JSON.stringify(text));
+      
+      // 모든 종류의 줄바꿈 패턴을 처리
+      let processedText = text
+        .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
+        .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
+        .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
+        .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
+        .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+      
       // 텍스트를 줄 단위로 분할
-      const lines = text.split('\n').filter(line => line.trim());
+      const lines = processedText.split('\n').filter(line => line.trim());
       
       if (lines.length === 0) return '';
       
-      // 각 줄을 div로 래핑하여 명확한 줄바꿈 보장
+      // 각 줄을 개별적으로 HTML 이스케이프 후 br 태그로 연결
       const formattedLines = lines.map(line => {
-        const escapedLine = escapeHtml(line.trim());
-        return `<div class="delivery-item-line">${escapedLine}</div>`;
+        const div = document.createElement('div');
+        div.textContent = line.trim();
+        return div.innerHTML; // HTML 이스케이프된 텍스트
       });
       
-      return formattedLines.join('');
+      return formattedLines.join('<br>');
     }
 
     fetch(`{% url 'reporting:schedule_histories_api' 999 %}`.replace('999', scheduleId))
@@ -3770,7 +3781,7 @@
                   ${schedule.delivery_items ? `
                   <div class="col-12">
                     <label class="form-label fw-bold">납품 품목</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light" style="white-space: pre-line; line-height: 1.5;">${schedule.delivery_items.replace(/\\n/g, '\n')}</div>
+                    <div class="form-control-plaintext border rounded p-2 bg-light" id="delivery-items-${schedule.id}"></div>
                   </div>
                   ` : ''}
                   <div class="col-12">
@@ -3943,6 +3954,28 @@
 
       // 모달이 표시된 후 인라인 히스토리 폼 초기화
       modal._element.addEventListener('shown.bs.modal', function() {
+        // 납품 품목 텍스트 처리
+        if (schedule.delivery_items) {
+          const deliveryItemsElement = document.getElementById(`delivery-items-${schedule.id}`);
+          if (deliveryItemsElement) {
+            // 모든 종류의 줄바꿈 처리
+            let processedText = schedule.delivery_items
+              .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
+              .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
+              .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
+              .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
+              .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+            
+            console.log('Processing delivery items:', JSON.stringify(schedule.delivery_items));
+            console.log('Processed delivery items:', JSON.stringify(processedText));
+            
+            // innerHTML 대신 textContent 사용 후 줄바꿈 처리
+            deliveryItemsElement.textContent = processedText;
+            deliveryItemsElement.style.whiteSpace = 'pre-line';
+            deliveryItemsElement.style.lineHeight = '1.5';
+          }
+        }
+        
         // 일정의 activity_type에 따라 자동으로 활동 유형 설정
         const actionTypeInput = document.getElementById(`actionType-${schedule.id}`);
         if (actionTypeInput && schedule.activity_type) {
@@ -4207,19 +4240,29 @@
     function formatDeliveryItems(text) {
       if (!text) return '';
       
+      console.log('formatDeliveryItems (modal) original:', JSON.stringify(text));
+      
+      // 모든 종류의 줄바꿈 패턴을 처리
+      let processedText = text
+        .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
+        .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
+        .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
+        .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
+        .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+      
       // 텍스트를 줄 단위로 분할
-      const lines = text.split('\n').filter(line => line.trim());
+      const lines = processedText.split('\n').filter(line => line.trim());
       
       if (lines.length === 0) return '';
       
-      // 각 줄을 div로 래핑하여 명확한 줄바꿈 보장
+      // 각 줄을 개별적으로 HTML 이스케이프 후 br 태그로 연결
       const formattedLines = lines.map(line => {
         const div = document.createElement('div');
         div.textContent = line.trim();
-        return `<div class="delivery-item-line">${div.innerHTML}</div>`;
+        return div.innerHTML; // HTML 이스케이프된 텍스트
       });
       
-      return formattedLines.join('');
+      return formattedLines.join('<br>');
     }
 
     // 히스토리 파일 삭제 (모달용) - 전역 함수로 설정

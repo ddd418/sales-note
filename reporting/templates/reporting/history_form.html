@@ -1135,16 +1135,16 @@
           // 기존 품목들을 폼에 추가
           {% for item in existing_delivery_items %}
               addDeliveryItem();
-              const lastItem = document.querySelector('.delivery-item:last-child');
-              lastItem.querySelector('input[name*="[name]"]').value = '{{ item.item_name|escapejs }}';
-              lastItem.querySelector('input[name*="[quantity]"]').value = '{{ item.quantity }}';
-              lastItem.querySelector('input[name*="[unit_price]"]').value = '{{ item.unit_price|default_if_none:"" }}';
+              const lastItem{{ forloop.counter }} = document.querySelector('.delivery-item:last-child');
+              lastItem{{ forloop.counter }}.querySelector('input[name*="[name]"]').value = '{{ item.item_name|escapejs }}';
+              lastItem{{ forloop.counter }}.querySelector('input[name*="[quantity]"]').value = '{{ item.quantity }}';
+              lastItem{{ forloop.counter }}.querySelector('input[name*="[unit_price]"]').value = '{{ item.unit_price|default_if_none:"" }}';
               
               // 소계 계산
-              const quantity = {{ item.quantity }};
-              const unitPrice = {{ item.unit_price|default_if_none:"0" }};
-              const total = quantity * unitPrice;
-              lastItem.querySelector('.item-total').textContent = total.toLocaleString() + '원';
+              const quantity{{ forloop.counter }} = {{ item.quantity }};
+              const unitPrice{{ forloop.counter }} = {{ item.unit_price|default_if_none:"0" }};
+              const total{{ forloop.counter }} = quantity{{ forloop.counter }} * unitPrice{{ forloop.counter }};
+              lastItem{{ forloop.counter }}.querySelector('.item-total').textContent = total{{ forloop.counter }}.toLocaleString() + '원';
           {% endfor %}
           calculateTotal();
       {% else %}
