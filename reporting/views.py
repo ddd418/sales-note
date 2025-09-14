@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile # HistoryFile 모델 추가
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem # DeliveryItem 추가
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -32,12 +32,15 @@ def save_delivery_items(request, instance_obj):
     
     # 기존 품목들 삭제 (수정 시)
     if is_schedule:
+        existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
     else:  # is_history
+        existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
     
     # 새로운 형태의 POST 데이터 처리 (delivery_items[0][name] 형태)
     delivery_items_data = {}
+    
     for key, value in request.POST.items():
         if key.startswith('delivery_items[') and '][' in key:
             # delivery_items[0][name] -> index=0, field=name
@@ -57,6 +60,7 @@ def save_delivery_items(request, instance_obj):
                 continue
     
     # 납품 품목 저장
+    created_count = 0
     for index, item_data in delivery_items_data.items():
         item_name = item_data.get('name', '').strip()
         quantity = item_data.get('quantity', '').strip()
@@ -80,7 +84,8 @@ def save_delivery_items(request, instance_obj):
                     delivery_item.unit_price = float(unit_price)
                 
                 delivery_item.save()
-            except (ValueError, TypeError):
+                created_count += 1
+            except (ValueError, TypeError) as e:
                 continue  # 잘못된 데이터는 무시
 
 # 권한 체크 데코레이터
@@ -1067,7 +1072,29 @@ def schedule_detail_view(request, pk):
         return redirect('reporting:schedule_list')
     
     # 관련 히스토리 조회 (최신순)
-    related_histories = History.objects.filter(schedule=schedule).order_by('-created_at')[:10]
+    related_histories_all = History.objects.filter(schedule=schedule).order_by('-created_at')
+    related_histories = related_histories_all[:10]  # 표시용 최신 10개
+    
+    # 납품 품목 조회 (DeliveryItem 모델)
+    delivery_items = DeliveryItem.objects.filter(schedule=schedule)
+    
+    # 디버깅: 납품 품목 정보 출력
+    print(f"Schedule ID: {schedule.id}")
+    print(f"DeliveryItem count: {delivery_items.count()}")
+    for item in delivery_items:
+        print(f"  - {item.item_name}: {item.quantity} x {item.unit_price}")
+    
+    # 관련 히스토리에서 납품 품목 텍스트 찾기 (대체 방법)
+    delivery_text = None
+    delivery_histories = related_histories_all.filter(action_type='delivery_schedule', delivery_items__isnull=False)
+    if delivery_histories.exists():
+        raw_delivery_text = delivery_histories.first().delivery_items
+        # \n을 실제 줄바꿈으로 변환
+        if raw_delivery_text:
+            delivery_text = raw_delivery_text.replace('\\n', '\n')
+            print(f"Raw delivery text: {repr(raw_delivery_text)}")
+            print(f"Processed delivery text: {repr(delivery_text)}")
+        print(f"Found delivery text from history: {delivery_text}")
     
     # 이전 페이지 정보 (캘린더에서 온 경우)
     from_page = request.GET.get('from', 'list')  # 기본값은 'list'
@@ -1075,7 +1102,8 @@ def schedule_detail_view(request, pk):
     context = {
         'schedule': schedule,
         'related_histories': related_histories,
-        'delivery_items': schedule.delivery_items_set.all(),
+        'delivery_items': delivery_items,
+        'delivery_text': delivery_text,  # 히스토리에서 가져온 납품 품목 텍스트
         'from_page': from_page,
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }
@@ -1134,8 +1162,9 @@ def schedule_edit_view(request, pk):
         if form.is_valid():
             updated_schedule = form.save()
             
-            # 납품 품목 처리 (활동 유형이 납품인 경우)
-            if updated_schedule.activity_type == 'delivery':
+            # 납품 품목 데이터가 있으면 저장
+            has_delivery_items = any(key.startswith('delivery_items[') for key in request.POST.keys())
+            if has_delivery_items:
                 save_delivery_items(request, updated_schedule)
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
@@ -1145,9 +1174,55 @@ def schedule_edit_view(request, pk):
     else:
         form = ScheduleForm(instance=schedule, user=request.user)
     
+    # DeliveryItem 모델에서 납품 품목 데이터 가져오기 (우선순위 1)
+    delivery_text = None
+    delivery_amount = 0
+    
+    # 1차: DeliveryItem 모델에서 최신 데이터 확인
+    delivery_items = schedule.delivery_items_set.all().order_by('id')
+    print(f"Found {delivery_items.count()} delivery items for schedule {schedule.pk}")
+    
+    if delivery_items.exists():
+        delivery_text_parts = []
+        total_amount = 0
+        
+        for item in delivery_items:
+            print(f"  - {item.item_name}: {item.quantity} x {item.unit_price}")
+            # VAT 포함 총액 계산 (DeliveryItem의 save()에서 자동 계산됨)
+            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+            total_amount += item_total
+            
+            # 텍스트 형태로 변환
+            text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+            delivery_text_parts.append(text_part)
+        
+        delivery_text = '\n'.join(delivery_text_parts)
+        delivery_amount = int(total_amount)
+        
+        print(f"DeliveryItem text: {delivery_text}")
+        print(f"DeliveryItem amount: {delivery_amount}")
+    
+    # 2차: DeliveryItem이 없으면 History에서 fallback
+    if not delivery_text:
+        related_histories = History.objects.filter(schedule=schedule, action_type='delivery_schedule').order_by('-created_at')
+        print(f"No DeliveryItems found, checking {related_histories.count()} histories")
+        
+        if related_histories.exists():
+            latest_delivery = related_histories.first()
+            if latest_delivery.delivery_items:
+                raw_text = latest_delivery.delivery_items
+                print(f"Raw delivery text: '{raw_text}'")
+                delivery_text = raw_text.replace('\\n', '\n')
+                print(f"Processed delivery text: '{delivery_text}'")
+                print(f"Found delivery text from history: {delivery_text}")
+            if latest_delivery.delivery_amount:
+                delivery_amount = latest_delivery.delivery_amount
+    
     context = {
         'form': form,
         'schedule': schedule,
+        'delivery_text': delivery_text,
+        'delivery_amount': delivery_amount,
         'page_title': f'일정 수정 - {schedule.followup.customer_name}'
     }
     return render(request, 'reporting/schedule_form.html', context)

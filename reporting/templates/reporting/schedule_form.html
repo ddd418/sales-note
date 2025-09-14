@@ -718,13 +718,53 @@ function openScheduleDeliveryModal() {
 }
 
 function loadExistingScheduleDeliveryItems() {
+  // 먼저 템플릿 변수에서 데이터 확인
+  {% if delivery_text %}
+    const deliveryText = `{{ delivery_text|escapejs }}`;
+    console.log('기존 납품 품목 데이터 (템플릿):', deliveryText);
+    
+    const lines = deliveryText.split('\n');
+    let hasData = false;
+    
+    lines.forEach(line => {
+      if (line.trim()) {
+        // "품목명: 수량개 (금액원)" 형태 파싱
+        const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+        if (match) {
+          const itemName = match[1].trim();
+          const quantity = parseInt(match[2]);
+          const totalPriceStr = match[3].replace(/,/g, '');
+          const totalPrice = parseInt(totalPriceStr);
+          
+          // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+          const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+          
+          console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+          
+          addScheduleDeliveryItem({
+            item_name: itemName,
+            quantity: quantity,
+            unit_price: unitPrice
+          });
+          hasData = true;
+        }
+      }
+    });
+    
+    if (hasData) {
+      console.log('기존 납품 품목 로드 완료');
+      return true;
+    }
+  {% endif %}
+  
+  // 템플릿 변수가 없으면 폼 필드에서 시도
   const deliveryItemsField = document.querySelector('[name="delivery_items"]');
   const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
   
   if (deliveryItemsField && deliveryItemsField.value.trim()) {
     // 기존 데이터가 있는 경우 파싱해서 로드
     const deliveryItemsText = deliveryItemsField.value.trim();
-    console.log('기존 납품 품목 데이터:', deliveryItemsText);
+    console.log('기존 납품 품목 데이터 (폼 필드):', deliveryItemsText);
     
     const lines = deliveryItemsText.split('\n');
     let hasData = false;
@@ -931,7 +971,7 @@ function saveScheduleDeliveryItems() {
   const deliverySummary = document.querySelector('.schedule-delivery-items-summary');
   
   if (deliveryItemsField) {
-    deliveryItemsField.value = itemsText.join('\\n');
+    deliveryItemsField.value = itemsText.join('\n');
   }
   
   if (deliveryAmountField) {
@@ -939,7 +979,7 @@ function saveScheduleDeliveryItems() {
   }
   
   if (deliveryDisplayField) {
-    deliveryDisplayField.value = itemsText.join('\\n');
+    deliveryDisplayField.value = itemsText.join('\n');
   }
   
   if (deliveryTotalField) {
@@ -966,24 +1006,53 @@ document.addEventListener('DOMContentLoaded', function() {
     const deliveryTotalField = document.getElementById('schedule-delivery-total-amount');
     const deliverySummary = document.querySelector('.schedule-delivery-items-summary');
     
-    // 기존 데이터가 있다면 표시
-    if (deliveryItemsField && deliveryItemsField.value.trim()) {
-        const itemsText = deliveryItemsField.value;
-        const totalAmount = deliveryAmountField ? (deliveryAmountField.value || 0) : 0;
+    // 기존 데이터가 있다면 표시 (템플릿 변수 우선)
+    {% if delivery_text %}
+        const deliveryText = `{{ delivery_text|escapejs }}`;
+        const deliveryAmount = {{ delivery_amount|default:"0" }};
+        
+        console.log('Loading delivery data from template:', deliveryText);
         
         if (deliveryDisplayField) {
-            deliveryDisplayField.value = itemsText;
+            deliveryDisplayField.value = deliveryText;
         }
         
         if (deliveryTotalField) {
-            deliveryTotalField.value = totalAmount;
+            deliveryTotalField.value = deliveryAmount;
         }
         
-        if (deliverySummary && itemsText) {
-            const itemCount = itemsText.split('\\n').filter(line => line.trim()).length;
-            deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원`;
+        // 숨겨진 필드에도 값 설정
+        if (deliveryItemsField) {
+            deliveryItemsField.value = deliveryText;
         }
-    }
+        if (deliveryAmountField) {
+            deliveryAmountField.value = deliveryAmount;
+        }
+        
+        if (deliverySummary && deliveryText) {
+            const itemCount = deliveryText.split('\n').filter(line => line.trim()).length;
+            deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(deliveryAmount).toLocaleString()}원`;
+        }
+    {% else %}
+        // 템플릿 변수가 없으면 폼 필드에서 시도
+        if (deliveryItemsField && deliveryItemsField.value.trim()) {
+            const itemsText = deliveryItemsField.value;
+            const totalAmount = deliveryAmountField ? (deliveryAmountField.value || 0) : 0;
+            
+            if (deliveryDisplayField) {
+                deliveryDisplayField.value = itemsText;
+            }
+            
+            if (deliveryTotalField) {
+                deliveryTotalField.value = totalAmount;
+            }
+            
+            if (deliverySummary && itemsText) {
+                const itemCount = itemsText.split('\\n').filter(line => line.trim()).length;
+                deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원`;
+            }
+        }
+    {% endif %}
 });
 
 </script>
