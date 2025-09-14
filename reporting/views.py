@@ -2628,7 +2628,7 @@ def toggle_tax_invoice(request, history_id):
 
 @login_required
 def history_create_from_schedule(request, schedule_id):
-    """일정에서 히스토리 생성"""
+    """일정에서 히스토리 생성 또는 기존 히스토리로 이동"""
     try:
         schedule = get_object_or_404(Schedule, pk=schedule_id)
         
@@ -2646,6 +2646,53 @@ def history_create_from_schedule(request, schedule_id):
                     return JsonResponse({'success': False, 'error': '이 일정에 대한 히스토리를 생성할 권한이 없습니다.'})
                 messages.error(request, '이 일정에 대한 히스토리를 생성할 권한이 없습니다.')
                 return redirect('reporting:schedule_list')
+        
+        # 스케줄의 activity_type에 따른 action_type 매핑
+        action_type_mapping = {
+            'customer_meeting': 'customer_meeting',
+            'delivery': 'delivery_schedule', 
+            'service': 'service_visit',
+        }
+        expected_action_type = action_type_mapping.get(schedule.activity_type, 'customer_meeting')
+        
+        # AJAX 요청으로 기존 히스토리 확인하는 경우
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and request.method == 'GET':
+            existing_history = History.objects.filter(
+                schedule=schedule,
+                action_type=expected_action_type
+            ).first()
+            
+            if existing_history:
+                return JsonResponse({
+                    'success': True,
+                    'has_existing': True,
+                    'message': f'이미 "{schedule.followup.customer_name}" 일정에 대한 활동 기록이 존재합니다.',
+                    'history_id': existing_history.pk,
+                    'history_url': f'/reporting/histories/{existing_history.pk}/',
+                    'customer_name': schedule.followup.customer_name,
+                    'visit_date': schedule.visit_date.strftime('%Y년 %m월 %d일')
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'has_existing': False,
+                    'message': '새로운 활동 기록을 생성할 수 있습니다.',
+                    'create_url': f'/reporting/histories/create-from-schedule/{schedule.pk}/',
+                    'customer_name': schedule.followup.customer_name,
+                    'visit_date': schedule.visit_date.strftime('%Y년 %m월 %d일')
+                })
+        
+        # 기존 히스토리가 있는지 확인 (일반 GET 요청일 때만)
+        if request.method == 'GET':
+            existing_history = History.objects.filter(
+                schedule=schedule,
+                action_type=expected_action_type
+            ).first()
+            
+            if existing_history:
+                messages.info(request, f'이미 "{schedule.followup.customer_name}" 일정에 대한 활동 기록이 존재합니다. 기존 기록으로 이동합니다.')
+                return redirect('reporting:history_detail', pk=existing_history.pk)
+        
         
         if request.method == 'POST':
             # AJAX 요청인지 확인
@@ -2740,10 +2787,18 @@ def history_create_from_schedule(request, schedule_id):
                     form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
         else:
             # GET 요청 시 폼 초기화
+            # 스케줄의 활동 유형에 따라 히스토리 action_type 설정
+            action_type_mapping = {
+                'customer_meeting': 'customer_meeting',
+                'delivery': 'delivery_schedule', 
+                'service': 'service_visit',
+            }
+            initial_action_type = action_type_mapping.get(schedule.activity_type, 'customer_meeting')
+            
             initial_data = {
                 'followup': schedule.followup.id,
                 'schedule': schedule.id,
-                'action_type': 'customer_meeting',  # 기본값으로 고객 미팅 설정 (올바른 값)
+                'action_type': initial_action_type,  # 스케줄의 activity_type에 맞춰 설정
                 'delivery_date': schedule.visit_date,  # 납품 날짜를 일정 날짜로 설정
                 'meeting_date': schedule.visit_date,  # 미팅 날짜를 일정 날짜로 설정
             }
@@ -2757,9 +2812,46 @@ def history_create_from_schedule(request, schedule_id):
             form.fields['followup'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
             form.fields['schedule'].widget.attrs.update({'readonly': True, 'style': 'pointer-events: none; background-color: #e9ecef;'})
         
+        # 스케줄의 납품 품목 정보 가져오기
+        delivery_text = None
+        delivery_amount = 0
+        
+        if schedule.activity_type == 'delivery':
+            # 1차: DeliveryItem 모델에서 최신 데이터 확인
+            delivery_items = schedule.delivery_items_set.all().order_by('id')
+            
+            if delivery_items.exists():
+                delivery_text_parts = []
+                total_amount = 0
+                
+                for item in delivery_items:
+                    # VAT 포함 총액 계산
+                    item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                    total_amount += item_total
+                    
+                    # 텍스트 형태로 변환
+                    text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                    delivery_text_parts.append(text_part)
+                
+                delivery_text = '\n'.join(delivery_text_parts)
+                delivery_amount = int(total_amount)
+            
+            # 2차: DeliveryItem이 없으면 History에서 fallback
+            if not delivery_text:
+                related_histories = History.objects.filter(schedule=schedule, action_type='delivery_schedule').order_by('-created_at')
+                
+                if related_histories.exists():
+                    latest_delivery = related_histories.first()
+                    if latest_delivery.delivery_items:
+                        delivery_text = latest_delivery.delivery_items.replace('\\n', '\n')
+                    if latest_delivery.delivery_amount:
+                        delivery_amount = latest_delivery.delivery_amount
+        
         context = {
             'form': form,
             'schedule': schedule,
+            'delivery_text': delivery_text,
+            'delivery_amount': delivery_amount,
             'page_title': f'활동 기록 추가 - {schedule.followup.customer_name} (일정: {schedule.visit_date})'
         }
         return render(request, 'reporting/history_form.html', context)

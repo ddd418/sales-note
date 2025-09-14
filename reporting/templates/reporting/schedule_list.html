@@ -1,5 +1,6 @@
 {% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
 보고 시스템{% endblock %} {% block content %}
+{% csrf_token %}
 <style>
 /* 일정 목록 모바일 최적화 */
 @media (max-width: 768px) {
@@ -525,6 +526,7 @@
                 <a
                   href="{% url 'reporting:history_create_from_schedule' schedule.pk %}"
                   class="btn btn-sm btn-outline-success"
+                  onclick="handleHistoryClick({{ schedule.pk }}, this); return false;"
                 >
                   <i class="fas fa-plus me-1"></i>활동 기록</a
                 >
@@ -1118,6 +1120,58 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const visible = document.querySelectorAll('[data-visit-month]:not([style*="display: none"])').length;
         console.log('표시된 카드:', visible);
+    };
+    
+    // 활동기록 클릭 처리 함수
+    window.handleHistoryClick = function(scheduleId, element) {
+        // 기존 링크 동작 방지
+        event.preventDefault();
+        
+        // 로딩 상태 표시
+        const originalText = element.innerHTML;
+        element.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>확인 중...';
+        element.disabled = true;
+        
+        // AJAX로 기존 히스토리 확인
+        fetch(`/reporting/histories/create-from-schedule/${scheduleId}/`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.has_existing) {
+                    // 기존 히스토리가 있는 경우
+                    const confirmed = confirm(
+                        `"${data.customer_name}" (${data.visit_date}) 일정에 대한 활동 기록이 이미 존재합니다.\n\n` +
+                        `기존 기록을 확인하시겠습니까?\n\n` +
+                        `• 확인: 기존 활동 기록으로 이동\n` +
+                        `• 취소: 이 창을 닫습니다`
+                    );
+                    
+                    if (confirmed) {
+                        window.location.href = data.history_url;
+                    }
+                } else {
+                    // 새로운 히스토리 생성
+                    window.location.href = data.create_url;
+                }
+            } else {
+                alert('오류: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('활동 기록 확인 중 오류가 발생했습니다.');
+        })
+        .finally(() => {
+            // 버튼 상태 복원
+            element.innerHTML = originalText;
+            element.disabled = false;
+        });
     };
     
 });

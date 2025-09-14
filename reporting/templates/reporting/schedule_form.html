@@ -157,17 +157,28 @@
                       <h5 class="mb-0">
                         <i class="fas fa-boxes me-2"></i>납품 품목
                       </h5>
+                      {% if schedule %}
+                      <small class="schedule-delivery-items-summary text-muted">수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리 페이지나 캘린더에서 수정하세요.</small>
+                      {% else %}
                       <small class="schedule-delivery-items-summary text-muted">납품 품목을 추가해주세요.</small>
+                      {% endif %}
                     </div>
+                    {% if not schedule %}
                     <button type="button" class="btn btn-dark btn-sm" onclick="openScheduleDeliveryModal()">
                       <i class="fas fa-edit me-1"></i>품목 관리
                     </button>
+                    {% else %}
+                    <button type="button" class="btn btn-secondary btn-sm" disabled title="수정 모드에서는 납품 품목을 변경할 수 없습니다">
+                      <i class="fas fa-lock me-1"></i>읽기 전용
+                    </button>
+                    {% endif %}
                   </div>
                   <div class="card-body">
                     <div class="row">
                       <div class="col-md-8">
                         <label class="form-label fw-bold">납품 품목 내역</label>
-                        <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 추가해주세요."></textarea>
+                        <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly 
+                                  placeholder="{% if schedule %}수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리에서 수정하세요.{% else %}품목 관리 버튼을 클릭하여 납품 품목을 추가해주세요.{% endif %}"></textarea>
                       </div>
                       <div class="col-md-4">
                         <label class="form-label fw-bold">총 납품 금액 (부가세 포함)</label>
@@ -629,6 +640,12 @@ let scheduleDeliveryItemIndex = 0;
 let scheduleDeliveryItemsData = [];
 
 function openScheduleDeliveryModal() {
+  // 수정 모드인지 확인
+  {% if schedule %}
+  alert('수정 모드에서는 납품 품목을 변경할 수 없습니다.\n\n납품 품목을 수정하려면:\n• 캘린더에서 일정 상세 모달을 이용하거나\n• 활동 기록(히스토리) 페이지에서 수정하세요.');
+  return;
+  {% endif %}
+  
   scheduleDeliveryItemsData = []; // 초기화
   
   // 모달 HTML 생성
@@ -1031,7 +1048,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (deliverySummary && deliveryText) {
             const itemCount = deliveryText.split('\n').filter(line => line.trim()).length;
+            {% if schedule %}
+            deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(deliveryAmount).toLocaleString()}원 (읽기 전용)`;
+            {% else %}
             deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(deliveryAmount).toLocaleString()}원`;
+            {% endif %}
         }
     {% else %}
         // 템플릿 변수가 없으면 폼 필드에서 시도
@@ -1049,7 +1070,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (deliverySummary && itemsText) {
                 const itemCount = itemsText.split('\\n').filter(line => line.trim()).length;
+                {% if schedule %}
+                deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원 (읽기 전용)`;
+                {% else %}
                 deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원`;
+                {% endif %}
             }
         }
     {% endif %}

@@ -575,6 +575,31 @@
     const deliveryItemsDisplay = document.getElementById('delivery-items-display');
     const deliveryTotalAmount = document.getElementById('delivery-total-amount');
     
+    // 1순위: 스케줄에서 전달된 delivery_text 사용
+    {% if delivery_text %}
+      const scheduleDeliveryText = `{{ delivery_text|linebreaksbr|escapejs }}`.replace(/<br\s*\/?>/gi, '\n');
+      const scheduleDeliveryAmount = {{ delivery_amount|default:0 }};
+      
+      console.log('스케줄 납품 품목 데이터 사용:', scheduleDeliveryText);
+      
+      if (deliveryItemsDisplay) {
+        deliveryItemsDisplay.value = scheduleDeliveryText;
+      }
+      
+      if (deliveryTotalAmount) {
+        deliveryTotalAmount.value = scheduleDeliveryAmount;
+      }
+      
+      // 히든 필드에도 설정 (폼 제출용)
+      if (deliveryItemsField) {
+        deliveryItemsField.value = scheduleDeliveryText;
+      }
+      
+      console.log('스케줄 납품 품목 표시 완료:', scheduleDeliveryText, '총액:', scheduleDeliveryAmount);
+      return;
+    {% endif %}
+    
+    // 2순위: 기존 폼 필드 데이터 사용
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
       const deliveryItemsText = deliveryItemsField.value.trim();
       deliveryItemsDisplay.value = deliveryItemsText;
@@ -601,7 +626,7 @@
         deliveryTotalAmount.value = totalAmount;
       }
       
-      console.log('기존 납품 품목 표시 완료:', deliveryItemsText);
+      console.log('기존 폼 납품 품목 표시 완료:', deliveryItemsText);
     } else {
       // 데이터가 없는 경우 기본 메시지 유지
       if (deliveryItemsDisplay) {
@@ -751,7 +776,46 @@
   }
 
   function loadExistingHistoryDeliveryItems() {
-    // 편집 모드인 경우 기존 납품 품목 데이터 가져오기
+    // 1순위: 스케줄에서 전달된 delivery_text 사용
+    {% if delivery_text %}
+      const scheduleDeliveryText = `{{ delivery_text|escapejs }}`;
+      console.log('스케줄 납품 품목 데이터 사용:', scheduleDeliveryText);
+      
+      const lines = scheduleDeliveryText.split('\n');
+      let hasData = false;
+      
+      lines.forEach(line => {
+        if (line.trim()) {
+          // "품목명: 수량개 (금액원)" 형태 파싱
+          const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+          if (match) {
+            const itemName = match[1].trim();
+            const quantity = parseInt(match[2]);
+            const totalPriceStr = match[3].replace(/,/g, '');
+            const totalPrice = parseInt(totalPriceStr);
+            
+            // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
+            const unitPrice = Math.round(totalPrice / 1.1 / quantity);
+            
+            console.log(`스케줄 품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+            
+            addHistoryDeliveryItem({
+              item_name: itemName,
+              quantity: quantity,
+              unit_price: unitPrice
+            });
+            hasData = true;
+          }
+        }
+      });
+      
+      if (hasData) {
+        console.log('스케줄 납품 품목 모달 로드 완료');
+        return hasData;
+      }
+    {% endif %}
+    
+    // 2순위: 편집 모드인 경우 기존 납품 품목 데이터 가져오기
     const deliveryItemsField = document.getElementById('{{ form.delivery_items.id_for_label }}');
     
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
