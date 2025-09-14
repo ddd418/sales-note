@@ -137,6 +137,12 @@
               </button>
             </li>
             <li class="nav-item" role="presentation">
+              <button class="nav-link" id="all-delivery-tab" data-bs-toggle="tab" 
+                      data-bs-target="#all-delivery" type="button" role="tab">
+                <i class="fas fa-boxes me-2"></i>전체 납품내역
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
               <button class="nav-link" id="meeting-tab" data-bs-toggle="tab" 
                       data-bs-target="#meeting" type="button" role="tab">
                 <i class="fas fa-handshake me-2"></i>미팅 기록
@@ -157,7 +163,7 @@
                 <div class="card-body">
                   {% if delivery_histories %}
                   <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover table-compact">
                       <thead class="table-light">
                         <tr>
                           <th>납품일</th>
@@ -179,7 +185,9 @@
                           </td>
                           <td>
                             {% if history.delivery_items %}
-                              {{ history.delivery_items|truncatechars:30 }}
+                              <button class="btn btn-sm btn-outline-info" onclick="showDeliveryItemsModal('{{ history.id }}', '{{ history.delivery_items|escapejs }}', '{{ history.delivery_date|date:"Y-m-d" }}')">
+                                <i class="fas fa-list me-1"></i>품목 보기
+                              </button>
                             {% else %}
                               <span class="text-muted">-</span>
                             {% endif %}
@@ -218,6 +226,61 @@
                     <i class="fas fa-truck fa-2x mb-3"></i>
                     <p>납품 기록이 없습니다.</p>
                   </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            
+            <!-- 전체 납품내역 탭 -->
+            <div class="tab-pane fade" id="all-delivery" role="tabpanel">
+              <div class="card">
+                <div class="card-body">
+                  {% if delivery_histories %}
+                    <!-- 요약 정보 -->
+                    <div class="alert alert-info mb-4">
+                      <div class="row text-center">
+                        <div class="col-md-4">
+                          <h5 class="mb-1">
+                            <i class="fas fa-calendar-check me-2"></i>{{ total_deliveries }}
+                          </h5>
+                          <small class="text-muted">총 납품 건수</small>
+                        </div>
+                        <div class="col-md-4">
+                          <h5 class="mb-1">
+                            <i class="fas fa-boxes me-2"></i><span id="totalItemsCount">-</span>
+                          </h5>
+                          <small class="text-muted">총 품목 개수</small>
+                        </div>
+                        <div class="col-md-4">
+                          <h5 class="mb-1 text-success">
+                            <i class="fas fa-won-sign me-2"></i><span id="totalDeliveryAmount">-</span>원
+                          </h5>
+                          <small class="text-muted">총 납품 금액</small>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- 전체 품목 목록 -->
+                    <div class="table-responsive">
+                      <table class="table table-hover table-compact">
+                        <thead class="table-light">
+                          <tr>
+                            <th>품목명</th>
+                            <th class="text-center">총 수량</th>
+                            <th class="text-end">총 금액</th>
+                            <th class="text-center">납품 횟수</th>
+                          </tr>
+                        </thead>
+                        <tbody id="allDeliveryItemsTable">
+                          <!-- JavaScript로 동적 생성 -->
+                        </tbody>
+                      </table>
+                    </div>
+                  {% else %}
+                    <div class="text-center text-muted py-4">
+                      <i class="fas fa-boxes fa-2x mb-3"></i>
+                      <p>납품 기록이 없습니다.</p>
+                    </div>
                   {% endif %}
                 </div>
               </div>
@@ -476,6 +539,276 @@ document.addEventListener('DOMContentLoaded', function() {
 .nav-tabs .nav-link.active {
     color: #007bff;
     font-weight: 500;
+}
+</style>
+
+<!-- 납품 품목 상세 모달 -->
+<div class="modal fade" id="deliveryItemsModal" tabindex="-1" aria-labelledby="deliveryItemsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="deliveryItemsModalLabel">
+          <i class="fas fa-boxes me-2"></i>납품 품목 상세
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modalDeliveryDate" class="alert alert-light mb-3">
+          <strong>납품일:</strong> <span id="deliveryDateText"></span>
+        </div>
+        <div id="modalDeliveryItems" class="delivery-items-content">
+          <!-- 납품 품목 내용이 여기에 표시됩니다 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 납품 품목 상세 모달 표시 함수
+function showDeliveryItemsModal(historyId, deliveryItems, deliveryDate) {
+  console.log('showDeliveryItemsModal 호출:', historyId, deliveryItems, deliveryDate);
+  
+  // 납품일 설정
+  document.getElementById('deliveryDateText').textContent = deliveryDate || '미정';
+  
+  // 납품 품목 텍스트 처리
+  if (deliveryItems && deliveryItems.trim()) {
+    // 줄바꿈 문자 처리
+    let processedItems = deliveryItems
+      .replace(/\\n/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim();
+    
+    // 각 라인을 HTML로 변환
+    const lines = processedItems.split('\n')
+      .map(line => line.trim())
+      .filter(line => line);
+    
+    if (lines.length > 0) {
+      const htmlLines = lines.map((line, index) => {
+        const div = document.createElement('div');
+        div.textContent = line;
+        return `
+          <div class="delivery-item mb-2 p-3 border rounded bg-light">
+            <i class="fas fa-box me-2 text-info"></i>
+            ${div.innerHTML}
+          </div>
+        `;
+      });
+      
+      document.getElementById('modalDeliveryItems').innerHTML = htmlLines.join('');
+    } else {
+      document.getElementById('modalDeliveryItems').innerHTML = 
+        '<div class="text-center text-muted py-4"><i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.</div>';
+    }
+  } else {
+    document.getElementById('modalDeliveryItems').innerHTML = 
+      '<div class="text-center text-muted py-4"><i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.</div>';
+  }
+  
+  // 모달 표시
+  const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+  modal.show();
+}
+
+// 전체 납품내역 데이터 처리 함수
+function processAllDeliveryData() {
+  // 서버에서 전달된 납품 데이터
+  const deliveryData = [
+    {% for history in delivery_histories %}
+      {% if history.delivery_items %}
+        {
+          items: '{{ history.delivery_items|escapejs }}',
+          amount: {{ history.delivery_amount|default:0 }},
+          date: '{{ history.delivery_date|date:"Y-m-d"|default:"" }}'
+        },
+      {% endif %}
+    {% endfor %}
+  ];
+  
+  // 품목별 집계 객체
+  const itemsSummary = {};
+  let totalAmount = 0;
+  let totalItemsCount = 0;
+  
+  deliveryData.forEach(delivery => {
+    if (delivery.items && delivery.items.trim()) {
+      // 줄바꿈 문자 처리
+      let processedItems = delivery.items
+        .replace(/\\n/g, '\n')
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\r/g, '\n')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .trim();
+      
+      // 각 라인 처리
+      const lines = processedItems.split('\n')
+        .map(line => line.trim())
+        .filter(line => line);
+      
+      lines.forEach(line => {
+        // "품목명: 수량개 (금액원)" 패턴 파싱
+        const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+        if (match) {
+          const itemName = match[1].trim();
+          const quantity = parseFloat(match[2]);
+          const amountStr = match[3].replace(/[,\s]/g, '');
+          const amount = parseInt(amountStr);
+          
+          if (!itemsSummary[itemName]) {
+            itemsSummary[itemName] = {
+              totalQuantity: 0,
+              totalAmount: 0,
+              deliveryCount: 0
+            };
+          }
+          
+          itemsSummary[itemName].totalQuantity += quantity;
+          itemsSummary[itemName].totalAmount += amount;
+          itemsSummary[itemName].deliveryCount += 1;
+          
+          totalItemsCount += quantity;
+        }
+      });
+    }
+    
+    totalAmount += delivery.amount;
+  });
+  
+  // 요약 정보 업데이트
+  document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
+  document.getElementById('totalDeliveryAmount').textContent = totalAmount.toLocaleString();
+  
+  // 테이블 생성
+  const tableBody = document.getElementById('allDeliveryItemsTable');
+  if (Object.keys(itemsSummary).length > 0) {
+    const tableRows = Object.entries(itemsSummary).map(([itemName, data]) => `
+      <tr>
+        <td>
+          <i class="fas fa-box me-2 text-info"></i>
+          ${itemName}
+        </td>
+        <td class="text-center">
+          <span class="badge bg-primary">${Math.round(data.totalQuantity).toLocaleString()}개</span>
+        </td>
+        <td class="text-end">
+          <strong class="text-success">${data.totalAmount.toLocaleString()}원</strong>
+        </td>
+        <td class="text-center">
+          <span class="badge bg-secondary">${data.deliveryCount}회</span>
+        </td>
+      </tr>
+    `).join('');
+    
+    tableBody.innerHTML = tableRows;
+  } else {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center text-muted py-3">
+          <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// 탭 변경 이벤트 리스너
+document.addEventListener('DOMContentLoaded', function() {
+  const allDeliveryTab = document.getElementById('all-delivery-tab');
+  if (allDeliveryTab) {
+    allDeliveryTab.addEventListener('shown.bs.tab', function() {
+      processAllDeliveryData();
+    });
+  }
+});
+</script>
+
+<style>
+.delivery-items-content {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.delivery-item {
+  border-left: 4px solid #17a2b8 !important;
+  background-color: #f8f9fa !important;
+}
+
+.delivery-item:hover {
+  background-color: #e9ecef !important;
+  transition: background-color 0.2s ease;
+}
+
+/* 납품 내역 테이블 컴팩트 스타일 */
+.table-compact td {
+  padding: 0.5rem 0.75rem !important;
+  line-height: 1.2 !important;
+  font-size: 0.9rem !important;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.table-compact th {
+  padding: 0.75rem !important;
+  font-size: 0.9rem !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table-compact .btn-sm {
+  font-size: 0.8rem !important;
+  padding: 0.25rem 0.5rem !important;
+}
+
+.table-compact .badge {
+  font-size: 0.75rem !important;
+}
+
+.table-compact .text-success {
+  font-size: 0.9rem !important;
+}
+
+/* 클릭 가능한 카드 스타일 */
+.clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  transition: all 0.3s ease;
+}
+
+/* 전체 납품 모달 스타일 */
+.all-delivery-items-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.delivery-record {
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.delivery-record-header {
+  background-color: #f8f9fa !important;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.delivery-item-card {
+  border-left: 4px solid #17a2b8 !important;
+  background-color: #f8f9fa !important;
+  transition: background-color 0.2s ease;
+}
+
+.delivery-item-card:hover {
+  background-color: #e9ecef !important;
 }
 </style>
 

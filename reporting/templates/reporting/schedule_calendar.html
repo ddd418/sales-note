@@ -2223,8 +2223,14 @@
       if (data.success) {
         console.log('✅ 성공: 히스토리 업데이트 완료');
         showSuccessMessage('활동 기록이 성공적으로 수정되었습니다.');
+        
         // 히스토리 목록 새로고침
         loadScheduleHistories(scheduleId);
+        
+        // 스케줄 모달의 납품 품목 정보를 강제로 새로고침
+        setTimeout(() => {
+          forceUpdateScheduleModal(scheduleId);
+        }, 500); // 히스토리 로드 완료 후 실행
       } else {
         console.error('❌ 실패: 서버 응답 오류');
         console.error('Error message:', data.error);
@@ -2910,31 +2916,249 @@
     showSuccessMessage('납품 품목이 적용되었습니다.');
   }
 
+  // 스케줄 모달의 납품 품목 정보를 강제로 업데이트
+  function forceUpdateScheduleModal(scheduleId) {
+    console.log('=== forceUpdateScheduleModal 시작 ===', scheduleId);
+    
+    // API에서 최신 스케줄 데이터 가져오기
+    let apiUrl = "{% url 'reporting:schedule_api' %}";
+    {% if user_filter %}
+    apiUrl += "?user={{ user_filter }}";
+    {% endif %}
+    
+    fetch(apiUrl)
+      .then(response => response.json())
+      .then(data => {
+        console.log('최신 스케줄 데이터 가져오기 완료');
+        
+        // schedules 배열 업데이트
+        schedules = data;
+        
+        // 해당 스케줄 찾기
+        const updatedSchedule = schedules.find(s => s.id == scheduleId);
+        if (updatedSchedule) {
+          console.log('업데이트할 스케줄 찾음:', updatedSchedule.delivery_items);
+          
+          // 모든 가능한 모달 ID 패턴 시도
+          const possibleModalIds = [
+            `scheduleModal-${scheduleId}`,
+            `detailModal-${scheduleId}`,
+            'scheduleDetailModal',
+            `schedule-modal-${scheduleId}`
+          ];
+          
+          let modalElement = null;
+          for (const modalId of possibleModalIds) {
+            const element = document.getElementById(modalId);
+            console.log(`모달 ID "${modalId}" 확인:`, element);
+            if (element && (element.classList.contains('show') || element.style.display !== 'none')) {
+              modalElement = element;
+              console.log(`✅ 활성 모달 발견: ${modalId}`);
+              break;
+            }
+          }
+          
+          // ID로 찾을 수 없으면 클래스로 찾기
+          if (!modalElement) {
+            const openModals = document.querySelectorAll('.modal.show');
+            console.log('클래스로 찾은 열린 모달들:', openModals.length);
+            openModals.forEach((modal, index) => {
+              console.log(`모달 ${index}:`, modal.id, modal.classList);
+            });
+            
+            // 첫 번째 열린 모달 사용
+            if (openModals.length > 0) {
+              modalElement = openModals[0];
+              console.log('✅ 첫 번째 열린 모달 사용:', modalElement.id);
+            }
+          }
+          
+          if (modalElement) {
+            console.log('모달 발견, 납품 품목 정보 업데이트 시작');
+            
+            // 납품 품목 div 찾아서 업데이트
+            const deliveryItemsDiv = modalElement.querySelector('.delivery-items-display');
+            console.log('deliveryItemsDiv 찾기 결과:', deliveryItemsDiv);
+            
+            if (deliveryItemsDiv) {
+              if (updatedSchedule.delivery_items) {
+                console.log('납품 품목 업데이트 중...:', updatedSchedule.delivery_items);
+                
+                // formatDeliveryItems 함수 대신 직접 HTML 생성
+                let deliveryItemsText = updatedSchedule.delivery_items;
+                
+                // 줄바꿈 처리
+                deliveryItemsText = deliveryItemsText
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\r\\n/g, '\n')
+                  .replace(/\\r/g, '\n')
+                  .replace(/\r\n/g, '\n')
+                  .replace(/\r/g, '\n')
+                  .trim();
+                
+                // HTML 생성
+                const lines = deliveryItemsText.split('\n')
+                  .map(line => line.trim())
+                  .filter(line => line);
+                
+                const htmlLines = lines.map(line => {
+                  const div = document.createElement('div');
+                  div.textContent = line;
+                  return div.innerHTML;
+                });
+                
+                const formattedHtml = htmlLines.join('<br>');
+                console.log('포맷된 납품 품목:', formattedHtml);
+                
+                deliveryItemsDiv.innerHTML = formattedHtml;
+                console.log('✅ 납품 품목 div 업데이트 완료');
+              } else {
+                console.log('납품 품목이 없음');
+                deliveryItemsDiv.innerHTML = '';
+              }
+            } else {
+              console.log('❌ 납품 품목 div를 찾을 수 없음');
+              // 모든 .delivery-items-display 클래스 찾기
+              const allDeliveryDivs = modalElement.querySelectorAll('.delivery-items-display');
+              console.log('모달 내 모든 .delivery-items-display 요소:', allDeliveryDivs.length);
+              allDeliveryDivs.forEach((div, index) => {
+                console.log(`delivery div ${index}:`, div);
+                if (updatedSchedule.delivery_items) {
+                  // formatDeliveryItems 함수 대신 직접 HTML 생성
+                  let deliveryItemsText = updatedSchedule.delivery_items
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\r\\n/g, '\n')
+                    .replace(/\\r/g, '\n')
+                    .replace(/\r\n/g, '\n')
+                    .replace(/\r/g, '\n')
+                    .trim();
+                  
+                  const lines = deliveryItemsText.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line);
+                  
+                  const htmlLines = lines.map(line => {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.textContent = line;
+                    return tempDiv.innerHTML;
+                  });
+                  
+                  div.innerHTML = htmlLines.join('<br>');
+                  console.log(`✅ delivery div ${index} 업데이트 완료`);
+                }
+              });
+            }
+            
+            // 납품 금액 업데이트
+            const deliveryAmountElements = modalElement.querySelectorAll('.text-primary.fw-bold');
+            console.log('납품 금액 요소들:', deliveryAmountElements.length);
+            deliveryAmountElements.forEach((element, index) => {
+              console.log(`금액 요소 ${index}:`, element.textContent);
+              if (element.textContent.includes('원') && updatedSchedule.delivery_amount) {
+                const formattedAmount = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
+                console.log(`납품 금액 업데이트 (${index}):`, formattedAmount);
+                element.textContent = formattedAmount;
+              }
+            });
+            
+            console.log('✅ 모달 업데이트 완료');
+          } else {
+            console.log('❌ 열린 모달을 찾을 수 없음');
+          }
+        } else {
+          console.log('❌ 해당 스케줄을 찾을 수 없음');
+        }
+      })
+      .catch(error => {
+        console.error('❌ 스케줄 데이터 가져오기 실패:', error);
+      });
+  }
+
+  // 스케줄 데이터를 다시 로드하여 화면 업데이트
+  function refreshScheduleData(scheduleId) {
+    console.log('=== refreshScheduleData 시작 ===', scheduleId);
+    
+    // API에서 최신 스케줄 데이터 가져오기
+    let apiUrl = "{% url 'reporting:schedule_api' %}";
+    {% if user_filter %}
+    apiUrl += "?user={{ user_filter }}";
+    {% endif %}
+    
+    fetch(apiUrl)
+      .then(response => response.json())
+      .then(data => {
+        console.log('스케줄 데이터 새로고침 완료');
+        
+        // schedules 배열 업데이트
+        schedules = data;
+        
+        // 해당 스케줄 찾기
+        const updatedSchedule = schedules.find(s => s.id == scheduleId);
+        if (updatedSchedule) {
+          console.log('업데이트된 스케줄:', updatedSchedule);
+          
+          // 현재 열린 모달의 납품 품목 정보 업데이트
+          const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
+          if (scheduleModal && updatedSchedule.delivery_items) {
+            const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
+            if (deliveryItemsDiv) {
+              console.log('납품 품목 div 업데이트:', updatedSchedule.delivery_items);
+              deliveryItemsDiv.innerHTML = formatDeliveryItems(updatedSchedule.delivery_items);
+            }
+            
+            const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
+            if (deliveryAmountP && updatedSchedule.delivery_amount) {
+              console.log('납품 금액 업데이트:', updatedSchedule.delivery_amount);
+              deliveryAmountP.textContent = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
+            }
+          }
+        }
+      })
+      .catch(error => {
+        console.error('스케줄 데이터 새로고침 실패:', error);
+      });
+  }
+
   // 화면의 납품 품목 표시 업데이트 함수
   function updateScheduleDeliveryDisplay(scheduleId, deliveryItemsText, deliveryAmount) {
+    console.log('=== updateScheduleDeliveryDisplay 시작 ===');
+    console.log('  scheduleId:', scheduleId);
+    console.log('  deliveryItemsText:', deliveryItemsText);
+    console.log('  deliveryAmount:', deliveryAmount);
+    
     // schedules 배열에서 해당 일정 업데이트
     const scheduleIndex = schedules.findIndex(s => s.id == scheduleId);
+    console.log('  scheduleIndex:', scheduleIndex);
     if (scheduleIndex !== -1) {
       schedules[scheduleIndex].delivery_items = deliveryItemsText;
       schedules[scheduleIndex].delivery_amount = deliveryAmount;
+      console.log('  schedules 배열 업데이트 완료');
     }
     
     // 현재 열린 모달의 납품 품목 표시 업데이트
     const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
+    console.log('  scheduleModal:', scheduleModal);
     if (scheduleModal) {
       const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
+      console.log('  deliveryItemsDiv:', deliveryItemsDiv);
       if (deliveryItemsDiv && deliveryItemsText) {
-        deliveryItemsDiv.innerHTML = formatDeliveryItems(deliveryItemsText);
+        const formattedItems = formatDeliveryItems(deliveryItemsText);
+        console.log('  formattedItems:', formattedItems);
+        deliveryItemsDiv.innerHTML = formattedItems;
+        console.log('  납품 품목 표시 업데이트 완료');
       }
       
       const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
+      console.log('  deliveryAmountP:', deliveryAmountP);
       if (deliveryAmountP && deliveryAmount) {
-        deliveryAmountP.textContent = `${deliveryAmount.toLocaleString()}원`;
+        const formattedAmount = `${deliveryAmount.toLocaleString()}원`;
+        console.log('  formattedAmount:', formattedAmount);
+        deliveryAmountP.textContent = formattedAmount;
+        console.log('  납품 금액 표시 업데이트 완료');
       }
     }
     
-    // 캘린더 재렌더링 (선택사항 - 무거울 수 있음)
-    // renderCalendar();
+    console.log('=== updateScheduleDeliveryDisplay 완료 ===');
   }
 
   // 편집 모드 납품 품목 모달 관련 함수들
