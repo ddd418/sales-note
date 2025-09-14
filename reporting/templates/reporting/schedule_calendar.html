@@ -17,11 +17,15 @@
     word-break: break-word !important;
     line-height: 1.5 !important;
     min-height: auto !important;
-    max-height: 200px !important;
-    overflow-y: auto !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
     margin-bottom: 0 !important;
+  }
+
+  /* 납품 품목 표시는 높이 제한 없이 모든 내용 표시 */
+  .delivery-items-display {
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   /* 일정 캘린더 모바일 최적화 */
@@ -1326,9 +1330,13 @@
 
     // 납품 품목 전용 포맷팅 함수
     function formatDeliveryItems(text) {
-      if (!text) return '';
+      if (!text) {
+        console.log('formatDeliveryItems: 텍스트가 없음');
+        return '';
+      }
       
       console.log('formatDeliveryItems original:', JSON.stringify(text));
+      console.log('formatDeliveryItems original length:', text.length);
       
       // 모든 종류의 줄바꿈 패턴을 처리
       let processedText = text
@@ -1336,21 +1344,32 @@
         .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
         .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
         .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
-        .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+        .replace(/\r/g, '\n')      // 실제 \r을 \n으로
+        .trim();                   // 앞뒤 공백 제거
       
-      // 텍스트를 줄 단위로 분할
-      const lines = processedText.split('\n').filter(line => line.trim());
+      console.log('formatDeliveryItems processed:', JSON.stringify(processedText));
+      
+      // 텍스트를 줄 단위로 분할하고 각 라인의 앞뒤 공백도 제거
+      const lines = processedText.split('\n')
+        .map(line => line.trim())  // 각 라인의 앞뒤 공백 제거
+        .filter(line => line);     // 빈 라인 제거
+      
+      console.log('formatDeliveryItems lines count:', lines.length);
+      console.log('formatDeliveryItems lines:', lines);
       
       if (lines.length === 0) return '';
       
       // 각 줄을 개별적으로 HTML 이스케이프 후 br 태그로 연결
-      const formattedLines = lines.map(line => {
+      const formattedLines = lines.map((line, index) => {
+        console.log(`formatDeliveryItems line ${index + 1}: "${line}"`);
         const div = document.createElement('div');
-        div.textContent = line.trim();
+        div.textContent = line;
         return div.innerHTML; // HTML 이스케이프된 텍스트
       });
       
-      return formattedLines.join('<br>');
+      const result = formattedLines.join('<br>');
+      console.log('formatDeliveryItems result:', result);
+      return result;
     }
 
     fetch(`{% url 'reporting:schedule_histories_api' 999 %}`.replace('999', scheduleId))
@@ -1431,13 +1450,14 @@
                   </div>`;
               }
               
-              if (history.delivery_items) {
-                historyHtml += `
-                  <div class="mb-2">
-                    <label class="form-label fw-bold">납품 품목:</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light content-display delivery-items-display">${formatDeliveryItems(history.delivery_items)}</div>
-                  </div>`;
-              }
+              // 납품 품목은 스케줄 레벨에서 이미 표시되므로 히스토리에서는 제거
+              // if (history.delivery_items) {
+              //   historyHtml += `
+              //     <div class="mb-2">
+              //       <label class="form-label fw-bold">납품 품목:</label>
+              //       <div class="form-control-plaintext border rounded p-2 bg-light content-display delivery-items-display">${formatDeliveryItems(history.delivery_items)}</div>
+              //     </div>`;
+              // }
               
               if (history.tax_invoice_issued !== undefined) {
                 historyHtml += `
@@ -2648,26 +2668,42 @@
       const schedule = schedules.find(s => s.id == currentScheduleId);
       
       if (schedule && schedule.delivery_items && schedule.delivery_items.trim()) {
-        const deliveryItemsText = schedule.delivery_items.trim();
-        console.log('기존 납품 품목 데이터:', deliveryItemsText);
+        let deliveryItemsText = schedule.delivery_items.trim();
         
-        const lines = deliveryItemsText.split('\n');
+        // 모든 종류의 줄바꿈 패턴을 처리
+        deliveryItemsText = deliveryItemsText
+          .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
+          .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
+          .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
+          .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
+          .replace(/\r/g, '\n');     // 실제 \r을 \n으로
+        
+        console.log('원본 납품 품목 데이터:', JSON.stringify(schedule.delivery_items));
+        console.log('처리된 납품 품목 데이터:', JSON.stringify(deliveryItemsText));
+        console.log('줄바꿈으로 분리된 라인들:', deliveryItemsText.split('\n'));
+        
+        const lines = deliveryItemsText.split('\n').filter(line => line.trim());
         let hasData = false;
         
-        lines.forEach(line => {
-          if (line.trim()) {
-            // "품목명: 수량개 (금액원)" 형태 파싱
-            const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+        console.log(`총 ${lines.length}개의 품목 라인 발견`);
+        
+        lines.forEach((line, index) => {
+          const trimmedLine = line.trim();
+          console.log(`라인 ${index + 1}: "${trimmedLine}"`);
+          
+          if (trimmedLine) {
+            // 더 관대한 정규식으로 매칭 ("품목명: 수량개 (금액원)" 형태)
+            const match = trimmedLine.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
             if (match) {
               const itemName = match[1].trim();
-              const quantity = parseInt(match[2]);
-              const totalPriceStr = match[3].replace(/,/g, '');
+              const quantity = parseFloat(match[2]);
+              const totalPriceStr = match[3].replace(/[,\s]/g, '');
               const totalPrice = parseInt(totalPriceStr);
               
               // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
               const unitPrice = Math.round(totalPrice / 1.1 / quantity);
               
-              console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
+              console.log(`품목 ${index + 1} 파싱 성공: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
               
               addCalendarDeliveryItem({
                 item_name: itemName,
@@ -2675,13 +2711,13 @@
                 unit_price: unitPrice
               });
               hasData = true;
+            } else {
+              console.warn(`품목 ${index + 1} 파싱 실패: "${trimmedLine}" - 정규식에 매칭되지 않음`);
             }
           }
         });
         
-        if (hasData) {
-          console.log('기존 납품 품목 로드 완료');
-        }
+        console.log(`총 ${hasData ? '성공' : '실패'} - 로드된 품목 수: ${document.querySelectorAll('#calendar-delivery-items-container .delivery-item').length}`);
         return hasData;
       }
     }
@@ -2868,7 +2904,37 @@
     const modal = bootstrap.Modal.getInstance(document.getElementById('deliveryItemsModal'));
     modal.hide();
     
-    showMessage('납품 품목이 적용되었습니다.', 'success');
+    // 화면에 표시된 납품 품목 정보 즉시 업데이트
+    updateScheduleDeliveryDisplay(currentScheduleId, itemsText.join('\n'), Math.round(totalAmount));
+    
+    showSuccessMessage('납품 품목이 적용되었습니다.');
+  }
+
+  // 화면의 납품 품목 표시 업데이트 함수
+  function updateScheduleDeliveryDisplay(scheduleId, deliveryItemsText, deliveryAmount) {
+    // schedules 배열에서 해당 일정 업데이트
+    const scheduleIndex = schedules.findIndex(s => s.id == scheduleId);
+    if (scheduleIndex !== -1) {
+      schedules[scheduleIndex].delivery_items = deliveryItemsText;
+      schedules[scheduleIndex].delivery_amount = deliveryAmount;
+    }
+    
+    // 현재 열린 모달의 납품 품목 표시 업데이트
+    const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
+    if (scheduleModal) {
+      const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
+      if (deliveryItemsDiv && deliveryItemsText) {
+        deliveryItemsDiv.innerHTML = formatDeliveryItems(deliveryItemsText);
+      }
+      
+      const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
+      if (deliveryAmountP && deliveryAmount) {
+        deliveryAmountP.textContent = `${deliveryAmount.toLocaleString()}원`;
+      }
+    }
+    
+    // 캘린더 재렌더링 (선택사항 - 무거울 수 있음)
+    // renderCalendar();
   }
 
   // 편집 모드 납품 품목 모달 관련 함수들
@@ -2972,8 +3038,13 @@
     
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
       // 기존 데이터가 있는 경우 파싱해서 로드
-      const deliveryItemsText = deliveryItemsField.value.trim();
+      let deliveryItemsText = deliveryItemsField.value.trim();
+      
+      // \n 문자가 \\n으로 이스케이프되어 있을 수 있으므로 실제 줄바꿈으로 변환
+      deliveryItemsText = deliveryItemsText.replace(/\\n/g, '\n');
+      
       console.log('기존 납품 품목 데이터:', deliveryItemsText);
+      console.log('줄바꿈으로 분리된 라인들:', deliveryItemsText.split('\n'));
       
       const lines = deliveryItemsText.split('\n');
       let hasData = false;
@@ -3196,7 +3267,7 @@
     const modal = bootstrap.Modal.getInstance(document.getElementById('editDeliveryItemsModal'));
     modal.hide();
     
-    showMessage('납품 품목이 적용되었습니다.', 'success');
+    showSuccessMessage('납품 품목이 적용되었습니다.');
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -3778,10 +3849,29 @@
                     <p class="mb-0">${schedule.notes}</p>
                   </div>
                   ` : ''}
-                  ${schedule.delivery_items ? `
+                  ${schedule.activity_type === 'delivery' && (schedule.delivery_items || schedule.delivery_amount) ? `
                   <div class="col-12">
-                    <label class="form-label fw-bold">납품 품목</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light" id="delivery-items-${schedule.id}"></div>
+                    <div class="card border-warning">
+                      <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">
+                          <i class="fas fa-boxes me-2"></i>납품 품목 정보
+                        </h6>
+                      </div>
+                      <div class="card-body">
+                        ${schedule.delivery_items ? `
+<div class="mb-3">
+<label class="form-label fw-bold">납품 품목</label>
+<div class="form-control-plaintext border rounded p-2 bg-light delivery-items-display">${formatDeliveryItems(schedule.delivery_items)}</div>
+</div>
+` : ''}
+                        ${schedule.delivery_amount ? `
+                        <div class="mb-0">
+                          <label class="form-label fw-bold">총 납품 금액</label>
+                          <p class="mb-0 text-primary fw-bold">${parseInt(schedule.delivery_amount).toLocaleString()}원</p>
+                        </div>
+                        ` : ''}
+                      </div>
+                    </div>
                   </div>
                   ` : ''}
                   <div class="col-12">
@@ -3862,10 +3952,6 @@
                                   <i class="fas fa-boxes"></i>
                                 </button>
                               </div>
-                            </div>
-                            <div class="col-6 activity-field delivery-fields" style="display: none;">
-                              <label class="form-label">납품 날짜</label>
-                              <input type="date" class="form-control" name="delivery_date">
                             </div>
                             <div class="col-6 activity-field delivery-fields" style="display: none;">
                               <label class="form-label">세금계산서</label>
@@ -4151,12 +4237,7 @@
                   </div>
                 ` : ''}
                 
-                ${history.delivery_items ? `
-                  <div class="mb-2">
-                    <label class="form-label fw-bold">납품 품목:</label>
-                    <div class="form-control-plaintext border rounded p-2 bg-light content-display delivery-items-display">${formatDeliveryItems(history.delivery_items)}</div>
-                  </div>
-                ` : ''}
+                <!-- 납품 품목은 스케줄 레벨에서 이미 표시되므로 히스토리에서는 제거 -->
                 
                 <div class="mb-2">
                   <label class="form-label fw-bold">세금계산서:</label>

@@ -96,17 +96,7 @@
               </div>
             </div>
 
-            <!-- 납품 정보 섹션 (납품 일정일 때만 표시) -->
-            <div class="delivery-section" id="delivery-section" style="display: none;">
-              <div class="row">
-                <div class="col-12">
-                  <h3 class="mb-3 text-warning">
-                    <i class="fas fa-truck me-2"></i>납품 정보
-                  </h3>
-                </div>
-              </div>
-
-              <div class="row">
+              <div class="row" id="delivery-section" style="display: none;">
                 <!-- 납품 금액 -->
                 <div class="col-md-6">
                   <div class="mb-3">
@@ -117,9 +107,6 @@
                       {% for error in form.delivery_amount.errors %}{{ error }}{% endfor %}
                     </div>
                     {% endif %}
-                    <div class="form-text">
-                      납품 금액을 입력하세요. 0원도 입력 가능합니다.
-                    </div>
                   </div>
                 </div>
                 
@@ -133,14 +120,12 @@
                       {% for error in form.delivery_date.errors %}{{ error }}{% endfor %}
                     </div>
                     {% endif %}
-                    <div class="form-text">
-                      실제 납품할 날짜를 입력하세요.
-                    </div>
                   </div>
                 </div>
               </div>
 
-              <!-- 납품 품목 (모달 방식) -->
+              <!-- 납품 품목 (수정 모드에서만 표시) -->
+              {% if schedule %}
               <div class="mb-4">
                 <!-- 기존 텍스트 입력 방식 숨김 -->
                 <div style="display: none;">
@@ -150,35 +135,25 @@
                   {{ form.delivery_items }}
                 </div>
                 
-                <!-- 납품 품목 요약 및 관리 버튼 -->
+                <!-- 납품 품목 요약 및 관리 버튼 (읽기 전용) -->
                 <div class="card">
                   <div class="card-header d-flex justify-content-between align-items-center bg-warning text-dark">
                     <div>
                       <h5 class="mb-0">
                         <i class="fas fa-boxes me-2"></i>납품 품목
                       </h5>
-                      {% if schedule %}
                       <small class="schedule-delivery-items-summary text-muted">수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리 페이지나 캘린더에서 수정하세요.</small>
-                      {% else %}
-                      <small class="schedule-delivery-items-summary text-muted">납품 품목을 추가해주세요.</small>
-                      {% endif %}
                     </div>
-                    {% if not schedule %}
-                    <button type="button" class="btn btn-dark btn-sm" onclick="openScheduleDeliveryModal()">
-                      <i class="fas fa-edit me-1"></i>품목 관리
-                    </button>
-                    {% else %}
                     <button type="button" class="btn btn-secondary btn-sm" disabled title="수정 모드에서는 납품 품목을 변경할 수 없습니다">
                       <i class="fas fa-lock me-1"></i>읽기 전용
                     </button>
-                    {% endif %}
                   </div>
                   <div class="card-body">
                     <div class="row">
                       <div class="col-md-8">
                         <label class="form-label fw-bold">납품 품목 내역</label>
                         <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly 
-                                  placeholder="{% if schedule %}수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리에서 수정하세요.{% else %}품목 관리 버튼을 클릭하여 납품 품목을 추가해주세요.{% endif %}"></textarea>
+                                  placeholder="수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리에서 수정하세요."></textarea>
                       </div>
                       <div class="col-md-4">
                         <label class="form-label fw-bold">총 납품 금액 (부가세 포함)</label>
@@ -197,10 +172,17 @@
                 </div>
                 {% endif %}
               </div>
+              {% else %}
+              <!-- 생성 모드에서는 납품 품목 섹션을 숨김 -->
+              <!-- 납품 품목은 일정 생성 후 히스토리에서 관리 -->
+              <div style="display: none;">
+                {{ form.delivery_items }}
+              </div>
+              {% endif %}
             </div>
 
             <!-- 버튼 섹션 -->
-            <div class="d-flex justify-content-end mt-4">
+            <div class="d-flex justify-content-end mt-3 mb-0" style="position: relative; z-index: 10;">
               {% if schedule %}
               <a
                 href="{% url 'reporting:schedule_detail' schedule.pk %}"
@@ -215,7 +197,7 @@
               >
               {% endif %}
 
-              <button type="submit" class="btn btn-primary">
+              <button type="submit" class="btn btn-primary" style="position: relative; z-index: 10;">
                 <i class="fas fa-save me-1"></i>
                 {% if schedule %}수정하기{% else %}생성하기{% endif %}
               </button>
@@ -615,7 +597,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 활동 유형 변경 시 납품 섹션 표시/숨김
     const activityTypeField = document.querySelector('[name="activity_type"]');
-    if (activityTypeField) {
+    const deliverySection = document.getElementById('delivery-section');
+    
+    if (activityTypeField && deliverySection) {
         // 초기 상태 설정
         toggleDeliverySection();
         
@@ -625,6 +609,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function toggleDeliverySection() {
         const deliverySection = document.getElementById('delivery-section');
+        const activityTypeField = document.querySelector('[name="activity_type"]');
+        
+        // 요소들이 존재하지 않으면 함수 종료
+        if (!deliverySection || !activityTypeField) {
+            return;
+        }
+        
         const selectedValue = activityTypeField.value;
         
         if (selectedValue === 'delivery') {
@@ -1017,6 +1008,8 @@ function saveScheduleDeliveryItems() {
 
 // 페이지 로드 시 기존 납품 품목 데이터 표시
 document.addEventListener('DOMContentLoaded', function() {
+    {% if schedule %}
+    // 수정 모드에서만 납품 품목 데이터 로드
     const deliveryItemsField = document.querySelector('[name="delivery_items"]');
     const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
     const deliveryDisplayField = document.getElementById('schedule-delivery-items-display');
@@ -1028,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const deliveryText = `{{ delivery_text|escapejs }}`;
         const deliveryAmount = {{ delivery_amount|default:"0" }};
         
-        console.log('Loading delivery data from template:', deliveryText);
+        console.log('Loading delivery data from template (edit mode):', deliveryText);
         
         if (deliveryDisplayField) {
             deliveryDisplayField.value = deliveryText;
@@ -1048,11 +1041,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (deliverySummary && deliveryText) {
             const itemCount = deliveryText.split('\n').filter(line => line.trim()).length;
-            {% if schedule %}
             deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(deliveryAmount).toLocaleString()}원 (읽기 전용)`;
-            {% else %}
-            deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(deliveryAmount).toLocaleString()}원`;
-            {% endif %}
         }
     {% else %}
         // 템플릿 변수가 없으면 폼 필드에서 시도
@@ -1070,13 +1059,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (deliverySummary && itemsText) {
                 const itemCount = itemsText.split('\\n').filter(line => line.trim()).length;
-                {% if schedule %}
                 deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원 (읽기 전용)`;
-                {% else %}
-                deliverySummary.textContent = `총 ${itemCount}개 품목, ${parseInt(totalAmount).toLocaleString()}원`;
-                {% endif %}
             }
         }
+    {% endif %}
+    {% else %}
+    // 생성 모드에서는 납품 품목 관련 처리 안 함
+    console.log('일정 생성 모드: 납품 품목은 일정 생성 후 히스토리에서 관리합니다.');
     {% endif %}
 });
 

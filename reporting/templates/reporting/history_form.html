@@ -371,6 +371,13 @@
   </div>
 </div>
 
+<style>
+#delivery-items-display {
+  white-space: pre-line !important;
+  word-break: break-word !important;
+}
+</style>
+
 <script>
   document.addEventListener('DOMContentLoaded', function() {      // DOM 요소 선택 - 안전한 방식으로
       const actionTypeField = document.getElementById('{{ form.action_type.id_for_label }}');
@@ -601,7 +608,11 @@
     
     // 2순위: 기존 폼 필드 데이터 사용
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
-      const deliveryItemsText = deliveryItemsField.value.trim();
+      let deliveryItemsText = deliveryItemsField.value.trim();
+      
+      // \n 문자가 \\n으로 이스케이프되어 있을 수 있으므로 실제 줄바꿈으로 변환
+      deliveryItemsText = deliveryItemsText.replace(/\\n/g, '\n');
+      
       deliveryItemsDisplay.value = deliveryItemsText;
       
       // 총액 계산
@@ -771,8 +782,11 @@
     const modal = new bootstrap.Modal(document.getElementById('historyDeliveryItemsModal'));
     modal.show();
 
-    // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
-    loadExistingHistoryDeliveryItems() || addHistoryDeliveryItem();
+    // DOM 업데이트가 완료된 후 데이터 로드
+    setTimeout(() => {
+      // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
+      loadExistingHistoryDeliveryItems() || addHistoryDeliveryItem();
+    }, 100);
   }
 
   function loadExistingHistoryDeliveryItems() {
@@ -820,8 +834,13 @@
     
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
       // 기존 데이터가 있는 경우 파싱해서 로드
-      const deliveryItemsText = deliveryItemsField.value.trim();
+      let deliveryItemsText = deliveryItemsField.value.trim();
+      
+      // \n 문자가 \\n으로 이스케이프되어 있을 수 있으므로 실제 줄바꿈으로 변환
+      deliveryItemsText = deliveryItemsText.replace(/\\n/g, '\n');
+      
       console.log('기존 납품 품목 데이터:', deliveryItemsText);
+      console.log('줄바꿈으로 분리된 라인들:', deliveryItemsText.split('\n'));
       
       const lines = deliveryItemsText.split('\n');
       let hasData = false;
@@ -1065,7 +1084,8 @@
                         document.getElementById('delivery-items-container');
       
       if (!container) {
-          console.error('Delivery items container not found');
+          console.error('Delivery items container not found. Available elements:', 
+                       document.querySelectorAll('[id*="delivery"]'));
           return;
       }
       
@@ -1200,15 +1220,22 @@
           {% for item in existing_delivery_items %}
               addDeliveryItem();
               const lastItem{{ forloop.counter }} = document.querySelector('.delivery-item:last-child');
-              lastItem{{ forloop.counter }}.querySelector('input[name*="[name]"]').value = '{{ item.item_name|escapejs }}';
-              lastItem{{ forloop.counter }}.querySelector('input[name*="[quantity]"]').value = '{{ item.quantity }}';
-              lastItem{{ forloop.counter }}.querySelector('input[name*="[unit_price]"]').value = '{{ item.unit_price|default_if_none:"" }}';
-              
-              // 소계 계산
-              const quantity{{ forloop.counter }} = {{ item.quantity }};
-              const unitPrice{{ forloop.counter }} = {{ item.unit_price|default_if_none:"0" }};
-              const total{{ forloop.counter }} = quantity{{ forloop.counter }} * unitPrice{{ forloop.counter }};
-              lastItem{{ forloop.counter }}.querySelector('.item-total').textContent = total{{ forloop.counter }}.toLocaleString() + '원';
+              if (lastItem{{ forloop.counter }}) {
+                  const nameInput = lastItem{{ forloop.counter }}.querySelector('input[name*="[name]"]');
+                  const quantityInput = lastItem{{ forloop.counter }}.querySelector('input[name*="[quantity]"]');
+                  const unitPriceInput = lastItem{{ forloop.counter }}.querySelector('input[name*="[unit_price]"]');
+                  const totalElement = lastItem{{ forloop.counter }}.querySelector('.item-total');
+                  
+                  if (nameInput) nameInput.value = '{{ item.item_name|escapejs }}';
+                  if (quantityInput) quantityInput.value = '{{ item.quantity }}';
+                  if (unitPriceInput) unitPriceInput.value = '{{ item.unit_price|default_if_none:"" }}';
+                  
+                  // 소계 계산
+                  const quantity{{ forloop.counter }} = {{ item.quantity }};
+                  const unitPrice{{ forloop.counter }} = {{ item.unit_price|default_if_none:"0" }};
+                  const total{{ forloop.counter }} = quantity{{ forloop.counter }} * unitPrice{{ forloop.counter }};
+                  if (totalElement) totalElement.textContent = total{{ forloop.counter }}.toLocaleString() + '원';
+              }
           {% endfor %}
           calculateTotal();
       {% else %}

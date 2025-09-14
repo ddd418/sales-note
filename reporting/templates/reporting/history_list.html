@@ -385,7 +385,7 @@
                       {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_items %}
                       <div class="delivery-info">
                         <strong>납품 품목:</strong>
-                        <span class="delivery-items">{{ history.delivery_items|truncatechars:50 }}</span>
+                        <span class="delivery-items">{{ history.delivery_items|truncatechars:100 }}</span>
                       </div>
                       {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_date %}
                       <div class="delivery-info">
@@ -601,6 +601,8 @@ span.delivery-amount {
   color: #198754 !important;
 }
 
+.delivery-info .delivery-items,
+.delivery-info span.delivery-items,
 .delivery-items,
 span.delivery-items {
   font-size: 15px !important;
@@ -610,7 +612,9 @@ span.delivery-items {
   padding: 0 !important;
   border-radius: 0 !important;
   margin-left: 8px !important;
-  display: inline !important;
+  display: inline-block !important;
+  white-space: pre-line !important;
+  word-break: break-word !important;
 }
 
 .delivery-date,
@@ -1348,6 +1352,14 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
 
 // 월별 필터 기능
 document.addEventListener('DOMContentLoaded', function() {
+    // 납품 품목 줄바꿈 처리
+    const deliveryItems = document.querySelectorAll('.delivery-items');
+    deliveryItems.forEach(function(item) {
+        if (item.textContent.includes('\\n')) {
+            item.innerHTML = item.textContent.replace(/\\n/g, '<br>');
+        }
+    });
+    
     const monthCheckboxes = document.querySelectorAll('.month-checkbox');
     const monthAllCheckbox = document.getElementById('month-all');
     

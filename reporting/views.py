@@ -1408,7 +1408,7 @@ def schedule_api_view(request):
         
         schedule_data = []
         for schedule in schedules:
-            schedule_data.append({
+            schedule_item = {
                 'id': schedule.id,
                 'followup_id': schedule.followup.id,  # 팔로우업 ID 추가
                 'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
@@ -1425,7 +1425,40 @@ def schedule_api_view(request):
                 'activity_type_display': schedule.get_activity_type_display(),
                 'notes': schedule.notes or '',
                 'user_name': schedule.user.username,
-            })
+            }
+            
+            # 납품 일정인 경우 납품 품목 정보 추가
+            if schedule.activity_type == 'delivery':
+                delivery_items_text = ''
+                delivery_amount = 0
+                
+                # Schedule에 연결된 History에서 납품 품목 찾기
+                delivery_history = schedule.histories.filter(action_type='delivery_schedule').first()
+                if delivery_history and delivery_history.delivery_items:
+                    delivery_items_text = delivery_history.delivery_items.strip()
+                    delivery_amount = delivery_history.delivery_amount or 0
+                else:
+                    # History가 없으면 DeliveryItem 모델에서 데이터 가져오기
+                    delivery_items = schedule.delivery_items_set.all().order_by('id')
+                    if delivery_items.exists():
+                        delivery_text_parts = []
+                        total_amount = 0
+                        
+                        for item in delivery_items:
+                            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                            total_amount += item_total
+                            text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                            delivery_text_parts.append(text_part)
+                        
+                        delivery_items_text = '\n'.join(delivery_text_parts)
+                        delivery_amount = int(total_amount)
+                
+                schedule_item.update({
+                    'delivery_items': delivery_items_text,
+                    'delivery_amount': delivery_amount,
+                })
+            
+            schedule_data.append(schedule_item)
         
         return JsonResponse(schedule_data, safe=False)
     
@@ -1883,9 +1916,48 @@ def schedule_histories_api(request, schedule_id):
             
             # 납품 일정인 경우 추가 정보
             if history.action_type == 'delivery_schedule':
+                # DeliveryItem 모델에서 최신 납품 품목 데이터 가져오기
+                delivery_items_text = ''
+                delivery_amount = history.delivery_amount or 0
+                
+                # 1차: History에 연결된 DeliveryItem 확인
+                delivery_items = history.delivery_items_set.all().order_by('id')
+                if delivery_items.exists():
+                    delivery_text_parts = []
+                    total_amount = 0
+                    
+                    for item in delivery_items:
+                        item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                        total_amount += item_total
+                        text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                        delivery_text_parts.append(text_part)
+                    
+                    delivery_items_text = '\n'.join(delivery_text_parts)
+                    delivery_amount = int(total_amount)
+                
+                # 2차: History의 schedule에 연결된 DeliveryItem 확인 (fallback)
+                elif history.schedule:
+                    schedule_delivery_items = history.schedule.delivery_items_set.all().order_by('id')
+                    if schedule_delivery_items.exists():
+                        delivery_text_parts = []
+                        total_amount = 0
+                        
+                        for item in schedule_delivery_items:
+                            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                            total_amount += item_total
+                            text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                            delivery_text_parts.append(text_part)
+                        
+                        delivery_items_text = '\n'.join(delivery_text_parts)
+                        delivery_amount = int(total_amount)
+                
+                # 3차: 기존 텍스트 필드 사용 (최종 fallback)
+                if not delivery_items_text and history.delivery_items:
+                    delivery_items_text = history.delivery_items
+                
                 history_data.update({
-                    'delivery_amount': history.delivery_amount,
-                    'delivery_items': history.delivery_items or '',
+                    'delivery_amount': delivery_amount,
+                    'delivery_items': delivery_items_text,
                     'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
                     'tax_invoice_issued': history.tax_invoice_issued,
                 })
