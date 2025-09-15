@@ -4031,7 +4031,7 @@ def followup_excel_download(request):
     # 헤더 생성
     headers = [
         '고객명', '업체/학교명', '부서/연구실명', '책임자', '핸드폰 번호', 
-        '메일 주소', '상세 주소', '상세 내용'
+        '메일 주소', '상세 주소', '고객 등급', '납품 품목', '총 납품 금액', '상세 내용'
     ]
     
     # 히스토리 컬럼 추가
@@ -4051,6 +4051,87 @@ def followup_excel_download(request):
         # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
         manager_name = followup.manager or ''
         
+        # 고객 등급 (우선순위)
+        priority_display = followup.get_priority_display() or '보통'
+        
+        # 납품 관련 정보 집계
+        delivery_histories = followup.histories.filter(action_type='delivery_schedule')
+        
+        # 납품 품목별 수량 집계용 딕셔너리
+        item_quantities = {}
+        total_delivery_amount = 0
+        
+        for history in delivery_histories:
+            # 납품 금액 집계
+            if history.delivery_amount:
+                total_delivery_amount += history.delivery_amount
+            
+            # 납품 품목 집계
+            if history.delivery_items:
+                # 줄바꿈 문자 처리
+                processed_items = history.delivery_items.replace('\\n', '\n').replace('\\r\\n', '\n').replace('\\r', '\n').strip()
+                
+                # 각 라인 처리하여 품목명과 수량 추출
+                lines = [line.strip() for line in processed_items.split('\n') if line.strip()]
+                for line in lines:
+                    # "품목명: 수량개 (금액원)" 패턴 파싱
+                    if ':' in line and '개' in line:
+                        try:
+                            # 품목명 추출
+                            item_name = line.split(':')[0].strip()
+                            
+                            # 수량 추출 (: 이후 첫 번째 숫자)
+                            after_colon = line.split(':', 1)[1]
+                            import re
+                            quantity_match = re.search(r'(\d+(?:\.\d+)?)개', after_colon)
+                            
+                            if quantity_match:
+                                quantity = float(quantity_match.group(1))
+                                
+                                # 품목별 수량 누적
+                                if item_name in item_quantities:
+                                    item_quantities[item_name] += quantity
+                                else:
+                                    item_quantities[item_name] = quantity
+                            else:
+                                # 수량을 찾지 못한 경우 1개로 처리
+                                if item_name in item_quantities:
+                                    item_quantities[item_name] += 1
+                                else:
+                                    item_quantities[item_name] = 1
+                        except:
+                            # 파싱 실패 시 품목명만 추출하고 1개로 처리
+                            item_name = line.split(':')[0].strip()
+                            if item_name in item_quantities:
+                                item_quantities[item_name] += 1
+                            else:
+                                item_quantities[item_name] = 1
+                    else:
+                        # 단순 품목명인 경우 1개로 처리
+                        if line in item_quantities:
+                            item_quantities[line] += 1
+                        else:
+                            item_quantities[line] = 1
+        
+        # 품목 텍스트 생성 (품목명과 총 수량 표시)
+        if item_quantities:
+            items_list = []
+            for item_name, total_qty in sorted(item_quantities.items()):
+                # 소수점이 있으면 그대로, 정수면 정수로 표시
+                if total_qty == int(total_qty):
+                    qty_str = str(int(total_qty))
+                else:
+                    qty_str = str(total_qty)
+                items_list.append(f"{item_name}: {qty_str}개")
+            
+            # 최대 10개까지 표시
+            if len(items_list) <= 10:
+                items_text = ', '.join(items_list)
+            else:
+                items_text = ', '.join(items_list[:10]) + f' 등 총 {len(items_list)}개 품목'
+        else:
+            items_text = '납품 기록 없음'
+        
         # 기본 정보
         data = [
             followup.customer_name or '',
@@ -4060,6 +4141,9 @@ def followup_excel_download(request):
             followup.phone_number or '',
             followup.email or '',
             followup.address or '',
+            priority_display,  # 고객 등급
+            items_text,  # 납품 품목
+            f"{total_delivery_amount:,}원" if total_delivery_amount > 0 else '납품 기록 없음',  # 총 납품 금액
             followup.notes or ''
         ]
         
@@ -4080,26 +4164,47 @@ def followup_excel_download(request):
             cell.alignment = wrap_alignment
     
     # 컬럼 너비 자동 조정 (개선된 버전)
+    # 각 컬럼별 최적 너비 설정
+    column_widths = {
+        1: 15,   # 고객명
+        2: 20,   # 업체/학교명
+        3: 20,   # 부서/연구실명
+        4: 12,   # 책임자
+        5: 15,   # 핸드폰 번호
+        6: 25,   # 메일 주소
+        7: 30,   # 상세 주소
+        8: 10,   # 고객 등급
+        9: 40,   # 납품 품목 (넓게)
+        10: 15,  # 총 납품 금액
+        11: 30,  # 상세 내용
+    }
+    
     for column in ws.columns:
-        max_length = 0
         column_letter = get_column_letter(column[0].column)
+        col_num = column[0].column
         
-        for cell in column:
-            try:
-                cell_value = str(cell.value) if cell.value is not None else ''
-                # 한글과 영문의 너비 차이를 고려
-                korean_chars = len([c for c in cell_value if ord(c) > 127])
-                english_chars = len(cell_value) - korean_chars
-                adjusted_length = korean_chars * 2 + english_chars
-                
-                if adjusted_length > max_length:
-                    max_length = adjusted_length
-            except:
-                pass
-        
-        # 최소 8, 최대 60 문자로 제한하고, 여유분 추가
-        adjusted_width = min(max(max_length + 3, 8), 60)
-        ws.column_dimensions[column_letter].width = adjusted_width
+        # 미리 정의된 너비가 있으면 사용
+        if col_num in column_widths:
+            ws.column_dimensions[column_letter].width = column_widths[col_num]
+        else:
+            # 히스토리 컬럼들에 대한 자동 조정
+            max_length = 0
+            for cell in column:
+                try:
+                    cell_value = str(cell.value) if cell.value is not None else ''
+                    # 한글과 영문의 너비 차이를 고려
+                    korean_chars = len([c for c in cell_value if ord(c) > 127])
+                    english_chars = len(cell_value) - korean_chars
+                    adjusted_length = korean_chars * 2 + english_chars
+                    
+                    if adjusted_length > max_length:
+                        max_length = adjusted_length
+                except:
+                    pass
+            
+            # 히스토리 컬럼은 최소 20, 최대 50으로 제한
+            adjusted_width = min(max(max_length + 3, 20), 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
     
     # 응답 생성
     today = datetime.now().strftime('%Y%m%d')
