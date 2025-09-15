@@ -95,7 +95,7 @@
                 <label class="form-label text-muted">우선순위</label>
                 <div class="p-2 bg-light rounded border">
                   <span
-                    class="badge {% if followup.priority == 'high' %}bg-danger {% elif followup.priority == 'medium' %}bg-warning {% elif followup.priority == 'low' %}bg-info {% else %}bg-secondary {% endif %}"
+                    class="badge {% if followup.priority == 'one_month' %}bg-danger {% elif followup.priority == 'three_months' %}bg-warning {% elif followup.priority == 'long_term' %}bg-info {% else %}bg-secondary {% endif %}"
                   >
                     {{ followup.get_priority_display }}
                   </span>

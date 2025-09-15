@@ -624,7 +624,7 @@
                 </a>
               </h6>
               <span
-                class="badge bg-{% if followup.priority == 'high' %}danger{% elif followup.priority == 'medium' %}warning{% else %}secondary{% endif %}"
+                class="badge bg-{% if followup.priority == 'one_month' %}danger{% elif followup.priority == 'three_months' %}warning{% else %}info{% endif %}"
               >
                 {{ followup.get_priority_display }}
               </span>

@@ -1192,6 +1192,9 @@
     role: '{{ user.userprofile.role }}'
   };
   
+  // 디버깅용 콘솔 로그
+  console.log('Current user info:', currentUser);
+  
   let currentDate = new Date();
   let selectedDate = null;
   let schedules = [];
@@ -1406,7 +1409,13 @@
                       <small class="text-muted">작성: ${escapeHtml(history.created_at)}</small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                      <small class="text-muted">작성자: ${escapeHtml(history.user)}</small>
+                      <small class="text-muted">작성자: ${(() => {
+                        // 매니저 메모의 경우 실제 작성자(created_by) 표시, 아니면 기본 user 표시
+                        const isManagerMemo = history.action_type === 'memo' && 
+                                            history.content && 
+                                            history.content.includes('[매니저 메모 -');
+                        return escapeHtml(isManagerMemo && history.created_by ? history.created_by : history.user);
+                      })()}</small>
                       ${currentUser.role !== 'manager' ? `
                       ${(history.created_by === currentUser.username || (!history.created_by && history.user === currentUser.username)) ? `
                       <button class="btn btn-sm btn-outline-primary" onclick="editHistory(${history.id}, ${scheduleId})" title="수정">
@@ -1415,7 +1424,21 @@
                       <button class="btn btn-sm btn-outline-danger" onclick="deleteHistory(${history.id}, ${scheduleId})" title="삭제">
                         <i class="fas fa-trash"></i>
                       </button>` : ''}
-                      ` : ''}
+                      ` : `
+                      ${(() => {
+                        const isManagerMemo = history.action_type === 'memo' && 
+                                            history.content && 
+                                            history.content.includes('[매니저 메모 -');
+                        console.log('History ID:', history.id, 'Type:', history.action_type, 'Is Manager Memo:', isManagerMemo);
+                        if (isManagerMemo) {
+                          console.log('Content preview:', history.content.substring(0, 50));
+                        }
+                        return isManagerMemo ? 
+                          `<button class="btn btn-sm btn-outline-danger" onclick="deleteManagerMemo(${history.id}, ${scheduleId})" title="매니저 메모 삭제">
+                            <i class="fas fa-trash"></i>
+                          </button>` : '';
+                      })()}
+                      `}
                     </div>
                   </div>
                 </div>
@@ -1423,10 +1446,22 @@
             
             // 활동 내용
             if (history.content) {
+              // 매니저 메모의 경우 [매니저 메모 - ...] 부분 제거
+              let displayContent = history.content;
+              const isManagerMemo = history.action_type === 'memo' && 
+                                  history.content && 
+                                  history.content.includes('[매니저 메모 -');
+              
+              if (isManagerMemo) {
+                // [매니저 메모 - username] 패턴을 제거
+                const memoPattern = /^\[매니저 메모 - [^\]]+\]\s*/;
+                displayContent = history.content.replace(memoPattern, '');
+              }
+              
               historyHtml += `
                 <div class="mb-3">
                   <label class="form-label fw-bold">활동 내용:</label>
-                  <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(history.content)}</div>
+                  <div class="form-control-plaintext border rounded p-2 bg-light content-display">${formatText(displayContent)}</div>
                 </div>`;
             }
             
@@ -2537,6 +2572,51 @@
     if (form) {
       form.reset();
     }
+  }
+
+  // 매니저 메모 삭제 함수
+  function deleteManagerMemo(historyId, scheduleId) {
+    if (!confirm('정말로 이 매니저 메모를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    console.log('Deleting manager memo:', historyId);
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!csrfToken) {
+      showErrorMessage('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    fetch(`{% url 'reporting:delete_manager_memo_api' 999 %}`.replace('999', historyId), {
+      method: 'DELETE',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      }
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.error || '서버 오류가 발생했습니다.');
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success) {
+        showSuccessMessage('매니저 메모가 성공적으로 삭제되었습니다.');
+        loadScheduleHistories(scheduleId); // 히스토리 목록 새로고침
+      } else {
+        showErrorMessage('매니저 메모 삭제에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
+      }
+    })
+    .catch(error => {
+      console.error('Manager memo deletion error:', error);
+      showErrorMessage('매니저 메모 삭제 중 오류가 발생했습니다: ' + error.message);
+    });
   }
 
   // 오류 메시지 표시 - 전역 스코프로 이동

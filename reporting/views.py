@@ -11,11 +11,15 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import os
 import mimetypes
+import logging
+
+# 로거 설정
+logger = logging.getLogger(__name__)
 
 # 납품 품목 처리 함수
 def save_delivery_items(request, instance_obj):
@@ -1480,19 +1484,19 @@ def history_list_view(request):
     
     user_profile = get_user_profile(request.user)
     
-    # 권한에 따른 데이터 필터링
+    # 권한에 따른 데이터 필터링 (매니저 메모 제외)
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
         accessible_users = get_accessible_users(request.user)
-        histories = History.objects.filter(user__in=accessible_users)
+        histories = History.objects.filter(user__in=accessible_users, parent_history__isnull=True)  # 매니저 메모 제외
     else:
         # Salesman은 자신의 데이터만 조회
-        histories = History.objects.filter(user=request.user)
+        histories = History.objects.filter(user=request.user, parent_history__isnull=True)  # 매니저 메모 제외
     
-    # 관련 객체들을 미리 로드하여 성능 최적화
+    # 관련 객체들을 미리 로드하여 성능 최적화 (답글 메모도 포함)
     histories = histories.select_related(
         'user', 'followup', 'followup__company', 'followup__department', 'schedule'
-    )
+    ).prefetch_related('reply_memos__created_by')  # 답글 메모들을 미리 로드
     
     # 검색 기능 (책임자 검색 추가)
     search_query = request.GET.get('search')
@@ -1652,12 +1656,13 @@ def history_detail_view(request, pk):
     if request.method == 'POST' and user_profile.is_manager():
         manager_memo = request.POST.get('manager_memo', '').strip()
         if manager_memo:
-            # 매니저 메모를 새로운 히스토리로 생성
+            # 매니저 메모를 부모 히스토리에 연결된 자식 히스토리로 생성
             memo_history = History.objects.create(
                 followup=history.followup,
                 user=history.user,  # 원래 실무자를 유지
+                parent_history=history,  # 부모 히스토리 설정
                 action_type='memo',
-                content=f"[매니저 메모 - {request.user.username}] {manager_memo}",
+                content=manager_memo,  # 매니저 메모 표시 제거 (parent_history로 구분)
                 created_by=request.user,  # 실제 작성자는 매니저
                 schedule=history.schedule if history.schedule else None
             )
@@ -3059,9 +3064,9 @@ def schedule_add_memo_api(request, schedule_id):
         # 매니저 메모를 히스토리로 생성
         memo_history = History.objects.create(
             followup=schedule.followup,
-            user=request.user,  # 매니저가 작성자
+            user=schedule.user,  # 일정의 원래 담당자를 유지
             action_type='memo',
-            content=memo_content,  # 매니저 메모 표시 제거
+            content=f"[매니저 메모 - {request.user.username}] {memo_content}",  # 매니저 메모 표시 추가
             created_by=request.user,  # 실제 작성자는 매니저
             schedule=schedule
         )
@@ -4560,3 +4565,127 @@ def customer_detail_report_view(request, followup_id):
     }
     
     return render(request, 'reporting/customer_detail_report.html', context)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+@login_required
+def delete_manager_memo_api(request, history_id):
+    """댓글 메모 삭제 API - 매니저는 모든 댓글, 실무자는 자신의 댓글만 삭제 가능"""
+    try:
+        user_profile = get_user_profile(request.user)
+        
+        # 히스토리 조회
+        history = get_object_or_404(History, pk=history_id)
+        
+        # 메모 타입이고 부모 히스토리가 있는 댓글인지 확인
+        if history.action_type != 'memo' or not history.parent_history:
+            return JsonResponse({
+                'success': False,
+                'error': '댓글 메모만 삭제할 수 있습니다.'
+            }, status=400)
+        
+        # 권한 확인 - 모든 사용자는 본인이 작성한 댓글만 삭제 가능
+        can_delete = False
+        
+        # 매니저가 작성한 댓글인지 확인 (created_by가 있는 경우)
+        if history.created_by:
+            # 매니저 댓글은 작성한 매니저만 삭제 가능
+            if history.created_by == request.user:
+                can_delete = True
+        else:
+            # 일반 실무자 댓글은 작성한 실무자만 삭제 가능
+            if history.user == request.user:
+                can_delete = True
+        
+        if not can_delete:
+            return JsonResponse({
+                'success': False,
+                'error': '이 댓글을 삭제할 권한이 없습니다.'
+            }, status=403)
+        
+        # 삭제 실행
+        history.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': '댓글이 성공적으로 삭제되었습니다.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Manager memo deletion error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': '메모 삭제 중 오류가 발생했습니다.'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@login_required
+def add_manager_memo_to_history_api(request, history_id):
+    """히스토리에 댓글 메모 추가 API - 매니저와 해당 실무자가 추가 가능"""
+    try:
+        user_profile = get_user_profile(request.user)
+        
+        # 부모 히스토리 조회
+        parent_history = get_object_or_404(History, pk=history_id)
+        
+        # 권한 확인 - 매니저이거나 해당 히스토리의 담당자인 경우 허용
+        if not (user_profile.is_manager() or request.user == parent_history.user):
+            return JsonResponse({
+                'success': False,
+                'error': '이 히스토리에 댓글을 추가할 권한이 없습니다.'
+            }, status=403)
+        
+        # 매니저가 다른 사용자 데이터에 접근하는 경우 권한 체크
+        if user_profile.is_manager() and request.user != parent_history.user:
+            if not can_access_user_data(request.user, parent_history.user):
+                return JsonResponse({
+                    'success': False,
+                    'error': '이 히스토리에 접근할 권한이 없습니다.'
+                }, status=403)
+        
+        # 메모 내용 가져오기
+        memo_content = request.POST.get('memo', '').strip()
+        if not memo_content:
+            return JsonResponse({
+                'success': False,
+                'error': '메모 내용을 입력해주세요.'
+            }, status=400)
+        
+        # 댓글 메모를 부모 히스토리에 연결된 자식 히스토리로 생성
+        # 매니저의 경우: created_by에 매니저 정보 저장, user는 원래 실무자 유지
+        # 실무자의 경우: created_by는 None, user는 본인
+        memo_history = History.objects.create(
+            followup=parent_history.followup,
+            user=parent_history.user,  # 원래 실무자를 유지
+            parent_history=parent_history,  # 부모 히스토리 설정
+            action_type='memo',
+            content=memo_content,
+            created_by=request.user if user_profile.is_manager() else None,  # 매니저인 경우만 created_by 설정
+            schedule=parent_history.schedule if parent_history.schedule else None
+        )
+        
+        # 메시지도 역할에 따라 구분
+        message = '댓글이 성공적으로 추가되었습니다.'
+        if user_profile.is_manager():
+            message = '매니저 메모가 성공적으로 추가되었습니다.'
+        
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'memo': {
+                'id': memo_history.id,
+                'content': memo_history.content,
+                'created_at': memo_history.created_at.strftime('%Y-%m-%d %H:%M'),
+                'created_by': request.user.username
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Add manager memo to history error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': '메모 추가 중 오류가 발생했습니다.'
+        }, status=500)

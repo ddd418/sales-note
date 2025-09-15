@@ -92,9 +92,9 @@ class FollowUp(models.Model):
         ('paused', '일시중지'),
     ]
     PRIORITY_CHOICES = [
-        ('high', '높음'),
-        ('medium', '보통'),
-        ('low', '낮음'),
+        ('one_month', '한달'),
+        ('three_months', '세달'),
+        ('long_term', '장기'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
@@ -107,7 +107,7 @@ class FollowUp(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name="상세주소")
     notes = models.TextField(blank=True, null=True, verbose_name="상세 내용")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium', verbose_name="우선순위")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='three_months', verbose_name="우선순위")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -173,6 +173,9 @@ class History(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
+    parent_history = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, 
+                                     related_name='reply_memos', verbose_name="부모 히스토리",
+                                     help_text="댓글 메모의 경우 원본 히스토리를 참조합니다")
     action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, verbose_name="활동 유형")
     service_status = models.CharField(max_length=20, choices=SERVICE_STATUS_CHOICES, default='received', blank=True, null=True, verbose_name="서비스 상태", help_text="서비스 활동인 경우에만 해당")
     content = models.TextField(blank=True, null=True, verbose_name="내용")
@@ -203,6 +206,23 @@ class History(models.Model):
         else:
             first_file = self.files.first()
             return f'파일: "{first_file.original_filename}" 외 {file_count - 1}개'
+    
+    def is_manager_memo(self):
+        """매니저 메모인지 확인"""
+        if not self.parent_history or self.action_type != 'memo':
+            return False
+        # created_by가 있고 실제 담당자와 다르면 매니저 메모
+        return self.created_by and self.created_by != self.user
+    
+    def is_reply_memo(self):
+        """답글 메모인지 확인 (매니저 메모 + 실무자 메모)"""
+        return self.parent_history and self.action_type == 'memo'
+    
+    def get_memo_author(self):
+        """메모 작성자 반환"""
+        if self.is_manager_memo():
+            return self.created_by
+        return self.user
 
     class Meta:
         verbose_name = "활동 히스토리"

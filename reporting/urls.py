@@ -49,6 +49,8 @@ urlpatterns = [
     path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
     path('api/histories/<int:history_id>/update/', views.history_update_api, name='history_update_api'),
     path('api/histories/<int:pk>/update-memo/', views.history_update_memo, name='history_update_memo'),
+    path('api/histories/<int:history_id>/add-manager-memo/', views.add_manager_memo_to_history_api, name='add_manager_memo_to_history_api'),
+    path('api/histories/<int:history_id>/delete-manager-memo/', views.delete_manager_memo_api, name='delete_manager_memo_api'),
     path('api/histories/<int:history_id>/files/', views.history_files_api, name='history_files_api'),
     
     # 파일 관리 URL들

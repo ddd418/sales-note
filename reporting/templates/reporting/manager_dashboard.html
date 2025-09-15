@@ -591,7 +591,9 @@
             </div>
             <div class="card-body">
               {% if top_customers %}
-              <canvas id="customerChart" height="200"></canvas>
+              <div style="position: relative; height: 280px;">
+                <canvas id="customerChart"></canvas>
+              </div>
               {% else %}
               <div class="text-center py-4">
                 <i class="fas fa-chart-pie fa-2x text-muted mb-2"></i>
@@ -630,7 +632,9 @@
               </div>
               <div class="card-body">
                 {% if top_customers %}
-                <canvas id="customerChartMobile" height="200"></canvas>
+                <div style="position: relative; height: 280px;">
+                  <canvas id="customerChartMobile"></canvas>
+                </div>
                 {% else %}
                 <div class="text-center py-4">
                   <i class="fas fa-chart-pie fa-2x text-muted mb-2"></i>
@@ -800,7 +804,7 @@
 
       // 고객별 납품 현황 차트 (데스크탑 & 모바일)
       {% if top_customers %}
-      const customerLabels = [{% for customer, amount in top_customers %}'{{ customer|truncatechars:10 }}'{% if not forloop.last %},{% endif %}{% endfor %}];
+      const customerLabels = [{% for customer, amount in top_customers %}'{{ customer|truncatechars:15 }}'{% if not forloop.last %},{% endif %}{% endfor %}];
       const customerData = [{% for customer, amount in top_customers %}{{ amount }}{% if not forloop.last %},{% endif %}{% endfor %}];
       const customerColors = [
           '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -812,11 +816,32 @@
           maintainAspectRatio: false,
           plugins: {
               legend: {
-                  position: 'bottom',
+                  position: 'right',
                   labels: {
-                      padding: 10,
-                      usePointStyle: true
+                      padding: 8,
+                      usePointStyle: true,
+                      font: {
+                          size: 11
+                      },
+                      boxWidth: 12
                   }
+              },
+              tooltip: {
+                  callbacks: {
+                      label: function(context) {
+                          const fullLabel = [{% for customer, amount in top_customers %}'{{ customer }}'{% if not forloop.last %},{% endif %}{% endfor %}][context.dataIndex];
+                          const value = context.parsed.toLocaleString();
+                          return fullLabel + ': ' + value + '원';
+                      }
+                  }
+              }
+          },
+          layout: {
+              padding: {
+                  left: 10,
+                  right: 10,
+                  top: 10,
+                  bottom: 10
               }
           }
       };

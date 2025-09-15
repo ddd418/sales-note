@@ -430,7 +430,68 @@
                         {% endwith %}
                       {% endif %}
                     </div>
-                    {% endwith %}                    <div class="d-flex justify-content-between align-items-center">
+                    {% endwith %}
+
+                    <!-- 답글 댓글 섹션 -->
+                    {% if history.reply_memos.exists %}
+                    <div class="reply-comments-section mt-3 pt-3 border-top">
+                      <h6 class="text-muted mb-2">
+                        <i class="fas fa-comments me-1"></i>댓글 ({{ history.reply_memos.count }})
+                      </h6>
+                      {% for memo in history.reply_memos.all %}
+                      <div class="reply-comment-item bg-light rounded p-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <div class="flex-grow-1">
+                            <small class="fw-bold {% if memo.is_manager_memo %}text-primary{% else %}text-success{% endif %}">
+                              <i class="fas {% if memo.is_manager_memo %}fa-user-tie{% else %}fa-user{% endif %} me-1"></i>
+                              {{ memo.get_memo_author.username }}
+                              {% if memo.is_manager_memo %}
+                              <span class="badge badge-sm bg-primary ms-1">매니저</span>
+                              {% endif %}
+                            </small>
+                            <small class="text-muted ms-2">
+                              {{ memo.created_at|date:"m월 d일 H:i" }}
+                            </small>
+                            <div class="memo-content mt-1">
+                              {{ memo.content|linebreaksbr }}
+                            </div>
+                          </div>
+                          {% comment %}본인이 작성한 댓글만 삭제 버튼 표시{% endcomment %}
+                          {% if memo.is_manager_memo and memo.created_by == user or not memo.is_manager_memo and memo.user == user %}
+                          <button 
+                            class="btn btn-sm btn-outline-danger ms-2"
+                            onclick="deleteReplyMemo({{ memo.id }}, {{ history.id }})"
+                            title="메모 삭제">
+                            <i class="fas fa-trash"></i>
+                          </button>
+                          {% endif %}
+                        </div>
+                      </div>
+                      {% endfor %}
+                    </div>
+
+                    <!-- 답글 댓글 추가 폼 (매니저 및 해당 실무자) -->
+                    {% if user.userprofile.role == 'manager' or history.user == user %}
+                    <div class="add-reply-comment-section mt-3 pt-3 border-top">
+                      <form class="reply-memo-form" data-history-id="{{ history.id }}">
+                        <div class="input-group">
+                          <textarea 
+                            class="form-control memo-input" 
+                            rows="2" 
+                            placeholder="{% if user.userprofile.role == 'manager' %}매니저 메모를 추가하세요...{% else %}댓글을 추가하세요...{% endif %}" 
+                            name="memo"></textarea>
+                          <button 
+                            class="btn {% if user.userprofile.role == 'manager' %}btn-primary{% else %}btn-success{% endif %}" 
+                            type="submit">
+                            <i class="fas fa-plus"></i>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    <div class="d-flex justify-content-between align-items-center">
                       <div>
                         <!-- 왼쪽 공간은 비워둠 -->
                       </div>
@@ -1628,6 +1689,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // 드래그 기능 초기화
     makeFilterDraggable();
     
+    // 답글 메모 관련 이벤트 리스너
+    initReplyMemoEvents();
+    
     // 테스트 함수 (브라우저 콘솔에서 사용 가능)
     window.testHistoryFilter = function() {
         console.log('=== 히스토리 필터 테스트 ===');
@@ -1639,6 +1703,96 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const visible = document.querySelectorAll('.timeline-item:not([style*="display: none"])').length;
         console.log('표시된 아이템:', visible);
+    };
+    
+    // 답글 메모 관련 함수들
+    function initReplyMemoEvents() {
+        // 답글 메모 추가 폼 이벤트
+        document.querySelectorAll('.reply-memo-form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const historyId = this.dataset.historyId;
+                const memoInput = this.querySelector('.memo-input');
+                const memo = memoInput.value.trim();
+                
+                if (!memo) {
+                    alert('메모 내용을 입력해주세요.');
+                    return;
+                }
+                
+                addReplyMemo(historyId, memo, memoInput);
+            });
+        });
+    }
+    
+    // 답글 메모 추가 함수
+    function addReplyMemo(historyId, memo, inputElement) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        if (!csrfToken) {
+            alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('memo', memo);
+        
+        fetch(`{% url 'reporting:add_manager_memo_to_history_api' 999 %}`.replace('999', historyId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                inputElement.value = '';
+                location.reload(); // 간단하게 페이지 새로고침
+            } else {
+                alert('메모 추가 실패: ' + (data.error || '알 수 없는 오류'));
+            }
+        })
+        .catch(error => {
+            console.error('Reply memo addition error:', error);
+            alert('메모 추가 중 오류가 발생했습니다: ' + error.message);
+        });
+    }
+    
+    // 답글 메모 삭제 함수
+    window.deleteReplyMemo = function(memoId, historyId) {
+        if (!confirm('정말로 이 메모를 삭제하시겠습니까?')) {
+            return;
+        }
+        
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        if (!csrfToken) {
+            alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+            return;
+        }
+        
+        fetch(`{% url 'reporting:delete_manager_memo_api' 999 %}`.replace('999', memoId), {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload(); // 간단하게 페이지 새로고침
+            } else {
+                alert('메모 삭제 실패: ' + (data.error || '알 수 없는 오류'));
+            }
+        })
+        .catch(error => {
+            console.error('Reply memo deletion error:', error);
+            alert('메모 삭제 중 오류가 발생했습니다: ' + error.message);
+        });
     };
     
 });
