@@ -720,8 +720,9 @@ def dashboard_view(request):
         schedules = Schedule.objects.filter(user=target_user)
         followups = FollowUp.objects.filter(user=target_user)
 
-    # 납품 금액 통계 (현재 연도만)
-    delivery_stats = histories_current_year.filter(
+    # 납품 금액 통계 (현재 연도만) - History와 Schedule의 DeliveryItem 모두 포함
+    # 1. History에서 납품 금액
+    history_delivery_stats = histories_current_year.filter(
         action_type='delivery_schedule',
         delivery_amount__isnull=False
     ).aggregate(
@@ -729,8 +730,34 @@ def dashboard_view(request):
         delivery_count=Count('id')
     )
     
-    total_delivery_amount = delivery_stats['total_amount'] or 0
-    delivery_count = delivery_stats['delivery_count'] or 0
+    # 2. Schedule에 연결된 DeliveryItem에서 납품 금액
+    schedule_delivery_stats = DeliveryItem.objects.filter(
+        schedule__user=target_user if not (user_profile.is_admin() and not selected_user) else None,
+        schedule__created_at__year=current_year,
+        schedule__activity_type='delivery'
+    ).aggregate(
+        total_amount=Sum('total_price'),
+        delivery_count=Count('schedule', distinct=True)
+    )
+    
+    # Admin이고 특정 사용자가 선택되지 않은 경우 모든 사용자의 데이터
+    if user_profile.is_admin() and not selected_user:
+        schedule_delivery_stats = DeliveryItem.objects.filter(
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).aggregate(
+            total_amount=Sum('total_price'),
+            delivery_count=Count('schedule', distinct=True)
+        )
+    
+    # 총합 계산
+    history_amount = history_delivery_stats['total_amount'] or 0
+    schedule_amount = schedule_delivery_stats['total_amount'] or 0
+    total_delivery_amount = history_amount + schedule_amount
+    
+    history_count = history_delivery_stats['delivery_count'] or 0
+    schedule_count = schedule_delivery_stats['delivery_count'] or 0
+    delivery_count = history_count + schedule_count
       # 활동 유형별 통계 (현재 연도만, 메모 제외)
     activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
         count=Count('id')
@@ -2456,9 +2483,31 @@ def manager_dashboard(request):
     total_histories = histories.exclude(action_type='memo').count()
     delivery_histories = histories.filter(action_type='delivery_schedule')
     service_histories = histories.filter(action_type='service', service_status='completed')
-    total_delivery_amount = delivery_histories.aggregate(
+    
+    # 납품 금액 계산 - History와 Schedule의 DeliveryItem 모두 포함
+    # 1. History에서 납품 금액
+    history_delivery_amount = delivery_histories.aggregate(
         total=Sum('delivery_amount')
     )['total'] or 0
+    
+    # 2. Schedule에 연결된 DeliveryItem에서 납품 금액
+    if view_all:
+        # 전체보기인 경우 모든 Salesman의 Schedule DeliveryItem
+        schedule_delivery_amount = DeliveryItem.objects.filter(
+            schedule__user__in=salesman_users,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+    else:
+        # 특정 사용자의 Schedule DeliveryItem
+        schedule_delivery_amount = DeliveryItem.objects.filter(
+            schedule__user=selected_user,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+    
+    # 총 납품 금액
+    total_delivery_amount = history_delivery_amount + schedule_delivery_amount
     
     # 월별 데이터 (날짜 기준)
     monthly_data = []
@@ -2483,24 +2532,70 @@ def manager_dashboard(request):
             created_at__month=month
         )
         
+        # 월별 납품 금액 계산 (History + Schedule DeliveryItem)
+        history_month_amount = month_deliveries.aggregate(total=Sum('delivery_amount'))['total'] or 0
+        
+        # Schedule에서 해당 월의 DeliveryItem 금액
+        if view_all:
+            schedule_month_amount = DeliveryItem.objects.filter(
+                schedule__user__in=salesman_users,
+                schedule__created_at__month=month,
+                schedule__created_at__year=current_year,
+                schedule__activity_type='delivery'
+            ).aggregate(total=Sum('total_price'))['total'] or 0
+        else:
+            schedule_month_amount = DeliveryItem.objects.filter(
+                schedule__user=selected_user,
+                schedule__created_at__month=month,
+                schedule__created_at__year=current_year,
+                schedule__activity_type='delivery'
+            ).aggregate(total=Sum('total_price'))['total'] or 0
+        
+        total_month_amount = history_month_amount + schedule_month_amount
+        
         monthly_data.append({
             'month': f'{month}월',
             'meetings': month_meetings.count(),
             'deliveries': month_deliveries.count(),
             'services': month_services.count(),
-            'amount': month_deliveries.aggregate(total=Sum('delivery_amount'))['total'] or 0
+            'amount': total_month_amount
         })
         
-        monthly_delivery.append(month_deliveries.aggregate(total=Sum('delivery_amount'))['total'] or 0)
+        monthly_delivery.append(total_month_amount)
     
-    # 고객별 납품 현황 (현재 연도)
+    # 고객별 납품 현황 (현재 연도) - History와 Schedule DeliveryItem 모두 포함
     customer_delivery = {}
+    
+    # 1. History에서 고객별 납품 금액
     for history in delivery_histories:
         customer = history.followup.customer_name or history.followup.company or "고객명 미정" if history.followup else "일반 메모"
         if customer in customer_delivery:
             customer_delivery[customer] += history.delivery_amount or 0
         else:
             customer_delivery[customer] = history.delivery_amount or 0
+    
+    # 2. Schedule DeliveryItem에서 고객별 납품 금액
+    if view_all:
+        schedule_deliveries = DeliveryItem.objects.filter(
+            schedule__user__in=salesman_users,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).select_related('schedule__followup')
+    else:
+        schedule_deliveries = DeliveryItem.objects.filter(
+            schedule__user=selected_user,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).select_related('schedule__followup')
+    
+    for delivery_item in schedule_deliveries:
+        if delivery_item.schedule and delivery_item.schedule.followup:
+            customer = (delivery_item.schedule.followup.customer_name or 
+                       delivery_item.schedule.followup.company or "고객명 미정")
+            if customer in customer_delivery:
+                customer_delivery[customer] += delivery_item.total_price or 0
+            else:
+                customer_delivery[customer] = delivery_item.total_price or 0
       # 상위 10개 고객
     top_customers = sorted(customer_delivery.items(), key=lambda x: x[1], reverse=True)[:10]
     
@@ -4381,7 +4476,7 @@ from .file_views import (
 
 @login_required
 def customer_report_view(request):
-    """고객별 활동 요약 리포트 목록"""
+    """고객별 활동 요약 리포트 목록 - Schedule DeliveryItem도 포함"""
     from django.db.models import Count, Sum, Max, Q
     from decimal import Decimal
     
@@ -4396,27 +4491,10 @@ def customer_report_view(request):
         # Salesman은 자신의 데이터만 조회
         followups = FollowUp.objects.filter(user=request.user)
     
-    # 각 고객별 활동 통계 집계
-    followups_with_stats = followups.annotate(
-        # 미팅 횟수
-        total_meetings=Count('histories', filter=Q(histories__action_type='customer_meeting')),
-        # 납품 횟수
-        total_deliveries=Count('histories', filter=Q(histories__action_type='delivery_schedule')),
-        # 총 납품 금액
-        total_amount=Sum('histories__delivery_amount'),
-        # 최근 접촉일
-        last_contact=Max('histories__created_at'),
-        # 미결제건 (세금계산서 미발행)
-        unpaid_count=Count('histories', filter=Q(
-            histories__action_type='delivery_schedule',
-            histories__tax_invoice_issued=False
-        ))
-    ).select_related('user', 'company', 'department').order_by('-last_contact')
-    
     # 검색 기능
     search_query = request.GET.get('search')
     if search_query:
-        followups_with_stats = followups_with_stats.filter(
+        followups = followups.filter(
             Q(customer_name__icontains=search_query) |
             Q(company__name__icontains=search_query) |
             Q(manager__icontains=search_query)
@@ -4437,28 +4515,66 @@ def customer_report_view(request):
                 candidate_user = User.objects.get(id=user_filter)
                 if candidate_user in accessible_users_list:
                     selected_user = candidate_user
-                    followups_with_stats = followups_with_stats.filter(user=candidate_user)
+                    followups = followups.filter(user=candidate_user)
             except (User.DoesNotExist, ValueError):
                 pass
     
-    # 전체 통계
-    total_customers = followups_with_stats.count()
-    total_amount_sum = followups_with_stats.aggregate(
-        total=Sum('total_amount')
-    )['total'] or Decimal('0')
-    total_meetings_sum = followups_with_stats.aggregate(
-        total=Sum('total_meetings')
-    )['total'] or 0
-    total_deliveries_sum = followups_with_stats.aggregate(
-        total=Sum('total_deliveries')
-    )['total'] or 0
-    total_unpaid_sum = followups_with_stats.aggregate(
-        total=Sum('unpaid_count')
-    )['total'] or 0
+    # 각 고객별 통계 수동 계산
+    followups_with_stats = []
+    total_amount_sum = Decimal('0')
+    total_meetings_sum = 0
+    total_deliveries_sum = 0
+    total_unpaid_sum = 0
+    
+    for followup in followups.select_related('user', 'company', 'department'):
+        # History 기반 통계
+        histories = History.objects.filter(followup=followup)
+        meetings = histories.filter(action_type='customer_meeting').count()
+        delivery_histories = histories.filter(action_type='delivery_schedule')
+        deliveries = delivery_histories.count()
+        history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or Decimal('0')
+        unpaid = delivery_histories.filter(tax_invoice_issued=False).count()
+        
+        # Schedule DeliveryItem 기반 통계
+        schedule_deliveries = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery',
+            delivery_items_set__isnull=False
+        ).distinct()
+        schedule_delivery_count = schedule_deliveries.count()
+        schedule_amount = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery'
+        ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
+        
+        # 통합 통계
+        total_meetings_count = meetings
+        total_deliveries_count = deliveries + schedule_delivery_count
+        total_amount = history_amount + schedule_amount
+        last_contact = histories.aggregate(last=Max('created_at'))['last']
+        
+        # 객체에 통계 추가
+        followup.total_meetings = total_meetings_count
+        followup.total_deliveries = total_deliveries_count
+        followup.total_amount = total_amount
+        followup.unpaid_count = unpaid  # Schedule에서는 세금계산서 정보가 없으므로 History만
+        followup.last_contact = last_contact
+        
+        followups_with_stats.append(followup)
+        
+        # 전체 통계 누적
+        total_amount_sum += total_amount
+        total_meetings_sum += total_meetings_count
+        total_deliveries_sum += total_deliveries_count
+        total_unpaid_sum += unpaid
+    
+    # 최근 접촉일 기준으로 정렬
+    from django.utils import timezone
+    followups_with_stats.sort(key=lambda x: x.last_contact or timezone.now().replace(year=1900), reverse=True)
     
     context = {
         'followups': followups_with_stats,
-        'total_customers': total_customers,
+        'total_customers': len(followups_with_stats),
         'total_amount_sum': total_amount_sum,
         'total_meetings_sum': total_meetings_sum,
         'total_deliveries_sum': total_deliveries_sum,
@@ -4497,12 +4613,31 @@ def customer_detail_report_view(request, followup_id):
         'user', 'schedule'
     ).order_by('-created_at')
     
-    # 기본 통계
+    # 기본 통계 - History와 Schedule의 DeliveryItem 모두 포함
     total_meetings = histories.filter(action_type='customer_meeting').count()
     total_deliveries = histories.filter(action_type='delivery_schedule').count()
-    total_amount = histories.filter(action_type='delivery_schedule').aggregate(
+    
+    # 납품 금액 계산
+    history_amount = histories.filter(action_type='delivery_schedule').aggregate(
         total=Sum('delivery_amount')
     )['total'] or 0
+    
+    # Schedule에서 해당 고객의 DeliveryItem 금액
+    schedule_amount = DeliveryItem.objects.filter(
+        schedule__followup=followup,
+        schedule__activity_type='delivery'
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    
+    total_amount = history_amount + schedule_amount
+    
+    # Schedule에서 추가 납품 건수
+    schedule_deliveries = Schedule.objects.filter(
+        followup=followup,
+        activity_type='delivery',
+        delivery_items_set__isnull=False
+    ).distinct().count()
+    
+    total_deliveries += schedule_deliveries
     
     # 세금계산서 현황
     tax_invoices_issued = histories.filter(
