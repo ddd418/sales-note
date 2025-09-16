@@ -440,13 +440,14 @@ def followup_list_view(request):
         # Salesman은 자신의 데이터만 조회
         followups = FollowUp.objects.filter(user=request.user).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     
-    # 고객명/업체명 검색 기능
+    # 고객명/업체명/책임자명 검색 기능
     search_query = request.GET.get('search')
     if search_query:
         followups = followups.filter(
             Q(customer_name__icontains=search_query) |
             Q(company__name__icontains=search_query) |
             Q(department__name__icontains=search_query) |
+            Q(manager__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
     
@@ -3997,6 +3998,7 @@ def followup_excel_download(request):
             Q(customer_name__icontains=search_query) |
             Q(company__name__icontains=search_query) |
             Q(department__name__icontains=search_query) |
+            Q(manager__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
     
@@ -4267,6 +4269,7 @@ def followup_basic_excel_download(request):
             Q(customer_name__icontains=search_query) |
             Q(company__name__icontains=search_query) |
             Q(department__name__icontains=search_query) |
+            Q(manager__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
     
