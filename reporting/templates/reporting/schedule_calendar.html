@@ -1263,6 +1263,67 @@
     });
   }
 
+  // 고객 우선순위 업데이트 함수 - 전역 스코프로 이동
+  function updateCustomerPriority(followupId, newPriority, customerName) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!csrfToken) {
+      alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('priority', newPriority);
+
+    fetch(`{% url 'reporting:customer_priority_update' 999 %}`.replace('999', followupId), {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken,
+      },
+      body: formData,
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // 우선순위 배지 업데이트
+        const badge = document.getElementById(`priorityBadge-${followupId}`);
+        if (badge) {
+          const badgeClass = newPriority === 'one_month' ? 'bg-danger' : newPriority === 'three_months' ? 'bg-warning' : 'bg-secondary';
+          const badgeText = newPriority === 'one_month' ? '한달' : newPriority === 'three_months' ? '세달' : '장기';
+          badge.className = `badge ${badgeClass}`;
+          badge.textContent = badgeText;
+        }
+
+        // 버튼 상태 업데이트
+        const modal = document.getElementById('scheduleDetailModal');
+        if (modal) {
+          const buttons = modal.querySelectorAll('.btn-group[role="group"] button');
+          buttons.forEach(btn => {
+            btn.classList.remove('active');
+            const btnText = btn.textContent.trim();
+            if ((btnText === '한달' && newPriority === 'one_month') ||
+                (btnText === '세달' && newPriority === 'three_months') ||
+                (btnText === '장기' && newPriority === 'long_term')) {
+              btn.classList.add('active');
+            }
+          });
+        }
+
+        // 성공 메시지 표시
+        alert(`${customerName} 고객의 우선순위가 ${newPriority === 'one_month' ? '한달' : newPriority === 'three_months' ? '세달' : '장기'}로 변경되었습니다.`);
+      } else {
+        alert('오류: ' + data.error);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('우선순위 업데이트 중 오류가 발생했습니다.');
+    });
+  }
+
   // 일정 관련 활동 기록 로딩 - 전역 스코프로 이동
   function loadScheduleHistories(scheduleId) {
     // HTML 이스케이프 함수
@@ -4098,6 +4159,24 @@
                   <div class="col-12">
                     <label class="form-label fw-bold">부서명</label>
                     <p class="mb-0">${schedule.department || '-'}</p>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label fw-bold">고객 우선순위</label>
+                    <div class="d-flex align-items-center gap-2">
+                      <span id="priorityBadge-${schedule.followup_id}" class="badge bg-${schedule.priority === 'one_month' ? 'danger' : schedule.priority === 'three_months' ? 'warning' : 'secondary'}">
+                        ${schedule.priority === 'one_month' ? '한달' : schedule.priority === 'three_months' ? '세달' : '장기'}
+                      </span>
+                      ${currentUser.role !== 'manager' ? `
+                      <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-outline-danger ${schedule.priority === 'one_month' ? 'active' : ''}"
+                                onclick="updateCustomerPriority(${schedule.followup_id}, 'one_month', '${schedule.customer}')">한달</button>
+                        <button class="btn btn-sm btn-outline-warning ${schedule.priority === 'three_months' ? 'active' : ''}"
+                                onclick="updateCustomerPriority(${schedule.followup_id}, 'three_months', '${schedule.customer}')">세달</button>
+                        <button class="btn btn-sm btn-outline-secondary ${schedule.priority === 'long_term' ? 'active' : ''}"
+                                onclick="updateCustomerPriority(${schedule.followup_id}, 'long_term', '${schedule.customer}')">장기</button>
+                      </div>
+                      ` : ''}
+                    </div>
                   </div>
                   ${schedule.manager ? `
                   <div class="col-12">

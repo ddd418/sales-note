@@ -107,7 +107,7 @@ class FollowUp(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name="상세주소")
     notes = models.TextField(blank=True, null=True, verbose_name="상세 내용")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='three_months', verbose_name="우선순위")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='long_term', verbose_name="우선순위")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -292,6 +292,7 @@ class DeliveryItem(models.Model):
     unit = models.CharField(max_length=50, default="개", verbose_name="단위")
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="단가")
     total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
+    tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행여부")
     notes = models.TextField(blank=True, null=True, verbose_name="비고")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")

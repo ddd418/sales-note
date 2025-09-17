@@ -23,11 +23,13 @@ urlpatterns = [
     path('schedules/create/', views.schedule_create_view, name='schedule_create'),
     path('schedules/<int:pk>/edit/', views.schedule_edit_view, name='schedule_edit'),
     path('schedules/<int:pk>/update-delivery-items/', views.schedule_update_delivery_items, name='schedule_update_delivery_items'),
+    path('schedules/<int:schedule_id>/delivery-items-api/', views.schedule_delivery_items_api, name='schedule_delivery_items_api'),
     path('schedules/<int:pk>/move/', views.schedule_move_api, name='schedule_move_api'),
     path('schedules/<int:schedule_id>/status/', views.schedule_status_update_api, name='schedule_status_update'),
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),
     path('schedules/<int:schedule_id>/histories/', views.schedule_histories_api, name='schedule_histories_api'),
     path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
+    path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),
     path('histories/<int:pk>/', views.history_detail_view, name='history_detail'),
@@ -36,11 +38,13 @@ urlpatterns = [
     path('histories/<int:pk>/edit/', views.history_edit_view, name='history_edit'),
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
+    path('histories/<int:history_id>/delivery-items-api/', views.history_delivery_items_api, name='history_delivery_items_api'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
     # 고객 리포트 URL들
     path('customer-report/', views.customer_report_view, name='customer_report'),
     path('customer-report/<int:followup_id>/', views.customer_detail_report_view, name='customer_detail_report'),
+    path('followups/<int:followup_id>/priority-update/', views.customer_priority_update, name='customer_priority_update'),
     
     # 메모 URL들
     path('memo/create/', views.memo_create_view, name='memo_create'),
