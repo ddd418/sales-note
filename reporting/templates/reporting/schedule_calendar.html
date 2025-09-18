@@ -1980,21 +1980,21 @@
   }
 
   // 히스토리 편집 함수 - 전역 스코프로 이동
-  function editHistory(historyId, scheduleId) {
-    // 현재 히스토리 데이터를 가져와서 편집 폼으로 변환
-    fetch(`{% url 'reporting:history_detail_api' 0 %}`.replace('0', historyId))
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          showHistoryEditForm(data.history, scheduleId);
-        } else {
-          showErrorMessage('히스토리 정보를 불러올 수 없습니다.');
-        }
-      })
-      .catch(error => {
-        console.error('Error loading history:', error);
-        showErrorMessage('히스토리 정보를 불러오는 중 오류가 발생했습니다.');
-      });
+  async function editHistory(historyId, scheduleId) {
+    try {
+      // 현재 히스토리 데이터를 가져와서 편집 폼으로 변환
+      const response = await fetch(`{% url 'reporting:history_detail_api' 0 %}`.replace('0', historyId));
+      const data = await response.json();
+      
+      if (data.success) {
+        await showHistoryEditForm(data.history, scheduleId);
+      } else {
+        showErrorMessage('히스토리 정보를 불러올 수 없습니다.');
+      }
+    } catch (error) {
+      console.error('Error loading history:', error);
+      showErrorMessage('히스토리 정보를 불러오는 중 오류가 발생했습니다.');
+    }
   }
 
   // 히스토리 삭제 함수 - 전역 스코프로 이동
@@ -2053,8 +2053,46 @@
     return div.innerHTML;
   }
 
+  // Schedule DeliveryItem을 가져와서 History 텍스트와 합치는 함수
+  async function getCombinedDeliveryItemsText(historyId, scheduleId, historyDeliveryItems = '') {
+    try {
+      // Schedule의 DeliveryItem 가져오기
+      const response = await fetch(`/reporting/api/schedule-delivery-items/${scheduleId}/`);
+      if (!response.ok) {
+        console.log('Schedule DeliveryItem API 응답 실패 또는 데이터 없음');
+        return historyDeliveryItems || '';
+      }
+      
+      const data = await response.json();
+      console.log('Schedule DeliveryItem 응답:', data);
+      
+      let combinedText = historyDeliveryItems || '';
+      
+      // Schedule DeliveryItem이 있는 경우 추가
+      if (data.delivery_items && data.delivery_items.length > 0) {
+        const scheduleItems = data.delivery_items.map(item => {
+          const totalPrice = Math.round(item.total_price);
+          return `${item.item_name}: ${item.quantity}개 (${totalPrice.toLocaleString()}원) [일정]`;
+        });
+        
+        if (combinedText.trim()) {
+          // History 아이템이 있는 경우 구분선 추가
+          combinedText += '\n--- 일정에서 추가된 납품 품목 ---\n' + scheduleItems.join('\n');
+        } else {
+          // History 아이템이 없는 경우 Schedule 아이템만
+          combinedText = '--- 일정에서 추가된 납품 품목 ---\n' + scheduleItems.join('\n');
+        }
+      }
+      
+      return combinedText;
+    } catch (error) {
+      console.error('Schedule DeliveryItem 가져오기 실패:', error);
+      return historyDeliveryItems || '';
+    }
+  }
+
   // 히스토리 편집 폼 표시
-  function showHistoryEditForm(history, scheduleId) {
+  async function showHistoryEditForm(history, scheduleId) {
     console.log('=== showHistoryEditForm 시작 ===');
     console.log('History data:', history);
     console.log('Schedule ID:', scheduleId);
@@ -2063,6 +2101,23 @@
     if (!contentDiv) {
       console.error('Content div를 찾을 수 없습니다:', `historyContent-${history.id}`);
       return;
+    }
+
+    // Schedule DeliveryItem과 합쳐진 텍스트 가져오기
+    const combinedDeliveryItems = await getCombinedDeliveryItemsText(history.id, scheduleId, history.delivery_items);
+    console.log('합쳐진 delivery_items:', combinedDeliveryItems);
+    
+    // Schedule DeliveryItem 정보도 별도로 가져오기 (구조화된 형태로)
+    let scheduleDeliveryItems = [];
+    try {
+      const scheduleResponse = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
+      if (scheduleResponse.ok) {
+        const scheduleData = await scheduleResponse.json();
+        scheduleDeliveryItems = scheduleData.items || [];
+        console.log('Schedule DeliveryItem 구조화 데이터:', scheduleDeliveryItems);
+      }
+    } catch (error) {
+      console.error('Schedule DeliveryItem 구조화 데이터 가져오기 실패:', error);
     }
     
     // 편집 폼 HTML 생성
@@ -2096,7 +2151,7 @@
             <div class="card-body p-2">
               <div class="row align-items-center">
                 <div class="col-md-8">
-                  <textarea id="edit-delivery-items-display-${history.id}" class="form-control form-control-sm" rows="2" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 관리하세요.">${history.delivery_items || ''}</textarea>
+                  <textarea id="edit-delivery-items-display-${history.id}" class="form-control form-control-sm" rows="3" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 관리하세요.">${history.delivery_items || ''}</textarea>
                 </div>
                 <div class="col-md-4">
                   <button type="button" class="btn btn-warning btn-sm w-100" onclick="openEditDeliveryItemsModal(${history.id})">
@@ -2106,10 +2161,24 @@
               </div>
             </div>
           </div>
+          
+          <!-- Schedule DeliveryItem 별도 표시 섹션 -->
+          <div id="schedule-delivery-section-${history.id}" class="mt-3" style="display: none;">
+            <div class="card border-info">
+              <div class="card-header bg-light py-2">
+                <h6 class="mb-0 text-muted">
+                  <i class="fas fa-plus-circle me-1"></i>연결된 일정의 추가 납품 품목
+                </h6>
+              </div>
+              <div class="card-body p-2" id="schedule-delivery-content-${history.id}">
+                <!-- Schedule DeliveryItem들이 여기에 표시됩니다 -->
+              </div>
+            </div>
+          </div>
         </div>
         <div class="col-6">
           <label class="form-label fw-bold">세금계산서</label>
-          <div class="form-check form-switch">
+          <div class="form-check form-switch";
             <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="editTaxInvoice-${history.id}" ${history.tax_invoice_issued ? 'checked' : ''}>
             <label class="form-check-label" for="editTaxInvoice-${history.id}">
               발행 완료
@@ -2202,6 +2271,65 @@
     
     // 기존 내용을 편집 폼으로 교체
     contentDiv.innerHTML = editFormHtml;
+    
+    // Schedule DeliveryItem이 있으면 별도 섹션에 표시
+    if (scheduleDeliveryItems.length > 0) {
+      const scheduleSection = document.getElementById(`schedule-delivery-section-${history.id}`);
+      const scheduleContent = document.getElementById(`schedule-delivery-content-${history.id}`);
+      
+      if (scheduleSection && scheduleContent) {
+        let scheduleItemsHtml = '';
+        let totalScheduleAmount = 0;
+        
+        scheduleDeliveryItems.forEach(scheduleItem => {
+          const itemTotal = Math.round(scheduleItem.total_price || 0);
+          totalScheduleAmount += itemTotal;
+          
+          scheduleItemsHtml += `
+            <div class="schedule-delivery-item mb-2 p-2 bg-light rounded border-start border-info border-3">
+              <div class="row align-items-center">
+                <div class="col-md-8">
+                  <div>
+                    <strong class="text-primary">${scheduleItem.item_name}</strong>
+                    <span class="text-muted ms-2">${scheduleItem.quantity}개</span>
+                  </div>
+                  <div class="small text-muted">
+                    단가: ${parseInt(scheduleItem.unit_price || 0).toLocaleString()}원
+                    | 총액: <strong class="text-success">${itemTotal.toLocaleString()}원</strong>
+                  </div>
+                </div>
+                <div class="col-md-4 text-end">
+                  ${scheduleItem.tax_invoice_issued 
+                    ? '<span class="badge bg-primary">세금계산서 발행</span>' 
+                    : '<span class="badge bg-secondary">세금계산서 미발행</span>'}
+                  <div class="small text-muted mt-1">
+                    <i class="fas fa-calendar me-1"></i>일정에서 추가
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        if (totalScheduleAmount > 0) {
+          scheduleItemsHtml += `
+            <div class="border-top pt-2 mt-2">
+              <div class="row">
+                <div class="col text-end">
+                  <small class="text-muted">일정 품목 총액: </small>
+                  <strong class="text-success fs-6">${totalScheduleAmount.toLocaleString()}원</strong>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        
+        scheduleContent.innerHTML = scheduleItemsHtml;
+        scheduleSection.style.display = 'block';
+        
+        console.log(`Schedule DeliveryItem ${scheduleDeliveryItems.length}개를 History 편집 폼에 표시 완료`);
+      }
+    }
   }
 
   // 히스토리 편집 취소

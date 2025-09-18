@@ -382,7 +382,7 @@
                   {% if histories %}
                   <div class="timeline">
                     {% for history in histories %}
-                    <div class="timeline-item">
+                    <div class="timeline-item" data-history-id="{{ history.id }}"{% if history.schedule %} data-schedule-id="{{ history.schedule.id }}"{% endif %}>
                       <div class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}">
                         <i class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"></i>
                       </div>
@@ -642,6 +642,14 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
               <br><small>세금계산서 상태는 활동기록 기준입니다.</small>
             </div>
           `;
+        } else if (data.has_schedule_items && !data.has_history_items) {
+          infoHtml = `
+            <div class="alert alert-info mb-3">
+              <i class="fas fa-info-circle me-2"></i>
+              <strong>일정 품목 표시</strong> - 연결된 일정의 품목이 표시됩니다.
+              <br><small>세금계산서 상태는 활동기록 기준입니다.</small>
+            </div>
+          `;
         } else if (data.is_legacy_data) {
           infoHtml = `
             <div class="alert alert-warning mb-3">
@@ -653,7 +661,7 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
         let tableHtml = `
           <div class="table-responsive">
             <table class="table table-sm table-bordered">
-              <thead class="table-info">
+              <thead class="table-primary">
                 <tr>
                   <th>품목명</th>
                   <th class="text-center">수량</th>
@@ -696,10 +704,10 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
               <td>${item.item_name || ''}</td>
               <td class="text-center">${item.quantity || 0}</td>
               <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
-              <td class="text-end"><strong class="text-info">${parseInt(itemTotal).toLocaleString()}원</strong></td>
+              <td class="text-end"><strong class="text-primary">${parseInt(itemTotal).toLocaleString()}원</strong></td>
               <td class="text-center">
                 ${item.tax_invoice_issued 
-                  ? '<span class="badge bg-info">발행완료</span>' 
+                  ? '<span class="badge bg-primary">발행완료</span>' 
                   : '<span class="badge bg-secondary">미발행</span>'}
               </td>
               <td class="text-center">
@@ -711,10 +719,10 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
         
         tableHtml += `
               </tbody>
-              <tfoot class="table-light">
+              <tfoot class="table-secondary">
                 <tr>
                   <th colspan="4" class="text-end">총 금액:</th>
-                  <th class="text-end text-info">${parseInt(totalAmount).toLocaleString()}원</th>
+                  <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
                   <th></th>
                 </tr>
               </tfoot>
@@ -751,69 +759,88 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
 }
 
 // 전체 납품내역 데이터 처리 함수
-function processAllDeliveryData() {
-  // 서버에서 전달된 납품 데이터
-  const deliveryData = [
+async function processAllDeliveryData() {
+  console.log('=== 전체 납품내역 데이터 처리 시작 ===');
+  
+  // 서버에서 전달된 납품 데이터 (History 기반)
+  const historyDeliveryData = [
     {% for history in delivery_histories %}
-      {% if history.delivery_items %}
-        {
-          items: '{{ history.delivery_items|escapejs }}',
-          amount: {{ history.delivery_amount|default:0 }},
-          date: '{{ history.delivery_date|date:"Y-m-d"|default:"" }}'
-        },
-      {% endif %}
+      {
+        historyId: {{ history.id }},
+        scheduleId: {% if history.schedule %}{{ history.schedule.id }}{% else %}null{% endif %},
+        items: {% if history.delivery_items %}'{{ history.delivery_items|escapejs }}'{% else %}null{% endif %},
+        amount: {{ history.delivery_amount|default:0 }},
+        date: '{{ history.delivery_date|date:"Y-m-d"|default:"" }}'
+      },
     {% endfor %}
   ];
+  
+  console.log('History 기반 납품 데이터:', historyDeliveryData);
   
   // 품목별 집계 객체
   const itemsSummary = {};
   let totalAmount = 0;
   let totalItemsCount = 0;
   
-  deliveryData.forEach(delivery => {
+  // History 데이터 처리
+  for (const delivery of historyDeliveryData) {
+    console.log(`\n--- History ${delivery.historyId} 처리 시작 ---`);
+    
+    // History의 delivery_items 텍스트 처리
     if (delivery.items && delivery.items.trim()) {
-      // 줄바꿈 문자 처리
-      let processedItems = delivery.items
-        .replace(/\\n/g, '\n')
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\r/g, '\n')
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .trim();
+      console.log('History delivery_items 처리:', delivery.items);
+      processDeliveryItemsText(delivery.items, itemsSummary);
+    } else {
+      console.log('History delivery_items가 비어있음');
+    }
+    
+    // Schedule DeliveryItem도 포함 (History에 항목이 없거나 적은 경우)
+    if (delivery.scheduleId) {
+      console.log(`Schedule ${delivery.scheduleId} DeliveryItem 확인 중...`);
       
-      // 각 라인 처리
-      const lines = processedItems.split('\n')
-        .map(line => line.trim())
-        .filter(line => line);
-      
-      lines.forEach(line => {
-        // "품목명: 수량개 (금액원)" 패턴 파싱
-        const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
-        if (match) {
-          const itemName = match[1].trim();
-          const quantity = parseFloat(match[2]);
-          const amountStr = match[3].replace(/[,\s]/g, '');
-          const amount = parseInt(amountStr);
+      try {
+        const response = await fetch(`/reporting/schedules/${delivery.scheduleId}/delivery-items-api/`);
+        if (response.ok) {
+          const data = await response.json();
+          const scheduleItems = data.items || [];
           
-          if (!itemsSummary[itemName]) {
-            itemsSummary[itemName] = {
-              totalQuantity: 0,
-              totalAmount: 0,
-              deliveryCount: 0
-            };
+          console.log(`Schedule DeliveryItem 응답:`, scheduleItems);
+          
+          if (scheduleItems.length > 0) {
+            scheduleItems.forEach(item => {
+              const itemName = `${item.item_name} [일정]`; // Schedule 항목 구분
+              const quantity = parseFloat(item.quantity || 0);
+              const amount = Math.round(item.total_price || 0);
+              
+              if (!itemsSummary[itemName]) {
+                itemsSummary[itemName] = {
+                  totalQuantity: 0,
+                  totalAmount: 0,
+                  deliveryCount: 0
+                };
+              }
+              
+              itemsSummary[itemName].totalQuantity += quantity;
+              itemsSummary[itemName].totalAmount += amount;
+              itemsSummary[itemName].deliveryCount += 1;
+              totalItemsCount += quantity;
+              
+              console.log(`Schedule 품목 추가: ${itemName}, ${quantity}개, ${amount.toLocaleString()}원`);
+            });
           }
-          
-          itemsSummary[itemName].totalQuantity += quantity;
-          itemsSummary[itemName].totalAmount += amount;
-          itemsSummary[itemName].deliveryCount += 1;
-          
-          totalItemsCount += quantity;
         }
-      });
+      } catch (error) {
+        console.error(`Schedule ${delivery.scheduleId} DeliveryItem 가져오기 실패:`, error);
+      }
     }
     
     totalAmount += delivery.amount;
-  });
+    console.log(`--- History ${delivery.historyId} 처리 완료 ---`);
+  }
+  
+  console.log('최종 품목 집계:', itemsSummary);
+  console.log('총 품목 개수:', totalItemsCount);
+  console.log('총 금액:', totalAmount);
   
   // 요약 정보 업데이트
   document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
@@ -850,6 +877,53 @@ function processAllDeliveryData() {
       </tr>
     `;
   }
+  
+  console.log('=== 전체 납품내역 데이터 처리 완료 ===');
+}
+
+// History delivery_items 텍스트 파싱 함수
+function processDeliveryItemsText(itemsText, itemsSummary) {
+  // 줄바꿈 문자 처리
+  let processedItems = itemsText
+    .replace(/\\n/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+  
+  // 각 라인 처리
+  const lines = processedItems.split('\n')
+    .map(line => line.trim())
+    .filter(line => line);
+  
+  lines.forEach(line => {
+    // "품목명: 수량개 (금액원)" 패턴 파싱
+    const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+    if (match) {
+      const itemName = match[1].trim();
+      const quantity = parseFloat(match[2]);
+      const amountStr = match[3].replace(/[,\s]/g, '');
+      const amount = parseInt(amountStr);
+      
+      if (!itemsSummary[itemName]) {
+        itemsSummary[itemName] = {
+          totalQuantity: 0,
+          totalAmount: 0,
+          deliveryCount: 0
+        };
+      }
+      
+      itemsSummary[itemName].totalQuantity += quantity;
+      itemsSummary[itemName].totalAmount += amount;
+      itemsSummary[itemName].deliveryCount += 1;
+      
+      // 전역 totalItemsCount에도 추가
+      totalItemsCount += quantity;
+      
+      console.log(`History 품목 파싱: ${itemName}, ${quantity}개, ${amount.toLocaleString()}원`);
+    }
+  });
 }
 
 // Schedule 기반 납품 품목 상세 모달 표시 함수
@@ -976,7 +1050,235 @@ document.addEventListener('DOMContentLoaded', function() {
       processAllDeliveryData();
     });
   }
+  
+  // 전체 타임라인 탭 이벤트
+  const timelineTab = document.getElementById('timeline-tab');
+  if (timelineTab) {
+    timelineTab.addEventListener('shown.bs.tab', function() {
+      enhanceTimelineWithScheduleData();
+    });
+  }
 });
+
+// 전체 타임라인에 Schedule DeliveryItem 정보 추가
+async function enhanceTimelineWithScheduleData() {
+  console.log('=== 전체 타임라인 Schedule 데이터 보강 시작 ===');
+  
+  // 모든 납품 일정 타입의 타임라인 아이템들 찾기
+  const deliveryTimelineItems = document.querySelectorAll('.timeline-item[data-history-id]');
+  console.log(`History ID가 있는 타임라인 아이템 ${deliveryTimelineItems.length}개 발견`);
+  
+  for (const item of deliveryTimelineItems) {
+    const historyId = item.getAttribute('data-history-id');
+    const scheduleId = item.getAttribute('data-schedule-id');
+    const deliveryDetails = item.querySelector('.delivery-details');
+    
+    if (!deliveryDetails) {
+      continue; // 납품 일정이 아니면 건너뛰기
+    }
+    
+    console.log(`\n--- Timeline History ${historyId}, Schedule ${scheduleId} 처리 ---`);
+    
+    // 기존 납품 정보를 구조화된 형태로 변환
+    // CSS :contains() selector는 표준이 아니므로 다른 방식으로 요소 찾기
+    const allPElements = deliveryDetails.querySelectorAll('p');
+    let amountText = '';
+    let itemsText = '';
+    let dateText = '';
+    
+    allPElements.forEach(p => {
+      const text = p.textContent;
+      if (text.includes('금액:')) {
+        amountText = text.replace('금액:', '').replace('원', '').trim();
+      } else if (text.includes('품목:')) {
+        itemsText = text.replace('품목:', '').trim();
+      } else if (text.includes('납품일:')) {
+        dateText = text.replace('납품일:', '').trim();
+      }
+    });
+    
+    console.log('기존 납품 정보:', { amountText, itemsText, dateText });
+    
+    // History DeliveryItem 파싱 및 표시
+    let historyItemsHtml = '';
+    if (itemsText) {
+      console.log('History 품목 텍스트 파싱:', itemsText);
+      
+      // 품목 텍스트 파싱 ("품목명: 수량개 (금액원)" 형태)
+      const historyItems = parseDeliveryItemsText(itemsText);
+      console.log('파싱된 History 품목들:', historyItems);
+      
+      if (historyItems.length > 0) {
+        let totalHistoryAmount = 0;
+        
+        historyItems.forEach(historyItem => {
+          totalHistoryAmount += historyItem.amount;
+          historyItemsHtml += `
+            <div class="history-delivery-item mb-2 p-2 bg-light rounded border-start border-info border-3">
+              <div class="row align-items-center">
+                <div class="col-md-8">
+                  <div>
+                    <strong class="text-primary">${historyItem.name}</strong>
+                    <span class="text-muted ms-2">${historyItem.quantity}개</span>
+                  </div>
+                  <div class="small text-muted">
+                    총액: <strong class="text-success">${historyItem.amount.toLocaleString()}원</strong>
+                  </div>
+                </div>
+                <div class="col-md-4 text-end">
+                  <span class="badge bg-info">활동기록</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        if (totalHistoryAmount > 0) {
+          historyItemsHtml += `
+            <div class="border-top pt-2 mt-2 mb-3">
+              <div class="row">
+                <div class="col text-end">
+                  <small class="text-muted">활동기록 품목 총액: </small>
+                  <strong class="text-success fs-6">${totalHistoryAmount.toLocaleString()}원</strong>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+    }
+    
+    // Schedule DeliveryItem 가져오기 및 표시
+    let scheduleItemsHtml = '';
+    if (scheduleId) {
+      console.log(`Schedule ${scheduleId} DeliveryItem 확인 중...`);
+      
+      try {
+        const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
+        if (response.ok) {
+          const data = await response.json();
+          const scheduleItems = data.items || [];
+          
+          console.log(`Schedule DeliveryItem 응답:`, scheduleItems);
+          
+          if (scheduleItems.length > 0) {
+            let totalScheduleAmount = 0;
+            
+            scheduleItems.forEach(item => {
+              const itemTotal = Math.round(item.total_price || 0);
+              totalScheduleAmount += itemTotal;
+              
+              scheduleItemsHtml += `
+                <div class="schedule-delivery-item mb-2 p-2 bg-light rounded border-start border-warning border-3">
+                  <div class="row align-items-center">
+                    <div class="col-md-8">
+                      <div>
+                        <strong class="text-primary">${item.item_name}</strong>
+                        <span class="text-muted ms-2">${item.quantity}개</span>
+                      </div>
+                      <div class="small text-muted">
+                        단가: ${parseInt(item.unit_price || 0).toLocaleString()}원
+                        | 총액: <strong class="text-success">${itemTotal.toLocaleString()}원</strong>
+                      </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                      ${item.tax_invoice_issued 
+                        ? '<span class="badge bg-primary">세금계산서 발행</span>' 
+                        : '<span class="badge bg-secondary">세금계산서 미발행</span>'}
+                      <div class="small text-muted mt-1">
+                        <i class="fas fa-calendar me-1"></i>일정에서 추가
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            });
+            
+            if (totalScheduleAmount > 0) {
+              scheduleItemsHtml += `
+                <div class="border-top pt-2 mt-2">
+                  <div class="row">
+                    <div class="col text-end">
+                      <small class="text-muted">일정 품목 총액: </small>
+                      <strong class="text-success fs-6">${totalScheduleAmount.toLocaleString()}원</strong>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Schedule ${scheduleId} 처리 중 오류:`, error);
+      }
+    }
+    
+    // 기존 납품 정보를 구조화된 형태로 교체
+    if (historyItemsHtml || scheduleItemsHtml) {
+      const enhancedDeliveryHtml = `
+        <div class="enhanced-delivery-section">
+          ${dateText ? `
+            <div class="mb-3 p-2 bg-info bg-opacity-10 rounded">
+              <strong class="text-info">
+                <i class="fas fa-calendar-alt me-1"></i>납품일: ${dateText}
+              </strong>
+            </div>
+          ` : ''}
+          
+          ${historyItemsHtml ? `
+            <div class="history-items-section mb-3">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-history me-1"></i>활동기록 납품 품목
+              </h6>
+              ${historyItemsHtml}
+            </div>
+          ` : ''}
+          
+          ${scheduleItemsHtml ? `
+            <div class="schedule-items-section">
+              <h6 class="text-muted mb-2">
+                <i class="fas fa-plus-circle me-1"></i>일정 추가 납품 품목
+              </h6>
+              ${scheduleItemsHtml}
+            </div>
+          ` : ''}
+        </div>
+      `;
+      
+      deliveryDetails.innerHTML = enhancedDeliveryHtml;
+      console.log(`History ${historyId} 납품 정보 구조화 완료`);
+    }
+  }
+  
+  console.log('=== 전체 타임라인 Schedule 데이터 보강 완료 ===');
+}
+
+// 납품 품목 텍스트 파싱 함수
+function parseDeliveryItemsText(itemsText) {
+  const items = [];
+  
+  // 줄바꿈으로 구분된 품목들 처리
+  const lines = itemsText.split('\n').map(line => line.trim()).filter(line => line);
+  
+  lines.forEach(line => {
+    // "품목명: 수량개 (금액원)" 패턴 파싱
+    const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const quantity = parseFloat(match[2]);
+      const amountStr = match[3].replace(/[,\s]/g, '');
+      const amount = parseInt(amountStr) || 0;
+      
+      items.push({
+        name: name,
+        quantity: quantity,
+        amount: amount
+      });
+    }
+  });
+  
+  return items;
+}
 </script>
 
 <style>
