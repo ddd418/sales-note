@@ -1408,6 +1408,28 @@ def schedule_update_delivery_items(request, pk):
         try:
             # 납품 품목 저장
             save_delivery_items(request, schedule)
+            
+            # 관련된 History들의 delivery_items 텍스트도 업데이트
+            related_histories = schedule.histories.filter(action_type='delivery_schedule')
+            if related_histories.exists():
+                # 새로 저장된 DeliveryItem들을 텍스트로 변환
+                delivery_items = schedule.delivery_items_set.all()
+                if delivery_items.exists():
+                    delivery_lines = []
+                    for item in delivery_items:
+                        if item.unit_price:
+                            # 부가세 포함 총액 계산 (단가 * 수량 * 1.1)
+                            total_amount = int(float(item.unit_price) * item.quantity * 1.1)
+                            delivery_lines.append(f"{item.item_name}: {item.quantity}개 ({total_amount:,}원)")
+                        else:
+                            delivery_lines.append(f"{item.item_name}: {item.quantity}개")
+                    delivery_text = '\n'.join(delivery_lines)
+                    
+                    # 관련 History들의 delivery_items 필드 업데이트
+                    for history in related_histories:
+                        history.delivery_items = delivery_text
+                        history.save(update_fields=['delivery_items'])
+            
             messages.success(request, '납품 품목이 성공적으로 업데이트되었습니다.')
         except Exception as e:
             messages.error(request, f'납품 품목 업데이트 중 오류가 발생했습니다: {str(e)}')
@@ -1807,6 +1829,22 @@ def history_edit_view(request, pk):
             # 납품 품목 저장
             save_delivery_items(request, history)
             
+            # History에 연결된 Schedule이 있다면 Schedule의 DeliveryItem도 동기화
+            if history.schedule:
+                # Schedule의 기존 DeliveryItem들 삭제
+                history.schedule.delivery_items_set.all().delete()
+                
+                # History의 새로운 DeliveryItem들을 Schedule에도 복사
+                history_delivery_items = history.delivery_items_set.all()
+                for history_item in history_delivery_items:
+                    DeliveryItem.objects.create(
+                        schedule=history.schedule,
+                        item_name=history_item.item_name,
+                        quantity=history_item.quantity,
+                        unit=history_item.unit,
+                        unit_price=history_item.unit_price
+                    )
+            
             # 새로운 파일 업로드 처리
             uploaded_files = request.FILES.getlist('files')
             if uploaded_files:
@@ -1830,10 +1868,38 @@ def history_edit_view(request, pk):
     else:
         form = HistoryForm(instance=history, user=request.user)
     
+    # 관련 스케줄의 납품 품목 정보 가져오기
+    schedule_delivery_items = []
+    delivery_text = ""
+    delivery_amount = 0
+    
+    if history.schedule:
+        # 스케줄에 연결된 납품 품목들 가져오기
+        schedule_delivery_items = history.schedule.delivery_items_set.all()
+        
+        # 납품 품목들을 텍스트 형태로 변환하고 총액 계산
+        if schedule_delivery_items:
+            delivery_lines = []
+            total_delivery_amount = 0
+            for item in schedule_delivery_items:
+                if item.unit_price:
+                    # 부가세 포함 총액 계산 (단가 * 수량 * 1.1)
+                    from decimal import Decimal
+                    item_total_amount = int(float(item.unit_price) * item.quantity * 1.1)
+                    total_delivery_amount += item_total_amount
+                    delivery_lines.append(f"{item.item_name}: {item.quantity}개 ({item_total_amount:,}원)")
+                else:
+                    delivery_lines.append(f"{item.item_name}: {item.quantity}개")
+            delivery_text = '\n'.join(delivery_lines)
+            delivery_amount = total_delivery_amount
+    
     context = {
         'form': form,
         'history': history,
         'existing_delivery_items': history.delivery_items_set.all(),
+        'schedule_delivery_items': schedule_delivery_items,
+        'delivery_text': delivery_text,
+        'delivery_amount': delivery_amount,
         'page_title': f'활동 수정 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_form.html', context)
@@ -4798,6 +4864,7 @@ def customer_detail_report_view(request, followup_id):
     
     # 통합 납품 내역 생성 (중복 제거)
     integrated_deliveries = []
+    processed_schedule_ids = set()  # 이미 처리된 Schedule ID를 추적
     
     # 1. History 기반 납품 내역
     for history in delivery_histories:
@@ -4822,15 +4889,17 @@ def customer_detail_report_view(request, followup_id):
                 # Schedule의 품목 정보를 추가로 표시
                 delivery_data['schedule_items'] = schedule_items
                 # Schedule 품목의 총액 계산
-                schedule_total = sum(item.total_price or (item.quantity * item.unit_price * 1.1) for item in schedule_items)
+                schedule_total = sum(item.total_price or (float(item.unit_price) * item.quantity * 1.1) for item in schedule_items if item.unit_price)
                 delivery_data['schedule_amount'] = schedule_total
+                # 처리된 Schedule ID 기록
+                processed_schedule_ids.add(history.schedule.id)
         
         integrated_deliveries.append(delivery_data)
     
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
     for schedule in schedule_deliveries:
         # 이미 History에서 처리된 일정은 제외
-        if not delivery_histories.filter(schedule=schedule).exists():
+        if schedule.id not in processed_schedule_ids:
             # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
             schedule_tax_issued = schedule.tax_invoice_issued_count > 0 and schedule.tax_invoice_issued_count == schedule.total_items_count
             

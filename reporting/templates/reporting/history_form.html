@@ -784,13 +784,46 @@
 
     // DOM 업데이트가 완료된 후 데이터 로드
     setTimeout(() => {
-      // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
-      loadExistingHistoryDeliveryItems() || addHistoryDeliveryItem();
+      loadExistingHistoryDeliveryItems();
     }, 100);
   }
 
   function loadExistingHistoryDeliveryItems() {
-    // 1순위: 스케줄에서 전달된 delivery_text 사용
+    // 1순위: 관련 스케줄의 DeliveryItem들을 API로 가져오기
+    {% if history.schedule %}
+      console.log('관련 스케줄 ID:', {{ history.schedule.pk }});
+      
+      // 스케줄 납품 품목 API 호출 (올바른 URL 사용)
+      fetch(`/reporting/schedules/{{ history.schedule.pk }}/delivery-items-api/`)
+        .then(response => response.json())
+        .then(data => {
+          console.log('스케줄 납품 품목 API 응답:', data);
+          
+          if (data.success && data.items && data.items.length > 0) {
+            // API에서 가져온 품목들을 모달에 추가
+            data.items.forEach(item => {
+              addHistoryDeliveryItem({
+                item_name: item.item_name,
+                quantity: item.quantity,
+                unit_price: item.unit_price || 0
+              });
+            });
+            console.log('스케줄 납품 품목 로드 완료');
+          } else {
+            // API에 데이터가 없으면 기본 품목 추가
+            addHistoryDeliveryItem();
+          }
+        })
+        .catch(error => {
+          console.error('스케줄 납품 품목 로드 실패:', error);
+          // 오류가 발생하면 기본 품목 추가
+          addHistoryDeliveryItem();
+        });
+      
+      return; // API 호출 중이므로 여기서 종료
+    {% endif %}
+    
+    // 2순위: 스케줄에서 전달된 delivery_text 사용 (하위 호환성)
     {% if delivery_text %}
       const scheduleDeliveryText = `{{ delivery_text|escapejs }}`;
       console.log('스케줄 납품 품목 데이터 사용:', scheduleDeliveryText);
@@ -825,11 +858,15 @@
       
       if (hasData) {
         console.log('스케줄 납품 품목 모달 로드 완료');
-        return hasData;
+        return;
+      } else {
+        // delivery_text가 있지만 파싱 실패한 경우 기본 품목 추가
+        addHistoryDeliveryItem();
+        return;
       }
     {% endif %}
     
-    // 2순위: 편집 모드인 경우 기존 납품 품목 데이터 가져오기
+    // 3순위: 편집 모드인 경우 기존 납품 품목 데이터 가져오기
     const deliveryItemsField = document.getElementById('{{ form.delivery_items.id_for_label }}');
     
     if (deliveryItemsField && deliveryItemsField.value.trim()) {
@@ -872,12 +909,13 @@
       
       if (hasData) {
         console.log('기존 납품 품목 로드 완료');
+        return;
       }
-      return hasData;
     }
     
-    console.log('기존 납품 품목 데이터 없음');
-    return false;
+    // 데이터가 없는 경우 기본 품목 하나 추가
+    console.log('기존 납품 품목 데이터 없음 - 기본 품목 추가');
+    addHistoryDeliveryItem();
   }
 
   function addHistoryDeliveryItem(itemData = {}) {

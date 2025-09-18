@@ -300,8 +300,9 @@ class DeliveryItem(models.Model):
     def save(self, *args, **kwargs):
         # 총액 자동 계산 (부가세 10% 포함)
         if self.unit_price and self.quantity:
+            from decimal import Decimal
             subtotal = self.unit_price * self.quantity
-            self.total_price = subtotal * 1.1  # 부가세 10% 추가
+            self.total_price = subtotal * Decimal('1.1')  # 부가세 10% 추가
         super().save(*args, **kwargs)
 
     def __str__(self):
