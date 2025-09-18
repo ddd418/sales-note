@@ -4772,6 +4772,20 @@ def customer_detail_report_view(request, followup_id):
     # 납품 히스토리
     delivery_histories = histories.filter(action_type='delivery_schedule')
     
+    # 전체 데이터 조회 로그 추가
+    print(f"=== 전체 납품 데이터 조회 시작 (고객 ID: {followup_id}) ===")
+    print(f"전체 History 개수: {histories.count()}")
+    print(f"납품 History 개수: {delivery_histories.count()}")
+    
+    logger.info(f"=== 전체 납품 데이터 조회 시작 (고객 ID: {followup_id}) ===")
+    logger.info(f"전체 History 개수: {histories.count()}")
+    logger.info(f"납품 History 개수: {delivery_histories.count()}")
+    
+    # 각 delivery_history 상세 정보
+    for history in delivery_histories:
+        print(f"History {history.id}: action_type={history.action_type}, delivery_amount={history.delivery_amount}, schedule_id={history.schedule_id if history.schedule else None}")
+        logger.info(f"History {history.id}: action_type={history.action_type}, delivery_amount={history.delivery_amount}, schedule_id={history.schedule_id if history.schedule else None}")
+    
     # 납품 금액 계산
     history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or 0
     
@@ -4783,12 +4797,62 @@ def customer_detail_report_view(request, followup_id):
     
     total_amount = history_amount + schedule_amount
     
-    # Schedule DeliveryItem이 있는 일정들
-    schedule_deliveries = Schedule.objects.filter(
+    # 전체 Schedule 조회 (참고용)
+    all_schedules = Schedule.objects.filter(followup=followup)
+    delivery_schedules = all_schedules.filter(activity_type='delivery')
+    
+    print(f"전체 Schedule 개수: {all_schedules.count()}")
+    print(f"납품 타입 Schedule 개수: {delivery_schedules.count()}")
+    logger.info(f"전체 Schedule 개수: {all_schedules.count()}")
+    logger.info(f"납품 타입 Schedule 개수: {delivery_schedules.count()}")
+    
+    # 납품 타입 Schedule 각각 확인
+    for schedule in delivery_schedules:
+        items_count = schedule.delivery_items_set.count()
+        print(f"납품 Schedule {schedule.id}: visit_date={schedule.visit_date}, items_count={items_count}")
+        logger.info(f"납품 Schedule {schedule.id}: visit_date={schedule.visit_date}, items_count={items_count}")
+    
+    # Schedule DeliveryItem이 있는 일정들 (중복 제거)
+    schedule_deliveries_ids = Schedule.objects.filter(
         followup=followup,
         activity_type='delivery',
         delivery_items_set__isnull=False
-    ).distinct()
+    ).values_list('id', flat=True).distinct()
+    
+    print(f"🔍 schedule_deliveries_ids: {list(schedule_deliveries_ids)}")
+    logger.info(f"🔍 schedule_deliveries_ids: {list(schedule_deliveries_ids)}")
+    
+    schedule_deliveries = Schedule.objects.filter(id__in=schedule_deliveries_ids)
+    
+    print(f"🔍 schedule_deliveries count: {schedule_deliveries.count()}")
+    print(f"🔍 schedule_deliveries list: {list(schedule_deliveries.values_list('id', flat=True))}")
+    logger.info(f"🔍 schedule_deliveries count: {schedule_deliveries.count()}")
+    logger.info(f"🔍 schedule_deliveries list: {list(schedule_deliveries.values_list('id', flat=True))}")
+    
+    # Schedule 33 특별 확인
+    schedule_33 = Schedule.objects.filter(id=33).first()
+    if schedule_33:
+        items_count = schedule_33.delivery_items_set.count()
+        print(f"🔍 Schedule 33 특별 확인: followup={schedule_33.followup_id}, activity_type={schedule_33.activity_type}, items_count={items_count}")
+        print(f"🔍 Schedule 33이 schedule_deliveries에 포함되는가: {schedule_33 in schedule_deliveries}")
+        logger.info(f"🔍 Schedule 33 특별 확인: followup={schedule_33.followup_id}, activity_type={schedule_33.activity_type}, items_count={items_count}")
+        logger.info(f"🔍 Schedule 33이 schedule_deliveries에 포함되는가: {schedule_33 in schedule_deliveries}")
+    
+    # Schedule 데이터 상세 로그
+    print(f"Schedule 납품 개수: {schedule_deliveries.count()}")
+    logger.info(f"Schedule 납품 개수: {schedule_deliveries.count()}")
+    
+    # 각 schedule 상세 정보
+    for schedule in schedule_deliveries:
+        items_count = schedule.delivery_items_set.count()
+        items_total = schedule.delivery_items_set.aggregate(total=Sum('total_price'))['total'] or 0
+        print(f"Schedule {schedule.id}: activity_type={schedule.activity_type}, items={items_count}, total_amount={items_total}")
+        logger.info(f"Schedule {schedule.id}: activity_type={schedule.activity_type}, items={items_count}, total_amount={items_total}")
+        
+        # 각 DeliveryItem 상세
+        for item in schedule.delivery_items_set.all():
+            print(f"  - DeliveryItem {item.id}: name={item.item_name}, quantity={item.quantity}, unit_price={item.unit_price}, total_price={item.total_price}")
+            logger.info(f"  - DeliveryItem {item.id}: name={item.item_name}, quantity={item.quantity}, unit_price={item.unit_price}, total_price={item.total_price}")
     
     # 중복 제거된 납품 횟수 계산
     # History에 기록된 일정 ID들
@@ -4885,12 +4949,9 @@ def customer_detail_report_view(request, followup_id):
         action_type='delivery_schedule'
     ).order_by('-delivery_date', '-created_at')
     
-    # Schedule에서 DeliveryItem이 있는 납품 일정들
-    schedule_deliveries = Schedule.objects.filter(
-        followup=followup,
-        activity_type='delivery',
-        delivery_items_set__isnull=False
-    ).select_related('user').prefetch_related('delivery_items_set').order_by('-visit_date', '-created_at')
+    # Schedule에서 DeliveryItem이 있는 납품 일정들 (이미 위에서 중복 제거됨)
+    # schedule_deliveries는 이미 정의되어 있음 - 중복 방지를 위해 재사용
+    schedule_deliveries = schedule_deliveries.select_related('user').prefetch_related('delivery_items_set').order_by('-visit_date', '-created_at')
     
     # Schedule 납품 일정에 총액 정보 추가
     for schedule in schedule_deliveries:
@@ -4926,6 +4987,40 @@ def customer_detail_report_view(request, followup_id):
     logger.info(f"납품 히스토리 개수: {delivery_histories.count()}")
     logger.info(f"스케줄 납품 개수: {schedule_deliveries.count()}")
     
+    # History-Schedule 연결 관계 분석
+    print("=== History-Schedule 연결 관계 분석 ===")
+    logger.info("=== History-Schedule 연결 관계 분석 ===")
+    
+    history_with_schedule = delivery_histories.filter(schedule__isnull=False)
+    history_without_schedule = delivery_histories.filter(schedule__isnull=True)
+    
+    print(f"Schedule과 연결된 History: {history_with_schedule.count()}개")
+    print(f"Schedule과 연결되지 않은 History: {history_without_schedule.count()}개")
+    logger.info(f"Schedule과 연결된 History: {history_with_schedule.count()}개")
+    logger.info(f"Schedule과 연결되지 않은 History: {history_without_schedule.count()}개")
+    
+    # 모든 납품 타입 Schedule 확인 (DeliveryItem 유무 관계없이)
+    all_delivery_schedules = Schedule.objects.filter(followup=followup, activity_type='delivery')
+    schedules_with_history = set(delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True))
+    schedules_with_items = set(schedule_deliveries.values_list('id', flat=True))
+    
+    print(f"전체 납품 Schedule: {all_delivery_schedules.count()}개")
+    print(f"History와 연결된 Schedule ID들: {schedules_with_history}")
+    print(f"DeliveryItem이 있는 Schedule ID들: {schedules_with_items}")
+    logger.info(f"전체 납품 Schedule: {all_delivery_schedules.count()}개")
+    logger.info(f"History와 연결된 Schedule ID들: {schedules_with_history}")
+    logger.info(f"DeliveryItem이 있는 Schedule ID들: {schedules_with_items}")
+    
+    # History와도 연결되지 않고 DeliveryItem도 없는 Schedule 찾기
+    orphaned_schedules = all_delivery_schedules.exclude(
+        Q(id__in=schedules_with_history) | Q(id__in=schedules_with_items)
+    )
+    print(f"고립된 Schedule (History 없고 DeliveryItem 없음): {orphaned_schedules.count()}개")
+    logger.info(f"고립된 Schedule (History 없고 DeliveryItem 없음): {orphaned_schedules.count()}개")
+    for schedule in orphaned_schedules:
+        print(f"  - 고립된 Schedule {schedule.id}: date={schedule.visit_date}, notes={schedule.notes}")
+        logger.info(f"  - 고립된 Schedule {schedule.id}: date={schedule.visit_date}, notes={schedule.notes}")
+
     # 1. History 기반 납품 내역
     for history in delivery_histories:
         print(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
@@ -4946,6 +5041,11 @@ def customer_detail_report_view(request, followup_id):
         
         # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
         if history.schedule:
+            print(f"🔍 History {history.id} -> Schedule {history.schedule.id} 연결 발견")
+            if history.schedule.id == 33:
+                print(f"🚨 중요: History {history.id}이 Schedule 33과 연결되어 있음!")
+                logger.info(f"🚨 중요: History {history.id}이 Schedule 33과 연결되어 있음!")
+            
             schedule_items = history.schedule.delivery_items_set.all()
             logger.info(f"History {history.id}의 연결된 Schedule {history.schedule.id}에 {schedule_items.count()}개 품목 존재")
             if schedule_items.exists():
@@ -4961,6 +5061,7 @@ def customer_detail_report_view(request, followup_id):
                 delivery_data['schedule_amount'] = schedule_total
                 # 처리된 Schedule ID 기록
                 processed_schedule_ids.add(history.schedule.id)
+                print(f"🔍 processed_schedule_ids에 {history.schedule.id} 추가됨")
                 logger.info(f"Schedule {history.schedule.id} 처리됨 (총액: {schedule_total})")
         
         integrated_deliveries.append(delivery_data)
@@ -4969,6 +5070,11 @@ def customer_detail_report_view(request, followup_id):
     logger.info(f"처리된 Schedule IDs: {processed_schedule_ids}")
     
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
+    print(f"=== Schedule 기반 납품 처리 시작 ===")
+    print(f"처리할 schedule_deliveries: {list(schedule_deliveries.values_list('id', flat=True))}")
+    logger.info(f"=== Schedule 기반 납품 처리 시작 ===")
+    logger.info(f"처리할 schedule_deliveries: {list(schedule_deliveries.values_list('id', flat=True))}")
+    
     for schedule in schedule_deliveries:
         print(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
         logger.info(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
@@ -4977,6 +5083,7 @@ def customer_detail_report_view(request, followup_id):
             # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
             schedule_tax_issued = schedule.tax_invoice_issued_count > 0 and schedule.tax_invoice_issued_count == schedule.total_items_count
             
+            print(f"Schedule {schedule.id} 전용 납품 추가 준비 - visit_date={schedule.visit_date}, calculated_total={schedule.calculated_total_amount}")
             logger.info(f"Schedule {schedule.id} 전용 납품 추가 (총액: {schedule.calculated_total_amount})")
             
             delivery_data = {
@@ -4997,10 +5104,14 @@ def customer_detail_report_view(request, followup_id):
                     'total_count': schedule.total_items_count,
                 }
             }
+            print(f"Schedule {schedule.id} delivery_data 생성 완료 - date={delivery_data['date']}, amount={delivery_data['amount']}, schedule_amount={delivery_data['schedule_amount']}")
             integrated_deliveries.append(delivery_data)
+            print(f"integrated_deliveries에 추가 완료 - 현재 총 {len(integrated_deliveries)}개")
             # 처리 완료된 Schedule ID 추가
             processed_schedule_ids.add(schedule.id)
+            print(f"processed_schedule_ids에 {schedule.id} 추가 완료")
         else:
+            print(f"Schedule {schedule.id} 건너뛰기 - 이미 processed_schedule_ids에 존재")
             logger.info(f"Schedule {schedule.id} 이미 History에서 처리됨 - 건너뛰기")
     
     print(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
