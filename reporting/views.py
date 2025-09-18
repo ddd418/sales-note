@@ -21,7 +21,6 @@ import logging
 # 로거 설정
 logger = logging.getLogger(__name__)
 
-# 납품 품목 처리 함수
 def save_delivery_items(request, instance_obj):
     """납품 품목 데이터를 저장하는 함수 (스케줄 또는 히스토리)"""
     from .models import DeliveryItem
@@ -32,15 +31,27 @@ def save_delivery_items(request, instance_obj):
     is_history = isinstance(instance_obj, History)
     
     if not (is_schedule or is_history):
+        logger.error(f"save_delivery_items: 지원되지 않는 객체 타입: {type(instance_obj)}")
         return
+    
+    logger.info(f"save_delivery_items: {'Schedule' if is_schedule else 'History'} {instance_obj.pk}에 대한 납품 품목 저장 시작")
     
     # 기존 품목들 삭제 (수정 시)
     if is_schedule:
         existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
+        logger.info(f"기존 Schedule 납품 품목 {existing_count}개 삭제")
     else:  # is_history
         existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
+        logger.info(f"기존 History 납품 품목 {existing_count}개 삭제")
+    
+    # POST 데이터 로깅
+    logger.info(f"전체 POST 데이터: {dict(request.POST)}")
+    
+    # delivery_items 관련 POST 데이터만 필터링
+    delivery_post_data = {k: v for k, v in request.POST.items() if 'delivery_items' in k}
+    logger.info(f"납품 품목 관련 POST 데이터: {delivery_post_data}")
     
     # 새로운 형태의 POST 데이터 처리 (delivery_items[0][name] 형태)
     delivery_items_data = {}
@@ -60,15 +71,22 @@ def save_delivery_items(request, instance_obj):
                 if index not in delivery_items_data:
                     delivery_items_data[index] = {}
                 delivery_items_data[index][field] = value
-            except (ValueError, IndexError):
+                
+                logger.info(f"파싱됨: {key} -> index={index}, field={field}, value={value}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"POST 데이터 파싱 실패: {key} = {value}, 오류: {e}")
                 continue
     
     # 납품 품목 저장
     created_count = 0
+    logger.info(f"파싱된 납품 품목 데이터: {delivery_items_data}")
+    
     for index, item_data in delivery_items_data.items():
         item_name = item_data.get('name', '').strip()
         quantity = item_data.get('quantity', '').strip()
         unit_price = item_data.get('unit_price', '').strip()
+        
+        logger.info(f"품목 {index}: name={item_name}, quantity={quantity}, unit_price={unit_price}")
         
         if item_name and quantity:
             try:
@@ -85,12 +103,20 @@ def save_delivery_items(request, instance_obj):
                     delivery_item.history = instance_obj
                 
                 if unit_price:
-                    delivery_item.unit_price = float(unit_price)
+                    from decimal import Decimal
+                    delivery_item.unit_price = Decimal(str(unit_price))
                 
                 delivery_item.save()
                 created_count += 1
+                logger.info(f"납품 품목 저장 성공: {delivery_item.item_name} (ID: {delivery_item.pk})")
             except (ValueError, TypeError) as e:
+                logger.error(f"납품 품목 저장 실패: {e}")
                 continue  # 잘못된 데이터는 무시
+        else:
+            logger.warning(f"필수 데이터 누락: name={item_name}, quantity={quantity}")
+    
+    logger.info(f"총 {created_count}개 납품 품목 저장 완료")
+    return created_count
 
 # 권한 체크 데코레이터
 def role_required(allowed_roles):
@@ -1397,23 +1423,37 @@ def schedule_delete_view(request, pk):
 @login_required
 def schedule_update_delivery_items(request, pk):
     """일정의 납품 품목 업데이트"""
+    logger.info(f"=== Schedule 납품 품목 업데이트 시작 (ID: {pk}) ===")
+    logger.info(f"요청 메소드: {request.method}")
+    logger.info(f"사용자: {request.user.username}")
+    logger.info(f"Content-Type: {request.content_type}")
+    
     schedule = get_object_or_404(Schedule, pk=pk)
+    logger.info(f"Schedule 정보: {schedule} (ID: {schedule.pk})")
     
     # 권한 체크: 수정 권한이 있는 경우만 수정 가능
     if not can_modify_user_data(request.user, schedule.user):
+        logger.warning(f"권한 없음: {request.user.username}이 {schedule.user.username}의 스케줄을 수정하려고 시도")
         messages.error(request, '수정 권한이 없습니다.')
         return redirect('reporting:schedule_detail', pk=pk)
     
     if request.method == 'POST':
         try:
+            logger.info(f"Schedule {pk}의 납품 품목 업데이트 시작")
+            
             # 납품 품목 저장
-            save_delivery_items(request, schedule)
+            created_count = save_delivery_items(request, schedule)
+            logger.info(f"Schedule {pk}에 {created_count}개 납품 품목 저장됨")
             
             # 관련된 History들의 delivery_items 텍스트도 업데이트
             related_histories = schedule.histories.filter(action_type='delivery_schedule')
+            logger.info(f"연관된 History 개수: {related_histories.count()}")
+            
             if related_histories.exists():
                 # 새로 저장된 DeliveryItem들을 텍스트로 변환
                 delivery_items = schedule.delivery_items_set.all()
+                logger.info(f"Schedule에 저장된 DeliveryItem 개수: {delivery_items.count()}")
+                
                 if delivery_items.exists():
                     delivery_lines = []
                     for item in delivery_items:
@@ -1424,19 +1464,23 @@ def schedule_update_delivery_items(request, pk):
                         else:
                             delivery_lines.append(f"{item.item_name}: {item.quantity}개")
                     delivery_text = '\n'.join(delivery_lines)
+                    logger.info(f"생성된 delivery_text: {delivery_text}")
                     
                     # 관련 History들의 delivery_items 필드 업데이트
                     for history in related_histories:
                         history.delivery_items = delivery_text
                         history.save(update_fields=['delivery_items'])
+                        logger.info(f"History {history.pk}의 delivery_items 업데이트 완료")
             
             messages.success(request, '납품 품목이 성공적으로 업데이트되었습니다.')
         except Exception as e:
+            logger.error(f'납품 품목 업데이트 중 오류: {str(e)}', exc_info=True)
             messages.error(request, f'납품 품목 업데이트 중 오류가 발생했습니다: {str(e)}')
         
         return redirect('reporting:schedule_detail', pk=pk)
     
     # GET 요청은 허용하지 않음
+    logger.warning(f"GET 요청으로 schedule_update_delivery_items 호출됨 (Schedule ID: {pk})")
     return redirect('reporting:schedule_detail', pk=pk)
 
 @login_required
@@ -4701,6 +4745,9 @@ def customer_detail_report_view(request, followup_id):
     from datetime import datetime, timedelta
     import json
     
+    print(f"=== 고객 상세 보고서 요청 (ID: {followup_id}) ===")
+    logger.info(f"=== 고객 상세 보고서 요청 (ID: {followup_id}) ===")
+    
     # 권한 확인 및 팔로우업 조회
     try:
         followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
@@ -4852,7 +4899,12 @@ def customer_detail_report_view(request, followup_id):
         total_items_count = 0
         
         for item in schedule.delivery_items_set.all():
-            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+            if item.total_price:
+                item_total = float(item.total_price)
+            elif item.unit_price:
+                item_total = float(item.unit_price) * item.quantity * 1.1
+            else:
+                item_total = 0
             total_amount += item_total
             total_items_count += 1
             if item.tax_invoice_issued:
@@ -4866,8 +4918,19 @@ def customer_detail_report_view(request, followup_id):
     integrated_deliveries = []
     processed_schedule_ids = set()  # 이미 처리된 Schedule ID를 추적
     
+    print(f"=== 통합 납품 내역 생성 시작 (고객 ID: {followup_id}) ===")
+    print(f"납품 히스토리 개수: {delivery_histories.count()}")
+    print(f"스케줄 납품 개수: {schedule_deliveries.count()}")
+    
+    logger.info(f"=== 통합 납품 내역 생성 시작 (고객 ID: {followup_id}) ===")
+    logger.info(f"납품 히스토리 개수: {delivery_histories.count()}")
+    logger.info(f"스케줄 납품 개수: {schedule_deliveries.count()}")
+    
     # 1. History 기반 납품 내역
     for history in delivery_histories:
+        print(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
+        logger.info(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
+        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -4884,24 +4947,37 @@ def customer_detail_report_view(request, followup_id):
         # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
         if history.schedule:
             schedule_items = history.schedule.delivery_items_set.all()
+            logger.info(f"History {history.id}의 연결된 Schedule {history.schedule.id}에 {schedule_items.count()}개 품목 존재")
             if schedule_items.exists():
                 delivery_data['has_schedule_items'] = True
                 # Schedule의 품목 정보를 추가로 표시
                 delivery_data['schedule_items'] = schedule_items
                 # Schedule 품목의 총액 계산
-                schedule_total = sum(item.total_price or (float(item.unit_price) * item.quantity * 1.1) for item in schedule_items if item.unit_price)
+                schedule_total = 0
+                for item in schedule_items:
+                    if item.unit_price:
+                        item_total = float(item.unit_price) * item.quantity * 1.1
+                        schedule_total += item_total
                 delivery_data['schedule_amount'] = schedule_total
                 # 처리된 Schedule ID 기록
                 processed_schedule_ids.add(history.schedule.id)
+                logger.info(f"Schedule {history.schedule.id} 처리됨 (총액: {schedule_total})")
         
         integrated_deliveries.append(delivery_data)
     
+    print(f"처리된 Schedule IDs: {processed_schedule_ids}")
+    logger.info(f"처리된 Schedule IDs: {processed_schedule_ids}")
+    
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
     for schedule in schedule_deliveries:
+        print(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
+        logger.info(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
         # 이미 History에서 처리된 일정은 제외
         if schedule.id not in processed_schedule_ids:
             # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
             schedule_tax_issued = schedule.tax_invoice_issued_count > 0 and schedule.tax_invoice_issued_count == schedule.total_items_count
+            
+            logger.info(f"Schedule {schedule.id} 전용 납품 추가 (총액: {schedule.calculated_total_amount})")
             
             delivery_data = {
                 'type': 'schedule_only',
@@ -4909,7 +4985,7 @@ def customer_detail_report_view(request, followup_id):
                 'date': schedule.visit_date,
                 'schedule_id': schedule.id,
                 'items_display': None,
-                'amount': schedule.calculated_total_amount,
+                'amount': 0,  # Schedule 전용은 amount를 0으로 설정
                 'tax_invoice_issued': schedule_tax_issued,  # Schedule 품목 기준 세금계산서 상태
                 'content': schedule.notes or '일정 기반 납품',
                 'user': schedule.user.username,
@@ -4922,6 +4998,16 @@ def customer_detail_report_view(request, followup_id):
                 }
             }
             integrated_deliveries.append(delivery_data)
+            # 처리 완료된 Schedule ID 추가
+            processed_schedule_ids.add(schedule.id)
+        else:
+            logger.info(f"Schedule {schedule.id} 이미 History에서 처리됨 - 건너뛰기")
+    
+    print(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
+    logger.info(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
+    for i, delivery in enumerate(integrated_deliveries):
+        print(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
+        logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
