@@ -5118,10 +5118,17 @@ def customer_detail_report_view(request, followup_id):
     logger.info(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
     for i, delivery in enumerate(integrated_deliveries):
         print(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
+        print(f"     date={delivery['date']}, content='{delivery.get('content', '')}', user='{delivery.get('user', '')}'")
         logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
+        logger.info(f"     date={delivery['date']}, content='{delivery.get('content', '')}', user='{delivery.get('user', '')}'")
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
+    
+    print(f"=== 정렬 후 통합 납품 내역: {len(integrated_deliveries)}개 ===")
+    for i, delivery in enumerate(integrated_deliveries):
+        print(f"  {i+1}. {delivery['type']} ID={delivery['id']}, date={delivery['date']}")
+        logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, date={delivery['date']}")
     
     # 미팅 기록
     meeting_histories = histories.filter(

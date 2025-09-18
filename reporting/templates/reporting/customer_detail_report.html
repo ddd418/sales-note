@@ -762,39 +762,41 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
 async function processAllDeliveryData() {
   console.log('=== 전체 납품내역 데이터 처리 시작 ===');
   
-  // 서버에서 전달된 납품 데이터 (History 기반)
-  const historyDeliveryData = [
-    {% for history in delivery_histories %}
+  // 서버에서 전달된 통합 납품 데이터
+  const integratedDeliveryData = [
+    {% for delivery in integrated_deliveries %}
       {
-        historyId: {{ history.id }},
-        scheduleId: {% if history.schedule %}{{ history.schedule.id }}{% else %}null{% endif %},
-        items: {% if history.delivery_items %}'{{ history.delivery_items|escapejs }}'{% else %}null{% endif %},
-        amount: {{ history.delivery_amount|default:0 }},
-        date: '{{ history.delivery_date|date:"Y-m-d"|default:"" }}'
+        type: '{{ delivery.type }}',
+        id: {{ delivery.id }},
+        scheduleId: {% if delivery.schedule_id %}{{ delivery.schedule_id }}{% else %}null{% endif %},
+        historyId: {% if delivery.type == 'history' %}{{ delivery.id }}{% else %}null{% endif %},
+        items: {% if delivery.items_display %}'{{ delivery.items_display|escapejs }}'{% else %}null{% endif %},
+        amount: {{ delivery.amount|default:0 }},
+        scheduleAmount: {{ delivery.schedule_amount|default:0 }},
+        date: '{{ delivery.date|date:"Y-m-d" }}',
+        hasScheduleItems: {{ delivery.has_schedule_items|yesno:"true,false" }}
       },
     {% endfor %}
   ];
   
-  console.log('History 기반 납품 데이터:', historyDeliveryData);
+  console.log('통합 납품 데이터:', integratedDeliveryData);
   
   // 품목별 집계 객체
   const itemsSummary = {};
   let totalAmount = 0;
   let totalItemsCount = 0;
   
-  // History 데이터 처리
-  for (const delivery of historyDeliveryData) {
-    console.log(`\n--- History ${delivery.historyId} 처리 시작 ---`);
+  // 통합 납품 데이터 처리
+  for (const delivery of integratedDeliveryData) {
+    console.log(`\n--- ${delivery.type} ${delivery.id} 처리 시작 ---`);
     
-    // History의 delivery_items 텍스트 처리
-    if (delivery.items && delivery.items.trim()) {
+    // History 타입의 delivery_items 텍스트 처리
+    if (delivery.type === 'history' && delivery.items && delivery.items.trim()) {
       console.log('History delivery_items 처리:', delivery.items);
       processDeliveryItemsText(delivery.items, itemsSummary);
-    } else {
-      console.log('History delivery_items가 비어있음');
     }
     
-    // Schedule DeliveryItem도 포함 (History에 항목이 없거나 적은 경우)
+    // Schedule DeliveryItem 처리 (History와 연결되거나 Schedule 전용)
     if (delivery.scheduleId) {
       console.log(`Schedule ${delivery.scheduleId} DeliveryItem 확인 중...`);
       
@@ -808,7 +810,7 @@ async function processAllDeliveryData() {
           
           if (scheduleItems.length > 0) {
             scheduleItems.forEach(item => {
-              const itemName = `${item.item_name} [일정]`; // Schedule 항목 구분
+              const itemName = delivery.type === 'schedule_only' ? item.item_name : `${item.item_name} [일정]`; // Schedule 전용은 구분 없이
               const quantity = parseFloat(item.quantity || 0);
               const amount = Math.round(item.total_price || 0);
               
@@ -834,8 +836,10 @@ async function processAllDeliveryData() {
       }
     }
     
-    totalAmount += delivery.amount;
-    console.log(`--- History ${delivery.historyId} 처리 완료 ---`);
+    // 금액 추가 (History는 amount, Schedule 전용은 scheduleAmount)
+    const deliveryAmount = delivery.type === 'schedule_only' ? delivery.scheduleAmount : delivery.amount;
+    totalAmount += deliveryAmount;
+    console.log(`--- ${delivery.type} ${delivery.id} 처리 완료 ---`);
   }
   
   console.log('최종 품목 집계:', itemsSummary);
