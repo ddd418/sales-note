@@ -4208,6 +4208,7 @@ def followup_excel_download(request):
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     from openpyxl.utils import get_column_letter
     from django.http import HttpResponse
+    from decimal import Decimal
     import io
     from datetime import datetime
     
@@ -4352,6 +4353,28 @@ def followup_excel_download(request):
                             item_quantities[line] += 1
                         else:
                             item_quantities[line] = 1
+        
+        # Schedule 기반 DeliveryItem도 포함
+        schedule_deliveries = followup.schedules.filter(
+            activity_type='delivery',
+            delivery_items_set__isnull=False
+        )
+        
+        for schedule in schedule_deliveries:
+            for item in schedule.delivery_items_set.all():
+                # Schedule 기반 품목의 금액도 포함 (Decimal 타입으로 변환)
+                if item.total_price:
+                    total_delivery_amount += Decimal(str(item.total_price))
+                
+                # Schedule 기반 품목 집계
+                item_name = item.item_name
+                quantity = float(item.quantity)
+                
+                # 품목별 수량 누적 (History와 Schedule 통합)
+                if item_name in item_quantities:
+                    item_quantities[item_name] += quantity
+                else:
+                    item_quantities[item_name] = quantity
         
         # 품목 텍스트 생성 (품목명과 총 수량 표시)
         if item_quantities:

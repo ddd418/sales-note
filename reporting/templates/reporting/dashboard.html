@@ -47,6 +47,20 @@
   border-color: #6f42c1;
 }
 
+/* 총 납품 금액 동적 텍스트 크기 조정 */
+#total-delivery-amount {
+  transition: font-size 0.3s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+/* 금액이 큰 경우를 위한 반응형 텍스트 */
+.stat-card .card-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .btn-outline-purple:hover {
   color: #fff;
   background-color: #6f42c1;
@@ -458,7 +472,7 @@
                   <small class="card-title text-muted mb-1">
                     <i class="fas fa-won-sign me-1"></i>총 납품 금액<br>({{current_year }}년)
                   </small>
-                  <h3 class="mb-0 text-warning fs-4">
+                  <h3 class="mb-0 text-warning fs-4" id="total-delivery-amount">
                     {% load currency_filters %} {% if total_delivery_amount > 0%} {{ total_delivery_amount|currency_format }}<small
                       class="fs-6 text-muted ms-1"
                       >원</small
@@ -1509,6 +1523,49 @@
             {% endif %}
           }
         });
+
+        // 총 납품 금액 동적 텍스트 크기 조정
+        function adjustAmountTextSize() {
+          const amountElement = document.getElementById('total-delivery-amount');
+          if (!amountElement) return;
+          
+          const container = amountElement.parentElement;
+          const containerWidth = container.offsetWidth;
+          
+          // 초기 폰트 크기로 리셋
+          amountElement.style.fontSize = '';
+          amountElement.classList.remove('fs-6', 'fs-5', 'fs-4', 'fs-3', 'fs-2', 'fs-1');
+          amountElement.classList.add('fs-4');
+          
+          // 텍스트가 컨테이너를 벗어나는지 확인
+          if (amountElement.scrollWidth > containerWidth) {
+            // 천만원대 이상 - 폰트 크기 줄이기
+            amountElement.classList.remove('fs-4');
+            amountElement.classList.add('fs-5');
+            
+            // 여전히 오버플로우면 더 줄이기
+            if (amountElement.scrollWidth > containerWidth) {
+              amountElement.classList.remove('fs-5');
+              amountElement.classList.add('fs-6');
+              
+              // 그래도 오버플로우면 더 작게
+              if (amountElement.scrollWidth > containerWidth) {
+                amountElement.style.fontSize = '0.8rem';
+                
+                // 최종적으로도 오버플로우면 최소 크기
+                if (amountElement.scrollWidth > containerWidth) {
+                  amountElement.style.fontSize = '0.7rem';
+                }
+              }
+            }
+          }
+        }
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', adjustAmountTextSize);
+        
+        // 윈도우 리사이즈 시 재조정
+        window.addEventListener('resize', adjustAmountTextSize);
       </script>
 
       {% endblock %}

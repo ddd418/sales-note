@@ -50,7 +50,7 @@
               <h6 class="card-title text-warning" style="font-size: 0.85rem;">
                 <i class="fas fa-won-sign"></i> 총 납품 금액
               </h6>
-              <h3 class="text-warning">
+              <h3 class="text-warning" id="customer-report-total-amount">
                 {% load currency_filters %}
                 {{ total_amount_sum|currency_format }}원
               </h3>
@@ -282,6 +282,39 @@
 
 .table td {
   vertical-align: middle;
+}
+
+/* 총 납품 금액 동적 텍스트 크기 조정 */
+#customer-report-total-amount {
+  transition: font-size 0.3s ease;
+  word-wrap: break-word;
+  word-break: keep-all;
+  line-height: 1.2;
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#customer-report-total-amount.small-amount {
+  font-size: 1.3rem !important;
+}
+
+#customer-report-total-amount.smaller-amount {
+  font-size: 1.0rem !important;
+}
+
+#customer-report-total-amount.smallest-amount {
+  font-size: 0.8rem !important;
+}
+
+/* 카드 body 조정 */
+.card-body {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1rem 0.5rem;
 }
 
 /* 5개 카드 레이아웃을 위한 클래스 */
@@ -529,6 +562,60 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// 총 납품 금액 동적 텍스트 크기 조정
+function adjustCustomerReportAmountTextSize() {
+  const amountElement = document.getElementById('customer-report-total-amount');
+  if (!amountElement) return;
+  
+  const container = amountElement.parentElement;
+  const maxWidth = container.offsetWidth - 20; // 패딩 고려
+  
+  // 초기 폰트 크기로 리셋
+  amountElement.style.fontSize = '';
+  amountElement.classList.remove('small-amount', 'smaller-amount', 'smallest-amount');
+  
+  // 임시로 컨테이너 밖에서 크기 측정
+  const tempElement = amountElement.cloneNode(true);
+  tempElement.style.position = 'absolute';
+  tempElement.style.visibility = 'hidden';
+  tempElement.style.width = 'auto';
+  tempElement.style.whiteSpace = 'nowrap';
+  document.body.appendChild(tempElement);
+  
+  let currentWidth = tempElement.offsetWidth;
+  
+  if (currentWidth > maxWidth) {
+    // 1단계: 작게
+    tempElement.classList.add('small-amount');
+    currentWidth = tempElement.offsetWidth;
+    
+    if (currentWidth > maxWidth) {
+      // 2단계: 더 작게
+      tempElement.classList.remove('small-amount');
+      tempElement.classList.add('smaller-amount');
+      currentWidth = tempElement.offsetWidth;
+      
+      if (currentWidth > maxWidth) {
+        // 3단계: 최소 크기
+        tempElement.classList.remove('smaller-amount');
+        tempElement.classList.add('smallest-amount');
+      }
+    }
+    
+    // 원본 요소에 클래스 적용
+    amountElement.className = tempElement.className;
+  }
+  
+  // 임시 요소 제거
+  document.body.removeChild(tempElement);
+}
+
+// 페이지 로드 시 실행
+document.addEventListener('DOMContentLoaded', adjustCustomerReportAmountTextSize);
+
+// 윈도우 리사이즈 시 재조정
+window.addEventListener('resize', adjustCustomerReportAmountTextSize);
 </script>
 
 {% endblock %}
