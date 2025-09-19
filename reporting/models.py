@@ -1,7 +1,21 @@
 from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
 
-# 업체/학교 (Company) 모델
+# 사용자 소속 회사 (UserCompany) 모델 - 직원들의 소속 회사
+class UserCompany(models.Model):
+    name = models.CharField(max_length=100, unique=True, verbose_name="회사명")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "사용자 소속 회사"
+        verbose_name_plural = "사용자 소속 회사 목록"
+        ordering = ['name']
+
+# 업체/학교 (Company) 모델 - 고객사
 class Company(models.Model):
     name = models.CharField(max_length=200, unique=True, verbose_name="업체/학교명")
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="생성자")
@@ -42,6 +56,7 @@ class UserProfile(models.Model):
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="사용자")
+    company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='salesman', verbose_name="권한")
     can_download_excel = models.BooleanField(default=False, verbose_name="엑셀 다운로드 권한")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
@@ -98,6 +113,7 @@ class FollowUp(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
+    user_company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="담당자 소속 회사")
     customer_name = models.CharField(max_length=100, blank=True, null=True, verbose_name="고객명")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='followup_companies', verbose_name="업체/학교명")
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='followup_departments', verbose_name="부서/연구실명")
@@ -136,6 +152,7 @@ class Schedule(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
+    company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업")
     visit_date = models.DateField(verbose_name="방문 날짜")
     visit_time = models.TimeField(verbose_name="방문 시간")
@@ -171,6 +188,7 @@ class History(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
+    company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     parent_history = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, 

@@ -29,6 +29,14 @@
             <div class="col-md-6">
               <p><strong>사용자명:</strong> {{ edit_user.username }}</p>
               <p>
+                <strong>소속 회사:</strong> 
+                {% if user_profile.company %}
+                  <span class="badge bg-info">{{ user_profile.company.name }}</span>
+                {% else %}
+                  <span class="text-muted">미설정</span>
+                {% endif %}
+              </p>
+              <p>
                 <strong>현재 권한:</strong>
                 <span class="badge bg-primary"
                   >{{ user_profile.get_role_display }}</span
@@ -79,6 +87,13 @@
 
                 <div class="mb-3">
                   {{ form.username.label_tag }} {{ form.username }}
+                </div>
+
+                <div class="mb-3">
+                  {{ form.company.label_tag }} {{ form.company }}
+                  {% if form.company.help_text %}
+                    <small class="text-muted d-block">{{ form.company.help_text }}</small>
+                  {% endif %}
                 </div>
 
                 <div class="mb-3">

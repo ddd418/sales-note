@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem # DeliveryItem 추가
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany # UserCompany 추가
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -14,6 +14,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
 import os
 import mimetypes
 import logging
@@ -330,6 +331,7 @@ class ScheduleForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)
+        request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
@@ -353,6 +355,13 @@ class ScheduleForm(forms.ModelForm):
             # 자동완성 URL 설정
             from django.urls import reverse
             self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
+            
+        # 하나과학이 아닌 경우 activity_type에서 서비스 제거
+        if request and not getattr(request, 'is_hanagwahak', False):
+            self.fields['activity_type'].choices = [
+                choice for choice in self.fields['activity_type'].choices 
+                if choice[0] != 'service'
+            ]
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -395,6 +404,7 @@ class HistoryForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)
+        request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
@@ -444,9 +454,14 @@ class HistoryForm(forms.ModelForm):
         self.fields['schedule'].empty_label = "관련 일정 없음"
         
         # 활동 유형에서 메모 제외 (메모는 별도 폼에서만 생성 가능)
+        # 하나과학이 아닌 경우 서비스도 제외
+        excluded_types = ['memo']
+        if request and not getattr(request, 'is_hanagwahak', False):
+            excluded_types.append('service')
+            
         self.fields['action_type'].choices = [
             choice for choice in self.fields['action_type'].choices 
-            if choice[0] != 'memo'
+            if choice[0] not in excluded_types
         ]
         
         # 납품 금액은 선택사항으로 설정
@@ -812,22 +827,35 @@ def dashboard_view(request):
     unique_schedule_ids = set(history_with_schedule) | set(schedules_with_delivery)
     delivery_count = len(unique_schedule_ids) + history_without_schedule
       # 활동 유형별 통계 (현재 연도만, 메모 제외)
-    activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
-        count=Count('id')
-    ).order_by('action_type')
+    if getattr(request, 'is_hanagwahak', False):
+        activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
+            count=Count('id')
+        ).order_by('action_type')
+    else:
+        # 하나과학이 아닌 경우 서비스 항목도 제외
+        activity_stats = histories_current_year.exclude(action_type__in=['memo', 'service']).values('action_type').annotate(
+            count=Count('id')
+        ).order_by('action_type')
     
-    # 서비스 통계 추가 (완료된 서비스만 카운팅)
-    service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
-    
-    # 이번 달 서비스 수 (완료된 것만)
-    this_month_service_count = histories.filter(
-        action_type='service',
-        service_status='completed',
-        created_at__month=current_month,
-        created_at__year=current_year
-    ).count()
+    # 서비스 통계 추가 (완료된 서비스만 카운팅) - 하나과학만
+    if getattr(request, 'is_hanagwahak', False):
+        service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
+        # 이번 달 서비스 수 (완료된 것만)
+        this_month_service_count = histories.filter(
+            action_type='service',
+            service_status='completed',
+            created_at__month=current_month,
+            created_at__year=current_year
+        ).count()
+    else:
+        service_count = 0
+        this_month_service_count = 0
       # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
-    recent_activities = histories_current_year.exclude(action_type='memo').order_by('-created_at')[:5]
+    recent_activities_queryset = histories_current_year.exclude(action_type='memo')
+    if not getattr(request, 'is_hanagwahak', False):
+        # 하나과학이 아닌 경우 서비스도 제외
+        recent_activities_queryset = recent_activities_queryset.exclude(action_type='service')
+    recent_activities = recent_activities_queryset.order_by('-created_at')[:5]
     
     # 월별 고객 추가 현황 (최근 6개월)
     now = timezone.now()
@@ -959,20 +987,24 @@ def dashboard_view(request):
     customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company'] or '미정'})" for item in customer_revenue_data]
     customer_amounts = [float(item['total_revenue']) for item in customer_revenue_data]
 
-    # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만)
-    monthly_service_data = []
-    monthly_service_labels = []
-    for i in range(5, -1, -1):
-        target_date = now - timedelta(days=30*i)
-        service_count_monthly = histories.filter(
-            action_type='service',
-            service_status='completed',
-            created_at__month=target_date.month,
-            created_at__year=target_date.year
-        ).count()
-        
-        monthly_service_data.append(service_count_monthly)
-        monthly_service_labels.append(f"{target_date.year}년 {target_date.month}월")
+    # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만) - 하나과학만
+    if getattr(request, 'is_hanagwahak', False):
+        monthly_service_data = []
+        monthly_service_labels = []
+        for i in range(5, -1, -1):
+            target_date = now - timedelta(days=30*i)
+            service_count_monthly = histories.filter(
+                action_type='service',
+                service_status='completed',
+                created_at__month=target_date.month,
+                created_at__year=target_date.year
+            ).count()
+            
+            monthly_service_data.append(service_count_monthly)
+            monthly_service_labels.append(f"{target_date.year}년 {target_date.month}월")
+    else:
+        monthly_service_data = []
+        monthly_service_labels = []
 
     context = {        'page_title': '대시보드',
         'current_year': current_year,  # 현재 연도 정보 추가
@@ -989,7 +1021,8 @@ def dashboard_view(request):
         'schedule_stats': schedule_stats,
         'completion_rate': completion_rate,
         'daily_activities': daily_activities,
-        'today_schedules': today_schedules,        'recent_customers': recent_customers,
+        'today_schedules': today_schedules,        
+        'recent_customers': recent_customers,
         'monthly_revenue': monthly_revenue,
         'monthly_meetings': monthly_meetings,
         'monthly_services': monthly_services,
@@ -1198,7 +1231,7 @@ def schedule_detail_view(request, pk):
 def schedule_create_view(request):
     """일정 생성 (캘린더에서 선택된 날짜 지원)"""
     if request.method == 'POST':
-        form = ScheduleForm(request.POST, user=request.user)
+        form = ScheduleForm(request.POST, user=request.user, request=request)
         if form.is_valid():
             schedule = form.save(commit=False)
             schedule.user = request.user
@@ -1223,7 +1256,7 @@ def schedule_create_view(request):
             except ValueError:
                 messages.warning(request, '잘못된 날짜 형식입니다.')
         
-        form = ScheduleForm(user=request.user, initial=initial_data)
+        form = ScheduleForm(user=request.user, request=request, initial=initial_data)
     
     context = {
         'form': form,
@@ -1243,7 +1276,7 @@ def schedule_edit_view(request, pk):
         return redirect('reporting:schedule_list')
     
     if request.method == 'POST':
-        form = ScheduleForm(request.POST, instance=schedule, user=request.user)
+        form = ScheduleForm(request.POST, instance=schedule, user=request.user, request=request)
         if form.is_valid():
             updated_schedule = form.save()
             
@@ -1257,7 +1290,7 @@ def schedule_edit_view(request, pk):
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
     else:
-        form = ScheduleForm(instance=schedule, user=request.user)
+        form = ScheduleForm(instance=schedule, user=request.user, request=request)
     
     # DeliveryItem 모델에서 납품 품목 데이터 가져오기 (우선순위 1)
     delivery_text = None
@@ -1817,7 +1850,7 @@ def history_detail_view(request, pk):
 def history_create_view(request):
     """히스토리 생성"""
     if request.method == 'POST':
-        form = HistoryForm(request.POST, request.FILES, user=request.user)
+        form = HistoryForm(request.POST, request.FILES, user=request.user, request=request)
         if form.is_valid():
             history = form.save(commit=False)
             history.user = request.user
@@ -1847,7 +1880,7 @@ def history_create_view(request):
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
     else:
-        form = HistoryForm(user=request.user)
+        form = HistoryForm(user=request.user, request=request)
     
     context = {
         'form': form,
@@ -1866,7 +1899,7 @@ def history_edit_view(request, pk):
         return redirect('reporting:history_list')
     
     if request.method == 'POST':
-        form = HistoryForm(request.POST, request.FILES, instance=history, user=request.user)
+        form = HistoryForm(request.POST, request.FILES, instance=history, user=request.user, request=request)
         if form.is_valid():
             form.save()
             
@@ -1910,7 +1943,7 @@ def history_edit_view(request, pk):
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
     else:
-        form = HistoryForm(instance=history, user=request.user)
+        form = HistoryForm(instance=history, user=request.user, request=request)
     
     # 관련 스케줄의 납품 품목 정보 가져오기
     schedule_delivery_items = []
@@ -2263,6 +2296,12 @@ class UserCreationForm(forms.Form):
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
         label='사용자 이름'
     )
+    company = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '회사명을 입력하세요 (예: 하나과학)'}),
+        label='소속 회사',
+        help_text='사용자가 속할 회사명을 직접 입력하세요'
+    )
     password1 = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
         label='비밀번호'
@@ -2308,6 +2347,12 @@ class UserEditForm(forms.Form):
         max_length=150,
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
         label='사용자 이름'
+    )
+    company = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '회사명을 입력하세요 (예: 하나과학)'}),
+        label='소속 회사',
+        help_text='사용자가 속할 회사명을 직접 입력하세요'
     )
     role = forms.ChoiceField(
         choices=[('admin', 'Admin (최고권한자)'), ('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
@@ -2409,9 +2454,14 @@ def user_create(request):
                 last_name=form.cleaned_data['last_name']
             )
             
+            # 회사 정보 가져오기 또는 생성
+            company_name = form.cleaned_data['company']
+            user_company, created = UserCompany.objects.get_or_create(name=company_name)
+            
             # 사용자 프로필 생성
             UserProfile.objects.create(
                 user=user,
+                company=user_company,  # UserCompany 객체 사용
                 role=form.cleaned_data['role'],
                 can_download_excel=form.cleaned_data['can_download_excel'],
                 created_by=request.user
@@ -2437,6 +2487,10 @@ def user_edit(request, user_id):
     if request.method == 'POST':
         form = UserEditForm(request.POST)
         if form.is_valid():
+            # 회사 정보 가져오기 또는 생성
+            company_name = form.cleaned_data['company']
+            user_company, created = UserCompany.objects.get_or_create(name=company_name)
+            
             # 사용자 정보 수정
             user.username = form.cleaned_data['username']
             user.first_name = form.cleaned_data['first_name']
@@ -2448,7 +2502,8 @@ def user_edit(request, user_id):
             
             user.save()
             
-            # 권한 수정
+            # 권한 및 회사 수정
+            user_profile.company = user_company  # 회사 정보 업데이트
             user_profile.role = form.cleaned_data['role']
             user_profile.can_download_excel = form.cleaned_data['can_download_excel']
             user_profile.save()
@@ -2459,6 +2514,7 @@ def user_edit(request, user_id):
         # 기존 데이터로 폼 초기화
         form = UserEditForm(initial={
             'username': user.username,
+            'company': user_profile.company.name if user_profile.company else '',
             'first_name': user.first_name,
             'last_name': user.last_name,
             'role': user_profile.role,
@@ -2572,9 +2628,14 @@ def manager_dashboard(request):
     selected_user_id = request.GET.get('user_id')
     view_all = request.GET.get('view_all') == 'true'
     
-    # 접근 가능한 Salesman 목록
+    # 접근 가능한 Salesman 목록 (같은 회사 소속만)
     accessible_users = get_accessible_users(request.user)
     salesman_users = accessible_users.filter(userprofile__role='salesman')
+    
+    # 현재 사용자 회사와 같은 회사의 Salesman만 필터링
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.company:
+        user_company = request.user.userprofile.company
+        salesman_users = salesman_users.filter(userprofile__company=user_company)
     
     if not salesman_users.exists():
         context = {
@@ -3018,7 +3079,7 @@ def history_create_from_schedule(request, schedule_id):
             post_data['followup'] = schedule.followup.id
             post_data['schedule'] = schedule.id
             
-            form = HistoryForm(post_data, user=request.user)
+            form = HistoryForm(post_data, user=request.user, request=request)
             if form.is_valid():
                 history = form.save(commit=False)
                 history.user = request.user
@@ -3113,7 +3174,7 @@ def history_create_from_schedule(request, schedule_id):
                 'delivery_date': schedule.visit_date,  # 납품 날짜를 일정 날짜로 설정
                 'meeting_date': schedule.visit_date,  # 미팅 날짜를 일정 날짜로 설정
             }
-            form = HistoryForm(user=request.user, initial=initial_data)
+            form = HistoryForm(user=request.user, request=request, initial=initial_data)
             
             # 팔로우업과 일정 필드를 해당 일정으로 고정
             form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
@@ -3185,7 +3246,7 @@ def history_create_from_schedule(request, schedule_id):
             'delivery_date': schedule.visit_date,  # 납품 날짜를 일정 날짜로 설정
             'meeting_date': schedule.visit_date,  # 미팅 날짜를 일정 날짜로 설정
         }
-        form = HistoryForm(user=request.user, initial=initial_data)
+        form = HistoryForm(user=request.user, request=request, initial=initial_data)
         
         # 팔로우업과 일정 필드를 해당 일정으로 고정
         form.fields['followup'].queryset = FollowUp.objects.filter(id=schedule.followup.id)
@@ -3327,9 +3388,16 @@ def company_autocomplete(request):
     if len(query) < 1:
         return JsonResponse({'results': []})
     
-    companies = Company.objects.filter(
-        name__icontains=query
-    ).order_by('name')[:10]
+    # 사용자의 회사별로 데이터 필터링
+    user_company = getattr(request, 'user_company', None)
+    if user_company:
+        same_company_users = User.objects.filter(userprofile__company=user_company)
+        companies = Company.objects.filter(
+            name__icontains=query,
+            created_by__in=same_company_users
+        ).order_by('name')[:10]
+    else:
+        companies = Company.objects.none()
     
     results = []
     for company in companies:
@@ -3511,10 +3579,18 @@ def department_create_api(request):
 @role_required(['admin', 'salesman'])
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
-    companies = Company.objects.annotate(
-        department_count=Count('departments', distinct=True),
-        followup_count=Count('followup_companies', distinct=True)
-    ).order_by('name')
+    # 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
+    user_company = getattr(request.user, 'userprofile', None)
+    if user_company and user_company.company:
+        # 같은 회사 소속 사용자들이 생성한 업체만 조회
+        same_company_users = User.objects.filter(userprofile__company=user_company.company)
+        companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+            department_count=Count('departments', distinct=True),
+            followup_count=Count('followup_companies', distinct=True)
+        ).order_by('name')
+    else:
+        # 회사 정보가 없는 경우 빈 쿼리셋
+        companies = Company.objects.none()
     
     # 검색 기능
     search_query = request.GET.get('search', '')
@@ -3540,12 +3616,21 @@ def company_create_view(request):
         name = request.POST.get('name', '').strip()
         if not name:
             messages.error(request, '업체/학교명을 입력해주세요.')
-        elif Company.objects.filter(name=name).exists():
-            messages.error(request, '이미 존재하는 업체/학교명입니다.')
         else:
-            Company.objects.create(name=name, created_by=request.user)
-            messages.success(request, f'"{name}" 업체/학교가 추가되었습니다.')
-            return redirect('reporting:company_list')
+            # 같은 회사 사용자들이 만든 업체 중에서 중복 확인
+            user_company = getattr(request.user, 'userprofile', None)
+            if user_company and user_company.company:
+                same_company_users = User.objects.filter(userprofile__company=user_company.company)
+                existing_company = Company.objects.filter(name=name, created_by__in=same_company_users).exists()
+            else:
+                existing_company = Company.objects.filter(name=name, created_by=request.user).exists()
+                
+            if existing_company:
+                messages.error(request, '이미 존재하는 업체/학교명입니다.')
+            else:
+                Company.objects.create(name=name, created_by=request.user)
+                messages.success(request, f'"{name}" 업체/학교가 추가되었습니다.')
+                return redirect('reporting:company_list')
     
     context = {
         'page_title': '새 업체/학교 추가'
@@ -4647,6 +4732,14 @@ def customer_report_view(request):
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
         accessible_users = get_accessible_users(request.user)
+        
+        # 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
+        if not getattr(request, 'is_hanagwahak', False):
+            user_profile_obj = getattr(request.user, 'userprofile', None)
+            if user_profile_obj and user_profile_obj.company:
+                same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+                accessible_users = accessible_users.filter(id__in=same_company_users.values_list('id', flat=True))
+        
         followups = FollowUp.objects.filter(user__in=accessible_users)
     else:
         # Salesman은 자신의 데이터만 조회
@@ -4668,6 +4761,14 @@ def customer_report_view(request):
     
     if user_profile.can_view_all_users():
         accessible_users_list = get_accessible_users(request.user)
+        
+        # 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
+        if not getattr(request, 'is_hanagwahak', False):
+            user_profile_obj = getattr(request.user, 'userprofile', None)
+            if user_profile_obj and user_profile_obj.company:
+                same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+                accessible_users_list = accessible_users_list.filter(id__in=same_company_users.values_list('id', flat=True))
+        
         users = accessible_users_list.filter(followup__isnull=False).distinct()
         
         if user_filter:
@@ -4779,6 +4880,16 @@ def customer_detail_report_view(request, followup_id):
         if not can_access_user_data(request.user, followup.user):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:customer_report')
+        
+        # 하나과학이 아닌 경우 같은 회사 체크
+        if not getattr(request, 'is_hanagwahak', False):
+            user_profile_obj = getattr(request.user, 'userprofile', None)
+            followup_user_profile = getattr(followup.user, 'userprofile', None)
+            if (user_profile_obj and user_profile_obj.company and 
+                followup_user_profile and followup_user_profile.company and
+                user_profile_obj.company != followup_user_profile.company):
+                messages.error(request, '접근 권한이 없습니다.')
+                return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
@@ -4788,6 +4899,10 @@ def customer_detail_report_view(request, followup_id):
     histories = History.objects.filter(followup=followup).select_related(
         'user', 'schedule'
     ).order_by('-created_at')
+    
+    # 하나과학이 아닌 경우 서비스 히스토리 제외
+    if not getattr(request, 'is_hanagwahak', False):
+        histories = histories.exclude(action_type='service')
     
     # 기본 통계 - History와 Schedule의 DeliveryItem 모두 포함 (중복 제거)
     total_meetings = histories.filter(action_type='customer_meeting').count()

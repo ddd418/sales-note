@@ -59,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'reporting.middleware.CompanyFilterMiddleware',  # 회사 필터링 미들웨어 추가
     'reporting.middleware.PerformanceMonitoringMiddleware',  # 성능 모니터링 미들웨어 추가
 ]
 

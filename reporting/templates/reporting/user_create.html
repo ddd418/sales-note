@@ -49,6 +49,20 @@
                 </small>
               </div>
 
+              <div class="mb-3">
+                <label for="id_company" class="form-label"
+                  >소속 회사 *</label
+                >
+                {{ form.company }} {% if form.company.errors %}
+                <div class="invalid-feedback d-block">
+                  {{ form.company.errors.0 }}
+                </div>
+                {% endif %}
+                <small class="form-text text-muted">
+                  {{ form.company.help_text }}
+                </small>
+              </div>
+
               <div class="row">
                 <div class="col-md-6">
                   <div class="mb-3">

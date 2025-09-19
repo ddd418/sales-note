@@ -491,6 +491,12 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.getElementById('customerTable');
+    
+    // 테이블이 존재하지 않으면 종료
+    if (!table) {
+        return;
+    }
+    
     const headers = table.querySelectorAll('.sortable');
     const isManager = {% if user.userprofile.role in 'admin,manager' %}true{% else %}false{% endif %};
     

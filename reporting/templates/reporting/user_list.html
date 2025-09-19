@@ -76,11 +76,10 @@
                     <thead class="table-light">
                       <tr>
                         <th>사용자명</th>
+                        <th>소속 회사</th>
                         <th>이름</th>
                         <th>권한</th>
                         <th>엑셀 다운로드</th>
-                        <th>생성자</th>
-                        <th>생성일</th>
                         <th>상태</th>
                         <th>작업</th>
                       </tr>
@@ -92,6 +91,15 @@
                           <strong>{{ user.username }}</strong>
                           {% if user.email %}
                             <br><small class="text-muted">{{ user.email }}</small>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if user.userprofile and user.userprofile.company %}
+                            <span class="badge bg-info">
+                              <i class="fas fa-building me-1"></i>{{ user.userprofile.company.name }}
+                            </span>
+                          {% else %}
+                            <span class="text-muted">미설정</span>
                           {% endif %}
                         </td>
                         <td>
@@ -127,20 +135,6 @@
                             {% endif %}
                           {% else %}
                             <span class="badge bg-secondary">-</span>
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% if user.userprofile.created_by %}
-                            {{ user.userprofile.created_by.username }}
-                          {% else %}
-                            <span class="text-muted">-</span>
-                          {% endif %}
-                        </td>
-                        <td>
-                          {% if user.userprofile %}
-                            {{ user.userprofile.created_at|date:"Y-m-d" }}
-                          {% else %}
-                            <span class="text-muted">-</span>
                           {% endif %}
                         </td>
                         <td>

@@ -3,20 +3,32 @@
 
 {% block content %}
 <style>
-/* 5개 카드를 위한 그리드 레이아웃 */
+/* 5개 카드를 위한 그리드 레이아웃 (하나과학) */
 .col-lg-2-4 {
   flex: 0 0 auto;
   width: 20%;
 }
 
+/* 4개 카드를 위한 그리드 레이아웃 (다른 회사) */
+.col-lg-3 {
+  flex: 0 0 auto;
+  width: 25%;
+}
+
+/* 5개 버튼을 위한 그리드 레이아웃 (빠른 액션 - 다른 회사) */
+.col-lg-2-5 {
+  flex: 0 0 auto;
+  width: 20%;
+}
+
 @media (max-width: 992px) {
-  .col-lg-2-4 {
+  .col-lg-2-4, .col-lg-3, .col-lg-2-5 {
     width: 50%;
   }
 }
 
 @media (max-width: 576px) {
-  .col-lg-2-4 {
+  .col-lg-2-4, .col-lg-3, .col-lg-2-5 {
     width: 100%;
   }
 }
@@ -298,6 +310,7 @@
             </div>
           </div>
 
+        {% if request.is_hanagwahak %}
           <div class="card stat-card">
             <div class="card-body d-flex flex-column p-3">
               <div class="d-flex justify-content-between align-items-start mb-2">
@@ -323,9 +336,10 @@
               </div>
             </div>
           </div>
+        {% endif %}
         </div>
       </div>
-        <div class="col-12 col-sm-6 col-lg-2-4">
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div class="mb-2">
@@ -360,7 +374,7 @@
           </div>
         </div>
 
-        <div class="col-12 col-sm-6 col-lg-2-4">
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div class="mb-2">
@@ -395,7 +409,7 @@
           </div>
         </div>
 
-        <div class="col-12 col-sm-6 col-lg-2-4">
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div class="mb-2">
@@ -430,6 +444,7 @@
           </div>
         </div>
 
+        {% if request.is_hanagwahak %}
         <div class="col-12 col-sm-6 col-lg-2-4">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
@@ -463,8 +478,9 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
-        <div class="col-12 col-sm-6 col-lg-2-4">
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
           <div class="card stat-card h-100">
             <div class="card-body d-flex flex-column p-3">
               <div class="mb-2">
@@ -508,7 +524,7 @@
                 <i class="fas fa-bolt me-2"></i>빠른 액션
               </h6>
               <div class="row g-2">
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
                   <a
                     href="{% url 'reporting:followup_create' %}"
                     class="btn btn-outline-primary w-100 quick-action-btn"
@@ -517,7 +533,7 @@
                     <small>새 고객 추가</small>
                   </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
                   <a
                     href="{% url 'reporting:schedule_create' %}"
                     class="btn btn-outline-success w-100 quick-action-btn"
@@ -526,7 +542,7 @@
                     <small>일정 추가</small>
                   </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
                   <a
                     href="{% url 'reporting:schedule_calendar' %}"
                     class="btn btn-outline-success w-100 quick-action-btn"
@@ -535,7 +551,7 @@
                     <small>캘린더 보기</small>
                   </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
                   <a
                     href="{% url 'reporting:history_create' %}"
                     class="btn btn-outline-info w-100 quick-action-btn"
@@ -544,6 +560,7 @@
                     <small>영업 기록</small>
                   </a>
                 </div>
+                {% if request.is_hanagwahak %}
                 <div class="col-6 col-md-4 col-lg-2">
                   <a
                     href="{% url 'reporting:history_create' %}"
@@ -553,7 +570,8 @@
                     <small>서비스 기록</small>
                   </a>
                 </div>
-                <div class="col-6 col-md-4 col-lg-2">
+                {% endif %}
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
                   <a
                     href="{% url 'reporting:schedule_list' %}?status=scheduled"
                     class="btn btn-outline-warning w-100 quick-action-btn"
@@ -669,7 +687,7 @@
         </div>
       </div>
       <!-- 통계 차트 -->
-      <div class="row g-4 mb-4">
+      <div class="row g-4 mb-4 {% if not request.is_hanagwahak %}justify-content-center{% endif %}">
         <div class="col-lg-4">
           <div class="card h-100">
             <div class="card-header">
@@ -735,6 +753,7 @@
           </div>
         </div>
 
+        {% if request.is_hanagwahak %}
         <div class="col-lg-4">
           <div class="card h-100">
             <div class="card-header">
@@ -769,6 +788,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
       </div>
 
       <!-- 일정 완료율 & 활동 유형별 통계 -->
@@ -825,6 +845,7 @@
                 </div>
                 <div class="col-md-6">
                   {% for stat in activity_stats %}
+                  {% if stat.action_type != 'service' or request.is_hanagwahak %}
                   <div
                     class="d-flex justify-content-between align-items-center p-3 bg-light rounded mb-2"
                   >
@@ -849,6 +870,7 @@
                       {{ stat.count }}건
                     </span>
                   </div>
+                  {% endif %}
                   {% endfor %}
                 </div>
               </div>
@@ -884,6 +906,7 @@
               {% if recent_activities %}
               <div class="timeline-simple">
                 {% for activity in recent_activities %}
+                {% if activity.action_type != 'service' or request.is_hanagwahak %}
                 <div
                   class="timeline-item-simple mb-3 {% if not forloop.last %}pb-3 border-bottom{% endif %}"
                 >
@@ -945,6 +968,7 @@
                     </div>
                   </div>
                 </div>
+                {% endif %}
                 {% endfor %}
               </div>
               {% else %}
@@ -1330,7 +1354,9 @@
               }
             });
             {% endif %}
-          }      // 일정 완료율 차트
+          }
+
+          // 일정 완료율 차트
           const completionRateChart = document.getElementById('completionRateChart');
           if (completionRateChart) {
             {% if schedule_stats.total > 0 %}

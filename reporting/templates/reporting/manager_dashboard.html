@@ -447,6 +447,7 @@
 
       <!-- 추가 성과 카드 -->
       <div class="row mb-4 d-none d-md-flex">
+        {% if request.is_hanagwahak %}
         <div class="col-lg-3 col-md-6 mb-3">
           {% if view_all %}
           <a href="{% url 'reporting:history_list' %}?action_type=service" class="text-decoration-none">
@@ -470,6 +471,7 @@
             </div>
           </a>
         </div>
+        {% endif %}
       </div>
 
       <!-- 모바일 성과 카드 슬라이더 -->
@@ -664,7 +666,9 @@
                       <th>월</th>
                       <th>고객 미팅</th>
                       <th>납품 건수</th>
+                      {% if request.is_hanagwahak %}
                       <th>서비스</th>
+                      {% endif %}
                       <th>납품 금액</th>
                       <th>비고</th>
                     </tr>
@@ -695,6 +699,7 @@
                           >
                         </a>
                       </td>
+                      {% if request.is_hanagwahak %}
                       <td>
                         {% if view_all %}
                         <a href="{% url 'reporting:history_list' %}?action_type=service" class="text-decoration-none">
@@ -706,16 +711,27 @@
                           >
                         </a>
                       </td>
+                      {% endif %}
                       <td>
                         <strong>{% load currency_filters %}{{ data.amount|floatformat:0|currency_format }}원</strong>
                       </td>
                       <td>
+                        {% if request.is_hanagwahak %}
                         {% if data.meetings == 0 and data.deliveries == 0 and data.services == 0 %}
                         <span class="text-muted">활동 없음</span>
                         {% elif data.deliveries == 0 and data.services == 0 %}
                         <span class="text-warning">미팅만 진행</span>
                         {% else %}
+                        <span class="text-success">정상</span>
+                        {% endif %}
+                        {% else %}
+                        {% if data.meetings == 0 and data.deliveries == 0 %}
+                        <span class="text-muted">활동 없음</span>
+                        {% elif data.deliveries == 0 %}
+                        <span class="text-warning">미팅만 진행</span>
+                        {% else %}
                         <span class="text-success">정상 활동</span>
+                        {% endif %}
                         {% endif %}
                       </td>
                     </tr>

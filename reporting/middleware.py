@@ -1,8 +1,47 @@
 import time
 import logging
 from django.utils.deprecation import MiddlewareMixin
+from django.contrib.auth.models import AnonymousUser
 
 logger = logging.getLogger(__name__)
+
+class CompanyFilterMiddleware(MiddlewareMixin):
+    """
+    회사별 데이터 필터링 미들웨어
+    로그인한 사용자의 회사에 따라 데이터를 자동으로 필터링합니다.
+    """
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+        super().__init__(get_response)
+    
+    def process_request(self, request):
+        """요청 처리 시 사용자의 회사 정보를 request에 추가"""
+        if hasattr(request, 'user') and not isinstance(request.user, AnonymousUser):
+            try:
+                # UserProfile을 통해 사용자의 회사 정보 가져오기
+                if hasattr(request.user, 'userprofile') and request.user.userprofile.company:
+                    request.user_company = request.user.userprofile.company  # UserCompany 객체
+                    request.user_company_name = request.user.userprofile.company.name  # 회사명
+                    
+                    # 하나과학인지 확인
+                    request.is_hanagwahak = (request.user_company_name == '하나과학')
+                else:
+                    request.user_company = None
+                    request.user_company_name = None
+                    request.is_hanagwahak = False
+                    
+            except Exception as e:
+                logger.error(f"Error getting user company info: {e}")
+                request.user_company = None
+                request.user_company_name = None
+                request.is_hanagwahak = False
+        else:
+            request.user_company = None
+            request.user_company_name = None
+            request.is_hanagwahak = False
+        
+        return None
 
 class PerformanceMonitoringMiddleware(MiddlewareMixin):
     """
