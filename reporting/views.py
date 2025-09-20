@@ -551,7 +551,6 @@ def followup_list_view(request):
     selected_user = None
     if user_filter:
         try:
-            from django.contrib.auth.models import User
             candidate_user = User.objects.get(id=user_filter)
             # 접근 권한이 있는 사용자인지 확인
             accessible_users = get_accessible_users(request.user)
@@ -715,7 +714,6 @@ def dashboard_view(request):
     
     if user_filter and user_profile.can_view_all_users():
         try:
-            from django.contrib.auth.models import User
             selected_user = User.objects.get(id=user_filter)
             target_user = selected_user
         except (User.DoesNotExist, ValueError):
@@ -1140,7 +1138,6 @@ def schedule_list_view(request):
         )
     ).order_by('status_priority', '-visit_date', '-visit_time')  # 상태 우선순위 → 최신 날짜순 → 최신 시간순    # 담당자 목록 (필터용)
     if request.user.is_staff or request.user.is_superuser:
-        from django.contrib.auth.models import User
         users = User.objects.filter(schedule__isnull=False).distinct()
     else:
         users = [request.user]
@@ -1149,7 +1146,6 @@ def schedule_list_view(request):
     selected_user = None
     if user_filter:
         try:
-            from django.contrib.auth.models import User
             selected_user = User.objects.get(id=user_filter)
         except (User.DoesNotExist, ValueError):
             pass
@@ -1527,7 +1523,6 @@ def schedule_calendar_view(request):
     
     if user_filter and user_profile.can_view_all_users():
         try:
-            from django.contrib.auth.models import User
             selected_user = User.objects.get(id=user_filter)
         except (User.DoesNotExist, ValueError):
             pass
@@ -1749,7 +1744,6 @@ def history_list_view(request):
         # 선택된 사용자 정보 - 권한 체크 추가
         if user_filter:
             try:
-                from django.contrib.auth.models import User
                 candidate_user = User.objects.get(id=user_filter)
                 # 접근 권한이 있는 사용자인지 확인
                 if candidate_user in accessible_users:
@@ -3412,7 +3406,7 @@ def company_autocomplete(request):
 def department_autocomplete(request):
     """부서/연구실명 자동완성 API"""
     query = request.GET.get('q', '').strip()
-    company_id = request.GET.get('company_id')
+    company_id = request.GET.get('company') or request.GET.get('company_id')  # 둘 다 지원
     
     if len(query) < 1:
         return JsonResponse({'results': []})
@@ -3513,17 +3507,28 @@ def schedule_activity_type(request):
 @require_POST
 def company_create_api(request):
     """새 업체/학교 생성 API"""
-    name = request.POST.get('name', '').strip()
-    
-    if not name:
-        return JsonResponse({'error': '업체/학교명을 입력해주세요.'}, status=400)
-    
-    # 중복 체크
-    if Company.objects.filter(name=name).exists():
-        return JsonResponse({'error': '이미 존재하는 업체/학교명입니다.'}, status=400)
+    import logging
+    logger = logging.getLogger(__name__)
     
     try:
+        name = request.POST.get('name', '').strip()
+        logger.info(f"업체 생성 요청: user={request.user.username}, name='{name}'")
+        
+        if not name:
+            logger.warning(f"업체 생성 실패: 빈 이름 (user={request.user.username})")
+            return JsonResponse({'error': '업체/학교명을 입력해주세요.'}, status=400)
+        
+        # 중복 체크 - 같은 회사 내에서만
+        user_profile_obj = getattr(request.user, 'userprofile', None)
+        if user_profile_obj and user_profile_obj.company:
+            same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+            if Company.objects.filter(name=name, created_by__in=same_company_users).exists():
+                logger.warning(f"업체 생성 실패: 중복 이름 '{name}' (user={request.user.username})")
+                return JsonResponse({'error': '이미 존재하는 업체/학교명입니다.'}, status=400)
+        
         company = Company.objects.create(name=name, created_by=request.user)
+        logger.info(f"업체 생성 성공: id={company.id}, name='{company.name}' (user={request.user.username})")
+        
         return JsonResponse({
             'success': True,
             'company': {
@@ -3532,7 +3537,9 @@ def company_create_api(request):
             },
             'message': f'"{name}" 업체/학교가 추가되었습니다.'
         })
+        
     except Exception as e:
+        logger.error(f"업체 생성 오류: {str(e)} (user={request.user.username})", exc_info=True)
         return JsonResponse({'error': f'업체/학교 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
 
 @login_required
@@ -3813,26 +3820,48 @@ def department_delete_view(request, pk):
 @role_required(['manager'])
 def manager_company_list_view(request):
     """매니저용 업체/학교 목록 (읽기 전용)"""
-    companies = Company.objects.annotate(
-        department_count=Count('departments', distinct=True),
-        followup_count=Count('followup_companies', distinct=True)
-    ).order_by('name')
+    
+    # 현재 사용자 회사와 같은 회사의 사용자들이 생성한 업체만 조회
+    user_profile_obj = getattr(request.user, 'userprofile', None)
+    if user_profile_obj and user_profile_obj.company:
+        # 같은 회사 소속 사용자들이 생성한 업체만 조회
+        same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+        companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+            department_count=Count('departments', distinct=True),
+            followup_count=Count('followup_companies', distinct=True)
+        ).order_by('name')
+    else:
+        # 회사 정보가 없는 경우 빈 쿼리셋
+        companies = Company.objects.none()
     
     # 검색 기능
     search_query = request.GET.get('search', '')
     if search_query:
         companies = companies.filter(name__icontains=search_query)
     
-    # 각 업체별 담당자 정보 추가
+    # 각 업체별 담당자 정보 추가 (같은 회사 사용자들만)
     companies_with_salesmen = []
+    if user_profile_obj and user_profile_obj.company:
+        same_company_users_list = User.objects.filter(userprofile__company=user_profile_obj.company)
+    else:
+        same_company_users_list = []
+        
     for company in companies:
-        # 해당 업체를 담당하는 실무자들 조회
+        # 기본 담당자: 업체를 생성한 사람
+        salesmen = []
+        if company.created_by:
+            salesmen.append(company.created_by)
+        
+        # 추가 담당자: 해당 업체의 FollowUp을 담당하는 실무자들 (같은 회사 사용자들만)
         followups_in_company = FollowUp.objects.filter(
-            Q(company=company) | Q(department__company=company)
+            Q(company=company) | Q(department__company=company),
+            user__in=same_company_users_list
         ).select_related('user').distinct()
         
-        # 담당자 목록 (중복 제거)
-        salesmen = list(set(followup.user for followup in followups_in_company))
+        # FollowUp 담당자들을 추가 (중복 제거)
+        for followup in followups_in_company:
+            if followup.user not in salesmen:
+                salesmen.append(followup.user)
         
         # 회사 객체에 담당자 정보 추가
         company.salesmen = salesmen
@@ -3854,7 +3883,16 @@ def manager_company_list_view(request):
 @role_required(['manager'])
 def manager_company_detail_view(request, pk):
     """매니저용 업체/학교 상세 (읽기 전용)"""
-    company = get_object_or_404(Company, pk=pk)
+    
+    # 현재 사용자 회사와 같은 회사에서 생성된 업체인지 확인
+    user_profile_obj = getattr(request.user, 'userprofile', None)
+    if user_profile_obj and user_profile_obj.company:
+        same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+        company = get_object_or_404(Company, pk=pk, created_by__in=same_company_users)
+    else:
+        # 회사 정보가 없는 경우 접근 거부
+        messages.error(request, '접근 권한이 없습니다.')
+        return redirect('reporting:manager_company_list')
     
     # 해당 업체의 부서 목록
     departments = company.departments.annotate(
@@ -3866,9 +3904,10 @@ def manager_company_detail_view(request, pk):
     if dept_search:
         departments = departments.filter(name__icontains=dept_search)
     
-    # 해당 업체를 관리하는 실무자들 조회
+    # 해당 업체를 관리하는 실무자들 조회 (같은 회사 사용자들만)
     followups_in_company = FollowUp.objects.filter(
-        Q(company=company) | Q(department__company=company)
+        Q(company=company) | Q(department__company=company),
+        user__in=same_company_users
     ).select_related('user', 'user__userprofile')
     
     # 실무자별 담당 고객 수 집계
@@ -4724,6 +4763,7 @@ from .file_views import (
 def customer_report_view(request):
     """고객별 활동 요약 리포트 목록 - Schedule DeliveryItem도 포함"""
     from django.db.models import Count, Sum, Max, Q
+    from django.contrib.auth.models import User
     from decimal import Decimal
     
     user_profile = get_user_profile(request.user)
@@ -4773,7 +4813,6 @@ def customer_report_view(request):
         
         if user_filter:
             try:
-                from django.contrib.auth.models import User
                 candidate_user = User.objects.get(id=user_filter)
                 if candidate_user in accessible_users_list:
                     selected_user = candidate_user
@@ -5713,4 +5752,136 @@ def history_delivery_items_api(request, history_id):
         return JsonResponse({
             'success': False,
             'error': 'DeliveryItem 정보를 가져오는 중 오류가 발생했습니다.'
+        }, status=500)
+
+@login_required
+@require_POST
+def followup_create_ajax(request):
+    """AJAX로 팔로우업을 생성하는 뷰"""
+    try:
+        # 필수 필드 검증
+        customer_name = request.POST.get('customer_name', '').strip()
+        company_id = request.POST.get('company', '').strip()
+        department_id = request.POST.get('department', '').strip()
+        priority = request.POST.get('priority', '').strip()
+        
+        if not customer_name:
+            return JsonResponse({
+                'success': False,
+                'error': '고객명을 입력해주세요.'
+            })
+        
+        if not company_id:
+            return JsonResponse({
+                'success': False,
+                'error': '업체/학교를 선택해주세요.'
+            })
+            
+        if not department_id:
+            return JsonResponse({
+                'success': False,
+                'error': '부서/연구실을 선택해주세요.'
+            })
+        
+        if not priority:
+            return JsonResponse({
+                'success': False,
+                'error': '우선순위를 선택해주세요.'
+            })
+        
+        # Company와 Department 객체 가져오기
+        try:
+            company = Company.objects.get(id=company_id)
+            department = Department.objects.get(id=department_id, company=company)
+        except (Company.DoesNotExist, Department.DoesNotExist):
+            return JsonResponse({
+                'success': False,
+                'error': '선택한 업체 또는 부서가 존재하지 않습니다.'
+            })
+        
+        # 권한 체크: 같은 회사에서 생성된 업체인지 확인
+        user_profile_obj = getattr(request.user, 'userprofile', None)
+        if user_profile_obj and user_profile_obj.company:
+            same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+            if company.created_by not in same_company_users:
+                return JsonResponse({
+                    'success': False,
+                    'error': '접근 권한이 없는 업체입니다.'
+                })
+        
+        # 중복 체크 (같은 고객명, 회사, 부서)
+        existing_followup = FollowUp.objects.filter(
+            customer_name=customer_name,
+            company=company,
+            department=department,
+            user=request.user
+        ).first()
+        
+        if existing_followup:
+            return JsonResponse({
+                'success': False,
+                'error': '이미 동일한 팔로우업이 존재합니다.'
+            })
+        
+        # 팔로우업 생성
+        followup = FollowUp.objects.create(
+            user=request.user,
+            customer_name=customer_name,
+            company=company,
+            department=department,
+            manager=request.POST.get('manager', '').strip(),
+            phone_number=request.POST.get('phone_number', '').strip(),
+            email=request.POST.get('email', '').strip(),
+            priority=priority,  # 요청에서 받은 우선순위 사용
+            address=request.POST.get('address', '').strip(),     # 상세주소 추가
+            notes=request.POST.get('notes', '').strip(),
+            status='active'
+        )
+        
+        # 사용자 회사 정보 설정
+        if user_profile_obj and user_profile_obj.company:
+            followup.user_company = user_profile_obj.company
+            followup.save(update_fields=['user_company'])
+        
+        # 성공 응답
+        followup_text = f"{followup.customer_name} ({followup.company.name} - {followup.department.name})"
+        
+        return JsonResponse({
+            'success': True,
+            'followup_id': followup.id,
+            'followup_text': followup_text,
+            'message': '팔로우업이 성공적으로 생성되었습니다.'
+        })
+        
+    except Exception as e:
+        logger.error(f"AJAX 팔로우업 생성 오류: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': '서버 오류가 발생했습니다. 다시 시도해주세요.'
+        }, status=500)
+
+@login_required
+def department_list_ajax(request, company_id):
+    """특정 업체의 부서 목록을 AJAX로 반환"""
+    try:
+        company = get_object_or_404(Company, id=company_id)
+        
+        # 권한 체크: 같은 회사에서 생성된 업체인지 확인
+        user_profile_obj = getattr(request.user, 'userprofile', None)
+        if user_profile_obj and user_profile_obj.company:
+            same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+            if company.created_by not in same_company_users:
+                return JsonResponse({
+                    'error': '접근 권한이 없는 업체입니다.'
+                }, status=403)
+        
+        departments = Department.objects.filter(company=company).values('id', 'name')
+        departments_list = [{'id': dept['id'], 'name': dept['name']} for dept in departments]
+        
+        return JsonResponse(departments_list, safe=False)
+        
+    except Exception as e:
+        logger.error(f"부서 목록 AJAX 조회 오류: {str(e)}")
+        return JsonResponse({
+            'error': '부서 목록을 가져오는 중 오류가 발생했습니다.'
         }, status=500)
