@@ -4119,6 +4119,37 @@ def department_create_view(request, company_pk):
     """부서/연구실 생성 (Admin, Salesman 전용)"""
     company = get_object_or_404(Company, pk=company_pk)
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # ======= 임시 수정: 모든 salesman이 모든 업체에 부서 추가 가능 =======
+    # 권한 체크를 완화하여 모든 사용자가 부서 추가 가능하도록 변경
+    # (company_detail_view와 동일한 접근 방식)
+    
+    is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+    user_company = getattr(request.user, 'userprofile', None)
+    
+    if is_admin:
+        logger.info(f"[DEPT_CREATE] Admin 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음")
+    else:
+        logger.info(f"[DEPT_CREATE] 일반 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 (모든 업체 허용)")
+        if user_company and user_company.company:
+            logger.info(f"[DEPT_CREATE] 사용자 회사: {user_company.company.name}")
+    
+    # ======= 원래 권한 체크 로직 (주석 처리됨) =======
+    # # Admin이 아닌 경우 권한 확인
+    # if not is_admin:
+    #     # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
+    #     if user_company and user_company.company:
+    #         same_company_users = User.objects.filter(userprofile__company=user_company.company)
+    #         if not Company.objects.filter(pk=company_pk, created_by__in=same_company_users).exists():
+    #             logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} 부서 추가 권한 없음")
+    #             messages.error(request, '해당 업체/학교에 부서를 추가할 권한이 없습니다.')
+    #             return redirect('reporting:company_detail', pk=company_pk)
+    #     else:
+    #         messages.error(request, '회사 정보가 없어 부서를 추가할 수 없습니다.')
+    #         return redirect('reporting:company_detail', pk=company_pk)
+    
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         if not name:
@@ -4128,6 +4159,9 @@ def department_create_view(request, company_pk):
         else:
             Department.objects.create(company=company, name=name, created_by=request.user)
             messages.success(request, f'"{company.name} - {name}" 부서/연구실이 추가되었습니다.')
+            
+            logger.info(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 '{company.name}'에 부서 '{name}' 추가 완료")
+            
             return redirect('reporting:company_detail', pk=company.pk)
     
     context = {
@@ -4141,11 +4175,32 @@ def department_edit_view(request, pk):
     """부서/연구실 수정 (Admin, 생성자 전용)"""
     department = get_object_or_404(Department, pk=pk)
     
-    # 권한 체크: 관리자이거나 생성자만 수정 가능
+    # 권한 체크: 관리자이거나 같은 회사 사용자만 수정 가능
     user_profile = get_user_profile(request.user)
-    if not (user_profile.role == 'admin' or department.created_by == request.user):
-        messages.error(request, '이 부서/연구실을 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
-        return redirect('reporting:company_detail', pk=department.company.pk)
+    is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not is_admin:
+        # Admin이 아닌 경우 같은 회사 사용자인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        has_edit_permission = False
+        
+        if user_company and user_company.company:
+            # 같은 회사 사용자들이 생성한 업체의 부서인지 확인
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if Company.objects.filter(pk=department.company.pk, created_by__in=same_company_users).exists():
+                has_edit_permission = True
+                logger.info(f"[DEPT_EDIT] 사용자 {request.user.username}: 부서 {pk} 수정 권한 있음 (같은 회사)")
+            else:
+                logger.warning(f"[DEPT_EDIT] 사용자 {request.user.username}: 부서 {pk} 수정 권한 없음 (다른 회사)")
+        
+        if not has_edit_permission:
+            messages.error(request, '이 부서/연구실을 수정할 권한이 없습니다.')
+            return redirect('reporting:company_detail', pk=department.company.pk)
+    else:
+        logger.info(f"[DEPT_EDIT] Admin 사용자 {request.user.username}: 부서 {pk} 수정 권한 있음")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -4170,11 +4225,32 @@ def department_delete_view(request, pk):
     """부서/연구실 삭제 (Admin, 생성자 전용)"""
     department = get_object_or_404(Department, pk=pk)
     
-    # 권한 체크: 관리자이거나 생성자만 삭제 가능
+    # 권한 체크: 관리자이거나 같은 회사 사용자만 삭제 가능
     user_profile = get_user_profile(request.user)
-    if not (user_profile.role == 'admin' or department.created_by == request.user):
-        messages.error(request, '이 부서/연구실을 삭제할 권한이 없습니다. (생성자 또는 관리자만 가능)')
-        return redirect('reporting:company_detail', pk=department.company.pk)
+    is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not is_admin:
+        # Admin이 아닌 경우 같은 회사 사용자인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        has_delete_permission = False
+        
+        if user_company and user_company.company:
+            # 같은 회사 사용자들이 생성한 업체의 부서인지 확인
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if Company.objects.filter(pk=department.company.pk, created_by__in=same_company_users).exists():
+                has_delete_permission = True
+                logger.info(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 {pk} 삭제 권한 있음 (같은 회사)")
+            else:
+                logger.warning(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 {pk} 삭제 권한 없음 (다른 회사)")
+        
+        if not has_delete_permission:
+            messages.error(request, '이 부서/연구실을 삭제할 권한이 없습니다.')
+            return redirect('reporting:company_detail', pk=department.company.pk)
+    else:
+        logger.info(f"[DEPT_DELETE] Admin 사용자 {request.user.username}: 부서 {pk} 삭제 권한 있음")
     
     # 관련 데이터 개수 확인
     followup_count = department.followup_departments.count()
@@ -4190,6 +4266,9 @@ def department_delete_view(request, pk):
         
         department.delete()
         messages.success(request, f'"{company_name} - {department_name}" 부서/연구실이 삭제되었습니다.')
+        
+        logger.info(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 '{company_name} - {department_name}' 삭제 완료")
+        
         return redirect('reporting:company_detail', pk=company_pk)
     
     context = {
