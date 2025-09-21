@@ -3799,6 +3799,9 @@ def department_create_api(request):
 @role_required(['admin', 'salesman'])
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Admin 사용자는 모든 업체를 볼 수 있음
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
         # Admin은 모든 업체 조회 가능
@@ -3807,35 +3810,68 @@ def company_list_view(request):
             followup_count=Count('followup_companies', distinct=True)
         ).order_by('name')
         
-        import logging
-        logger = logging.getLogger(__name__)
         logger.info(f"[COMPANY_LIST] Admin 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회")
     else:
-        # 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
+        # ======= 임시 수정: 모든 사용자가 모든 업체를 볼 수 있도록 변경 =======
+        # 원래: 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
+        # 수정: 모든 업체를 조회할 수 있도록 변경 (단, salesman 권한은 유지)
+        companies = Company.objects.all().annotate(
+            department_count=Count('departments', distinct=True),
+            followup_count=Count('followup_companies', distinct=True)
+        ).order_by('name')
+        
         user_company = getattr(request.user, 'userprofile', None)
+        logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회 (임시 수정 - 모든 업체 접근 허용)")
         if user_company and user_company.company:
-            # 같은 회사 소속 사용자들이 생성한 업체만 조회
-            same_company_users = User.objects.filter(userprofile__company=user_company.company)
-            companies = Company.objects.filter(created_by__in=same_company_users).annotate(
-                department_count=Count('departments', distinct=True),
-                followup_count=Count('followup_companies', distinct=True)
-            ).order_by('name')
-            
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
-        else:
-            # 회사 정보가 없는 경우 빈 쿼리셋
-            companies = Company.objects.none()
-            
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
+            logger.info(f"[COMPANY_LIST] 사용자 회사: {user_company.company.name}")
+        
+        # ======= 원래 로직 (주석 처리됨) =======
+        # user_company = getattr(request.user, 'userprofile', None)
+        # if user_company and user_company.company:
+        #     # 같은 회사 소속 사용자들이 생성한 업체만 조회
+        #     same_company_users = User.objects.filter(userprofile__company=user_company.company)
+        #     companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+        #         department_count=Count('departments', distinct=True),
+        #         followup_count=Count('followup_companies', distinct=True)
+        #     ).order_by('name')
+        #     
+        #     logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
+        #     logger.info(f"[COMPANY_LIST] 같은 회사 사용자 수: {same_company_users.count()}명")
+        #     logger.info(f"[COMPANY_LIST] 같은 회사 사용자 목록: {list(same_company_users.values_list('username', flat=True))}")
+        # else:
+        #     # 회사 정보가 없는 경우 빈 쿼리셋
+        #     companies = Company.objects.none()
+        #     
+        #     logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
     
     # 검색 기능
     search_query = request.GET.get('search', '')
     if search_query:
+        companies_before_search = companies.count()
         companies = companies.filter(name__icontains=search_query)
+        companies_after_search = companies.count()
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[COMPANY_LIST] 검색어: '{search_query}' - 검색 전: {companies_before_search}개, 검색 후: {companies_after_search}개")
+        
+        # 디버깅을 위해 검색된 업체들의 정보를 로그에 출력
+        if companies_after_search > 0:
+            company_names = list(companies.values_list('name', flat=True)[:10])  # 최대 10개만
+            logger.info(f"[COMPANY_LIST] 검색 결과 업체명: {company_names}")
+        
+        # "고려대"로 검색하는 경우 특별 디버깅
+        if '고려대' in search_query:
+            # 전체 Company에서 고려대 관련 업체 찾기
+            all_korea_companies = Company.objects.filter(name__icontains='고려대')
+            logger.info(f"[COMPANY_LIST] 전체 DB에서 '고려대' 포함 업체: {all_korea_companies.count()}개")
+            
+            if all_korea_companies.exists():
+                for company in all_korea_companies[:5]:  # 최대 5개만 로그
+                    created_by_company = 'Unknown'
+                    if company.created_by and hasattr(company.created_by, 'userprofile') and company.created_by.userprofile.company:
+                        created_by_company = company.created_by.userprofile.company.name
+                    logger.info(f"[COMPANY_LIST] 고려대 업체: '{company.name}' (생성자: {company.created_by.username if company.created_by else 'Unknown'}, 생성자 회사: {created_by_company})")
     
     # 페이지네이션
     paginator = Paginator(companies, 10)
