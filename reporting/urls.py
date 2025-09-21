@@ -83,6 +83,9 @@ urlpatterns = [
     path('api/tax-invoice/update/', views.update_tax_invoice_status, name='update_tax_invoice_status'),
     path('api/schedules/<int:schedule_id>/delivery-items/', views.schedule_delivery_items_api, name='schedule_delivery_items_api'),
     
+    # 디버깅용 임시 URL
+    path('debug/user-company/', views.debug_user_company_info, name='debug_user_company_info'),
+    
     # 개별 조회 API 엔드포인트들
     path('api/companies/<int:pk>/', views.api_company_detail, name='api_company_detail'),
     path('api/departments/<int:pk>/', views.api_department_detail, name='api_department_detail'),

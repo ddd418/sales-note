@@ -6036,3 +6036,57 @@ def schedule_delivery_items_api(request, schedule_id):
     except Exception as e:
         logger.error(f"Schedule 납품 품목 API 오류: {str(e)}")
         return JsonResponse({'error': '서버 오류가 발생했습니다.'}, status=500)
+
+@login_required
+def debug_user_company_info(request):
+    """사용자 회사 정보 디버깅용 임시 뷰"""
+    if not request.user.is_superuser:
+        return JsonResponse({'error': '관리자만 접근 가능합니다.'}, status=403)
+    
+    debug_info = {}
+    
+    try:
+        # 현재 사용자 정보
+        debug_info['username'] = request.user.username
+        debug_info['has_userprofile'] = hasattr(request.user, 'userprofile')
+        
+        if hasattr(request.user, 'userprofile'):
+            profile = request.user.userprofile
+            debug_info['userprofile_id'] = profile.id
+            debug_info['userprofile_role'] = profile.role
+            debug_info['has_company'] = profile.company is not None
+            
+            if profile.company:
+                debug_info['company_id'] = profile.company.id
+                debug_info['company_name'] = profile.company.name
+                debug_info['company_name_repr'] = repr(profile.company.name)
+                debug_info['company_name_clean'] = profile.company.name.strip().replace(' ', '').lower()
+                
+                # 하나과학 인식 로직 테스트
+                company_name_clean = profile.company.name.strip().replace(' ', '').lower()
+                hanagwahak_variations = ['하나과학', 'hanagwahak', 'hana', '하나']
+                is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
+                debug_info['is_hanagwahak_calculated'] = is_hanagwahak
+                
+        # request 객체의 정보
+        debug_info['request_user_company'] = str(getattr(request, 'user_company', 'Not set'))
+        debug_info['request_user_company_name'] = getattr(request, 'user_company_name', 'Not set')
+        debug_info['request_is_hanagwahak'] = getattr(request, 'is_hanagwahak', 'Not set')
+        
+        # 모든 회사 목록
+        from .models import UserCompany
+        companies = UserCompany.objects.all()
+        debug_info['all_companies'] = [
+            {
+                'id': c.id,
+                'name': c.name,
+                'name_repr': repr(c.name),
+                'clean_name': c.name.strip().replace(' ', '').lower()
+            }
+            for c in companies
+        ]
+        
+        return JsonResponse(debug_info, ensure_ascii=False)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

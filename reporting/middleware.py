@@ -24,12 +24,18 @@ class CompanyFilterMiddleware(MiddlewareMixin):
                     request.user_company = request.user.userprofile.company  # UserCompany 객체
                     request.user_company_name = request.user.userprofile.company.name  # 회사명
                     
-                    # 하나과학인지 확인
-                    request.is_hanagwahak = (request.user_company_name == '하나과학')
+                    # 하나과학인지 확인 (다양한 형태 허용)
+                    company_name_clean = request.user_company_name.strip().replace(' ', '').lower()
+                    hanagwahak_variations = ['하나과학', 'hanagwahak', 'hana', '하나']
+                    request.is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
+                    
+                    # 디버깅을 위한 로깅
+                    logger.info(f"사용자 {request.user.username}의 회사: '{request.user_company_name}' (clean: '{company_name_clean}') -> is_hanagwahak: {request.is_hanagwahak}")
                 else:
                     request.user_company = None
                     request.user_company_name = None
                     request.is_hanagwahak = False
+                    logger.info(f"사용자 {request.user.username}의 회사 정보 없음")
                     
             except Exception as e:
                 logger.error(f"Error getting user company info: {e}")
