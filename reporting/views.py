@@ -3508,20 +3508,51 @@ def schedule_add_memo_api(request, schedule_id):
 @login_required
 def company_autocomplete(request):
     """업체/학교명 자동완성 API"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     query = request.GET.get('q', '').strip()
+    logger.info(f"[COMPANY_AUTOCOMPLETE] 사용자: {request.user.username}, 검색어: '{query}'")
+    
     if len(query) < 1:
         return JsonResponse({'results': []})
     
-    # 사용자의 회사별로 데이터 필터링
-    user_company = getattr(request, 'user_company', None)
-    if user_company:
-        same_company_users = User.objects.filter(userprofile__company=user_company)
-        companies = Company.objects.filter(
-            name__icontains=query,
-            created_by__in=same_company_users
-        ).order_by('name')[:10]
+    # Admin 사용자는 모든 업체 검색 가능
+    if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
+        companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
+        logger.info(f"[COMPANY_AUTOCOMPLETE] Admin 사용자 - 전체 업체에서 검색: {companies.count()}개 결과")
     else:
-        companies = Company.objects.none()
+        # 사용자의 회사별로 데이터 필터링
+        user_company = getattr(request, 'user_company', None)
+        user_profile = getattr(request.user, 'userprofile', None)
+        
+        logger.info(f"[COMPANY_AUTOCOMPLETE] user_company (middleware): {user_company}")
+        logger.info(f"[COMPANY_AUTOCOMPLETE] user_profile.company: {user_profile.company if user_profile else None}")
+        
+        if user_company:
+            # 미들웨어에서 설정한 user_company 사용
+            same_company_users = User.objects.filter(userprofile__company=user_company)
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 같은 회사 사용자 수: {same_company_users.count()}")
+            
+            companies = Company.objects.filter(
+                name__icontains=query,
+                created_by__in=same_company_users
+            ).order_by('name')[:10]
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 검색 결과: {companies.count()}개")
+            
+        elif user_profile and user_profile.company:
+            # 백업: UserProfile에서 직접 가져오기
+            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자 수: {same_company_users.count()}")
+            
+            companies = Company.objects.filter(
+                name__icontains=query,
+                created_by__in=same_company_users
+            ).order_by('name')[:10]
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 검색 결과: {companies.count()}개")
+        else:
+            companies = Company.objects.none()
+            logger.warning(f"[COMPANY_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     results = []
     for company in companies:
@@ -3529,25 +3560,60 @@ def company_autocomplete(request):
             'id': company.id,
             'text': company.name
         })
+        logger.info(f"[COMPANY_AUTOCOMPLETE] 결과 업체: {company.name} (생성자: {company.created_by.username if company.created_by else 'Unknown'})")
     
+    logger.info(f"[COMPANY_AUTOCOMPLETE] 최종 반환 결과: {len(results)}개")
     return JsonResponse({'results': results})
 
 @login_required
 def department_autocomplete(request):
     """부서/연구실명 자동완성 API"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     query = request.GET.get('q', '').strip()
     company_id = request.GET.get('company') or request.GET.get('company_id')  # 둘 다 지원
+    
+    logger.info(f"[DEPT_AUTOCOMPLETE] 사용자: {request.user.username}, 검색어: '{query}', 회사 ID: {company_id}")
     
     if len(query) < 1:
         return JsonResponse({'results': []})
     
-    departments = Department.objects.filter(name__icontains=query)
+    # Admin 사용자는 모든 부서 검색 가능
+    if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
+        departments = Department.objects.filter(name__icontains=query)
+        logger.info(f"[DEPT_AUTOCOMPLETE] Admin 사용자 - 전체 부서에서 검색")
+    else:
+        # 같은 회사 사용자들이 생성한 업체의 부서만 검색
+        user_company = getattr(request, 'user_company', None)
+        user_profile = getattr(request.user, 'userprofile', None)
+        
+        if user_company:
+            same_company_users = User.objects.filter(userprofile__company=user_company)
+            # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
+            departments = Department.objects.filter(
+                name__icontains=query,
+                company__created_by__in=same_company_users
+            )
+            logger.info(f"[DEPT_AUTOCOMPLETE] 같은 회사 사용자들의 업체 부서에서 검색")
+        elif user_profile and user_profile.company:
+            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+            departments = Department.objects.filter(
+                name__icontains=query,
+                company__created_by__in=same_company_users
+            )
+            logger.info(f"[DEPT_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자들의 업체 부서에서 검색")
+        else:
+            departments = Department.objects.none()
+            logger.warning(f"[DEPT_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     # 회사가 선택된 경우 해당 회사의 부서만 필터링
     if company_id:
         departments = departments.filter(company_id=company_id)
+        logger.info(f"[DEPT_AUTOCOMPLETE] 특정 회사 {company_id}의 부서로 제한")
     
     departments = departments.select_related('company').order_by('company__name', 'name')[:10]
+    logger.info(f"[DEPT_AUTOCOMPLETE] 검색 결과: {departments.count()}개")
     
     results = []
     for dept in departments:
@@ -3558,23 +3624,36 @@ def department_autocomplete(request):
             'company_name': dept.company.name,
             'department_name': dept.name
         })
+        logger.info(f"[DEPT_AUTOCOMPLETE] 결과 부서: {dept.company.name} - {dept.name}")
     
     return JsonResponse({'results': results})
 
 @login_required
 def followup_autocomplete(request):
     """팔로우업 자동완성 API (일정 생성용)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     query = request.GET.get('q', '').strip()
     if len(query) < 1:
         return JsonResponse({'results': []})
     
     # 현재 사용자의 권한에 따른 팔로우업 필터링
     user_profile = get_user_profile(request.user)
+    user_company = getattr(request, 'user_company', None)
+    is_admin = getattr(request, 'is_admin', False)
+    
+    logger.info(f"[FOLLOWUP_AUTOCOMPLETE] 사용자: {request.user.username}, 검색어: '{query}', "
+                f"사용자_회사: {user_company.name if user_company else 'None'}, "
+                f"admin권한: {is_admin}, 전체조회가능: {user_profile.can_view_all_users()}")
+    
     if user_profile.can_view_all_users():
         accessible_users = get_accessible_users(request.user)
         followups = FollowUp.objects.filter(user__in=accessible_users)
+        logger.info(f"[FOLLOWUP_AUTOCOMPLETE] 관리자/매니저 - 접근가능 사용자 수: {accessible_users.count()}")
     else:
         followups = FollowUp.objects.filter(user=request.user)
+        logger.info(f"[FOLLOWUP_AUTOCOMPLETE] 일반 사용자 - 본인 팔로우업만 조회")
     
     # 검색어로 필터링 (고객명, 업체명, 부서명, 책임자명으로 검색)
     followups = followups.filter(
@@ -3583,6 +3662,8 @@ def followup_autocomplete(request):
         Q(department__name__icontains=query) |
         Q(manager__icontains=query)
     ).select_related('company', 'department', 'user').order_by('company__name', 'customer_name')[:15]
+    
+    logger.info(f"[FOLLOWUP_AUTOCOMPLETE] 검색 결과: {followups.count()}개")
     
     results = []
     for followup in followups:
@@ -3605,6 +3686,8 @@ def followup_autocomplete(request):
             'department_name': department_name,
             'user_name': followup.user.username
         })
+    
+    logger.info(f"[FOLLOWUP_AUTOCOMPLETE] 최종 결과: {len(results)}개")
     
     return JsonResponse({'results': results})
 
@@ -6333,12 +6416,25 @@ def debug_user_company_info(request):
             }
             debug_info['all_client_companies'].append(company_info)
         
+        # 특별히 "고려대학교" 검색
+        korea_companies = client_companies.filter(name__icontains='고려대')
+        debug_info['korea_university_companies'] = []
+        for c in korea_companies:
+            company_info = {
+                'id': c.id,
+                'name': c.name,
+                'created_by': c.created_by.username if c.created_by else 'Unknown',
+                'created_by_company': c.created_by.userprofile.company.name if c.created_by and hasattr(c.created_by, 'userprofile') and c.created_by.userprofile.company else 'Unknown'
+            }
+            debug_info['korea_university_companies'].append(company_info)
+        
         # 로그에도 기록
         logger.info(f"[DEBUG] 디버그 정보 요청 - 사용자: {request.user.username}")
         logger.info(f"[DEBUG] request.is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not set')}")
         logger.info(f"[DEBUG] 계산된 is_hanagwahak: {debug_info.get('is_hanagwahak_calculated', 'N/A')}")
         logger.info(f"[DEBUG] 사용자 회사(UserCompany) 수: {debug_info.get('user_companies_count', 0)}")
         logger.info(f"[DEBUG] 고객 업체(Company) 수: {debug_info.get('client_companies_count', 0)}")
+        logger.info(f"[DEBUG] 고려대학교 관련 업체 수: {len(debug_info.get('korea_university_companies', []))}")
         
         return JsonResponse(debug_info, ensure_ascii=False, json_dumps_params={'indent': 2})
         
