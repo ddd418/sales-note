@@ -73,6 +73,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',  # CSRF 미들웨어 재활성화
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'reporting.middleware.CompanyFilterMiddleware',  # 회사 필터링 미들웨어 추가
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # 'reporting.middleware.PerformanceMonitoringMiddleware',  # 임시로 비활성화

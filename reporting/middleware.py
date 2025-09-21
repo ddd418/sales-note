@@ -18,6 +18,13 @@ class CompanyFilterMiddleware(MiddlewareMixin):
     
     def process_request(self, request):
         """요청 처리 시 사용자의 회사 정보를 request에 추가"""
+        
+        # 미들웨어 시작 로그
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            logger.info(f"[MIDDLEWARE] CompanyFilterMiddleware 시작 - 사용자: {request.user.username}")
+        else:
+            logger.info(f"[MIDDLEWARE] CompanyFilterMiddleware 시작 - 미인증 사용자")
+            
         if hasattr(request, 'user') and not isinstance(request.user, AnonymousUser):
             try:
                 # Admin 사용자는 모든 데이터에 접근 가능하도록 특별 처리
@@ -126,6 +133,13 @@ class CompanyFilterMiddleware(MiddlewareMixin):
             request.user_company_name = None
             request.is_hanagwahak = False
             request.is_admin = False
+            logger.info(f"[MIDDLEWARE] 미인증 사용자 또는 익명 사용자 - 기본값 설정")
+        
+        logger.info(f"[MIDDLEWARE] 최종 설정값:")
+        logger.info(f"[MIDDLEWARE] - user_company: {getattr(request, 'user_company', 'Not Set')}")
+        logger.info(f"[MIDDLEWARE] - user_company_name: {getattr(request, 'user_company_name', 'Not Set')}")
+        logger.info(f"[MIDDLEWARE] - is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not Set')}")
+        logger.info(f"[MIDDLEWARE] - is_admin: {getattr(request, 'is_admin', 'Not Set')}")
         
         return None
 

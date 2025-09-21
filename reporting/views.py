@@ -1126,7 +1126,14 @@ def dashboard_view(request):
     logger.info(f"[DASHBOARD] - user_company_name (context): {context['user_company_name']}")
     logger.info(f"[DASHBOARD] - service_count: {context['service_count']}")
     logger.info(f"[DASHBOARD] - this_month_service_count: {context['this_month_service_count']}")
-    logger.info(f"[DASHBOARD] - monthly_services 데이터 개수: {len(context['monthly_services'])}")
+    
+    # monthly_services 타입 확인 후 로깅
+    monthly_services = context.get('monthly_services')
+    if hasattr(monthly_services, '__len__'):
+        logger.info(f"[DASHBOARD] - monthly_services 데이터 개수: {len(monthly_services)}")
+    else:
+        logger.info(f"[DASHBOARD] - monthly_services 데이터: {monthly_services} (타입: {type(monthly_services)})")
+        
     logger.info(f"[DASHBOARD] - monthly_service_data: {context['monthly_service_data']}")
     logger.info(f"[DASHBOARD] - monthly_service_labels: {context['monthly_service_labels']}")
     logger.info(f"[DASHBOARD] - activity_stats 개수: {len(list(context['activity_stats']))}")
