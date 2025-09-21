@@ -1112,6 +1112,12 @@ document.addEventListener('DOMContentLoaded', function() {
     border-color: #0d6efd;
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
 }
+
+/* 모달이 열려있을 때 페이지 알림 숨기기 */
+body.modal-open .alert:not(#modalAlertContainer .alert):not(#toastContainer .alert) {
+    opacity: 0.3;
+    pointer-events: none;
+}
 </style>
 
 <!-- 팔로우업 신규 추가 모달 -->
@@ -1126,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div class="modal-body">
         <!-- 모달 내부 알림 영역 -->
-        <div id="modalAlertContainer" style="margin-bottom: 15px; z-index: 1060; position: relative;"></div>
+        <div id="modalAlertContainer" style="margin-bottom: 15px; z-index: 2100; position: relative;"></div>
         
         <form id="followupForm">
           {% csrf_token %}
@@ -1381,23 +1387,6 @@ document.addEventListener('DOMContentLoaded', function() {
         modalDepartmentSuggestions.style.display = 'block';
     }
     
-    // 업체 선택
-    function selectCompany(companyId, companyText) {
-        modalCompanyHidden.value = companyId;
-        modalCompanySearch.value = companyText;
-        hideSuggestions(modalCompanySuggestions);
-        
-        // 부서 필드 활성화
-        modalDepartmentSearch.disabled = false;
-        modalDepartmentSearch.placeholder = '부서/연구실명을 입력하세요...';
-        modalAddNewDepartmentBtn.style.display = 'block';
-        
-        // 부서 필드 초기화
-        modalDepartmentHidden.value = '';
-        modalDepartmentSearch.value = '';
-        hideSuggestions(modalDepartmentSuggestions);
-    }
-    
     // 부서 선택
     function selectDepartment(departmentId, departmentText) {
         modalDepartmentHidden.value = departmentId;
@@ -1418,6 +1407,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 업체 선택 함수
     function selectCompany(companyId, companyName) {
+        console.log('업체 선택:', companyId, companyName); // 디버그용
         modalCompanySearch.value = companyName;
         modalCompanyHidden.value = companyId;
         selectedCompanyId = companyId;
@@ -1432,14 +1422,19 @@ document.addEventListener('DOMContentLoaded', function() {
         modalDepartmentSearch.value = '';
         modalDepartmentHidden.value = '';
         selectedDepartmentId = null;
+        
+        console.log('업체 선택 완료 - Hidden 값:', modalCompanyHidden.value); // 디버그용
     }
     
     // 부서 선택 함수
     function selectDepartment(departmentId, departmentName) {
+        console.log('부서 선택:', departmentId, departmentName); // 디버그용
         modalDepartmentSearch.value = departmentName;
         modalDepartmentHidden.value = departmentId;
         selectedDepartmentId = departmentId;
         hideSuggestions(modalDepartmentSuggestions);
+        
+        console.log('부서 선택 완료 - Hidden 값:', modalDepartmentHidden.value); // 디버그용
     }
     
     // 자동완성 결과 숨기기
@@ -1513,7 +1508,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
         formData.append('name', departmentName);
-        formData.append('company', companyId);
+        formData.append('company_id', companyId);
         
         this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         this.disabled = true;
@@ -1602,6 +1597,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 확실하게 선택하기 위한 추가 코드
                 originalFollowupSelect.value = data.followup_id;
                 
+                // 자동완성 input 필드에도 값 설정
+                const followupInput = document.querySelector('input[name="followup_search"]');
+                if (followupInput) {
+                    followupInput.value = data.followup_text;
+                    console.log('팔로우업 input 필드에 값 설정됨:', data.followup_text); // 디버그용
+                }
+                
                 console.log('새 옵션 추가됨:', newOption.value, newOption.text); // 디버그용
                 console.log('현재 선택된 값:', originalFollowupSelect.value); // 디버그용
                 
@@ -1658,15 +1660,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             console.log('업체 생성 응답 데이터:', data); // 디버그용
             if (data.success) {
-                // 업체 검색 필드에 새 업체명 설정
-                modalCompanySearch.value = data.company.name;
-                modalCompanyHidden.value = data.company.id;
-                selectedCompanyId = data.company.id;
-                
-                // 부서 필드 활성화
-                modalDepartmentSearch.disabled = false;
-                modalDepartmentSearch.placeholder = '부서/연구실명을 입력하세요...';
-                modalAddNewDepartmentBtn.style.display = 'block';
+                // selectCompany 함수를 사용해서 제대로 선택 처리
+                selectCompany(data.company.id, data.company.name);
                 
                 showModalAlert('success', `"${data.company.name}" 업체/학교가 추가되었습니다.`);
                 showToastAlert('success', `"${data.company.name}" 업체/학교가 추가되었습니다.`);
@@ -1722,10 +1717,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             console.log('부서 생성 응답 데이터:', data); // 디버그용
             if (data.success) {
-                // 부서 검색 필드에 새 부서명 설정
-                modalDepartmentSearch.value = data.department.name;
-                modalDepartmentHidden.value = data.department.id;
-                selectedDepartmentId = data.department.id;
+                // selectDepartment 함수를 사용해서 제대로 선택 처리
+                selectDepartment(data.department.id, data.department.name);
                 
                 showModalAlert('success', `"${data.department.company_name} - ${data.department.name}" 부서/연구실이 추가되었습니다.`);
                 showToastAlert('success', `"${data.department.company_name} - ${data.department.name}" 부서/연구실이 추가되었습니다.`);
@@ -1780,7 +1773,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                z-index: 2000;
+                z-index: 3000;
                 max-width: 400px;
             `;
             document.body.appendChild(toastContainer);
@@ -1809,8 +1802,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
     
-    // 페이지 전체 알림 표시 함수
+    // 페이지 전체 알림 표시 함수 (사용 안 함)
     function showAlert(type, message) {
+        // 모달이 열려있을 때는 토스트로만 표시
+        const modal = document.getElementById('followupModal');
+        if (modal && modal.style.display !== 'none' && modal.classList.contains('show')) {
+            showToastAlert(type, message);
+            return;
+        }
+        
+        // 기존 페이지 알림 로직
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
         alertDiv.innerHTML = `

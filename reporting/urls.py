@@ -80,6 +80,8 @@ urlpatterns = [
     path('api/followups/create/', views.followup_create_ajax, name='followup_create_ajax'),
     path('api/departments/list/<int:company_id>/', views.department_list_ajax, name='department_list_ajax'),
     path('api/schedule/activity-type/', views.schedule_activity_type, name='schedule_activity_type'),
+    path('api/tax-invoice/update/', views.update_tax_invoice_status, name='update_tax_invoice_status'),
+    path('api/schedules/<int:schedule_id>/delivery-items/', views.schedule_delivery_items_api, name='schedule_delivery_items_api'),
     
     # 개별 조회 API 엔드포인트들
     path('api/companies/<int:pk>/', views.api_company_detail, name='api_company_detail'),

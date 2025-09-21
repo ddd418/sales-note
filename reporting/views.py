@@ -18,6 +18,7 @@ from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_a
 import os
 import mimetypes
 import logging
+import json
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -237,9 +238,18 @@ def get_accessible_users(request_user):
         # Admin은 모든 사용자에 접근 가능
         return User.objects.all()
     elif user_profile.is_manager():
-        # Manager는 salesman들에만 접근 가능
-        salesman_profiles = UserProfile.objects.filter(role='salesman')
-        return User.objects.filter(userprofile__in=salesman_profiles)
+        # Manager는 같은 회사의 salesman들에만 접근 가능
+        if hasattr(request_user, 'userprofile') and request_user.userprofile.company:
+            user_company = request_user.userprofile.company
+            # 같은 회사 소속의 salesman만 필터링
+            salesman_profiles = UserProfile.objects.filter(
+                role='salesman',
+                company=user_company
+            )
+            return User.objects.filter(userprofile__in=salesman_profiles)
+        else:
+            # 회사 정보가 없는 매니저는 아무도 볼 수 없음
+            return User.objects.none()
     else:
         # Salesman은 자기 자신만 접근 가능
         return User.objects.filter(id=request_user.id)
@@ -2617,19 +2627,22 @@ def user_delete(request, user_id):
 @role_required(['manager'])
 @never_cache
 def manager_dashboard(request):
-    """Manager 전용 대시보드 - 모든 Salesman의 현황을 볼 수 있음"""
+    """Manager 전용 대시보드 - 같은 회사 Salesman의 현황을 볼 수 있음"""
     # 선택된 salesman (기본값: 첫 번째 salesman)
     selected_user_id = request.GET.get('user_id')
     view_all = request.GET.get('view_all') == 'true'
     
-    # 접근 가능한 Salesman 목록 (같은 회사 소속만)
+    # 접근 가능한 Salesman 목록 (get_accessible_users에서 이미 회사별 필터링됨)
     accessible_users = get_accessible_users(request.user)
     salesman_users = accessible_users.filter(userprofile__role='salesman')
     
-    # 현재 사용자 회사와 같은 회사의 Salesman만 필터링
-    if hasattr(request.user, 'userprofile') and request.user.userprofile.company:
-        user_company = request.user.userprofile.company
-        salesman_users = salesman_users.filter(userprofile__company=user_company)
+    # 추가 보안 체크: 매니저의 회사 정보가 있는지 확인
+    if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
+        context = {
+            'error_message': '회사 정보가 없어 접근할 수 없습니다.',
+            'page_title': 'Manager 대시보드'
+        }
+        return render(request, 'reporting/manager_dashboard.html', context)
     
     if not salesman_users.exists():
         context = {
@@ -2647,16 +2660,30 @@ def manager_dashboard(request):
             selected_user = salesman_users.first()
     else:
         selected_user = salesman_users.first()
-      # 선택된 사용자의 데이터 가져오기 (dashboard 뷰와 동일한 로직)
+    # 선택된 사용자의 데이터 가져오기 (dashboard 뷰와 동일한 로직)
     from datetime import datetime
     current_year = datetime.now().year
     
+    # 보안 로깅: 매니저가 어떤 데이터에 접근하는지 기록
+    user_company_name = request.user.userprofile.company.name if request.user.userprofile.company else "미정"
+    accessible_company_names = [user.userprofile.company.name if user.userprofile.company else "미정" 
+                               for user in salesman_users]
+    logger.info(f"매니저 {request.user.username} ({user_company_name})가 접근하는 영업사원들: {accessible_company_names}")
+    
     # 기본 쿼리셋 (선택된 사용자로 필터링 또는 전체보기)
+    # 추가 보안: salesman_users가 이미 회사별로 필터링되었지만 다시 한 번 체크
     if view_all:
-        # 전체보기인 경우 모든 Salesman의 데이터
+        # 전체보기인 경우 같은 회사 Salesman의 데이터만
         followups = FollowUp.objects.filter(user__in=salesman_users)
         schedules = Schedule.objects.filter(user__in=salesman_users)
         histories = History.objects.filter(user__in=salesman_users, created_at__year=current_year)
+        
+        # 추가 보안 체크: 실제로 가져온 데이터가 매니저와 같은 회사인지 확인
+        manager_company = request.user.userprofile.company
+        followup_companies = set(followups.values_list('user__userprofile__company', flat=True))
+        if followup_companies and manager_company.id not in followup_companies:
+            logger.warning(f"보안 경고: 매니저 {request.user.username}가 다른 회사 데이터에 접근 시도")
+            
     else:
         # 특정 사용자의 데이터
         followups = FollowUp.objects.filter(user=selected_user)
@@ -5885,3 +5912,127 @@ def department_list_ajax(request, company_id):
         return JsonResponse({
             'error': '부서 목록을 가져오는 중 오류가 발생했습니다.'
         }, status=500)
+
+@login_required
+@role_required(['admin', 'salesman'])
+@require_POST
+@csrf_exempt
+def update_tax_invoice_status(request):
+    """세금계산서 상태 업데이트 API"""
+    try:
+        data = json.loads(request.body)
+        delivery_type = data.get('type')
+        delivery_id = data.get('id')
+        tax_invoice_issued = data.get('tax_invoice_issued')
+        
+        if delivery_type == 'history':
+            # History 레코드의 세금계산서 상태 업데이트
+            try:
+                history = History.objects.get(id=delivery_id)
+                
+                # 권한 체크
+                if not can_access_user_data(request.user, history.user):
+                    return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    history_user_profile = getattr(history.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        history_user_profile and history_user_profile.company and
+                        user_profile_obj.company != history_user_profile.company):
+                        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                history.tax_invoice_issued = tax_invoice_issued
+                history.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': '세금계산서 상태가 업데이트되었습니다.'
+                })
+                
+            except History.DoesNotExist:
+                return JsonResponse({'error': '해당 납품 기록을 찾을 수 없습니다.'}, status=404)
+                
+        elif delivery_type == 'delivery_item':
+            # DeliveryItem의 세금계산서 상태 업데이트
+            try:
+                delivery_item = DeliveryItem.objects.get(id=delivery_id)
+                
+                # 권한 체크
+                if not can_access_user_data(request.user, delivery_item.schedule.user):
+                    return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    item_user_profile = getattr(delivery_item.schedule.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        item_user_profile and item_user_profile.company and
+                        user_profile_obj.company != item_user_profile.company):
+                        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                delivery_item.tax_invoice_issued = tax_invoice_issued
+                delivery_item.save()
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': '세금계산서 상태가 업데이트되었습니다.'
+                })
+                
+            except DeliveryItem.DoesNotExist:
+                return JsonResponse({'error': '해당 납품 품목을 찾을 수 없습니다.'}, status=404)
+        
+        else:
+            return JsonResponse({'error': '잘못된 요청입니다.'}, status=400)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({'error': '잘못된 JSON 형식입니다.'}, status=400)
+    except Exception as e:
+        logger.error(f"세금계산서 상태 업데이트 오류: {str(e)}")
+        return JsonResponse({'error': '서버 오류가 발생했습니다.'}, status=500)
+
+@login_required
+@role_required(['admin', 'salesman'])
+def schedule_delivery_items_api(request, schedule_id):
+    """Schedule의 DeliveryItem 정보를 반환하는 API"""
+    try:
+        schedule = Schedule.objects.get(id=schedule_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+        
+        # 하나과학이 아닌 경우 같은 회사 체크
+        if not getattr(request, 'is_hanagwahak', False):
+            user_profile_obj = getattr(request.user, 'userprofile', None)
+            schedule_user_profile = getattr(schedule.user, 'userprofile', None)
+            if (user_profile_obj and user_profile_obj.company and 
+                schedule_user_profile and schedule_user_profile.company and
+                user_profile_obj.company != schedule_user_profile.company):
+                return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+        
+        # DeliveryItem 정보 가져오기
+        items = []
+        for item in schedule.delivery_items_set.all():
+            items.append({
+                'id': item.id,
+                'item_name': item.item_name,
+                'quantity': item.quantity,
+                'unit_price': float(item.unit_price),
+                'total_price': float(item.total_price),
+                'tax_invoice_issued': item.tax_invoice_issued
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'items': items,
+            'schedule_id': schedule.id,
+            'visit_date': schedule.visit_date.strftime('%Y-%m-%d')
+        })
+        
+    except Schedule.DoesNotExist:
+        return JsonResponse({'error': '해당 일정을 찾을 수 없습니다.'}, status=404)
+    except Exception as e:
+        logger.error(f"Schedule 납품 품목 API 오류: {str(e)}")
+        return JsonResponse({'error': '서버 오류가 발생했습니다.'}, status=500)
