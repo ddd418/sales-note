@@ -834,19 +834,19 @@ def dashboard_view(request):
     # 고유한 일정 ID들의 합집합 + 일정이 없는 History 납품
     unique_schedule_ids = set(history_with_schedule) | set(schedules_with_delivery)
     delivery_count = len(unique_schedule_ids) + history_without_schedule
-      # 활동 유형별 통계 (현재 연도만, 메모 제외)
-    if getattr(request, 'is_hanagwahak', False):
+    # 활동 유형별 통계 (현재 연도만, 메모 제외)
+    if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
     else:
-        # 하나과학이 아닌 경우 서비스 항목도 제외
+        # Admin이 아니고 하나과학이 아닌 경우 서비스 항목도 제외
         activity_stats = histories_current_year.exclude(action_type__in=['memo', 'service']).values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
     
-    # 서비스 통계 추가 (완료된 서비스만 카운팅) - 하나과학만
-    if getattr(request, 'is_hanagwahak', False):
+    # 서비스 통계 추가 (완료된 서비스만 카운팅) - Admin이나 하나과학만
+    if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
         # 이번 달 서비스 수 (완료된 것만)
         this_month_service_count = histories.filter(
@@ -860,8 +860,8 @@ def dashboard_view(request):
         this_month_service_count = 0
       # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
     recent_activities_queryset = histories_current_year.exclude(action_type='memo')
-    if not getattr(request, 'is_hanagwahak', False):
-        # 하나과학이 아닌 경우 서비스도 제외
+    if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
+        # Admin이 아니고 하나과학이 아닌 경우 서비스도 제외
         recent_activities_queryset = recent_activities_queryset.exclude(action_type='service')
     recent_activities = recent_activities_queryset.order_by('-created_at')[:5]
     
@@ -995,8 +995,8 @@ def dashboard_view(request):
     customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company'] or '미정'})" for item in customer_revenue_data]
     customer_amounts = [float(item['total_revenue']) for item in customer_revenue_data]
 
-    # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만) - 하나과학만
-    if getattr(request, 'is_hanagwahak', False):
+    # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만) - Admin이나 하나과학만
+    if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         monthly_service_data = []
         monthly_service_labels = []
         for i in range(5, -1, -1):
@@ -4800,8 +4800,8 @@ def customer_report_view(request):
         # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
         accessible_users = get_accessible_users(request.user)
         
-        # 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
-        if not getattr(request, 'is_hanagwahak', False):
+        # Admin이 아니고 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
+        if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
             user_profile_obj = getattr(request.user, 'userprofile', None)
             if user_profile_obj and user_profile_obj.company:
                 same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
@@ -4942,20 +4942,24 @@ def customer_detail_report_view(request, followup_id):
     try:
         followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, followup.user):
-            messages.error(request, '접근 권한이 없습니다.')
-            return redirect('reporting:customer_report')
-        
-        # 하나과학이 아닌 경우 같은 회사 체크
-        if not getattr(request, 'is_hanagwahak', False):
-            user_profile_obj = getattr(request.user, 'userprofile', None)
-            followup_user_profile = getattr(followup.user, 'userprofile', None)
-            if (user_profile_obj and user_profile_obj.company and 
-                followup_user_profile and followup_user_profile.company and
-                user_profile_obj.company != followup_user_profile.company):
+        # Admin 사용자는 모든 데이터에 접근 가능
+        if getattr(request, 'is_admin', False):
+            logger.info(f"Admin 사용자 {request.user.username}가 고객 {followup_id}에 접근")
+        else:
+            # 권한 체크
+            if not can_access_user_data(request.user, followup.user):
                 messages.error(request, '접근 권한이 없습니다.')
                 return redirect('reporting:customer_report')
+            
+            # 하나과학이 아닌 경우 같은 회사 체크
+            if not getattr(request, 'is_hanagwahak', False):
+                user_profile_obj = getattr(request.user, 'userprofile', None)
+                followup_user_profile = getattr(followup.user, 'userprofile', None)
+                if (user_profile_obj and user_profile_obj.company and 
+                    followup_user_profile and followup_user_profile.company and
+                    user_profile_obj.company != followup_user_profile.company):
+                    messages.error(request, '접근 권한이 없습니다.')
+                    return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
@@ -4966,8 +4970,8 @@ def customer_detail_report_view(request, followup_id):
         'user', 'schedule'
     ).order_by('-created_at')
     
-    # 하나과학이 아닌 경우 서비스 히스토리 제외
-    if not getattr(request, 'is_hanagwahak', False):
+    # Admin이 아니고 하나과학이 아닌 경우 서비스 히스토리 제외
+    if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
         histories = histories.exclude(action_type='service')
     
     # 기본 통계 - History와 Schedule의 DeliveryItem 모두 포함 (중복 제거)
@@ -6072,6 +6076,7 @@ def debug_user_company_info(request):
         debug_info['request_user_company'] = str(getattr(request, 'user_company', 'Not set'))
         debug_info['request_user_company_name'] = getattr(request, 'user_company_name', 'Not set')
         debug_info['request_is_hanagwahak'] = getattr(request, 'is_hanagwahak', 'Not set')
+        debug_info['request_is_admin'] = getattr(request, 'is_admin', 'Not set')
         
         # 모든 회사 목록
         from .models import UserCompany

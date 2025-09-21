@@ -19,10 +19,19 @@ class CompanyFilterMiddleware(MiddlewareMixin):
         """요청 처리 시 사용자의 회사 정보를 request에 추가"""
         if hasattr(request, 'user') and not isinstance(request.user, AnonymousUser):
             try:
+                # Admin 사용자는 모든 데이터에 접근 가능하도록 특별 처리
+                if hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin':
+                    request.user_company = None  # Admin은 회사 제한 없음
+                    request.user_company_name = 'Admin (전체 접근)'
+                    request.is_hanagwahak = True  # Admin은 모든 기능 사용 가능
+                    request.is_admin = True
+                    logger.info(f"Admin 사용자 {request.user.username}: 전체 접근 권한 부여")
+                    
                 # UserProfile을 통해 사용자의 회사 정보 가져오기
-                if hasattr(request.user, 'userprofile') and request.user.userprofile.company:
+                elif hasattr(request.user, 'userprofile') and request.user.userprofile.company:
                     request.user_company = request.user.userprofile.company  # UserCompany 객체
                     request.user_company_name = request.user.userprofile.company.name  # 회사명
+                    request.is_admin = False
                     
                     # 하나과학인지 확인 (다양한 형태 허용)
                     company_name_clean = request.user_company_name.strip().replace(' ', '').lower()
@@ -35,6 +44,7 @@ class CompanyFilterMiddleware(MiddlewareMixin):
                     request.user_company = None
                     request.user_company_name = None
                     request.is_hanagwahak = False
+                    request.is_admin = False
                     logger.info(f"사용자 {request.user.username}의 회사 정보 없음")
                     
             except Exception as e:
@@ -42,10 +52,12 @@ class CompanyFilterMiddleware(MiddlewareMixin):
                 request.user_company = None
                 request.user_company_name = None
                 request.is_hanagwahak = False
+                request.is_admin = False
         else:
             request.user_company = None
             request.user_company_name = None
             request.is_hanagwahak = False
+            request.is_admin = False
         
         return None
 
