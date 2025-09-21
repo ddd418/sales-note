@@ -740,9 +740,19 @@ def dashboard_view(request):
     from django.utils import timezone
     from datetime import datetime, timedelta
     import calendar
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     # 사용자 프로필 가져오기
     user_profile = get_user_profile(request.user)
+    
+    # 디버깅 로그 추가
+    logger.info(f"[DASHBOARD] 사용자: {request.user.username}")
+    logger.info(f"[DASHBOARD] 사용자 역할: {user_profile.role}")
+    logger.info(f"[DASHBOARD] request.is_admin: {getattr(request, 'is_admin', 'Not Set')}")
+    logger.info(f"[DASHBOARD] request.is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not Set')}")
+    logger.info(f"[DASHBOARD] request.user_company_name: {getattr(request, 'user_company_name', 'Not Set')}")
     
     # URL 파라미터로 특정 사용자 필터링
     user_filter = request.GET.get('user')
@@ -862,18 +872,30 @@ def dashboard_view(request):
     delivery_count = len(unique_schedule_ids) + history_without_schedule
     # 활동 유형별 통계 (현재 연도만, 메모 제외)
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
+        logger.info(f"[DASHBOARD] 서비스 접근 권한 있음 - is_admin: {getattr(request, 'is_admin', False)}, is_hanagwahak: {getattr(request, 'is_hanagwahak', False)}")
         activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
+        
+        # 활동 유형별 상세 로그
+        for stat in activity_stats:
+            logger.info(f"[DASHBOARD] 활동 유형: {stat['action_type']}, 개수: {stat['count']}")
     else:
+        logger.info(f"[DASHBOARD] 서비스 접근 권한 없음 - 서비스 제외")
         # Admin이 아니고 하나과학이 아닌 경우 서비스 항목도 제외
         activity_stats = histories_current_year.exclude(action_type__in=['memo', 'service']).values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
+        
+        # 활동 유형별 상세 로그
+        for stat in activity_stats:
+            logger.info(f"[DASHBOARD] 활동 유형: {stat['action_type']}, 개수: {stat['count']}")
     
     # 서비스 통계 추가 (완료된 서비스만 카운팅) - Admin이나 하나과학만
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
+        logger.info(f"[DASHBOARD] 올해 완료된 서비스 개수: {service_count}")
+        
         # 이번 달 서비스 수 (완료된 것만)
         this_month_service_count = histories.filter(
             action_type='service',
@@ -881,15 +903,37 @@ def dashboard_view(request):
             created_at__month=current_month,
             created_at__year=current_year
         ).count()
+        logger.info(f"[DASHBOARD] 이번 달 완료된 서비스 개수: {this_month_service_count}")
+        
+        # 전체 서비스 히스토리 개수도 확인
+        total_service_count = histories_current_year.filter(action_type='service').count()
+        logger.info(f"[DASHBOARD] 올해 전체 서비스 히스토리 개수: {total_service_count}")
+        
+        # 서비스 상태별 개수
+        service_status_stats = histories_current_year.filter(action_type='service').values('service_status').annotate(
+            count=Count('id')
+        )
+        for status_stat in service_status_stats:
+            logger.info(f"[DASHBOARD] 서비스 상태 '{status_stat['service_status']}': {status_stat['count']}개")
+            
     else:
         service_count = 0
         this_month_service_count = 0
+        logger.info(f"[DASHBOARD] 서비스 접근 권한 없음 - service_count = 0")
       # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
     recent_activities_queryset = histories_current_year.exclude(action_type='memo')
     if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
         # Admin이 아니고 하나과학이 아닌 경우 서비스도 제외
         recent_activities_queryset = recent_activities_queryset.exclude(action_type='service')
+        logger.info(f"[DASHBOARD] 최근 활동에서 서비스 제외됨")
+    else:
+        logger.info(f"[DASHBOARD] 최근 활동에 서비스 포함됨")
+        
     recent_activities = recent_activities_queryset.order_by('-created_at')[:5]
+    
+    # 최근 활동 상세 로깅
+    for activity in recent_activities:
+        logger.info(f"[DASHBOARD] 최근 활동: {activity.action_type} - {activity.get_action_type_display()}")
     
     # 월별 고객 추가 현황 (최근 6개월)
     now = timezone.now()
@@ -1064,12 +1108,38 @@ def dashboard_view(request):
         'this_month_service_count': this_month_service_count,
         'conversion_rate': conversion_rate,
         'avg_deal_size': avg_deal_size,
+        # 템플릿에서 직접 사용할 수 있도록 추가
+        'is_hanagwahak': getattr(request, 'is_hanagwahak', False),
+        'is_admin': getattr(request, 'is_admin', False),
+        'user_company_name': getattr(request, 'user_company_name', None),
         'monthly_revenue_data': monthly_revenue_data,
         'monthly_revenue_labels': monthly_revenue_labels,        'customer_revenue_labels': customer_labels,
         'customer_revenue_data': customer_amounts,
         'monthly_service_data': monthly_service_data,
         'monthly_service_labels': monthly_service_labels,
     }
+    
+    # 최종 컨텍스트 로깅
+    logger.info(f"[DASHBOARD] 최종 컨텍스트 전달:")
+    logger.info(f"[DASHBOARD] - is_hanagwahak (context): {context['is_hanagwahak']}")
+    logger.info(f"[DASHBOARD] - is_admin (context): {context['is_admin']}")
+    logger.info(f"[DASHBOARD] - user_company_name (context): {context['user_company_name']}")
+    logger.info(f"[DASHBOARD] - service_count: {context['service_count']}")
+    logger.info(f"[DASHBOARD] - this_month_service_count: {context['this_month_service_count']}")
+    logger.info(f"[DASHBOARD] - monthly_services 데이터 개수: {len(context['monthly_services'])}")
+    logger.info(f"[DASHBOARD] - monthly_service_data: {context['monthly_service_data']}")
+    logger.info(f"[DASHBOARD] - monthly_service_labels: {context['monthly_service_labels']}")
+    logger.info(f"[DASHBOARD] - activity_stats 개수: {len(list(context['activity_stats']))}")
+    
+    # activity_stats에 서비스가 포함되어 있는지 확인
+    activity_types = [stat['action_type'] for stat in context['activity_stats']]
+    logger.info(f"[DASHBOARD] - 활동 유형 목록: {activity_types}")
+    if 'service' in activity_types:
+        service_stat = next(stat for stat in context['activity_stats'] if stat['action_type'] == 'service')
+        logger.info(f"[DASHBOARD] - 서비스 통계: {service_stat}")
+    else:
+        logger.info(f"[DASHBOARD] - 활동 통계에 서비스 없음")
+    
     return render(request, 'reporting/dashboard.html', context)
 
 # ============ 일정(Schedule) 관련 뷰들 ============
