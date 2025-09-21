@@ -6266,15 +6266,32 @@ def followup_create_ajax(request):
                 'error': '선택한 업체 또는 부서가 존재하지 않습니다.'
             })
         
-        # 권한 체크: 같은 회사에서 생성된 업체인지 확인
+        # ======= 임시 수정: 모든 사용자가 모든 업체에 팔로우업 생성 가능 =======
+        # 권한 체크를 제거하여 모든 업체에 팔로우업 생성 허용
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        
         user_profile_obj = getattr(request.user, 'userprofile', None)
-        if user_profile_obj and user_profile_obj.company:
-            same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
-            if company.created_by not in same_company_users:
-                return JsonResponse({
-                    'success': False,
-                    'error': '접근 권한이 없는 업체입니다.'
-                })
+        is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+        
+        if is_admin:
+            logger.info(f"[FOLLOWUP_CREATE_AJAX] Admin 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음")
+        else:
+            logger.info(f"[FOLLOWUP_CREATE_AJAX] 일반 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 (모든 업체 허용)")
+            if user_profile_obj and user_profile_obj.company:
+                logger.info(f"[FOLLOWUP_CREATE_AJAX] 사용자 회사: {user_profile_obj.company.name}")
+        
+        # ======= 원래 권한 체크 로직 (주석 처리됨) =======
+        # # 권한 체크: 같은 회사에서 생성된 업체인지 확인
+        # user_profile_obj = getattr(request.user, 'userprofile', None)
+        # if user_profile_obj and user_profile_obj.company:
+        #     same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+        #     if company.created_by not in same_company_users:
+        #         return JsonResponse({
+        #             'success': False,
+        #             'error': '접근 권한이 없는 업체입니다.'
+        #         })
         
         # 중복 체크 (같은 고객명, 회사, 부서)
         existing_followup = FollowUp.objects.filter(
@@ -6304,6 +6321,8 @@ def followup_create_ajax(request):
             notes=request.POST.get('notes', '').strip(),
             status='active'
         )
+        
+        logger.info(f"[FOLLOWUP_CREATE_AJAX] 팔로우업 생성 완료 - ID: {followup.id}, 고객: {customer_name}, 업체: {company.name}, 부서: {department.name}")
         
         # 사용자 회사 정보 설정
         if user_profile_obj and user_profile_obj.company:
