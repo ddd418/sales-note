@@ -1,5 +1,6 @@
 import time
 import logging
+import os
 from django.utils.deprecation import MiddlewareMixin
 from django.contrib.auth.models import AnonymousUser
 
@@ -29,23 +30,90 @@ class CompanyFilterMiddleware(MiddlewareMixin):
                     
                 # UserProfile을 통해 사용자의 회사 정보 가져오기
                 elif hasattr(request.user, 'userprofile') and request.user.userprofile.company:
-                    request.user_company = request.user.userprofile.company  # UserCompany 객체
-                    request.user_company_name = request.user.userprofile.company.name  # 회사명
-                    request.is_admin = False
-                    
-                    # 하나과학인지 확인 (다양한 형태 허용)
-                    company_name_clean = request.user_company_name.strip().replace(' ', '').lower()
-                    hanagwahak_variations = ['하나과학', 'hanagwahak', 'hana', '하나']
-                    request.is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
-                    
-                    # 디버깅을 위한 로깅
-                    logger.info(f"사용자 {request.user.username}의 회사: '{request.user_company_name}' (clean: '{company_name_clean}') -> is_hanagwahak: {request.is_hanagwahak}")
+                    try:
+                        request.user_company = request.user.userprofile.company  # UserCompany 객체
+                        request.user_company_name = request.user.userprofile.company.name  # 회사명
+                        request.is_admin = False
+                        
+                        # 하나과학인지 확인 (더욱 강화된 매칭)
+                        company_name_clean = request.user_company_name.strip().replace(' ', '').lower()
+                        
+                        # 더 많은 variation 패턴 추가
+                        hanagwahak_variations = [
+                            '하나과학', 'hanagwahak', 'hana', '하나',
+                            'hanagwahac', 'hana gwahak', '하나 과학',
+                            'hanascience', 'hana science'
+                        ]
+                        
+                        # 기본 매칭
+                        request.is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
+                        
+                        # 만약 기본 매칭이 실패하면 더 정교한 매칭 시도
+                        if not request.is_hanagwahak:
+                            try:
+                                # 유니코드 정규화
+                                import unicodedata
+                                normalized_name = unicodedata.normalize('NFKC', company_name_clean)
+                                request.is_hanagwahak = any(variation.lower() in normalized_name for variation in hanagwahak_variations)
+                                
+                                # 여전히 실패하면 부분 매칭 시도
+                                if not request.is_hanagwahak:
+                                    # '하나'와 '과학'이 모두 포함되어 있는지 확인
+                                    has_hana = any(hana in company_name_clean for hana in ['하나', 'hana'])
+                                    has_science = any(science in company_name_clean for science in ['과학', 'gwahak', 'science'])
+                                    request.is_hanagwahak = has_hana and has_science
+                                    
+                                    logger.info(f"[MIDDLEWARE] 부분 매칭 - 하나: {has_hana}, 과학: {has_science}, 결과: {request.is_hanagwahak}")
+                            except Exception as unicode_error:
+                                logger.error(f"[MIDDLEWARE] 유니코드 처리 에러: {unicode_error}")
+                                # 기본적으로 False로 설정하되, 예외적으로 하나과학 문자열이 포함되어 있으면 True
+                                request.is_hanagwahak = '하나과학' in request.user_company_name or 'hanagwahak' in request.user_company_name.lower()
+                        
+                        # Railway 서버에서의 임시 해결책: 환경변수나 특정 조건으로 강제 인식
+                        if not request.is_hanagwahak:
+                            # RAILWAY_ENVIRONMENT가 설정되어 있고, 회사 ID가 특정 값이면 하나과학으로 인식
+                            railway_env = os.environ.get('RAILWAY_ENVIRONMENT')
+                            if railway_env:
+                                # Railway 환경에서는 회사명에 '하나' 또는 'hana'가 포함되면 하나과학으로 처리
+                                if any(keyword in request.user_company_name.lower() for keyword in ['하나', 'hana']):
+                                    request.is_hanagwahak = True
+                                    logger.warning(f"[MIDDLEWARE] Railway 환경에서 하나과학 강제 인식: {request.user_company_name}")
+                            
+                            # 또는 특정 회사 ID들을 하나과학으로 처리 (관리자가 수동으로 설정할 수 있는 방법)
+                            hanagwahak_company_ids = os.environ.get('HANAGWAHAK_COMPANY_IDS', '').split(',')
+                            if str(request.user_company.id) in hanagwahak_company_ids:
+                                request.is_hanagwahak = True
+                                logger.warning(f"[MIDDLEWARE] 환경변수로 하나과학 강제 인식: ID {request.user_company.id}")
+                        
+                        # 더 상세한 디버깅 로깅
+                        logger.info(f"[MIDDLEWARE] 사용자: {request.user.username}")
+                        logger.info(f"[MIDDLEWARE] 원본 회사명: '{request.user_company_name}'")
+                        logger.info(f"[MIDDLEWARE] 정리된 회사명: '{company_name_clean}'") 
+                        logger.info(f"[MIDDLEWARE] 회사명 UTF-8: {request.user_company_name.encode('utf-8').hex()}")
+                        logger.info(f"[MIDDLEWARE] 검사 패턴들: {hanagwahak_variations}")
+                        logger.info(f"[MIDDLEWARE] is_hanagwahak 결과: {request.is_hanagwahak}")
+                        
+                        # 각 패턴별 검사 결과도 로깅
+                        for variation in hanagwahak_variations:
+                            try:
+                                is_match = variation.lower() in company_name_clean
+                                logger.info(f"[MIDDLEWARE] '{variation}' in '{company_name_clean}': {is_match}")
+                            except Exception as pattern_error:
+                                logger.error(f"[MIDDLEWARE] 패턴 매칭 에러 ({variation}): {pattern_error}")
+                                
+                    except Exception as company_error:
+                        logger.error(f"[MIDDLEWARE] 회사 정보 처리 에러: {company_error}")
+                        request.user_company = request.user.userprofile.company
+                        request.user_company_name = str(request.user.userprofile.company.name) if request.user.userprofile.company else None
+                        request.is_hanagwahak = False
+                        request.is_admin = False
+                        
                 else:
                     request.user_company = None
                     request.user_company_name = None
                     request.is_hanagwahak = False
                     request.is_admin = False
-                    logger.info(f"사용자 {request.user.username}의 회사 정보 없음")
+                    logger.info(f"[MIDDLEWARE] 사용자 {request.user.username}의 회사 정보 없음")
                     
             except Exception as e:
                 logger.error(f"Error getting user company info: {e}")

@@ -368,10 +368,23 @@ class ScheduleForm(forms.ModelForm):
             
         # 하나과학이 아닌 경우 activity_type에서 서비스 제거
         if request and not getattr(request, 'is_hanagwahak', False):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[SCHFORM] request.is_hanagwahak = False, 서비스 옵션 제거")
+            logger.info(f"[SCHFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
+            logger.info(f"[SCHFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             self.fields['activity_type'].choices = [
                 choice for choice in self.fields['activity_type'].choices 
                 if choice[0] != 'service'
             ]
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            is_hanagwahak = getattr(request, 'is_hanagwahak', False) if request else False
+            logger.info(f"[SCHFORM] request.is_hanagwahak = {is_hanagwahak}, 서비스 옵션 유지")
+            if request:
+                logger.info(f"[SCHFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
+                logger.info(f"[SCHFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -467,7 +480,20 @@ class HistoryForm(forms.ModelForm):
         # 하나과학이 아닌 경우 서비스도 제외
         excluded_types = ['memo']
         if request and not getattr(request, 'is_hanagwahak', False):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[HISTORYFORM] request.is_hanagwahak = False, 서비스 옵션 제거")
+            logger.info(f"[HISTORYFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
+            logger.info(f"[HISTORYFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             excluded_types.append('service')
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            is_hanagwahak = getattr(request, 'is_hanagwahak', False) if request else False
+            logger.info(f"[HISTORYFORM] request.is_hanagwahak = {is_hanagwahak}, 서비스 옵션 유지")
+            if request:
+                logger.info(f"[HISTORYFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
+                logger.info(f"[HISTORYFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             
         self.fields['action_type'].choices = [
             choice for choice in self.fields['action_type'].choices 
@@ -3613,18 +3639,38 @@ def department_create_api(request):
 @role_required(['admin', 'salesman'])
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
-    # 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
-    user_company = getattr(request.user, 'userprofile', None)
-    if user_company and user_company.company:
-        # 같은 회사 소속 사용자들이 생성한 업체만 조회
-        same_company_users = User.objects.filter(userprofile__company=user_company.company)
-        companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+    # Admin 사용자는 모든 업체를 볼 수 있음
+    if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
+        # Admin은 모든 업체 조회 가능
+        companies = Company.objects.all().annotate(
             department_count=Count('departments', distinct=True),
             followup_count=Count('followup_companies', distinct=True)
         ).order_by('name')
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[COMPANY_LIST] Admin 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회")
     else:
-        # 회사 정보가 없는 경우 빈 쿼리셋
-        companies = Company.objects.none()
+        # 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
+        user_company = getattr(request.user, 'userprofile', None)
+        if user_company and user_company.company:
+            # 같은 회사 소속 사용자들이 생성한 업체만 조회
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+                department_count=Count('departments', distinct=True),
+                followup_count=Count('followup_companies', distinct=True)
+            ).order_by('name')
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
+        else:
+            # 회사 정보가 없는 경우 빈 쿼리셋
+            companies = Company.objects.none()
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
     
     # 검색 기능
     search_query = request.GET.get('search', '')
@@ -3651,19 +3697,38 @@ def company_create_view(request):
         if not name:
             messages.error(request, '업체/학교명을 입력해주세요.')
         else:
-            # 같은 회사 사용자들이 만든 업체 중에서 중복 확인
-            user_company = getattr(request.user, 'userprofile', None)
-            if user_company and user_company.company:
-                same_company_users = User.objects.filter(userprofile__company=user_company.company)
-                existing_company = Company.objects.filter(name=name, created_by__in=same_company_users).exists()
+            # Admin은 전체 업체를 기준으로, 일반 사용자는 같은 회사 사용자들이 만든 업체를 기준으로 중복 확인
+            is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+            
+            if is_admin:
+                # Admin은 전체 업체 중 중복 확인
+                existing_company = Company.objects.filter(name=name).exists()
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[COMPANY_CREATE] Admin 사용자 {request.user.username}: '{name}' 전체 중복 확인 결과 = {existing_company}")
             else:
-                existing_company = Company.objects.filter(name=name, created_by=request.user).exists()
+                # 같은 회사 사용자들이 만든 업체 중에서 중복 확인
+                user_company = getattr(request.user, 'userprofile', None)
+                if user_company and user_company.company:
+                    same_company_users = User.objects.filter(userprofile__company=user_company.company)
+                    existing_company = Company.objects.filter(name=name, created_by__in=same_company_users).exists()
+                else:
+                    existing_company = Company.objects.filter(name=name, created_by=request.user).exists()
+                
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[COMPANY_CREATE] 일반 사용자 {request.user.username}: '{name}' 회사 내 중복 확인 결과 = {existing_company}")
                 
             if existing_company:
                 messages.error(request, '이미 존재하는 업체/학교명입니다.')
             else:
                 Company.objects.create(name=name, created_by=request.user)
                 messages.success(request, f'"{name}" 업체/학교가 추가되었습니다.')
+                
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[COMPANY_CREATE] 사용자 {request.user.username}: '{name}' 업체 생성 완료")
+                
                 return redirect('reporting:company_list')
     
     context = {
@@ -3678,9 +3743,19 @@ def company_edit_view(request, pk):
     
     # 권한 체크: 관리자이거나 생성자만 수정 가능
     user_profile = get_user_profile(request.user)
-    if not (user_profile.role == 'admin' or company.created_by == request.user):
-        messages.error(request, '이 업체/학교를 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
-        return redirect('reporting:company_list')
+    is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
+    
+    if not (is_admin or company.created_by == request.user):
+        # Admin이 아닌 경우 같은 회사 사용자가 생성한 업체인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        if user_company and user_company.company:
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+                messages.error(request, '이 업체/학교를 수정할 권한이 없습니다.')
+                return redirect('reporting:company_list')
+        else:
+            messages.error(request, '이 업체/학교를 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+            return redirect('reporting:company_list')
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -3692,6 +3767,11 @@ def company_edit_view(request, pk):
             company.name = name
             company.save()
             messages.success(request, f'"{name}" 업체/학교 정보가 수정되었습니다.')
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} '{name}' 수정 완료")
+            
             return redirect('reporting:company_list')
     
     context = {
@@ -3707,9 +3787,19 @@ def company_delete_view(request, pk):
     
     # 권한 체크: 관리자이거나 생성자만 삭제 가능
     user_profile = get_user_profile(request.user)
-    if not (user_profile.role == 'admin' or company.created_by == request.user):
-        messages.error(request, '이 업체/학교를 삭제할 권한이 없습니다. (생성자 또는 관리자만 가능)')
-        return redirect('reporting:company_list')
+    is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
+    
+    if not (is_admin or company.created_by == request.user):
+        # Admin이 아닌 경우 같은 회사 사용자가 생성한 업체인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        if user_company and user_company.company:
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+                messages.error(request, '이 업체/학교를 삭제할 권한이 없습니다.')
+                return redirect('reporting:company_list')
+        else:
+            messages.error(request, '이 업체/학교를 삭제할 권한이 없습니다. (생성자 또는 관리자만 가능)')
+            return redirect('reporting:company_list')
     
     # 관련 데이터 개수 확인
     department_count = company.departments.count()
@@ -3724,6 +3814,11 @@ def company_delete_view(request, pk):
         
         company.delete()
         messages.success(request, f'"{company_name}" 업체/학교가 삭제되었습니다.')
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[COMPANY_DELETE] 사용자 {request.user.username}: 업체 '{company_name}' 삭제 완료")
+        
         return redirect('reporting:company_list')
     
     context = {
@@ -3738,6 +3833,26 @@ def company_delete_view(request, pk):
 def company_detail_view(request, pk):
     """업체/학교 상세 (부서 목록 포함) (Admin, Salesman 전용)"""
     company = get_object_or_404(Company, pk=pk)
+    
+    # Admin이 아닌 경우 권한 확인
+    if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
+        # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        if user_company and user_company.company:
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
+                messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
+                return redirect('reporting:company_list')
+        else:
+            messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
+            return redirect('reporting:company_list')
+    else:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
     
     # 해당 업체의 부서 목록
     departments = company.departments.annotate(
@@ -6047,6 +6162,9 @@ def debug_user_company_info(request):
     if not request.user.is_superuser:
         return JsonResponse({'error': '관리자만 접근 가능합니다.'}, status=403)
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
     debug_info = {}
     
     try:
@@ -6066,11 +6184,28 @@ def debug_user_company_info(request):
                 debug_info['company_name_repr'] = repr(profile.company.name)
                 debug_info['company_name_clean'] = profile.company.name.strip().replace(' ', '').lower()
                 
-                # 하나과학 인식 로직 테스트
-                company_name_clean = profile.company.name.strip().replace(' ', '').lower()
+                # 하나과학 인식 로직 테스트 (더 상세하게)
+                company_name = profile.company.name
+                company_name_clean = company_name.strip().replace(' ', '').lower()
                 hanagwahak_variations = ['하나과학', 'hanagwahak', 'hana', '하나']
+                
+                # 각 패턴별 매칭 결과
+                pattern_results = {}
+                for variation in hanagwahak_variations:
+                    pattern_results[variation] = {
+                        'pattern_lower': variation.lower(),
+                        'in_company_name': variation.lower() in company_name_clean,
+                        'bytes_pattern': variation.encode('utf-8'),
+                        'bytes_company': company_name_clean.encode('utf-8')
+                    }
+                
                 is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
+                debug_info['pattern_results'] = pattern_results
                 debug_info['is_hanagwahak_calculated'] = is_hanagwahak
+                
+                # 인코딩 정보도 추가
+                debug_info['company_name_utf8'] = company_name.encode('utf-8').hex()
+                debug_info['company_name_bytes'] = [hex(ord(c)) for c in company_name]
                 
         # request 객체의 정보
         debug_info['request_user_company'] = str(getattr(request, 'user_company', 'Not set'))
@@ -6079,19 +6214,57 @@ def debug_user_company_info(request):
         debug_info['request_is_admin'] = getattr(request, 'is_admin', 'Not set')
         
         # 모든 회사 목록
-        from .models import UserCompany
-        companies = UserCompany.objects.all()
-        debug_info['all_companies'] = [
-            {
+        from .models import UserCompany, Company
+        user_companies = UserCompany.objects.all()
+        client_companies = Company.objects.all()
+        
+        debug_info['user_companies_count'] = user_companies.count()
+        debug_info['client_companies_count'] = client_companies.count()
+        
+        debug_info['all_user_companies'] = []
+        for c in user_companies:
+            company_info = {
                 'id': c.id,
                 'name': c.name,
                 'name_repr': repr(c.name),
-                'clean_name': c.name.strip().replace(' ', '').lower()
+                'clean_name': c.name.strip().replace(' ', '').lower(),
+                'utf8_hex': c.name.encode('utf-8').hex()
             }
-            for c in companies
-        ]
+            
+            # 각 회사별로 하나과학 패턴 매칭 테스트
+            clean_name = c.name.strip().replace(' ', '').lower()
+            hanagwahak_variations = [
+                '하나과학', 'hanagwahak', 'hana', '하나',
+                'hanagwahac', 'hana gwahak', '하나 과학',
+                'hanascience', 'hana science'
+            ]
+            company_info['is_hanagwahak'] = any(variation.lower() in clean_name for variation in hanagwahak_variations)
+            company_info['pattern_matches'] = {
+                variation: variation.lower() in clean_name for variation in hanagwahak_variations
+            }
+            
+            debug_info['all_user_companies'].append(company_info)
         
-        return JsonResponse(debug_info, ensure_ascii=False)
+        debug_info['all_client_companies'] = []
+        for c in client_companies:
+            company_info = {
+                'id': c.id,
+                'name': c.name,
+                'created_by': c.created_by.username if c.created_by else 'Unknown',
+                'department_count': c.departments.count(),
+                'followup_count': c.followup_companies.count()
+            }
+            debug_info['all_client_companies'].append(company_info)
+        
+        # 로그에도 기록
+        logger.info(f"[DEBUG] 디버그 정보 요청 - 사용자: {request.user.username}")
+        logger.info(f"[DEBUG] request.is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not set')}")
+        logger.info(f"[DEBUG] 계산된 is_hanagwahak: {debug_info.get('is_hanagwahak_calculated', 'N/A')}")
+        logger.info(f"[DEBUG] 사용자 회사(UserCompany) 수: {debug_info.get('user_companies_count', 0)}")
+        logger.info(f"[DEBUG] 고객 업체(Company) 수: {debug_info.get('client_companies_count', 0)}")
+        
+        return JsonResponse(debug_info, ensure_ascii=False, json_dumps_params={'indent': 2})
         
     except Exception as e:
+        logger.error(f"[DEBUG] 디버그 뷰 에러: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
