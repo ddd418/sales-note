@@ -3522,37 +3522,42 @@ def company_autocomplete(request):
         companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
         logger.info(f"[COMPANY_AUTOCOMPLETE] Admin 사용자 - 전체 업체에서 검색: {companies.count()}개 결과")
     else:
-        # 사용자의 회사별로 데이터 필터링
+        # ======= 임시 수정: 모든 사용자가 모든 업체를 검색할 수 있도록 변경 =======
+        # 원래: 사용자의 회사별로 데이터 필터링
+        # 수정: 모든 업체를 검색할 수 있도록 변경 (company_list_view와 동일)
+        companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
+        logger.info(f"[COMPANY_AUTOCOMPLETE] 일반 사용자 - 전체 업체에서 검색: {companies.count()}개 결과 (임시 수정)")
+        
         user_company = getattr(request, 'user_company', None)
         user_profile = getattr(request.user, 'userprofile', None)
-        
         logger.info(f"[COMPANY_AUTOCOMPLETE] user_company (middleware): {user_company}")
         logger.info(f"[COMPANY_AUTOCOMPLETE] user_profile.company: {user_profile.company if user_profile else None}")
         
-        if user_company:
-            # 미들웨어에서 설정한 user_company 사용
-            same_company_users = User.objects.filter(userprofile__company=user_company)
-            logger.info(f"[COMPANY_AUTOCOMPLETE] 같은 회사 사용자 수: {same_company_users.count()}")
-            
-            companies = Company.objects.filter(
-                name__icontains=query,
-                created_by__in=same_company_users
-            ).order_by('name')[:10]
-            logger.info(f"[COMPANY_AUTOCOMPLETE] 검색 결과: {companies.count()}개")
-            
-        elif user_profile and user_profile.company:
-            # 백업: UserProfile에서 직접 가져오기
-            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
-            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자 수: {same_company_users.count()}")
-            
-            companies = Company.objects.filter(
-                name__icontains=query,
-                created_by__in=same_company_users
-            ).order_by('name')[:10]
-            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 검색 결과: {companies.count()}개")
-        else:
-            companies = Company.objects.none()
-            logger.warning(f"[COMPANY_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
+        # ======= 원래 로직 (주석 처리됨) =======
+        # if user_company:
+        #     # 미들웨어에서 설정한 user_company 사용
+        #     same_company_users = User.objects.filter(userprofile__company=user_company)
+        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 같은 회사 사용자 수: {same_company_users.count()}")
+        #     
+        #     companies = Company.objects.filter(
+        #         name__icontains=query,
+        #         created_by__in=same_company_users
+        #     ).order_by('name')[:10]
+        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 검색 결과: {companies.count()}개")
+        #     
+        # elif user_profile and user_profile.company:
+        #     # 백업: UserProfile에서 직접 가져오기
+        #     same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자 수: {same_company_users.count()}")
+        #     
+        #     companies = Company.objects.filter(
+        #         name__icontains=query,
+        #         created_by__in=same_company_users
+        #     ).order_by('name')[:10]
+        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 검색 결과: {companies.count()}개")
+        # else:
+        #     companies = Company.objects.none()
+        #     logger.warning(f"[COMPANY_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     results = []
     for company in companies:
@@ -3584,28 +3589,35 @@ def department_autocomplete(request):
         departments = Department.objects.filter(name__icontains=query)
         logger.info(f"[DEPT_AUTOCOMPLETE] Admin 사용자 - 전체 부서에서 검색")
     else:
-        # 같은 회사 사용자들이 생성한 업체의 부서만 검색
+        # ======= 임시 수정: 모든 사용자가 모든 부서를 검색할 수 있도록 변경 =======
+        # 원래: 같은 회사 사용자들이 생성한 업체의 부서만 검색
+        # 수정: 모든 업체의 부서를 검색할 수 있도록 변경
+        departments = Department.objects.filter(name__icontains=query)
+        logger.info(f"[DEPT_AUTOCOMPLETE] 일반 사용자 - 전체 부서에서 검색 (임시 수정)")
+        
         user_company = getattr(request, 'user_company', None)
         user_profile = getattr(request.user, 'userprofile', None)
+        logger.info(f"[DEPT_AUTOCOMPLETE] user_company: {user_company}, user_profile.company: {user_profile.company if user_profile else None}")
         
-        if user_company:
-            same_company_users = User.objects.filter(userprofile__company=user_company)
-            # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
-            departments = Department.objects.filter(
-                name__icontains=query,
-                company__created_by__in=same_company_users
-            )
-            logger.info(f"[DEPT_AUTOCOMPLETE] 같은 회사 사용자들의 업체 부서에서 검색")
-        elif user_profile and user_profile.company:
-            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
-            departments = Department.objects.filter(
-                name__icontains=query,
-                company__created_by__in=same_company_users
-            )
-            logger.info(f"[DEPT_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자들의 업체 부서에서 검색")
-        else:
-            departments = Department.objects.none()
-            logger.warning(f"[DEPT_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
+        # ======= 원래 로직 (주석 처리됨) =======
+        # if user_company:
+        #     same_company_users = User.objects.filter(userprofile__company=user_company)
+        #     # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
+        #     departments = Department.objects.filter(
+        #         name__icontains=query,
+        #         company__created_by__in=same_company_users
+        #     )
+        #     logger.info(f"[DEPT_AUTOCOMPLETE] 같은 회사 사용자들의 업체 부서에서 검색")
+        # elif user_profile and user_profile.company:
+        #     same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+        #     departments = Department.objects.filter(
+        #         name__icontains=query,
+        #         company__created_by__in=same_company_users
+        #     )
+        #     logger.info(f"[DEPT_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자들의 업체 부서에서 검색")
+        # else:
+        #     departments = Department.objects.none()
+        #     logger.warning(f"[DEPT_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     # 회사가 선택된 경우 해당 회사의 부서만 필터링
     if company_id:
@@ -3941,17 +3953,24 @@ def company_edit_view(request, pk):
     user_profile = get_user_profile(request.user)
     is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not (is_admin or company.created_by == request.user):
         # Admin이 아닌 경우 같은 회사 사용자가 생성한 업체인지 확인
         user_company = getattr(request.user, 'userprofile', None)
         if user_company and user_company.company:
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+                logger.warning(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 없음 (다른 회사)")
                 messages.error(request, '이 업체/학교를 수정할 권한이 없습니다.')
                 return redirect('reporting:company_list')
         else:
+            logger.warning(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 없음 (생성자 아님)")
             messages.error(request, '이 업체/학교를 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
             return redirect('reporting:company_list')
+    
+    logger.info(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 확인됨")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -3964,8 +3983,6 @@ def company_edit_view(request, pk):
             company.save()
             messages.success(request, f'"{name}" 업체/학교 정보가 수정되었습니다.')
             
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} '{name}' 수정 완료")
             
             return redirect('reporting:company_list')
@@ -4030,25 +4047,53 @@ def company_detail_view(request, pk):
     """업체/학교 상세 (부서 목록 포함) (Admin, Salesman 전용)"""
     company = get_object_or_404(Company, pk=pk)
     
-    # Admin이 아닌 경우 권한 확인
-    if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
-        # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
-        user_company = getattr(request.user, 'userprofile', None)
-        if user_company and user_company.company:
-            same_company_users = User.objects.filter(userprofile__company=user_company.company)
-            if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
-                messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
-                return redirect('reporting:company_list')
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # ======= 임시 수정: 모든 사용자가 모든 업체 상세보기 가능 =======
+    # 권한 체크를 제거하고 모든 salesman이 상세보기 가능하도록 변경
+    # 단, 수정/삭제 권한은 템플릿이나 별도 함수에서 제어
+    
+    is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+    user_company = getattr(request.user, 'userprofile', None)
+    
+    # 수정/삭제 권한 확인을 위한 변수 (템플릿에서 사용)
+    can_edit_company = False
+    if is_admin:
+        can_edit_company = True
+        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근 및 수정 권한 있음")
+    elif user_company and user_company.company:
+        # 같은 회사 사용자가 생성한 업체인지 확인 (수정 권한용)
+        same_company_users = User.objects.filter(userprofile__company=user_company.company)
+        can_edit_company = Company.objects.filter(pk=pk, created_by__in=same_company_users).exists()
+        
+        if can_edit_company:
+            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 및 수정 권한 있음 (같은 회사)")
         else:
-            messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
-            return redirect('reporting:company_list')
-    else:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
+            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 가능, 수정 권한 없음 (다른 회사)")
+    
+    logger.info(f"[COMPANY_DETAIL] 업체 '{company.name}' 상세보기 접근 (생성자: {company.created_by.username if company.created_by else 'Unknown'})")
+    
+    # ======= 원래 권한 체크 로직 (주석 처리됨) =======
+    # # Admin이 아닌 경우 권한 확인
+    # if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
+    #     # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
+    #     user_company = getattr(request.user, 'userprofile', None)
+    #     if user_company and user_company.company:
+    #         same_company_users = User.objects.filter(userprofile__company=user_company.company)
+    #         if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+    #             import logging
+    #             logger = logging.getLogger(__name__)
+    #             logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
+    #             messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
+    #             return redirect('reporting:company_list')
+    #     else:
+    #         messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
+    #         return redirect('reporting:company_list')
+    # else:
+    #     import logging
+    #     logger = logging.getLogger(__name__)
+    #     logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
     
     # 해당 업체의 부서 목록
     departments = company.departments.annotate(
@@ -4064,6 +4109,7 @@ def company_detail_view(request, pk):
         'company': company,
         'departments': departments,
         'dept_search': dept_search,
+        'can_edit_company': can_edit_company,  # 수정/삭제 권한 정보
         'page_title': f'{company.name} - 부서/연구실 관리'
     }
     return render(request, 'reporting/company_detail.html', context)
