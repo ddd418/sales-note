@@ -2440,7 +2440,7 @@ class UserEditForm(forms.Form):
 @role_required(['admin'])
 def user_list(request):
     """사용자 목록 (Admin 전용)"""
-    users = User.objects.select_related('userprofile').all()
+    users = User.objects.select_related('userprofile').all().order_by('username')
     
     # 검색 기능
     search_query = request.GET.get('search', '')
@@ -2456,7 +2456,7 @@ def user_list(request):
     if role_filter:
         users = users.filter(userprofile__role=role_filter)
     
-    # 페이지네이션
+    # 페이지네이션 (정렬된 쿼리셋 사용으로 경고 해결)
     paginator = Paginator(users, 10)
     page_number = request.GET.get('page')
     users = paginator.get_page(page_number)
