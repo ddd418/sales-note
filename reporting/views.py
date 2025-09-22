@@ -6139,13 +6139,18 @@ def history_delivery_items_api(request, history_id):
             logger.info(f"[HISTORY_DELIVERY_API] History 텍스트 데이터에서 품목 파싱: '{history.delivery_items[:100]}...'")
             # 기존 텍스트 데이터 파싱
             delivery_text = history.delivery_items.strip()
+            logger.info(f"[HISTORY_DELIVERY_API] 전체 텍스트 데이터: '{delivery_text}'")
             
             # 줄바꿈으로 분리하여 각 라인 처리
             lines = delivery_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            logger.info(f"[HISTORY_DELIVERY_API] 분리된 라인 수: {len(lines)}")
             
-            for line in lines:
+            for i, line in enumerate(lines):
                 line = line.strip()
+                logger.info(f"[HISTORY_DELIVERY_API] 라인 {i}: '{line}'")
+                
                 if not line:
+                    logger.info(f"[HISTORY_DELIVERY_API] 라인 {i}: 빈 라인 스킵")
                     continue
                 
                 # "품목명: 수량개 (금액원)" 패턴 파싱
@@ -6155,11 +6160,16 @@ def history_delivery_items_api(request, history_id):
                     quantity = float(match.group(2))
                     amount_str = match.group(3).replace(',', '').replace(' ', '')
                     
+                    logger.info(f"[HISTORY_DELIVERY_API] 파싱 성공 - 품목: '{item_name}', 수량: {quantity}, 금액문자열: '{amount_str}'")
+                    
                     try:
                         total_amount = float(amount_str)
                         # 부가세 포함 금액에서 단가 역산 (부가세 포함 / 수량)
                         unit_price = total_amount / quantity if quantity > 0 else 0
-                    except ValueError:
+                        
+                        logger.info(f"[HISTORY_DELIVERY_API] 계산 완료 - 총액: {total_amount}, 단가: {unit_price}")
+                    except ValueError as e:
+                        logger.error(f"[HISTORY_DELIVERY_API] 금액 파싱 실패: {e}")
                         total_amount = 0
                         unit_price = 0
                     
@@ -6172,7 +6182,9 @@ def history_delivery_items_api(request, history_id):
                         'tax_invoice_issued': history.tax_invoice_issued,  # History 기준
                         'source': 'history_text'  # 출처 표시
                     })
+                    logger.info(f"[HISTORY_DELIVERY_API] 품목 추가 완료: {item_name}")
                 else:
+                    logger.warning(f"[HISTORY_DELIVERY_API] 패턴 매칭 실패 - 라인: '{line}'")
                     # 패턴에 맞지 않는 경우, 전체를 품목명으로 처리
                     items_data.append({
                         'id': f'text_{len(items_data)}',  # 임시 ID
@@ -6183,6 +6195,7 @@ def history_delivery_items_api(request, history_id):
                         'tax_invoice_issued': history.tax_invoice_issued,  # History 기준
                         'source': 'history_text'  # 출처 표시
                     })
+                    logger.info(f"[HISTORY_DELIVERY_API] 기본 품목으로 추가: {line}")
         
         # 3. 연결된 Schedule의 DeliveryItem도 항상 확인 (History 기준 세금계산서 상태 적용)
         # History에 DeliveryItem이나 텍스트가 없어도 Schedule DeliveryItem은 항상 확인
