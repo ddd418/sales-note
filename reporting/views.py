@@ -4889,13 +4889,29 @@ def followup_excel_download(request):
         item_quantities = {}
         total_delivery_amount = 0
         
+        # 추적을 위한 로깅
+        logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 집계 시작")
+        logger.info(f"[EXCEL_DOWNLOAD] delivery_histories 개수: {delivery_histories.count()}")
+        
+        # 중복 방지를 위해 처리된 Schedule ID들을 추적
+        processed_schedule_ids = set()
+        
         for history in delivery_histories:
+            logger.info(f"[EXCEL_DOWNLOAD] History {history.id} 처리 중, 연결된 Schedule: {history.schedule_id}")
+            
             # 납품 금액 집계
             if history.delivery_amount:
                 total_delivery_amount += history.delivery_amount
+                logger.info(f"[EXCEL_DOWNLOAD] History {history.id} 금액: {history.delivery_amount}")
             
-            # 납품 품목 집계
+            # History에서 연결된 Schedule이 있다면 Schedule ID 기록 (중복 방지용)
+            if history.schedule_id:
+                processed_schedule_ids.add(history.schedule_id)
+                logger.info(f"[EXCEL_DOWNLOAD] Schedule {history.schedule_id} 중복 방지 목록에 추가")
+            
+            # 납품 품목 집계 - History 텍스트에서만 처리 (Schedule DeliveryItem은 나중에 별도 처리)
             if history.delivery_items:
+                logger.info(f"[EXCEL_DOWNLOAD] History {history.id} delivery_items 처리")
                 # 줄바꿈 문자 처리
                 processed_items = history.delivery_items.replace('\\n', '\n').replace('\\r\\n', '\n').replace('\\r', '\n').strip()
                 
@@ -4941,14 +4957,24 @@ def followup_excel_download(request):
                         else:
                             item_quantities[line] = 1
         
-        # Schedule 기반 DeliveryItem도 포함
-        schedule_deliveries = followup.schedules.filter(
+        # Schedule 기반 DeliveryItem도 포함 (History와 연결되지 않은 것만)
+        all_schedule_deliveries = followup.schedules.filter(
             activity_type='delivery',
             delivery_items_set__isnull=False
         )
         
+        logger.info(f"[EXCEL_DOWNLOAD] 전체 Schedule delivery 개수: {all_schedule_deliveries.count()}")
+        logger.info(f"[EXCEL_DOWNLOAD] 처리된 Schedule ID 목록: {processed_schedule_ids}")
+        
+        # History와 연결되지 않은 Schedule만 처리 (중복 방지)
+        schedule_deliveries = all_schedule_deliveries.exclude(id__in=processed_schedule_ids)
+        logger.info(f"[EXCEL_DOWNLOAD] 중복 제거 후 Schedule delivery 개수: {schedule_deliveries.count()}")
+        
         for schedule in schedule_deliveries:
+            logger.info(f"[EXCEL_DOWNLOAD] Schedule {schedule.id} DeliveryItem 처리 중")
             for item in schedule.delivery_items_set.all():
+                logger.info(f"[EXCEL_DOWNLOAD] DeliveryItem - {item.item_name}: {item.quantity}개, 금액: {item.total_price}")
+                
                 # Schedule 기반 품목의 금액도 포함 (Decimal 타입으로 변환)
                 if item.total_price:
                     total_delivery_amount += Decimal(str(item.total_price))
@@ -4957,7 +4983,7 @@ def followup_excel_download(request):
                 item_name = item.item_name
                 quantity = float(item.quantity)
                 
-                # 품목별 수량 누적 (History와 Schedule 통합)
+                # 품목별 수량 누적 (중복되지 않은 Schedule만)
                 if item_name in item_quantities:
                     item_quantities[item_name] += quantity
                 else:
@@ -4979,8 +5005,12 @@ def followup_excel_download(request):
                 items_text = ', '.join(items_list)
             else:
                 items_text = ', '.join(items_list[:10]) + f' 등 총 {len(items_list)}개 품목'
+                
+            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 최종 품목: {len(item_quantities)}개 종류")
+            logger.info(f"[EXCEL_DOWNLOAD] 최종 총 금액: {total_delivery_amount}")
         else:
             items_text = '납품 기록 없음'
+            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 기록 없음")
         
         # 기본 정보
         data = [
