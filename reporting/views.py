@@ -6143,6 +6143,21 @@ def history_delivery_items_api(request, history_id):
             
             # 줄바꿈으로 분리하여 각 라인 처리
             lines = delivery_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            
+            # 만약 줄바꿈이 문자열로 저장되어 있다면 \\n으로도 분리 시도
+            if len(lines) == 1 and '\\n' in delivery_text:
+                lines = delivery_text.split('\\n')
+                logger.info(f"[HISTORY_DELIVERY_API] \\n으로 분리 시도")
+            
+            # 그래도 하나의 라인이면, 품목 패턴을 찾아서 분리
+            if len(lines) == 1:
+                # 정규식으로 품목 패턴을 모두 찾기
+                pattern = r'([A-Z0-9.]+:\s*\d+(?:\.\d+)?개\s*\([0-9,]+원\))'
+                matches = re.findall(pattern, delivery_text)
+                if len(matches) > 1:
+                    lines = matches
+                    logger.info(f"[HISTORY_DELIVERY_API] 정규식으로 {len(matches)}개 품목 패턴 분리")
+            
             logger.info(f"[HISTORY_DELIVERY_API] 분리된 라인 수: {len(lines)}")
             
             for i, line in enumerate(lines):
