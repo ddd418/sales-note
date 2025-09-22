@@ -227,39 +227,125 @@
                             {% if delivery.type == 'history' %}
                               {% if user.userprofile.role == 'manager' %}
                                 <!-- 매니저는 읽기 전용 -->
-                                {% if delivery.tax_invoice_issued %}
-                                  <span class="badge bg-primary">발행완료</span>
+                                {% if delivery.history_tax_status.has_items %}
+                                  {% if delivery.history_tax_status.all_issued %}
+                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
+                                  {% elif delivery.history_tax_status.none_issued %}
+                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.total_count }}건 미발행</span>
+                                  {% else %}
+                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
+                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.pending_count }}건 미발행</span>
+                                  {% endif %}
                                 {% else %}
-                                  <span class="badge bg-secondary">미발행</span>
-                                {% endif %}
-                              {% else %}
-                                <!-- 관리자와 영업사원은 편집 가능 -->
-                                <div class="tax-invoice-toggle" 
-                                     data-type="history" 
-                                     data-id="{{ delivery.id }}" 
-                                     style="cursor: pointer;">
                                   {% if delivery.tax_invoice_issued %}
                                     <span class="badge bg-primary">발행완료</span>
                                   {% else %}
                                     <span class="badge bg-secondary">미발행</span>
                                   {% endif %}
-                                </div>
+                                {% endif %}
+                              {% else %}
+                                <!-- 관리자와 영업사원은 편집 가능 - 납품일별 일괄 토글 -->
+                                {% if delivery.history_tax_status.has_items %}
+                                  <!-- 품목이 있는 경우: 품목 개수 기반 상태 표시 -->
+                                  {% if delivery.history_tax_status.all_issued %}
+                                    <div class="tax-invoice-toggle" 
+                                         data-type="history" 
+                                         data-id="{{ delivery.id }}" 
+                                         data-schedule-id="{{ delivery.schedule_id }}"
+                                         style="cursor: pointer;"
+                                         title="클릭하여 모든 품목을 미발행으로 변경">
+                                      <span class="badge bg-primary">
+                                        <i class="fas fa-check me-1"></i>전체 발행완료
+                                      </span>
+                                    </div>
+                                  {% elif delivery.history_tax_status.none_issued %}
+                                    <div class="tax-invoice-toggle" 
+                                         data-type="history" 
+                                         data-id="{{ delivery.id }}" 
+                                         data-schedule-id="{{ delivery.schedule_id }}"
+                                         style="cursor: pointer;"
+                                         title="클릭하여 모든 품목을 발행완료로 변경">
+                                      <span class="badge bg-secondary">
+                                        <i class="fas fa-times me-1"></i>전체 미발행
+                                      </span>
+                                    </div>
+                                  {% else %}
+                                    <!-- 일부만 발행된 경우: 개별 편집 필요 -->
+                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
+                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.pending_count }}건 미발행</span>
+                                    <br><button class="btn btn-sm btn-outline-primary mt-1" 
+                                               onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')">
+                                      <i class="fas fa-edit me-1"></i>개별 편집
+                                    </button>
+                                  {% endif %}
+                                  <small class="text-muted d-block mt-1">클릭시 모든 품목 일괄변경</small>
+                                {% else %}
+                                  <!-- 품목이 없는 경우: 단순 토글 -->
+                                  <div class="tax-invoice-toggle" 
+                                       data-type="history" 
+                                       data-id="{{ delivery.id }}" 
+                                       data-schedule-id="{{ delivery.schedule_id }}"
+                                       style="cursor: pointer;"
+                                       title="클릭하여 세금계산서 상태 변경">
+                                    {% if delivery.tax_invoice_issued %}
+                                      <span class="badge bg-primary">
+                                        <i class="fas fa-check me-1"></i>발행완료
+                                      </span>
+                                    {% else %}
+                                      <span class="badge bg-secondary">
+                                        <i class="fas fa-times me-1"></i>미발행
+                                      </span>
+                                    {% endif %}
+                                  </div>
+                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                {% endif %}
                               {% endif %}
                             {% elif delivery.type == 'schedule_only' %}
-                              <div class="schedule-tax-status">
-                                {% if delivery.schedule_tax_status.issued_count > 0 %}
-                                  <span class="badge bg-primary">{{ delivery.schedule_tax_status.issued_count }}건 발행</span>
-                                {% endif %}
-                                {% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}
-                                  <span class="badge bg-secondary">미발행</span>
-                                {% endif %}
-                                {% if delivery.schedule_id and user.userprofile.role != 'manager' %}
-                                  <br><button class="btn btn-sm btn-outline-primary mt-1" 
-                                             onclick="editScheduleTaxInvoice({{ delivery.schedule_id }})">
-                                    <i class="fas fa-edit me-1"></i>편집
-                                  </button>
-                                {% endif %}
-                              </div>
+                              {% if user.userprofile.role == 'manager' %}
+                                <!-- 매니저는 읽기 전용 -->
+                                <div class="schedule-tax-status">
+                                  {% if delivery.schedule_tax_status.issued_count > 0 %}
+                                    <span class="badge bg-primary">{{ delivery.schedule_tax_status.issued_count }}건 발행</span>
+                                  {% endif %}
+                                  {% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}
+                                    <span class="badge bg-secondary">미발행</span>
+                                  {% endif %}
+                                </div>
+                              {% else %}
+                                <!-- 관리자와 영업사원은 편집 가능 - 일괄 토글 -->
+                                <div class="schedule-tax-status">
+                                  {% if delivery.schedule_tax_status.all_issued %}
+                                    <div class="tax-invoice-toggle" 
+                                         data-type="schedule_bulk" 
+                                         data-id="{{ delivery.schedule_id }}" 
+                                         style="cursor: pointer;"
+                                         title="클릭하여 모든 품목을 미발행으로 변경">
+                                      <span class="badge bg-primary">
+                                        <i class="fas fa-check me-1"></i>전체 발행완료
+                                      </span>
+                                    </div>
+                                  {% elif delivery.schedule_tax_status.none_issued %}
+                                    <div class="tax-invoice-toggle" 
+                                         data-type="schedule_bulk" 
+                                         data-id="{{ delivery.schedule_id }}" 
+                                         style="cursor: pointer;"
+                                         title="클릭하여 모든 품목을 발행완료로 변경">
+                                      <span class="badge bg-secondary">
+                                        <i class="fas fa-times me-1"></i>전체 미발행
+                                      </span>
+                                    </div>
+                                  {% else %}
+                                    <!-- 일부만 발행된 경우 - 개별 편집 버튼 -->
+                                    <span class="badge bg-primary">{{ delivery.schedule_tax_status.issued_count }}건 발행</span>
+                                    <span class="badge bg-secondary">{{ delivery.schedule_tax_status.pending_count }}건 미발행</span>
+                                    <br><button class="btn btn-sm btn-outline-primary mt-1" 
+                                               onclick="editScheduleTaxInvoice({{ delivery.schedule_id }})">
+                                      <i class="fas fa-edit me-1"></i>개별 편집
+                                    </button>
+                                  {% endif %}
+                                  <small class="text-muted d-block mt-1">클릭시 모든 품목 일괄변경</small>
+                                </div>
+                              {% endif %}
                             {% endif %}
                           </td>
                           <td>
@@ -871,7 +957,8 @@ async function processAllDeliveryData() {
   
   // 요약 정보 업데이트
   document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
-  document.getElementById('totalDeliveryAmount').textContent = totalAmount.toLocaleString();
+  // 백엔드에서 계산한 정확한 총액 사용 (JavaScript 계산 대신)
+  document.getElementById('totalDeliveryAmount').textContent = {{ total_amount|default:0 }}.toLocaleString();
   
   // 테이블 생성
   const tableBody = document.getElementById('allDeliveryItemsTable');
@@ -1416,19 +1503,35 @@ function parseDeliveryItemsText(itemsText) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // History 타입 세금계산서 상태 토글
+    // 세금계산서 상태 일괄 토글 (납품일별)
     document.querySelectorAll('.tax-invoice-toggle').forEach(function(element) {
         element.addEventListener('click', function() {
             const type = this.dataset.type;
             const id = this.dataset.id;
+            const scheduleId = this.dataset.scheduleId;
             const currentStatus = this.querySelector('.badge').classList.contains('bg-primary');
             
-            updateTaxInvoiceStatus(type, id, !currentStatus);
+            // 확인 메시지
+            const statusText = currentStatus ? '미발행' : '발행완료';
+            const message = type === 'history' 
+                ? `이 납품일의 모든 품목을 "${statusText}"로 변경하시겠습니까?`
+                : `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
+            
+            if (confirm(message)) {
+                updateTaxInvoiceStatus(type, id, !currentStatus);
+            }
         });
     });
     
     // 세금계산서 상태 업데이트 함수
     function updateTaxInvoiceStatus(type, id, status) {
+        // 로딩 표시
+        const loadingText = status ? '발행 처리중...' : '미발행 처리중...';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'alert alert-info';
+        loadingDiv.textContent = loadingText;
+        document.body.appendChild(loadingDiv);
+        
         fetch('{% url "reporting:update_tax_invoice_status" %}', {
             method: 'POST',
             headers: {
@@ -1444,7 +1547,12 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // 페이지 새로고침으로 상태 반영
+                // 성공 메시지와 함께 페이지 새로고침
+                if (data.updated_count) {
+                    alert(`성공: ${data.updated_count}개 품목의 세금계산서 상태가 변경되었습니다.`);
+                } else {
+                    alert('세금계산서 상태가 성공적으로 변경되었습니다.');
+                }
                 window.location.reload();
             } else {
                 if (data.error.includes('권한')) {
@@ -1460,6 +1568,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.');
             } else {
                 alert('서버 오류가 발생했습니다.');
+            }
+        })
+        .finally(() => {
+            // 로딩 표시 제거
+            if (loadingDiv.parentNode) {
+                loadingDiv.parentNode.removeChild(loadingDiv);
             }
         });
     }

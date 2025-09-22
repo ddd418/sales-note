@@ -368,23 +368,10 @@ class ScheduleForm(forms.ModelForm):
             
         # 하나과학이 아닌 경우 activity_type에서 서비스 제거
         if request and not getattr(request, 'is_hanagwahak', False):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"[SCHFORM] request.is_hanagwahak = False, 서비스 옵션 제거")
-            logger.info(f"[SCHFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
-            logger.info(f"[SCHFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             self.fields['activity_type'].choices = [
                 choice for choice in self.fields['activity_type'].choices 
                 if choice[0] != 'service'
             ]
-        else:
-            import logging
-            logger = logging.getLogger(__name__)
-            is_hanagwahak = getattr(request, 'is_hanagwahak', False) if request else False
-            logger.info(f"[SCHFORM] request.is_hanagwahak = {is_hanagwahak}, 서비스 옵션 유지")
-            if request:
-                logger.info(f"[SCHFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
-                logger.info(f"[SCHFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -480,20 +467,7 @@ class HistoryForm(forms.ModelForm):
         # 하나과학이 아닌 경우 서비스도 제외
         excluded_types = ['memo']
         if request and not getattr(request, 'is_hanagwahak', False):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"[HISTORYFORM] request.is_hanagwahak = False, 서비스 옵션 제거")
-            logger.info(f"[HISTORYFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
-            logger.info(f"[HISTORYFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             excluded_types.append('service')
-        else:
-            import logging
-            logger = logging.getLogger(__name__)
-            is_hanagwahak = getattr(request, 'is_hanagwahak', False) if request else False
-            logger.info(f"[HISTORYFORM] request.is_hanagwahak = {is_hanagwahak}, 서비스 옵션 유지")
-            if request:
-                logger.info(f"[HISTORYFORM] 사용자: {getattr(request, 'user', 'Unknown')}")
-                logger.info(f"[HISTORYFORM] 회사명: {getattr(request, 'user_company_name', 'Unknown')}")
             
         self.fields['action_type'].choices = [
             choice for choice in self.fields['action_type'].choices 
@@ -4876,29 +4850,22 @@ def followup_excel_download(request):
         # 정규화된 품목명과 원본 품목명 매핑
         item_name_mapping = {}
         
-        # 추적을 위한 로깅
-        logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 집계 시작")
-        logger.info(f"[EXCEL_DOWNLOAD] delivery_histories 개수: {delivery_histories.count()}")
+        # 추적을 위한 로깅 (생략)
         
         # 중복 방지를 위해 처리된 Schedule ID들을 추적
         processed_schedule_ids = set()
         
         for history in delivery_histories:
-            logger.info(f"[EXCEL_DOWNLOAD] History {history.id} 처리 중, 연결된 Schedule: {history.schedule_id}")
-            
-            # 납품 금액 집계
+            # 납품 금액 집계 - History 우선
             if history.delivery_amount:
                 total_delivery_amount += history.delivery_amount
-                logger.info(f"[EXCEL_DOWNLOAD] History {history.id} 금액: {history.delivery_amount}")
             
             # History에서 연결된 Schedule이 있다면 Schedule ID 기록 (중복 방지용)
             if history.schedule_id:
                 processed_schedule_ids.add(history.schedule_id)
-                logger.info(f"[EXCEL_DOWNLOAD] Schedule {history.schedule_id} 중복 방지 목록에 추가")
             
             # 납품 품목 집계 - History 텍스트에서만 처리 (Schedule DeliveryItem은 나중에 별도 처리)
             if history.delivery_items:
-                logger.info(f"[EXCEL_DOWNLOAD] History {history.id} delivery_items 처리")
                 # 줄바꿈 문자 처리
                 processed_items = history.delivery_items.replace('\\n', '\n').replace('\\r\\n', '\n').replace('\\r', '\n').strip()
                 
@@ -4927,18 +4894,14 @@ def followup_excel_download(request):
                                 
                                 # 품목별 수량 누적 (정규화된 이름으로)
                                 if display_name in item_quantities:
-                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적: {display_name} {item_quantities[display_name]} + {quantity} = {item_quantities[display_name] + quantity}")
                                     item_quantities[display_name] += quantity
                                 else:
-                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규: {display_name} = {quantity}")
                                     item_quantities[display_name] = quantity
                             else:
                                 # 수량을 찾지 못한 경우 1개로 처리
                                 if display_name in item_quantities:
-                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(기본1개): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
                                     item_quantities[display_name] += 1
                                 else:
-                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(기본1개): {display_name} = 1")
                                     item_quantities[display_name] = 1
                         except:
                             # 파싱 실패 시 품목명만 추출하고 1개로 처리
@@ -4951,10 +4914,8 @@ def followup_excel_download(request):
                             display_name = item_name_mapping[normalized_name]
                             
                             if display_name in item_quantities:
-                                logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(파싱실패): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
                                 item_quantities[display_name] += 1
                             else:
-                                logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(파싱실패): {display_name} = 1")
                                 item_quantities[display_name] = 1
                     else:
                         # 단순 품목명인 경우 1개로 처리
@@ -4965,37 +4926,45 @@ def followup_excel_download(request):
                         display_name = item_name_mapping[normalized_name]
                         
                         if display_name in item_quantities:
-                            logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(단순명): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
                             item_quantities[display_name] += 1
                         else:
-                            logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(단순명): {display_name} = 1")
                             item_quantities[display_name] = 1
         
         # Schedule 기반 DeliveryItem도 포함 (History와 연결되지 않은 것만)
         all_schedule_deliveries = followup.schedules.filter(
             activity_type='delivery',
             delivery_items_set__isnull=False
-        )
-        
-        logger.info(f"[EXCEL_DOWNLOAD] 전체 Schedule delivery 개수: {all_schedule_deliveries.count()}")
-        logger.info(f"[EXCEL_DOWNLOAD] 처리된 Schedule ID 목록: {processed_schedule_ids}")
+        ).distinct()  # 중복 제거 추가
         
         # History와 연결되지 않은 Schedule만 처리 (중복 방지)
-        schedule_deliveries = all_schedule_deliveries.exclude(id__in=processed_schedule_ids)
-        logger.info(f"[EXCEL_DOWNLOAD] 중복 제거 후 Schedule delivery 개수: {schedule_deliveries.count()}")
+        schedule_deliveries = all_schedule_deliveries.exclude(id__in=processed_schedule_ids).distinct()  # 중복 제거 강화
         
         for schedule in schedule_deliveries:
-            logger.info(f"[EXCEL_DOWNLOAD] Schedule {schedule.id} DeliveryItem 처리 중")
+            
+            # Schedule별 총액 계산 (한 번만)
+            schedule_total = 0
+            schedule_items = []
+            
             for item in schedule.delivery_items_set.all():
-                logger.info(f"[EXCEL_DOWNLOAD] DeliveryItem - {item.item_name}: {item.quantity}개, 금액: {item.total_price}")
                 
-                # Schedule 기반 품목의 금액도 포함 (Decimal 타입으로 변환)
+                # 독립 Schedule 기반 품목의 금액만 포함
                 if item.total_price:
-                    total_delivery_amount += Decimal(str(item.total_price))
+                    schedule_total += Decimal(str(item.total_price))
                 
-                # Schedule 기반 품목 집계
-                item_name = item.item_name
-                quantity = float(item.quantity)
+                # 품목 정보 저장
+                schedule_items.append({
+                    'name': item.item_name,
+                    'quantity': float(item.quantity)
+                })
+            
+            # Schedule 총액을 전체 납품 금액에 추가 (Schedule당 한 번만)
+            if schedule_total > 0:
+                total_delivery_amount += schedule_total
+            
+            # Schedule 품목 집계 (Schedule당 한 번만)
+            for item_info in schedule_items:
+                item_name = item_info['name']
+                quantity = item_info['quantity']
                 
                 # 품목명 정규화 및 매핑 저장
                 normalized_name = normalize_item_name(item_name)
@@ -5005,18 +4974,12 @@ def followup_excel_download(request):
                 
                 # 품목별 수량 누적 (중복되지 않은 Schedule만, 정규화된 이름으로)
                 if display_name in item_quantities:
-                    logger.info(f"[EXCEL_DOWNLOAD] Schedule 품목 누적: {display_name} {item_quantities[display_name]} + {quantity} = {item_quantities[display_name] + quantity}")
                     item_quantities[display_name] += quantity
                 else:
-                    logger.info(f"[EXCEL_DOWNLOAD] Schedule 품목 신규: {display_name} = {quantity}")
                     item_quantities[display_name] = quantity
         
         # 품목 텍스트 생성 (품목명과 총 수량 표시)
         if item_quantities:
-            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 품목별 최종 집계:")
-            for item_name, total_qty in sorted(item_quantities.items()):
-                logger.info(f"[EXCEL_DOWNLOAD] - {item_name}: {total_qty}개")
-            
             items_list = []
             for item_name, total_qty in sorted(item_quantities.items()):
                 # 소수점이 있으면 그대로, 정수면 정수로 표시
@@ -5031,13 +4994,8 @@ def followup_excel_download(request):
                 items_text = ', '.join(items_list)
             else:
                 items_text = ', '.join(items_list[:10]) + f' 등 총 {len(items_list)}개 품목'
-                
-            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 최종 품목: {len(item_quantities)}개 종류")
-            logger.info(f"[EXCEL_DOWNLOAD] 최종 총 금액: {total_delivery_amount}")
-            logger.info(f"[EXCEL_DOWNLOAD] 엑셀 표시 텍스트: '{items_text}'")
         else:
             items_text = '납품 기록 없음'
-            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 기록 없음")
         
         # 기본 정보
         data = [
@@ -5423,16 +5381,13 @@ def customer_detail_report_view(request, followup_id):
     from datetime import datetime, timedelta
     import json
     
-    print(f"=== 고객 상세 보고서 요청 (ID: {followup_id}) ===")
-    logger.info(f"=== 고객 상세 보고서 요청 (ID: {followup_id}) ===")
-    
     # 권한 확인 및 팔로우업 조회
     try:
         followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
         
         # Admin 사용자는 모든 데이터에 접근 가능
         if getattr(request, 'is_admin', False):
-            logger.info(f"Admin 사용자 {request.user.username}가 고객 {followup_id}에 접근")
+            pass  # Admin은 권한 체크 없이 진행
         else:
             # 권한 체크
             if not can_access_user_data(request.user, followup.user):
@@ -5468,30 +5423,31 @@ def customer_detail_report_view(request, followup_id):
     # 납품 히스토리
     delivery_histories = histories.filter(action_type='delivery_schedule')
     
-    # 전체 데이터 조회 로그 추가
-    print(f"=== 전체 납품 데이터 조회 시작 (고객 ID: {followup_id}) ===")
-    print(f"전체 History 개수: {histories.count()}")
-    print(f"납품 History 개수: {delivery_histories.count()}")
+    # 납품 금액 계산 (중복 제거)
+    # 1. History와 연결된 Schedule이 있는 경우: History의 delivery_amount 우선 사용
+    history_with_schedule_amount = delivery_histories.filter(
+        schedule__isnull=False
+    ).aggregate(total=Sum('delivery_amount'))['total'] or 0
     
-    logger.info(f"=== 전체 납품 데이터 조회 시작 (고객 ID: {followup_id}) ===")
-    logger.info(f"전체 History 개수: {histories.count()}")
-    logger.info(f"납품 History 개수: {delivery_histories.count()}")
+    # 2. History와 연결되지 않은 독립적인 History의 delivery_amount
+    history_without_schedule_amount = delivery_histories.filter(
+        schedule__isnull=True
+    ).aggregate(total=Sum('delivery_amount'))['total'] or 0
     
-    # 각 delivery_history 상세 정보
-    for history in delivery_histories:
-        print(f"History {history.id}: action_type={history.action_type}, delivery_amount={history.delivery_amount}, schedule_id={history.schedule_id if history.schedule else None}")
-        logger.info(f"History {history.id}: action_type={history.action_type}, delivery_amount={history.delivery_amount}, schedule_id={history.schedule_id if history.schedule else None}")
+    # 3. History와 연결되지 않은 Schedule의 DeliveryItem total_price 합계
+    history_schedule_ids = set(
+        delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True)
+    )
     
-    # 납품 금액 계산
-    history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or 0
-    
-    # Schedule에서 해당 고객의 DeliveryItem 금액
-    schedule_amount = DeliveryItem.objects.filter(
+    schedule_only_amount = DeliveryItem.objects.filter(
         schedule__followup=followup,
         schedule__activity_type='delivery'
+    ).exclude(
+        schedule_id__in=history_schedule_ids
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
-    total_amount = history_amount + schedule_amount
+    # 최종 총액 = History와 연결된 Schedule 금액 + 독립 History 금액 + 독립 Schedule 금액
+    total_amount = history_with_schedule_amount + history_without_schedule_amount + schedule_only_amount
     
     # 전체 Schedule 조회 (참고용)
     all_schedules = Schedule.objects.filter(followup=followup)
@@ -5651,7 +5607,7 @@ def customer_detail_report_view(request, followup_id):
     
     # Schedule 납품 일정에 총액 정보 추가
     for schedule in schedule_deliveries:
-        total_amount = 0
+        schedule_total_amount = 0  # 변수명 변경: total_amount → schedule_total_amount
         tax_invoice_issued_count = 0
         total_items_count = 0
         
@@ -5662,12 +5618,12 @@ def customer_detail_report_view(request, followup_id):
                 item_total = float(item.unit_price) * item.quantity * 1.1
             else:
                 item_total = 0
-            total_amount += item_total
+            schedule_total_amount += item_total  # 변수명 변경
             total_items_count += 1
             if item.tax_invoice_issued:
                 tax_invoice_issued_count += 1
         
-        schedule.calculated_total_amount = total_amount
+        schedule.calculated_total_amount = schedule_total_amount  # 변수명 변경
         schedule.tax_invoice_issued_count = tax_invoice_issued_count
         schedule.total_items_count = total_items_count
     
@@ -5722,6 +5678,42 @@ def customer_detail_report_view(request, followup_id):
         print(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
         logger.info(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
         
+        # History의 품목 개수 계산
+        history_items_count = 0
+        history_tax_issued_count = 0
+        
+        # History에 직접 DeliveryItem이 있는 경우
+        history_delivery_items = history.delivery_items_set.all()
+        if history_delivery_items.exists():
+            history_items_count = history_delivery_items.count()
+            history_tax_issued_count = history_delivery_items.filter(tax_invoice_issued=True).count()
+        elif history.delivery_items and history.delivery_items.strip():
+            # 텍스트 데이터에서 품목 개수 계산
+            import re
+            delivery_text = history.delivery_items.strip()
+            lines = delivery_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            
+            # 줄바꿈이 문자열로 저장된 경우
+            if len(lines) == 1 and '\\n' in delivery_text:
+                lines = delivery_text.split('\\n')
+            
+            # 정규식으로 품목 패턴 분리
+            if len(lines) == 1:
+                pattern = r'([A-Z0-9.]+:\s*\d+(?:\.\d+)?개\s*\([0-9,]+원\))'
+                matches = re.findall(pattern, delivery_text)
+                if len(matches) > 1:
+                    lines = matches
+            
+            # 유효한 라인 수로 품목 개수 계산
+            for line in lines:
+                line = line.strip()
+                if line and (':' in line or '개' in line):
+                    history_items_count += 1
+            
+            # History 기준으로 세금계산서 상태 적용
+            if history.tax_invoice_issued:
+                history_tax_issued_count = history_items_count
+        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -5733,6 +5725,15 @@ def customer_detail_report_view(request, followup_id):
             'content': history.content,
             'user': history.user.username,
             'has_schedule_items': False,
+            # History 품목 상태 정보 추가
+            'history_tax_status': {
+                'issued_count': history_tax_issued_count,
+                'total_count': history_items_count,
+                'pending_count': history_items_count - history_tax_issued_count,
+                'all_issued': history_tax_issued_count > 0 and history_tax_issued_count == history_items_count,
+                'none_issued': history_tax_issued_count == 0,
+                'has_items': history_items_count > 0,
+            }
         }
         
         # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
@@ -5750,15 +5751,32 @@ def customer_detail_report_view(request, followup_id):
                 delivery_data['schedule_items'] = schedule_items
                 # Schedule 품목의 총액 계산
                 schedule_total = 0
+                schedule_items_count = schedule_items.count()
+                schedule_tax_issued_count = schedule_items.filter(tax_invoice_issued=True).count()
+                
                 for item in schedule_items:
                     if item.unit_price:
                         item_total = float(item.unit_price) * item.quantity * 1.1
                         schedule_total += item_total
                 delivery_data['schedule_amount'] = schedule_total
+                
+                # History의 품목 상태에 Schedule 품목도 합산
+                total_items = delivery_data['history_tax_status']['total_count'] + schedule_items_count
+                total_issued = delivery_data['history_tax_status']['issued_count'] + schedule_tax_issued_count
+                
+                delivery_data['history_tax_status'].update({
+                    'total_count': total_items,
+                    'issued_count': total_issued,
+                    'pending_count': total_items - total_issued,
+                    'all_issued': total_issued > 0 and total_issued == total_items,
+                    'none_issued': total_issued == 0,
+                    'has_items': total_items > 0,
+                })
+                
                 # 처리된 Schedule ID 기록
                 processed_schedule_ids.add(history.schedule.id)
                 print(f"🔍 processed_schedule_ids에 {history.schedule.id} 추가됨")
-                logger.info(f"Schedule {history.schedule.id} 처리됨 (총액: {schedule_total})")
+                logger.info(f"Schedule {history.schedule.id} 처리됨 (총액: {schedule_total}, History와 통합)")
         
         integrated_deliveries.append(delivery_data)
     
@@ -5798,6 +5816,9 @@ def customer_detail_report_view(request, followup_id):
                 'schedule_tax_status': {
                     'issued_count': schedule.tax_invoice_issued_count,
                     'total_count': schedule.total_items_count,
+                    'pending_count': schedule.total_items_count - schedule.tax_invoice_issued_count,
+                    'all_issued': schedule.tax_invoice_issued_count == schedule.total_items_count,
+                    'none_issued': schedule.tax_invoice_issued_count == 0,
                 }
             }
             print(f"Schedule {schedule.id} delivery_data 생성 완료 - date={delivery_data['date']}, amount={delivery_data['amount']}, schedule_amount={delivery_data['schedule_amount']}")
@@ -5830,6 +5851,10 @@ def customer_detail_report_view(request, followup_id):
     meeting_histories = histories.filter(
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
+    
+    # 🔥 Context 생성 직전 최종 확인
+    print(f"🚨🚨🚨 Context 생성 직전 total_amount 최종 확인: {total_amount} 🚨🚨🚨")
+    logger.info(f"🚨🚨🚨 Context 생성 직전 total_amount 최종 확인: {total_amount} 🚨🚨🚨")
     
     context = {
         'followup': followup,
@@ -6173,15 +6198,17 @@ def history_delivery_items_api(request, history_id):
             logger.info(f"[HISTORY_DELIVERY_API] History에 {delivery_items.count()}개 DeliveryItem 발견")
             for item in delivery_items:
                 item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                # History의 세금계산서 상태를 기준으로 함 (동기화)
                 items_data.append({
                     'id': item.id,
                     'item_name': item.item_name,
                     'quantity': item.quantity,
                     'unit_price': float(item.unit_price),
                     'total_price': float(item_total),
-                    'tax_invoice_issued': item.tax_invoice_issued,
+                    'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
                     'source': 'history'  # 출처 표시
                 })
+                logger.info(f"[HISTORY_DELIVERY_API] DeliveryItem {item.id}: tax_invoice_issued = {history.tax_invoice_issued} (History 기준)")
         else:
             logger.info(f"[HISTORY_DELIVERY_API] History에 DeliveryItem 없음")
         
@@ -6495,8 +6522,32 @@ def update_tax_invoice_status(request):
                         user_profile_obj.company != history_user_profile.company):
                         return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
                 
+                logger.info(f"[TAX_INVOICE_UPDATE] History {history.id} 업데이트 시작")
+                logger.info(f"[TAX_INVOICE_UPDATE] 이전 상태: {history.tax_invoice_issued}")
+                logger.info(f"[TAX_INVOICE_UPDATE] 새 상태: {tax_invoice_issued}")
+                
                 history.tax_invoice_issued = tax_invoice_issued
                 history.save()
+                logger.info(f"[TAX_INVOICE_UPDATE] History {history.id} 저장 완료")
+                
+                # History에 직접 연결된 DeliveryItem들도 함께 업데이트
+                history_delivery_items = history.delivery_items_set.all()
+                if history_delivery_items.exists():
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}에 직접 연결된 DeliveryItem 발견: {history_delivery_items.count()}개")
+                    updated_count = history_delivery_items.update(tax_invoice_issued=tax_invoice_issued)
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}에 직접 연결된 {updated_count}개 DeliveryItem 세금계산서 상태를 {tax_invoice_issued}로 업데이트")
+                else:
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}에 직접 연결된 DeliveryItem 없음")
+                
+                # History와 연결된 Schedule의 모든 DeliveryItem도 함께 업데이트
+                if history.schedule:
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}와 연결된 Schedule {history.schedule.id} 발견")
+                    schedule_updated_count = DeliveryItem.objects.filter(schedule=history.schedule).update(
+                        tax_invoice_issued=tax_invoice_issued
+                    )
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}와 연결된 Schedule {history.schedule.id}의 {schedule_updated_count}개 DeliveryItem 세금계산서 상태를 {tax_invoice_issued}로 업데이트")
+                else:
+                    logger.info(f"[TAX_INVOICE_UPDATE] History {history.id}에 연결된 Schedule 없음")
                 
                 return JsonResponse({
                     'success': True,
@@ -6534,6 +6585,45 @@ def update_tax_invoice_status(request):
                 
             except DeliveryItem.DoesNotExist:
                 return JsonResponse({'error': '해당 납품 품목을 찾을 수 없습니다.'}, status=404)
+                
+        elif delivery_type == 'schedule_bulk':
+            # Schedule의 모든 DeliveryItem 일괄 업데이트
+            try:
+                schedule = Schedule.objects.get(id=delivery_id)
+                
+                # 권한 체크
+                if not can_access_user_data(request.user, schedule.user):
+                    return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    schedule_user_profile = getattr(schedule.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        schedule_user_profile and schedule_user_profile.company and
+                        user_profile_obj.company != schedule_user_profile.company):
+                        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+                
+                # Schedule의 모든 DeliveryItem 업데이트
+                updated_count = DeliveryItem.objects.filter(schedule=schedule).update(
+                    tax_invoice_issued=tax_invoice_issued
+                )
+                
+                # 연결된 History도 함께 업데이트
+                History.objects.filter(schedule=schedule).update(
+                    tax_invoice_issued=tax_invoice_issued
+                )
+                
+                logger.info(f"Schedule {schedule.id}의 {updated_count}개 DeliveryItem과 연결된 History 세금계산서 상태를 {tax_invoice_issued}로 업데이트")
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'세금계산서 상태가 업데이트되었습니다. (품목 {updated_count}개)',
+                    'updated_count': updated_count
+                })
+                
+            except Schedule.DoesNotExist:
+                return JsonResponse({'error': '해당 일정을 찾을 수 없습니다.'}, status=404)
         
         else:
             return JsonResponse({'error': '잘못된 요청입니다.'}, status=400)
