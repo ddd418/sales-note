@@ -535,14 +535,14 @@
                     </select>
                   </div>
                   
-                  <!-- 담당자 필터 -->
+                  <!-- 고객 우선순위 필터 -->
                   <div class="col-md-2">
-                    <label for="user" class="form-label">담당자</label>
-                    <select class="form-control" id="user" name="user">
+                    <label for="priority" class="form-label">고객 우선순위</label>
+                    <select class="form-control" id="priority" name="priority">
                       <option value="">전체</option>
-                      {% for user_option in users %}
-                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
-                        {{ user_option.username }}
+                      {% for priority_value, priority_display in priority_choices %}
+                      <option value="{{ priority_value }}" {% if priority_filter == priority_value %}selected{% endif %}>
+                        {{ priority_display }}
                       </option>
                       {% endfor %}
                     </select>
@@ -562,13 +562,13 @@
                 </div>
                 
                 <!-- 검색 결과 정보 -->
-                {% if search_query or company_filter or user_filter %}
+                {% if search_query or company_filter or priority_filter %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_count }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
                     {% if selected_company %} | 업체/학교: <strong>{{ selected_company.name }}</strong>{% endif %}
-                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
+                    {% if selected_priority_display %} | 우선순위: <strong>{{ selected_priority_display }}</strong>{% endif %}
                   </small>
                 </div>
                 {% endif %}

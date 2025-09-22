@@ -528,17 +528,10 @@ def followup_list_view(request):
             Q(notes__icontains=search_query)
         )
     
-    # 담당자 필터링 - 권한 체크 추가
-    user_filter = request.GET.get('user')
-    if user_filter:
-        # 접근 권한이 있는 사용자인지 확인
-        accessible_users = get_accessible_users(request.user)
-        try:
-            filter_user = accessible_users.get(id=user_filter)
-            followups = followups.filter(user=filter_user)
-        except User.DoesNotExist:
-            # 접근 권한이 없는 사용자인 경우 필터링하지 않음
-            pass
+    # 우선순위 필터링
+    priority_filter = request.GET.get('priority')
+    if priority_filter:
+        followups = followups.filter(priority=priority_filter)
     
     # 업체별 카운트 (업체 필터 적용 전 기준)
     from django.db.models import Count, Q as DbQ
@@ -559,15 +552,9 @@ def followup_list_view(request):
     # 정렬 (최신순)
     followups = followups.order_by('-created_at')
     
-    # 담당자 목록 (필터용) - 권한 기반으로 수정
-    user_profile = get_user_profile(request.user)
-    if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자 목록
-        accessible_users = get_accessible_users(request.user)
-        users = accessible_users.filter(followup__isnull=False).distinct()
-    else:
-        # Salesman은 자기 자신만
-        users = [request.user]
+    # 우선순위 선택지 (필터용)
+    from .models import FollowUp
+    priority_choices = FollowUp.PRIORITY_CHOICES
     
     # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
     accessible_users = get_accessible_users(request.user)
@@ -583,17 +570,19 @@ def followup_list_view(request):
             user__in=accessible_users
         ).count()
     
-    # 선택된 사용자 정보 - 권한 체크 추가
-    selected_user = None
-    if user_filter:
-        try:
-            candidate_user = User.objects.get(id=user_filter)
-            # 접근 권한이 있는 사용자인지 확인
-            accessible_users = get_accessible_users(request.user)
-            if candidate_user in accessible_users:
-                selected_user = candidate_user
-        except (User.DoesNotExist, ValueError):
-            pass
+    # 선택된 우선순위 정보
+    selected_priority = None
+    selected_priority_display = None
+    if priority_filter:
+        # 유효한 우선순위 값인지 확인
+        valid_priorities = [choice[0] for choice in FollowUp.PRIORITY_CHOICES]
+        if priority_filter in valid_priorities:
+            selected_priority = priority_filter
+            # 우선순위 표시명 찾기
+            for choice in FollowUp.PRIORITY_CHOICES:
+                if choice[0] == priority_filter:
+                    selected_priority_display = choice[1]
+                    break
     
     # 선택된 업체 정보
     selected_company = None
@@ -601,10 +590,6 @@ def followup_list_view(request):
         try:
             selected_company = Company.objects.get(id=company_filter)
         except (Company.DoesNotExist, ValueError):
-            pass
-            if candidate_user in accessible_users:
-                selected_user = candidate_user
-        except (User.DoesNotExist, ValueError):
             pass
     
     # 페이지네이션 처리
@@ -617,14 +602,15 @@ def followup_list_view(request):
         'page_title': '팔로우업 목록', # 템플릿에 전달할 페이지 제목
         'search_query': search_query,
         'company_filter': company_filter,
-        'user_filter': user_filter,
-        'selected_user': selected_user,
+        'priority_filter': priority_filter,
+        'selected_priority': selected_priority,
+        'selected_priority_display': selected_priority_display,
         'selected_company': selected_company,
         'total_count': stats['total_count'],
         'active_count': stats['active_count'],
         'completed_count': stats['completed_count'],
         'paused_count': stats['paused_count'],
-        'users': users,
+        'priority_choices': priority_choices,
         'companies': companies,
         'user_profile': user_profile,  # 사용자 프로필 추가
     }
@@ -4823,15 +4809,10 @@ def followup_excel_download(request):
             Q(notes__icontains=search_query)
         )
     
-    # 담당자 필터 적용
-    user_filter = request.GET.get('user')
-    if user_filter:
-        accessible_users = get_accessible_users(request.user)
-        try:
-            filter_user = accessible_users.get(id=user_filter)
-            followups = followups.filter(user=filter_user)
-        except User.DoesNotExist:
-            pass
+    # 우선순위 필터 적용
+    priority_filter = request.GET.get('priority')
+    if priority_filter:
+        followups = followups.filter(priority=priority_filter)
     
     # 엑셀 파일 생성
     wb = Workbook()
@@ -4889,6 +4870,13 @@ def followup_excel_download(request):
         item_quantities = {}
         total_delivery_amount = 0
         
+        # 품목명 정규화 함수 (공백, 대소문자 통일)
+        def normalize_item_name(name):
+            return name.strip().upper().replace(' ', '').replace('.', '')
+        
+        # 정규화된 품목명과 원본 품목명 매핑
+        item_name_mapping = {}
+        
         # 추적을 위한 로깅
         logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 집계 시작")
         logger.info(f"[EXCEL_DOWNLOAD] delivery_histories 개수: {delivery_histories.count()}")
@@ -4924,6 +4912,12 @@ def followup_excel_download(request):
                             # 품목명 추출
                             item_name = line.split(':')[0].strip()
                             
+                            # 품목명 정규화 및 매핑 저장
+                            normalized_name = normalize_item_name(item_name)
+                            if normalized_name not in item_name_mapping:
+                                item_name_mapping[normalized_name] = item_name
+                            display_name = item_name_mapping[normalized_name]
+                            
                             # 수량 추출 (: 이후 첫 번째 숫자)
                             after_colon = line.split(':', 1)[1]
                             import re
@@ -4932,30 +4926,51 @@ def followup_excel_download(request):
                             if quantity_match:
                                 quantity = float(quantity_match.group(1))
                                 
-                                # 품목별 수량 누적
-                                if item_name in item_quantities:
-                                    item_quantities[item_name] += quantity
+                                # 품목별 수량 누적 (정규화된 이름으로)
+                                if display_name in item_quantities:
+                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적: {display_name} {item_quantities[display_name]} + {quantity} = {item_quantities[display_name] + quantity}")
+                                    item_quantities[display_name] += quantity
                                 else:
-                                    item_quantities[item_name] = quantity
+                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규: {display_name} = {quantity}")
+                                    item_quantities[display_name] = quantity
                             else:
                                 # 수량을 찾지 못한 경우 1개로 처리
-                                if item_name in item_quantities:
-                                    item_quantities[item_name] += 1
+                                if display_name in item_quantities:
+                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(기본1개): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
+                                    item_quantities[display_name] += 1
                                 else:
-                                    item_quantities[item_name] = 1
+                                    logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(기본1개): {display_name} = 1")
+                                    item_quantities[display_name] = 1
                         except:
                             # 파싱 실패 시 품목명만 추출하고 1개로 처리
                             item_name = line.split(':')[0].strip()
-                            if item_name in item_quantities:
-                                item_quantities[item_name] += 1
+                            
+                            # 품목명 정규화 및 매핑 저장
+                            normalized_name = normalize_item_name(item_name)
+                            if normalized_name not in item_name_mapping:
+                                item_name_mapping[normalized_name] = item_name
+                            display_name = item_name_mapping[normalized_name]
+                            
+                            if display_name in item_quantities:
+                                logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(파싱실패): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
+                                item_quantities[display_name] += 1
                             else:
-                                item_quantities[item_name] = 1
+                                logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(파싱실패): {display_name} = 1")
+                                item_quantities[display_name] = 1
                     else:
                         # 단순 품목명인 경우 1개로 처리
-                        if line in item_quantities:
-                            item_quantities[line] += 1
+                        # 품목명 정규화 및 매핑 저장
+                        normalized_name = normalize_item_name(line)
+                        if normalized_name not in item_name_mapping:
+                            item_name_mapping[normalized_name] = line
+                        display_name = item_name_mapping[normalized_name]
+                        
+                        if display_name in item_quantities:
+                            logger.info(f"[EXCEL_DOWNLOAD] History 품목 누적(단순명): {display_name} {item_quantities[display_name]} + 1 = {item_quantities[display_name] + 1}")
+                            item_quantities[display_name] += 1
                         else:
-                            item_quantities[line] = 1
+                            logger.info(f"[EXCEL_DOWNLOAD] History 품목 신규(단순명): {display_name} = 1")
+                            item_quantities[display_name] = 1
         
         # Schedule 기반 DeliveryItem도 포함 (History와 연결되지 않은 것만)
         all_schedule_deliveries = followup.schedules.filter(
@@ -4983,14 +4998,26 @@ def followup_excel_download(request):
                 item_name = item.item_name
                 quantity = float(item.quantity)
                 
-                # 품목별 수량 누적 (중복되지 않은 Schedule만)
-                if item_name in item_quantities:
-                    item_quantities[item_name] += quantity
+                # 품목명 정규화 및 매핑 저장
+                normalized_name = normalize_item_name(item_name)
+                if normalized_name not in item_name_mapping:
+                    item_name_mapping[normalized_name] = item_name
+                display_name = item_name_mapping[normalized_name]
+                
+                # 품목별 수량 누적 (중복되지 않은 Schedule만, 정규화된 이름으로)
+                if display_name in item_quantities:
+                    logger.info(f"[EXCEL_DOWNLOAD] Schedule 품목 누적: {display_name} {item_quantities[display_name]} + {quantity} = {item_quantities[display_name] + quantity}")
+                    item_quantities[display_name] += quantity
                 else:
-                    item_quantities[item_name] = quantity
+                    logger.info(f"[EXCEL_DOWNLOAD] Schedule 품목 신규: {display_name} = {quantity}")
+                    item_quantities[display_name] = quantity
         
         # 품목 텍스트 생성 (품목명과 총 수량 표시)
         if item_quantities:
+            logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 품목별 최종 집계:")
+            for item_name, total_qty in sorted(item_quantities.items()):
+                logger.info(f"[EXCEL_DOWNLOAD] - {item_name}: {total_qty}개")
+            
             items_list = []
             for item_name, total_qty in sorted(item_quantities.items()):
                 # 소수점이 있으면 그대로, 정수면 정수로 표시
@@ -5008,6 +5035,7 @@ def followup_excel_download(request):
                 
             logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 최종 품목: {len(item_quantities)}개 종류")
             logger.info(f"[EXCEL_DOWNLOAD] 최종 총 금액: {total_delivery_amount}")
+            logger.info(f"[EXCEL_DOWNLOAD] 엑셀 표시 텍스트: '{items_text}'")
         else:
             items_text = '납품 기록 없음'
             logger.info(f"[EXCEL_DOWNLOAD] 팔로우업 {followup.id} 납품 기록 없음")
@@ -5146,15 +5174,10 @@ def followup_basic_excel_download(request):
             Q(notes__icontains=search_query)
         )
     
-    # 담당자 필터 적용
-    user_filter = request.GET.get('user')
-    if user_filter:
-        accessible_users = get_accessible_users(request.user)
-        try:
-            filter_user = accessible_users.get(id=user_filter)
-            followups = followups.filter(user=filter_user)
-        except User.DoesNotExist:
-            pass
+    # 우선순위 필터 적용
+    priority_filter = request.GET.get('priority')
+    if priority_filter:
+        followups = followups.filter(priority=priority_filter)
     
     # 엑셀 파일 생성
     wb = Workbook()
