@@ -553,7 +553,6 @@ def followup_list_view(request):
     followups = followups.order_by('-created_at')
     
     # 우선순위 선택지 (필터용)
-    from .models import FollowUp
     priority_choices = FollowUp.PRIORITY_CHOICES
     
     # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
