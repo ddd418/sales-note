@@ -6092,9 +6092,14 @@ def schedule_delivery_items_api(request, schedule_id):
 def history_delivery_items_api(request, history_id):
     """History의 DeliveryItem 정보를 가져오는 API"""
     import re
+    import logging
+    logger = logging.getLogger(__name__)
     
     try:
         history = get_object_or_404(History, pk=history_id)
+        
+        logger.info(f"[HISTORY_DELIVERY_API] History {history_id} 품목 조회 시작")
+        logger.info(f"[HISTORY_DELIVERY_API] History의 연결된 Schedule: {history.schedule.id if history.schedule else 'None'}")
         
         # 권한 체크: 해당 활동기록을 볼 수 있는 권한이 있는지 확인
         if not can_access_user_data(request.user, history.user):
@@ -6113,6 +6118,7 @@ def history_delivery_items_api(request, history_id):
         # 1. History DeliveryItem 모델이 있는 경우
         if delivery_items.exists():
             has_history_items = True
+            logger.info(f"[HISTORY_DELIVERY_API] History에 {delivery_items.count()}개 DeliveryItem 발견")
             for item in delivery_items:
                 item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
                 items_data.append({
@@ -6124,10 +6130,13 @@ def history_delivery_items_api(request, history_id):
                     'tax_invoice_issued': item.tax_invoice_issued,
                     'source': 'history'  # 출처 표시
                 })
+        else:
+            logger.info(f"[HISTORY_DELIVERY_API] History에 DeliveryItem 없음")
         
         # 2. History DeliveryItem이 없지만 기존 텍스트 데이터가 있는 경우 (fallback)
         if not has_history_items and history.delivery_items and history.delivery_items.strip():
             has_history_items = True
+            logger.info(f"[HISTORY_DELIVERY_API] History 텍스트 데이터에서 품목 파싱: '{history.delivery_items[:100]}...'")
             # 기존 텍스트 데이터 파싱
             delivery_text = history.delivery_items.strip()
             
@@ -6179,14 +6188,13 @@ def history_delivery_items_api(request, history_id):
         # History에 DeliveryItem이나 텍스트가 없어도 Schedule DeliveryItem은 항상 확인
         if history.schedule:
             schedule_items = history.schedule.delivery_items_set.all().order_by('id')
+            logger.info(f"[HISTORY_DELIVERY_API] Schedule {history.schedule.id}에 {schedule_items.count()}개 DeliveryItem 발견")
+            
             if schedule_items.exists():
                 has_schedule_items = True
                 for item in schedule_items:
                     item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
-                    # 디버깅: Schedule DeliveryItem의 세금계산서 상태 로그
-                    print(f"DEBUG - Schedule DeliveryItem ID: {item.id}")
-                    print(f"DEBUG - item.tax_invoice_issued (원본): {item.tax_invoice_issued}")
-                    print(f"DEBUG - history.tax_invoice_issued (적용될 값): {history.tax_invoice_issued}")
+                    logger.info(f"[HISTORY_DELIVERY_API] Schedule DeliveryItem: {item.item_name} - {item.quantity}개 x {item.unit_price}원")
                     
                     items_data.append({
                         'id': f'schedule_{item.id}',
@@ -6197,11 +6205,16 @@ def history_delivery_items_api(request, history_id):
                         'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
                         'source': 'schedule'  # 출처 표시
                     })
+        else:
+            logger.info(f"[HISTORY_DELIVERY_API] History에 연결된 Schedule 없음")
+        
+        logger.info(f"[HISTORY_DELIVERY_API] 최종 품목 데이터: {len(items_data)}개")
+        logger.info(f"[HISTORY_DELIVERY_API] has_history_items: {has_history_items}, has_schedule_items: {has_schedule_items}")
         
         # 디버깅: 최종 응답 데이터 로그
-        print(f"DEBUG - Final API Response for History {history.id}:")
-        print(f"DEBUG - items_data: {items_data}")
-        print(f"DEBUG - tax_invoice_status: {history.tax_invoice_issued}")
+        logger.info(f"[HISTORY_DELIVERY_API] 최종 API 응답 - History {history.id}:")
+        logger.info(f"[HISTORY_DELIVERY_API] items_data: {items_data}")
+        logger.info(f"[HISTORY_DELIVERY_API] tax_invoice_status: {history.tax_invoice_issued}")
         
         return JsonResponse({
             'success': True,
@@ -6215,7 +6228,7 @@ def history_delivery_items_api(request, history_id):
         })
         
     except Exception as e:
-        logger.error(f"History delivery items API error: {e}")
+        logger.error(f"[HISTORY_DELIVERY_API] API 오류: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': 'DeliveryItem 정보를 가져오는 중 오류가 발생했습니다.'
