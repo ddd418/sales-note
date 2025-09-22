@@ -789,12 +789,47 @@
   }
 
   function loadExistingHistoryDeliveryItems() {
-    // 1순위: 관련 스케줄의 DeliveryItem들을 API로 가져오기
-    {% if history.schedule %}
-      console.log('관련 스케줄 ID:', {{ history.schedule.pk }});
+    // 편집 모드인 경우 히스토리 자체의 DeliveryItem API 호출
+    {% if form.instance.pk %}
+      console.log('히스토리 편집 모드 - 히스토리 ID:', {{ form.instance.pk }});
+      
+      // 히스토리 납품 품목 API 호출
+      fetch(`/reporting/histories/{{ form.instance.pk }}/delivery-items-api/`)
+        .then(response => response.json())
+        .then(data => {
+          console.log('히스토리 납품 품목 API 응답:', data);
+          
+          if (data.success && data.items && data.items.length > 0) {
+            // API에서 가져온 품목들을 모달에 추가
+            data.items.forEach(item => {
+              addHistoryDeliveryItem({
+                item_name: item.item_name,
+                quantity: item.quantity,
+                unit_price: item.unit_price || 0
+              });
+            });
+            console.log('히스토리 납품 품목 로드 완료');
+          } else {
+            console.log('히스토리에 품목 데이터가 없음, 기본 품목 추가');
+            // API에 데이터가 없으면 기본 품목 추가
+            addHistoryDeliveryItem();
+          }
+        })
+        .catch(error => {
+          console.error('히스토리 납품 품목 로드 실패:', error);
+          // 오류가 발생하면 기본 품목 추가
+          addHistoryDeliveryItem();
+        });
+      
+      return; // API 호출 중이므로 여기서 종료
+    {% endif %}
+    
+    // 생성 모드에서 관련 스케줄이 있는 경우 스케줄의 DeliveryItem들을 API로 가져오기
+    {% if form.instance.schedule and not form.instance.pk %}
+      console.log('생성 모드 - 관련 스케줄 ID:', {{ form.instance.schedule.pk }});
       
       // 스케줄 납품 품목 API 호출 (올바른 URL 사용)
-      fetch(`/reporting/schedules/{{ history.schedule.pk }}/delivery-items-api/`)
+      fetch(`/reporting/schedules/{{ form.instance.schedule.pk }}/delivery-items-api/`)
         .then(response => response.json())
         .then(data => {
           console.log('스케줄 납품 품목 API 응답:', data);
