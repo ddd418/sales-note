@@ -14,6 +14,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
 import os
 import mimetypes
@@ -5717,7 +5718,7 @@ def customer_detail_report_view(request, followup_id):
         delivery_data = {
             'type': 'history',
             'id': history.id,
-            'date': history.delivery_date or history.created_at.date(),
+            'date': (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d'),
             'schedule_id': history.schedule_id if history.schedule else None,
             'items_display': history.delivery_items or None,
             'amount': history.delivery_amount,
@@ -5803,7 +5804,7 @@ def customer_detail_report_view(request, followup_id):
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
-                'date': schedule.visit_date,
+                'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
                 'schedule_id': schedule.id,
                 'items_display': None,
                 'amount': 0,  # Schedule 전용은 amount를 0으로 설정
@@ -5811,7 +5812,6 @@ def customer_detail_report_view(request, followup_id):
                 'content': schedule.notes or '일정 기반 납품',
                 'user': schedule.user.username,
                 'has_schedule_items': True,
-                'schedule_items': schedule.delivery_items_set.all(),
                 'schedule_amount': schedule.calculated_total_amount,
                 'schedule_tax_status': {
                     'issued_count': schedule.tax_invoice_issued_count,
@@ -5866,7 +5866,7 @@ def customer_detail_report_view(request, followup_id):
         'tax_invoices_pending': tax_invoices_pending,
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
-        'integrated_deliveries': integrated_deliveries,  # 통합 납품 내역
+        'integrated_deliveries': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),  # 통합 납품 내역
         'meeting_histories': meeting_histories,
         'chart_data': {
             'labels': json.dumps(chart_labels),
