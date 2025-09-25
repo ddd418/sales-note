@@ -6442,7 +6442,7 @@ def customer_detail_report_view_simple(request, followup_id):
         'schedule_deliveries': schedule_deliveries,
         'integrated_deliveries': list(delivery_histories) + list(schedule_deliveries),
         'meeting_histories': meeting_histories,
-        'page_title': f'{followup.company.name} - {followup.contact_person if followup.contact_person else "담당자 미정"}'
+        'page_title': f'{followup.company.name} - {followup.customer_name if followup.customer_name else "담당자 미정"}'
     }
     
     return render(request, 'reporting/customer_detail_report.html', context)
