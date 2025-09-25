@@ -43,7 +43,7 @@ urlpatterns = [
     
     # 고객 리포트 URL들
     path('customer-report/', views.customer_report_view, name='customer_report'),
-    path('customer-report/<int:followup_id>/', views.customer_detail_report_view, name='customer_detail_report'),
+    path('customer-report/<int:followup_id>/', views.customer_detail_report_view_simple, name='customer_detail_report'),
     path('followups/<int:followup_id>/priority-update/', views.customer_priority_update, name='customer_priority_update'),
     
     # 메모 URL들
