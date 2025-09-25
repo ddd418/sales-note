@@ -1067,6 +1067,17 @@
         </li>
         {% endif %}
 
+        <!-- Manager 전용 사용자 관리 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'manager' %}
+        <li>
+          <a
+            href="{% url 'reporting:manager_user_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}"
+            ><i class="fas fa-user-friends me-2"></i>직원 관리</a
+          >
+        </li>
+        {% endif %}
+
         <!-- Admin & Salesman 업체 관리 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'admin' or user.is_authenticated and user.userprofile.role == 'salesman' %}
         <li>
@@ -1218,6 +1229,9 @@
             </a>
             <a href="{% url 'reporting:manager_company_list' %}" class="btn btn-sm btn-outline-secondary">
               <i class="fas fa-building me-1"></i>업체 조회
+            </a>
+            <a href="{% url 'reporting:manager_user_list' %}" class="btn btn-sm btn-outline-warning">
+              <i class="fas fa-user-friends me-1"></i>직원 관리
             </a>
             {% endif %}
 

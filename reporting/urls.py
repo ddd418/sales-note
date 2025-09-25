@@ -109,6 +109,11 @@ urlpatterns = [
     path('users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
     path('users/<int:user_id>/toggle-active/', views.user_toggle_active, name='user_toggle_active'),
     
+    # 매니저용 사용자 관리 URL들 (Manager 전용)
+    path('manager/users/', views.manager_user_list, name='manager_user_list'),
+    path('manager/users/create/', views.manager_user_create, name='manager_user_create'),
+    path('manager/users/<int:user_id>/edit/', views.manager_user_edit, name='manager_user_edit'),
+    
     # Manager 전용 URL들
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
     path('manager/salesman/<int:user_id>/', views.salesman_detail, name='salesman_detail'),

@@ -1,0 +1,218 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <!-- 페이지 헤더 -->
+      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title mb-0">
+          <i class="fas fa-user-plus me-2"></i>{{ page_title }}
+        </h1>
+        <div>
+          <a href="{% url 'reporting:manager_user_list' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>목록으로
+          </a>
+        </div>
+      </div>
+
+      <!-- 알림 메시지 -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <div class="alert alert-info d-flex align-items-center" role="alert">
+            <i class="fas fa-info-circle me-2"></i>
+            <div>
+              <strong>{{ company_name }}</strong>에 새로운 실무자 계정을 생성합니다. 
+              생성된 계정은 자동으로 귀하와 같은 회사에 소속됩니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 사용자 생성 폼 -->
+      <div class="card">
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            
+            <div class="row">
+              <!-- 사용자명 -->
+              <div class="col-md-6 mb-3">
+                <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }} <span class="text-danger">*</span></label>
+                {{ form.username }}
+                {% if form.username.help_text %}
+                  <small class="form-text text-muted">{{ form.username.help_text }}</small>
+                {% endif %}
+                {% if form.username.errors %}
+                  <div class="text-danger">
+                    {% for error in form.username.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- 회사 정보 (읽기 전용) -->
+              <div class="col-md-6 mb-3">
+                <label class="form-label">소속 회사</label>
+                <input type="text" class="form-control" value="{{ company_name }}" readonly>
+                <small class="form-text text-muted">매니저와 같은 회사로 자동 설정됩니다.</small>
+              </div>
+            </div>
+
+            <div class="row">
+              <!-- 성 -->
+              <div class="col-md-6 mb-3">
+                <label for="{{ form.first_name.id_for_label }}" class="form-label">{{ form.first_name.label }}</label>
+                {{ form.first_name }}
+                {% if form.first_name.help_text %}
+                  <small class="form-text text-muted">{{ form.first_name.help_text }}</small>
+                {% endif %}
+                {% if form.first_name.errors %}
+                  <div class="text-danger">
+                    {% for error in form.first_name.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- 이름 -->
+              <div class="col-md-6 mb-3">
+                <label for="{{ form.last_name.id_for_label }}" class="form-label">{{ form.last_name.label }}</label>
+                {{ form.last_name }}
+                {% if form.last_name.help_text %}
+                  <small class="form-text text-muted">{{ form.last_name.help_text }}</small>
+                {% endif %}
+                {% if form.last_name.errors %}
+                  <div class="text-danger">
+                    {% for error in form.last_name.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="row">
+              <!-- 비밀번호 -->
+              <div class="col-md-6 mb-3">
+                <label for="{{ form.password1.id_for_label }}" class="form-label">{{ form.password1.label }} <span class="text-danger">*</span></label>
+                {{ form.password1 }}
+                {% if form.password1.help_text %}
+                  <small class="form-text text-muted">{{ form.password1.help_text }}</small>
+                {% endif %}
+                {% if form.password1.errors %}
+                  <div class="text-danger">
+                    {% for error in form.password1.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- 비밀번호 확인 -->
+              <div class="col-md-6 mb-3">
+                <label for="{{ form.password2.id_for_label }}" class="form-label">{{ form.password2.label }} <span class="text-danger">*</span></label>
+                {{ form.password2 }}
+                {% if form.password2.help_text %}
+                  <small class="form-text text-muted">{{ form.password2.help_text }}</small>
+                {% endif %}
+                {% if form.password2.errors %}
+                  <div class="text-danger">
+                    {% for error in form.password2.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="row">
+              <!-- 권한 (읽기 전용) -->
+              <div class="col-md-6 mb-3">
+                <label class="form-label">권한</label>
+                <input type="text" class="form-control" value="SalesMan (실무자)" readonly>
+                <small class="form-text text-muted">매니저는 실무자 계정만 생성할 수 있습니다.</small>
+                {{ form.role }}
+              </div>
+
+              <!-- 엑셀 다운로드 권한 -->
+              <div class="col-md-6 mb-3">
+                <div class="form-check d-flex align-items-center mt-4">
+                  {{ form.can_download_excel }}
+                  <label class="form-check-label ms-2" for="{{ form.can_download_excel.id_for_label }}">
+                    {{ form.can_download_excel.label }}
+                  </label>
+                </div>
+                {% if form.can_download_excel.help_text %}
+                  <small class="form-text text-muted">{{ form.can_download_excel.help_text }}</small>
+                {% endif %}
+                {% if form.can_download_excel.errors %}
+                  <div class="text-danger">
+                    {% for error in form.can_download_excel.errors %}
+                      <small>{{ error }}</small>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- 폼 에러 표시 -->
+            {% if form.non_field_errors %}
+              <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                  <p class="mb-0">{{ error }}</p>
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <!-- 제출 버튼 -->
+            <div class="d-flex justify-content-end gap-2 mt-4">
+              <a href="{% url 'reporting:manager_user_list' %}" class="btn btn-secondary">
+                <i class="fas fa-times me-1"></i>취소
+              </a>
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i>계정 생성
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- 도움말 -->
+      <div class="mt-4">
+        <div class="card">
+          <div class="card-header">
+            <h6 class="mb-0"><i class="fas fa-question-circle me-1"></i>도움말</h6>
+          </div>
+          <div class="card-body">
+            <ul class="mb-0">
+              <li>생성된 실무자는 영업 활동 기록, 일정 관리, 고객 정보 입력 등의 작업을 수행할 수 있습니다.</li>
+              <li>엑셀 다운로드 권한을 부여하면 팔로우업 데이터를 Excel 파일로 내려받을 수 있습니다.</li>
+              <li>모든 새 계정은 자동으로 귀하와 같은 회사에 소속되어 관련 데이터만 접근할 수 있습니다.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.card {
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.form-check-input:checked {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+</style>
+{% endblock %}

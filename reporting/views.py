@@ -2356,7 +2356,7 @@ class CustomLogoutView(LogoutView):
 
 # ============ 사용자 관리 뷰들 ============
 
-# 사용자 생성 폼
+# 사용자 생성 폼 (Admin 전용)
 class UserCreationForm(forms.Form):
     username = forms.CharField(
         max_length=150,
@@ -2380,6 +2380,53 @@ class UserCreationForm(forms.Form):
     role = forms.ChoiceField(
         choices=[('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
         widget=forms.Select(attrs={'class': 'form-control'}),
+        label='권한'
+    )
+    can_download_excel = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='엑셀 다운로드 권한',
+        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다'
+    )
+    first_name = forms.CharField(
+        max_length=30,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
+        label='성'
+    )
+    last_name = forms.CharField(
+        max_length=30,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
+        label='이름'
+    )
+    
+    def clean_password2(self):
+        password1 = self.cleaned_data.get("password1")
+        password2 = self.cleaned_data.get("password2")
+        if password1 and password2 and password1 != password2:
+            raise forms.ValidationError("비밀번호가 일치하지 않습니다.")
+        return password2
+
+# 매니저용 사용자 생성 폼 (Manager 전용)
+class ManagerUserCreationForm(forms.Form):
+    username = forms.CharField(
+        max_length=150,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
+        label='사용자 이름'
+    )
+    password1 = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
+        label='비밀번호'
+    )
+    password2 = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
+        label='비밀번호 확인'
+    )
+    # 매니저는 실무자만 생성할 수 있음
+    role = forms.CharField(
+        initial='salesman',
+        widget=forms.HiddenInput(),
         label='권한'
     )
     can_download_excel = forms.BooleanField(
@@ -2686,6 +2733,170 @@ def user_delete(request, user_id):
         # 일반 요청인 경우 에러 메시지와 함께 리다이렉트
         messages.error(request, f'사용자 삭제 중 오류가 발생했습니다: {error_msg}')
         return redirect('reporting:user_list')
+
+# ============ 매니저용 사용자 관리 뷰들 ============
+
+@role_required(['manager'])
+def manager_user_list(request):
+    """매니저가 자신의 회사 소속 사용자 목록을 볼 수 있는 뷰"""
+    # 매니저의 회사 정보 확인
+    if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
+        messages.error(request, '회사 정보가 없어 사용자 관리를 할 수 없습니다.')
+        return redirect('reporting:main')
+    
+    manager_company = request.user.userprofile.company
+    
+    # 같은 회사의 사용자들만 조회 (매니저와 실무자만)
+    users = User.objects.select_related('userprofile').filter(
+        userprofile__company=manager_company,
+        userprofile__role__in=['manager', 'salesman']
+    ).order_by('username')
+    
+    # 검색 기능
+    search_query = request.GET.get('search', '')
+    if search_query:
+        users = users.filter(
+            Q(username__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query)
+        )
+    
+    # 역할별 필터
+    role_filter = request.GET.get('role', '')
+    if role_filter:
+        users = users.filter(userprofile__role=role_filter)
+    
+    # 페이지네이션
+    paginator = Paginator(users, 10)
+    page_number = request.GET.get('page')
+    users = paginator.get_page(page_number)
+    
+    context = {
+        'users': users,
+        'search_query': search_query,
+        'role_filter': role_filter,
+        'role_choices': [('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
+        'page_title': f'사용자 관리 - {manager_company.name}',
+        'company_name': manager_company.name
+    }
+    return render(request, 'reporting/manager_user_list.html', context)
+
+@role_required(['manager'])
+def manager_user_create(request):
+    """매니저가 자신의 회사에 실무자 계정을 추가하는 뷰"""
+    # 매니저의 회사 정보 확인
+    if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
+        messages.error(request, '회사 정보가 없어 사용자 생성을 할 수 없습니다.')
+        return redirect('reporting:main')
+    
+    manager_company = request.user.userprofile.company
+    
+    if request.method == 'POST':
+        form = ManagerUserCreationForm(request.POST)
+        if form.is_valid():
+            # 사용자명 중복 체크
+            username = form.cleaned_data['username']
+            if User.objects.filter(username=username).exists():
+                messages.error(request, f'사용자명 "{username}"은(는) 이미 사용 중입니다.')
+                return render(request, 'reporting/manager_user_create.html', {'form': form, 'page_title': f'실무자 계정 생성 - {manager_company.name}', 'company_name': manager_company.name})
+            
+            # 사용자 생성
+            user = User.objects.create_user(
+                username=username,
+                password=form.cleaned_data['password1'],
+                first_name=form.cleaned_data['first_name'],
+                last_name=form.cleaned_data['last_name']
+            )
+            
+            # 사용자 프로필 생성 (매니저와 같은 회사로 자동 설정)
+            UserProfile.objects.create(
+                user=user,
+                company=manager_company,  # 매니저와 같은 회사
+                role='salesman',  # 매니저는 실무자만 생성 가능
+                can_download_excel=form.cleaned_data['can_download_excel'],
+                created_by=request.user  # 생성자 기록
+            )
+            
+            messages.success(request, f'실무자 계정 "{user.username}"이(가) {manager_company.name}에 성공적으로 생성되었습니다.')
+            return redirect('reporting:manager_user_list')
+    else:
+        form = ManagerUserCreationForm()
+    
+    context = {
+        'form': form,
+        'page_title': f'실무자 계정 생성 - {manager_company.name}',
+        'company_name': manager_company.name
+    }
+    return render(request, 'reporting/manager_user_create.html', context)
+
+@role_required(['manager'])
+def manager_user_edit(request, user_id):
+    """매니저가 자신의 회사 소속 사용자를 편집하는 뷰"""
+    # 매니저의 회사 정보 확인
+    if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
+        messages.error(request, '회사 정보가 없어 사용자 편집을 할 수 없습니다.')
+        return redirect('reporting:main')
+    
+    manager_company = request.user.userprofile.company
+    
+    # 편집할 사용자 가져오기 (같은 회사의 매니저/실무자만)
+    user = get_object_or_404(User, id=user_id, userprofile__company=manager_company, userprofile__role__in=['manager', 'salesman'])
+    user_profile = get_object_or_404(UserProfile, user=user)
+    
+    # 자기 자신의 권한은 변경할 수 없음
+    if user.id == request.user.id:
+        messages.error(request, '자신의 계정 정보는 이 방법으로 수정할 수 없습니다.')
+        return redirect('reporting:manager_user_list')
+    
+    if request.method == 'POST':
+        # 매니저용 편집 폼 (역할 변경 불가)
+        form_data = request.POST.copy()
+        form_data['role'] = user_profile.role  # 기존 역할 유지
+        
+        form = UserEditForm(form_data)
+        if form.is_valid():
+            # 사용자명 중복 체크 (자기 자신 제외)
+            username = form.cleaned_data['username']
+            if User.objects.filter(username=username).exclude(id=user.id).exists():
+                messages.error(request, f'사용자명 "{username}"은(는) 이미 사용 중입니다.')
+            else:
+                # 사용자 정보 수정
+                user.username = username
+                user.first_name = form.cleaned_data['first_name']
+                user.last_name = form.cleaned_data['last_name']
+                
+                # 비밀번호 변경
+                if form.cleaned_data['change_password'] and form.cleaned_data['password1']:
+                    user.set_password(form.cleaned_data['password1'])
+                
+                user.save()
+                
+                # 엑셀 다운로드 권한만 수정 가능 (회사와 역할은 변경 불가)
+                user_profile.can_download_excel = form.cleaned_data['can_download_excel']
+                user_profile.save()
+                
+                messages.success(request, f'사용자 "{user.username}"의 정보가 성공적으로 수정되었습니다.')
+                return redirect('reporting:manager_user_list')
+    else:
+        # 기존 데이터로 폼 초기화
+        form = UserEditForm(initial={
+            'username': user.username,
+            'company': user_profile.company.name if user_profile.company else '',
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user_profile.role,
+            'can_download_excel': user_profile.can_download_excel,
+        })
+    
+    context = {
+        'form': form,
+        'edit_user': user,
+        'user_profile': user_profile,
+        'page_title': f'사용자 편집 - {user.username}',
+        'company_name': manager_company.name,
+        'is_manager_edit': True  # 매니저 편집 모드 표시
+    }
+    return render(request, 'reporting/manager_user_edit.html', context)
 
 @role_required(['manager'])
 @never_cache
@@ -5454,17 +5665,6 @@ def customer_detail_report_view(request, followup_id):
     all_schedules = Schedule.objects.filter(followup=followup)
     delivery_schedules = all_schedules.filter(activity_type='delivery')
     
-    print(f"전체 Schedule 개수: {all_schedules.count()}")
-    print(f"납품 타입 Schedule 개수: {delivery_schedules.count()}")
-    logger.info(f"전체 Schedule 개수: {all_schedules.count()}")
-    logger.info(f"납품 타입 Schedule 개수: {delivery_schedules.count()}")
-    
-    # 납품 타입 Schedule 각각 확인
-    for schedule in delivery_schedules:
-        items_count = schedule.delivery_items_set.count()
-        print(f"납품 Schedule {schedule.id}: visit_date={schedule.visit_date}, items_count={items_count}")
-        logger.info(f"납품 Schedule {schedule.id}: visit_date={schedule.visit_date}, items_count={items_count}")
-    
     # Schedule DeliveryItem이 있는 일정들 (중복 제거)
     schedule_deliveries_ids = Schedule.objects.filter(
         followup=followup,
@@ -5472,40 +5672,7 @@ def customer_detail_report_view(request, followup_id):
         delivery_items_set__isnull=False
     ).values_list('id', flat=True).distinct()
     
-    print(f"🔍 schedule_deliveries_ids: {list(schedule_deliveries_ids)}")
-    logger.info(f"🔍 schedule_deliveries_ids: {list(schedule_deliveries_ids)}")
-    
     schedule_deliveries = Schedule.objects.filter(id__in=schedule_deliveries_ids)
-    
-    print(f"🔍 schedule_deliveries count: {schedule_deliveries.count()}")
-    print(f"🔍 schedule_deliveries list: {list(schedule_deliveries.values_list('id', flat=True))}")
-    logger.info(f"🔍 schedule_deliveries count: {schedule_deliveries.count()}")
-    logger.info(f"🔍 schedule_deliveries list: {list(schedule_deliveries.values_list('id', flat=True))}")
-    
-    # Schedule 33 특별 확인
-    schedule_33 = Schedule.objects.filter(id=33).first()
-    if schedule_33:
-        items_count = schedule_33.delivery_items_set.count()
-        print(f"🔍 Schedule 33 특별 확인: followup={schedule_33.followup_id}, activity_type={schedule_33.activity_type}, items_count={items_count}")
-        print(f"🔍 Schedule 33이 schedule_deliveries에 포함되는가: {schedule_33 in schedule_deliveries}")
-        logger.info(f"🔍 Schedule 33 특별 확인: followup={schedule_33.followup_id}, activity_type={schedule_33.activity_type}, items_count={items_count}")
-        logger.info(f"🔍 Schedule 33이 schedule_deliveries에 포함되는가: {schedule_33 in schedule_deliveries}")
-    
-    # Schedule 데이터 상세 로그
-    print(f"Schedule 납품 개수: {schedule_deliveries.count()}")
-    logger.info(f"Schedule 납품 개수: {schedule_deliveries.count()}")
-    
-    # 각 schedule 상세 정보
-    for schedule in schedule_deliveries:
-        items_count = schedule.delivery_items_set.count()
-        items_total = schedule.delivery_items_set.aggregate(total=Sum('total_price'))['total'] or 0
-        print(f"Schedule {schedule.id}: activity_type={schedule.activity_type}, items={items_count}, total_amount={items_total}")
-        logger.info(f"Schedule {schedule.id}: activity_type={schedule.activity_type}, items={items_count}, total_amount={items_total}")
-        
-        # 각 DeliveryItem 상세
-        for item in schedule.delivery_items_set.all():
-            print(f"  - DeliveryItem {item.id}: name={item.item_name}, quantity={item.quantity}, unit_price={item.unit_price}, total_price={item.total_price}")
-            logger.info(f"  - DeliveryItem {item.id}: name={item.item_name}, quantity={item.quantity}, unit_price={item.unit_price}, total_price={item.total_price}")
     
     # 중복 제거된 납품 횟수 계산
     # History에 기록된 일정 ID들
@@ -5632,52 +5799,22 @@ def customer_detail_report_view(request, followup_id):
     integrated_deliveries = []
     processed_schedule_ids = set()  # 이미 처리된 Schedule ID를 추적
     
-    print(f"=== 통합 납품 내역 생성 시작 (고객 ID: {followup_id}) ===")
-    print(f"납품 히스토리 개수: {delivery_histories.count()}")
-    print(f"스케줄 납품 개수: {schedule_deliveries.count()}")
-    
-    logger.info(f"=== 통합 납품 내역 생성 시작 (고객 ID: {followup_id}) ===")
-    logger.info(f"납품 히스토리 개수: {delivery_histories.count()}")
-    logger.info(f"스케줄 납품 개수: {schedule_deliveries.count()}")
-    
     # History-Schedule 연결 관계 분석
-    print("=== History-Schedule 연결 관계 분석 ===")
-    logger.info("=== History-Schedule 연결 관계 분석 ===")
-    
     history_with_schedule = delivery_histories.filter(schedule__isnull=False)
     history_without_schedule = delivery_histories.filter(schedule__isnull=True)
-    
-    print(f"Schedule과 연결된 History: {history_with_schedule.count()}개")
-    print(f"Schedule과 연결되지 않은 History: {history_without_schedule.count()}개")
-    logger.info(f"Schedule과 연결된 History: {history_with_schedule.count()}개")
-    logger.info(f"Schedule과 연결되지 않은 History: {history_without_schedule.count()}개")
     
     # 모든 납품 타입 Schedule 확인 (DeliveryItem 유무 관계없이)
     all_delivery_schedules = Schedule.objects.filter(followup=followup, activity_type='delivery')
     schedules_with_history = set(delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True))
     schedules_with_items = set(schedule_deliveries.values_list('id', flat=True))
     
-    print(f"전체 납품 Schedule: {all_delivery_schedules.count()}개")
-    print(f"History와 연결된 Schedule ID들: {schedules_with_history}")
-    print(f"DeliveryItem이 있는 Schedule ID들: {schedules_with_items}")
-    logger.info(f"전체 납품 Schedule: {all_delivery_schedules.count()}개")
-    logger.info(f"History와 연결된 Schedule ID들: {schedules_with_history}")
-    logger.info(f"DeliveryItem이 있는 Schedule ID들: {schedules_with_items}")
-    
     # History와도 연결되지 않고 DeliveryItem도 없는 Schedule 찾기
     orphaned_schedules = all_delivery_schedules.exclude(
         Q(id__in=schedules_with_history) | Q(id__in=schedules_with_items)
     )
-    print(f"고립된 Schedule (History 없고 DeliveryItem 없음): {orphaned_schedules.count()}개")
-    logger.info(f"고립된 Schedule (History 없고 DeliveryItem 없음): {orphaned_schedules.count()}개")
-    for schedule in orphaned_schedules:
-        print(f"  - 고립된 Schedule {schedule.id}: date={schedule.visit_date}, notes={schedule.notes}")
-        logger.info(f"  - 고립된 Schedule {schedule.id}: date={schedule.visit_date}, notes={schedule.notes}")
 
     # 1. History 기반 납품 내역
     for history in delivery_histories:
-        print(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
-        logger.info(f"History {history.id}: schedule_id={history.schedule_id}, amount={history.delivery_amount}")
         
         # History의 품목 개수 계산
         history_items_count = 0
@@ -5739,13 +5876,7 @@ def customer_detail_report_view(request, followup_id):
         
         # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
         if history.schedule:
-            print(f"🔍 History {history.id} -> Schedule {history.schedule.id} 연결 발견")
-            if history.schedule.id == 33:
-                print(f"🚨 중요: History {history.id}이 Schedule 33과 연결되어 있음!")
-                logger.info(f"🚨 중요: History {history.id}이 Schedule 33과 연결되어 있음!")
-            
             schedule_items = history.schedule.delivery_items_set.all()
-            logger.info(f"History {history.id}의 연결된 Schedule {history.schedule.id}에 {schedule_items.count()}개 품목 존재")
             if schedule_items.exists():
                 delivery_data['has_schedule_items'] = True
                 # Schedule의 품목 정보를 추가로 표시
@@ -5776,23 +5907,11 @@ def customer_detail_report_view(request, followup_id):
                 
                 # 처리된 Schedule ID 기록
                 processed_schedule_ids.add(history.schedule.id)
-                print(f"🔍 processed_schedule_ids에 {history.schedule.id} 추가됨")
-                logger.info(f"Schedule {history.schedule.id} 처리됨 (총액: {schedule_total}, History와 통합)")
         
         integrated_deliveries.append(delivery_data)
     
-    print(f"처리된 Schedule IDs: {processed_schedule_ids}")
-    logger.info(f"처리된 Schedule IDs: {processed_schedule_ids}")
-    
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
-    print(f"=== Schedule 기반 납품 처리 시작 ===")
-    print(f"처리할 schedule_deliveries: {list(schedule_deliveries.values_list('id', flat=True))}")
-    logger.info(f"=== Schedule 기반 납품 처리 시작 ===")
-    logger.info(f"처리할 schedule_deliveries: {list(schedule_deliveries.values_list('id', flat=True))}")
-    
     for schedule in schedule_deliveries:
-        print(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
-        logger.info(f"Schedule {schedule.id} 확인: processed={schedule.id in processed_schedule_ids}")
         # 이미 History에서 처리된 일정은 제외
         if schedule.id not in processed_schedule_ids:
             # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
