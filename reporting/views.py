@@ -5866,7 +5866,8 @@ def customer_detail_report_view(request, followup_id):
         'tax_invoices_pending': tax_invoices_pending,
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
-        'integrated_deliveries': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),  # 통합 납품 내역
+        'integrated_deliveries': integrated_deliveries,  # 템플릿용 통합 납품 내역
+        'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),  # JavaScript용 JSON 데이터
         'meeting_histories': meeting_histories,
         'chart_data': {
             'labels': json.dumps(chart_labels),
