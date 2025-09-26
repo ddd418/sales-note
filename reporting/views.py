@@ -6437,8 +6437,10 @@ def customer_detail_report_view_simple(request, followup_id):
             'id': history.id,
             'date': (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d'),
             'schedule_id': history.schedule_id if history.schedule else None,
+            'scheduleId': history.schedule_id if history.schedule else None,  # JavaScript 호환
             'items_display': history.delivery_items or None,
-            'amount': history.delivery_amount or 0,
+            'items': history.delivery_items or '',  # JavaScript에서 사용
+            'amount': float(history.delivery_amount) if history.delivery_amount else 0,
             'tax_invoice_issued': history.tax_invoice_issued,
             'content': history.content or '',
             'user': history.user.username,
@@ -6448,17 +6450,67 @@ def customer_detail_report_view_simple(request, followup_id):
     
     # Schedule 기반 납품 일정 추가
     for schedule in schedule_deliveries:
-        # History에 연결되지 않은 Schedule만 추가
-        if not delivery_histories.filter(schedule=schedule).exists():
+        print(f"Schedule {schedule.id} 처리 중...")
+        
+        # 해당 Schedule과 연결된 History 찾기
+        related_history = delivery_histories.filter(schedule=schedule).first()
+        print(f"  delivery_histories에서 찾은 related_history: {related_history}")
+        
+        if related_history:
+            # Schedule과 연결된 History가 있으면 History 데이터 우선 (이미 위에서 처리됨)
+            print(f"  Schedule {schedule.id}는 History {related_history.id}와 연결되어 있어서 건너뜁니다.")
+            continue
+        else:
+            # History에 연결되지 않은 Schedule - 일정 기반으로 표시
+            # 하지만 혹시 다른 History에서 이 Schedule을 참조하는지 확인
+            schedule_amount = 0
+            schedule_items = '일정 기반 (품목 미확정)'
+            
+            # 이 Schedule을 참조하는 모든 History 검색 (delivery가 아닌 것도 포함)
+            all_related_histories = History.objects.filter(schedule=schedule)
+            print(f"  Schedule {schedule.id}와 연결된 모든 History 개수: {all_related_histories.count()}")
+            
+            for hist in all_related_histories:
+                print(f"    History {hist.id}: action_type={hist.action_type}, amount={hist.delivery_amount}, items='{hist.delivery_items}'")
+                if hist.delivery_amount:
+                    schedule_amount += float(hist.delivery_amount)
+                if hist.delivery_items:
+                    schedule_items = hist.delivery_items
+            
+            # Schedule에 직접 연결된 DeliveryItem들에서 금액과 품목 정보 가져오기
+            schedule_delivery_items = schedule.delivery_items_set.all()
+            print(f"  Schedule {schedule.id}에 직접 연결된 DeliveryItem 개수: {schedule_delivery_items.count()}")
+            
+            if schedule_delivery_items.exists():
+                item_names = []
+                delivery_item_amount = 0
+                
+                for item in schedule_delivery_items:
+                    print(f"    DeliveryItem: {item.item_name}, 수량: {item.quantity}, 단가: {item.unit_price}, 총액: {item.total_price}")
+                    if item.total_price:
+                        delivery_item_amount += float(item.total_price)
+                    item_names.append(f"{item.item_name}: {item.quantity}개")
+                
+                if delivery_item_amount > 0:
+                    schedule_amount += delivery_item_amount
+                
+                if item_names:
+                    schedule_items = ' / '.join(item_names)
+            
+            print(f"  Schedule {schedule.id} 최종 - amount: {schedule_amount}, items: '{schedule_items}'")
+            
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
                 'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
                 'schedule_id': schedule.id,
-                'items_display': None,
-                'amount': 0,
+                'scheduleId': schedule.id,  # JavaScript 호환
+                'items_display': schedule_items,
+                'items': schedule_items if schedule_items != '일정 기반 (품목 미확정)' else '',  # JavaScript에서 사용
+                'amount': schedule_amount,
+                'scheduleAmount': schedule_amount,  # JavaScript 호환
                 'tax_invoice_issued': False,
-                'content': schedule.notes or '일정 기반 납품',
+                'content': schedule.notes or '예정된 납품 일정',
                 'user': schedule.user.username,
                 'has_schedule_items': True,
             }
@@ -6466,6 +6518,38 @@ def customer_detail_report_view_simple(request, followup_id):
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
+    
+    # 디버그 로그 추가
+    print(f"=== DEBUG: customer_detail_report_view_simple ===")
+    print(f"FollowUp ID: {followup.id}")
+    print(f"총 integrated_deliveries 개수: {len(integrated_deliveries)}")
+    for i, delivery in enumerate(integrated_deliveries):
+        print(f"  [{i}] type: {delivery['type']}, amount: {delivery['amount']}, items: '{delivery.get('items', 'N/A')}'")
+    
+    # JSON 직렬화 테스트
+    try:
+        json_test = json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder)
+        print(f"JSON 직렬화 성공, 길이: {len(json_test)}")
+        print(f"JSON 첫 100자: {json_test[:100]}")
+    except Exception as e:
+        print(f"JSON 직렬화 오류: {e}")
+    print(f"=== DEBUG END ===\n")
+
+    # JSON 직렬화 및 디버깅
+    try:
+        integrated_deliveries_json = json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder)
+        print(f"=== DEBUG: customer_detail_report_view_simple ===")
+        print(f"FollowUp ID: {followup.id}")
+        print(f"총 integrated_deliveries 개수: {len(integrated_deliveries)}")
+        for i, delivery in enumerate(integrated_deliveries):
+            print(f"  [{i}] type: {delivery['type']}, amount: {delivery.get('amount', 'N/A')}, items: '{delivery.get('items', 'N/A')}'")
+        print(f"JSON 직렬화 성공, 길이: {len(integrated_deliveries_json)}")
+        print(f"JSON 첫 100자: {integrated_deliveries_json[:100]}")
+        print(f"JSON 마지막 100자: {integrated_deliveries_json[-100:]}")
+        print(f"=== DEBUG END ===")
+    except Exception as e:
+        print(f"JSON 직렬화 오류: {e}")
+        integrated_deliveries_json = "[]"
 
     context = {
         'followup': followup,
@@ -6475,20 +6559,19 @@ def customer_detail_report_view_simple(request, followup_id):
         'total_deliveries': delivery_histories.count(),
         'tax_invoices_issued': delivery_histories.filter(tax_invoice_issued=True).count(),
         'tax_invoices_pending': delivery_histories.filter(tax_invoice_issued=False).count(),
-        'chart_labels': json.dumps([]),
-        'chart_meetings': json.dumps([]),
-        'chart_deliveries': json.dumps([]),
-        'chart_amounts': json.dumps([]),
+        'chart_labels': json.dumps([], ensure_ascii=False),
+        'chart_meetings': json.dumps([], ensure_ascii=False),
+        'chart_deliveries': json.dumps([], ensure_ascii=False),
+        'chart_amounts': json.dumps([], ensure_ascii=False),
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
         'integrated_deliveries': integrated_deliveries,
-        'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),
         'meeting_histories': meeting_histories,
         'chart_data': {
-            'labels': json.dumps([]),
-            'meetings': json.dumps([]),
-            'deliveries': json.dumps([]),
-            'amounts': json.dumps([]),
+            'labels': json.dumps([], ensure_ascii=False),
+            'meetings': json.dumps([], ensure_ascii=False),
+            'deliveries': json.dumps([], ensure_ascii=False),
+            'amounts': json.dumps([], ensure_ascii=False),
         },
         'page_title': f'{followup.company.name} - {followup.customer_name if followup.customer_name else "담당자 미정"}'
     }
