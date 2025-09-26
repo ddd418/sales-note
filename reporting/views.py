@@ -6427,8 +6427,49 @@ def customer_detail_report_view_simple(request, followup_id):
         activity_type='delivery'
     ).order_by('-visit_date')
     
+    # 통합 납품 내역 생성 (템플릿 호환성을 위해)
+    integrated_deliveries = []
+    
+    # History 기반 납품 내역
+    for history in delivery_histories:
+        delivery_data = {
+            'type': 'history',
+            'id': history.id,
+            'date': (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d'),
+            'schedule_id': history.schedule_id if history.schedule else None,
+            'items_display': history.delivery_items or None,
+            'amount': history.delivery_amount or 0,
+            'tax_invoice_issued': history.tax_invoice_issued,
+            'content': history.content or '',
+            'user': history.user.username,
+            'has_schedule_items': False,
+        }
+        integrated_deliveries.append(delivery_data)
+    
+    # Schedule 기반 납품 일정 추가
+    for schedule in schedule_deliveries:
+        # History에 연결되지 않은 Schedule만 추가
+        if not delivery_histories.filter(schedule=schedule).exists():
+            delivery_data = {
+                'type': 'schedule_only',
+                'id': schedule.id,
+                'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
+                'schedule_id': schedule.id,
+                'items_display': None,
+                'amount': 0,
+                'tax_invoice_issued': False,
+                'content': schedule.notes or '일정 기반 납품',
+                'user': schedule.user.username,
+                'has_schedule_items': True,
+            }
+            integrated_deliveries.append(delivery_data)
+    
+    # 날짜순 정렬
+    integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
+
     context = {
         'followup': followup,
+        'histories': histories,
         'total_amount': total_amount,
         'total_meetings': meeting_histories.count(),
         'total_deliveries': delivery_histories.count(),
@@ -6440,8 +6481,15 @@ def customer_detail_report_view_simple(request, followup_id):
         'chart_amounts': json.dumps([]),
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
-        'integrated_deliveries': list(delivery_histories) + list(schedule_deliveries),
+        'integrated_deliveries': integrated_deliveries,
+        'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),
         'meeting_histories': meeting_histories,
+        'chart_data': {
+            'labels': json.dumps([]),
+            'meetings': json.dumps([]),
+            'deliveries': json.dumps([]),
+            'amounts': json.dumps([]),
+        },
         'page_title': f'{followup.company.name} - {followup.customer_name if followup.customer_name else "담당자 미정"}'
     }
     
