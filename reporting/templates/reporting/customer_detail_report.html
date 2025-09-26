@@ -85,7 +85,7 @@
               <h5 class="card-title">
                 <i class="fas fa-truck"></i> 총 납품
               </h5>
-              <h3>{{ total_deliveries }}건</h3>
+              <h3 id="totalDeliveriesDisplay">{{ total_deliveries }}건</h3>
             </div>
           </div>
         </div>
@@ -187,7 +187,7 @@
                             {% if delivery.items_display or delivery.has_schedule_items %}
                               {% if delivery.items_display and delivery.has_schedule_items %}
                                 <!-- History와 Schedule이 모두 있는 경우 -->
-                                <button class="btn btn-sm btn-outline-info me-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')">
+                                <button class="btn btn-sm btn-outline-info me-1" onclick="showIntegratedDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.schedule_id }}', '{{ delivery.date|date:"Y-m-d" }}')">
                                   <i class="fas fa-list me-1"></i>통합 품목
                                 </button>
                                 <br><small class="text-muted mt-1">활동기록 + 일정 품목</small>
@@ -228,126 +228,26 @@
                           </td>
                           <td class="text-center">
                             {% if delivery.type == 'history' %}
-                              {% if user.userprofile.role == 'manager' %}
-                                <!-- 매니저는 읽기 전용 -->
-                                {% if delivery.history_tax_status.has_items %}
-                                  {% if delivery.history_tax_status.all_issued %}
-                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
-                                  {% elif delivery.history_tax_status.none_issued %}
-                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.total_count }}건 미발행</span>
-                                  {% else %}
-                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
-                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.pending_count }}건 미발행</span>
-                                  {% endif %}
+                              {% if delivery.history_tax_status.has_items %}
+                                {% if delivery.history_tax_status.all_issued %}
+                                  {% if user.userprofile.role == 'manager' %}<span class="badge bg-primary">발행완료</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span></div><small class="text-muted d-block mt-1">클릭시 일괄변경</small>{% endif %}
+                                {% elif delivery.history_tax_status.none_issued %}
+                                  {% if user.userprofile.role == 'manager' %}<span class="badge bg-secondary">미발행</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span></div><small class="text-muted d-block mt-1">클릭시 일괄변경</small>{% endif %}
                                 {% else %}
-                                  {% if delivery.tax_invoice_issued %}
-                                    <span class="badge bg-primary">발행완료</span>
-                                  {% else %}
-                                    <span class="badge bg-secondary">미발행</span>
-                                  {% endif %}
+                                  <span class="badge bg-primary">발행완료</span><span class="badge bg-secondary">미발행</span>{% if user.userprofile.role != 'manager' %}<br><button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')"><i class="fas fa-edit me-1"></i>개별 편집</button>{% endif %}
                                 {% endif %}
                               {% else %}
-                                <!-- 관리자와 영업사원은 편집 가능 - 납품일별 일괄 토글 -->
-                                {% if delivery.history_tax_status.has_items %}
-                                  <!-- 품목이 있는 경우: 품목 개수 기반 상태 표시 -->
-                                  {% if delivery.history_tax_status.all_issued %}
-                                    <div class="tax-invoice-toggle" 
-                                         data-type="history" 
-                                         data-id="{{ delivery.id }}" 
-                                         data-schedule-id="{{ delivery.schedule_id }}"
-                                         style="cursor: pointer;"
-                                         title="클릭하여 모든 품목을 미발행으로 변경">
-                                      <span class="badge bg-primary">
-                                        <i class="fas fa-check me-1"></i>전체 발행완료
-                                      </span>
-                                    </div>
-                                  {% elif delivery.history_tax_status.none_issued %}
-                                    <div class="tax-invoice-toggle" 
-                                         data-type="history" 
-                                         data-id="{{ delivery.id }}" 
-                                         data-schedule-id="{{ delivery.schedule_id }}"
-                                         style="cursor: pointer;"
-                                         title="클릭하여 모든 품목을 발행완료로 변경">
-                                      <span class="badge bg-secondary">
-                                        <i class="fas fa-times me-1"></i>전체 미발행
-                                      </span>
-                                    </div>
-                                  {% else %}
-                                    <!-- 일부만 발행된 경우: 개별 편집 필요 -->
-                                    <span class="badge bg-primary">{{ delivery.history_tax_status.issued_count }}건 발행</span>
-                                    <span class="badge bg-secondary">{{ delivery.history_tax_status.pending_count }}건 미발행</span>
-                                    <br><button class="btn btn-sm btn-outline-primary mt-1" 
-                                               onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')">
-                                      <i class="fas fa-edit me-1"></i>개별 편집
-                                    </button>
-                                  {% endif %}
-                                  <small class="text-muted d-block mt-1">클릭시 모든 품목 일괄변경</small>
-                                {% else %}
-                                  <!-- 품목이 없는 경우: 단순 토글 -->
-                                  <div class="tax-invoice-toggle" 
-                                       data-type="history" 
-                                       data-id="{{ delivery.id }}" 
-                                       data-schedule-id="{{ delivery.schedule_id }}"
-                                       style="cursor: pointer;"
-                                       title="클릭하여 세금계산서 상태 변경">
-                                    {% if delivery.tax_invoice_issued %}
-                                      <span class="badge bg-primary">
-                                        <i class="fas fa-check me-1"></i>발행완료
-                                      </span>
-                                    {% else %}
-                                      <span class="badge bg-secondary">
-                                        <i class="fas fa-times me-1"></i>미발행
-                                      </span>
-                                    {% endif %}
-                                  </div>
-                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
-                                {% endif %}
+                                {% if user.userprofile.role == 'manager' %}<span class="badge bg-{% if delivery.tax_invoice_issued %}primary">발행완료{% else %}secondary">미발행{% endif %}</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-{% if delivery.tax_invoice_issued %}primary"><i class="fas fa-check me-1"></i>발행완료{% else %}secondary"><i class="fas fa-times me-1"></i>미발행{% endif %}</span></div><small class="text-muted d-block mt-1">클릭시 상태 변경</small>{% endif %}
                               {% endif %}
-                            {% elif delivery.type == 'schedule_only' %}
-                              {% if user.userprofile.role == 'manager' %}
-                                <!-- 매니저는 읽기 전용 -->
-                                <div class="schedule-tax-status">
-                                  {% if delivery.schedule_tax_status.issued_count > 0 %}
-                                    <span class="badge bg-primary">{{ delivery.schedule_tax_status.issued_count }}건 발행</span>
-                                  {% endif %}
-                                  {% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}
-                                    <span class="badge bg-secondary">미발행</span>
-                                  {% endif %}
-                                </div>
+                            {% else %}
+                              {% if delivery.schedule_tax_status.total_count == 0 %}
+                                <span class="text-muted">품목 없음</span>
                               {% else %}
-                                <!-- 관리자와 영업사원은 편집 가능 - 일괄 토글 -->
-                                <div class="schedule-tax-status">
-                                  {% if delivery.schedule_tax_status.all_issued %}
-                                    <div class="tax-invoice-toggle" 
-                                         data-type="schedule_bulk" 
-                                         data-id="{{ delivery.schedule_id }}" 
-                                         style="cursor: pointer;"
-                                         title="클릭하여 모든 품목을 미발행으로 변경">
-                                      <span class="badge bg-primary">
-                                        <i class="fas fa-check me-1"></i>전체 발행완료
-                                      </span>
-                                    </div>
-                                  {% elif delivery.schedule_tax_status.none_issued %}
-                                    <div class="tax-invoice-toggle" 
-                                         data-type="schedule_bulk" 
-                                         data-id="{{ delivery.schedule_id }}" 
-                                         style="cursor: pointer;"
-                                         title="클릭하여 모든 품목을 발행완료로 변경">
-                                      <span class="badge bg-secondary">
-                                        <i class="fas fa-times me-1"></i>전체 미발행
-                                      </span>
-                                    </div>
-                                  {% else %}
-                                    <!-- 일부만 발행된 경우 - 개별 편집 버튼 -->
-                                    <span class="badge bg-primary">{{ delivery.schedule_tax_status.issued_count }}건 발행</span>
-                                    <span class="badge bg-secondary">{{ delivery.schedule_tax_status.pending_count }}건 미발행</span>
-                                    <br><button class="btn btn-sm btn-outline-primary mt-1" 
-                                               onclick="editScheduleTaxInvoice({{ delivery.schedule_id }})">
-                                      <i class="fas fa-edit me-1"></i>개별 편집
-                                    </button>
-                                  {% endif %}
-                                  <small class="text-muted d-block mt-1">클릭시 모든 품목 일괄변경</small>
-                                </div>
+                                {% if user.userprofile.role == 'manager' %}
+                                  {% if delivery.schedule_tax_status.issued_count > 0 %}<span class="badge bg-primary">발행완료</span>{% endif %}{% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}<span class="badge bg-secondary">미발행</span>{% endif %}
+                                {% else %}
+                                  <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary"><i class="fas fa-check me-1"></i>발행완료{% else %}secondary"><i class="fas fa-times me-1"></i>미발행{% endif %}</span></div><small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                {% endif %}
                               {% endif %}
                             {% endif %}
                           </td>
@@ -868,10 +768,162 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
   modal.show();
 }
 
+// 통합 납품 품목 모달을 표시하는 함수 (History와 Schedule 통합)
+function showIntegratedDeliveryItemsModal(historyId, scheduleId, deliveryDate) {
+  // 납품일 설정
+  const deliveryDateElement = document.getElementById('deliveryDateText');
+  if (deliveryDateElement) {
+    deliveryDateElement.textContent = deliveryDate;
+  }
+  
+  const contentDiv = document.getElementById('modalDeliveryItems');
+  if (!contentDiv) {
+    console.error('modalDeliveryItems element not found');
+    return;
+  }
+  
+  // 로딩 표시
+  contentDiv.innerHTML = `
+    <div class="text-center py-3">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2">통합 품목 정보를 불러오는 중...</p>
+    </div>
+  `;
+  
+  // 모달 먼저 표시
+  const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+  modal.show();
+  
+  // History와 Schedule 데이터를 모두 가져와서 통합 표시
+  Promise.all([
+    // History DeliveryItem 가져오기
+    historyId ? fetch(`/reporting/histories/${historyId}/delivery-items-api/`)
+      .then(response => response.ok ? response.json() : { success: false, items: [] })
+      .catch(error => {
+        return { success: false, items: [] };
+      }) : Promise.resolve({ success: false, items: [] }),
+    
+    // Schedule DeliveryItem 가져오기  
+    scheduleId ? fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`)
+      .then(response => response.ok ? response.json() : { success: false, items: [] })
+      .catch(error => {
+        return { success: false, items: [] };
+      }) : Promise.resolve({ success: false, items: [] })
+  ])
+  .then(([historyData, scheduleData]) => {
+    const historyItems = (historyData.success && historyData.items) ? historyData.items : [];
+    const scheduleItems = (scheduleData.success && scheduleData.items) ? scheduleData.items : [];
+    const allItems = [...historyItems, ...scheduleItems];
+    
+    if (allItems.length > 0) {
+      let totalAmount = 0;
+      
+      // 통합 품목 상태 정보 표시
+      let infoHtml = `
+        <div class="alert alert-info mb-3">
+          <i class="fas fa-info-circle me-2"></i>
+          <strong>통합 품목 내역</strong> - 활동기록과 연결된 일정의 품목들이 함께 표시됩니다.
+          <br><small>History 품목 ${historyItems.length}개 + Schedule 품목 ${scheduleItems.length}개</small>
+        </div>
+      `;
+      
+      let tableHtml = `
+        ${infoHtml}
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered">
+            <thead class="table-primary">
+              <tr>
+                <th>품목명</th>
+                <th class="text-center">수량</th>
+                <th class="text-end">단가</th>
+                <th class="text-end">총액 (부가세 포함)</th>
+                <th class="text-center">세금계산서</th>
+                <th class="text-center">출처</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      allItems.forEach(item => {
+        const itemTotal = item.total_price || (item.quantity * item.unit_price * 1.1);
+        totalAmount += itemTotal;
+        
+        // 출처별 라벨 설정
+        let sourceLabel = '';
+        let sourceClass = '';
+        switch(item.source) {
+          case 'history':
+            sourceLabel = '활동기록';
+            sourceClass = 'bg-info';
+            break;
+          case 'history_text':
+            sourceLabel = '활동기록';
+            sourceClass = 'bg-info';
+            break;
+          case 'schedule':
+            sourceLabel = '일정';
+            sourceClass = 'bg-warning';
+            break;
+          default:
+            sourceLabel = '활동기록';
+            sourceClass = 'bg-info';
+        }
+        
+        tableHtml += `
+          <tr>
+            <td>${item.item_name || ''}</td>
+            <td class="text-center">${item.quantity || 0}</td>
+            <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
+            <td class="text-end"><strong class="text-primary">${parseInt(itemTotal).toLocaleString()}원</strong></td>
+            <td class="text-center">
+              ${item.tax_invoice_issued 
+                ? '<span class="badge bg-primary">발행완료</span>' 
+                : '<span class="badge bg-secondary">미발행</span>'}
+            </td>
+            <td class="text-center">
+              <span class="badge ${sourceClass}">${sourceLabel}</span>
+            </td>
+          </tr>
+        `;
+      });
+      
+      tableHtml += `
+            </tbody>
+            <tfoot class="table-secondary">
+              <tr>
+                <th colspan="4" class="text-end">총 금액:</th>
+                <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
+                <th></th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+      
+      contentDiv.innerHTML = tableHtml;
+    } else {
+      contentDiv.innerHTML = `
+        <div class="text-center text-muted py-3">
+          <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
+          <br><small>History ID: ${historyId}, Schedule ID: ${scheduleId}</small>
+        </div>
+      `;
+    }
+  })
+  .catch(error => {
+    contentDiv.innerHTML = `
+      <div class="text-center text-danger py-3">
+        <i class="fas fa-exclamation-triangle me-2"></i>통합 품목 정보를 불러오는 중 오류가 발생했습니다.
+        <br><small>${error.message}</small>
+      </div>
+    `;
+  });
+}
+
 // 전체 납품내역 데이터 처리 함수
 async function processAllDeliveryData() {
-  console.log('=== 전체 납품내역 데이터 처리 시작 ===');
-  
   // 서버에서 전달된 통합 납품 데이터
   let integratedDeliveryData = [];
   try {
@@ -879,12 +931,8 @@ async function processAllDeliveryData() {
     const jsonElement = document.getElementById('integrated-deliveries-data');
     if (jsonElement) {
       integratedDeliveryData = JSON.parse(jsonElement.textContent);
-      console.log('JSON 스크립트를 통한 통합 납품 데이터:', integratedDeliveryData);
-    } else {
-      console.warn('JSON 데이터 엘리먼트를 찾을 수 없습니다.');
     }
   } catch (error) {
-    console.error('JSON 처리 오류:', error);
     integratedDeliveryData = [];
   }
   
@@ -895,25 +943,18 @@ async function processAllDeliveryData() {
   
   // 통합 납품 데이터 처리
   for (const delivery of integratedDeliveryData) {
-    console.log(`\n--- ${delivery.type} ${delivery.id} 처리 시작 ---`);
-    
     // History 타입의 delivery_items 텍스트 처리
     if (delivery.type === 'history' && delivery.items && delivery.items.trim()) {
-      console.log('History delivery_items 처리:', delivery.items);
       processDeliveryItemsText(delivery.items, itemsSummary);
     }
     
     // Schedule DeliveryItem 처리 (History와 연결되거나 Schedule 전용)
     if (delivery.scheduleId) {
-      console.log(`Schedule ${delivery.scheduleId} DeliveryItem 확인 중...`);
-      
       try {
         const response = await fetch(`/reporting/schedules/${delivery.scheduleId}/delivery-items-api/`);
         if (response.ok) {
           const data = await response.json();
           const scheduleItems = data.items || [];
-          
-          console.log(`Schedule DeliveryItem 응답:`, scheduleItems);
           
           if (scheduleItems.length > 0) {
             scheduleItems.forEach(item => {
@@ -933,25 +974,18 @@ async function processAllDeliveryData() {
               itemsSummary[itemName].totalAmount += amount;
               itemsSummary[itemName].deliveryCount += 1;
               totalItemsCount += quantity;
-              
-              console.log(`Schedule 품목 추가: ${itemName}, ${quantity}개, ${amount.toLocaleString()}원`);
             });
           }
         }
       } catch (error) {
-        console.error(`Schedule ${delivery.scheduleId} DeliveryItem 가져오기 실패:`, error);
+        // Schedule DeliveryItem 처리 실패 시 무시
       }
     }
     
     // 금액 추가 (History는 amount, Schedule 전용은 scheduleAmount)
     const deliveryAmount = delivery.type === 'schedule_only' ? delivery.scheduleAmount : delivery.amount;
     totalAmount += deliveryAmount;
-    console.log(`--- ${delivery.type} ${delivery.id} 처리 완료 ---`);
   }
-  
-  console.log('최종 품목 집계:', itemsSummary);
-  console.log('총 품목 개수:', totalItemsCount);
-  console.log('총 금액:', totalAmount);
   
   // 요약 정보 업데이트
   document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
@@ -990,8 +1024,6 @@ async function processAllDeliveryData() {
       </tr>
     `;
   }
-  
-  console.log('=== 전체 납품내역 데이터 처리 완료 ===');
 }
 
 // History delivery_items 텍스트 파싱 함수
@@ -1033,8 +1065,6 @@ function processDeliveryItemsText(itemsText, itemsSummary) {
       
       // 전역 totalItemsCount에도 추가
       totalItemsCount += quantity;
-      
-      console.log(`History 품목 파싱: ${itemName}, ${quantity}개, ${amount.toLocaleString()}원`);
     }
   });
 }
@@ -1060,11 +1090,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 전체 타임라인에 Schedule DeliveryItem 정보 추가
 async function enhanceTimelineWithScheduleData() {
-  console.log('=== 전체 타임라인 Schedule 데이터 보강 시작 ===');
-  
   // 모든 납품 일정 타입의 타임라인 아이템들 찾기
   const deliveryTimelineItems = document.querySelectorAll('.timeline-item[data-history-id]');
-  console.log(`History ID가 있는 타임라인 아이템 ${deliveryTimelineItems.length}개 발견`);
   
   for (const item of deliveryTimelineItems) {
     const historyId = item.getAttribute('data-history-id');
@@ -1074,8 +1101,6 @@ async function enhanceTimelineWithScheduleData() {
     if (!deliveryDetails) {
       continue; // 납품 일정이 아니면 건너뛰기
     }
-    
-    console.log(`\n--- Timeline History ${historyId}, Schedule ${scheduleId} 처리 ---`);
     
     // 기존 납품 정보를 구조화된 형태로 변환
     // CSS :contains() selector는 표준이 아니므로 다른 방식으로 요소 찾기
@@ -1095,16 +1120,11 @@ async function enhanceTimelineWithScheduleData() {
       }
     });
     
-    console.log('기존 납품 정보:', { amountText, itemsText, dateText });
-    
     // History DeliveryItem 파싱 및 표시
     let historyItemsHtml = '';
     if (itemsText) {
-      console.log('History 품목 텍스트 파싱:', itemsText);
-      
       // 품목 텍스트 파싱 ("품목명: 수량개 (금액원)" 형태)
       const historyItems = parseDeliveryItemsText(itemsText);
-      console.log('파싱된 History 품목들:', historyItems);
       
       if (historyItems.length > 0) {
         let totalHistoryAmount = 0;
@@ -1149,15 +1169,11 @@ async function enhanceTimelineWithScheduleData() {
     // Schedule DeliveryItem 가져오기 및 표시
     let scheduleItemsHtml = '';
     if (scheduleId) {
-      console.log(`Schedule ${scheduleId} DeliveryItem 확인 중...`);
-      
       try {
         const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
         if (response.ok) {
           const data = await response.json();
           const scheduleItems = data.items || [];
-          
-          console.log(`Schedule DeliveryItem 응답:`, scheduleItems);
           
           if (scheduleItems.length > 0) {
             let totalScheduleAmount = 0;
@@ -1207,7 +1223,7 @@ async function enhanceTimelineWithScheduleData() {
           }
         }
       } catch (error) {
-        console.error(`Schedule ${scheduleId} 처리 중 오류:`, error);
+        // Schedule 처리 실패 시 무시
       }
     }
     
@@ -1244,11 +1260,8 @@ async function enhanceTimelineWithScheduleData() {
       `;
       
       deliveryDetails.innerHTML = enhancedDeliveryHtml;
-      console.log(`History ${historyId} 납품 정보 구조화 완료`);
     }
   }
-  
-  console.log('=== 전체 타임라인 Schedule 데이터 보강 완료 ===');
 }
 
 // 납품 품목 텍스트 파싱 함수

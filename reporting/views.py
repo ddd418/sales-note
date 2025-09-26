@@ -37,26 +37,15 @@ def save_delivery_items(request, instance_obj):
         logger.error(f"save_delivery_items: 지원되지 않는 객체 타입: {type(instance_obj)}")
         return
     
-    logger.info(f"save_delivery_items: {'Schedule' if is_schedule else 'History'} {instance_obj.pk}에 대한 납품 품목 저장 시작")
-    
     # 기존 품목들 삭제 (수정 시)
     if is_schedule:
         existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
-        logger.info(f"기존 Schedule 납품 품목 {existing_count}개 삭제")
     else:  # is_history
         existing_count = instance_obj.delivery_items_set.all().count()
         instance_obj.delivery_items_set.all().delete()
-        logger.info(f"기존 History 납품 품목 {existing_count}개 삭제")
-    
-    # POST 데이터 로깅
-    logger.info(f"전체 POST 데이터: {dict(request.POST)}")
     
     # delivery_items 관련 POST 데이터만 필터링
-    delivery_post_data = {k: v for k, v in request.POST.items() if 'delivery_items' in k}
-    logger.info(f"납품 품목 관련 POST 데이터: {delivery_post_data}")
-    
-    # 새로운 형태의 POST 데이터 처리 (delivery_items[0][name] 형태)
     delivery_items_data = {}
     
     for key, value in request.POST.items():
@@ -82,14 +71,11 @@ def save_delivery_items(request, instance_obj):
     
     # 납품 품목 저장
     created_count = 0
-    logger.info(f"파싱된 납품 품목 데이터: {delivery_items_data}")
     
     for index, item_data in delivery_items_data.items():
         item_name = item_data.get('name', '').strip()
         quantity = item_data.get('quantity', '').strip()
         unit_price = item_data.get('unit_price', '').strip()
-        
-        logger.info(f"품목 {index}: name={item_name}, quantity={quantity}, unit_price={unit_price}")
         
         if item_name and quantity:
             try:
@@ -111,14 +97,12 @@ def save_delivery_items(request, instance_obj):
                 
                 delivery_item.save()
                 created_count += 1
-                logger.info(f"납품 품목 저장 성공: {delivery_item.item_name} (ID: {delivery_item.pk})")
             except (ValueError, TypeError) as e:
                 logger.error(f"납품 품목 저장 실패: {e}")
                 continue  # 잘못된 데이터는 무시
         else:
             logger.warning(f"필수 데이터 누락: name={item_name}, quantity={quantity}")
     
-    logger.info(f"총 {created_count}개 납품 품목 저장 완료")
     return created_count
 
 # 권한 체크 데코레이터
@@ -707,13 +691,6 @@ def dashboard_view(request):
     # 사용자 프로필 가져오기
     user_profile = get_user_profile(request.user)
     
-    # 디버깅 로그 추가
-    logger.info(f"[DASHBOARD] 사용자: {request.user.username}")
-    logger.info(f"[DASHBOARD] 사용자 역할: {user_profile.role}")
-    logger.info(f"[DASHBOARD] request.is_admin: {getattr(request, 'is_admin', 'Not Set')}")
-    logger.info(f"[DASHBOARD] request.is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not Set')}")
-    logger.info(f"[DASHBOARD] request.user_company_name: {getattr(request, 'user_company_name', 'Not Set')}")
-    
     # URL 파라미터로 특정 사용자 필터링
     user_filter = request.GET.get('user')
     selected_user = None
@@ -832,29 +809,18 @@ def dashboard_view(request):
     delivery_count = len(unique_schedule_ids) + history_without_schedule
     # 활동 유형별 통계 (현재 연도만, 메모 제외)
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
-        logger.info(f"[DASHBOARD] 서비스 접근 권한 있음 - is_admin: {getattr(request, 'is_admin', False)}, is_hanagwahak: {getattr(request, 'is_hanagwahak', False)}")
         activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
-        
-        # 활동 유형별 상세 로그
-        for stat in activity_stats:
-            logger.info(f"[DASHBOARD] 활동 유형: {stat['action_type']}, 개수: {stat['count']}")
     else:
-        logger.info(f"[DASHBOARD] 서비스 접근 권한 없음 - 서비스 제외")
         # Admin이 아니고 하나과학이 아닌 경우 서비스 항목도 제외
         activity_stats = histories_current_year.exclude(action_type__in=['memo', 'service']).values('action_type').annotate(
             count=Count('id')
         ).order_by('action_type')
-        
-        # 활동 유형별 상세 로그
-        for stat in activity_stats:
-            logger.info(f"[DASHBOARD] 활동 유형: {stat['action_type']}, 개수: {stat['count']}")
     
     # 서비스 통계 추가 (완료된 서비스만 카운팅) - Admin이나 하나과학만
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
-        logger.info(f"[DASHBOARD] 올해 완료된 서비스 개수: {service_count}")
         
         # 이번 달 서비스 수 (완료된 것만)
         this_month_service_count = histories.filter(
@@ -863,31 +829,24 @@ def dashboard_view(request):
             created_at__month=current_month,
             created_at__year=current_year
         ).count()
-        logger.info(f"[DASHBOARD] 이번 달 완료된 서비스 개수: {this_month_service_count}")
         
         # 전체 서비스 히스토리 개수도 확인
         total_service_count = histories_current_year.filter(action_type='service').count()
-        logger.info(f"[DASHBOARD] 올해 전체 서비스 히스토리 개수: {total_service_count}")
         
         # 서비스 상태별 개수
         service_status_stats = histories_current_year.filter(action_type='service').values('service_status').annotate(
             count=Count('id')
         )
-        for status_stat in service_status_stats:
-            logger.info(f"[DASHBOARD] 서비스 상태 '{status_stat['service_status']}': {status_stat['count']}개")
             
     else:
         service_count = 0
         this_month_service_count = 0
-        logger.info(f"[DASHBOARD] 서비스 접근 권한 없음 - service_count = 0")
-      # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
+    
+    # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
     recent_activities_queryset = histories_current_year.exclude(action_type='memo')
     if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
         # Admin이 아니고 하나과학이 아닌 경우 서비스도 제외
         recent_activities_queryset = recent_activities_queryset.exclude(action_type='service')
-        logger.info(f"[DASHBOARD] 최근 활동에서 서비스 제외됨")
-    else:
-        logger.info(f"[DASHBOARD] 최근 활동에 서비스 포함됨")
         
     recent_activities = recent_activities_queryset.order_by('-created_at')[:5]
     
@@ -1095,18 +1054,6 @@ def dashboard_view(request):
         logger.info(f"[DASHBOARD] - monthly_services 데이터: {monthly_services} (타입: {type(monthly_services)})")
         
     logger.info(f"[DASHBOARD] - monthly_service_data: {context['monthly_service_data']}")
-    logger.info(f"[DASHBOARD] - monthly_service_labels: {context['monthly_service_labels']}")
-    logger.info(f"[DASHBOARD] - activity_stats 개수: {len(list(context['activity_stats']))}")
-    
-    # activity_stats에 서비스가 포함되어 있는지 확인
-    activity_types = [stat['action_type'] for stat in context['activity_stats']]
-    logger.info(f"[DASHBOARD] - 활동 유형 목록: {activity_types}")
-    if 'service' in activity_types:
-        service_stat = next(stat for stat in context['activity_stats'] if stat['action_type'] == 'service')
-        logger.info(f"[DASHBOARD] - 서비스 통계: {service_stat}")
-    else:
-        logger.info(f"[DASHBOARD] - 활동 통계에 서비스 없음")
-    
     return render(request, 'reporting/dashboard.html', context)
 
 # ============ 일정(Schedule) 관련 뷰들 ============
@@ -1265,12 +1212,6 @@ def schedule_detail_view(request, pk):
     # 납품 품목 조회 (DeliveryItem 모델)
     delivery_items = DeliveryItem.objects.filter(schedule=schedule)
     
-    # 디버깅: 납품 품목 정보 출력
-    print(f"Schedule ID: {schedule.id}")
-    print(f"DeliveryItem count: {delivery_items.count()}")
-    for item in delivery_items:
-        print(f"  - {item.item_name}: {item.quantity} x {item.unit_price}")
-    
     # 관련 히스토리에서 납품 품목 텍스트 찾기 (대체 방법)
     delivery_text = None
     delivery_histories = related_histories_all.filter(action_type='delivery_schedule', delivery_items__isnull=False)
@@ -1279,9 +1220,7 @@ def schedule_detail_view(request, pk):
         # \n을 실제 줄바꿈으로 변환
         if raw_delivery_text:
             delivery_text = raw_delivery_text.replace('\\n', '\n')
-            print(f"Raw delivery text: {repr(raw_delivery_text)}")
-            print(f"Processed delivery text: {repr(delivery_text)}")
-        print(f"Found delivery text from history: {delivery_text}")
+            delivery_text = raw_delivery_text.replace('\\n', '\n').replace('\\r\\n', '\n')
     
     # 이전 페이지 정보 (캘린더에서 온 경우)
     from_page = request.GET.get('from', 'list')  # 기본값은 'list'
@@ -1367,14 +1306,12 @@ def schedule_edit_view(request, pk):
     
     # 1차: DeliveryItem 모델에서 최신 데이터 확인
     delivery_items = schedule.delivery_items_set.all().order_by('id')
-    print(f"Found {delivery_items.count()} delivery items for schedule {schedule.pk}")
     
     if delivery_items.exists():
         delivery_text_parts = []
         total_amount = 0
         
         for item in delivery_items:
-            print(f"  - {item.item_name}: {item.quantity} x {item.unit_price}")
             # VAT 포함 총액 계산 (DeliveryItem의 save()에서 자동 계산됨)
             item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
             total_amount += item_total
@@ -1385,23 +1322,16 @@ def schedule_edit_view(request, pk):
         
         delivery_text = '\n'.join(delivery_text_parts)
         delivery_amount = int(total_amount)
-        
-        print(f"DeliveryItem text: {delivery_text}")
-        print(f"DeliveryItem amount: {delivery_amount}")
     
     # 2차: DeliveryItem이 없으면 History에서 fallback
     if not delivery_text:
         related_histories = History.objects.filter(schedule=schedule, action_type='delivery_schedule').order_by('-created_at')
-        print(f"No DeliveryItems found, checking {related_histories.count()} histories")
         
         if related_histories.exists():
             latest_delivery = related_histories.first()
             if latest_delivery.delivery_items:
                 raw_text = latest_delivery.delivery_items
-                print(f"Raw delivery text: '{raw_text}'")
                 delivery_text = raw_text.replace('\\n', '\n')
-                print(f"Processed delivery text: '{delivery_text}'")
-                print(f"Found delivery text from history: {delivery_text}")
             if latest_delivery.delivery_amount:
                 delivery_amount = latest_delivery.delivery_amount
     
@@ -3287,7 +3217,6 @@ def toggle_tax_invoice(request, history_id):
         
     except Exception as e:
         import traceback
-        print(f"Error in toggle_tax_invoice: {traceback.format_exc()}")  # 로깅용
         return JsonResponse({
             'success': False,
             'error': f'오류가 발생했습니다: {str(e)}'
@@ -3365,10 +3294,6 @@ def history_create_from_schedule(request, schedule_id):
             # AJAX 요청인지 확인
             is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
             
-            # 디버깅용 로그
-            print(f"POST data: {request.POST}")
-            print(f"Is AJAX: {is_ajax}")
-            
             # 인라인 폼에서 온 데이터를 위해 followup과 schedule을 자동 설정
             post_data = request.POST.copy()
             post_data['followup'] = schedule.followup.id
@@ -3428,7 +3353,6 @@ def history_create_from_schedule(request, schedule_id):
                     return redirect('reporting:schedule_detail', pk=schedule.pk)
             else:
                 # 폼 검증 실패
-                print(f"Form errors: {form.errors}")
                 if is_ajax:
                     # AJAX 요청인 경우 오류 응답
                     errors = []
@@ -3527,7 +3451,6 @@ def history_create_from_schedule(request, schedule_id):
         # 전체적인 오류 처리
         import traceback
         error_msg = f"오류 발생: {str(e)}"
-        print(f"Error in history_create_from_schedule: {traceback.format_exc()}")  # 로그용
         
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'success': False, 'error': error_msg})
@@ -3683,7 +3606,6 @@ def company_autocomplete(request):
     logger = logging.getLogger(__name__)
     
     query = request.GET.get('q', '').strip()
-    logger.info(f"[COMPANY_AUTOCOMPLETE] 사용자: {request.user.username}, 검색어: '{query}'")
     
     if len(query) < 1:
         return JsonResponse({'results': []})
@@ -3691,18 +3613,14 @@ def company_autocomplete(request):
     # Admin 사용자는 모든 업체 검색 가능
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
         companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
-        logger.info(f"[COMPANY_AUTOCOMPLETE] Admin 사용자 - 전체 업체에서 검색: {companies.count()}개 결과")
     else:
         # ======= 임시 수정: 모든 사용자가 모든 업체를 검색할 수 있도록 변경 =======
         # 원래: 사용자의 회사별로 데이터 필터링
         # 수정: 모든 업체를 검색할 수 있도록 변경 (company_list_view와 동일)
         companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
-        logger.info(f"[COMPANY_AUTOCOMPLETE] 일반 사용자 - 전체 업체에서 검색: {companies.count()}개 결과 (임시 수정)")
         
         user_company = getattr(request, 'user_company', None)
         user_profile = getattr(request.user, 'userprofile', None)
-        logger.info(f"[COMPANY_AUTOCOMPLETE] user_company (middleware): {user_company}")
-        logger.info(f"[COMPANY_AUTOCOMPLETE] user_profile.company: {user_profile.company if user_profile else None}")
         
         # ======= 원래 로직 (주석 처리됨) =======
         # if user_company:
@@ -3736,9 +3654,7 @@ def company_autocomplete(request):
             'id': company.id,
             'text': company.name
         })
-        logger.info(f"[COMPANY_AUTOCOMPLETE] 결과 업체: {company.name} (생성자: {company.created_by.username if company.created_by else 'Unknown'})")
     
-    logger.info(f"[COMPANY_AUTOCOMPLETE] 최종 반환 결과: {len(results)}개")
     return JsonResponse({'results': results})
 
 @login_required
@@ -5831,7 +5747,6 @@ def customer_detail_report_view(request, followup_id):
             # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
             schedule_tax_issued = schedule.tax_invoice_issued_count > 0 and schedule.tax_invoice_issued_count == schedule.total_items_count
             
-            print(f"Schedule {schedule.id} 전용 납품 추가 준비 - visit_date={schedule.visit_date}, calculated_total={schedule.calculated_total_amount}")
             logger.info(f"Schedule {schedule.id} 전용 납품 추가 (총액: {schedule.calculated_total_amount})")
             
             delivery_data = {
@@ -5854,30 +5769,21 @@ def customer_detail_report_view(request, followup_id):
                     'none_issued': schedule.tax_invoice_issued_count == 0,
                 }
             }
-            print(f"Schedule {schedule.id} delivery_data 생성 완료 - date={delivery_data['date']}, amount={delivery_data['amount']}, schedule_amount={delivery_data['schedule_amount']}")
             integrated_deliveries.append(delivery_data)
-            print(f"integrated_deliveries에 추가 완료 - 현재 총 {len(integrated_deliveries)}개")
             # 처리 완료된 Schedule ID 추가
             processed_schedule_ids.add(schedule.id)
-            print(f"processed_schedule_ids에 {schedule.id} 추가 완료")
+            processed_schedule_ids.add(schedule.id)
         else:
-            print(f"Schedule {schedule.id} 건너뛰기 - 이미 processed_schedule_ids에 존재")
             logger.info(f"Schedule {schedule.id} 이미 History에서 처리됨 - 건너뛰기")
     
-    print(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
     logger.info(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
     for i, delivery in enumerate(integrated_deliveries):
-        print(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
-        print(f"     date={delivery['date']}, content='{delivery.get('content', '')}', user='{delivery.get('user', '')}'")
         logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
         logger.info(f"     date={delivery['date']}, content='{delivery.get('content', '')}', user='{delivery.get('user', '')}'")
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
-    
-    print(f"=== 정렬 후 통합 납품 내역: {len(integrated_deliveries)}개 ===")
     for i, delivery in enumerate(integrated_deliveries):
-        print(f"  {i+1}. {delivery['type']} ID={delivery['id']}, date={delivery['date']}")
         logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, date={delivery['date']}")
     
     # 미팅 기록
@@ -5885,9 +5791,8 @@ def customer_detail_report_view(request, followup_id):
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
     
-    # 🔥 Context 생성 직전 최종 확인
-    print(f"🚨🚨🚨 Context 생성 직전 total_amount 최종 확인: {total_amount} 🚨🚨🚨")
-    logger.info(f"🚨🚨🚨 Context 생성 직전 total_amount 최종 확인: {total_amount} 🚨🚨🚨")
+    # Context 생성 직전 최종 확인
+    logger.info(f"Context 생성 직전 total_amount 최종 확인: {total_amount}")
     
     context = {
         'followup': followup,
@@ -6150,11 +6055,6 @@ def schedule_delivery_items_api(request, schedule_id):
         related_history = None
         try:
             related_history = History.objects.filter(schedule=schedule).first()  # 이 Schedule에 연결된 첫 번째 History
-            # 디버깅 로그
-            print(f"DEBUG Schedule API - Schedule ID: {schedule.id}")
-            print(f"DEBUG Schedule API - Related History: {related_history.id if related_history else 'None'}")
-            if related_history:
-                print(f"DEBUG Schedule API - History tax_invoice_issued: {related_history.tax_invoice_issued}")
         except:
             pass
         
@@ -6167,11 +6067,6 @@ def schedule_delivery_items_api(request, schedule_id):
             
             # History가 있으면 History 기준, 없으면 Schedule DeliveryItem 기준
             tax_invoice_status = related_history.tax_invoice_issued if related_history else item.tax_invoice_issued
-            
-            # 디버깅 로그
-            print(f"DEBUG Schedule API - DeliveryItem ID: {item.id}")
-            print(f"DEBUG Schedule API - Original tax_invoice_issued: {item.tax_invoice_issued}")
-            print(f"DEBUG Schedule API - Applied tax_invoice_status: {tax_invoice_status}")
             
             items_data.append({
                 'id': item.id,
@@ -6209,9 +6104,6 @@ def history_delivery_items_api(request, history_id):
     try:
         history = get_object_or_404(History, pk=history_id)
         
-        logger.info(f"[HISTORY_DELIVERY_API] History {history_id} 품목 조회 시작")
-        logger.info(f"[HISTORY_DELIVERY_API] History의 연결된 Schedule: {history.schedule.id if history.schedule else 'None'}")
-        
         # 권한 체크: 해당 활동기록을 볼 수 있는 권한이 있는지 확인
         if not can_access_user_data(request.user, history.user):
             return JsonResponse({
@@ -6229,7 +6121,6 @@ def history_delivery_items_api(request, history_id):
         # 1. History DeliveryItem 모델이 있는 경우
         if delivery_items.exists():
             has_history_items = True
-            logger.info(f"[HISTORY_DELIVERY_API] History에 {delivery_items.count()}개 DeliveryItem 발견")
             for item in delivery_items:
                 item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
                 # History의 세금계산서 상태를 기준으로 함 (동기화)
@@ -6242,17 +6133,14 @@ def history_delivery_items_api(request, history_id):
                     'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
                     'source': 'history'  # 출처 표시
                 })
-                logger.info(f"[HISTORY_DELIVERY_API] DeliveryItem {item.id}: tax_invoice_issued = {history.tax_invoice_issued} (History 기준)")
         else:
-            logger.info(f"[HISTORY_DELIVERY_API] History에 DeliveryItem 없음")
+            pass
         
         # 2. History DeliveryItem이 없지만 기존 텍스트 데이터가 있는 경우 (fallback)
         if not has_history_items and history.delivery_items and history.delivery_items.strip():
             has_history_items = True
-            logger.info(f"[HISTORY_DELIVERY_API] History 텍스트 데이터에서 품목 파싱: '{history.delivery_items[:100]}...'")
             # 기존 텍스트 데이터 파싱
             delivery_text = history.delivery_items.strip()
-            logger.info(f"[HISTORY_DELIVERY_API] 전체 텍스트 데이터: '{delivery_text}'")
             
             # 줄바꿈으로 분리하여 각 라인 처리
             lines = delivery_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
@@ -6260,7 +6148,6 @@ def history_delivery_items_api(request, history_id):
             # 만약 줄바꿈이 문자열로 저장되어 있다면 \\n으로도 분리 시도
             if len(lines) == 1 and '\\n' in delivery_text:
                 lines = delivery_text.split('\\n')
-                logger.info(f"[HISTORY_DELIVERY_API] \\n으로 분리 시도")
             
             # 그래도 하나의 라인이면, 품목 패턴을 찾아서 분리
             if len(lines) == 1:
@@ -6269,16 +6156,11 @@ def history_delivery_items_api(request, history_id):
                 matches = re.findall(pattern, delivery_text)
                 if len(matches) > 1:
                     lines = matches
-                    logger.info(f"[HISTORY_DELIVERY_API] 정규식으로 {len(matches)}개 품목 패턴 분리")
-            
-            logger.info(f"[HISTORY_DELIVERY_API] 분리된 라인 수: {len(lines)}")
             
             for i, line in enumerate(lines):
                 line = line.strip()
-                logger.info(f"[HISTORY_DELIVERY_API] 라인 {i}: '{line}'")
                 
                 if not line:
-                    logger.info(f"[HISTORY_DELIVERY_API] 라인 {i}: 빈 라인 스킵")
                     continue
                 
                 # "품목명: 수량개 (금액원)" 패턴 파싱
@@ -6294,8 +6176,6 @@ def history_delivery_items_api(request, history_id):
                         total_amount = float(amount_str)
                         # 부가세 포함 금액에서 단가 역산 (부가세 포함 / 수량)
                         unit_price = total_amount / quantity if quantity > 0 else 0
-                        
-                        logger.info(f"[HISTORY_DELIVERY_API] 계산 완료 - 총액: {total_amount}, 단가: {unit_price}")
                     except ValueError as e:
                         logger.error(f"[HISTORY_DELIVERY_API] 금액 파싱 실패: {e}")
                         total_amount = 0
@@ -6310,7 +6190,6 @@ def history_delivery_items_api(request, history_id):
                         'tax_invoice_issued': history.tax_invoice_issued,  # History 기준
                         'source': 'history_text'  # 출처 표시
                     })
-                    logger.info(f"[HISTORY_DELIVERY_API] 품목 추가 완료: {item_name}")
                 else:
                     logger.warning(f"[HISTORY_DELIVERY_API] 패턴 매칭 실패 - 라인: '{line}'")
                     # 패턴에 맞지 않는 경우, 전체를 품목명으로 처리
@@ -6323,19 +6202,16 @@ def history_delivery_items_api(request, history_id):
                         'tax_invoice_issued': history.tax_invoice_issued,  # History 기준
                         'source': 'history_text'  # 출처 표시
                     })
-                    logger.info(f"[HISTORY_DELIVERY_API] 기본 품목으로 추가: {line}")
         
         # 3. 연결된 Schedule의 DeliveryItem도 항상 확인 (History 기준 세금계산서 상태 적용)
         # History에 DeliveryItem이나 텍스트가 없어도 Schedule DeliveryItem은 항상 확인
         if history.schedule:
             schedule_items = history.schedule.delivery_items_set.all().order_by('id')
-            logger.info(f"[HISTORY_DELIVERY_API] Schedule {history.schedule.id}에 {schedule_items.count()}개 DeliveryItem 발견")
             
             if schedule_items.exists():
                 has_schedule_items = True
                 for item in schedule_items:
                     item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
-                    logger.info(f"[HISTORY_DELIVERY_API] Schedule DeliveryItem: {item.item_name} - {item.quantity}개 x {item.unit_price}원")
                     
                     items_data.append({
                         'id': f'schedule_{item.id}',
@@ -6347,15 +6223,7 @@ def history_delivery_items_api(request, history_id):
                         'source': 'schedule'  # 출처 표시
                     })
         else:
-            logger.info(f"[HISTORY_DELIVERY_API] History에 연결된 Schedule 없음")
-        
-        logger.info(f"[HISTORY_DELIVERY_API] 최종 품목 데이터: {len(items_data)}개")
-        logger.info(f"[HISTORY_DELIVERY_API] has_history_items: {has_history_items}, has_schedule_items: {has_schedule_items}")
-        
-        # 디버깅: 최종 응답 데이터 로그
-        logger.info(f"[HISTORY_DELIVERY_API] 최종 API 응답 - History {history.id}:")
-        logger.info(f"[HISTORY_DELIVERY_API] items_data: {items_data}")
-        logger.info(f"[HISTORY_DELIVERY_API] tax_invoice_status: {history.tax_invoice_issued}")
+            pass
         
         return JsonResponse({
             'success': True,
@@ -6432,6 +6300,26 @@ def customer_detail_report_view_simple(request, followup_id):
     
     # History 기반 납품 내역
     for history in delivery_histories:
+        # 이 History와 연결된 Schedule이 있고, 그 Schedule에 DeliveryItem이 있는지 확인
+        has_schedule_items = False
+        if history.schedule:
+            schedule_delivery_items = history.schedule.delivery_items_set.all()
+            if schedule_delivery_items.exists():
+                has_schedule_items = True
+        
+        # History의 세금계산서 상태 정보 계산
+        history_delivery_items = history.delivery_items_set.all()
+        history_tax_status = {
+            'has_items': history_delivery_items.exists(),
+            'total_count': history_delivery_items.count(),
+            'issued_count': history_delivery_items.filter(tax_invoice_issued=True).count(),
+            'pending_count': history_delivery_items.filter(tax_invoice_issued=False).count(),
+        }
+        history_tax_status['all_issued'] = (history_tax_status['total_count'] > 0 and 
+                                          history_tax_status['issued_count'] == history_tax_status['total_count'])
+        history_tax_status['none_issued'] = (history_tax_status['total_count'] > 0 and 
+                                            history_tax_status['issued_count'] == 0)
+        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -6444,21 +6332,18 @@ def customer_detail_report_view_simple(request, followup_id):
             'tax_invoice_issued': history.tax_invoice_issued,
             'content': history.content or '',
             'user': history.user.username,
-            'has_schedule_items': False,
+            'has_schedule_items': has_schedule_items,
+            'history_tax_status': history_tax_status,  # 세금계산서 상태 정보 추가
         }
         integrated_deliveries.append(delivery_data)
     
     # Schedule 기반 납품 일정 추가
     for schedule in schedule_deliveries:
-        print(f"Schedule {schedule.id} 처리 중...")
-        
         # 해당 Schedule과 연결된 History 찾기
         related_history = delivery_histories.filter(schedule=schedule).first()
-        print(f"  delivery_histories에서 찾은 related_history: {related_history}")
         
         if related_history:
             # Schedule과 연결된 History가 있으면 History 데이터 우선 (이미 위에서 처리됨)
-            print(f"  Schedule {schedule.id}는 History {related_history.id}와 연결되어 있어서 건너뜁니다.")
             continue
         else:
             # History에 연결되지 않은 Schedule - 일정 기반으로 표시
@@ -6468,10 +6353,8 @@ def customer_detail_report_view_simple(request, followup_id):
             
             # 이 Schedule을 참조하는 모든 History 검색 (delivery가 아닌 것도 포함)
             all_related_histories = History.objects.filter(schedule=schedule)
-            print(f"  Schedule {schedule.id}와 연결된 모든 History 개수: {all_related_histories.count()}")
             
             for hist in all_related_histories:
-                print(f"    History {hist.id}: action_type={hist.action_type}, amount={hist.delivery_amount}, items='{hist.delivery_items}'")
                 if hist.delivery_amount:
                     schedule_amount += float(hist.delivery_amount)
                 if hist.delivery_items:
@@ -6479,14 +6362,12 @@ def customer_detail_report_view_simple(request, followup_id):
             
             # Schedule에 직접 연결된 DeliveryItem들에서 금액과 품목 정보 가져오기
             schedule_delivery_items = schedule.delivery_items_set.all()
-            print(f"  Schedule {schedule.id}에 직접 연결된 DeliveryItem 개수: {schedule_delivery_items.count()}")
             
             if schedule_delivery_items.exists():
                 item_names = []
                 delivery_item_amount = 0
                 
                 for item in schedule_delivery_items:
-                    print(f"    DeliveryItem: {item.item_name}, 수량: {item.quantity}, 단가: {item.unit_price}, 총액: {item.total_price}")
                     if item.total_price:
                         delivery_item_amount += float(item.total_price)
                     item_names.append(f"{item.item_name}: {item.quantity}개")
@@ -6497,7 +6378,17 @@ def customer_detail_report_view_simple(request, followup_id):
                 if item_names:
                     schedule_items = ' / '.join(item_names)
             
-            print(f"  Schedule {schedule.id} 최종 - amount: {schedule_amount}, items: '{schedule_items}'")
+            # Schedule의 세금계산서 상태 정보 계산
+            schedule_tax_status = {
+                'has_items': schedule_delivery_items.exists(),
+                'total_count': schedule_delivery_items.count(),
+                'issued_count': schedule_delivery_items.filter(tax_invoice_issued=True).count(),
+                'pending_count': schedule_delivery_items.filter(tax_invoice_issued=False).count(),
+            }
+            schedule_tax_status['all_issued'] = (schedule_tax_status['total_count'] > 0 and 
+                                              schedule_tax_status['issued_count'] == schedule_tax_status['total_count'])
+            schedule_tax_status['none_issued'] = (schedule_tax_status['total_count'] > 0 and 
+                                                schedule_tax_status['issued_count'] == 0)
             
             delivery_data = {
                 'type': 'schedule_only',
@@ -6513,52 +6404,81 @@ def customer_detail_report_view_simple(request, followup_id):
                 'content': schedule.notes or '예정된 납품 일정',
                 'user': schedule.user.username,
                 'has_schedule_items': True,
+                'schedule_tax_status': schedule_tax_status,  # 세금계산서 상태 정보 추가
             }
             integrated_deliveries.append(delivery_data)
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
-    
-    # 디버그 로그 추가
-    print(f"=== DEBUG: customer_detail_report_view_simple ===")
-    print(f"FollowUp ID: {followup.id}")
-    print(f"총 integrated_deliveries 개수: {len(integrated_deliveries)}")
-    for i, delivery in enumerate(integrated_deliveries):
-        print(f"  [{i}] type: {delivery['type']}, amount: {delivery['amount']}, items: '{delivery.get('items', 'N/A')}'")
-    
-    # JSON 직렬화 테스트
-    try:
-        json_test = json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder)
-        print(f"JSON 직렬화 성공, 길이: {len(json_test)}")
-        print(f"JSON 첫 100자: {json_test[:100]}")
-    except Exception as e:
-        print(f"JSON 직렬화 오류: {e}")
-    print(f"=== DEBUG END ===\n")
 
-    # JSON 직렬화 및 디버깅
+    # JSON 직렬화
     try:
         integrated_deliveries_json = json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder)
-        print(f"=== DEBUG: customer_detail_report_view_simple ===")
-        print(f"FollowUp ID: {followup.id}")
-        print(f"총 integrated_deliveries 개수: {len(integrated_deliveries)}")
-        for i, delivery in enumerate(integrated_deliveries):
-            print(f"  [{i}] type: {delivery['type']}, amount: {delivery.get('amount', 'N/A')}, items: '{delivery.get('items', 'N/A')}'")
-        print(f"JSON 직렬화 성공, 길이: {len(integrated_deliveries_json)}")
-        print(f"JSON 첫 100자: {integrated_deliveries_json[:100]}")
-        print(f"JSON 마지막 100자: {integrated_deliveries_json[-100:]}")
-        print(f"=== DEBUG END ===")
     except Exception as e:
-        print(f"JSON 직렬화 오류: {e}")
         integrated_deliveries_json = "[]"
+
+    # 통합 데이터 기반 통계 계산
+    integrated_total_amount = 0
+    integrated_tax_issued = 0
+    integrated_tax_pending = 0
+    
+    for delivery in integrated_deliveries:
+        # 금액 계산
+        if delivery['type'] == 'schedule_only':
+            amount = delivery.get('scheduleAmount', 0)
+        else:  # history
+            amount = delivery.get('amount', 0)
+        integrated_total_amount += amount
+        
+        # 세금계산서 상태 계산 (건별로 계산)
+        delivery_has_issued_items = False
+        delivery_has_pending_items = False
+        
+        if delivery['type'] == 'history':
+            tax_status = delivery.get('history_tax_status', {})
+            if tax_status.get('has_items', False):
+                # DeliveryItem이 있는 경우 - 하나라도 발행된 것이 있으면 발행건으로 간주
+                if tax_status.get('all_issued', False):
+                    delivery_has_issued_items = True
+                elif tax_status.get('none_issued', False):
+                    delivery_has_pending_items = True
+                else:
+                    # 일부만 발행된 경우 - 혼재 상태이므로 발행건으로 간주
+                    delivery_has_issued_items = True
+            else:
+                # 단순 History인 경우
+                if delivery.get('tax_invoice_issued', False):
+                    delivery_has_issued_items = True
+                else:
+                    delivery_has_pending_items = True
+        else:  # schedule_only
+            tax_status = delivery.get('schedule_tax_status', {})
+            if tax_status.get('total_count', 0) > 0:
+                if tax_status.get('all_issued', False):
+                    delivery_has_issued_items = True
+                elif tax_status.get('none_issued', False):
+                    delivery_has_pending_items = True
+                else:
+                    # 일부만 발행된 경우 - 혼재 상태이므로 발행건으로 간주
+                    delivery_has_issued_items = True
+            # 품목이 없는 경우는 미발행으로 간주
+            else:
+                delivery_has_pending_items = True
+        
+        # 건별로 카운트
+        if delivery_has_issued_items:
+            integrated_tax_issued += 1
+        elif delivery_has_pending_items:
+            integrated_tax_pending += 1
 
     context = {
         'followup': followup,
         'histories': histories,
-        'total_amount': total_amount,
+        'total_amount': integrated_total_amount,
         'total_meetings': meeting_histories.count(),
-        'total_deliveries': delivery_histories.count(),
-        'tax_invoices_issued': delivery_histories.filter(tax_invoice_issued=True).count(),
-        'tax_invoices_pending': delivery_histories.filter(tax_invoice_issued=False).count(),
+        'total_deliveries': len(integrated_deliveries),
+        'tax_invoices_issued': integrated_tax_issued,
+        'tax_invoices_pending': integrated_tax_pending,
         'chart_labels': json.dumps([], ensure_ascii=False),
         'chart_meetings': json.dumps([], ensure_ascii=False),
         'chart_deliveries': json.dumps([], ensure_ascii=False),
@@ -7028,16 +6948,8 @@ def debug_user_company_info(request):
             }
             debug_info['korea_university_companies'].append(company_info)
         
-        # 로그에도 기록
-        logger.info(f"[DEBUG] 디버그 정보 요청 - 사용자: {request.user.username}")
-        logger.info(f"[DEBUG] request.is_hanagwahak: {getattr(request, 'is_hanagwahak', 'Not set')}")
-        logger.info(f"[DEBUG] 계산된 is_hanagwahak: {debug_info.get('is_hanagwahak_calculated', 'N/A')}")
-        logger.info(f"[DEBUG] 사용자 회사(UserCompany) 수: {debug_info.get('user_companies_count', 0)}")
-        logger.info(f"[DEBUG] 고객 업체(Company) 수: {debug_info.get('client_companies_count', 0)}")
-        logger.info(f"[DEBUG] 고려대학교 관련 업체 수: {len(debug_info.get('korea_university_companies', []))}")
-        
         return JsonResponse(debug_info, ensure_ascii=False, json_dumps_params={'indent': 2})
         
     except Exception as e:
-        logger.error(f"[DEBUG] 디버그 뷰 에러: {str(e)}")
+        logger.error(f"디버그 뷰 에러: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
