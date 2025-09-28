@@ -1,20 +1,27 @@
-{% extends "reporting/base.html" %}
-{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
-{% block content %}
+{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
+보고 시스템{% endblock %} {% block content %}
 
 <div class="container">
   <div class="row">
     <div class="col-12">
       <!-- 헤더 섹션 -->
-      <div class="page-header d-flex justify-content-between align-items-center mb-4">
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
         <h1 class="page-title mb-0">
           <i class="fas fa-chart-line me-2"></i>{{ page_title }}
         </h1>
         <div class="header-actions">
-          <a href="{% url 'reporting:customer_report' %}" class="btn btn-outline-secondary">
+          <a
+            href="{% url 'reporting:customer_report' %}"
+            class="btn btn-outline-secondary"
+          >
             <i class="fas fa-arrow-left me-2"></i>목록으로
           </a>
-          <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-outline-info">
+          <a
+            href="{% url 'reporting:followup_detail' followup.id %}"
+            class="btn btn-outline-info"
+          >
             <i class="fas fa-user me-2"></i>고객 정보
           </a>
         </div>
@@ -31,7 +38,7 @@
               <div class="row">
                 <div class="col-md-6">
                   <h5 class="card-title text-primary">
-                    <i class="fas fa-user me-2"></i>{{ followup.customer_name|default:"고객명 미정" }}
+                    <i class="fas fa-user me-2"></i>{{followup.customer_name|default:"고객명 미정" }}
                   </h5>
                   <p class="mb-2">
                     <strong>업체:</strong> {{ followup.company.name }}
@@ -53,13 +60,11 @@
                   <p class="mb-2">
                     <i class="fas fa-phone me-2"></i>{{ followup.phone_number }}
                   </p>
-                  {% endif %}
-                  {% if followup.email %}
+                  {% endif %} {% if followup.email %}
                   <p class="mb-0">
                     <i class="fas fa-envelope me-2"></i>{{ followup.email }}
                   </p>
-                  {% endif %}
-                  {% endif %}
+                  {% endif %} {% endif %}
                 </div>
               </div>
             </div>
@@ -82,9 +87,7 @@
         <div class="col-md-3">
           <div class="card text-center bg-success text-white">
             <div class="card-body">
-              <h5 class="card-title">
-                <i class="fas fa-truck"></i> 총 납품
-              </h5>
+              <h5 class="card-title"><i class="fas fa-truck"></i> 총 납품</h5>
               <h3 id="totalDeliveriesDisplay">{{ total_deliveries }}건</h3>
             </div>
           </div>
@@ -96,8 +99,7 @@
                 <i class="fas fa-won-sign"></i> 총 금액
               </h5>
               <h3>
-                {% load currency_filters %}
-                {{ total_amount|currency_format }}원
+                {% load currency_filters %} {{ total_amount|currency_format }}원
               </h3>
             </div>
           </div>
@@ -121,7 +123,8 @@
           <div class="card">
             <div class="card-body">
               <h6 class="card-title mb-3">
-                <i class="fas fa-chart-area me-2"></i>월별 활동 트렌드 (최근 12개월)
+                <i class="fas fa-chart-area me-2"></i>월별 활동 트렌드 (최근
+                12개월)
               </h6>
               <canvas id="activityChart" height="100"></canvas>
             </div>
@@ -134,34 +137,62 @@
         <div class="col-12">
           <ul class="nav nav-tabs" id="reportTabs" role="tablist">
             <li class="nav-item" role="presentation">
-              <button class="nav-link active" id="delivery-tab" data-bs-toggle="tab" 
-                      data-bs-target="#delivery" type="button" role="tab">
+              <button
+                class="nav-link active"
+                id="delivery-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#delivery"
+                type="button"
+                role="tab"
+              >
                 <i class="fas fa-truck me-2"></i>납품 내역
               </button>
             </li>
             <li class="nav-item" role="presentation">
-              <button class="nav-link" id="all-delivery-tab" data-bs-toggle="tab" 
-                      data-bs-target="#all-delivery" type="button" role="tab">
+              <button
+                class="nav-link"
+                id="all-delivery-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#all-delivery"
+                type="button"
+                role="tab"
+              >
                 <i class="fas fa-boxes me-2"></i>전체 납품내역
               </button>
             </li>
             <li class="nav-item" role="presentation">
-              <button class="nav-link" id="meeting-tab" data-bs-toggle="tab" 
-                      data-bs-target="#meeting" type="button" role="tab">
+              <button
+                class="nav-link"
+                id="meeting-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#meeting"
+                type="button"
+                role="tab"
+              >
                 <i class="fas fa-handshake me-2"></i>미팅 기록
               </button>
             </li>
             <li class="nav-item" role="presentation">
-              <button class="nav-link" id="timeline-tab" data-bs-toggle="tab" 
-                      data-bs-target="#timeline" type="button" role="tab">
+              <button
+                class="nav-link"
+                id="timeline-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#timeline"
+                type="button"
+                role="tab"
+              >
                 <i class="fas fa-history me-2"></i>전체 타임라인
               </button>
             </li>
           </ul>
-          
+
           <div class="tab-content mt-3" id="reportTabsContent">
             <!-- 납품 내역 탭 -->
-            <div class="tab-pane fade show active" id="delivery" role="tabpanel">
+            <div
+              class="tab-pane fade show active"
+              id="delivery"
+              role="tabpanel"
+            >
               <div class="card">
                 <div class="card-body">
                   {% if integrated_deliveries %}
@@ -174,31 +205,28 @@
                           <th class="text-end">금액</th>
                           <th class="text-center">세금계산서</th>
                           <th>내용</th>
-                          <th class="text-center">출처</th>
                         </tr>
                       </thead>
                       <tbody>
                         {% for delivery in integrated_deliveries %}
-                        <tr {% if delivery.type == 'schedule_only' %}class="table-warning"{% endif %}>
-                          <td>
-                            {{ delivery.date|date:"Y-m-d" }}
-                          </td>
+                        <tr>
+                          <td>{{delivery.date}}</td>
                           <td>
                             {% if delivery.items_display or delivery.has_schedule_items %}
-                              {% if delivery.items_display and delivery.has_schedule_items %}
-                                <!-- History와 Schedule이 모두 있는 경우 -->
-                                <button class="btn btn-sm btn-outline-info me-1" onclick="showIntegratedDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.schedule_id }}', '{{ delivery.date|date:"Y-m-d" }}')">
-                                  <i class="fas fa-list me-1"></i>통합 품목
+                              {% if delivery.has_schedule_items %}
+                                <!-- has_schedule_items인 경우 Schedule만 표시 -->
+                                <button
+                                  class="btn btn-sm btn-outline-primary"
+                                  onclick="showScheduleDeliveryItemsModal('{{ delivery.schedule_id }}', '{{ delivery.date }}')"
+                                >
+                                  <i class="fas fa-boxes me-1"></i>품목 보기
                                 </button>
-                                <br><small class="text-muted mt-1">활동기록 + 일정 품목</small>
                               {% elif delivery.items_display %}
                                 <!-- History만 있는 경우 -->
-                                <button class="btn btn-sm btn-outline-info" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')">
-                                  <i class="fas fa-list me-1"></i>품목 보기
-                                </button>
-                              {% else %}
-                                <!-- Schedule만 있는 경우 -->
-                                <button class="btn btn-sm btn-outline-primary" onclick="showScheduleDeliveryItemsModal('{{ delivery.schedule_id }}', '{{ delivery.date|date:"Y-m-d" }}')">
+                                <button
+                                  class="btn btn-sm btn-outline-primary"
+                                  onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')"
+                                >
                                   <i class="fas fa-boxes me-1"></i>품목 보기
                                 </button>
                               {% endif %}
@@ -207,20 +235,10 @@
                             {% endif %}
                           </td>
                           <td class="text-end">
-                            {% if delivery.amount or delivery.schedule_amount %}
-                              <strong class="{% if delivery.type == 'schedule_only' %}text-primary{% else %}text-success{% endif %}">
+                            {% if delivery.amount %}
+                              <strong class="text-success">
                                 {% load currency_filters %}
-                                {% if delivery.amount and delivery.schedule_amount %}
-                                  {{ delivery.amount|add:delivery.schedule_amount|floatformat:0|currency_format }}원
-                                  <br><small class="text-muted">
-                                    (활동: {{ delivery.amount|currency_format }}원
-                                    + 일정: {{ delivery.schedule_amount|floatformat:0|currency_format }}원)
-                                  </small>
-                                {% elif delivery.amount %}
-                                  {{ delivery.amount|currency_format }}원
-                                {% else %}
-                                  {{ delivery.schedule_amount|floatformat:0|currency_format }}원
-                                {% endif %}
+                                {{ delivery.amount|currency_format }}원
                               </strong>
                             {% else %}
                               <span class="text-muted">-</span>
@@ -230,42 +248,74 @@
                             {% if delivery.type == 'history' %}
                               {% if delivery.history_tax_status.has_items %}
                                 {% if delivery.history_tax_status.all_issued %}
-                                  {% if user.userprofile.role == 'manager' %}<span class="badge bg-primary">발행완료</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span></div><small class="text-muted d-block mt-1">클릭시 일괄변경</small>{% endif %}
+                                  {% if user.userprofile.role == 'manager' %}
+                                    <span class="badge bg-primary">발행완료</span>
+                                  {% else %}
+                                    <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                      <span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
+                                  {% endif %}
                                 {% elif delivery.history_tax_status.none_issued %}
-                                  {% if user.userprofile.role == 'manager' %}<span class="badge bg-secondary">미발행</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span></div><small class="text-muted d-block mt-1">클릭시 일괄변경</small>{% endif %}
+                                  {% if user.userprofile.role == 'manager' %}
+                                    <span class="badge bg-secondary">미발행</span>
+                                  {% else %}
+                                    <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                      <span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
+                                  {% endif %}
                                 {% else %}
-                                  <span class="badge bg-primary">발행완료</span><span class="badge bg-secondary">미발행</span>{% if user.userprofile.role != 'manager' %}<br><button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date|date:"Y-m-d" }}')"><i class="fas fa-edit me-1"></i>개별 편집</button>{% endif %}
+                                  <span class="badge bg-primary">발행완료</span>
+                                  <span class="badge bg-secondary">미발행</span>
+                                  {% if user.userprofile.role != 'manager' %}
+                                    <br />
+                                    <button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')">
+                                      <i class="fas fa-edit me-1"></i>개별 편집
+                                    </button>
+                                  {% endif %}
                                 {% endif %}
                               {% else %}
-                                {% if user.userprofile.role == 'manager' %}<span class="badge bg-{% if delivery.tax_invoice_issued %}primary">발행완료{% else %}secondary">미발행{% endif %}</span>{% else %}<div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-{% if delivery.tax_invoice_issued %}primary"><i class="fas fa-check me-1"></i>발행완료{% else %}secondary"><i class="fas fa-times me-1"></i>미발행{% endif %}</span></div><small class="text-muted d-block mt-1">클릭시 상태 변경</small>{% endif %}
+                                {% if user.userprofile.role == 'manager' %}
+                                  <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
+                                    {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
+                                  </span>
+                                {% else %}
+                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                    <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
+                                      <i class="fas fa-{% if delivery.tax_invoice_issued %}check{% else %}times{% endif %} me-1"></i>
+                                      {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
+                                    </span>
+                                  </div>
+                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                {% endif %}
                               {% endif %}
                             {% else %}
                               {% if delivery.schedule_tax_status.total_count == 0 %}
                                 <span class="text-muted">품목 없음</span>
                               {% else %}
                                 {% if user.userprofile.role == 'manager' %}
-                                  {% if delivery.schedule_tax_status.issued_count > 0 %}<span class="badge bg-primary">발행완료</span>{% endif %}{% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}<span class="badge bg-secondary">미발행</span>{% endif %}
+                                  {% if delivery.schedule_tax_status.issued_count > 0 %}
+                                    <span class="badge bg-primary">발행완료</span>
+                                  {% endif %}
+                                  {% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}
+                                    <span class="badge bg-secondary">미발행</span>
+                                  {% endif %}
                                 {% else %}
-                                  <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer;" title="클릭하여 상태 변경"><span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary"><i class="fas fa-check me-1"></i>발행완료{% else %}secondary"><i class="fas fa-times me-1"></i>미발행{% endif %}</span></div><small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                  <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                    <span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary{% else %}secondary{% endif %}">
+                                      <i class="fas fa-{% if delivery.schedule_tax_status.all_issued %}check{% else %}times{% endif %} me-1"></i>
+                                      {% if delivery.schedule_tax_status.all_issued %}발행완료{% else %}미발행{% endif %}
+                                    </span>
+                                  </div>
+                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
                                 {% endif %}
                               {% endif %}
                             {% endif %}
                           </td>
                           <td>
-                            {% if delivery.content %}
-                              {{ delivery.content|truncatechars:50 }}
-                            {% else %}
-                              <span class="text-muted">-</span>
-                            {% endif %}
-                          </td>
-                          <td class="text-center">
-                            {% if delivery.type == 'schedule_only' %}
-                              <span class="badge bg-warning">일정</span>
-                            {% else %}
-                              <span class="badge bg-info">활동기록</span>
-                              {% if delivery.has_schedule_items %}
-                                <br><span class="badge bg-warning mt-1">+ 일정</span>
-                              {% endif %}
+                            {% if delivery.content %} {{delivery.content|truncatechars:50 }} {% else %}
+                            <span class="text-muted">-</span>
                             {% endif %}
                           </td>
                         </tr>
@@ -282,62 +332,66 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 전체 납품내역 탭 -->
             <div class="tab-pane fade" id="all-delivery" role="tabpanel">
               <div class="card">
                 <div class="card-body">
                   {% if delivery_histories %}
-                    <!-- 요약 정보 -->
-                    <div class="alert alert-info mb-4">
-                      <div class="row text-center">
-                        <div class="col-md-4">
-                          <h5 class="mb-1">
-                            <i class="fas fa-calendar-check me-2"></i>{{ total_deliveries }}
-                          </h5>
-                          <small class="text-muted">총 납품 건수</small>
-                        </div>
-                        <div class="col-md-4">
-                          <h5 class="mb-1">
-                            <i class="fas fa-boxes me-2"></i><span id="totalItemsCount">-</span>
-                          </h5>
-                          <small class="text-muted">총 품목 개수</small>
-                        </div>
-                        <div class="col-md-4">
-                          <h5 class="mb-1 text-success">
-                            <i class="fas fa-won-sign me-2"></i><span id="totalDeliveryAmount">{{ total_amount|floatformat:0 }}</span>원
-                          </h5>
-                          <small class="text-muted">총 납품 금액</small>
-                        </div>
+                  <!-- 요약 정보 -->
+                  <div class="alert alert-info mb-4">
+                    <div class="row text-center">
+                      <div class="col-md-4">
+                        <h5 class="mb-1">
+                          <i class="fas fa-calendar-check me-2"></i>{{total_deliveries }}
+                        </h5>
+                        <small class="text-muted">총 납품 건수</small>
+                      </div>
+                      <div class="col-md-4">
+                        <h5 class="mb-1">
+                          <i class="fas fa-boxes me-2"></i
+                          ><span id="totalItemsCount">-</span>
+                        </h5>
+                        <small class="text-muted">총 품목 개수</small>
+                      </div>
+                      <div class="col-md-4">
+                        <h5 class="mb-1 text-success">
+                          <i class="fas fa-won-sign me-2"></i
+                          ><span id="totalDeliveryAmount"
+                            >{{ total_amount|floatformat:0 }}</span
+                          >원
+                        </h5>
+                        <small class="text-muted">총 납품 금액</small>
                       </div>
                     </div>
-                    
-                    <!-- 전체 품목 목록 -->
-                    <div class="table-responsive">
-                      <table class="table table-hover table-compact">
-                        <thead class="table-light">
-                          <tr>
-                            <th>품목명</th>
-                            <th class="text-center">총 수량</th>
-                            <th class="text-end">총 금액</th>
-                            <th class="text-center">납품 횟수</th>
-                          </tr>
-                        </thead>
-                        <tbody id="allDeliveryItemsTable">
-                          <!-- JavaScript로 동적 생성 -->
-                        </tbody>
-                      </table>
-                    </div>
+                  </div>
+
+                  <!-- 전체 품목 목록 -->
+                  <div class="table-responsive">
+                    <table class="table table-hover table-compact">
+                      <thead class="table-light">
+                        <tr>
+                          <th>품목명</th>
+                          <th class="text-center">총 수량</th>
+                          <th class="text-end">총 금액</th>
+                          <th class="text-center">납품 횟수</th>
+                        </tr>
+                      </thead>
+                      <tbody id="allDeliveryItemsTable">
+                        <!-- JavaScript로 동적 생성 -->
+                      </tbody>
+                    </table>
+                  </div>
                   {% else %}
-                    <div class="text-center text-muted py-4">
-                      <i class="fas fa-boxes fa-2x mb-3"></i>
-                      <p>납품 기록이 없습니다.</p>
-                    </div>
+                  <div class="text-center text-muted py-4">
+                    <i class="fas fa-boxes fa-2x mb-3"></i>
+                    <p>납품 기록이 없습니다.</p>
+                  </div>
                   {% endif %}
                 </div>
               </div>
             </div>
-            
+
             <!-- 미팅 기록 탭 -->
             <div class="tab-pane fade" id="meeting" role="tabpanel">
               <div class="card">
@@ -356,21 +410,18 @@
                         {% for history in meeting_histories %}
                         <tr>
                           <td>
-                            {% if history.meeting_date %}
-                              {{ history.meeting_date|date:"Y-m-d" }}
-                            {% else %}
-                              <span class="text-muted">미정</span>
+                            {% if history.meeting_date %} {{history.meeting_date }} {% else %}
+                            <span class="text-muted">미정</span>
                             {% endif %}
                           </td>
                           <td>
-                            {% if history.content %}
-                              {{ history.content|truncatechars:100 }}
-                            {% else %}
-                              <span class="text-muted">내용 없음</span>
+                            {% if history.content %} {{history.content|truncatechars:100 }} {% else %}
+                            <span class="text-muted">내용 없음</span>
                             {% endif %}
                           </td>
                           <td>
-                            <small class="text-muted">{{ history.created_at|date:"Y-m-d H:i" }}</small>
+                            <small class="text-muted"
+                              >{{ history.created_at|date:"Y-m-d H:i" }}</small>
                           </td>
                         </tr>
                         {% endfor %}
@@ -386,7 +437,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 전체 타임라인 탭 -->
             <div class="tab-pane fade" id="timeline" role="tabpanel">
               <div class="card">
@@ -394,49 +445,60 @@
                   {% if histories %}
                   <div class="timeline">
                     {% for history in histories %}
-                    <div class="timeline-item" data-history-id="{{ history.id }}"{% if history.schedule %} data-schedule-id="{{ history.schedule.id }}"{% endif %}>
-                      <div class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}">
-                        <i class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"></i>
+                    <div
+                      class="timeline-item"
+                      data-history-id="{{ history.id }}"
+                      {% if history.schedule %}
+                      data-schedule-id="{{ history.schedule.id }}"
+                      {% endif %}
+                    >
+                      <div
+                        class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
+                      >
+                        <i
+                          class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
+                        ></i>
                       </div>
                       <div class="timeline-content">
                         <div class="card">
                           <div class="card-body">
                             <h6 class="card-title">
                               {{ history.get_action_type_display }}
-                              <small class="text-muted ms-2">{{ history.created_at|date:"Y-m-d H:i" }}</small>
+                              <small class="text-muted ms-2"
+                                >{{ history.created_at|date:"Y-m-d H:i"}}</small
+                              >
                             </h6>
                             {% if history.content %}
-                            <p class="card-text">{{ history.content|linebreaks }}</p>
+                            <p class="card-text">
+                              {{ history.content|linebreaks }}
+                            </p>
                             {% endif %}
-                            
+
                             <!-- 납품 정보 -->
                             {% if history.action_type == 'delivery_schedule' %}
                             <div class="delivery-details">
                               {% if history.delivery_amount %}
                               <p class="mb-1">
-                                <strong>금액:</strong> 
-                                {% load currency_filters %}
-                                {{ history.delivery_amount|currency_format }}원
+                                <strong>금액:</strong>
+                                {% load currency_filters %} {{history.delivery_amount|currency_format }}원
                               </p>
-                              {% endif %}
-                              {% if history.delivery_items %}
+                              {% endif %} {% if history.delivery_items %}
                               <p class="mb-1">
-                                <strong>품목:</strong> {{ history.delivery_items }}
+                                <strong>품목:</strong> {{ history.delivery_items}}
                               </p>
-                              {% endif %}
-                              {% if history.delivery_date %}
+                              {% endif %} {% if history.delivery_date %}
                               <p class="mb-1">
-                                <strong>납품일:</strong> {{ history.delivery_date|date:"Y-m-d" }}
+                                <strong>납품일:</strong> {{history.delivery_date}}
                               </p>
                               {% endif %}
                             </div>
                             {% endif %}
-                            
+
                             <!-- 미팅 정보 -->
                             {% if history.action_type == 'customer_meeting' and history.meeting_date %}
-                            <p class="mb-1">
-                              <strong>미팅일:</strong> {{ history.meeting_date|date:"Y-m-d" }}
-                            </p>
+                              <p class="mb-1">
+                                <strong>미팅일:</strong> {{ history.meeting_date }}
+                              </p>
                             {% endif %}
                           </div>
                         </div>
@@ -461,107 +523,107 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Chart.js 설정
-    const ctx = document.getElementById('activityChart').getContext('2d');
-    
-    const chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: {{ chart_data.labels|safe }},
-            datasets: [
-                {
-                    label: '미팅 횟수',
-                    data: {{ chart_data.meetings|safe }},
-                    borderColor: 'rgb(54, 162, 235)',
-                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                    yAxisID: 'y'
-                },
-                {
-                    label: '납품 건수',
-                    data: {{ chart_data.deliveries|safe }},
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                    yAxisID: 'y'
-                },
-                {
-                    label: '납품 금액 (만원)',
-                    data: {{ chart_data.amounts|safe }}.map(amount => amount / 10000),
-                    borderColor: 'rgb(255, 206, 86)',
-                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                    yAxisID: 'y1'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            scales: {
-                x: {
-                    display: true,
-                    title: {
-                        display: true,
-                        text: '월'
-                    }
-                },
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    title: {
-                        display: true,
-                        text: '건수/횟수'
-                    }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: '금액 (만원)'
-                    },
-                    grid: {
-                        drawOnChartArea: false,
-                    },
-                }
-            },
-            plugins: {
-                title: {
-                    display: true,
-                    text: '월별 활동 및 매출 추이'
-                }
-            }
-        }
-    });
-});
+  document.addEventListener('DOMContentLoaded', function() {
+      // Chart.js 설정
+      const ctx = document.getElementById('activityChart').getContext('2d');
+
+      const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+              labels: {{ chart_data.labels|safe }},
+              datasets: [
+                  {
+                      label: '미팅 횟수',
+                      data: {{ chart_data.meetings|safe }},
+                      borderColor: 'rgb(54, 162, 235)',
+                      backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                      yAxisID: 'y'
+                  },
+                  {
+                      label: '납품 건수',
+                      data: {{ chart_data.deliveries|safe }},
+                      borderColor: 'rgb(75, 192, 192)',
+                      backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                      yAxisID: 'y'
+                  },
+                  {
+                      label: '납품 금액 (만원)',
+                      data: {{ chart_data.amounts|safe }}.map(amount => amount / 10000),
+                      borderColor: 'rgb(255, 206, 86)',
+                      backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                      yAxisID: 'y1'
+                  }
+              ]
+          },
+          options: {
+              responsive: true,
+              interaction: {
+                  mode: 'index',
+                  intersect: false,
+              },
+              scales: {
+                  x: {
+                      display: true,
+                      title: {
+                          display: true,
+                          text: '월'
+                      }
+                  },
+                  y: {
+                      type: 'linear',
+                      display: true,
+                      position: 'left',
+                      title: {
+                          display: true,
+                          text: '건수/횟수'
+                      }
+                  },
+                  y1: {
+                      type: 'linear',
+                      display: true,
+                      position: 'right',
+                      title: {
+                          display: true,
+                          text: '금액 (만원)'
+                      },
+                      grid: {
+                          drawOnChartArea: false,
+                      },
+                  }
+              },
+              plugins: {
+                  title: {
+                      display: true,
+                      text: '월별 활동 및 매출 추이'
+                  }
+              }
+          }
+      });
+  });
 </script>
 
 <style>
-.timeline {
+  .timeline {
     position: relative;
     padding-left: 30px;
-}
+  }
 
-.timeline::before {
-    content: '';
+  .timeline::before {
+    content: "";
     position: absolute;
     left: 15px;
     top: 0;
     bottom: 0;
     width: 2px;
     background: #dee2e6;
-}
+  }
 
-.timeline-item {
+  .timeline-item {
     position: relative;
     margin-bottom: 30px;
-}
+  }
 
-.timeline-marker {
+  .timeline-marker {
     position: absolute;
     left: -22px;
     top: 10px;
@@ -572,37 +634,48 @@ document.addEventListener('DOMContentLoaded', function() {
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
 
-.timeline-content {
+  .timeline-content {
     margin-left: 15px;
-}
+  }
 
-.delivery-details p {
+  .delivery-details p {
     font-size: 0.9em;
     margin-bottom: 0.25rem;
-}
+  }
 
-.nav-tabs .nav-link {
+  .nav-tabs .nav-link {
     color: #6c757d;
-}
+  }
 
-.nav-tabs .nav-link.active {
+  .nav-tabs .nav-link.active {
     color: #007bff;
     font-weight: 500;
-}
+  }
 </style>
 
 <!-- 납품 품목 상세 모달 -->
-<div class="modal fade" id="deliveryItemsModal" tabindex="-1" aria-labelledby="deliveryItemsModalLabel" aria-hidden="true">
+<div
+  class="modal fade"
+  id="deliveryItemsModal"
+  tabindex="-1"
+  aria-labelledby="deliveryItemsModalLabel"
+  aria-hidden="true"
+>
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header bg-info text-white">
         <h5 class="modal-title" id="deliveryItemsModalLabel">
           <i class="fas fa-boxes me-2"></i>납품 품목 상세
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button
+          type="button"
+          class="btn-close btn-close-white"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
       </div>
       <div class="modal-body">
         <div id="modalDeliveryDate" class="alert alert-light mb-3">
@@ -613,62 +686,191 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          닫기
+        </button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-// 납품 품목 모달을 표시하는 함수 (전역 함수로 정의)
-function showDeliveryItemsModal(historyId, deliveryDate) {
-  // 납품일 설정
-  const deliveryDateElement = document.getElementById('deliveryDateText');
-  if (deliveryDateElement) {
-    deliveryDateElement.textContent = deliveryDate;
-  }
-  
-  // History의 DeliveryItem 정보를 가져와서 표시
-  fetch(`/reporting/histories/${historyId}/delivery-items-api/`)
-    .then(response => response.json())
-    .then(data => {
-      const contentDiv = document.getElementById('modalDeliveryItems');
-      
-      if (!contentDiv) {
-        console.error('modalDeliveryItems element not found');
-        return;
-      }
-      
-      if (data.success && data.items && data.items.length > 0) {
-        let totalAmount = 0;
-        
-        // 통합 품목 상태 정보 표시
-        let infoHtml = '';
-        if (data.has_history_items && data.has_schedule_items) {
-          infoHtml = `
-            <div class="alert alert-info mb-3">
-              <i class="fas fa-info-circle me-2"></i>
-              <strong>통합 품목 내역</strong> - 활동기록과 연결된 일정의 품목들이 함께 표시됩니다.
-              <br><small>세금계산서 상태는 활동기록 기준입니다.</small>
+  // 납품 품목 모달을 표시하는 함수 (전역 함수로 정의)
+  function showDeliveryItemsModal(historyId, deliveryDate) {
+    // 납품일 설정
+    const deliveryDateElement = document.getElementById('deliveryDateText');
+    if (deliveryDateElement) {
+      deliveryDateElement.textContent = deliveryDate;
+    }
+
+    // History의 DeliveryItem 정보를 가져와서 표시
+    fetch(`/reporting/histories/${historyId}/delivery-items-api/`)
+      .then(response => response.json())
+      .then(data => {
+        const contentDiv = document.getElementById('modalDeliveryItems');
+
+        if (!contentDiv) {
+          console.error('modalDeliveryItems element not found');
+          return;
+        }
+
+        if (data.success && data.items && data.items.length > 0) {
+          let totalAmount = 0;
+
+          // 품목 상태 정보 표시 (통합 표시 제거)
+          let infoHtml = '';
+          if (data.has_schedule_items && !data.has_history_items) {
+            infoHtml = `
+              <div class="alert alert-warning mb-3">
+                <i class="fas fa-calendar-alt me-2"></i>
+                <strong>일정 품목 표시</strong> - 연결된 일정의 품목이 표시됩니다.
+              </div>
+            `;
+          } else if (data.is_legacy_data) {
+            infoHtml = `
+              <div class="alert alert-warning mb-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>레거시 데이터</strong> - 기존 텍스트 형태의 품목 정보입니다.
+              </div>
+            `;
+          }
+          let tableHtml = `
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead class="table-primary">
+                  <tr>
+                    <th>품목명</th>
+                    <th class="text-center">수량</th>
+                    <th class="text-end">단가</th>
+                    <th class="text-end">총액 (부가세 포함)</th>
+                    <th class="text-center">세금계산서</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+
+          data.items.forEach(item => {
+            const itemTotal = item.total_price || (item.quantity * item.unit_price * 1.1);
+            totalAmount += itemTotal;
+
+            tableHtml += `
+              <tr>
+                <td>${item.item_name || ''}</td>
+                <td class="text-center">${item.quantity || 0}</td>
+                <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
+                <td class="text-end"><strong class="text-primary">${parseInt(itemTotal).toLocaleString()}원</strong></td>
+                <td class="text-center">
+                  ${item.tax_invoice_issued
+                    ? '<span class="badge bg-primary">발행완료</span>'
+                    : '<span class="badge bg-secondary">미발행</span>'}
+                </td>
+              </tr>
+            `;
+          });
+
+          tableHtml += `
+                </tbody>
+                <tfoot class="table-secondary">
+                  <tr>
+                    <th colspan="4" class="text-end">총 금액:</th>
+                    <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           `;
-        } else if (data.has_schedule_items && !data.has_history_items) {
-          infoHtml = `
-            <div class="alert alert-info mb-3">
-              <i class="fas fa-info-circle me-2"></i>
-              <strong>일정 품목 표시</strong> - 연결된 일정의 품목이 표시됩니다.
-              <br><small>세금계산서 상태는 활동기록 기준입니다.</small>
-            </div>
-          `;
-        } else if (data.is_legacy_data) {
-          infoHtml = `
-            <div class="alert alert-warning mb-3">
-              <i class="fas fa-exclamation-triangle me-2"></i>
-              <strong>레거시 데이터</strong> - 기존 텍스트 형태의 품목 정보입니다.
+
+          contentDiv.innerHTML = tableHtml;
+        } else {
+          contentDiv.innerHTML = `
+            <div class="text-center text-muted py-3">
+              <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
+              ${data.error ? `<br><small class="text-danger">${data.error}</small>` : ''}
             </div>
           `;
         }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        const contentDiv = document.getElementById('modalDeliveryItems');
+        if (contentDiv) {
+          contentDiv.innerHTML = `
+            <div class="text-center text-danger py-3">
+              <i class="fas fa-exclamation-triangle me-2"></i>품목 정보를 불러오는 중 오류가 발생했습니다.
+              <br><small>${error.message}</small>
+            </div>
+          `;
+        }
+      });
+
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    modal.show();
+  }
+
+  // 통합 납품 품목 모달을 표시하는 함수 (History와 Schedule 통합)
+  function showIntegratedDeliveryItemsModal(historyId, scheduleId, deliveryDate) {
+    // 납품일 설정
+    const deliveryDateElement = document.getElementById('deliveryDateText');
+    if (deliveryDateElement) {
+      deliveryDateElement.textContent = deliveryDate;
+    }
+
+    const contentDiv = document.getElementById('modalDeliveryItems');
+    if (!contentDiv) {
+      console.error('modalDeliveryItems element not found');
+      return;
+    }
+
+    // 로딩 표시
+    contentDiv.innerHTML = `
+      <div class="text-center py-3">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">통합 품목 정보를 불러오는 중...</p>
+      </div>
+    `;
+
+    // 모달 먼저 표시
+    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    modal.show();
+
+    // History와 Schedule 데이터를 모두 가져와서 통합 표시
+    Promise.all([
+      // History DeliveryItem 가져오기
+      historyId ? fetch(`/reporting/histories/${historyId}/delivery-items-api/`)
+        .then(response => response.ok ? response.json() : { success: false, items: [] })
+        .catch(error => {
+          return { success: false, items: [] };
+        }) : Promise.resolve({ success: false, items: [] }),
+
+      // Schedule DeliveryItem 가져오기
+      scheduleId ? fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`)
+        .then(response => response.ok ? response.json() : { success: false, items: [] })
+        .catch(error => {
+          return { success: false, items: [] };
+        }) : Promise.resolve({ success: false, items: [] })
+    ])
+    .then(([historyData, scheduleData]) => {
+      const historyItems = (historyData.success && historyData.items) ? historyData.items : [];
+      const scheduleItems = (scheduleData.success && scheduleData.items) ? scheduleData.items : [];
+      const allItems = [...historyItems, ...scheduleItems];
+
+      if (allItems.length > 0) {
+        let totalAmount = 0;
+
+        // 통합 품목 상태 정보 표시
+        let infoHtml = `
+          <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>통합 품목 내역</strong> - 활동기록과 연결된 일정의 품목들이 함께 표시됩니다.
+            <br><small>History 품목 ${historyItems.length}개 + Schedule 품목 ${scheduleItems.length}개</small>
+          </div>
+        `;
+
         let tableHtml = `
+          ${infoHtml}
           <div class="table-responsive">
             <table class="table table-sm table-bordered">
               <thead class="table-primary">
@@ -678,37 +880,15 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
                   <th class="text-end">단가</th>
                   <th class="text-end">총액 (부가세 포함)</th>
                   <th class="text-center">세금계산서</th>
-                  <th class="text-center">출처</th>
                 </tr>
               </thead>
               <tbody>
         `;
-        
-        data.items.forEach(item => {
+
+        allItems.forEach(item => {
           const itemTotal = item.total_price || (item.quantity * item.unit_price * 1.1);
           totalAmount += itemTotal;
-          
-          // 출처별 라벨 설정
-          let sourceLabel = '';
-          let sourceClass = '';
-          switch(item.source) {
-            case 'history':
-              sourceLabel = '활동기록';
-              sourceClass = 'bg-info';
-              break;
-            case 'history_text':
-              sourceLabel = '활동기록';
-              sourceClass = 'bg-info';
-              break;
-            case 'schedule':
-              sourceLabel = '일정';
-              sourceClass = 'bg-warning';
-              break;
-            default:
-              sourceLabel = '활동기록';
-              sourceClass = 'bg-info';
-          }
-          
+
           tableHtml += `
             <tr>
               <td>${item.item_name || ''}</td>
@@ -716,672 +896,617 @@ function showDeliveryItemsModal(historyId, deliveryDate) {
               <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
               <td class="text-end"><strong class="text-primary">${parseInt(itemTotal).toLocaleString()}원</strong></td>
               <td class="text-center">
-                ${item.tax_invoice_issued 
-                  ? '<span class="badge bg-primary">발행완료</span>' 
+                ${item.tax_invoice_issued
+                  ? '<span class="badge bg-primary">발행완료</span>'
                   : '<span class="badge bg-secondary">미발행</span>'}
-              </td>
-              <td class="text-center">
-                <span class="badge ${sourceClass}">${sourceLabel}</span>
               </td>
             </tr>
           `;
         });
-        
+
         tableHtml += `
               </tbody>
               <tfoot class="table-secondary">
                 <tr>
                   <th colspan="4" class="text-end">총 금액:</th>
                   <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
-                  <th></th>
                 </tr>
               </tfoot>
             </table>
           </div>
         `;
-        
+
         contentDiv.innerHTML = tableHtml;
       } else {
         contentDiv.innerHTML = `
           <div class="text-center text-muted py-3">
             <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
-            ${data.error ? `<br><small class="text-danger">${data.error}</small>` : ''}
+            <br><small>History ID: ${historyId}, Schedule ID: ${scheduleId}</small>
           </div>
         `;
       }
     })
     .catch(error => {
-      console.error('Error:', error);
-      const contentDiv = document.getElementById('modalDeliveryItems');
-      if (contentDiv) {
-        contentDiv.innerHTML = `
-          <div class="text-center text-danger py-3">
-            <i class="fas fa-exclamation-triangle me-2"></i>품목 정보를 불러오는 중 오류가 발생했습니다.
-            <br><small>${error.message}</small>
-          </div>
-        `;
-      }
-    });
-  
-  // 모달 표시
-  const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
-  modal.show();
-}
-
-// 통합 납품 품목 모달을 표시하는 함수 (History와 Schedule 통합)
-function showIntegratedDeliveryItemsModal(historyId, scheduleId, deliveryDate) {
-  // 납품일 설정
-  const deliveryDateElement = document.getElementById('deliveryDateText');
-  if (deliveryDateElement) {
-    deliveryDateElement.textContent = deliveryDate;
-  }
-  
-  const contentDiv = document.getElementById('modalDeliveryItems');
-  if (!contentDiv) {
-    console.error('modalDeliveryItems element not found');
-    return;
-  }
-  
-  // 로딩 표시
-  contentDiv.innerHTML = `
-    <div class="text-center py-3">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-      <p class="mt-2">통합 품목 정보를 불러오는 중...</p>
-    </div>
-  `;
-  
-  // 모달 먼저 표시
-  const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
-  modal.show();
-  
-  // History와 Schedule 데이터를 모두 가져와서 통합 표시
-  Promise.all([
-    // History DeliveryItem 가져오기
-    historyId ? fetch(`/reporting/histories/${historyId}/delivery-items-api/`)
-      .then(response => response.ok ? response.json() : { success: false, items: [] })
-      .catch(error => {
-        return { success: false, items: [] };
-      }) : Promise.resolve({ success: false, items: [] }),
-    
-    // Schedule DeliveryItem 가져오기  
-    scheduleId ? fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`)
-      .then(response => response.ok ? response.json() : { success: false, items: [] })
-      .catch(error => {
-        return { success: false, items: [] };
-      }) : Promise.resolve({ success: false, items: [] })
-  ])
-  .then(([historyData, scheduleData]) => {
-    const historyItems = (historyData.success && historyData.items) ? historyData.items : [];
-    const scheduleItems = (scheduleData.success && scheduleData.items) ? scheduleData.items : [];
-    const allItems = [...historyItems, ...scheduleItems];
-    
-    if (allItems.length > 0) {
-      let totalAmount = 0;
-      
-      // 통합 품목 상태 정보 표시
-      let infoHtml = `
-        <div class="alert alert-info mb-3">
-          <i class="fas fa-info-circle me-2"></i>
-          <strong>통합 품목 내역</strong> - 활동기록과 연결된 일정의 품목들이 함께 표시됩니다.
-          <br><small>History 품목 ${historyItems.length}개 + Schedule 품목 ${scheduleItems.length}개</small>
-        </div>
-      `;
-      
-      let tableHtml = `
-        ${infoHtml}
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered">
-            <thead class="table-primary">
-              <tr>
-                <th>품목명</th>
-                <th class="text-center">수량</th>
-                <th class="text-end">단가</th>
-                <th class="text-end">총액 (부가세 포함)</th>
-                <th class="text-center">세금계산서</th>
-                <th class="text-center">출처</th>
-              </tr>
-            </thead>
-            <tbody>
-      `;
-      
-      allItems.forEach(item => {
-        const itemTotal = item.total_price || (item.quantity * item.unit_price * 1.1);
-        totalAmount += itemTotal;
-        
-        // 출처별 라벨 설정
-        let sourceLabel = '';
-        let sourceClass = '';
-        switch(item.source) {
-          case 'history':
-            sourceLabel = '활동기록';
-            sourceClass = 'bg-info';
-            break;
-          case 'history_text':
-            sourceLabel = '활동기록';
-            sourceClass = 'bg-info';
-            break;
-          case 'schedule':
-            sourceLabel = '일정';
-            sourceClass = 'bg-warning';
-            break;
-          default:
-            sourceLabel = '활동기록';
-            sourceClass = 'bg-info';
-        }
-        
-        tableHtml += `
-          <tr>
-            <td>${item.item_name || ''}</td>
-            <td class="text-center">${item.quantity || 0}</td>
-            <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
-            <td class="text-end"><strong class="text-primary">${parseInt(itemTotal).toLocaleString()}원</strong></td>
-            <td class="text-center">
-              ${item.tax_invoice_issued 
-                ? '<span class="badge bg-primary">발행완료</span>' 
-                : '<span class="badge bg-secondary">미발행</span>'}
-            </td>
-            <td class="text-center">
-              <span class="badge ${sourceClass}">${sourceLabel}</span>
-            </td>
-          </tr>
-        `;
-      });
-      
-      tableHtml += `
-            </tbody>
-            <tfoot class="table-secondary">
-              <tr>
-                <th colspan="4" class="text-end">총 금액:</th>
-                <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
-                <th></th>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      `;
-      
-      contentDiv.innerHTML = tableHtml;
-    } else {
       contentDiv.innerHTML = `
-        <div class="text-center text-muted py-3">
-          <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
-          <br><small>History ID: ${historyId}, Schedule ID: ${scheduleId}</small>
+        <div class="text-center text-danger py-3">
+          <i class="fas fa-exclamation-triangle me-2"></i>통합 품목 정보를 불러오는 중 오류가 발생했습니다.
+          <br><small>${error.message}</small>
         </div>
       `;
-    }
-  })
-  .catch(error => {
-    contentDiv.innerHTML = `
-      <div class="text-center text-danger py-3">
-        <i class="fas fa-exclamation-triangle me-2"></i>통합 품목 정보를 불러오는 중 오류가 발생했습니다.
-        <br><small>${error.message}</small>
-      </div>
-    `;
-  });
-}
-
-// 전체 납품내역 데이터 처리 함수
-async function processAllDeliveryData() {
-  // 서버에서 전달된 통합 납품 데이터
-  let integratedDeliveryData = [];
-  try {
-    // Django의 json_script를 통한 안전한 JSON 데이터 전달
-    const jsonElement = document.getElementById('integrated-deliveries-data');
-    if (jsonElement) {
-      integratedDeliveryData = JSON.parse(jsonElement.textContent);
-    }
-  } catch (error) {
-    integratedDeliveryData = [];
+    });
   }
-  
-  // 품목별 집계 객체
-  const itemsSummary = {};
-  let totalAmount = 0;
-  let totalItemsCount = 0;
-  
-  // 통합 납품 데이터 처리
-  for (const delivery of integratedDeliveryData) {
-    // History 타입의 delivery_items 텍스트 처리
-    if (delivery.type === 'history' && delivery.items && delivery.items.trim()) {
-      processDeliveryItemsText(delivery.items, itemsSummary);
+
+  // Schedule 기반 납품 품목 상세 모달 표시 함수
+  function showScheduleDeliveryItemsModal(scheduleId, deliveryDate) {
+    // 납품일 설정
+    const deliveryDateElement = document.getElementById('deliveryDateText');
+    if (deliveryDateElement) {
+      deliveryDateElement.textContent = deliveryDate;
     }
-    
-    // Schedule DeliveryItem 처리 (History와 연결되거나 Schedule 전용)
-    if (delivery.scheduleId) {
-      try {
-        const response = await fetch(`/reporting/schedules/${delivery.scheduleId}/delivery-items-api/`);
-        if (response.ok) {
-          const data = await response.json();
-          const scheduleItems = data.items || [];
-          
-          if (scheduleItems.length > 0) {
-            scheduleItems.forEach(item => {
-              const itemName = delivery.type === 'schedule_only' ? item.item_name : `${item.item_name} [일정]`; // Schedule 전용은 구분 없이
-              const quantity = parseFloat(item.quantity || 0);
-              const amount = Math.round(item.total_price || 0);
-              
-              if (!itemsSummary[itemName]) {
-                itemsSummary[itemName] = {
-                  totalQuantity: 0,
-                  totalAmount: 0,
-                  deliveryCount: 0
-                };
-              }
-              
-              itemsSummary[itemName].totalQuantity += quantity;
-              itemsSummary[itemName].totalAmount += amount;
-              itemsSummary[itemName].deliveryCount += 1;
-              totalItemsCount += quantity;
-            });
-          }
+
+    // Schedule의 DeliveryItem 정보를 가져와서 표시
+    fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`)
+      .then(response => response.json())
+      .then(data => {
+        const contentDiv = document.getElementById('modalDeliveryItems');
+
+        if (!contentDiv) {
+          console.error('modalDeliveryItems element not found');
+          return;
         }
-      } catch (error) {
-        // Schedule DeliveryItem 처리 실패 시 무시
-      }
-    }
-    
-    // 금액 추가 (History는 amount, Schedule 전용은 scheduleAmount)
-    const deliveryAmount = delivery.type === 'schedule_only' ? delivery.scheduleAmount : delivery.amount;
-    totalAmount += deliveryAmount;
-  }
-  
-  // 요약 정보 업데이트
-  document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
-  // 백엔드에서 계산한 정확한 총액 사용 (JavaScript 계산 대신)
-  const totalAmountFromServer = {{ total_amount|default:0 }};
-  document.getElementById('totalDeliveryAmount').textContent = totalAmountFromServer.toLocaleString();
-  
-  // 테이블 생성
-  const tableBody = document.getElementById('allDeliveryItemsTable');
-  if (Object.keys(itemsSummary).length > 0) {
-    const tableRows = Object.entries(itemsSummary).map(([itemName, data]) => `
-      <tr>
-        <td>
-          <i class="fas fa-box me-2 text-info"></i>
-          ${itemName}
-        </td>
-        <td class="text-center">
-          <span class="badge bg-primary">${Math.round(data.totalQuantity).toLocaleString()}개</span>
-        </td>
-        <td class="text-end">
-          <strong class="text-success">${data.totalAmount.toLocaleString()}원</strong>
-        </td>
-        <td class="text-center">
-          <span class="badge bg-secondary">${data.deliveryCount}회</span>
-        </td>
-      </tr>
-    `).join('');
-    
-    tableBody.innerHTML = tableRows;
-  } else {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="4" class="text-center text-muted py-3">
-          <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
-        </td>
-      </tr>
-    `;
-  }
-}
 
-// History delivery_items 텍스트 파싱 함수
-function processDeliveryItemsText(itemsText, itemsSummary) {
-  // 줄바꿈 문자 처리
-  let processedItems = itemsText
-    .replace(/\\n/g, '\n')
-    .replace(/\\r\\n/g, '\n')
-    .replace(/\\r/g, '\n')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim();
-  
-  // 각 라인 처리
-  const lines = processedItems.split('\n')
-    .map(line => line.trim())
-    .filter(line => line);
-  
-  lines.forEach(line => {
-    // "품목명: 수량개 (금액원)" 패턴 파싱
-    const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
-    if (match) {
-      const itemName = match[1].trim();
-      const quantity = parseFloat(match[2]);
-      const amountStr = match[3].replace(/[,\s]/g, '');
-      const amount = parseInt(amountStr);
-      
-      if (!itemsSummary[itemName]) {
-        itemsSummary[itemName] = {
-          totalQuantity: 0,
-          totalAmount: 0,
-          deliveryCount: 0
-        };
-      }
-      
-      itemsSummary[itemName].totalQuantity += quantity;
-      itemsSummary[itemName].totalAmount += amount;
-      itemsSummary[itemName].deliveryCount += 1;
-      
-      // 전역 totalItemsCount에도 추가
-      totalItemsCount += quantity;
-    }
-  });
-}
+        if (data.success && data.items && data.items.length > 0) {
+          let totalAmount = 0;
 
-// Schedule 기반 납품 품목 상세 모달 표시 함수
-// 탭 변경 이벤트 리스너
-document.addEventListener('DOMContentLoaded', function() {
-  const allDeliveryTab = document.getElementById('all-delivery-tab');
-  if (allDeliveryTab) {
-    allDeliveryTab.addEventListener('shown.bs.tab', function() {
-      processAllDeliveryData();
-    });
-  }
-  
-  // 전체 타임라인 탭 이벤트
-  const timelineTab = document.getElementById('timeline-tab');
-  if (timelineTab) {
-    timelineTab.addEventListener('shown.bs.tab', function() {
-      enhanceTimelineWithScheduleData();
-    });
-  }
-});
-
-// 전체 타임라인에 Schedule DeliveryItem 정보 추가
-async function enhanceTimelineWithScheduleData() {
-  // 모든 납품 일정 타입의 타임라인 아이템들 찾기
-  const deliveryTimelineItems = document.querySelectorAll('.timeline-item[data-history-id]');
-  
-  for (const item of deliveryTimelineItems) {
-    const historyId = item.getAttribute('data-history-id');
-    const scheduleId = item.getAttribute('data-schedule-id');
-    const deliveryDetails = item.querySelector('.delivery-details');
-    
-    if (!deliveryDetails) {
-      continue; // 납품 일정이 아니면 건너뛰기
-    }
-    
-    // 기존 납품 정보를 구조화된 형태로 변환
-    // CSS :contains() selector는 표준이 아니므로 다른 방식으로 요소 찾기
-    const allPElements = deliveryDetails.querySelectorAll('p');
-    let amountText = '';
-    let itemsText = '';
-    let dateText = '';
-    
-    allPElements.forEach(p => {
-      const text = p.textContent;
-      if (text.includes('금액:')) {
-        amountText = text.replace('금액:', '').replace('원', '').trim();
-      } else if (text.includes('품목:')) {
-        itemsText = text.replace('품목:', '').trim();
-      } else if (text.includes('납품일:')) {
-        dateText = text.replace('납품일:', '').trim();
-      }
-    });
-    
-    // History DeliveryItem 파싱 및 표시
-    let historyItemsHtml = '';
-    if (itemsText) {
-      // 품목 텍스트 파싱 ("품목명: 수량개 (금액원)" 형태)
-      const historyItems = parseDeliveryItemsText(itemsText);
-      
-      if (historyItems.length > 0) {
-        let totalHistoryAmount = 0;
-        
-        historyItems.forEach(historyItem => {
-          totalHistoryAmount += historyItem.amount;
-          historyItemsHtml += `
-            <div class="history-delivery-item mb-2 p-2 bg-light rounded border-start border-info border-3">
-              <div class="row align-items-center">
-                <div class="col-md-8">
-                  <div>
-                    <strong class="text-primary">${historyItem.name}</strong>
-                    <span class="text-muted ms-2">${historyItem.quantity}개</span>
-                  </div>
-                  <div class="small text-muted">
-                    총액: <strong class="text-success">${historyItem.amount.toLocaleString()}원</strong>
-                  </div>
-                </div>
-                <div class="col-md-4 text-end">
-                  <span class="badge bg-info">활동기록</span>
-                </div>
-              </div>
+          // 일정 품목 정보 표시
+          let infoHtml = `
+            <div class="alert alert-warning mb-3">
+              <i class="fas fa-calendar-alt me-2"></i>
+              <strong>일정 품목 내역</strong> - 납품 일정에 등록된 품목들입니다.
             </div>
           `;
-        });
-        
-        if (totalHistoryAmount > 0) {
-          historyItemsHtml += `
-            <div class="border-top pt-2 mt-2 mb-3">
-              <div class="row">
-                <div class="col text-end">
-                  <small class="text-muted">활동기록 품목 총액: </small>
-                  <strong class="text-success fs-6">${totalHistoryAmount.toLocaleString()}원</strong>
-                </div>
-              </div>
+
+          let tableHtml = `
+            ${infoHtml}
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead class="table-warning">
+                  <tr>
+                    <th>품목명</th>
+                    <th class="text-center">수량</th>
+                    <th class="text-end">단가</th>
+                    <th class="text-end">총액 (부가세 포함)</th>
+                    <th class="text-center">세금계산서</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+
+          data.items.forEach(item => {
+            const itemTotal = item.total_price || (item.quantity * item.unit_price * 1.1);
+            totalAmount += itemTotal;
+
+            tableHtml += `
+              <tr>
+                <td>${item.item_name || ''}</td>
+                <td class="text-center">${item.quantity || 0}</td>
+                <td class="text-end">${parseInt(item.unit_price || 0).toLocaleString()}원</td>
+                <td class="text-end"><strong class="text-success">${parseInt(itemTotal).toLocaleString()}원</strong></td>
+                <td class="text-center">
+                  ${item.tax_invoice_issued
+                    ? '<span class="badge bg-primary">발행완료</span>'
+                    : '<span class="badge bg-secondary">미발행</span>'}
+                </td>
+              </tr>
+            `;
+          });
+
+          tableHtml += `
+                </tbody>
+                <tfoot class="table-secondary">
+                  <tr>
+                    <th colspan="4" class="text-end">총 금액:</th>
+                    <th class="text-end text-success">${parseInt(totalAmount).toLocaleString()}원</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          `;
+
+          contentDiv.innerHTML = tableHtml;
+        } else {
+          contentDiv.innerHTML = `
+            <div class="text-center text-muted py-3">
+              <i class="fas fa-calendar-times me-2"></i>일정 품목 정보가 없습니다.
+              ${data.error ? `<br><small class="text-danger">${data.error}</small>` : ''}
             </div>
           `;
         }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        const contentDiv = document.getElementById('modalDeliveryItems');
+        if (contentDiv) {
+          contentDiv.innerHTML = `
+            <div class="text-center text-danger py-3">
+              <i class="fas fa-exclamation-triangle me-2"></i>일정 품목 정보를 불러오는 중 오류가 발생했습니다.
+              <br><small>${error.message}</small>
+            </div>
+          `;
+        }
+      });
+
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    modal.show();
+  }
+
+  // 전체 납품내역 데이터 처리 함수
+  async function processAllDeliveryData() {
+    // 서버에서 전달된 통합 납품 데이터
+    let integratedDeliveryData = [];
+    try {
+      // Django의 json_script를 통한 안전한 JSON 데이터 전달
+      const jsonElement = document.getElementById('integrated-deliveries-data');
+      if (jsonElement) {
+        integratedDeliveryData = JSON.parse(jsonElement.textContent);
       }
+    } catch (error) {
+      integratedDeliveryData = [];
     }
-    
-    // Schedule DeliveryItem 가져오기 및 표시
-    let scheduleItemsHtml = '';
-    if (scheduleId) {
-      try {
-        const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
-        if (response.ok) {
-          const data = await response.json();
-          const scheduleItems = data.items || [];
-          
-          if (scheduleItems.length > 0) {
-            let totalScheduleAmount = 0;
-            
-            scheduleItems.forEach(item => {
-              const itemTotal = Math.round(item.total_price || 0);
-              totalScheduleAmount += itemTotal;
-              
-              scheduleItemsHtml += `
-                <div class="schedule-delivery-item mb-2 p-2 bg-light rounded border-start border-warning border-3">
-                  <div class="row align-items-center">
-                    <div class="col-md-8">
-                      <div>
-                        <strong class="text-primary">${item.item_name}</strong>
-                        <span class="text-muted ms-2">${item.quantity}개</span>
-                      </div>
-                      <div class="small text-muted">
-                        단가: ${parseInt(item.unit_price || 0).toLocaleString()}원
-                        | 총액: <strong class="text-success">${itemTotal.toLocaleString()}원</strong>
-                      </div>
-                    </div>
-                    <div class="col-md-4 text-end">
-                      ${item.tax_invoice_issued 
-                        ? '<span class="badge bg-primary">세금계산서 발행</span>' 
-                        : '<span class="badge bg-secondary">세금계산서 미발행</span>'}
-                      <div class="small text-muted mt-1">
-                        <i class="fas fa-calendar me-1"></i>일정에서 추가
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              `;
-            });
-            
-            if (totalScheduleAmount > 0) {
-              scheduleItemsHtml += `
-                <div class="border-top pt-2 mt-2">
-                  <div class="row">
-                    <div class="col text-end">
-                      <small class="text-muted">일정 품목 총액: </small>
-                      <strong class="text-success fs-6">${totalScheduleAmount.toLocaleString()}원</strong>
-                    </div>
-                  </div>
-                </div>
-              `;
+
+    // 품목별 집계 객체
+    const itemsSummary = {};
+    let totalItemsCount = 0;
+
+    // 통합 납품 데이터 처리
+    for (const delivery of integratedDeliveryData) {
+      // has_schedule_items가 true이거나 scheduleId가 있는 경우 Schedule만 처리
+      if ((delivery.has_schedule_items || delivery.type === 'schedule_only') && delivery.scheduleId) {
+        // Schedule DeliveryItem만 처리
+        try {
+          const response = await fetch(`/reporting/schedules/${delivery.scheduleId}/delivery-items-api/`);
+          if (response.ok) {
+            const data = await response.json();
+            const scheduleItems = data.items || [];
+
+            if (scheduleItems.length > 0) {
+              scheduleItems.forEach(item => {
+                const itemName = item.item_name; // 중복 방지를 위해 구분 없이 처리
+                const quantity = parseFloat(item.quantity || 0);
+                const amount = Math.round(item.total_price || 0);
+
+                if (!itemsSummary[itemName]) {
+                  itemsSummary[itemName] = {
+                    totalQuantity: 0,
+                    totalAmount: 0,
+                    deliveryCount: 0
+                  };
+                }
+
+                itemsSummary[itemName].totalQuantity += quantity;
+                itemsSummary[itemName].totalAmount += amount;
+                itemsSummary[itemName].deliveryCount += 1;
+                totalItemsCount += quantity;
+              });
             }
           }
+        } catch (error) {
+          // Schedule DeliveryItem 처리 실패 시 무시
         }
-      } catch (error) {
-        // Schedule 처리 실패 시 무시
+      }
+      // Schedule이 없는 History만 있는 경우에만 History 처리
+      else if (delivery.type === 'history' && delivery.items && delivery.items.trim() && !delivery.has_schedule_items && !delivery.scheduleId) {
+        processDeliveryItemsText(delivery.items, itemsSummary);
       }
     }
-    
-    // 기존 납품 정보를 구조화된 형태로 교체
-    if (historyItemsHtml || scheduleItemsHtml) {
-      const enhancedDeliveryHtml = `
-        <div class="enhanced-delivery-section">
-          ${dateText ? `
-            <div class="mb-3 p-2 bg-info bg-opacity-10 rounded">
-              <strong class="text-info">
-                <i class="fas fa-calendar-alt me-1"></i>납품일: ${dateText}
-              </strong>
-            </div>
-          ` : ''}
-          
-          ${historyItemsHtml ? `
-            <div class="history-items-section mb-3">
-              <h6 class="text-muted mb-2">
-                <i class="fas fa-history me-1"></i>활동기록 납품 품목
-              </h6>
-              ${historyItemsHtml}
-            </div>
-          ` : ''}
-          
-          ${scheduleItemsHtml ? `
-            <div class="schedule-items-section">
-              <h6 class="text-muted mb-2">
-                <i class="fas fa-plus-circle me-1"></i>일정 추가 납품 품목
-              </h6>
-              ${scheduleItemsHtml}
-            </div>
-          ` : ''}
-        </div>
+
+    // 요약 정보 업데이트
+    document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
+    // 백엔드에서 계산한 정확한 총액 사용 (중복 계산 방지)
+    const totalAmountFromServer = {{ total_amount|default:0 }};
+    document.getElementById('totalDeliveryAmount').textContent = totalAmountFromServer.toLocaleString();
+
+    // 테이블 생성
+    const tableBody = document.getElementById('allDeliveryItemsTable');
+    if (Object.keys(itemsSummary).length > 0) {
+      const tableRows = Object.entries(itemsSummary).map(([itemName, data]) => `
+        <tr>
+          <td>
+            <i class="fas fa-box me-2 text-info"></i>
+            ${itemName}
+          </td>
+          <td class="text-center">
+            <span class="badge bg-primary">${Math.round(data.totalQuantity).toLocaleString()}개</span>
+          </td>
+          <td class="text-end">
+            <strong class="text-success">${data.totalAmount.toLocaleString()}원</strong>
+          </td>
+          <td class="text-center">
+            <span class="badge bg-secondary">${data.deliveryCount}회</span>
+          </td>
+        </tr>
+      `).join('');
+
+      tableBody.innerHTML = tableRows;
+    } else {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="4" class="text-center text-muted py-3">
+            <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
+          </td>
+        </tr>
       `;
-      
-      deliveryDetails.innerHTML = enhancedDeliveryHtml;
     }
   }
-}
 
-// 납품 품목 텍스트 파싱 함수
-function parseDeliveryItemsText(itemsText) {
-  const items = [];
-  
-  // 줄바꿈으로 구분된 품목들 처리
-  const lines = itemsText.split('\n').map(line => line.trim()).filter(line => line);
-  
-  lines.forEach(line => {
-    // "품목명: 수량개 (금액원)" 패턴 파싱
-    const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
-    if (match) {
-      const name = match[1].trim();
-      const quantity = parseFloat(match[2]);
-      const amountStr = match[3].replace(/[,\s]/g, '');
-      const amount = parseInt(amountStr) || 0;
-      
-      items.push({
-        name: name,
-        quantity: quantity,
-        amount: amount
+  // History delivery_items 텍스트 파싱 함수
+  function processDeliveryItemsText(itemsText, itemsSummary) {
+    // 줄바꿈 문자 처리
+    let processedItems = itemsText
+      .replace(/\\n/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim();
+
+    // 각 라인 처리
+    const lines = processedItems.split('\n')
+      .map(line => line.trim())
+      .filter(line => line);
+
+    lines.forEach(line => {
+      // "품목명: 수량개 (금액원)" 패턴 파싱
+      const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+      if (match) {
+        const itemName = match[1].trim();
+        const quantity = parseFloat(match[2]);
+        const amountStr = match[3].replace(/[,\s]/g, '');
+        const amount = parseInt(amountStr);
+
+        if (!itemsSummary[itemName]) {
+          itemsSummary[itemName] = {
+            totalQuantity: 0,
+            totalAmount: 0,
+            deliveryCount: 0
+          };
+        }
+
+        itemsSummary[itemName].totalQuantity += quantity;
+        itemsSummary[itemName].totalAmount += amount;
+        itemsSummary[itemName].deliveryCount += 1;
+
+        // 전역 totalItemsCount에도 추가
+        totalItemsCount += quantity;
+      }
+    });
+  }
+
+  // Schedule 기반 납품 품목 상세 모달 표시 함수
+  // 탭 변경 이벤트 리스너
+  document.addEventListener('DOMContentLoaded', function() {
+    const allDeliveryTab = document.getElementById('all-delivery-tab');
+    if (allDeliveryTab) {
+      allDeliveryTab.addEventListener('shown.bs.tab', function() {
+        processAllDeliveryData();
+      });
+    }
+
+    // 전체 타임라인 탭 이벤트
+    const timelineTab = document.getElementById('timeline-tab');
+    if (timelineTab) {
+      timelineTab.addEventListener('shown.bs.tab', function() {
+        enhanceTimelineWithScheduleData();
       });
     }
   });
-  
-  return items;
-}
+
+  // 전체 타임라인에 Schedule DeliveryItem 정보 추가
+  async function enhanceTimelineWithScheduleData() {
+    // 모든 납품 일정 타입의 타임라인 아이템들 찾기
+    const deliveryTimelineItems = document.querySelectorAll('.timeline-item[data-history-id]');
+
+    for (const item of deliveryTimelineItems) {
+      const historyId = item.getAttribute('data-history-id');
+      const scheduleId = item.getAttribute('data-schedule-id');
+      const deliveryDetails = item.querySelector('.delivery-details');
+
+      if (!deliveryDetails) {
+        continue; // 납품 일정이 아니면 건너뛰기
+      }
+
+      // 기존 납품 정보를 구조화된 형태로 변환
+      // CSS :contains() selector는 표준이 아니므로 다른 방식으로 요소 찾기
+      const allPElements = deliveryDetails.querySelectorAll('p');
+      let amountText = '';
+      let itemsText = '';
+      let dateText = '';
+
+      allPElements.forEach(p => {
+        const text = p.textContent;
+        if (text.includes('금액:')) {
+          amountText = text.replace('금액:', '').replace('원', '').trim();
+        } else if (text.includes('품목:')) {
+          itemsText = text.replace('품목:', '').trim();
+        } else if (text.includes('납품일:')) {
+          dateText = text.replace('납품일:', '').trim();
+        }
+      });
+
+      // History DeliveryItem 파싱 및 표시
+      let historyItemsHtml = '';
+      if (itemsText) {
+        // 품목 텍스트 파싱 ("품목명: 수량개 (금액원)" 형태)
+        const historyItems = parseDeliveryItemsText(itemsText);
+
+        if (historyItems.length > 0) {
+          let totalHistoryAmount = 0;
+
+          historyItems.forEach(historyItem => {
+            totalHistoryAmount += historyItem.amount;
+            historyItemsHtml += `
+              <div class="history-delivery-item mb-2 p-2 bg-light rounded border-start border-info border-3">
+                <div class="row align-items-center">
+                  <div class="col-md-8">
+                    <div>
+                      <strong class="text-primary">${historyItem.name}</strong>
+                      <span class="text-muted ms-2">${historyItem.quantity}개</span>
+                    </div>
+                    <div class="small text-muted">
+                      총액: <strong class="text-success">${historyItem.amount.toLocaleString()}원</strong>
+                    </div>
+                  </div>
+                  <div class="col-md-4 text-end">
+                    <span class="badge bg-info">활동기록</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          if (totalHistoryAmount > 0) {
+            historyItemsHtml += `
+              <div class="border-top pt-2 mt-2 mb-3">
+                <div class="row">
+                  <div class="col text-end">
+                    <small class="text-muted">활동기록 품목 총액: </small>
+                    <strong class="text-success fs-6">${totalHistoryAmount.toLocaleString()}원</strong>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+        }
+      }
+
+      // Schedule DeliveryItem 가져오기 및 표시
+      let scheduleItemsHtml = '';
+      if (scheduleId) {
+        try {
+          const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
+          if (response.ok) {
+            const data = await response.json();
+            const scheduleItems = data.items || [];
+
+            if (scheduleItems.length > 0) {
+              let totalScheduleAmount = 0;
+
+              scheduleItems.forEach(item => {
+                const itemTotal = Math.round(item.total_price || 0);
+                totalScheduleAmount += itemTotal;
+
+                scheduleItemsHtml += `
+                  <div class="schedule-delivery-item mb-2 p-2 bg-light rounded border-start border-warning border-3">
+                    <div class="row align-items-center">
+                      <div class="col-md-8">
+                        <div>
+                          <strong class="text-primary">${item.item_name}</strong>
+                          <span class="text-muted ms-2">${item.quantity}개</span>
+                        </div>
+                        <div class="small text-muted">
+                          단가: ${parseInt(item.unit_price || 0).toLocaleString()}원
+                          | 총액: <strong class="text-success">${itemTotal.toLocaleString()}원</strong>
+                        </div>
+                      </div>
+                      <div class="col-md-4 text-end">
+                        ${item.tax_invoice_issued
+                          ? '<span class="badge bg-primary">세금계산서 발행</span>'
+                          : '<span class="badge bg-secondary">세금계산서 미발행</span>'}
+                        <div class="small text-muted mt-1">
+                          <i class="fas fa-calendar me-1"></i>일정에서 추가
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              });
+
+              if (totalScheduleAmount > 0) {
+                scheduleItemsHtml += `
+                  <div class="border-top pt-2 mt-2">
+                    <div class="row">
+                      <div class="col text-end">
+                        <small class="text-muted">일정 품목 총액: </small>
+                        <strong class="text-success fs-6">${totalScheduleAmount.toLocaleString()}원</strong>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }
+            }
+          }
+        } catch (error) {
+          // Schedule 처리 실패 시 무시
+        }
+      }
+
+      // 기존 납품 정보를 구조화된 형태로 교체
+      if (historyItemsHtml || scheduleItemsHtml) {
+        const enhancedDeliveryHtml = `
+          <div class="enhanced-delivery-section">
+            ${dateText ? `
+              <div class="mb-3 p-2 bg-info bg-opacity-10 rounded">
+                <strong class="text-info">
+                  <i class="fas fa-calendar-alt me-1"></i>납품일: ${dateText}
+                </strong>
+              </div>
+            ` : ''}
+
+            ${historyItemsHtml ? `
+              <div class="history-items-section mb-3">
+                <h6 class="text-muted mb-2">
+                  <i class="fas fa-history me-1"></i>활동기록 납품 품목
+                </h6>
+                ${historyItemsHtml}
+              </div>
+            ` : ''}
+
+            ${scheduleItemsHtml ? `
+              <div class="schedule-items-section">
+                <h6 class="text-muted mb-2">
+                  <i class="fas fa-plus-circle me-1"></i>일정 추가 납품 품목
+                </h6>
+                ${scheduleItemsHtml}
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        deliveryDetails.innerHTML = enhancedDeliveryHtml;
+      }
+    }
+  }
+
+  // 납품 품목 텍스트 파싱 함수
+  function parseDeliveryItemsText(itemsText) {
+    const items = [];
+
+    // 줄바꿈으로 구분된 품목들 처리
+    const lines = itemsText.split('\n').map(line => line.trim()).filter(line => line);
+
+    lines.forEach(line => {
+      // "품목명: 수량개 (금액원)" 패턴 파싱
+      const match = line.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+      if (match) {
+        const name = match[1].trim();
+        const quantity = parseFloat(match[2]);
+        const amountStr = match[3].replace(/[,\s]/g, '');
+        const amount = parseInt(amountStr) || 0;
+
+        items.push({
+          name: name,
+          quantity: quantity,
+          amount: amount
+        });
+      }
+    });
+
+    return items;
+  }
 </script>
 
 <style>
-.delivery-items-content {
-  max-height: 400px;
-  overflow-y: auto;
-}
+  .delivery-items-content {
+    max-height: 400px;
+    overflow-y: auto;
+  }
 
-.delivery-item {
-  border-left: 4px solid #17a2b8 !important;
-  background-color: #f8f9fa !important;
-}
+  .delivery-item {
+    border-left: 4px solid #17a2b8 !important;
+    background-color: #f8f9fa !important;
+  }
 
-.delivery-item:hover {
-  background-color: #e9ecef !important;
-  transition: background-color 0.2s ease;
-}
+  .delivery-item:hover {
+    background-color: #e9ecef !important;
+    transition: background-color 0.2s ease;
+  }
 
-/* 납품 내역 테이블 컴팩트 스타일 */
-.table-compact td {
-  padding: 0.5rem 0.75rem !important;
-  line-height: 1.2 !important;
-  font-size: 0.9rem !important;
-  white-space: nowrap;
-  vertical-align: middle;
-}
+  /* 납품 내역 테이블 컴팩트 스타일 */
+  .table-compact td {
+    padding: 0.5rem 0.75rem !important;
+    line-height: 1.2 !important;
+    font-size: 0.9rem !important;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
 
-.table-compact th {
-  padding: 0.75rem !important;
-  font-size: 0.9rem !important;
-  font-weight: 600;
-  white-space: nowrap;
-}
+  .table-compact th {
+    padding: 0.75rem !important;
+    font-size: 0.9rem !important;
+    font-weight: 600;
+    white-space: nowrap;
+  }
 
-.table-compact .btn-sm {
-  font-size: 0.8rem !important;
-  padding: 0.25rem 0.5rem !important;
-}
+  .table-compact .btn-sm {
+    font-size: 0.8rem !important;
+    padding: 0.25rem 0.5rem !important;
+  }
 
-.table-compact .badge {
-  font-size: 0.75rem !important;
-}
+  .table-compact .badge {
+    font-size: 0.75rem !important;
+  }
 
-.table-compact .text-success {
-  font-size: 0.9rem !important;
-}
+  .table-compact .text-success {
+    font-size: 0.9rem !important;
+  }
 
-/* 클릭 가능한 카드 스타일 */
-.clickable-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-  transition: all 0.3s ease;
-}
+  /* 클릭 가능한 카드 스타일 */
+  .clickable-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+  }
 
-/* 전체 납품 모달 스타일 */
-.all-delivery-items-content {
-  max-height: 70vh;
-  overflow-y: auto;
-}
+  /* 전체 납품 모달 스타일 */
+  .all-delivery-items-content {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
 
-.delivery-record {
-  border: 1px solid #dee2e6;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+  .delivery-record {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
 
-.delivery-record-header {
-  background-color: #f8f9fa !important;
-  border-bottom: 2px solid #dee2e6;
-}
+  .delivery-record-header {
+    background-color: #f8f9fa !important;
+    border-bottom: 2px solid #dee2e6;
+  }
 
-.delivery-item-card {
-  border-left: 4px solid #17a2b8 !important;
-  background-color: #f8f9fa !important;
-  transition: background-color 0.2s ease;
-}
+  .delivery-item-card {
+    border-left: 4px solid #17a2b8 !important;
+    background-color: #f8f9fa !important;
+    transition: background-color 0.2s ease;
+  }
 
-.delivery-item-card:hover {
-  background-color: #e9ecef !important;
-}
+  .delivery-item-card:hover {
+    background-color: #e9ecef !important;
+  }
 </style>
 
 <!-- 세금계산서 편집 모달 -->
-<div class="modal fade" id="taxInvoiceModal" tabindex="-1" aria-labelledby="taxInvoiceModalLabel" aria-hidden="true">
+<div
+  class="modal fade"
+  id="taxInvoiceModal"
+  tabindex="-1"
+  aria-labelledby="taxInvoiceModalLabel"
+  aria-hidden="true"
+>
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="taxInvoiceModalLabel">
           <i class="fas fa-file-invoice me-2"></i>세금계산서 상태 편집
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
       </div>
       <div class="modal-body">
         <div id="taxInvoiceContent">
@@ -1389,7 +1514,9 @@ function parseDeliveryItemsText(itemsText) {
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          취소
+        </button>
         <button type="button" class="btn btn-primary" id="saveTaxInvoiceBtn">
           <i class="fas fa-save me-1"></i>저장
         </button>
@@ -1399,129 +1526,141 @@ function parseDeliveryItemsText(itemsText) {
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener("DOMContentLoaded", function () {
     // 세금계산서 상태 일괄 토글 (납품일별)
-    document.querySelectorAll('.tax-invoice-toggle').forEach(function(element) {
-        element.addEventListener('click', function() {
-            const type = this.dataset.type;
-            const id = this.dataset.id;
-            const scheduleId = this.dataset.scheduleId;
-            const currentStatus = this.querySelector('.badge').classList.contains('bg-primary');
-            
-            // 확인 메시지
-            const statusText = currentStatus ? '미발행' : '발행완료';
-            let message;
-            
-            if (type === 'history') {
-                message = `이 납품일의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-            } else if (type === 'schedule_bulk') {
-                message = `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-            } else {
-                message = `모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-            }
-            
-            if (confirm(message)) {
-                updateTaxInvoiceStatus(type, id, !currentStatus);
-            }
+    document
+      .querySelectorAll(".tax-invoice-toggle")
+      .forEach(function (element) {
+        element.addEventListener("click", function () {
+          const type = this.dataset.type;
+          const id = this.dataset.id;
+          const scheduleId = this.dataset.scheduleId;
+          const currentStatus =
+            this.querySelector(".badge").classList.contains("bg-primary");
+
+          // 확인 메시지
+          const statusText = currentStatus ? "미발행" : "발행완료";
+          let message;
+
+          if (type === "history") {
+            message = `이 납품일의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
+          } else if (type === "schedule_bulk") {
+            message = `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
+          } else {
+            message = `모든 품목을 "${statusText}"로 변경하시겠습니까?`;
+          }
+
+          if (confirm(message)) {
+            updateTaxInvoiceStatus(type, id, !currentStatus);
+          }
         });
-    });
-    
+      });
+
     // 세금계산서 상태 업데이트 함수
     function updateTaxInvoiceStatus(type, id, status) {
-        // 로딩 표시
-        const loadingText = status ? '발행 처리중...' : '미발행 처리중...';
-        const loadingDiv = document.createElement('div');
-        loadingDiv.className = 'alert alert-info';
-        loadingDiv.textContent = loadingText;
-        document.body.appendChild(loadingDiv);
-        
-        fetch('{% url "reporting:update_tax_invoice_status" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
-                type: type,
-                id: parseInt(id),
-                tax_invoice_issued: status
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // 성공 메시지와 함께 페이지 새로고침
-                if (data.updated_count) {
-                    alert(`성공: ${data.updated_count}개 품목의 세금계산서 상태가 변경되었습니다.`);
-                } else {
-                    alert('세금계산서 상태가 성공적으로 변경되었습니다.');
-                }
-                window.location.reload();
+      // 로딩 표시
+      const loadingText = status ? "발행 처리중..." : "미발행 처리중...";
+      const loadingDiv = document.createElement("div");
+      loadingDiv.className = "alert alert-info";
+      loadingDiv.textContent = loadingText;
+      document.body.appendChild(loadingDiv);
+
+      fetch('{% url "reporting:update_tax_invoice_status" %}', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+            .value,
+        },
+        body: JSON.stringify({
+          type: type,
+          id: parseInt(id),
+          tax_invoice_issued: status,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            // 성공 메시지와 함께 페이지 새로고침
+            if (data.updated_count) {
+              alert(
+                `성공: ${data.updated_count}개 품목의 세금계산서 상태가 변경되었습니다.`
+              );
             } else {
-                if (data.error.includes('권한')) {
-                    alert('권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다. 관리자나 영업사원에게 문의해주세요.');
-                } else {
-                    alert('오류: ' + data.error);
-                }
+              alert("세금계산서 상태가 성공적으로 변경되었습니다.");
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            if (error.message.includes('403')) {
-                alert('권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.');
+            window.location.reload();
+          } else {
+            if (data.error.includes("권한")) {
+              alert(
+                "권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다. 관리자나 영업사원에게 문의해주세요."
+              );
             } else {
-                alert('서버 오류가 발생했습니다.');
+              alert("오류: " + data.error);
             }
+          }
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+          if (error.message.includes("403")) {
+            alert("권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.");
+          } else {
+            alert("서버 오류가 발생했습니다.");
+          }
         })
         .finally(() => {
-            // 로딩 표시 제거
-            if (loadingDiv.parentNode) {
-                loadingDiv.parentNode.removeChild(loadingDiv);
-            }
+          // 로딩 표시 제거
+          if (loadingDiv.parentNode) {
+            loadingDiv.parentNode.removeChild(loadingDiv);
+          }
         });
     }
-    
+
     // Schedule 타입 세금계산서 편집 함수
-    window.editScheduleTaxInvoice = function(scheduleId) {
-        fetch(`/reporting/api/schedules/${scheduleId}/delivery-items/`)
-            .then(response => {
-                if (response.status === 403) {
-                    alert('권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.');
-                    return;
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data && data.success) {
-                    showScheduleTaxModal(scheduleId, data.items);
-                } else if (data) {
-                    if (data.error && data.error.includes('권한')) {
-                        alert('권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.');
-                    } else {
-                        alert('데이터를 불러오는데 실패했습니다.');
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('서버 오류가 발생했습니다.');
-            });
+    window.editScheduleTaxInvoice = function (scheduleId) {
+      fetch(`/reporting/api/schedules/${scheduleId}/delivery-items/`)
+        .then((response) => {
+          if (response.status === 403) {
+            alert("권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.");
+            return;
+          }
+          return response.json();
+        })
+        .then((data) => {
+          if (data && data.success) {
+            showScheduleTaxModal(scheduleId, data.items);
+          } else if (data) {
+            if (data.error && data.error.includes("권한")) {
+              alert(
+                "권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다."
+              );
+            } else {
+              alert("데이터를 불러오는데 실패했습니다.");
+            }
+          }
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+          alert("서버 오류가 발생했습니다.");
+        });
     };
-    
+
     // Schedule 세금계산서 모달 표시
     function showScheduleTaxModal(scheduleId, items) {
-        const modalContent = document.getElementById('taxInvoiceContent');
-        
-        let html = `<h6 class="mb-3">납품 품목별 세금계산서 상태</h6>`;
-        html += `<div class="delivery-items-list">`;
-        
-        items.forEach(item => {
-            html += `
+      const modalContent = document.getElementById("taxInvoiceContent");
+
+      let html = `<h6 class="mb-3">납품 품목별 세금계산서 상태</h6>`;
+      html += `<div class="delivery-items-list">`;
+
+      items.forEach((item) => {
+        html += `
                 <div class="border rounded p-3 mb-3">
                     <div class="row align-items-center">
                         <div class="col-md-6">
                             <strong>${item.item_name}</strong>
-                            <br><small class="text-muted">수량: ${item.quantity}개, 단가: ${item.unit_price.toLocaleString()}원</small>
+                            <br><small class="text-muted">수량: ${
+                              item.quantity
+                            }개, 단가: ${item.unit_price.toLocaleString()}원</small>
                             <br><small class="text-success">총액: ${item.total_price.toLocaleString()}원</small>
                         </div>
                         <div class="col-md-6 text-end">
@@ -1529,8 +1668,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <input class="form-check-input" type="checkbox" 
                                        id="tax_${item.id}" 
                                        data-item-id="${item.id}"
-                                       ${item.tax_invoice_issued ? 'checked' : ''}>
-                                <label class="form-check-label" for="tax_${item.id}">
+                                       ${
+                                         item.tax_invoice_issued
+                                           ? "checked"
+                                           : ""
+                                       }>
+                                <label class="form-check-label" for="tax_${
+                                  item.id
+                                }">
                                     세금계산서 발행
                                 </label>
                             </div>
@@ -1538,61 +1683,70 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             `;
-        });
-        
-        html += `</div>`;
-        modalContent.innerHTML = html;
-        
-        // 모달 표시
-        const modal = new bootstrap.Modal(document.getElementById('taxInvoiceModal'));
-        modal.show();
-        
-        // 저장 버튼 이벤트
-        document.getElementById('saveTaxInvoiceBtn').onclick = function() {
-            saveBatchTaxInvoiceStatus();
-        };
+      });
+
+      html += `</div>`;
+      modalContent.innerHTML = html;
+
+      // 모달 표시
+      const modal = new bootstrap.Modal(
+        document.getElementById("taxInvoiceModal")
+      );
+      modal.show();
+
+      // 저장 버튼 이벤트
+      document.getElementById("saveTaxInvoiceBtn").onclick = function () {
+        saveBatchTaxInvoiceStatus();
+      };
     }
-    
+
     // 일괄 세금계산서 상태 저장
     function saveBatchTaxInvoiceStatus() {
-        const checkboxes = document.querySelectorAll('#taxInvoiceContent input[type="checkbox"]');
-        const updates = [];
-        
-        checkboxes.forEach(checkbox => {
-            updates.push({
-                type: 'delivery_item',
-                id: parseInt(checkbox.dataset.itemId),
-                tax_invoice_issued: checkbox.checked
-            });
+      const checkboxes = document.querySelectorAll(
+        '#taxInvoiceContent input[type="checkbox"]'
+      );
+      const updates = [];
+
+      checkboxes.forEach((checkbox) => {
+        updates.push({
+          type: "delivery_item",
+          id: parseInt(checkbox.dataset.itemId),
+          tax_invoice_issued: checkbox.checked,
         });
-        
-        Promise.all(updates.map(update => 
-            fetch('{% url "reporting:update_tax_invoice_status" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                },
-                body: JSON.stringify(update)
-            }).then(response => response.json())
-        ))
-        .then(responses => {
-            const hasError = responses.some(response => !response.success);
-            if (hasError) {
-                alert('일부 항목 저장에 실패했습니다.');
-            } else {
-                // 모달 닫기 및 페이지 새로고침
-                bootstrap.Modal.getInstance(document.getElementById('taxInvoiceModal')).hide();
-                window.location.reload();
-            }
+      });
+
+      Promise.all(
+        updates.map((update) =>
+          fetch('{% url "reporting:update_tax_invoice_status" %}', {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": document.querySelector(
+                "[name=csrfmiddlewaretoken]"
+              ).value,
+            },
+            body: JSON.stringify(update),
+          }).then((response) => response.json())
+        )
+      )
+        .then((responses) => {
+          const hasError = responses.some((response) => !response.success);
+          if (hasError) {
+            alert("일부 항목 저장에 실패했습니다.");
+          } else {
+            // 모달 닫기 및 페이지 새로고침
+            bootstrap.Modal.getInstance(
+              document.getElementById("taxInvoiceModal")
+            ).hide();
+            window.location.reload();
+          }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('서버 오류가 발생했습니다.');
+        .catch((error) => {
+          console.error("Error:", error);
+          alert("서버 오류가 발생했습니다.");
         });
     }
-});
+  });
 </script>
 
-{% csrf_token %}
-{% endblock %}
+{% csrf_token %} {% endblock %}

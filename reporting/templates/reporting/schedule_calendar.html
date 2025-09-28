@@ -1195,10 +1195,30 @@
   // 디버깅용 콘솔 로그
   console.log('Current user info:', currentUser);
   
-  let currentDate = new Date();
-  let selectedDate = null;
-  let schedules = [];
-  let renderCalendar; // 전역 변수로 함수 참조 저장
+  // 전역 변수 선언 (window 객체에 명시적으로 할당)
+  window.currentDate = new Date();
+  window.selectedDate = null;
+  window.schedules = [];
+  window.currentSchedulesData = []; // 전역 스케줄 데이터
+  window.allHistoryData = []; // 전역 히스토리 데이터
+  window.renderCalendar = null; // 전역 변수로 함수 참조 저장
+  
+  // 지역 변수로도 선언 (호환성)
+  let currentDate = window.currentDate;
+  let selectedDate = window.selectedDate;
+  let schedules = window.schedules;
+  let currentSchedulesData = window.currentSchedulesData;
+  let allHistoryData = window.allHistoryData;
+  let renderCalendar = window.renderCalendar;
+  
+  // 페이지 로드 시 전역 변수 초기화
+  document.addEventListener('DOMContentLoaded', function() {
+    window.currentSchedulesData = [];
+    window.allHistoryData = [];
+    currentSchedulesData = window.currentSchedulesData;
+    allHistoryData = window.allHistoryData;
+    console.log('전역 변수 초기화 완료');
+  });
 
   // 일정 상태 업데이트 함수 - 전역 스코프로 이동
   function updateScheduleStatus(scheduleId, newStatus) {
@@ -1441,6 +1461,9 @@
       .then(data => {
         const container = document.getElementById(`scheduleHistories-${scheduleId}`);
         if (data.success && data.histories && data.histories.length > 0) {
+          // 전역 히스토리 데이터 업데이트
+          window.allHistoryData = [...(window.allHistoryData || []), ...data.histories];
+          allHistoryData = window.allHistoryData;
           container.innerHTML = data.histories.map(history => {
             // 활동 타입에 따른 색상 설정
             let badgeColor = 'secondary';
@@ -1676,6 +1699,9 @@
       .then((data) => {
         console.log("Loaded schedules:", data); // 디버깅용
         schedules = data;
+        window.schedules = data;
+        window.currentSchedulesData = data;
+        currentSchedulesData = window.currentSchedulesData;
         renderCalendar();
       })
       .catch((error) => {
@@ -1987,6 +2013,15 @@
       const data = await response.json();
       
       if (data.success) {
+        // 전역 히스토리 데이터에서 해당 히스토리 업데이트
+        window.allHistoryData = window.allHistoryData || [];
+        const existingIndex = window.allHistoryData.findIndex(h => h.id === historyId);
+        if (existingIndex >= 0) {
+          window.allHistoryData[existingIndex] = data.history;
+        } else {
+          window.allHistoryData.push(data.history);
+        }
+        allHistoryData = window.allHistoryData;
         await showHistoryEditForm(data.history, scheduleId);
       } else {
         showErrorMessage('히스토리 정보를 불러올 수 없습니다.');
@@ -2057,7 +2092,7 @@
   async function getCombinedDeliveryItemsText(historyId, scheduleId, historyDeliveryItems = '') {
     try {
       // Schedule의 DeliveryItem 가져오기
-      const response = await fetch(`/reporting/api/schedule-delivery-items/${scheduleId}/`);
+      const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
       if (!response.ok) {
         console.log('Schedule DeliveryItem API 응답 실패 또는 데이터 없음');
         return historyDeliveryItems || '';
@@ -2109,15 +2144,33 @@
     
     // Schedule DeliveryItem 정보도 별도로 가져오기 (구조화된 형태로)
     let scheduleDeliveryItems = [];
+    let scheduleTaxInvoiceStatus = null; // 스케줄의 세금계산서 상태
     try {
       const scheduleResponse = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
       if (scheduleResponse.ok) {
         const scheduleData = await scheduleResponse.json();
         scheduleDeliveryItems = scheduleData.items || [];
+        // 스케줄에 납품 품목이 있는 경우 첫 번째 항목의 세금계산서 상태를 가져옴
+        if (scheduleDeliveryItems.length > 0) {
+          scheduleTaxInvoiceStatus = scheduleDeliveryItems[0].tax_invoice_issued;
+        }
         console.log('Schedule DeliveryItem 구조화 데이터:', scheduleDeliveryItems);
+        console.log('Schedule 세금계산서 상태:', scheduleTaxInvoiceStatus);
       }
     } catch (error) {
       console.error('Schedule DeliveryItem 구조화 데이터 가져오기 실패:', error);
+    }
+    
+    // 연결된 스케줄에 납품 품목이 있고 세금계산서 상태가 다르면 동기화
+    let finalTaxInvoiceStatus = history.tax_invoice_issued;
+    if (scheduleDeliveryItems.length > 0 && scheduleTaxInvoiceStatus !== null) {
+      finalTaxInvoiceStatus = scheduleTaxInvoiceStatus;
+      // 히스토리의 세금계산서 상태와 다르면 업데이트
+      if (history.tax_invoice_issued !== scheduleTaxInvoiceStatus) {
+        console.log(`세금계산서 상태 동기화: ${history.tax_invoice_issued} -> ${scheduleTaxInvoiceStatus}`);
+        // 백엔드에서 동기화 (별도 요청)
+        updateTaxInvoiceStatusSilent(history.id, scheduleTaxInvoiceStatus);
+      }
     }
     
     // 편집 폼 HTML 생성
@@ -2133,14 +2186,6 @@
     // 활동 유형별 추가 필드
     if (history.action_type === 'delivery_schedule') {
       editFormHtml += `
-        <div class="col-6">
-          <label class="form-label fw-bold">납품 날짜</label>
-          <input type="date" class="form-control" name="delivery_date" value="${history.delivery_date || ''}">
-        </div>
-        <div class="col-6">
-          <label class="form-label fw-bold">납품 금액</label>
-          <input type="number" class="form-control" name="delivery_amount" value="${history.delivery_amount || ''}">
-        </div>
         <div class="col-12">
           <label class="form-label fw-bold">납품 품목</label>
           <!-- 기존 텍스트 입력 방식 숨김 -->
@@ -2154,7 +2199,7 @@
                   <textarea id="edit-delivery-items-display-${history.id}" class="form-control form-control-sm" rows="3" readonly placeholder="품목 관리 버튼을 클릭하여 납품 품목을 관리하세요.">${history.delivery_items || ''}</textarea>
                 </div>
                 <div class="col-md-4">
-                  <button type="button" class="btn btn-warning btn-sm w-100" onclick="openEditDeliveryItemsModal(${history.id})">
+                  <button type="button" id="delivery-items-btn-${history.id}" class="btn btn-warning btn-sm w-100" onclick="openEditDeliveryItemsModal(${history.id})">
                     <i class="fas fa-boxes me-1"></i>품목 관리
                   </button>
                 </div>
@@ -2166,9 +2211,14 @@
           <div id="schedule-delivery-section-${history.id}" class="mt-3" style="display: none;">
             <div class="card border-info">
               <div class="card-header bg-light py-2">
-                <h6 class="mb-0 text-muted">
-                  <i class="fas fa-plus-circle me-1"></i>연결된 일정의 추가 납품 품목
-                </h6>
+                <div class="d-flex justify-content-between align-items-center">
+                  <h6 class="mb-0 text-muted">
+                    <i class="fas fa-plus-circle me-1"></i>연결된 일정의 추가 납품 품목
+                  </h6>
+                  <button type="button" class="btn btn-sm btn-outline-primary" onclick="openScheduleDeliveryModal(${scheduleId}, ${history.id})" title="일정에서 품목 관리">
+                    <i class="fas fa-external-link-alt me-1"></i>일정에서 관리
+                  </button>
+                </div>
               </div>
               <div class="card-body p-2" id="schedule-delivery-content-${history.id}">
                 <!-- Schedule DeliveryItem들이 여기에 표시됩니다 -->
@@ -2178,12 +2228,17 @@
         </div>
         <div class="col-6">
           <label class="form-label fw-bold">세금계산서</label>
-          <div class="form-check form-switch";
-            <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="editTaxInvoice-${history.id}" ${history.tax_invoice_issued ? 'checked' : ''}>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="editTaxInvoice-${history.id}" ${finalTaxInvoiceStatus ? 'checked' : ''}>
             <label class="form-check-label" for="editTaxInvoice-${history.id}">
               발행 완료
             </label>
           </div>
+          ${scheduleDeliveryItems.length > 0 ? `
+          <div class="form-text text-info">
+            <i class="fas fa-info-circle me-1"></i>연결된 일정의 납품 품목과 동기화됩니다.
+          </div>
+          ` : ''}
         </div>
       `;
     } else if (history.action_type === 'customer_meeting') {
@@ -2329,6 +2384,224 @@
         
         console.log(`Schedule DeliveryItem ${scheduleDeliveryItems.length}개를 History 편집 폼에 표시 완료`);
       }
+    }
+    
+    // 연결된 스케줄에 품목이 있는지 확인하여 품목 관리 버튼 제어
+    setTimeout(() => {
+      const connectedSchedule = (window.currentSchedulesData || []).find(s => s.id === scheduleId);
+      const deliveryItemsBtn = document.getElementById(`delivery-items-btn-${history.id}`);
+      
+      if (deliveryItemsBtn && connectedSchedule && connectedSchedule.has_schedule_items) {
+        // 연결된 스케줄에 품목이 있으면 버튼 비활성화
+        deliveryItemsBtn.disabled = true;
+        deliveryItemsBtn.className = 'btn btn-secondary btn-sm w-100';
+        deliveryItemsBtn.title = '연결된 일정에 품목이 있어 일정에서만 관리할 수 있습니다.';
+        deliveryItemsBtn.innerHTML = '<i class="fas fa-lock me-1"></i>일정에서 관리';
+        
+        // 추가 안내 메시지 표시
+        const deliveryItemsDisplay = document.getElementById(`edit-delivery-items-display-${history.id}`);
+        if (deliveryItemsDisplay && !deliveryItemsDisplay.value.trim()) {
+          deliveryItemsDisplay.placeholder = '연결된 일정에 품목이 있어 여기서는 관리할 수 없습니다.';
+        }
+      }
+      
+      // 세금계산서 토글 이벤트 리스너 추가
+      const taxInvoiceCheckbox = document.getElementById(`editTaxInvoice-${history.id}`);
+      if (taxInvoiceCheckbox) {
+        taxInvoiceCheckbox.addEventListener('change', function() {
+          updateTaxInvoiceStatus(history.id, this.checked);
+        });
+      }
+    }, 100);
+  }
+
+  // 세금계산서 상태 업데이트 함수
+  function updateTaxInvoiceStatus(historyId, isChecked) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+      alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+    
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('tax_invoice_issued', isChecked);
+    formData.append('sync_schedule', 'true'); // 연결된 스케줄도 함께 업데이트
+    
+    fetch(`{% url 'reporting:history_update_tax_invoice' 0 %}`.replace('0', historyId), {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showSuccessMessage(isChecked ? '세금계산서 발행으로 변경되었습니다.' : '세금계산서 미발행으로 변경되었습니다.');
+      } else {
+        showErrorMessage(data.error || '세금계산서 상태 변경 중 오류가 발생했습니다.');
+        // 체크박스 상태 되돌리기
+        const checkbox = document.getElementById(`editTaxInvoice-${historyId}`);
+        if (checkbox) {
+          checkbox.checked = !isChecked;
+        }
+      }
+    })
+    .catch(error => {
+      console.error('Error updating tax invoice status:', error);
+      showErrorMessage('세금계산서 상태 변경 중 오류가 발생했습니다.');
+      // 체크박스 상태 되돌리기
+      const checkbox = document.getElementById(`editTaxInvoice-${historyId}`);
+      if (checkbox) {
+        checkbox.checked = !isChecked;
+      }
+    });
+  }
+
+  // 세금계산서 상태 백그라운드 동기화 함수 (메시지 없음)
+  function updateTaxInvoiceStatusSilent(historyId, isChecked) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+      console.error('CSRF 토큰을 찾을 수 없습니다.');
+      return;
+    }
+    
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('tax_invoice_issued', isChecked);
+    formData.append('silent', 'true'); // 자동 동기화임을 표시
+    
+    fetch(`{% url 'reporting:history_update_tax_invoice' 0 %}`.replace('0', historyId), {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        console.log('세금계산서 상태 자동 동기화 완료:', isChecked);
+      } else {
+        console.error('세금계산서 자동 동기화 실패:', data.error);
+      }
+    })
+    .catch(error => {
+      console.error('세금계산서 자동 동기화 중 오류:', error);
+    });
+  }
+
+  // 스케줄 납품 모달 열기 함수
+  function openScheduleDeliveryModal(scheduleId, historyId = null) {
+    // 현재 History 모달 정보 저장
+    const currentHistoryModal = document.querySelector('#history-modal');
+    const currentHistoryId = historyId || (currentHistoryModal ? document.querySelector('#edit-history-id')?.value : null);
+    
+    // 현재 열려있는 히스토리 ID를 전역 변수에 저장
+    window.currentEditingHistoryId = currentHistoryId;
+    
+    // 현재 History 모달 닫기
+    if (currentHistoryModal) {
+      const modalInstance = bootstrap.Modal.getInstance(currentHistoryModal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+    }
+    
+    // 스케줄 납품 품목 모달 열기
+    setTimeout(() => {
+      openDeliveryItemsModal(scheduleId);
+      
+      // 스케줄 모달이 닫힐 때 히스토리 모달 새로고침 이벤트 리스너 추가
+      const scheduleModal = document.querySelector('#deliveryItemsModal');
+      if (scheduleModal && currentHistoryId) {
+        const modalInstance = bootstrap.Modal.getInstance(scheduleModal) || new bootstrap.Modal(scheduleModal);
+        
+        // 기존 이벤트 리스너 제거 (중복 방지)
+        scheduleModal.removeEventListener('hidden.bs.modal', refreshHistoryModalAfterScheduleUpdate);
+        
+        // 새 이벤트 리스너 추가
+        function refreshHistoryModalAfterScheduleUpdate() {
+          console.log('스케줄 모달이 닫혔습니다. 히스토리 모달 새로고침 시작...');
+          setTimeout(() => {
+            refreshHistoryModal(currentHistoryId, scheduleId);
+          }, 500);
+        }
+        
+        scheduleModal.addEventListener('hidden.bs.modal', refreshHistoryModalAfterScheduleUpdate, { once: true });
+      }
+    }, 500);
+  }
+
+  // 히스토리 모달 새로고침 함수
+  async function refreshHistoryModal(historyId, scheduleId) {
+    try {
+      // 최신 히스토리 데이터 가져오기
+      const response = await fetch(`{% url 'reporting:history_detail_api' 0 %}`.replace('0', historyId));
+      const data = await response.json();
+      
+      if (data.success) {
+        // 전역 히스토리 데이터에서 해당 히스토리 업데이트
+        window.allHistoryData = window.allHistoryData || [];
+        const existingIndex = window.allHistoryData.findIndex(h => h.id === historyId);
+        if (existingIndex >= 0) {
+          window.allHistoryData[existingIndex] = data.history;
+        } else {
+          window.allHistoryData.push(data.history);
+        }
+        
+        console.log('히스토리 데이터 새로고침 완료:', data.history);
+        
+        // 스케줄 목록도 새로고침하여 최신 상태 반영
+        await refreshScheduleData();
+        
+        // 캘린더도 새로고침
+        if (typeof renderCalendar === 'function') {
+          renderCalendar();
+        }
+        
+        // 히스토리 편집 폼 다시 표시
+        await showHistoryEditForm(data.history, scheduleId);
+        
+        // 히스토리 모달 다시 열기
+        const historyModal = document.querySelector('#history-modal');
+        if (historyModal) {
+          const modalInstance = bootstrap.Modal.getInstance(historyModal) || new bootstrap.Modal(historyModal);
+          modalInstance.show();
+        }
+        
+        // 스케줄 히스토리 목록도 새로고침
+        loadScheduleHistories(scheduleId);
+        
+        showSuccessMessage('연결된 일정 품목 변경사항이 반영되었습니다.');
+      } else {
+        console.error('히스토리 데이터 새로고침 실패:', data.error);
+        showErrorMessage('변경사항 반영 중 오류가 발생했습니다.');
+      }
+    } catch (error) {
+      console.error('히스토리 모달 새로고침 중 오류:', error);
+      showErrorMessage('변경사항 반영 중 오류가 발생했습니다.');
+    }
+  }
+
+  // 스케줄 데이터 새로고침 함수
+  async function refreshScheduleData() {
+    try {
+      let apiUrl = "{% url 'reporting:schedule_api' %}";
+      {% if user_filter %}
+      apiUrl += "?user={{ user_filter }}";
+      {% endif %}
+      
+      const response = await fetch(apiUrl);
+      if (response.ok) {
+        const data = await response.json();
+        window.schedules = data;
+        window.currentSchedulesData = data;
+        schedules = window.schedules;
+        currentSchedulesData = window.currentSchedulesData;
+        console.log('스케줄 데이터 새로고침 완료');
+      }
+    } catch (error) {
+      console.error('스케줄 데이터 새로고침 실패:', error);
     }
   }
 
@@ -2910,8 +3183,11 @@
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                 <i class="fas fa-times me-1"></i>취소
               </button>
+              <button type="button" class="btn btn-success" onclick="applyCalendarDeliveryItems()">
+                <i class="fas fa-check me-1"></i>적용
+              </button>
               <button type="button" class="btn btn-primary" onclick="saveCalendarDeliveryItems()">
-                <i class="fas fa-save me-1"></i>적용
+                <i class="fas fa-save me-1"></i>저장
               </button>
             </div>
           </div>
@@ -3105,20 +3381,99 @@
     document.getElementById('calendar-total-amount').textContent = Math.round(total).toLocaleString() + '원';
   }
 
+  // 적용 버튼: 히스토리 모달에만 반영 (서버 저장 없음)
+  function applyCalendarDeliveryItems() {
+    const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
+    let itemsText = [];
+    let totalAmount = 0;
+    
+    items.forEach((item) => {
+      const itemName = item.querySelector('.item-name').value.trim();
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      
+      if (itemName && quantity > 0) {
+        const subtotal = quantity * unitPrice;
+        const total = subtotal * 1.1;
+        
+        totalAmount += total;
+        itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+      }
+    });
+    
+    // 현재 편집 중인 히스토리 ID 가져오기
+    const historyId = window.currentEditingHistoryId;
+    
+    if (historyId) {
+      // 납품 품목 표시 필드 업데이트
+      const deliveryItemsDisplay = document.getElementById(`edit-delivery-items-display-${historyId}`);
+      const deliveryItemsHidden = document.getElementById(`edit-delivery-items-${historyId}`);
+      
+      if (deliveryItemsDisplay && deliveryItemsHidden) {
+        const deliveryText = itemsText.join('\n');
+        deliveryItemsDisplay.value = deliveryText;
+        deliveryItemsHidden.value = deliveryText;
+        
+        console.log(`히스토리 ${historyId}의 납품 품목 필드 업데이트:`, deliveryText);
+      }
+      
+      // 납품 금액 필드도 업데이트 (있는 경우)
+      const deliveryAmountField = document.querySelector(`#historyEditForm-${historyId} input[name="delivery_amount"]`);
+      if (deliveryAmountField && totalAmount > 0) {
+        deliveryAmountField.value = Math.round(totalAmount);
+        console.log(`히스토리 ${historyId}의 납품 금액 필드 업데이트:`, Math.round(totalAmount));
+      }
+      
+      // 성공 메시지 표시
+      showSuccessMessage('납품 품목이 히스토리에 적용되었습니다. 히스토리를 저장하여 확정하세요.');
+    } else {
+      showErrorMessage('현재 편집 중인 히스토리를 찾을 수 없습니다.');
+    }
+    
+    // 모달 닫기
+    const modal = document.getElementById('deliveryItemsModal');
+    if (modal) {
+      const modalInstance = bootstrap.Modal.getInstance(modal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+    }
+  }
+
+  // 저장 버튼: 서버에 실제 저장하고 전체 동기화
   function saveCalendarDeliveryItems() {
     const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
     deliveryItemsData = [];
     let itemsText = [];
     let totalAmount = 0;
     
-    // 기존 숨겨진 입력 필드들 제거
-    const form = document.querySelector(`form#inlineHistoryForm-${currentScheduleId}`);
-    if (form) {
-      const existingHiddenFields = form.querySelectorAll('input[name^="delivery_items["]');
-      existingHiddenFields.forEach(field => field.remove());
+    // 유효성 검사
+    let hasValidItems = false;
+    items.forEach((item) => {
+      const itemName = item.querySelector('.item-name').value.trim();
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      
+      if (itemName && quantity > 0) {
+        hasValidItems = true;
+      }
+    });
+    
+    if (!hasValidItems) {
+      showErrorMessage('최소 하나의 유효한 품목을 입력해주세요.');
+      return;
     }
     
-    items.forEach((item, index) => {
+    // 서버 저장을 위한 데이터 수집
+    const formData = new FormData();
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (csrfToken) {
+      formData.append('csrfmiddlewaretoken', csrfToken);
+    }
+    
+    let validIndex = 0;
+    items.forEach((item) => {
       const itemName = item.querySelector('.item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
@@ -3137,52 +3492,64 @@
         totalAmount += total;
         itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
         
-        // 서버로 전송될 숨겨진 필드들 생성 (기존 뷰와 호환)
-        if (form) {
-          // 품목명
-          const nameInput = document.createElement('input');
-          nameInput.type = 'hidden';
-          nameInput.name = `delivery_items[${index}][name]`;
-          nameInput.value = itemName;
-          form.appendChild(nameInput);
-          
-          // 수량
-          const quantityInput = document.createElement('input');
-          quantityInput.type = 'hidden';
-          quantityInput.name = `delivery_items[${index}][quantity]`;
-          quantityInput.value = quantity;
-          form.appendChild(quantityInput);
-          
-          // 단가
-          const unitPriceInput = document.createElement('input');
-          unitPriceInput.type = 'hidden';
-          unitPriceInput.name = `delivery_items[${index}][unit_price]`;
-          unitPriceInput.value = unitPrice;
-          form.appendChild(unitPriceInput);
-        }
+        // 서버 전송용 FormData에 추가
+        formData.append(`delivery_items[${validIndex}][name]`, itemName);
+        formData.append(`delivery_items[${validIndex}][quantity]`, quantity);
+        formData.append(`delivery_items[${validIndex}][unit_price]`, unitPrice);
+        
+        validIndex++;
       }
     });
     
-    // 원래 폼에 데이터 적용
-    const deliveryItemsField = document.querySelector(`form#inlineHistoryForm-${currentScheduleId} textarea[name="delivery_items"]`);
-    const deliveryAmountField = document.querySelector(`form#inlineHistoryForm-${currentScheduleId} input[name="delivery_amount"]`);
-    
-    if (deliveryItemsField) {
-      deliveryItemsField.value = itemsText.join('\\n');
+    // 로딩 상태 표시
+    const saveButton = event.target || document.querySelector('.btn-primary[onclick="saveCalendarDeliveryItems()"]');
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
     }
     
-    if (deliveryAmountField) {
-      deliveryAmountField.value = Math.round(totalAmount);
-    }
-    
-    // 모달 닫기
-    const modal = bootstrap.Modal.getInstance(document.getElementById('deliveryItemsModal'));
-    modal.hide();
-    
-    // 화면에 표시된 납품 품목 정보 즉시 업데이트
-    updateScheduleDeliveryDisplay(currentScheduleId, itemsText.join('\n'), Math.round(totalAmount));
-    
-    showSuccessMessage('납품 품목이 적용되었습니다.');
+    // 서버에 저장
+    fetch(`{% url 'reporting:schedule_update_delivery_items' 0 %}`.replace('0', currentScheduleId), {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => {
+      if (response.ok) {
+        return response.text();
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    })
+    .then(data => {
+      // 성공 시 전체 데이터 새로고침
+      showSuccessMessage('납품 품목이 성공적으로 저장되었습니다.');
+      
+      // 모달 닫기
+      const modal = bootstrap.Modal.getInstance(document.getElementById('deliveryItemsModal'));
+      if (modal) {
+        modal.hide();
+      }
+      
+      // 전체 데이터 새로고침
+      setTimeout(async () => {
+        await refreshScheduleData();
+        if (typeof renderCalendar === 'function') {
+          renderCalendar();
+        }
+        loadScheduleHistories(currentScheduleId);
+      }, 500);
+    })
+    .catch(error => {
+      console.error('저장 오류:', error);
+      showErrorMessage('납품 품목 저장 중 오류가 발생했습니다: ' + error.message);
+    })
+    .finally(() => {
+      // 버튼 상태 복원
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+      }
+    });
   }
 
   // 스케줄 모달의 납품 품목 정보를 강제로 업데이트
@@ -3202,6 +3569,9 @@
         
         // schedules 배열 업데이트
         schedules = data;
+        window.schedules = data;
+        window.currentSchedulesData = data;
+        currentSchedulesData = window.currentSchedulesData;
         
         // 해당 스케줄 찾기
         const updatedSchedule = schedules.find(s => s.id == scheduleId);
@@ -3360,6 +3730,9 @@
         
         // schedules 배열 업데이트
         schedules = data;
+        window.schedules = data;
+        window.currentSchedulesData = data;
+        currentSchedulesData = window.currentSchedulesData;
         
         // 해당 스케줄 찾기
         const updatedSchedule = schedules.find(s => s.id == scheduleId);
@@ -3436,6 +3809,16 @@
   let editDeliveryItemsData = [];
 
   function openEditDeliveryItemsModal(historyId) {
+    // 연결된 스케줄이 있고 그 스케줄에 품목이 있는지 확인
+    const history = (window.allHistoryData || []).find(h => h.id === historyId);
+    if (history && history.schedule_id) {
+        const connectedSchedule = (window.currentSchedulesData || []).find(s => s.id === history.schedule_id);
+        if (connectedSchedule && connectedSchedule.has_schedule_items) {
+            alert('연결된 일정에 품목이 있어 여기서는 품목을 관리할 수 없습니다.\n일정에서 직접 품목을 관리해주세요.');
+            return;
+        }
+    }
+    
     currentEditHistoryId = historyId;
     editDeliveryItemsData = []; // 초기화
     
@@ -4679,6 +5062,12 @@
     // 고객 활동기록 표시 함수
     function displayCustomerHistories(data) {
       const content = document.getElementById('customerHistoriesContent');
+      
+      // 전역 히스토리 데이터 업데이트
+      if (data.histories && data.histories.length > 0) {
+        window.allHistoryData = [...(window.allHistoryData || []), ...data.histories];
+        allHistoryData = window.allHistoryData;
+      }
       
       if (data.histories.length === 0) {
         content.innerHTML = `

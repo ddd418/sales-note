@@ -38,6 +38,7 @@ urlpatterns = [
     path('histories/<int:pk>/edit/', views.history_edit_view, name='history_edit'),
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
+    path('histories/<int:pk>/update-tax-invoice/', views.history_update_tax_invoice, name='history_update_tax_invoice'),
     path('histories/<int:history_id>/delivery-items-api/', views.history_delivery_items_api, name='history_delivery_items_api'),
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
