@@ -1,14 +1,33 @@
 <!-- reporting/templates/reporting/base.html -->
+{% load static %}
 <!DOCTYPE html>
 <html lang="ko">  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <meta name="csrf-token" content="{{ csrf_token }}" />
+    <!-- PWA 메타태그 강화 -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="영업보고" />
+    
+    <!-- PWA 매니페스트 -->
+    <link rel="manifest" href="{% static 'manifest.json' %}" />
+    
+    <!-- 터치 아이콘들 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.svg' %}" />
+    <link rel="icon" type="image/svg+xml" sizes="32x32" href="{% static 'icons/apple-touch-icon.svg' %}" />
+    <link rel="icon" type="image/svg+xml" sizes="16x16" href="{% static 'icons/apple-touch-icon.svg' %}" />
+    
+    <!-- 모바일 테마 컬러 -->
+    <meta name="theme-color" content="#007bff" />
+    <meta name="msapplication-TileColor" content="#007bff" />
+    
+    <!-- 모바일 최적화 -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-status-bar-style" content="black-translucent" />
+    
     <title>{% block title %}영업 보고 시스템{% endblock %}</title>
-    {% load static %}
     <link href="{% static 'css/dist/styles.css' %}" rel="stylesheet" />
     <!-- Font Awesome for icons -->
     <link
@@ -47,7 +66,7 @@
         display: block;
       }
 
-      /* 모바일 햄버거 메뉴 */
+      /* 모바일 햄버거 메뉴 - 터치 최적화 */
       .mobile-menu-toggle {
         display: none;
         position: fixed;
@@ -56,18 +75,135 @@
         z-index: 1051;
         background: #fff;
         border: 1px solid #e3e2e0;
-        border-radius: 8px;
-        padding: 8px 12px;
+        border-radius: 12px;
+        padding: 12px 16px; /* 터치 영역 확대 */
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        min-width: 48px; /* 최소 터치 크기 */
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+      }
+
+      .mobile-menu-toggle:hover {
+        background: #f8f9fa;
+        transform: scale(1.05);
+      }
+
+      .mobile-menu-toggle:active {
+        transform: scale(0.95);
+        background: #e9ecef;
       }
 
       .mobile-menu-toggle i {
-        font-size: 18px;
+        font-size: 20px; /* 아이콘 크기 증가 */
         color: #37352f;
+        transition: transform 0.2s ease;
       }
 
-      /* 기본 네비게이션 (추후 사이드바로 변경 가능) */
+        /* 메뉴 열릴 때 아이콘 회전 */
+      .mobile-menu-toggle.active i {
+        transform: rotate(90deg);
+      }
+
+      /* 터치 인터페이스 최적화 */
+      @media (pointer: coarse) {
+        /* 터치 디바이스용 최적화 */
+        .btn {
+          min-height: 44px;
+          min-width: 44px;
+          padding: 12px 16px;
+          touch-action: manipulation;
+        }
+        
+        .form-control, .form-select {
+          min-height: 44px;
+          font-size: 16px; /* iOS 줌 방지 */
+          padding: 12px 16px;
+        }
+        
+        .dropdown-item {
+          min-height: 44px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+        }
+        
+        .nav-link {
+          min-height: 44px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+        }
+        
+        /* 터치 피드백 */
+        .btn:active,
+        .dropdown-item:active,
+        .nav-link:active {
+          transform: scale(0.98);
+          transition: transform 0.1s ease;
+        }
+        
+        /* 스크롤바 숨기기 (터치 스크롤 시) */
+        .table-responsive {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        
+        .table-responsive::-webkit-scrollbar {
+          display: none;
+        }
+      }
+
+      /* Pull-to-refresh 스타일 */
+      .pull-to-refresh {
+        position: fixed;
+        top: -50px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #007bff;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 20px;
+        z-index: 9999;
+        transition: all 0.3s ease;
+        opacity: 0;
+      }
+      
+      .pull-to-refresh.show {
+        top: 20px;
+        opacity: 1;
+      }
+
+      /* 스와이프 표시기 */
+      .swipe-indicator {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(0, 123, 255, 0.8);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        z-index: 1000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      
+      .swipe-indicator.left {
+        left: 20px;
+      }
+      
+      .swipe-indicator.right {
+        right: 20px;
+      }
+      
+      .swipe-indicator.show {
+        opacity: 1;
+      }      /* 기본 네비게이션 (추후 사이드바로 변경 가능) */
       .main-nav {
         background-color: #ffffff;
         border-right: 1px solid #edecec; /* Notion 사이드바 경계선과 유사하게 */
@@ -1166,6 +1302,11 @@
             <h5 class="mb-0">{% block page_title %}영업 보고 시스템{% endblock %}</h5>
           </div>
           <div class="user-actions-top">
+            <!-- PWA 설치 버튼 -->
+            <button id="install-button" class="btn btn-outline-primary btn-sm me-2" style="display: none;">
+              <i class="fas fa-mobile-alt me-1"></i>앱 설치
+            </button>
+            
             {% if user.is_authenticated %}
             <span class="user-info-compact me-3">
               <i class="fas fa-user me-1"></i>{{ user.username }}
@@ -1550,22 +1691,83 @@
         if (mobileMenuToggle && mainNav && mobileOverlay) {
           console.log('Mobile navigation elements found'); // 디버깅용
           
-          // 햄버거 메뉴 클릭 시 사이드바 토글
+          // 햄버거 메뉴 클릭 시 사이드바 토글 (터치 개선)
           mobileMenuToggle.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
             console.log('Mobile menu toggle clicked'); // 디버깅용
+            
+            // 토글 버튼 애니메이션
+            mobileMenuToggle.classList.toggle('active');
             
             mainNav.classList.toggle('show');
             mobileOverlay.classList.toggle('show');
             document.body.style.overflow = mainNav.classList.contains('show') ? 'hidden' : '';
           });
 
+          // 터치 피드백 개선
+          mobileMenuToggle.addEventListener('touchstart', function() {
+            this.style.transform = 'scale(0.95)';
+          });
+          
+          mobileMenuToggle.addEventListener('touchend', function() {
+            setTimeout(() => {
+              this.style.transform = '';
+            }, 100);
+          });
+
+          // 스와이프 제스처로 메뉴 제어
+          let startX = null;
+          let startY = null;
+          let currentX = null;
+          let currentY = null;
+          
+          document.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+          }, {passive: true});
+          
+          document.addEventListener('touchmove', function(e) {
+            if (!startX || !startY) return;
+            
+            currentX = e.touches[0].clientX;
+            currentY = e.touches[0].clientY;
+            
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+            
+            // 수평 스와이프가 더 클 때만 처리
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+              // 왼쪽에서 오른쪽으로 스와이프 (메뉴 열기)
+              if (diffX > 50 && startX < 50 && !mainNav.classList.contains('show')) {
+                mainNav.classList.add('show');
+                mobileOverlay.classList.add('show');
+                mobileMenuToggle.classList.add('active');
+                document.body.style.overflow = 'hidden';
+              }
+              // 오른쪽에서 왼쪽으로 스와이프 (메뉴 닫기)
+              else if (diffX < -50 && mainNav.classList.contains('show')) {
+                mainNav.classList.remove('show');
+                mobileOverlay.classList.remove('show');
+                mobileMenuToggle.classList.remove('active');
+                document.body.style.overflow = '';
+              }
+            }
+          }, {passive: true});
+          
+          document.addEventListener('touchend', function() {
+            startX = null;
+            startY = null;
+            currentX = null;
+            currentY = null;
+          }, {passive: true});
+
           // 오버레이 클릭 시 사이드바 닫기
           mobileOverlay.addEventListener('click', function(e) {
             e.preventDefault();
             mainNav.classList.remove('show');
             mobileOverlay.classList.remove('show');
+            mobileMenuToggle.classList.remove('active');
             document.body.style.overflow = '';
           });
 
@@ -1576,6 +1778,7 @@
               if (window.innerWidth <= 768) {
                 mainNav.classList.remove('show');
                 mobileOverlay.classList.remove('show');
+                mobileMenuToggle.classList.remove('active');
                 document.body.style.overflow = '';
               }
             });
@@ -1595,6 +1798,7 @@
             if (event.key === 'Escape' && mainNav.classList.contains('show')) {
               mainNav.classList.remove('show');
               mobileOverlay.classList.remove('show');
+              mobileMenuToggle.classList.remove('active');
               document.body.style.overflow = '';
             }
           });
@@ -1606,6 +1810,160 @@
           });
         }
       });
+
+      // 터치 인터페이스 개선 기능들
+      (function() {
+        // Pull-to-refresh 기능
+        let startY = 0;
+        let pullDistance = 0;
+        let isPulling = false;
+        
+        document.addEventListener('touchstart', function(e) {
+          if (window.scrollY === 0) {
+            startY = e.touches[0].clientY;
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchmove', function(e) {
+          if (window.scrollY === 0 && startY !== 0) {
+            pullDistance = e.touches[0].clientY - startY;
+            
+            if (pullDistance > 0) {
+              isPulling = true;
+              // Pull-to-refresh 표시기 업데이트
+              const indicator = document.querySelector('.pull-to-refresh');
+              if (!indicator) {
+                const refreshDiv = document.createElement('div');
+                refreshDiv.className = 'pull-to-refresh';
+                refreshDiv.innerHTML = '<i class="fas fa-sync-alt"></i> 새로고침';
+                document.body.appendChild(refreshDiv);
+              }
+              
+              if (pullDistance > 80) {
+                const refreshIndicator = document.querySelector('.pull-to-refresh');
+                if (refreshIndicator) {
+                  refreshIndicator.classList.add('show');
+                }
+              }
+            }
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchend', function() {
+          if (isPulling && pullDistance > 80) {
+            // 새로고침 실행
+            window.location.reload();
+          }
+          
+          const indicator = document.querySelector('.pull-to-refresh');
+          if (indicator) {
+            indicator.classList.remove('show');
+          }
+          
+          startY = 0;
+          pullDistance = 0;
+          isPulling = false;
+        }, {passive: true});
+        
+        // 스와이프 표시기 (메뉴용 이외의 일반 스와이프)
+        function showSwipeIndicator(direction, text) {
+          const indicator = document.createElement('div');
+          indicator.className = `swipe-indicator ${direction}`;
+          indicator.textContent = text;
+          document.body.appendChild(indicator);
+          
+          setTimeout(() => indicator.classList.add('show'), 10);
+          setTimeout(() => {
+            indicator.classList.remove('show');
+            setTimeout(() => document.body.removeChild(indicator), 300);
+          }, 1500);
+        }
+        
+        // 터치 피드백 개선
+        document.addEventListener('touchstart', function(e) {
+          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
+          if (target) {
+            target.style.transform = 'scale(0.98)';
+            target.style.transition = 'transform 0.1s ease';
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchend', function(e) {
+          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
+          if (target) {
+            setTimeout(() => {
+              target.style.transform = '';
+            }, 100);
+          }
+        }, {passive: true});
+        
+        // 스크롤 성능 최적화
+        let scrollTimeout;
+        window.addEventListener('scroll', function() {
+          document.body.classList.add('scrolling');
+          
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            document.body.classList.remove('scrolling');
+          }, 150);
+        }, {passive: true});
+      })();
+
+      // PWA 서비스 워커 등록
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('{% static "service-worker.js" %}')
+            .then(function(registration) {
+              console.log('서비스 워커 등록 성공:', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('서비스 워커 등록 실패:', error);
+            });
+        });
+      }
+
+      // PWA 홈 화면 추가 프롬프트
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // 기본 브라우저 프롬프트 막기
+        e.preventDefault();
+        // 나중에 사용하기 위해 이벤트 저장
+        deferredPrompt = e;
+        
+        // 사용자에게 PWA 설치 옵션 보여주기 (선택적)
+        showInstallPromotion();
+      });
+
+      function showInstallPromotion() {
+        // 홈 화면 추가 버튼이 있다면 보여주기
+        const installButton = document.getElementById('install-button');
+        if (installButton) {
+          installButton.style.display = 'block';
+          installButton.addEventListener('click', () => {
+            // 사용자가 설치 버튼을 클릭했을 때
+            if (deferredPrompt) {
+              deferredPrompt.prompt();
+              deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                  console.log('사용자가 PWA 설치를 승인했습니다');
+                } else {
+                  console.log('사용자가 PWA 설치를 거부했습니다');
+                }
+                deferredPrompt = null;
+              });
+            }
+          });
+        }
+      }
+
+      // 앱이 설치되었을 때
+      window.addEventListener('appinstalled', (evt) => {
+        console.log('PWA가 설치되었습니다');
+      });
+
+      // 터치 제스처 개선
+      document.addEventListener('touchstart', function() {}, {passive: true});
+      document.addEventListener('touchmove', function() {}, {passive: true});
     </script>
   </body>
 </html>
