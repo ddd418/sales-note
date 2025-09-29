@@ -4994,15 +4994,6 @@ def followup_excel_download(request):
         item_quantities = {}
         total_delivery_amount = 0
         
-        # 품목명 정규화 함수 (공백, 대소문자 통일)
-        def normalize_item_name(name):
-            return name.strip().upper().replace(' ', '').replace('.', '')
-        
-        # 정규화된 품목명과 원본 품목명 매핑
-        item_name_mapping = {}
-        
-        # 추적을 위한 로깅 (생략)
-        
         # 중복 방지를 위해 처리된 Schedule ID들을 추적
         processed_schedule_ids = set()
         
@@ -5011,94 +5002,101 @@ def followup_excel_download(request):
             if history.delivery_amount:
                 total_delivery_amount += history.delivery_amount
             
-            # History에서 연결된 Schedule이 있다면 Schedule ID 기록 (중복 방지용)
-            if history.schedule_id:
+            # History에 실제 납품 품목 정보가 있는 경우만 Schedule ID 기록
+            # (품목 정보가 없으면 Schedule에서 가져와야 함)
+            if history.schedule_id and history.delivery_items:
                 processed_schedule_ids.add(history.schedule_id)
             
             # 납품 품목 집계 - History 텍스트에서만 처리 (Schedule DeliveryItem은 나중에 별도 처리)
             if history.delivery_items:
-                # 줄바꿈 문자 처리
-                processed_items = history.delivery_items.replace('\\n', '\n').replace('\\r\\n', '\n').replace('\\r', '\n').strip()
+                # 다양한 줄바꿈 문자 처리
+                processed_items = history.delivery_items
+                processed_items = processed_items.replace('\\n', '\n')
+                processed_items = processed_items.replace('\\r\\n', '\n')
+                processed_items = processed_items.replace('\\r', '\n')
+                processed_items = processed_items.replace('\r\n', '\n')
+                processed_items = processed_items.replace('\r', '\n')
+                processed_items = processed_items.strip()
                 
-                # 각 라인 처리하여 품목명과 수량 추출
-                lines = [line.strip() for line in processed_items.split('\n') if line.strip()]
-                for line in lines:
-                    # "품목명: 수량개 (금액원)" 패턴 파싱
-                    if ':' in line and '개' in line:
-                        try:
-                            # 품목명 추출
-                            item_name = line.split(':')[0].strip()
-                            
-                            # 품목명 정규화 및 매핑 저장
-                            normalized_name = normalize_item_name(item_name)
-                            if normalized_name not in item_name_mapping:
-                                item_name_mapping[normalized_name] = item_name
-                            display_name = item_name_mapping[normalized_name]
-                            
-                            # 수량 추출 (: 이후 첫 번째 숫자)
-                            after_colon = line.split(':', 1)[1]
-                            import re
-                            quantity_match = re.search(r'(\d+(?:\.\d+)?)개', after_colon)
-                            
-                            if quantity_match:
-                                quantity = float(quantity_match.group(1))
-                                
-                                # 품목별 수량 누적 (정규화된 이름으로)
-                                if display_name in item_quantities:
-                                    item_quantities[display_name] += quantity
-                                else:
-                                    item_quantities[display_name] = quantity
-                            else:
-                                # 수량을 찾지 못한 경우 1개로 처리
-                                if display_name in item_quantities:
-                                    item_quantities[display_name] += 1
-                                else:
-                                    item_quantities[display_name] = 1
-                        except:
-                            # 파싱 실패 시 품목명만 추출하고 1개로 처리
-                            item_name = line.split(':')[0].strip()
-                            
-                            # 품목명 정규화 및 매핑 저장
-                            normalized_name = normalize_item_name(item_name)
-                            if normalized_name not in item_name_mapping:
-                                item_name_mapping[normalized_name] = item_name
-                            display_name = item_name_mapping[normalized_name]
-                            
-                            if display_name in item_quantities:
-                                item_quantities[display_name] += 1
-                            else:
-                                item_quantities[display_name] = 1
-                    else:
-                        # 단순 품목명인 경우 1개로 처리
-                        # 품목명 정규화 및 매핑 저장
-                        normalized_name = normalize_item_name(line)
-                        if normalized_name not in item_name_mapping:
-                            item_name_mapping[normalized_name] = line
-                        display_name = item_name_mapping[normalized_name]
-                        
-                        if display_name in item_quantities:
-                            item_quantities[display_name] += 1
+                # 다양한 구분자로 분할 시도
+                lines = []
+                # 먼저 줄바꿈으로 분할
+                for line in processed_items.split('\n'):
+                    line = line.strip()
+                    if line:
+                        # 쉼표로도 분할해보기
+                        if ',' in line and ':' in line:
+                            sub_lines = [sub.strip() for sub in line.split(',') if sub.strip()]
+                            lines.extend(sub_lines)
                         else:
-                            item_quantities[display_name] = 1
+                            lines.append(line)
+                
+                for line in lines:
+                    # 다양한 패턴 시도
+                    import re
+                    
+                    # 패턴 1: "품목명: 수량개 금액원 횟수회" 또는 "품목명 수량개 금액원 횟수회"
+                    pattern1 = r'(.+?)[\s:]*([\d,]+)개[\s,]*([\d,]+)원[\s,]*([\d]+)회'
+                    match1 = re.search(pattern1, line)
+                    
+                    if match1:
+                        item_name = match1.group(1).replace(':', '').strip()
+                        quantity = float(match1.group(2).replace(',', ''))
+                        
+                        if item_name in item_quantities:
+                            item_quantities[item_name] += quantity
+                        else:
+                            item_quantities[item_name] = quantity
+                        continue
+                    
+                    # 패턴 2: "품목명: 수량개" 또는 "품목명 수량개"
+                    pattern2 = r'(.+?)[\s:]*([\d,]+(?:\.\d+)?)개'
+                    match2 = re.search(pattern2, line)
+                    
+                    if match2:
+                        item_name = match2.group(1).replace(':', '').strip()
+                        quantity = float(match2.group(2).replace(',', ''))
+                        
+                        if item_name in item_quantities:
+                            item_quantities[item_name] += quantity
+                        else:
+                            item_quantities[item_name] = quantity
+                        continue
+                    
+                    # 패턴 3: 단순 품목명만 있는 경우
+                    if line and not any(char in line for char in [':', '개', '원', '회']):
+                        item_name = line.strip()
+                        
+                        if item_name in item_quantities:
+                            item_quantities[item_name] += 1
+                        else:
+                            item_quantities[item_name] = 1
         
-        # Schedule 기반 DeliveryItem도 포함 (History와 연결되지 않은 것만)
+        # Schedule 기반 DeliveryItem도 포함 (모든 Schedule 처리)
         all_schedule_deliveries = followup.schedules.filter(
-            activity_type='delivery',
             delivery_items_set__isnull=False
-        ).distinct()  # 중복 제거 추가
+        ).distinct()
         
-        # History와 연결되지 않은 Schedule만 처리 (중복 방지)
-        schedule_deliveries = all_schedule_deliveries.exclude(id__in=processed_schedule_ids).distinct()  # 중복 제거 강화
-        
-        for schedule in schedule_deliveries:
+        # 모든 Schedule 처리 (History에 품목 정보가 없으면 Schedule에서 가져옴)
+        for schedule in all_schedule_deliveries:
+            # History에서 이미 품목 정보를 처리한 Schedule은 금액만 확인
+            if schedule.id in processed_schedule_ids:
+                # 금액만 추가 확인 (History에 없었을 수 있음)
+                schedule_total = 0
+                for item in schedule.delivery_items_set.all():
+                    if item.total_price:
+                        schedule_total += Decimal(str(item.total_price))
+                
+                if schedule_total > 0:
+                    total_delivery_amount += schedule_total
+                continue
             
-            # Schedule별 총액 계산 (한 번만)
+            # Schedule별 총액 계산 및 품목 집계
             schedule_total = 0
             schedule_items = []
             
             for item in schedule.delivery_items_set.all():
-                
-                # 독립 Schedule 기반 품목의 금액만 포함
+                # Schedule 기반 품목의 금액 포함
                 if item.total_price:
                     schedule_total += Decimal(str(item.total_price))
                 
@@ -5108,26 +5106,21 @@ def followup_excel_download(request):
                     'quantity': float(item.quantity)
                 })
             
-            # Schedule 총액을 전체 납품 금액에 추가 (Schedule당 한 번만)
-            if schedule_total > 0:
+            # Schedule 총액을 전체 납품 금액에 추가 (이미 processed된 경우 위에서 처리됨)
+            if schedule.id not in processed_schedule_ids and schedule_total > 0:
                 total_delivery_amount += schedule_total
             
-            # Schedule 품목 집계 (Schedule당 한 번만)
+            # Schedule 품목 집계 (모든 Schedule에서)
             for item_info in schedule_items:
                 item_name = item_info['name']
                 quantity = item_info['quantity']
                 
-                # 품목명 정규화 및 매핑 저장
-                normalized_name = normalize_item_name(item_name)
-                if normalized_name not in item_name_mapping:
-                    item_name_mapping[normalized_name] = item_name
-                display_name = item_name_mapping[normalized_name]
-                
-                # 품목별 수량 누적 (중복되지 않은 Schedule만, 정규화된 이름으로)
-                if display_name in item_quantities:
-                    item_quantities[display_name] += quantity
+                # 품목별 수량 누적 (원본 이름 그대로 사용)
+                if item_name in item_quantities:
+                    item_quantities[item_name] += quantity
                 else:
-                    item_quantities[display_name] = quantity
+                    item_quantities[item_name] = quantity
+
         
         # 품목 텍스트 생성 (품목명과 총 수량 표시)
         if item_quantities:
@@ -5140,11 +5133,8 @@ def followup_excel_download(request):
                     qty_str = str(total_qty)
                 items_list.append(f"{item_name}: {qty_str}개")
             
-            # 최대 10개까지 표시
-            if len(items_list) <= 10:
-                items_text = ', '.join(items_list)
-            else:
-                items_text = ', '.join(items_list[:10]) + f' 등 총 {len(items_list)}개 품목'
+            # 모든 품목 표시 (제한 제거)
+            items_text = ', '.join(items_list)
         else:
             items_text = '납품 기록 없음'
         
@@ -5190,7 +5180,7 @@ def followup_excel_download(request):
         6: 25,   # 메일 주소
         7: 30,   # 상세 주소
         8: 10,   # 고객 등급
-        9: 40,   # 납품 품목 (넓게)
+        9: 60,   # 납품 품목 (더 넓게 - 모든 품목 표시를 위해)
         10: 15,  # 총 납품 금액
         11: 30,  # 상세 내용
     }
