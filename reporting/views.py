@@ -5499,22 +5499,22 @@ def customer_report_view(request):
             activity_type='delivery'
         )
         
-        # Schedule만 있는 경우 (History에 연결되지 않은 Schedule)
-        schedule_only_issued = DeliveryItem.objects.filter(
-            schedule__followup=followup,
-            schedule__activity_type='delivery',
-            tax_invoice_issued=True
-        ).exclude(
-            schedule__id__in=history_with_schedule_ids
-        ).count()
+        # Schedule만 있는 경우 (History에 연결되지 않은 Schedule) - 항목 단위로 카운팅
+        schedule_only_deliveries = schedule_deliveries_all.exclude(
+            id__in=history_with_schedule_ids
+        )
         
-        schedule_only_pending = DeliveryItem.objects.filter(
-            schedule__followup=followup,
-            schedule__activity_type='delivery',
-            tax_invoice_issued=False
-        ).exclude(
-            schedule__id__in=history_with_schedule_ids
-        ).count()
+        schedule_only_issued = 0
+        schedule_only_pending = 0
+        
+        for schedule in schedule_only_deliveries:
+            items = schedule.delivery_items_set.all()
+            if items.exists():
+                # 해당 Schedule에 하나라도 발행된 품목이 있으면 발행으로 카운팅
+                if items.filter(tax_invoice_issued=True).exists():
+                    schedule_only_issued += 1
+                else:
+                    schedule_only_pending += 1
         
         # 4. 중복 제거된 최종 세금계산서 현황
         # History 우선 원칙: History와 Schedule이 모두 있는 경우 History 상태를 사용
@@ -5646,34 +5646,58 @@ def customer_detail_report_view(request, followup_id):
     
     total_amount = history_amount + schedule_amount
     
-    # 세금계산서 현황 계산 (History + Schedule 통합)
+    # 세금계산서 현황 계산 (History + Schedule 통합, 중복 제거)
+    delivery_histories = histories.filter(action_type='delivery_schedule')
+    
+    # 1. History와 Schedule 연결 관계 분석
+    history_with_schedule_ids = set(
+        delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True)
+    )
+    
+    # 2. History 기반 세금계산서 현황
     history_tax_issued = 0
     history_tax_pending = 0
     
-    delivery_histories = histories.filter(action_type='delivery_schedule')
-    for history in delivery_histories:
-        if history.tax_invoice_issued:
-            history_tax_issued += 1
-        else:
-            history_tax_pending += 1
+    # History와 Schedule이 연결된 경우
+    history_with_schedule_issued = delivery_histories.filter(
+        schedule__isnull=False, tax_invoice_issued=True
+    ).values_list('schedule_id', flat=True)
+    history_with_schedule_pending = delivery_histories.filter(
+        schedule__isnull=False, tax_invoice_issued=False
+    ).values_list('schedule_id', flat=True)
     
-    # Schedule DeliveryItem 세금계산서 현황
+    # History만 있는 경우 (Schedule에 연결되지 않은 History)
+    history_without_schedule_issued = delivery_histories.filter(
+        schedule__isnull=True, tax_invoice_issued=True
+    ).count()
+    history_without_schedule_pending = delivery_histories.filter(
+        schedule__isnull=True, tax_invoice_issued=False
+    ).count()
+    
+    # 3. Schedule DeliveryItem 세금계산서 현황 (History에 연결되지 않은 Schedule만)
     schedule_tax_issued = 0
     schedule_tax_pending = 0
     
-    for schedule in schedule_deliveries:
+    schedule_only_deliveries = schedule_deliveries.exclude(
+        id__in=history_with_schedule_ids
+    )
+    
+    for schedule in schedule_only_deliveries:
         items = schedule.delivery_items_set.all()
         if items.exists():
-            issued_items = items.filter(tax_invoice_issued=True).count()
-            pending_items = items.filter(tax_invoice_issued=False).count()
-            
-            if issued_items > 0:
-                schedule_tax_issued += issued_items
-            if pending_items > 0:
-                schedule_tax_pending += pending_items
+            # 해당 Schedule에 하나라도 발행된 품목이 있으면 발행으로 카운팅
+            if items.filter(tax_invoice_issued=True).exists():
+                schedule_tax_issued += 1
+            else:
+                schedule_tax_pending += 1
     
-    tax_invoices_issued = history_tax_issued + schedule_tax_issued
-    tax_invoices_pending = history_tax_pending + schedule_tax_pending
+    # 4. 중복 제거된 최종 세금계산서 현황
+    # History 우선 원칙: History와 Schedule이 모두 있는 경우 History 상태를 사용
+    history_schedule_issued_set = set(history_with_schedule_issued)
+    history_schedule_pending_set = set(history_with_schedule_pending)
+    
+    tax_invoices_issued = len(history_schedule_issued_set) + history_without_schedule_issued + schedule_tax_issued
+    tax_invoices_pending = len(history_schedule_pending_set) + history_without_schedule_pending + schedule_tax_pending
     
     # 월별 활동 통계 (최근 12개월)
     from django.db.models.functions import TruncMonth
