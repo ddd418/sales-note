@@ -127,4 +127,10 @@ urlpatterns = [
     # 백업 API URL들
     path('backup/database/', backup_api.backup_database_api, name='backup_database_api'),
     path('backup/status/', backup_api.backup_status_api, name='backup_status_api'),
+    
+    # Admin 전용 API URL들
+    path('api/users/', views.api_users_list, name='api_users_list'),
+    path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
+    path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
+    path('api/companies/<int:company_id>/customers/', views.api_company_customers, name='api_company_customers'),
 ]

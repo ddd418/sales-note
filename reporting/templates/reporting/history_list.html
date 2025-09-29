@@ -387,11 +387,6 @@
                         <strong>납품 품목:</strong>
                         <span class="delivery-items">{{ history.delivery_items|truncatechars:100 }}</span>
                       </div>
-                      {% endif %}                      {% if history.action_type == 'delivery_schedule' and history.delivery_date %}
-                      <div class="delivery-info">
-                        <strong>납품 날짜:</strong>
-                        <span class="badge bg-info delivery-date">{{ history.delivery_date|date:"Y년 m월 d일" }}</span>
-                      </div>
                       {% endif %}                      {% if history.action_type == 'customer_meeting' and history.meeting_date %}
                       <div class="meeting-info">
                         <strong>미팅 날짜:</strong>
@@ -469,9 +464,10 @@
                       </div>
                       {% endfor %}
                     </div>
+                    {% endif %}
 
-                    <!-- 답글 댓글 추가 폼 (매니저 및 해당 실무자) -->
-                    {% if user.userprofile.role == 'manager' or history.user == user %}
+                    <!-- 답글 댓글 추가 폼 (모든 로그인 사용자에게 항상 표시) -->
+                    {% if user.is_authenticated %}
                     <div class="add-reply-comment-section mt-3 pt-3 border-top">
                       <form class="reply-memo-form" data-history-id="{{ history.id }}">
                         <div class="input-group">
@@ -488,7 +484,6 @@
                         </div>
                       </form>
                     </div>
-                    {% endif %}
                     {% endif %}
 
                     <div class="d-flex justify-content-between align-items-center">
@@ -1368,10 +1363,12 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
             // 현재 납품 금액과 품목이 비어있는지 확인
             const deliveryAmountDiv = card.querySelector('.delivery-info .delivery-amount');
             const deliveryItemsDiv = card.querySelector('.delivery-info .delivery-items');
+            const existingDeliveryInfo = card.querySelector('.delivery-info');
             
             console.log('기존 납품 정보 확인:');
             console.log('- 금액 요소:', deliveryAmountDiv);
             console.log('- 품목 요소:', deliveryItemsDiv);
+            console.log('- 기존 delivery-info:', existingDeliveryInfo);
             
             if (deliveryAmountDiv) {
                 console.log('- 금액 텍스트:', deliveryAmountDiv.textContent);
@@ -1382,8 +1379,9 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
             
             const hasAmount = deliveryAmountDiv && deliveryAmountDiv.textContent.trim() && !deliveryAmountDiv.textContent.includes('0원');
             const hasItems = deliveryItemsDiv && deliveryItemsDiv.textContent.trim();
+            const hasDeliveryInfo = existingDeliveryInfo !== null;
             
-            console.log(`기존 데이터 상태: 금액=${hasAmount}, 품목=${hasItems}`);
+            console.log(`기존 데이터 상태: 금액=${hasAmount}, 품목=${hasItems}, delivery-info=${hasDeliveryInfo}`);
             
             // Schedule DeliveryItem 가져오기
             console.log(`Schedule DeliveryItem API 호출: /reporting/schedules/${scheduleId}/delivery-items-api/`);
@@ -1428,9 +1426,9 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                     console.log('- cardBody:', cardBody);
                     console.log('- 기존 delivery-info 개수:', existingDeliveryInfos.length);
                     
-                    // 금액 정보가 없는 경우 Schedule 금액 추가
-                    if (!hasAmount && totalAmount > 0) {
-                        console.log('Schedule 금액 정보 추가 중...');
+                    // 금액 정보가 없는 경우 Schedule 금액 추가 (delivery-info가 없을 때만)
+                    if (!hasAmount && !hasDeliveryInfo && totalAmount > 0) {
+                        console.log('Schedule 금액 정보 추가 중... (delivery-info 없음 확인)');
                         
                         const targetParent = cardBody || card.querySelector('.card') || card;
                         console.log('금액 추가 대상 부모:', targetParent);
@@ -1441,7 +1439,6 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                             amountDiv.innerHTML = `
                                 <strong>납품 금액:</strong>
                                 <span class="badge bg-success delivery-amount">${totalAmount.toLocaleString()}원</span>
-                                <small class="text-muted">[일정]</small>
                             `;
                             
                             // 첫 번째 p 태그 이후에 삽입
@@ -1455,7 +1452,8 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                             }
                         }
                     } else {
-                        console.log('금액 정보 추가 건너뜀 (기존 금액 있음 또는 Schedule 금액 없음)');
+                        console.log('금액 정보 추가 건너뜀 (기존 delivery-info 있음 또는 금액 없음)');
+                        console.log(`- hasAmount: ${hasAmount}, hasDeliveryInfo: ${hasDeliveryInfo}, totalAmount: ${totalAmount}`);
                     }
                     
                     // 품목 정보가 없는 경우 Schedule 품목 추가
@@ -1471,7 +1469,6 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                             itemsDiv.innerHTML = `
                                 <strong>납품 품목:</strong>
                                 <span class="delivery-items">${itemTexts.join('<br>')}</span>
-                                <small class="text-muted">[일정]</small>
                             `;
                             
                             // 금액 정보 다음에 삽입 (방금 추가된 것 포함)

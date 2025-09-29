@@ -2296,8 +2296,8 @@ class CustomLogoutView(LogoutView):
 class UserCreationForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
-        label='사용자 이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
+        label='사용자 ID'
     )
     company = forms.CharField(
         max_length=100,
@@ -2348,8 +2348,8 @@ class UserCreationForm(forms.Form):
 class ManagerUserCreationForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
-        label='사용자 이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
+        label='사용자 ID'
     )
     password1 = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
@@ -2395,8 +2395,8 @@ class ManagerUserCreationForm(forms.Form):
 class UserEditForm(forms.Form):
     username = forms.CharField(
         max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '한글 이름 (예: 홍길동)', 'autocomplete': 'off'}),
-        label='사용자 이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
+        label='사용자 ID'
     )
     company = forms.CharField(
         max_length=100,
@@ -3620,39 +3620,34 @@ def company_autocomplete(request):
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
         companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
     else:
-        # ======= 임시 수정: 모든 사용자가 모든 업체를 검색할 수 있도록 변경 =======
-        # 원래: 사용자의 회사별로 데이터 필터링
-        # 수정: 모든 업체를 검색할 수 있도록 변경 (company_list_view와 동일)
-        companies = Company.objects.filter(name__icontains=query).order_by('name')[:10]
-        
+        # 일반 사용자: 같은 회사 소속 사용자들이 생성한 업체만 검색 가능
         user_company = getattr(request, 'user_company', None)
         user_profile = getattr(request.user, 'userprofile', None)
         
-        # ======= 원래 로직 (주석 처리됨) =======
-        # if user_company:
-        #     # 미들웨어에서 설정한 user_company 사용
-        #     same_company_users = User.objects.filter(userprofile__company=user_company)
-        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 같은 회사 사용자 수: {same_company_users.count()}")
-        #     
-        #     companies = Company.objects.filter(
-        #         name__icontains=query,
-        #         created_by__in=same_company_users
-        #     ).order_by('name')[:10]
-        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 검색 결과: {companies.count()}개")
-        #     
-        # elif user_profile and user_profile.company:
-        #     # 백업: UserProfile에서 직접 가져오기
-        #     same_company_users = User.objects.filter(userprofile__company=user_profile.company)
-        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자 수: {same_company_users.count()}")
-        #     
-        #     companies = Company.objects.filter(
-        #         name__icontains=query,
-        #         created_by__in=same_company_users
-        #     ).order_by('name')[:10]
-        #     logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 검색 결과: {companies.count()}개")
-        # else:
-        #     companies = Company.objects.none()
-        #     logger.warning(f"[COMPANY_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
+        if user_company:
+            # 미들웨어에서 설정한 user_company 사용
+            same_company_users = User.objects.filter(userprofile__company=user_company)
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 같은 회사 사용자 수: {same_company_users.count()}")
+            
+            companies = Company.objects.filter(
+                name__icontains=query,
+                created_by__in=same_company_users
+            ).order_by('name')[:10]
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 검색 결과: {companies.count()}개")
+            
+        elif user_profile and user_profile.company:
+            # 백업: UserProfile에서 직접 가져오기
+            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자 수: {same_company_users.count()}")
+            
+            companies = Company.objects.filter(
+                name__icontains=query,
+                created_by__in=same_company_users
+            ).order_by('name')[:10]
+            logger.info(f"[COMPANY_AUTOCOMPLETE] 백업 방식 검색 결과: {companies.count()}개")
+        else:
+            companies = Company.objects.none()
+            logger.warning(f"[COMPANY_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     results = []
     for company in companies:
@@ -3682,35 +3677,29 @@ def department_autocomplete(request):
         departments = Department.objects.filter(name__icontains=query)
         logger.info(f"[DEPT_AUTOCOMPLETE] Admin 사용자 - 전체 부서에서 검색")
     else:
-        # ======= 임시 수정: 모든 사용자가 모든 부서를 검색할 수 있도록 변경 =======
-        # 원래: 같은 회사 사용자들이 생성한 업체의 부서만 검색
-        # 수정: 모든 업체의 부서를 검색할 수 있도록 변경
-        departments = Department.objects.filter(name__icontains=query)
-        logger.info(f"[DEPT_AUTOCOMPLETE] 일반 사용자 - 전체 부서에서 검색 (임시 수정)")
-        
+        # 일반 사용자: 같은 회사 사용자들이 생성한 업체의 부서만 검색
         user_company = getattr(request, 'user_company', None)
         user_profile = getattr(request.user, 'userprofile', None)
         logger.info(f"[DEPT_AUTOCOMPLETE] user_company: {user_company}, user_profile.company: {user_profile.company if user_profile else None}")
         
-        # ======= 원래 로직 (주석 처리됨) =======
-        # if user_company:
-        #     same_company_users = User.objects.filter(userprofile__company=user_company)
-        #     # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
-        #     departments = Department.objects.filter(
-        #         name__icontains=query,
-        #         company__created_by__in=same_company_users
-        #     )
-        #     logger.info(f"[DEPT_AUTOCOMPLETE] 같은 회사 사용자들의 업체 부서에서 검색")
-        # elif user_profile and user_profile.company:
-        #     same_company_users = User.objects.filter(userprofile__company=user_profile.company)
-        #     departments = Department.objects.filter(
-        #         name__icontains=query,
-        #         company__created_by__in=same_company_users
-        #     )
-        #     logger.info(f"[DEPT_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자들의 업체 부서에서 검색")
-        # else:
-        #     departments = Department.objects.none()
-        #     logger.warning(f"[DEPT_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
+        if user_company:
+            same_company_users = User.objects.filter(userprofile__company=user_company)
+            # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
+            departments = Department.objects.filter(
+                name__icontains=query,
+                company__created_by__in=same_company_users
+            )
+            logger.info(f"[DEPT_AUTOCOMPLETE] 같은 회사 사용자들의 업체 부서에서 검색")
+        elif user_profile and user_profile.company:
+            same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+            departments = Department.objects.filter(
+                name__icontains=query,
+                company__created_by__in=same_company_users
+            )
+            logger.info(f"[DEPT_AUTOCOMPLETE] 백업 방식 - 같은 회사 사용자들의 업체 부서에서 검색")
+        else:
+            departments = Department.objects.none()
+            logger.warning(f"[DEPT_AUTOCOMPLETE] 회사 정보 없음 - 빈 결과 반환")
     
     # 회사가 선택된 경우 해당 회사의 부서만 필터링
     if company_id:
@@ -3917,37 +3906,24 @@ def company_list_view(request):
         
         logger.info(f"[COMPANY_LIST] Admin 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회")
     else:
-        # ======= 임시 수정: 모든 사용자가 모든 업체를 볼 수 있도록 변경 =======
-        # 원래: 사용자의 회사별로 데이터 필터링 - 같은 회사 사용자가 만든 업체만 조회
-        # 수정: 모든 업체를 조회할 수 있도록 변경 (단, salesman 권한은 유지)
-        companies = Company.objects.all().annotate(
-            department_count=Count('departments', distinct=True),
-            followup_count=Count('followup_companies', distinct=True)
-        ).order_by('name')
-        
+        # 일반 사용자: 같은 회사 소속 사용자들이 생성한 업체만 조회
         user_company = getattr(request.user, 'userprofile', None)
-        logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회 (임시 수정 - 모든 업체 접근 허용)")
         if user_company and user_company.company:
-            logger.info(f"[COMPANY_LIST] 사용자 회사: {user_company.company.name}")
-        
-        # ======= 원래 로직 (주석 처리됨) =======
-        # user_company = getattr(request.user, 'userprofile', None)
-        # if user_company and user_company.company:
-        #     # 같은 회사 소속 사용자들이 생성한 업체만 조회
-        #     same_company_users = User.objects.filter(userprofile__company=user_company.company)
-        #     companies = Company.objects.filter(created_by__in=same_company_users).annotate(
-        #         department_count=Count('departments', distinct=True),
-        #         followup_count=Count('followup_companies', distinct=True)
-        #     ).order_by('name')
-        #     
-        #     logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
-        #     logger.info(f"[COMPANY_LIST] 같은 회사 사용자 수: {same_company_users.count()}명")
-        #     logger.info(f"[COMPANY_LIST] 같은 회사 사용자 목록: {list(same_company_users.values_list('username', flat=True))}")
-        # else:
-        #     # 회사 정보가 없는 경우 빈 쿼리셋
-        #     companies = Company.objects.none()
-        #     
-        #     logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
+            # 같은 회사 소속 사용자들이 생성한 업체만 조회
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            companies = Company.objects.filter(created_by__in=same_company_users).annotate(
+                department_count=Count('departments', distinct=True),
+                followup_count=Count('followup_companies', distinct=True)
+            ).order_by('name')
+            
+            logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
+            logger.info(f"[COMPANY_LIST] 같은 회사 사용자 수: {same_company_users.count()}명")
+            logger.info(f"[COMPANY_LIST] 같은 회사 사용자 목록: {list(same_company_users.values_list('username', flat=True))}")
+        else:
+            # 회사 정보가 없는 경우 빈 쿼리셋
+            companies = Company.objects.none()
+            
+            logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
     
     # 검색 기능
     search_query = request.GET.get('search', '')
@@ -4143,50 +4119,29 @@ def company_detail_view(request, pk):
     import logging
     logger = logging.getLogger(__name__)
     
-    # ======= 임시 수정: 모든 사용자가 모든 업체 상세보기 가능 =======
-    # 권한 체크를 제거하고 모든 salesman이 상세보기 가능하도록 변경
-    # 단, 수정/삭제 권한은 템플릿이나 별도 함수에서 제어
-    
-    is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
-    user_company = getattr(request.user, 'userprofile', None)
-    
-    # 수정/삭제 권한 확인을 위한 변수 (템플릿에서 사용)
-    can_edit_company = False
-    if is_admin:
-        can_edit_company = True
-        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근 및 수정 권한 있음")
-    elif user_company and user_company.company:
-        # 같은 회사 사용자가 생성한 업체인지 확인 (수정 권한용)
-        same_company_users = User.objects.filter(userprofile__company=user_company.company)
-        can_edit_company = Company.objects.filter(pk=pk, created_by__in=same_company_users).exists()
-        
-        if can_edit_company:
-            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 및 수정 권한 있음 (같은 회사)")
+    # Admin이 아닌 경우 권한 확인
+    if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
+        # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
+        if user_company and user_company.company:
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
+                logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
+                messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
+                return redirect('reporting:company_list')
+            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 있음 (같은 회사)")
         else:
-            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 가능, 수정 권한 없음 (다른 회사)")
+            logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 회사 정보 없어 접근 불가")
+            messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
+            return redirect('reporting:company_list')
+    else:
+        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
     
     logger.info(f"[COMPANY_DETAIL] 업체 '{company.name}' 상세보기 접근 (생성자: {company.created_by.username if company.created_by else 'Unknown'})")
     
-    # ======= 원래 권한 체크 로직 (주석 처리됨) =======
-    # # Admin이 아닌 경우 권한 확인
-    # if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
-    #     # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
-    #     user_company = getattr(request.user, 'userprofile', None)
-    #     if user_company and user_company.company:
-    #         same_company_users = User.objects.filter(userprofile__company=user_company.company)
-    #         if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
-    #             import logging
-    #             logger = logging.getLogger(__name__)
-    #             logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
-    #             messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
-    #             return redirect('reporting:company_list')
-    #     else:
-    #         messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
-    #         return redirect('reporting:company_list')
-    # else:
-    #     import logging
-    #     logger = logging.getLogger(__name__)
-    #     logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
+    # 수정/삭제 권한 확인
+    is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
+    can_edit_company = is_admin or company.created_by == request.user
     
     # 해당 업체의 부서 목록
     departments = company.departments.annotate(
@@ -4215,33 +4170,25 @@ def department_create_view(request, company_pk):
     import logging
     logger = logging.getLogger(__name__)
     
-    # ======= 임시 수정: 모든 salesman이 모든 업체에 부서 추가 가능 =======
-    # 권한 체크를 완화하여 모든 사용자가 부서 추가 가능하도록 변경
-    # (company_detail_view와 동일한 접근 방식)
-    
+    # Admin이 아닌 경우 권한 확인
     is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
-    user_company = getattr(request.user, 'userprofile', None)
     
-    if is_admin:
-        logger.info(f"[DEPT_CREATE] Admin 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음")
-    else:
-        logger.info(f"[DEPT_CREATE] 일반 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 (모든 업체 허용)")
+    if not is_admin:
+        # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
+        user_company = getattr(request.user, 'userprofile', None)
         if user_company and user_company.company:
-            logger.info(f"[DEPT_CREATE] 사용자 회사: {user_company.company.name}")
-    
-    # ======= 원래 권한 체크 로직 (주석 처리됨) =======
-    # # Admin이 아닌 경우 권한 확인
-    # if not is_admin:
-    #     # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
-    #     if user_company and user_company.company:
-    #         same_company_users = User.objects.filter(userprofile__company=user_company.company)
-    #         if not Company.objects.filter(pk=company_pk, created_by__in=same_company_users).exists():
-    #             logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} 부서 추가 권한 없음")
-    #             messages.error(request, '해당 업체/학교에 부서를 추가할 권한이 없습니다.')
-    #             return redirect('reporting:company_detail', pk=company_pk)
-    #     else:
-    #         messages.error(request, '회사 정보가 없어 부서를 추가할 수 없습니다.')
-    #         return redirect('reporting:company_detail', pk=company_pk)
+            same_company_users = User.objects.filter(userprofile__company=user_company.company)
+            if not Company.objects.filter(pk=company_pk, created_by__in=same_company_users).exists():
+                logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} 부서 추가 권한 없음")
+                messages.error(request, '해당 업체/학교에 부서를 추가할 권한이 없습니다.')
+                return redirect('reporting:company_detail', pk=company_pk)
+            logger.info(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음 (같은 회사)")
+        else:
+            logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 회사 정보 없어 부서 추가 불가")
+            messages.error(request, '회사 정보가 없어 부서를 추가할 수 없습니다.')
+            return redirect('reporting:company_detail', pk=company_pk)
+    else:
+        logger.info(f"[DEPT_CREATE] Admin 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -5525,6 +5472,58 @@ def customer_report_view(request):
             schedule__activity_type='delivery'
         ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
         
+        # 세금계산서 현황 계산 (History + Schedule DeliveryItem 통합 - 중복 제거)
+        # 1. History와 Schedule 연결 관계 분석
+        history_with_schedule_ids = set(
+            delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True)
+        )
+        
+        # 2. History 기반 세금계산서 현황 (Schedule 연결 여부로 구분)
+        history_with_schedule_issued = delivery_histories.filter(
+            schedule__isnull=False, tax_invoice_issued=True
+        ).values_list('schedule_id', flat=True)
+        history_with_schedule_pending = delivery_histories.filter(
+            schedule__isnull=False, tax_invoice_issued=False
+        ).values_list('schedule_id', flat=True)
+        
+        history_without_schedule_issued = delivery_histories.filter(
+            schedule__isnull=True, tax_invoice_issued=True
+        ).count()
+        history_without_schedule_pending = delivery_histories.filter(
+            schedule__isnull=True, tax_invoice_issued=False
+        ).count()
+        
+        # 3. Schedule DeliveryItem 세금계산서 현황 (History 연결 여부로 구분)
+        schedule_deliveries_all = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery'
+        )
+        
+        # Schedule만 있는 경우 (History에 연결되지 않은 Schedule)
+        schedule_only_issued = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery',
+            tax_invoice_issued=True
+        ).exclude(
+            schedule__id__in=history_with_schedule_ids
+        ).count()
+        
+        schedule_only_pending = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery',
+            tax_invoice_issued=False
+        ).exclude(
+            schedule__id__in=history_with_schedule_ids
+        ).count()
+        
+        # 4. 중복 제거된 최종 세금계산서 현황
+        # History 우선 원칙: History와 Schedule이 모두 있는 경우 History 상태를 사용
+        history_schedule_issued_set = set(history_with_schedule_issued)
+        history_schedule_pending_set = set(history_with_schedule_pending)
+        
+        total_tax_issued = len(history_schedule_issued_set) + history_without_schedule_issued + schedule_only_issued
+        total_tax_pending = len(history_schedule_pending_set) + history_without_schedule_pending + schedule_only_pending
+        
         # 중복 제거된 납품 횟수 계산
         # History에 기록된 일정 ID들
         history_schedule_ids = set(
@@ -5547,7 +5546,9 @@ def customer_report_view(request):
         followup.total_meetings = total_meetings_count
         followup.total_deliveries = total_deliveries_count
         followup.total_amount = total_amount
-        followup.unpaid_count = unpaid  # Schedule에서는 세금계산서 정보가 없으므로 History만
+        followup.tax_invoices_issued = total_tax_issued  # 세금계산서 발행 건수
+        followup.tax_invoices_pending = total_tax_pending  # 세금계산서 미발행 건수
+        followup.unpaid_count = total_tax_pending  # 미발행 건수를 unpaid_count로 사용
         followup.last_contact = last_contact
         
         followups_with_stats.append(followup)
@@ -5556,7 +5557,7 @@ def customer_report_view(request):
         total_amount_sum += total_amount
         total_meetings_sum += total_meetings_count
         total_deliveries_sum += total_deliveries_count
-        total_unpaid_sum += unpaid
+        total_unpaid_sum += total_tax_pending  # 세금계산서 미발행 건수로 변경
     
     # 최근 접촉일 기준으로 정렬
     from django.utils import timezone
@@ -5582,8 +5583,13 @@ def customer_report_view(request):
 def customer_detail_report_view(request, followup_id):
     """특정 고객의 상세 활동 리포트"""
     from django.db.models import Count, Sum, Q
+    from django.core import serializers
+    from django.core.serializers.json import DjangoJSONEncoder
     from datetime import datetime, timedelta
     import json
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     # 권한 확인 및 팔로우업 조회
     try:
@@ -5612,39 +5618,62 @@ def customer_detail_report_view(request, followup_id):
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
         return redirect('reporting:customer_report')
     
-    # 기본 정보만 설정 (에러 해결을 위해 임시로 단순화)
-    context = {
-        'followup': followup,
-        'total_amount': 0,
-        'total_meetings': 0,
-        'total_deliveries': 0,
-        'tax_invoices_issued': 0,
-        'tax_invoices_pending': 0,
-        'chart_labels': json.dumps([]),
-        'chart_meetings': json.dumps([]),
-        'chart_deliveries': json.dumps([]),
-        'chart_amounts': json.dumps([]),
-        'delivery_histories': [],
-        'schedule_deliveries': [],
-        'integrated_deliveries': [],
-        'meeting_histories': [],
-        'page_title': f'{followup.company.name} - {followup.contact_person if followup.contact_person else "담당자 미정"}'
-    }
+    # 해당 고객의 모든 활동 히스토리
+    histories = History.objects.filter(followup=followup).order_by('-created_at')
     
-    return render(request, 'reporting/customer_detail_report.html', context)
-
+    # 기본 통계 계산
+    total_meetings = histories.filter(action_type='customer_meeting').count()
+    total_deliveries = histories.filter(action_type='delivery_schedule').count()
     
-    # 중복 제거하여 최종 세금계산서 현황 계산
-    # 1. History와 Schedule 모두에 있는 경우: History 우선
-    combined_issued_ids = set(history_with_schedule_issued) | schedule_tax_issued_ids
-    combined_pending_ids = set(history_with_schedule_pending) | schedule_tax_pending_ids
+    # 총 금액 계산 (History + Schedule DeliveryItem 통합)
+    history_amount = histories.filter(action_type='delivery_schedule').aggregate(
+        total=Sum('delivery_amount')
+    )['total'] or 0
     
-    # 발행된 것이 우선 (같은 일정에 대해 History는 발행, Schedule은 미발행인 경우 발행으로 처리)
-    final_issued_ids = combined_issued_ids
-    final_pending_ids = combined_pending_ids - combined_issued_ids
+    # Schedule DeliveryItem 총액 계산
+    schedule_amount = 0
+    schedule_deliveries = Schedule.objects.filter(
+        followup=followup, 
+        activity_type='delivery'
+    ).prefetch_related('delivery_items_set')
     
-    tax_invoices_issued = len(final_issued_ids) + history_without_schedule_issued
-    tax_invoices_pending = len(final_pending_ids) + history_without_schedule_pending
+    for schedule in schedule_deliveries:
+        for item in schedule.delivery_items_set.all():
+            if item.total_price:
+                schedule_amount += float(item.total_price)
+            elif item.unit_price:
+                schedule_amount += float(item.unit_price) * item.quantity * 1.1
+    
+    total_amount = history_amount + schedule_amount
+    
+    # 세금계산서 현황 계산 (History + Schedule 통합)
+    history_tax_issued = 0
+    history_tax_pending = 0
+    
+    delivery_histories = histories.filter(action_type='delivery_schedule')
+    for history in delivery_histories:
+        if history.tax_invoice_issued:
+            history_tax_issued += 1
+        else:
+            history_tax_pending += 1
+    
+    # Schedule DeliveryItem 세금계산서 현황
+    schedule_tax_issued = 0
+    schedule_tax_pending = 0
+    
+    for schedule in schedule_deliveries:
+        items = schedule.delivery_items_set.all()
+        if items.exists():
+            issued_items = items.filter(tax_invoice_issued=True).count()
+            pending_items = items.filter(tax_invoice_issued=False).count()
+            
+            if issued_items > 0:
+                schedule_tax_issued += issued_items
+            if pending_items > 0:
+                schedule_tax_pending += pending_items
+    
+    tax_invoices_issued = history_tax_issued + schedule_tax_issued
+    tax_invoices_pending = history_tax_pending + schedule_tax_pending
     
     # 월별 활동 통계 (최근 12개월)
     from django.db.models.functions import TruncMonth
@@ -5675,13 +5704,9 @@ def customer_detail_report_view(request, followup_id):
         action_type='delivery_schedule'
     ).order_by('-delivery_date', '-created_at')
     
-    # Schedule에서 DeliveryItem이 있는 납품 일정들 (이미 위에서 중복 제거됨)
-    # schedule_deliveries는 이미 정의되어 있음 - 중복 방지를 위해 재사용
-    schedule_deliveries = schedule_deliveries.select_related('user').prefetch_related('delivery_items_set').order_by('-visit_date', '-created_at')
-    
     # Schedule 납품 일정에 총액 정보 추가
     for schedule in schedule_deliveries:
-        schedule_total_amount = 0  # 변수명 변경: total_amount → schedule_total_amount
+        schedule_total_amount = 0
         tax_invoice_issued_count = 0
         total_items_count = 0
         
@@ -5692,72 +5717,21 @@ def customer_detail_report_view(request, followup_id):
                 item_total = float(item.unit_price) * item.quantity * 1.1
             else:
                 item_total = 0
-            schedule_total_amount += item_total  # 변수명 변경
+            schedule_total_amount += item_total
             total_items_count += 1
             if item.tax_invoice_issued:
                 tax_invoice_issued_count += 1
         
-        schedule.calculated_total_amount = schedule_total_amount  # 변수명 변경
+        schedule.calculated_total_amount = schedule_total_amount
         schedule.tax_invoice_issued_count = tax_invoice_issued_count
         schedule.total_items_count = total_items_count
     
-    # 통합 납품 내역 생성 (중복 제거)
+    # 통합 납품 내역 생성
     integrated_deliveries = []
-    processed_schedule_ids = set()  # 이미 처리된 Schedule ID를 추적
+    processed_schedule_ids = set()
     
-    # History-Schedule 연결 관계 분석
-    history_with_schedule = delivery_histories.filter(schedule__isnull=False)
-    history_without_schedule = delivery_histories.filter(schedule__isnull=True)
-    
-    # 모든 납품 타입 Schedule 확인 (DeliveryItem 유무 관계없이)
-    all_delivery_schedules = Schedule.objects.filter(followup=followup, activity_type='delivery')
-    schedules_with_history = set(delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True))
-    schedules_with_items = set(schedule_deliveries.values_list('id', flat=True))
-    
-    # History와도 연결되지 않고 DeliveryItem도 없는 Schedule 찾기
-    orphaned_schedules = all_delivery_schedules.exclude(
-        Q(id__in=schedules_with_history) | Q(id__in=schedules_with_items)
-    )
-
     # 1. History 기반 납품 내역
     for history in delivery_histories:
-        
-        # History의 품목 개수 계산
-        history_items_count = 0
-        history_tax_issued_count = 0
-        
-        # History에 직접 DeliveryItem이 있는 경우
-        history_delivery_items = history.delivery_items_set.all()
-        if history_delivery_items.exists():
-            history_items_count = history_delivery_items.count()
-            history_tax_issued_count = history_delivery_items.filter(tax_invoice_issued=True).count()
-        elif history.delivery_items and history.delivery_items.strip():
-            # 텍스트 데이터에서 품목 개수 계산
-            import re
-            delivery_text = history.delivery_items.strip()
-            lines = delivery_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
-            
-            # 줄바꿈이 문자열로 저장된 경우
-            if len(lines) == 1 and '\\n' in delivery_text:
-                lines = delivery_text.split('\\n')
-            
-            # 정규식으로 품목 패턴 분리
-            if len(lines) == 1:
-                pattern = r'([A-Z0-9.]+:\s*\d+(?:\.\d+)?개\s*\([0-9,]+원\))'
-                matches = re.findall(pattern, delivery_text)
-                if len(matches) > 1:
-                    lines = matches
-            
-            # 유효한 라인 수로 품목 개수 계산
-            for line in lines:
-                line = line.strip()
-                if line and (':' in line or '개' in line):
-                    history_items_count += 1
-            
-            # History 기준으로 세금계산서 상태 적용
-            if history.tax_invoice_issued:
-                history_tax_issued_count = history_items_count
-        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -5765,19 +5739,10 @@ def customer_detail_report_view(request, followup_id):
             'schedule_id': history.schedule_id if history.schedule else None,
             'items_display': history.delivery_items or None,
             'amount': history.delivery_amount,
-            'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 세금계산서 상태 표시
+            'tax_invoice_issued': history.tax_invoice_issued,
             'content': history.content,
             'user': history.user.username,
             'has_schedule_items': False,
-            # History 품목 상태 정보 추가
-            'history_tax_status': {
-                'issued_count': history_tax_issued_count,
-                'total_count': history_items_count,
-                'pending_count': history_items_count - history_tax_issued_count,
-                'all_issued': history_tax_issued_count > 0 and history_tax_issued_count == history_items_count,
-                'none_issued': history_tax_issued_count == 0,
-                'has_items': history_items_count > 0,
-            }
         }
         
         # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
@@ -5785,31 +5750,7 @@ def customer_detail_report_view(request, followup_id):
             schedule_items = history.schedule.delivery_items_set.all()
             if schedule_items.exists():
                 delivery_data['has_schedule_items'] = True
-                # Schedule의 품목 정보를 추가로 표시
                 delivery_data['schedule_items'] = schedule_items
-                # Schedule 품목의 총액 계산
-                schedule_total = 0
-                schedule_items_count = schedule_items.count()
-                schedule_tax_issued_count = schedule_items.filter(tax_invoice_issued=True).count()
-                
-                for item in schedule_items:
-                    if item.unit_price:
-                        item_total = float(item.unit_price) * item.quantity * 1.1
-                        schedule_total += item_total
-                delivery_data['schedule_amount'] = schedule_total
-                
-                # History의 품목 상태에 Schedule 품목도 합산
-                total_items = delivery_data['history_tax_status']['total_count'] + schedule_items_count
-                total_issued = delivery_data['history_tax_status']['issued_count'] + schedule_tax_issued_count
-                
-                delivery_data['history_tax_status'].update({
-                    'total_count': total_items,
-                    'issued_count': total_issued,
-                    'pending_count': total_items - total_issued,
-                    'all_issued': total_issued > 0 and total_issued == total_items,
-                    'none_issued': total_issued == 0,
-                    'has_items': total_items > 0,
-                })
                 
                 # 처리된 Schedule ID 기록
                 processed_schedule_ids.add(history.schedule.id)
@@ -5818,57 +5759,29 @@ def customer_detail_report_view(request, followup_id):
     
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
     for schedule in schedule_deliveries:
-        # 이미 History에서 처리된 일정은 제외
         if schedule.id not in processed_schedule_ids:
-            # Schedule 전용인 경우, Schedule 품목들의 세금계산서 상태를 기준으로 함
-            schedule_tax_issued = schedule.tax_invoice_issued_count > 0 and schedule.tax_invoice_issued_count == schedule.total_items_count
-            
-            logger.info(f"Schedule {schedule.id} 전용 납품 추가 (총액: {schedule.calculated_total_amount})")
-            
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
                 'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
                 'schedule_id': schedule.id,
                 'items_display': None,
-                'amount': 0,  # Schedule 전용은 amount를 0으로 설정
-                'tax_invoice_issued': schedule_tax_issued,  # Schedule 품목 기준 세금계산서 상태
+                'amount': 0,
+                'tax_invoice_issued': schedule.tax_invoice_issued_count == schedule.total_items_count if schedule.total_items_count > 0 else False,
                 'content': schedule.notes or '일정 기반 납품',
                 'user': schedule.user.username,
                 'has_schedule_items': True,
                 'schedule_amount': schedule.calculated_total_amount,
-                'schedule_tax_status': {
-                    'issued_count': schedule.tax_invoice_issued_count,
-                    'total_count': schedule.total_items_count,
-                    'pending_count': schedule.total_items_count - schedule.tax_invoice_issued_count,
-                    'all_issued': schedule.tax_invoice_issued_count == schedule.total_items_count,
-                    'none_issued': schedule.tax_invoice_issued_count == 0,
-                }
             }
             integrated_deliveries.append(delivery_data)
-            # 처리 완료된 Schedule ID 추가
-            processed_schedule_ids.add(schedule.id)
-            processed_schedule_ids.add(schedule.id)
-        else:
-            logger.info(f"Schedule {schedule.id} 이미 History에서 처리됨 - 건너뛰기")
-    
-    logger.info(f"=== 최종 통합 납품 내역: {len(integrated_deliveries)}개 ===")
-    for i, delivery in enumerate(integrated_deliveries):
-        logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, amount={delivery.get('amount', 0)}, schedule_amount={delivery.get('schedule_amount', 0)}")
-        logger.info(f"     date={delivery['date']}, content='{delivery.get('content', '')}', user='{delivery.get('user', '')}'")
     
     # 날짜순 정렬
     integrated_deliveries.sort(key=lambda x: x['date'], reverse=True)
-    for i, delivery in enumerate(integrated_deliveries):
-        logger.info(f"  {i+1}. {delivery['type']} ID={delivery['id']}, date={delivery['date']}")
     
     # 미팅 기록
     meeting_histories = histories.filter(
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
-    
-    # Context 생성 직전 최종 확인
-    logger.info(f"Context 생성 직전 total_amount 최종 확인: {total_amount}")
     
     context = {
         'followup': followup,
@@ -5880,8 +5793,8 @@ def customer_detail_report_view(request, followup_id):
         'tax_invoices_pending': tax_invoices_pending,
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
-        'integrated_deliveries': integrated_deliveries,  # 템플릿용 통합 납품 내역
-        'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),  # JavaScript용 JSON 데이터
+        'integrated_deliveries': integrated_deliveries,
+        'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),
         'meeting_histories': meeting_histories,
         'chart_data': {
             'labels': json.dumps(chart_labels),
@@ -6644,32 +6557,31 @@ def followup_create_ajax(request):
                 'error': '선택한 업체 또는 부서가 존재하지 않습니다.'
             })
         
-        # ======= 임시 수정: 모든 사용자가 모든 업체에 팔로우업 생성 가능 =======
-        # 권한 체크를 제거하여 모든 업체에 팔로우업 생성 허용
+        # 권한 체크: 같은 회사에서 생성된 업체인지 확인
+        user_profile_obj = getattr(request.user, 'userprofile', None)
+        is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
         
         import logging
         logger = logging.getLogger(__name__)
         
-        user_profile_obj = getattr(request.user, 'userprofile', None)
-        is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
-        
-        if is_admin:
-            logger.info(f"[FOLLOWUP_CREATE_AJAX] Admin 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음")
-        else:
-            logger.info(f"[FOLLOWUP_CREATE_AJAX] 일반 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 (모든 업체 허용)")
+        if not is_admin:
             if user_profile_obj and user_profile_obj.company:
-                logger.info(f"[FOLLOWUP_CREATE_AJAX] 사용자 회사: {user_profile_obj.company.name}")
-        
-        # ======= 원래 권한 체크 로직 (주석 처리됨) =======
-        # # 권한 체크: 같은 회사에서 생성된 업체인지 확인
-        # user_profile_obj = getattr(request.user, 'userprofile', None)
-        # if user_profile_obj and user_profile_obj.company:
-        #     same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
-        #     if company.created_by not in same_company_users:
-        #         return JsonResponse({
-        #             'success': False,
-        #             'error': '접근 권한이 없는 업체입니다.'
-        #         })
+                same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
+                if company.created_by not in same_company_users:
+                    logger.warning(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 업체 {company.name} 접근 권한 없음")
+                    return JsonResponse({
+                        'success': False,
+                        'error': '접근 권한이 없는 업체입니다.'
+                    })
+                logger.info(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음 (같은 회사)")
+            else:
+                logger.warning(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 회사 정보 없어 팔로우업 생성 불가")
+                return JsonResponse({
+                    'success': False,
+                    'error': '회사 정보가 없어 팔로우업을 생성할 수 없습니다.'
+                })
+        else:
+            logger.info(f"[FOLLOWUP_CREATE_AJAX] Admin 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음")
         
         # 중복 체크 (같은 고객명, 회사, 부서)
         existing_followup = FollowUp.objects.filter(
@@ -7054,3 +6966,212 @@ def debug_user_company_info(request):
     except Exception as e:
         logger.error(f"디버그 뷰 에러: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ============ Admin 전용 API 뷰들 ============
+
+@role_required(['admin'])
+@require_http_methods(["GET"])
+def api_users_list(request):
+    """사용자 목록 API (Admin 전용)"""
+    try:
+        users = User.objects.select_related('userprofile', 'userprofile__company').all()
+        
+        users_data = []
+        for user in users:
+            user_data = {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'company': None
+            }
+            
+            if hasattr(user, 'userprofile') and user.userprofile.company:
+                user_data['company'] = user.userprofile.company.name
+            
+            users_data.append(user_data)
+        
+        return JsonResponse({
+            'success': True,
+            'users': users_data
+        })
+        
+    except Exception as e:
+        logger.error(f"사용자 목록 API 에러: {str(e)}")
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@role_required(['admin'])
+@require_http_methods(["POST"])
+@csrf_exempt
+def api_change_company_creator(request):
+    """업체 생성자 변경 API (Admin 전용)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        company_id = request.POST.get('company_id')
+        new_creator_id = request.POST.get('new_creator_id')
+        
+        if not company_id or not new_creator_id:
+            return JsonResponse({
+                'success': False,
+                'message': '필수 파라미터가 누락되었습니다.'
+            }, status=400)
+        
+        # 업체 조회
+        try:
+            company = Company.objects.get(id=company_id)
+        except Company.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': '존재하지 않는 업체입니다.'
+            }, status=404)
+        
+        # 새 생성자 조회
+        try:
+            new_creator = User.objects.select_related('userprofile', 'userprofile__company').get(id=new_creator_id)
+        except User.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': '존재하지 않는 사용자입니다.'
+            }, status=404)
+        
+        # 기존 생성자 정보 로깅
+        old_creator = company.created_by
+        old_creator_info = 'None'
+        if old_creator:
+            old_creator_company = 'Unknown'
+            if hasattr(old_creator, 'userprofile') and old_creator.userprofile.company:
+                old_creator_company = old_creator.userprofile.company.name
+            old_creator_info = f"{old_creator.username} ({old_creator_company})"
+        
+        # 새 생성자 정보
+        new_creator_company = 'Unknown'
+        if hasattr(new_creator, 'userprofile') and new_creator.userprofile.company:
+            new_creator_company = new_creator.userprofile.company.name
+        new_creator_info = f"{new_creator.username} ({new_creator_company})"
+        
+        logger.info(f"[ADMIN] 업체 생성자 변경 시작 - 업체: {company.name}, 기존: {old_creator_info}, 신규: {new_creator_info}")
+        
+        # 업체 생성자 변경
+        company.created_by = new_creator
+        company.save()
+        
+        logger.info(f"[ADMIN] 업체 생성자 변경 완료 - 업체: {company.name}, 신규 생성자: {new_creator_info}")
+        
+        # 응답 데이터
+        response_data = {
+            'success': True,
+            'message': '업체 생성자가 성공적으로 변경되었습니다.',
+            'new_creator': {
+                'id': new_creator.id,
+                'username': new_creator.username,
+                'company': new_creator_company
+            }
+        }
+        
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        logger.error(f"업체 생성자 변경 API 에러: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'message': f'서버 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_company_departments(request, company_id):
+    """업체별 부서 목록 API"""
+    try:
+        # 업체 조회 및 접근 권한 확인
+        company = get_object_or_404(Company, pk=company_id)
+        
+        # 접근 권한 확인
+        same_company_users = User.objects.filter(
+            userprofile__company=request.user.userprofile.company
+        )
+        
+        # 업체가 사용자의 회사와 연결되어 있는지 확인
+        if company.created_by not in same_company_users:
+            return JsonResponse({'success': False, 'message': '접근 권한이 없습니다.'}, status=403)
+        
+        # 해당 업체의 부서 목록 조회
+        departments = Department.objects.filter(
+            company=company
+        ).order_by('name')
+        
+        departments_data = []
+        for dept in departments:
+            # 각 부서별 고객 수 직접 계산
+            followup_count = FollowUp.objects.filter(department=dept).count()
+            
+            dept_data = {
+                'id': dept.id,
+                'name': dept.name,
+                'followup_count': followup_count,
+                'created_date': dept.created_at.strftime('%Y-%m-%d'),
+                'created_by': dept.created_by.username if dept.created_by else '정보 없음'
+            }
+            departments_data.append(dept_data)
+        
+        return JsonResponse({
+            'success': True,
+            'company_name': company.name,
+            'departments': departments_data,
+            'total_count': len(departments_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"업체별 부서 목록 API 에러: {str(e)}")
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_company_customers(request, company_id):
+    """업체별 고객 정보 목록 API"""
+    try:
+        # 업체 조회 및 접근 권한 확인
+        company = get_object_or_404(Company, pk=company_id)
+        
+        # 접근 권한 확인
+        same_company_users = User.objects.filter(
+            userprofile__company=request.user.userprofile.company
+        )
+        
+        # 업체가 사용자의 회사와 연결되어 있는지 확인
+        if company.created_by not in same_company_users:
+            return JsonResponse({'success': False, 'message': '접근 권한이 없습니다.'}, status=403)
+        
+        # 해당 업체의 고객 정보들 조회
+        followups = FollowUp.objects.filter(
+            company=company
+        ).select_related('department')
+        
+        customers_data = []
+        for followup in followups:
+            customer_data = {
+                'id': followup.id,
+                'customer_name': followup.customer_name or '고객명 미정',
+                'phone': followup.phone_number or '-',
+                'email': followup.email or '-',
+                'position': followup.manager or '-',
+                'department_name': followup.department.name if followup.department else '-',
+                'created_date': followup.created_at.strftime('%Y-%m-%d'),
+                'last_contact': followup.updated_at.strftime('%Y-%m-%d') if followup.updated_at else '연락 없음'
+            }
+            customers_data.append(customer_data)
+        
+        return JsonResponse({
+            'success': True,
+            'company_name': company.name,
+            'customers': customers_data,
+            'total_count': len(customers_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"업체별 고객 정보 API 에러: {str(e)}")
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)

@@ -719,14 +719,7 @@
 
           // 품목 상태 정보 표시 (통합 표시 제거)
           let infoHtml = '';
-          if (data.has_schedule_items && !data.has_history_items) {
-            infoHtml = `
-              <div class="alert alert-warning mb-3">
-                <i class="fas fa-calendar-alt me-2"></i>
-                <strong>일정 품목 표시</strong> - 연결된 일정의 품목이 표시됩니다.
-              </div>
-            `;
-          } else if (data.is_legacy_data) {
+          if (data.is_legacy_data) {
             infoHtml = `
               <div class="alert alert-warning mb-3">
                 <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1043,21 +1036,23 @@
 
   // 전체 납품내역 데이터 처리 함수
   async function processAllDeliveryData() {
-    // 서버에서 전달된 통합 납품 데이터
-    let integratedDeliveryData = [];
     try {
-      // Django의 json_script를 통한 안전한 JSON 데이터 전달
-      const jsonElement = document.getElementById('integrated-deliveries-data');
-      if (jsonElement) {
-        integratedDeliveryData = JSON.parse(jsonElement.textContent);
+      // 서버에서 전달된 통합 납품 데이터
+      let integratedDeliveryData = [];
+      try {
+        // Django의 json_script를 통한 안전한 JSON 데이터 전달
+        const jsonElement = document.getElementById('integrated-deliveries-data');
+        if (jsonElement && jsonElement.textContent) {
+          integratedDeliveryData = JSON.parse(jsonElement.textContent);
+        }
+      } catch (error) {
+        console.warn('통합 납품 데이터 파싱 실패:', error);
+        integratedDeliveryData = [];
       }
-    } catch (error) {
-      integratedDeliveryData = [];
-    }
 
-    // 품목별 집계 객체
-    const itemsSummary = {};
-    let totalItemsCount = 0;
+      // 품목별 집계 객체
+      const itemsSummary = {};
+      let totalItemsCount = 0;
 
     // 통합 납품 데이터 처리
     for (const delivery of integratedDeliveryData) {
@@ -1101,11 +1096,18 @@
       }
     }
 
-    // 요약 정보 업데이트
-    document.getElementById('totalItemsCount').textContent = Math.round(totalItemsCount).toLocaleString();
+    // 요약 정보 업데이트 (요소 존재 확인)
+    const totalItemsCountElement = document.getElementById('totalItemsCount');
+    if (totalItemsCountElement) {
+      totalItemsCountElement.textContent = Math.round(totalItemsCount).toLocaleString();
+    }
+    
     // 백엔드에서 계산한 정확한 총액 사용 (중복 계산 방지)
     const totalAmountFromServer = {{ total_amount|default:0 }};
-    document.getElementById('totalDeliveryAmount').textContent = totalAmountFromServer.toLocaleString();
+    const totalDeliveryAmountElement = document.getElementById('totalDeliveryAmount');
+    if (totalDeliveryAmountElement) {
+      totalDeliveryAmountElement.textContent = totalAmountFromServer.toLocaleString();
+    }
 
     // 테이블 생성
     const tableBody = document.getElementById('allDeliveryItemsTable');
@@ -1128,15 +1130,45 @@
         </tr>
       `).join('');
 
-      tableBody.innerHTML = tableRows;
+      if (tableBody) {
+        tableBody.innerHTML = tableRows;
+      }
     } else {
-      tableBody.innerHTML = `
-        <tr>
-          <td colspan="4" class="text-center text-muted py-3">
-            <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
-          </td>
-        </tr>
-      `;
+      if (tableBody) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="4" class="text-center text-muted py-3">
+              <i class="fas fa-box-open me-2"></i>품목 정보가 없습니다.
+            </td>
+          </tr>
+        `;
+      }
+    }
+    } catch (error) {
+      console.error('전체 납품내역 데이터 처리 중 오류:', error);
+      
+      // 오류 발생 시 기본값 설정
+      const totalItemsCountElement = document.getElementById('totalItemsCount');
+      if (totalItemsCountElement) {
+        totalItemsCountElement.textContent = '0';
+      }
+      
+      const totalDeliveryAmountElement = document.getElementById('totalDeliveryAmount');
+      if (totalDeliveryAmountElement) {
+        const totalAmountFromServer = {{ total_amount|default:0 }};
+        totalDeliveryAmountElement.textContent = totalAmountFromServer.toLocaleString();
+      }
+      
+      const tableBody = document.getElementById('allDeliveryItemsTable');
+      if (tableBody) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="4" class="text-center text-muted py-3">
+              <i class="fas fa-exclamation-triangle me-2"></i>품목 정보를 불러오는 중 오류가 발생했습니다.
+            </td>
+          </tr>
+        `;
+      }
     }
   }
 
@@ -1189,7 +1221,11 @@
     const allDeliveryTab = document.getElementById('all-delivery-tab');
     if (allDeliveryTab) {
       allDeliveryTab.addEventListener('shown.bs.tab', function() {
-        processAllDeliveryData();
+        try {
+          processAllDeliveryData();
+        } catch (error) {
+          console.error('전체 납품내역 탭 로드 중 오류:', error);
+        }
       });
     }
 
@@ -1197,13 +1233,36 @@
     const timelineTab = document.getElementById('timeline-tab');
     if (timelineTab) {
       timelineTab.addEventListener('shown.bs.tab', function() {
-        enhanceTimelineWithScheduleData();
+        try {
+          enhanceTimelineWithScheduleData();
+        } catch (error) {
+          console.error('전체 타임라인 탭 로드 중 오류:', error);
+        }
       });
     }
   });
 
   // 전체 타임라인에 Schedule DeliveryItem 정보 추가
   async function enhanceTimelineWithScheduleData() {
+    // 통합 납품 데이터에서 has_schedule_items 정보를 가져오기
+    let integratedDeliveryData = [];
+    try {
+      const jsonElement = document.getElementById('integrated-deliveries-data');
+      if (jsonElement) {
+        integratedDeliveryData = JSON.parse(jsonElement.textContent);
+      }
+    } catch (error) {
+      integratedDeliveryData = [];
+    }
+
+    // historyId별 has_schedule_items 매핑 생성
+    const hasScheduleItemsMap = {};
+    integratedDeliveryData.forEach(delivery => {
+      if (delivery.id && delivery.type === 'history') {
+        hasScheduleItemsMap[delivery.id] = delivery.has_schedule_items;
+      }
+    });
+
     // 모든 납품 일정 타입의 타임라인 아이템들 찾기
     const deliveryTimelineItems = document.querySelectorAll('.timeline-item[data-history-id]');
 
@@ -1215,6 +1274,9 @@
       if (!deliveryDetails) {
         continue; // 납품 일정이 아니면 건너뛰기
       }
+
+      // has_schedule_items 확인
+      const hasScheduleItems = hasScheduleItemsMap[historyId] || false;
 
       // 기존 납품 정보를 구조화된 형태로 변환
       // CSS :contains() selector는 표준이 아니므로 다른 방식으로 요소 찾기
@@ -1234,9 +1296,9 @@
         }
       });
 
-      // History DeliveryItem 파싱 및 표시
+      // History DeliveryItem 파싱 및 표시 (has_schedule_items가 false인 경우에만)
       let historyItemsHtml = '';
-      if (itemsText) {
+      if (itemsText && !hasScheduleItems) {
         // 품목 텍스트 파싱 ("품목명: 수량개 (금액원)" 형태)
         const historyItems = parseDeliveryItemsText(itemsText);
 
@@ -1280,9 +1342,9 @@
         }
       }
 
-      // Schedule DeliveryItem 가져오기 및 표시
+      // Schedule DeliveryItem 가져오기 및 표시 (has_schedule_items가 true인 경우에만)
       let scheduleItemsHtml = '';
-      if (scheduleId) {
+      if (scheduleId && hasScheduleItems) {
         try {
           const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
           if (response.ok) {
@@ -1345,14 +1407,6 @@
       if (historyItemsHtml || scheduleItemsHtml) {
         const enhancedDeliveryHtml = `
           <div class="enhanced-delivery-section">
-            ${dateText ? `
-              <div class="mb-3 p-2 bg-info bg-opacity-10 rounded">
-                <strong class="text-info">
-                  <i class="fas fa-calendar-alt me-1"></i>납품일: ${dateText}
-                </strong>
-              </div>
-            ` : ''}
-
             ${historyItemsHtml ? `
               <div class="history-items-section mb-3">
                 <h6 class="text-muted mb-2">
@@ -1365,7 +1419,7 @@
             ${scheduleItemsHtml ? `
               <div class="schedule-items-section">
                 <h6 class="text-muted mb-2">
-                  <i class="fas fa-plus-circle me-1"></i>일정 추가 납품 품목
+                  <i class="fas fa-calendar-plus me-1"></i>일정 납품 품목
                 </h6>
                 ${scheduleItemsHtml}
               </div>
@@ -1374,6 +1428,17 @@
         `;
 
         deliveryDetails.innerHTML = enhancedDeliveryHtml;
+      } else if (hasScheduleItems && !scheduleId) {
+        // has_schedule_items는 true이지만 scheduleId가 없는 경우 메시지 표시
+        const noScheduleHtml = `
+          <div class="enhanced-delivery-section">
+            <div class="alert alert-warning">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              연결된 일정 정보를 찾을 수 없습니다.
+            </div>
+          </div>
+        `;
+        deliveryDetails.innerHTML = noScheduleHtml;
       }
     }
   }
