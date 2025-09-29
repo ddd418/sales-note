@@ -1145,6 +1145,17 @@
           >
         </li>
         {% endif %}
+
+        <!-- 프로필 메뉴 - 모든 로그인 사용자 -->
+        {% if user.is_authenticated %}
+        <li>
+          <a
+            href="{% url 'reporting:profile' %}"
+            class="{% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'profile_edit' %}active{% endif %}"
+            ><i class="fas fa-user-cog me-2"></i>프로필 관리</a
+          >
+        </li>
+        {% endif %}
       </ul>
     </nav>
     <main class="main-content">

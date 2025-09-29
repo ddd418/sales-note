@@ -124,6 +124,10 @@ urlpatterns = [
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
     path('dashboard/', views.dashboard_view, name='dashboard'),
     
+    # 프로필 관리 URL들
+    path('profile/', views.profile_view, name='profile'),
+    path('profile/edit/', views.profile_edit_view, name='profile_edit'),
+    
     # 백업 API URL들
     path('backup/database/', backup_api.backup_database_api, name='backup_database_api'),
     path('backup/status/', backup_api.backup_status_api, name='backup_status_api'),

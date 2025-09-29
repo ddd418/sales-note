@@ -89,12 +89,12 @@
                     </span>
                   </td>
                   <td>
-                    <span class=" customer-count-badge" 
+                    <span class="badge bg-info customer-count-badge" 
                           style="cursor: pointer;" 
                           data-company-id="{{ company.id }}"
                           data-company-name="{{ company.name }}"
                           onclick="loadCustomerList({{ company.id }}, '{{ company.name }}')">
-                      {{ company.followup_count }}개
+                      {{ company.followup_count }}명
                     </span>
                   </td>
                   {% if user.userprofile.role == 'admin' %}

@@ -7199,3 +7199,117 @@ def api_company_customers(request, company_id):
     except Exception as e:
         logger.error(f"업체별 고객 정보 API 에러: {str(e)}")
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+# ============ 프로필 관리 뷰들 ============
+
+@login_required
+def profile_view(request):
+    """사용자 프로필 조회"""
+    context = {
+        'page_title': '프로필 정보',
+        'user': request.user,
+    }
+    return render(request, 'reporting/profile.html', context)
+
+
+@login_required
+def profile_edit_view(request):
+    """사용자 프로필 수정"""
+    from django.contrib.auth import update_session_auth_hash
+    from django.contrib.auth.forms import PasswordChangeForm
+    from django import forms
+    
+    class ProfileEditForm(forms.Form):
+        username = forms.CharField(
+            max_length=150,
+            label="사용자명",
+            widget=forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '사용자명을 입력하세요'
+            })
+        )
+        first_name = forms.CharField(
+            max_length=30,
+            label="이름",
+            required=False,
+            widget=forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '이름을 입력하세요'
+            })
+        )
+        last_name = forms.CharField(
+            max_length=30,
+            label="성",
+            required=False,
+            widget=forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '성을 입력하세요'
+            })
+        )
+        email = forms.EmailField(
+            label="이메일",
+            required=False,
+            widget=forms.EmailInput(attrs={
+                'class': 'form-control',
+                'placeholder': '이메일을 입력하세요'
+            })
+        )
+        
+        def __init__(self, user, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.user = user
+            # 현재 값으로 초기화
+            self.fields['username'].initial = user.username
+            self.fields['first_name'].initial = user.first_name
+            self.fields['last_name'].initial = user.last_name
+            self.fields['email'].initial = user.email
+            
+        def clean_username(self):
+            username = self.cleaned_data['username']
+            # 현재 사용자가 아닌 다른 사용자가 같은 사용자명을 사용하는지 확인
+            if User.objects.exclude(pk=self.user.pk).filter(username=username).exists():
+                raise forms.ValidationError("이미 사용 중인 사용자명입니다.")
+            return username
+    
+    if request.method == 'POST':
+        if 'profile_submit' in request.POST:
+            # 프로필 정보 수정
+            profile_form = ProfileEditForm(request.user, request.POST)
+            password_form = PasswordChangeForm(request.user)
+            
+            if profile_form.is_valid():
+                user = request.user
+                user.username = profile_form.cleaned_data['username']
+                user.first_name = profile_form.cleaned_data['first_name']
+                user.last_name = profile_form.cleaned_data['last_name']
+                user.email = profile_form.cleaned_data['email']
+                user.save()
+                
+                messages.success(request, '프로필 정보가 성공적으로 수정되었습니다.')
+                return redirect('reporting:profile')
+            else:
+                messages.error(request, '프로필 정보 수정 중 오류가 발생했습니다.')
+                
+        elif 'password_submit' in request.POST:
+            # 비밀번호 변경
+            profile_form = ProfileEditForm(request.user)
+            password_form = PasswordChangeForm(request.user, request.POST)
+            
+            if password_form.is_valid():
+                user = password_form.save()
+                update_session_auth_hash(request, user)  # 세션 유지
+                messages.success(request, '비밀번호가 성공적으로 변경되었습니다.')
+                return redirect('reporting:profile')
+            else:
+                messages.error(request, '비밀번호 변경 중 오류가 발생했습니다.')
+    else:
+        profile_form = ProfileEditForm(request.user)
+        password_form = PasswordChangeForm(request.user)
+    
+    context = {
+        'page_title': '프로필 수정',
+        'profile_form': profile_form,
+        'password_form': password_form,
+    }
+    return render(request, 'reporting/profile_edit.html', context)

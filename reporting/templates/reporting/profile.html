@@ -1,0 +1,133 @@
+{% extends 'reporting/base.html' %}
+
+{% block page_title %}프로필 정보{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-user me-2"></i>프로필 정보
+          </h5>
+        </div>
+        <div class="card-body p-4">
+        <div class="row mb-4">
+          <div class="col-12 text-center">
+            <div class="profile-avatar mb-3">
+              <i class="fas fa-user-circle fa-5x text-muted"></i>
+            </div>
+            <h4>
+              {% if user.first_name and user.last_name %}
+                {{ user.first_name }} {{ user.last_name }}
+              {% elif user.last_name %}
+                {{ user.last_name }}
+              {% else %}
+                {{ user.username }}
+              {% endif %}
+            </h4>
+            {% if user.userprofile %}
+            <span class="badge bg-secondary">{{ user.userprofile.get_role_display }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-4">
+            <div class="mb-3">
+              <label class="form-label fw-bold">사용자명</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.username }}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="mb-3">
+              <label class="form-label fw-bold">성</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.first_name|default:"설정되지 않음" }}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="mb-3">
+              <label class="form-label fw-bold">이름</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.last_name|default:"설정되지 않음" }}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label fw-bold">이메일</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.email|default:"설정되지 않음" }}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label fw-bold">권한</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {% if user.userprofile %}
+                  {{ user.userprofile.get_role_display }}
+                {% else %}
+                  설정되지 않음
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% if user.userprofile and user.userprofile.company %}
+        <div class="row">
+          <div class="col-12">
+            <div class="mb-3">
+              <label class="form-label fw-bold">소속 회사</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.userprofile.company.name }}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label fw-bold">가입일</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {{ user.date_joined|date:"Y년 m월 d일" }}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label fw-bold">최종 로그인</label>
+              <div class="form-control-plaintext border rounded p-1 bg-light">
+                {% if user.last_login %}
+                  {{ user.last_login|date:"Y년 m월 d일 H시 i분" }}
+                {% else %}
+                  로그인 기록 없음
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <a href="{% url 'reporting:profile_edit' %}" class="btn btn-primary">
+            <i class="fas fa-edit me-1"></i>프로필 수정
+          </a>
+          <a href="{% url 'reporting:dashboard' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>대시보드로 돌아가기
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
