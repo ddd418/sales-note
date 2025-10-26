@@ -1,149 +1,6 @@
 {% extends "reporting/base.html" %} {% block title %}일정 캘린더 - 영업 보고
 시스템{% endblock %} {% block content %}
 <style>
-  /* ============================================
-     프리미엄 캘린더 스타일
-     ============================================ */
-  
-  /* 페이지 헤더 */
-  .schedule-calendar-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 2.5rem 2rem;
-    border-radius: 16px;
-    margin-bottom: 2rem;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-  }
-  
-  .schedule-calendar-header h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-  
-  .schedule-calendar-header .subtitle {
-    opacity: 0.95;
-    font-size: 0.95rem;
-    margin-top: 0.5rem;
-  }
-  
-  /* 프리미엄 버튼 */
-  .btn-premium-white {
-    background: white;
-    color: #667eea;
-    border: 2px solid white;
-    font-weight: 600;
-    padding: 0.625rem 1.5rem;
-    border-radius: 10px;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-  }
-  
-  .btn-premium-white:hover {
-    background: rgba(255, 255, 255, 0.9);
-    color: #764ba2;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-  }
-  
-  .btn-premium-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    font-weight: 600;
-    padding: 0.625rem 1.5rem;
-    border-radius: 10px;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-  }
-  
-  .btn-premium-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-    color: white;
-  }
-  
-  /* 캘린더 네비게이션 카드 */
-  .calendar-nav-card {
-    background: white;
-    border-radius: 16px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    margin-bottom: 2rem;
-  }
-  
-  .calendar-month-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #2d3748;
-    margin: 0;
-  }
-  
-  .btn-calendar-nav {
-    background: white;
-    border: 2px solid #e2e8f0;
-    color: #4a5568;
-    font-weight: 600;
-    padding: 0.5rem 1rem;
-    border-radius: 10px;
-    transition: all 0.3s ease;
-  }
-  
-  .btn-calendar-nav:hover {
-    background: #f7fafc;
-    border-color: #667eea;
-    color: #667eea;
-    transform: translateY(-1px);
-  }
-  
-  .btn-calendar-today {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    font-weight: 600;
-    padding: 0.5rem 1.25rem;
-    border-radius: 10px;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-  }
-  
-  .btn-calendar-today:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-    color: white;
-  }
-  
-  /* 캘린더 메인 카드 */
-  .calendar-main-card {
-    background: white;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  }
-  
-  /* 선택된 날짜 카드 */
-  .selected-date-card {
-    background: white;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    margin-top: 2rem;
-  }
-  
-  .selected-date-card .card-header {
-    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-    border-bottom: 2px solid #e2e8f0;
-    padding: 1.25rem 1.5rem;
-  }
-  
-  .selected-date-card .card-title {
-    color: #2d3748;
-    font-weight: 700;
-    font-size: 1.1rem;
-    margin: 0;
-  }
-  
   /* 보라색 테마 */
   .bg-purple {
     background-color: #6f42c1 !important;
@@ -617,127 +474,168 @@
   {% csrf_token %}
 </form>
 
-<div class="container-fluid px-4">
-  <!-- 프리미엄 헤더 -->
-  <div class="schedule-calendar-header">
-    <div class="d-flex justify-content-between align-items-start">
-      <div>
-        <h1>
-          <i class="fas fa-calendar-alt me-3"></i>일정 캘린더
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >
+        <h1 class="page-title mb-0">
+          <i class="fas fa-calendar me-2"></i>일정 캘린더
         </h1>
-        <div class="subtitle">
-          <i class="fas fa-info-circle me-2"></i>날짜를 더블클릭하면 해당 날짜에 일정을 추가할 수 있습니다<br>
-          <i class="fas fa-hand-pointer ms-4 me-2"></i>일정을 드래그하여 다른 날짜로 이동할 수 있습니다
+        <div class="text-muted mt-1">
+          <small
+            ><i class="fas fa-info-circle me-1"></i>날짜를 더블클릭하면 해당
+            날짜에 일정을 추가할 수 있습니다. <br />
+          </small>
+          <small
+            ><i class="fas fa-info-circle me-1"></i>일정을 드래그하여 다른
+            날짜로 이동할 수 있습니다.</small
+          >
+        </div>
+        <div>
+          {% if user.is_authenticated %} {% if user.userprofile.role == 'manager' %}
+          <!-- 매니저용 데이터 보기 드롭다운 -->
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+            >
+              <i class="fas fa-eye me-1"></i>{% if selected_user%}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
+                  <i class="fas fa-user me-2"></i>고객 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
+                  <i class="fas fa-calendar me-2"></i>일정 관리
+                </a>
+              </li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
+                  <i class="fas fa-history me-2"></i>활동 기록
+                </a>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}"
+                >
+                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
+                </a>
+              </li>
+              {% if selected_user %}
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <a
+                  class="dropdown-item"
+                  href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}"
+                >
+                  <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기</a
+                >
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          {% else %}
+          <!-- 실무자용 추가 버튼 -->
+          <a
+            href="{% url 'reporting:schedule_create' %}"
+            class="btn btn-primary"
+          >
+            <i class="fas fa-plus me-1"></i>새 일정 추가
+          </a>
+          {% endif %} {% endif %}
         </div>
       </div>
-      <div>
-        {% if user.is_authenticated %}
-          {% if user.userprofile.role == 'manager' %}
-            <!-- 매니저용 데이터 보기 드롭다운 -->
-            <div class="btn-group">
-              <button type="button" class="btn btn-premium-white dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="fas fa-eye me-2"></i>{% if selected_user %}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-user me-2"></i>고객 관리
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-calendar me-2"></i>일정 관리
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-history me-2"></i>활동 기록
-                  </a>
-                </li>
-                <li><hr class="dropdown-divider" /></li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-                  </a>
-                </li>
-                {% if selected_user %}
-                  <li><hr class="dropdown-divider" /></li>
-                  <li>
-                    <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
-                      <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
-                    </a>
-                  </li>
-                {% endif %}
-              </ul>
+
+      <!-- 캘린더 네비게이션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <button id="prevMonth" class="btn btn-outline-secondary">
+                    <i class="fas fa-chevron-left"></i>
+                  </button>
+                  <button id="nextMonth" class="btn btn-outline-secondary ms-2">
+                    <i class="fas fa-chevron-right"></i>
+                  </button>
+                </div>
+                <h4 id="currentMonth" class="mb-0"></h4>
+                <div>
+                  <button id="todayBtn" class="btn btn-primary">
+                    <i class="fas fa-calendar-day me-1"></i>오늘
+                  </button>
+                </div>
+              </div>
             </div>
-          {% else %}
-            <!-- 실무자용 추가 버튼 -->
-            <a href="{% url 'reporting:schedule_create' %}" class="btn btn-premium-white">
-              <i class="fas fa-plus me-2"></i>새 일정 추가
-            </a>
-          {% endif %}
-        {% endif %}
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
+      <!-- 캘린더 -->
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body p-0">
+              <div id="calendar" class="table-responsive">
+                <table class="table table-bordered mb-0 calendar-table">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="text-center py-3 calendar-header">일</th>
+                      <th class="text-center py-3 calendar-header">월</th>
+                      <th class="text-center py-3 calendar-header">화</th>
+                      <th class="text-center py-3 calendar-header">수</th>
+                      <th class="text-center py-3 calendar-header">목</th>
+                      <th class="text-center py-3 calendar-header">금</th>
+                      <th class="text-center py-3 calendar-header">토</th>
+                    </tr>
+                  </thead>
+                  <tbody id="calendarBody">
+                    <!-- 캘린더 날짜들이 여기에 동적으로 생성됩니다 -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  <!-- 캘린더 네비게이션 -->
-  <div class="calendar-nav-card">
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <button id="prevMonth" class="btn btn-calendar-nav">
-          <i class="fas fa-chevron-left"></i>
-        </button>
-        <button id="nextMonth" class="btn btn-calendar-nav ms-2">
-          <i class="fas fa-chevron-right"></i>
-        </button>
-      </div>
-      <h4 id="currentMonth" class="calendar-month-title mb-0"></h4>
-      <div>
-        <button id="todayBtn" class="btn btn-calendar-today">
-          <i class="fas fa-calendar-day me-2"></i>오늘
-        </button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- 캘린더 -->
-  <div class="calendar-main-card">
-    <div class="p-0">
-      <div id="calendar" class="table-responsive">
-        <table class="table table-bordered mb-0 calendar-table">
-          <thead class="table-light">
-            <tr>
-              <th class="text-center py-3 calendar-header">일</th>
-              <th class="text-center py-3 calendar-header">월</th>
-              <th class="text-center py-3 calendar-header">화</th>
-              <th class="text-center py-3 calendar-header">수</th>
-              <th class="text-center py-3 calendar-header">목</th>
-              <th class="text-center py-3 calendar-header">금</th>
-              <th class="text-center py-3 calendar-header">토</th>
-            </tr>
-          </thead>
-          <tbody id="calendarBody">
-            <!-- 캘린더 날짜들이 여기에 동적으로 생성됩니다 -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- 선택된 날짜의 일정 -->
-  <div class="selected-date-card">
-    <div class="card-header">
-      <h6 class="card-title">
-        <i class="fas fa-clock me-2"></i>선택된 날짜의 일정:
-        <span id="selectedDate" class="text-purple">오늘</span>
-      </h6>
-    </div>
-    <div class="card-body">
-      <div id="daySchedules">
-        <div class="text-center py-4">
-          <i class="fas fa-calendar fa-3x text-muted mb-3 opacity-50"></i>
-          <p class="text-muted mb-0">날짜를 선택해주세요.</p>
+      <!-- 선택된 날짜의 일정 -->
+      <div class="row mt-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-clock me-2"></i>선택된 날짜의 일정:
+                <span id="selectedDate">오늘</span>
+              </h6>
+            </div>
+            <div class="card-body">
+              <div id="daySchedules">
+                <div class="text-center py-3">
+                  <i class="fas fa-calendar fa-2x text-muted mb-2"></i>
+                  <p class="text-muted mb-0">날짜를 선택해주세요.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2,79 +2,350 @@
 {% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-8">
-      <div class="page-header d-flex justify-content-between align-items-center mb-4">
-        <h1 class="page-title">{{ page_title }}</h1>
-        <a href="{% url 'reporting:company_list' %}" class="btn btn-secondary">
-          <i class="fas fa-arrow-left me-1"></i>목록으로
-        </a>
-      </div>
+<style>
+/* 프리미엄 삭제 페이지 스타일 */
+.delete-page-header {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    padding: 2.5rem 0;
+    margin: -2rem -2rem 2rem -2rem;
+    border-radius: 0 0 20px 20px;
+    box-shadow: 0 10px 30px rgba(220, 53, 69, 0.3);
+}
 
-      <div class="card">
-        <div class="card-body">
-          <div class="alert alert-warning" role="alert">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            <strong>주의:</strong> 업체/학교를 삭제하면 되돌릴 수 없습니다.
-          </div>
+.delete-page-header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
 
-          <h5>삭제할 업체/학교 정보</h5>
-          <div class="table-responsive">
-            <table class="table table-bordered">
-              <tr>
-                <th class="bg-light" width="30%">업체/학교명</th>
-                <td>{{ company.name }}</td>
-              </tr>
-              <tr>
-                <th class="bg-light">부서/연구실 수</th>
-                <td>
-                  <span class="badge bg-info">{{ department_count }}개</span>
-                  {% if department_count > 0 %}
-                  <small class="text-muted ms-2">※ 업체/학교 삭제 시 모든 부서/연구실도 함께 삭제됩니다.</small>
-                  {% endif %}
-                </td>
-              </tr>
-              <tr>
-                <th class="bg-light">관련 고객 정보 수</th>
-                <td>
-                  <span class="badge bg-success">{{ followup_count }}개</span>
-                  {% if followup_count > 0 %}
-                  <small class="text-danger ms-2">※ 관련 고객 정보가 있어 삭제할 수 없습니다.</small>
-                  {% endif %}
-                </td>
-              </tr>
-            </table>
-          </div>
+.delete-page-header .subtitle {
+    font-size: 1rem;
+    opacity: 0.95;
+}
 
-          {% if followup_count > 0 %}
-          <div class="alert alert-danger" role="alert">
-            <i class="fas fa-ban me-2"></i>
-            <strong>삭제 불가:</strong> 이 업체/학교를 사용하는 고객 정보가 {{ followup_count }}개 있습니다. 
-            먼저 관련 고객 정보를 다른 업체/학교로 변경하거나 삭제한 후 다시 시도해주세요.
-          </div>
-          
-          <div class="text-center">
-            <a href="{% url 'reporting:company_list' %}" class="btn btn-secondary">
-              <i class="fas fa-arrow-left me-1"></i>목록으로 돌아가기
-            </a>
-          </div>
-          {% else %}
-          <form method="post">
-            {% csrf_token %}
-            <div class="text-center">
-              <button type="submit" class="btn btn-danger me-2">
-                <i class="fas fa-trash me-1"></i>삭제하기
-              </button>
-              <a href="{% url 'reporting:company_list' %}" class="btn btn-secondary">
-                <i class="fas fa-times me-1"></i>취소
-              </a>
-            </div>
-          </form>
-          {% endif %}
+.premium-delete-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.premium-delete-card-body {
+    padding: 2rem;
+}
+
+.warning-alert-premium {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: none;
+    border-left: 4px solid #ffc107;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: start;
+    gap: 1rem;
+}
+
+.warning-alert-premium i {
+    color: #ff6b35;
+    font-size: 1.5rem;
+    margin-top: 0.25rem;
+}
+
+.warning-alert-premium .content strong {
+    color: #856404;
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 1.1rem;
+}
+
+.warning-alert-premium .content p {
+    margin: 0;
+    color: #856404;
+}
+
+.danger-alert-premium {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border: none;
+    border-left: 4px solid #dc3545;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: start;
+    gap: 1rem;
+}
+
+.danger-alert-premium i {
+    color: #dc3545;
+    font-size: 1.5rem;
+    margin-top: 0.25rem;
+}
+
+.danger-alert-premium .content strong {
+    color: #721c24;
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 1.1rem;
+}
+
+.danger-alert-premium .content p {
+    margin: 0;
+    color: #721c24;
+}
+
+.info-table-premium {
+    background: #f8f9fa;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.info-table-premium .table {
+    margin: 0;
+}
+
+.info-table-premium th {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    font-weight: 600;
+    color: #2d3748;
+    padding: 1rem 1.25rem;
+    border: none;
+}
+
+.info-table-premium td {
+    padding: 1rem 1.25rem;
+    border: none;
+    border-top: 1px solid #dee2e6;
+}
+
+.info-table-premium .badge {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 8px;
+}
+
+.company-name-display {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.company-name-display i {
+    color: #dc3545;
+}
+
+.stats-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stats-warning i {
+    color: #ffc107;
+}
+
+.stats-warning small {
+    color: #6c757d;
+}
+
+.stats-danger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.stats-danger i {
+    color: #dc3545;
+}
+
+.stats-danger small {
+    color: #dc3545;
+}
+
+.btn-premium {
+    border-radius: 12px;
+    padding: 0.75rem 2rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn-premium-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+}
+
+.btn-premium-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+    color: white;
+}
+
+.btn-premium-secondary {
+    background: white;
+    color: #6c757d;
+    border: 2px solid #dee2e6;
+}
+
+.btn-premium-secondary:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+    color: #495057;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid #f1f3f5;
+}
+
+@media (max-width: 768px) {
+    .delete-page-header {
+        padding: 1.5rem 0;
+        margin: -1rem -1rem 1.5rem -1rem;
+    }
+    
+    .delete-page-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .premium-delete-card-body {
+        padding: 1.5rem;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .btn-premium {
+        width: 100%;
+    }
+}
+</style>
+
+<div class="container-fluid px-4">
+    <!-- 프리미엄 헤더 (위험 색상) -->
+    <div class="delete-page-header">
+        <div class="container">
+            <h1>
+                <i class="fas fa-exclamation-triangle me-3"></i>{{ page_title }}
+            </h1>
+            <p class="subtitle mb-0">
+                업체/학교 삭제 확인
+            </p>
         </div>
-      </div>
     </div>
-  </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- 경고 메시지 -->
+            <div class="warning-alert-premium">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div class="content">
+                    <strong>⚠️ 주의사항</strong>
+                    <p>업체/학교를 삭제하면 복구할 수 없습니다. 삭제 전에 다시 한 번 확인해주세요.</p>
+                </div>
+            </div>
+
+            <!-- 삭제 정보 카드 -->
+            <div class="premium-delete-card">
+                <div class="premium-delete-card-body">
+                    <h5 class="mb-4" style="font-weight: 700; color: #2d3748;">
+                        <i class="fas fa-info-circle me-2" style="color: #dc3545;"></i>
+                        삭제할 업체/학교 정보
+                    </h5>
+
+                    <div class="info-table-premium">
+                        <table class="table">
+                            <tr>
+                                <th width="35%">업체/학교명</th>
+                                <td>
+                                    <div class="company-name-display">
+                                        <i class="fas fa-building"></i>
+                                        {{ company.name }}
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>부서/연구실 수</th>
+                                <td>
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-sitemap me-1"></i>{{ department_count }}개
+                                    </span>
+                                    {% if department_count > 0 %}
+                                    <div class="stats-warning">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        <small><strong>※ 업체/학교 삭제 시 모든 부서/연구실({{ department_count }}개)도 함께 삭제됩니다.</strong></small>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>관련 고객 정보 수</th>
+                                <td>
+                                    <span class="badge {% if followup_count > 0 %}bg-danger{% else %}bg-success{% endif %}">
+                                        <i class="fas fa-users me-1"></i>{{ followup_count }}개
+                                    </span>
+                                    {% if followup_count > 0 %}
+                                    <div class="stats-danger">
+                                        <i class="fas fa-ban"></i>
+                                        <small><strong>※ 관련 고객 정보가 있어 삭제할 수 없습니다.</strong></small>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    {% if followup_count > 0 %}
+                    <!-- 삭제 불가 메시지 -->
+                    <div class="danger-alert-premium">
+                        <i class="fas fa-ban"></i>
+                        <div class="content">
+                            <strong>🚫 삭제 불가</strong>
+                            <p>이 업체/학교를 사용하는 고객 정보가 <strong>{{ followup_count }}개</strong> 있습니다.</p>
+                            <p>먼저 관련 고객 정보를 다른 업체/학교로 변경하거나 삭제한 후 다시 시도해주세요.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <a href="{% url 'reporting:company_list' %}" class="btn btn-premium btn-premium-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>목록으로 돌아가기
+                        </a>
+                        <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-premium btn-premium-secondary">
+                            <i class="fas fa-eye me-2"></i>업체 상세보기
+                        </a>
+                    </div>
+                    {% else %}
+                    <!-- 삭제 확인 폼 -->
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-premium btn-premium-danger" onclick="return confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');">
+                                <i class="fas fa-trash me-2"></i>삭제하기
+                            </button>
+                            <a href="{% url 'reporting:company_list' %}" class="btn btn-premium btn-premium-secondary">
+                                <i class="fas fa-times me-2"></i>취소
+                            </a>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

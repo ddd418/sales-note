@@ -4,283 +4,6 @@
 
 {% block content %}
 <style>
-/* 프리미엄 팔로우업 페이지 스타일 */
-.followup-page-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 2.5rem 0;
-    margin: -2rem -2rem 2rem -2rem;
-    border-radius: 0 0 20px 20px;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-}
-
-.followup-page-header h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-}
-
-.followup-page-header .subtitle {
-    font-size: 1.1rem;
-    opacity: 0.95;
-}
-
-.followup-header-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.btn-premium-white {
-    background: white;
-    color: #667eea;
-    border: none;
-    border-radius: 12px;
-    padding: 0.75rem 1.5rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-premium-white:hover {
-    background: #f8f9fa;
-    color: #5568d3;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
-}
-
-.btn-premium-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    padding: 0.75rem 1.5rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-premium-success:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
-    color: white;
-}
-
-.premium-search-card {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: none;
-    margin-bottom: 2rem;
-}
-
-.premium-search-card .card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 2px solid #667eea;
-    border-radius: 16px 16px 0 0 !important;
-    padding: 1.25rem 1.5rem;
-}
-
-.premium-search-card .card-title {
-    font-weight: 700;
-    color: #2d3748;
-    margin: 0;
-}
-
-.premium-search-card .card-body {
-    padding: 1.5rem;
-}
-
-.filter-box-premium {
-    background: #f8f9fa;
-    border-radius: 12px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.filter-box-premium .btn-group .btn {
-    border-radius: 8px;
-    margin: 0 0.25rem;
-    transition: all 0.2s ease;
-}
-
-.filter-box-premium .btn-outline-primary {
-    border-color: #667eea;
-    color: #667eea;
-}
-
-.filter-box-premium .btn-outline-primary:hover,
-.filter-box-premium .btn-outline-primary.active {
-    background: #667eea;
-    border-color: #667eea;
-    color: white;
-}
-
-/* Premium Followup Cards */
-.followup-card {
-    border: none;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    transition: all 0.3s ease;
-    overflow: hidden;
-    background: white;
-}
-
-.followup-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(102, 126, 234, 0.15);
-}
-
-.followup-card .card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 2px solid #e9ecef;
-    padding: 1rem 1.25rem;
-}
-
-.followup-card .card-header h6 {
-    font-weight: 700;
-    color: #2d3748;
-    margin: 0;
-}
-
-.followup-card .card-header h6 a {
-    color: #2d3748;
-    transition: color 0.2s;
-}
-
-.followup-card .card-header h6 a:hover {
-    color: #667eea;
-}
-
-.followup-card .badge {
-    font-size: 0.75rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 20px;
-    font-weight: 600;
-}
-
-.followup-card .card-body {
-    padding: 1.25rem;
-}
-
-.followup-card .card-text {
-    font-size: 0.9rem;
-    line-height: 1.8;
-    color: #4a5568;
-}
-
-.followup-card .card-text strong {
-    color: #2d3748;
-    font-weight: 600;
-    min-width: 70px;
-    display: inline-block;
-}
-
-.followup-card .alert-light {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 0.75rem;
-}
-
-.followup-card .card-footer {
-    background: transparent;
-    border-top: 1px solid #e9ecef;
-    padding: 1rem 1.25rem;
-}
-
-.followup-card .btn-group .btn {
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    padding: 0.5rem 1rem;
-    transition: all 0.2s;
-}
-
-.followup-card .btn-outline-primary:hover {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
-    transform: translateY(-1px);
-}
-
-.followup-card .btn-outline-secondary:hover {
-    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-    border-color: transparent;
-    transform: translateY(-1px);
-}
-
-.followup-card .btn-outline-danger:hover {
-    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-    border-color: transparent;
-    transform: translateY(-1px);
-}
-
-/* Empty State */
-.empty-state-card {
-    border: none;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    background: white;
-}
-
-.empty-state-card .card-body {
-    padding: 4rem 2rem;
-}
-
-.empty-state-card i {
-    color: #cbd5e0;
-}
-
-.empty-state-card h5 {
-    color: #2d3748;
-    font-weight: 700;
-    margin-top: 1rem;
-}
-
-.empty-state-card .card-text {
-    color: #718096;
-}
-
-/* Premium Pagination */
-.pagination-premium {
-    gap: 0.5rem;
-}
-
-.pagination-premium .page-item .page-link {
-    border: 2px solid #e9ecef;
-    border-radius: 10px;
-    color: #4a5568;
-    font-weight: 600;
-    padding: 0.5rem 0.9rem;
-    transition: all 0.2s;
-    margin: 0 0.2rem;
-}
-
-.pagination-premium .page-item .page-link:hover {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-color: transparent;
-    transform: translateY(-2px);
-}
-
-.pagination-premium .page-item.active .page-link {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
-    color: white;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.pagination-premium .page-item.disabled .page-link {
-    background: #f8f9fa;
-    border-color: #e9ecef;
-    color: #cbd5e0;
-}
-
-.pagination-info {
-    color: #718096;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
 /* 리스트 페이지 모바일 최적화 */
 @media (max-width: 768px) {
   /* 헤더 모바일 최적화 */
@@ -634,104 +357,48 @@
 .modal-body .pagination {
   margin-top: 15px;
   margin-bottom: 0;
-  gap: 5px;
+  gap: 3px;
 }
 
 .modal-body .page-link {
   min-height: 36px;
   min-width: 36px;
   font-size: 13px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 2px solid #e9ecef;
-  color: #4a5568;
-  font-weight: 600;
-  transition: all 0.2s;
+  padding: 6px 8px;
+  border-radius: 6px;
 }
 
 .modal-body .pagination .page-item.active .page-link {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: transparent;
+  background-color: #28a745;
+  border-color: #28a745;
   color: white;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .modal-body .pagination .page-link:hover {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: transparent;
-  color: white;
-  transform: translateY(-1px);
-}
-
-.modal-body .pagination .page-item.disabled .page-link {
-  background: #f8f9fa;
-  border-color: #e9ecef;
-  color: #cbd5e0;
-}
-
-/* Premium Modal Styles */
-.modal-content {
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-}
-
-.modal-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 16px 16px 0 0;
-  padding: 1.5rem;
-  border-bottom: none;
-}
-
-.modal-header .modal-title {
-  font-weight: 700;
-  font-size: 1.25rem;
-}
-
-.modal-header .btn-close {
-  filter: brightness(0) invert(1);
-  opacity: 0.8;
-}
-
-.modal-header .btn-close:hover {
-  opacity: 1;
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.modal-body .company-item .btn {
-  border-radius: 10px;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.modal-body .company-item .btn:hover {
-  transform: translateX(4px);
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
 }
 </style>
-<div class="container-fluid px-4">
-    <!-- 프리미엄 헤더 -->
-    <div class="followup-page-header">
-        <div class="container">
-            <h1>
-                <i class="fas fa-user-check me-3"></i>{{ page_title }}
-            </h1>
-            <p class="subtitle mb-3">
-                고객 팔로우업 및 관계 관리 시스템
-            </p>
-            
-            <div class="followup-header-actions">
-                {% if user.is_authenticated %}
-                {% if user.userprofile.role == 'manager' %}
-                <!-- 매니저용 데이터 보기 드롭다운 및 엑셀 다운로드 -->
-                <div class="btn-group" role="group">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-premium-white dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-eye me-2"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-                        </button>
+<div class="container">
+  <div class="row">
+    <div class="col-12">
+      <!-- 헤더 섹션 -->
+      <div
+        class="page-header d-flex justify-content-between align-items-center mb-4"
+      >        <h1 class="page-title mb-0">
+          <i class="fas fa-users me-2"></i>{{ page_title }}
+        </h1>        {% if user.is_authenticated %}
+        {% if user.userprofile.role == 'manager' %}
+        <!-- 매니저용 데이터 보기 드롭다운 및 엑셀 다운로드 -->
+        <div class="btn-group" role="group">
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+            >
+              <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
+            </button>
             <ul class="dropdown-menu">
               <li>
                 <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
@@ -767,8 +434,8 @@
           <!-- 매니저용 엑셀 다운로드 드롭다운 -->
           {% if user_profile.can_excel_download %}
           <div class="btn-group">
-            <button type="button" class="btn btn-premium-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="fas fa-download me-2"></i>엑셀 다운로드
+            <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
             </button>
             <ul class="dropdown-menu">
               <li>
@@ -797,15 +464,15 @@
         {% else %}
         <!-- 실무자용 추가 버튼 및 엑셀 다운로드 -->
         <div class="btn-group" role="group">
-          <a href="{% url 'reporting:followup_create' %}" class="btn btn-premium-white">
-            <i class="fas fa-plus me-2"></i>새 고객 정보 추가
+          <a href="{% url 'reporting:followup_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 고객 정보 추가
           </a>
           
           <!-- 엑셀 다운로드 드롭다운 -->
           {% if user_profile.can_excel_download %}
           <div class="btn-group" role="group">
-            <button type="button" class="btn btn-premium-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="fas fa-download me-2"></i>엑셀 다운로드
+            <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-download me-1"></i>엑셀 다운로드
             </button>
             <ul class="dropdown-menu">
               <li>
@@ -833,24 +500,13 @@
         </div>
         {% endif %}
         {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <!-- 메인 컨텐츠 -->
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <!-- 검색 섹션 -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card premium-search-card">
-                            <div class="card-header">
-                                <h6 class="card-title">
-                                    <i class="fas fa-search me-2"></i>고객 검색 및 필터
-                                </h6>
-                            </div>
-                            <div class="card-body">
+      </div>      <!-- 검색 섹션 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-search me-2"></i>고객 검색 및 필터
               </h6>
               <form method="GET" action="{% url 'reporting:followup_list' %}">
                 <div class="row g-3">
@@ -925,9 +581,9 @@
       <!-- 업체별 필터 버튼 -->
       <div class="row mb-4">
         <div class="col-12">
-          <div class="card filter-box-premium">
+          <div class="card filter-box">
             <div class="card-body">
-              <h6 class="card-title mb-3" style="font-weight: 700; color: #2d3748;">
+              <h6 class="card-title mb-3">
                 <i class="fas fa-building me-2"></i>업체/학교별 빠른 필터
               </h6>
               
@@ -955,7 +611,7 @@
       <div class="row">
         {% for followup in followups %}
         <div class="col-md-6 col-lg-4 mb-4">
-          <div class="card followup-card h-100">
+          <div class="card h-100">
             <div
               class="card-header d-flex justify-content-between align-items-center"
             >
@@ -1031,7 +687,7 @@
       {% else %}
       <div class="row">
         <div class="col-12">
-          <div class="card empty-state-card">
+          <div class="card">
             <div class="card-body text-center py-5">
               <i class="fas fa-users fa-3x text-muted mb-3"></i>
               {% if search_query %}
@@ -1071,7 +727,7 @@
       <div class="row mt-4">
         <div class="col-12">
           <nav aria-label="팔로우업 목록 페이지네이션">
-            <ul class="pagination pagination-premium justify-content-center">
+            <ul class="pagination justify-content-center">
               <!-- 첫 페이지 -->
               {% if followups.has_previous %}
               <li class="page-item">
@@ -1134,7 +790,7 @@
           </nav>
           
           <!-- 페이지 정보 -->
-          <div class="text-center pagination-info mt-3">
+          <div class="text-center text-muted small mt-2">
             {{ followups.start_index }}~{{ followups.end_index }}번 (전체 {{ followups.paginator.count }}개)
           </div>
         </div>
