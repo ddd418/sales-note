@@ -152,6 +152,252 @@
   .text-purple {
     color: #6f42c1 !important;
   }
+  
+  /* ============================================
+     모바일 최적화 (768px 이하)
+     ============================================ */
+  @media (max-width: 768px) {
+    /* 헤더 모바일 최적화 */
+    .schedule-calendar-header {
+      padding: 1.5rem 1rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+    
+    .schedule-calendar-header h1 {
+      font-size: 1.5rem;
+    }
+    
+    .schedule-calendar-header .subtitle {
+      font-size: 0.85rem;
+      margin-top: 0.75rem;
+    }
+    
+    .schedule-calendar-header .d-flex {
+      flex-direction: column;
+      gap: 1rem;
+      align-items: stretch !important;
+    }
+    
+    .schedule-calendar-header .btn-group,
+    .schedule-calendar-header .btn {
+      width: 100%;
+    }
+    
+    .btn-premium-white,
+    .btn-premium-primary {
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      width: 100%;
+      justify-content: center;
+    }
+    
+    /* 캘린더 네비게이션 모바일 */
+    .calendar-nav-card {
+      padding: 1rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+    }
+    
+    .calendar-nav-card .d-flex {
+      flex-direction: column;
+      gap: 1rem;
+      text-align: center;
+    }
+    
+    .calendar-month-title {
+      font-size: 1.25rem;
+      order: -1;
+    }
+    
+    .calendar-nav-card > .d-flex > div {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .btn-calendar-nav,
+    .btn-calendar-today {
+      padding: 0.625rem 1rem;
+      font-size: 0.9rem;
+      flex: 1;
+    }
+    
+    /* 캘린더 메인 모바일 */
+    .calendar-main-card {
+      border-radius: 12px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 캘린더 테이블 모바일 */
+    .calendar-table {
+      font-size: 0.75rem;
+      min-width: 100%;
+    }
+    
+    .calendar-table th,
+    .calendar-table td {
+      padding: 0.25rem;
+      min-height: 70px;
+      height: 70px;
+      max-height: 70px;
+      vertical-align: top;
+    }
+    
+    .calendar-header {
+      font-size: 0.8rem;
+      padding: 0.5rem 0.25rem;
+      height: 36px;
+      min-height: 36px;
+    }
+    
+    .calendar-day {
+      min-height: 70px;
+      height: 70px;
+      max-height: 70px;
+      padding: 0.25rem;
+    }
+    
+    .day-number {
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 0.125rem;
+    }
+    
+    /* 오늘 날짜 강조 모바일 */
+    .calendar-day.today .day-number {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      line-height: 20px;
+      display: inline-block;
+      text-align: center;
+    }
+    
+    /* 일정 아이템 모바일 */
+    .schedule-item {
+      font-size: 0.65rem;
+      padding: 0.125rem 0.25rem;
+      margin-bottom: 0.125rem;
+      border-radius: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .more-schedules {
+      font-size: 0.6rem;
+      padding: 0.125rem;
+      margin-top: 0.125rem;
+    }
+    
+    /* 선택된 날짜 카드 모바일 */
+    .selected-date-card {
+      border-radius: 12px;
+      margin-top: 1.5rem;
+    }
+    
+    .selected-date-card .card-header {
+      padding: 1rem;
+    }
+    
+    .selected-date-card .card-title {
+      font-size: 1rem;
+    }
+    
+    .selected-date-card .card-body {
+      padding: 1rem;
+    }
+    
+    /* 모달 모바일 */
+    .modal-dialog {
+      margin: 0.5rem;
+      max-width: calc(100% - 1rem);
+    }
+    
+    .modal-content {
+      border-radius: 12px;
+    }
+    
+    .modal-header {
+      padding: 1rem;
+    }
+    
+    .modal-body {
+      padding: 1rem;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    
+    .modal-footer {
+      padding: 0.75rem 1rem;
+      gap: 0.5rem;
+    }
+    
+    .modal-footer .btn {
+      flex: 1;
+      font-size: 0.9rem;
+      padding: 0.625rem;
+    }
+    
+    /* 드롭다운 메뉴 모바일 */
+    .dropdown-menu {
+      width: 100%;
+      font-size: 0.9rem;
+    }
+    
+    /* 터치 최적화 */
+    .calendar-day,
+    .schedule-item,
+    .btn {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    
+    .btn {
+      min-height: 44px;
+    }
+  }
+  
+  /* 작은 모바일 (480px 이하) */
+  @media (max-width: 480px) {
+    .schedule-calendar-header h1 {
+      font-size: 1.25rem;
+    }
+    
+    .schedule-calendar-header .subtitle {
+      font-size: 0.75rem;
+    }
+    
+    .calendar-month-title {
+      font-size: 1.1rem;
+    }
+    
+    .calendar-table th,
+    .calendar-table td {
+      min-height: 60px;
+      height: 60px;
+      max-height: 60px;
+    }
+    
+    .calendar-day {
+      min-height: 60px;
+      height: 60px;
+      max-height: 60px;
+    }
+    
+    .day-number {
+      font-size: 0.7rem;
+    }
+    
+    .schedule-item {
+      font-size: 0.6rem;
+      padding: 0.1rem 0.2rem;
+    }
+  }
 
   /* 활동 기록 표시 스타일 개선 */
   .form-control-plaintext.content-display {
