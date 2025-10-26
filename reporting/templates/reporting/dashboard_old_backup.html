@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{{ page_title }} - 영업 보고 시스템</title>
+  
+  <!-- Google Fonts - Inter (최신 프리미엄 폰트) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+
+<style>
+/* ============================================
+   🎨 ULTRA-MODERN PREMIUM DASHBOARD
+   완전히 독립적인 초현대적 디자인 시스템
+   ============================================ */
+
+/* 🎯 기본 리셋 및 변수 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* 프리미엄 컬러 팔레트 */
+  --primary: #6366f1;
+  --primary-dark: #4f46e5;
+  --primary-light: #818cf8;
+  --secondary: #8b5cf6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #06b6d4;
+  
+  /* 뉴트럴 컬러 */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  
+  /* 스페이싱 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  
+  /* 보더 라디우스 */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+  
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  
+  /* 트랜지션 */
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
+  color: var(--gray-900);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   🎨 PREMIUM DASHBOARD DESIGN
+   ============================================ */
+
+/* ============================================
+   🎨 PREMIUM DASHBOARD DESIGN
+   ============================================ */
+
+/* 🎯 최상단 네비게이션 바 */
+.top-nav {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--gray-200);
+  padding: var(--space-4) 0;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: var(--shadow-sm);
+}
+
+.top-nav-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.logo i {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.logout-btn {
+  padding: var(--space-3) var(--space-5);
+  background: linear-gradient(135deg, var(--danger), #dc2626);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: var(--shadow-md);
+}
+
+.logout-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 🎨 메인 컨테이너 */
+.dashboard-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+}
+
+/* 💎 프리미엄 페이지 헤더 */
+.page-header {
+  background: white;
+  border-radius: var(--radius-2xl);
+  padding: var(--space-8);
+  margin-bottom: var(--space-8);
+  box-shadow: var(--shadow-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+
+.page-title {
+  font-size: 2.5rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--gray-900), var(--gray-700));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.page-subtitle {
+  font-size: 1.125rem;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+/* 📊 초현대적 통계 카드 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.stat-card {
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.stat-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-2xl);
+}
+
+.stat-card:hover::before {
+  opacity: 1;
+}
+
+.stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.stat-info {
+  flex: 1;
+  text-align: right;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-2);
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: var(--space-2);
+}
+
+.stat-change {
+  font-size: 0.75rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.stat-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.stat-btn {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  border: 2px solid;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.stat-btn-primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.stat-btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.stat-btn:hover {
+  transform: scale(1.05);
+}
+
+/* 🎯 빠른 액션 섹션 */
+.quick-actions {
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+  box-shadow: var(--shadow-lg);
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.action-btn {
+  padding: var(--space-6);
+  background: linear-gradient(135deg, var(--gray-50), white);
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  transition: var(--transition);
+  text-decoration: none;
+  color: var(--gray-700);
+}
+
+.action-btn:hover {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.action-icon {
+  font-size: 2rem;
+}
+
+.action-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* 📈 차트 그리드 */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.chart-card {
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+}
+
+.chart-header {
+  margin-bottom: var(--space-6);
+}
+
+.chart-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart-subtitle {
+  font-size: 0.875rem;
+  color: var(--gray-500);
+  margin-top: var(--space-1);
+}
+
+/* 🎨 성과 지표 카드 */
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.performance-card {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  color: white;
+  text-align: center;
+  box-shadow: var(--shadow-xl);
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.performance-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, -30px); }
+}
+
+.performance-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-2xl);
+}
+
+.performance-icon {
+  font-size: 3rem;
+  margin-bottom: var(--space-4);
+  opacity: 0.9;
+}
+
+.performance-value {
+  font-size: 2.5rem;
+  font-weight: 900;
+  margin-bottom: var(--space-2);
+}
+
+.performance-label {
+  font-size: 1rem;
+  opacity: 0.9;
+  font-weight: 600;
+}
+
+/* 📱 반응형 디자인 */
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .performance-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .page-title {
+    font-size: 1.75rem;
+  }
+}
+
+/* 🎨 보라색 테마 (하나과학용) */
+.bg-purple {
+  background: linear-gradient(135deg, #6f42c1, #8b5cf6) !important;
+}
+
+.btn-purple {
+  background: linear-gradient(135deg, #6f42c1, #8b5cf6);
+  color: white;
+  border: none;
+}
+
+.btn-purple {
+  background: linear-gradient(135deg, #6f42c1, #8b5cf6);
+  color: white;
+  border: none;
+}
+</style>
+</head>
+<body>
+
+<!-- 🎯 최상단 네비게이션 -->
+<nav class="top-nav animate__animated animate__fadeInDown">
+  <div class="top-nav-content">
+    <div class="logo">
+      <i class="fas fa-chart-line"></i>
+      영업 보고 시스템
+    </div>
+    <div class="user-menu">
+      <div class="user-info">
+        <i class="fas fa-user-circle"></i>
+        {{ request.user.username }}
+      </div>
+      <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">
+        {% csrf_token %}
+        <button type="submit" class="logout-btn">
+          <i class="fas fa-sign-out-alt"></i> 로그아웃
+        </button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<!-- 🎨 메인 대시보드 -->
+<div class="dashboard-container">
+  
+  <!-- 💎 페이지 헤더 -->
+  <div class="page-header animate__animated animate__fadeIn">
+    <h1 class="page-title">
+      <i class="fas fa-tachometer-alt"></i>
+      {{ page_title }}
+    </h1>
+    <p class="page-subtitle">
+      <i class="fas fa-chart-line"></i> 영업 활동을 한눈에 확인하고 관리하세요
+    </p>
+  </div>
+
+  <!-- 📊 통계 카드 그리드 -->
+  <div class="stats-grid animate__animated animate__fadeInUp">
+
+      <!-- 통계 카드들 - 모바일 슬라이더 -->
+      <div class="d-md-none mb-4">
+        <div class="mobile-stats-slider">
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-handshake me-1"></i>고객 정보
+                  </small>
+                  <h3 class="mb-0 text-primary fs-4">
+                    {{ followup_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a href="{% url 'reporting:followup_list' %}" class="btn btn-outline-primary btn-sm flex-fill py-1">
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a href="{% url 'reporting:followup_create' %}" class="btn btn-primary btn-sm flex-fill py-1">
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-calendar-alt me-1"></i>진행 일정
+                  </small>
+                  <h3 class="mb-0 text-success fs-4">
+                    {{ schedule_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a href="{% url 'reporting:schedule_list' %}" class="btn btn-outline-success btn-sm flex-fill py-1">
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a href="{% url 'reporting:schedule_create' %}" class="btn btn-success btn-sm flex-fill py-1">
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-history me-1"></i>영업 기록
+                  </small>
+                  <h3 class="mb-0 text-info fs-4">
+                    {{ sales_record_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a href="{% url 'reporting:history_list' %}" class="btn btn-outline-info btn-sm flex-fill py-1">
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a href="{% url 'reporting:history_create' %}" class="btn btn-info btn-sm flex-fill py-1">
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-clock me-1"></i>오늘 일정
+                  </small>
+                  <h3 class="mb-0 text-warning fs-4">
+                    {{ today_schedules|length }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <a href="{% url 'reporting:schedule_calendar' %}" class="btn btn-warning btn-sm w-100 py-1">
+                  <i class="fas fa-clock me-1"></i>오늘 일정
+                </a>
+              </div>
+            </div>
+          </div>
+
+        {% if request.is_hanagwahak %}
+          <div class="card stat-card">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-concierge-bell me-1"></i>서비스 ({{ current_year }}년)
+                  </small>
+                  <h3 class="mb-0 text-purple fs-4">
+                    {{ service_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                  <small class="text-muted fs-6">이번 달 {{ this_month_service_count }}건</small>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a href="{% url 'reporting:history_list' %}?action_type=service" class="btn btn-outline-purple btn-sm flex-fill py-1">
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a href="{% url 'reporting:history_create' %}" class="btn btn-purple btn-sm flex-fill py-1">
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+        </div>
+      </div>
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-handshake me-1"></i>고객 정보
+                  </small>
+                  <h3 class="mb-0 text-primary fs-4">
+                    {{ followup_count }}<small class="fs-6 text-muted ms-1"
+                      >건</small
+                    >
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:followup_list' %}"
+                    class="btn btn-outline-primary btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a
+                    href="{% url 'reporting:followup_create' %}"
+                    class="btn btn-primary btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-calendar-alt me-1"></i>진행 일정
+                  </small>
+                  <h3 class="mb-0 text-success fs-4">
+                    {{ schedule_count }}<small class="fs-6 text-muted ms-1"
+                      >건</small
+                    >
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:schedule_list' %}"
+                    class="btn btn-outline-success btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a
+                    href="{% url 'reporting:schedule_create' %}"
+                    class="btn btn-success btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-history me-1"></i>영업 기록<br>({{current_year }}년)
+                  </small>
+                  <h3 class="mb-0 text-info fs-4">
+                    {{ sales_record_count }}<small class="fs-6 text-muted ms-1"
+                      >건</small
+                    >
+                  </h3>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:history_list' %}"
+                    class="btn btn-outline-info btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-list me-1"></i>기록
+                  </a>
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-info btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% if request.is_hanagwahak %}
+        <div class="col-12 col-sm-6 col-lg-2-4">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-concierge-bell me-1"></i>서비스<br>({{ current_year }}년)
+                  </small>
+                  <h3 class="mb-0 text-purple fs-4">
+                    {{ service_count }}<small class="fs-6 text-muted ms-1">건</small>
+                  </h3>
+                  <small class="text-muted fs-6">이번 달 {{ this_month_service_count }}건</small>
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:history_list' %}?action_type=service"
+                    class="btn btn-outline-purple btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-list me-1"></i>목록
+                  </a>
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-purple btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-plus me-1"></i>추가
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="col-12 col-sm-6 {% if request.is_hanagwahak %}col-lg-2-4{% else %}col-lg-3{% endif %}">
+          <div class="card stat-card h-100">
+            <div class="card-body d-flex flex-column p-3">
+              <div class="mb-2">
+                <div class="flex-grow-1">
+                  <small class="card-title text-muted mb-1">
+                    <i class="fas fa-won-sign me-1"></i>총 납품 금액<br>({{current_year }}년)
+                  </small>
+                  <h3 class="mb-0 text-warning fs-4" id="total-delivery-amount">
+                    {% load currency_filters %} {% if total_delivery_amount > 0%} {{ total_delivery_amount|currency_format }}<small
+                      class="fs-6 text-muted ms-1"
+                      >원</small
+                    >
+                    {% else %} 0<small class="fs-6 text-muted ms-1">원</small>
+                    {% endif %}
+                  </h3>
+                  <small class="text-muted fs-6"
+                    >납품 {{ delivery_count }}건</small
+                  >
+                </div>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex gap-1">
+                  <a
+                    href="{% url 'reporting:history_list' %}?action_type=delivery_schedule"
+                    class="btn btn-outline-warning btn-sm flex-fill py-1"
+                  >
+                    <i class="fas fa-truck me-1"></i>납품 기록
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 빠른 액션 버튼 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title mb-3">
+                <i class="fas fa-bolt me-2"></i>빠른 액션
+              </h6>
+              <div class="row g-2">
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
+                  <a
+                    href="{% url 'reporting:followup_create' %}"
+                    class="btn btn-outline-primary w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-user-plus mb-2"></i>
+                    <small>새 고객 추가</small>
+                  </a>
+                </div>
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
+                  <a
+                    href="{% url 'reporting:schedule_create' %}"
+                    class="btn btn-outline-success w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-calendar-plus mb-2"></i>
+                    <small>일정 추가</small>
+                  </a>
+                </div>
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
+                  <a
+                    href="{% url 'reporting:schedule_calendar' %}"
+                    class="btn btn-outline-success w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-calendar mb-2"></i>
+                    <small>캘린더 보기</small>
+                  </a>
+                </div>
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-outline-info w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-plus-circle mb-2"></i>
+                    <small>영업 기록</small>
+                  </a>
+                </div>
+                {% if request.is_hanagwahak %}
+                <div class="col-6 col-md-4 col-lg-2">
+                  <a
+                    href="{% url 'reporting:history_create' %}"
+                    class="btn btn-outline-purple w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-concierge-bell mb-2"></i>
+                    <small>서비스 기록</small>
+                  </a>
+                </div>
+                {% endif %}
+                <div class="col-6 col-md-4 {% if request.is_hanagwahak %}col-lg-2{% else %}col-lg-2-5{% endif %}">
+                  <a
+                    href="{% url 'reporting:schedule_list' %}?status=scheduled"
+                    class="btn btn-outline-warning w-100 quick-action-btn"
+                  >
+                    <i class="fas fa-clock mb-2"></i>
+                    <small>오늘 일정</small>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 오늘 일정 & 최근 고객 -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h6 class="card-title mb-0">
+                <i class="fas fa-calendar-day me-2"></i>오늘 일정
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if today_schedules %} {% for schedule in today_schedules %}
+              <div
+                class="d-flex justify-content-between align-items-center py-2 {% if not forloop.last %}border-bottom{% endif %}"
+              >
+                <div>
+                  <h6 class="mb-1">
+                    <a
+                      href="{% url 'reporting:schedule_detail' schedule.pk %}"
+                      class="text-decoration-none"
+                    >
+                      {{ schedule.followup.customer_name|default:"고객명 미정"}}
+                    </a>
+                  </h6>
+                  <small class="text-muted"
+                    >{{ schedule.followup.company|default:"업체명 미정"}}</small
+                  >
+                </div>
+                <div class="text-end">
+                  <span class="badge bg-primary"
+                    >{{ schedule.visit_time|date:"H:i" }}</span
+                  >
+                  {% if schedule.location %}
+                  <br /><small class="text-muted"
+                    >{{ schedule.location|truncatechars:20 }}</small
+                  >
+                  {% endif %}
+                </div>
+              </div>
+              {% endfor %} {% else %}
+              <div class="text-center py-3">
+                <i class="fas fa-calendar-check fa-2x text-muted mb-2"></i>
+                <p class="text-muted mb-0">오늘 예정된 일정이 없습니다.</p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h6 class="card-title mb-0">
+                <i class="fas fa-user-clock me-2"></i>최근 고객 (7일)
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if recent_customers %} {% for customer in recent_customers %}
+              <div
+                class="d-flex justify-content-between align-items-center py-2 {% if not forloop.last %}border-bottom{% endif %}"
+              >
+                <div>
+                  <h6 class="mb-1">
+                    <a
+                      href="{% url 'reporting:followup_detail' customer.pk %}"
+                      class="text-decoration-none"
+                    >
+                      {{ customer.customer_name|default:"고객명 미정" }}
+                    </a>
+                  </h6>
+                  <small class="text-muted"
+                    >{{ customer.company|default:"업체명 미정" }}</small
+                  >
+                </div>
+                <div class="text-end">
+                  <span
+                    class="badge bg-{% if customer.priority == 'high' %}danger{% elif customer.priority == 'medium' %}warning{% else %}secondary{% endif %}"
+                  >
+                    {{ customer.get_priority_display }}
+                  </span>
+                  <br /><small class="text-muted"
+                    >{{ customer.created_at|date:"m/d" }}</small
+                  >
+                </div>
+              </div>
+              {% endfor %} {% else %}
+              <div class="text-center py-3">
+                <i class="fas fa-user-plus fa-2x text-muted mb-2"></i>
+                <p class="text-muted mb-0">
+                  최근 7일간 추가된 고객이 없습니다.
+                </p>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 통계 차트 -->
+      <div class="row g-4 mb-4 {% if not request.is_hanagwahak %}justify-content-center{% endif %}">
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-line me-2"></i>월별 고객 추가 현황
+              </h6>
+            </div>
+            <div class="card-body d-flex flex-column">
+              {% if monthly_customers %}
+              <div style="position: relative; height: 250px">
+                <canvas id="monthlyCustomersChart"></canvas>
+              </div>
+              {% else %}
+              <div
+                class="text-center py-4 flex-grow-1 d-flex flex-column justify-content-center"
+              >
+                <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                <p class="text-muted">월별 고객 데이터가 없습니다.</p>
+                <a
+                  href="{% url 'reporting:followup_create' %}"
+                  class="btn btn-primary btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 고객 등록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-area me-2"></i>영업 추이 (14일)
+              </h6>
+              <small class="text-muted">최근 14일간 일별 영업 활동 건수</small>
+            </div>
+            <div class="card-body d-flex flex-column">
+              {% if daily_activities %}
+              <div style="position: relative; height: 250px">
+                <canvas id="dailyActivitiesChart"></canvas>
+              </div>
+              {% else %}
+              <div
+                class="text-center py-4 flex-grow-1 d-flex flex-column justify-content-center"
+              >
+                <i class="fas fa-chart-area fa-3x text-muted mb-3"></i>
+                <h6 class="text-muted mb-2">활동 데이터가 없습니다</h6>
+                <p class="text-muted small mb-3">
+                  고객 미팅, 납품 일정 등의 영업 활동을<br />
+                  기록하면 일별 추이를 확인할 수 있습니다.
+                </p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-primary btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 영업 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {% if request.is_hanagwahak %}
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-concierge-bell me-2"></i>월별 서비스 현황
+              </h6>
+              <small class="text-muted">{{ current_year }}년 월별 서비스 처리 현황</small>
+            </div>
+            <div class="card-body d-flex flex-column">
+              {% if monthly_service_data %}
+              <div style="position: relative; height: 250px">
+                <canvas id="monthlyServiceChart"></canvas>
+              </div>
+              {% else %}
+              <div
+                class="text-center py-4 flex-grow-1 d-flex flex-column justify-content-center"
+              >
+                <i class="fas fa-concierge-bell fa-3x text-muted mb-3"></i>
+                <h6 class="text-muted mb-2">서비스 데이터가 없습니다</h6>
+                <p class="text-muted small mb-3">
+                  서비스 활동을 기록하면<br />
+                  월별 처리 현황을 확인할 수 있습니다.
+                </p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-purple btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 서비스 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 일정 완료율 & 활동 유형별 통계 -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-pie me-2"></i>일정 완료율
+              </h6>
+            </div>
+            <div class="card-body text-center">
+              {% if schedule_stats.total > 0 %}
+              <div style="position: relative; height: 200px">
+                <canvas id="completionRateChart"></canvas>
+              </div>
+              <div class="mt-3">
+                <h4 class="text-primary">{{ completion_rate }}%</h4>
+                <small class="text-muted"
+                  >전체 {{ schedule_stats.total }}건 중
+                  {{schedule_stats.completed }}건 완료</small
+                >
+              </div>
+              {% else %}
+              <div class="py-4">
+                <i class="fas fa-chart-pie fa-3x text-muted mb-3"></i>
+                <p class="text-muted">등록된 일정이 없습니다.</p>
+                <a
+                  href="{% url 'reporting:schedule_create' %}"
+                  class="btn btn-success btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 일정 등록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-bar me-2"></i>활동 유형별 통계
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if activity_stats %}
+              <div class="row">
+                <div class="col-md-6">
+                  <div style="position: relative; height: 150px">
+                    <canvas id="activityChart"></canvas>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  {% for stat in activity_stats %}
+                  {% if stat.action_type != 'service' or request.is_hanagwahak %}
+                  <div
+                    class="d-flex justify-content-between align-items-center p-3 bg-light rounded mb-2"
+                  >
+                    <div class="d-flex align-items-center">
+                      {% if stat.action_type == 'customer_meeting' %}
+                      <i class="fas fa-handshake text-primary me-2"></i>
+                      <span>고객 미팅</span>
+                      {% elif stat.action_type == 'delivery_schedule' %}
+                      <i class="fas fa-truck text-success me-2"></i>
+                      <span>납품 일정</span>
+                      {% elif stat.action_type == 'service' %}
+                      <i class="fas fa-concierge-bell text-purple me-2"></i>
+                      <span>서비스</span>
+                      {% else %}
+                      <i class="fas fa-circle text-muted me-2"></i>
+                      <span>{{ stat.action_type }}</span>
+                      {% endif %}
+                    </div>
+                    <span
+                      class="badge {% if stat.action_type == 'customer_meeting' %}bg-primary{% elif stat.action_type == 'delivery_schedule' %}bg-success{% elif stat.action_type == 'service' %}bg-purple{% else %}bg-secondary{% endif %} fs-6"
+                    >
+                      {{ stat.count }}건
+                    </span>
+                  </div>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+              {% else %}
+              <div class="text-center py-4">
+                <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                <p class="text-muted">아직 영업 기록이 없습니다.</p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-primary"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 영업 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 최근 활동 -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div
+              class="card-header d-flex justify-content-between align-items-center"
+            >
+              <h6 class="card-title mb-0">
+                <i class="fas fa-clock me-2"></i>최근 활동
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if recent_activities %}
+              <div class="timeline-simple">
+                {% for activity in recent_activities %}
+                {% if activity.action_type != 'service' or request.is_hanagwahak %}
+                <div
+                  class="timeline-item-simple mb-3 {% if not forloop.last %}pb-3 border-bottom{% endif %}"
+                >
+                  <div class="d-flex">
+                    <div class="flex-shrink-0 me-3">
+                      <div
+                        class="timeline-icon-simple {% if activity.action_type == 'customer_meeting' %}bg-primary{% elif activity.action_type == 'delivery_schedule' %}bg-success{% elif activity.action_type == 'service' %}bg-purple{% else %}bg-secondary{% endif %}"
+                      >
+                        {% if activity.action_type == 'customer_meeting' %}
+                        <i class="fas fa-handshake"></i>
+                        {% elif activity.action_type == 'delivery_schedule' %}
+                        <i class="fas fa-truck"></i>
+                        {% elif activity.action_type == 'service' %}
+                        <i class="fas fa-concierge-bell"></i>
+                        {% else %}
+                        <i class="fas fa-circle"></i>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="flex-grow-1">
+                      <div
+                        class="d-flex justify-content-between align-items-start"
+                      >
+                        <div>
+                          <h6 class="mb-1">
+                            <a
+                              href="{% url 'reporting:history_detail' activity.pk %}"
+                              class="text-decoration-none"
+                            >
+                              {{ activity.get_action_type_display }}
+                            </a>
+                          </h6>
+                          <p class="mb-1">
+                            <strong>고객:</strong>
+                            {{activity.followup.customer_name|default:"고객명 미정"}}
+                            <span class="text-muted"
+                              >({{ activity.followup.company|default:"업체명 미정"}})</span
+                            >
+                          </p>
+                          {% if activity.action_type == 'delivery_schedule' and activity.delivery_amount %}
+                          <p class="mb-1">
+                            <strong>납품 금액:</strong>
+                            {% load currency_filters %}
+                            <span class="badge bg-success"
+                              >{{activity.delivery_amount|currency_format}}원</span
+                            >
+                          </p>
+                          {% endif %}
+                        </div>
+                        <div class="text-end">
+                          <small class="text-muted"
+                            >{{ activity.created_at|date:"m월 d일 H:i" }}</small
+                          >
+                          <br /><small class="text-muted"
+                            >{{ activity.user.username }}</small
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="text-center py-4">
+                <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                <p class="text-muted">아직 영업 기록이 없습니다.</p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-primary"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 영업 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+  <!-- 🎯 성과 지표 대시보드 -->
+  <div class="row mt-5 mb-4">
+    <div class="col-12">
+      <h4 class="mb-4" style="font-weight: 800; color: var(--gray-900);">
+        <i class="fas fa-trophy me-2" style="color: #fbbf24;"></i>성과 지표 대시보드
+      </h4>
+    </div>
+  </div>
+
+  <!-- 💎 성과 요약 카드들 - 프리미엄 디자인 -->
+  <div class="row g-4 mb-5">
+    <div class="col-lg-3 col-md-6">
+      <div class="card performance-card bg-success text-white animate__animated animate__fadeInUp">
+        <i class="fas fa-trophy"></i>
+        <h4>
+          {% load currency_filters %}
+          {{ monthly_revenue|currency_format|default:"0" }}원
+        </h4>
+        <p class="mb-0">이번 달 납품액</p>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card performance-card bg-info text-white animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
+        <i class="fas fa-handshake"></i>
+        <h4>{{ monthly_meetings|default:"0" }}회</h4>
+        <p class="mb-0">이번 달 미팅</p>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card performance-card bg-warning text-white animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
+        <i class="fas fa-percentage"></i>
+        <h4>{{ conversion_rate|floatformat:1|default:"0" }}%</h4>
+        <p class="mb-0">납품 전환율</p>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+      <div class="card performance-card bg-primary text-white animate__animated animate__fadeInUp" style="animation-delay: 0.3s;">
+        <i class="fas fa-chart-line"></i>
+        <h4>{{ avg_deal_size|currency_format|default:"0" }}원</h4>
+        <p class="mb-0">평균 거래 규모</p>
+      </div>
+    </div>
+  </div>
+
+      <!-- 새로운 차트 그리드 -->
+      <div class="row g-4 mb-4">
+        <!-- 월별 납품 금액 추이 -->
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header bg-white">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-chart-line me-2 text-success"></i>월별 납품
+                금액 추이
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if monthly_revenue_data %}
+              <div style="position: relative; height: 300px">
+                <canvas id="monthlyRevenueChart"></canvas>
+              </div>
+              {% else %}
+              <div class="text-center py-4">
+                <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                <p class="text-muted">월별 납품 데이터가 없습니다.</p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-success btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 납품 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- 고객별 납품 현황 -->
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header bg-white">
+              <h6 class="card-title mb-0">
+                <i class="fas fa-users me-2 text-info"></i>상위 고객별 납품 현황
+              </h6>
+            </div>
+            <div class="card-body">
+              {% if customer_revenue_data %}
+              <div style="position: relative; height: 300px">
+                <canvas id="customerRevenueChart"></canvas>
+              </div>
+              {% else %}
+              <div class="text-center py-4">
+                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                <p class="text-muted">고객별 납품 데이터가 없습니다.</p>
+                <a
+                  href="{% url 'reporting:history_create' %}"
+                  class="btn btn-info btn-sm"
+                >
+                  <i class="fas fa-plus me-1"></i>첫 납품 기록하기
+                </a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          // 월별 고객 추가 현황 차트
+          const monthlyCustomersChart = document.getElementById('monthlyCustomersChart');
+          if (monthlyCustomersChart) {
+            {% if monthly_customers %}
+            const ctx = monthlyCustomersChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: [
+                  {% for data in monthly_customers %}
+                    '{{ data.month_name }}'{% if not forloop.last %},{% endif %}
+                  {% endfor %}
+                ],
+                datasets: [{
+                  label: '신규 고객',
+                  data: [
+                    {% for data in monthly_customers %}
+                      {{ data.count }}{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                  ],
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                  borderWidth: 2,
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      stepSize: 1
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }// 활동 추이 차트
+          const dailyActivitiesChart = document.getElementById('dailyActivitiesChart');
+          if (dailyActivitiesChart) {
+            {% if daily_activities %}
+            const ctx = dailyActivitiesChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: [
+                  {% for data in daily_activities %}
+                    '{{ data.date }}'{% if not forloop.last %},{% endif %}
+                  {% endfor %}
+                ],
+                datasets: [{
+                  label: '영업 기록 건수',
+                  data: [
+                    {% for data in daily_activities %}
+                      {{ data.count }}{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                  ],
+                  backgroundColor: 'rgba(32, 201, 151, 0.8)',
+                  borderColor: '#20c997',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      stepSize: 1
+                    }
+                  },
+                  x: {
+                    ticks: {
+                      maxRotation: 45,
+                      minRotation: 45
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }
+
+          // 월별 서비스 현황 차트
+          const monthlyServiceChart = document.getElementById('monthlyServiceChart');
+          if (monthlyServiceChart) {
+            {% if monthly_service_data %}
+            const ctx = monthlyServiceChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: {{ monthly_service_labels|safe }},
+                datasets: [{
+                  label: '서비스 건수',
+                  data: {{ monthly_service_data|safe }},
+                  backgroundColor: 'rgba(111, 66, 193, 0.8)',
+                  borderColor: '#6f42c1',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      stepSize: 1
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }
+
+          // 일정 완료율 차트
+          const completionRateChart = document.getElementById('completionRateChart');
+          if (completionRateChart) {
+            {% if schedule_stats.total > 0 %}
+            const ctx = completionRateChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: {
+                labels: ['완료', '예정', '취소'],
+                datasets: [{
+                  data: [
+                    {{ schedule_stats.completed }},
+                    {{ schedule_stats.scheduled }},
+                    {{ schedule_stats.cancelled }}
+                  ],
+                  backgroundColor: [
+                    '#198754',
+                    '#0d6efd',
+                    '#dc3545'
+                  ],
+                  borderWidth: 2,
+                  borderColor: '#fff'
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'bottom',
+                    labels: {
+                      padding: 15,
+                      usePointStyle: true
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }
+
+          // 활동 유형별 차트
+          const activityChart = document.getElementById('activityChart');
+          if (activityChart) {
+            const ctx = activityChart.getContext('2d');
+
+            const activityData = {
+              labels: [
+                {% for stat in activity_stats %}
+                  {% if stat.action_type == 'customer_meeting' %}
+                    '고객 미팅'{% if not forloop.last %},{% endif %}
+                  {% elif stat.action_type == 'delivery_schedule' %}
+                    '납품 일정'{% if not forloop.last %},{% endif %}
+                  {% elif stat.action_type == 'service' %}
+                    '서비스'{% if not forloop.last %},{% endif %}
+                  {% else %}
+                    '{{ stat.action_type }}'{% if not forloop.last %},{% endif %}
+                  {% endif %}
+                {% endfor %}
+              ],
+              datasets: [{
+                data: [
+                  {% for stat in activity_stats %}
+                    {{ stat.count }}{% if not forloop.last %},{% endif %}
+                  {% endfor %}
+                ],
+                backgroundColor: [
+                  {% for stat in activity_stats %}
+                    {% if stat.action_type == 'customer_meeting' %}
+                      '#0d6efd'{% if not forloop.last %},{% endif %}
+                    {% elif stat.action_type == 'delivery_schedule' %}
+                      '#198754'{% if not forloop.last %},{% endif %}
+                    {% elif stat.action_type == 'service' %}
+                      '#6f42c1'{% if not forloop.last %},{% endif %}
+                    {% else %}
+                      '#6c757d'{% if not forloop.last %},{% endif %}
+                    {% endif %}
+                  {% endfor %}
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+              }]
+            };
+
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: activityData,
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                }
+              }
+            });
+          }          // 월별 납품 금액 추이 차트
+          const monthlyRevenueChart = document.getElementById('monthlyRevenueChart');
+          if (monthlyRevenueChart) {
+            {% if monthly_revenue_data %}
+            const ctx = monthlyRevenueChart.getContext('2d');
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: {{ monthly_revenue_labels|safe }},
+                datasets: [{
+                  label: '납품 금액',
+                  data: {{ monthly_revenue_data|safe }},
+                  borderColor: '#198754',
+                  backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                  borderWidth: 3,
+                  fill: true,
+                  tension: 0.4,
+                  pointBackgroundColor: '#198754',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2,
+                  pointRadius: 6
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      callback: function(value) {
+                        return value.toLocaleString() + '원';
+                      }
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }          // 고객별 납품 현황 차트
+          const customerRevenueChart = document.getElementById('customerRevenueChart');
+          if (customerRevenueChart) {
+            {% if customer_revenue_data %}
+            const ctx = customerRevenueChart.getContext('2d');            new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: {{ customer_revenue_labels|safe }},
+                datasets: [{
+                  label: '납품 금액',
+                  data: {{ customer_revenue_data|safe }},
+                  backgroundColor: [
+                    'rgba(32, 201, 151, 0.8)',
+                    'rgba(13, 110, 253, 0.8)',
+                    'rgba(255, 193, 7, 0.8)',
+                    'rgba(220, 53, 69, 0.8)',
+                    'rgba(108, 117, 125, 0.8)'
+                  ],
+                  borderColor: [
+                    '#20c997',
+                    '#0d6efd',
+                    '#ffc107',
+                    '#dc3545',
+                    '#6c757d'
+                  ],
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  x: {
+                    beginAtZero: true,
+                    ticks: {
+                      callback: function(value) {
+                        return value.toLocaleString() + '원';
+                      }
+                    }
+                  }
+                }
+              }
+            });
+            {% endif %}
+          }
+        });
+
+        // 총 납품 금액 동적 텍스트 크기 조정
+        function adjustAmountTextSize() {
+          const amountElement = document.getElementById('total-delivery-amount');
+          if (!amountElement) return;
+          
+          const container = amountElement.parentElement;
+          const containerWidth = container.offsetWidth;
+          
+          // 초기 폰트 크기로 리셋
+          amountElement.style.fontSize = '';
+          amountElement.classList.remove('fs-6', 'fs-5', 'fs-4', 'fs-3', 'fs-2', 'fs-1');
+          amountElement.classList.add('fs-4');
+          
+          // 텍스트가 컨테이너를 벗어나는지 확인
+          if (amountElement.scrollWidth > containerWidth) {
+            // 천만원대 이상 - 폰트 크기 줄이기
+            amountElement.classList.remove('fs-4');
+            amountElement.classList.add('fs-5');
+            
+            // 여전히 오버플로우면 더 줄이기
+            if (amountElement.scrollWidth > containerWidth) {
+              amountElement.classList.remove('fs-5');
+              amountElement.classList.add('fs-6');
+              
+              // 그래도 오버플로우면 더 작게
+              if (amountElement.scrollWidth > containerWidth) {
+                amountElement.style.fontSize = '0.8rem';
+                
+                // 최종적으로도 오버플로우면 최소 크기
+                if (amountElement.scrollWidth > containerWidth) {
+                  amountElement.style.fontSize = '0.7rem';
+                }
+              }
+            }
+          }
+        }
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', adjustAmountTextSize);
+        
+        // 윈도우 리사이즈 시 재조정
+        window.addEventListener('resize', adjustAmountTextSize);
+      </script>
+
+      {% endblock %}
+    </div>
+  </div>
+</div>

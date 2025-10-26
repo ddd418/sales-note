@@ -1,257 +1,352 @@
-{% extends "reporting/base.html" %} {% block title %} 로그인 - 영업 보고 시스템
-{% endblock title %} 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인 - 영업 보고 시스템</title>
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Google Fonts - Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+/* 기본 리셋 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-{% block content %}
-<style>
-/* 로그인 페이지 모바일 최적화 */
-@media (max-width: 768px) {
-  .login-container {
-    max-width: 90% !important;
-    margin: 20px auto !important;
-    padding: 25px 20px !important;
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 🎨 프리미엄 로그인 페이지 디자인 */
+.login-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  overflow: hidden;
+  padding: 1.5rem;
+  z-index: 9999;
+}
+
+.login-page::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: bgMove 20s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes bgMove {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(50px, 50px); }
+}
+
+.login-page .floating-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  animation: float 15s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.login-page .circle-1 {
+  width: 300px;
+  height: 300px;
+  top: 10%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.login-page .circle-2 {
+  width: 200px;
+  height: 200px;
+  bottom: 15%;
+  right: 15%;
+  animation-delay: 5s;
+}
+
+.login-page .circle-3 {
+  width: 150px;
+  height: 150px;
+  top: 60%;
+  left: 5%;
+  animation-delay: 10s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-30px) scale(1.05); }
+}
+
+.login-card {
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding: 3rem;
+  max-width: 460px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
   }
-
-  .login-title {
-    font-size: 24px !important;
-    margin-bottom: 30px !important;
-  }
-
-  .login-form {
-    width: 100%;
-  }
-
-  .form-group {
-    margin-bottom: 20px !important;
-  }
-
-  .form-label {
-    font-size: 16px !important;
-    margin-bottom: 8px !important;
-  }
-
-  .form-input {
-    width: 100% !important;
-    padding: 15px !important;
-    font-size: 16px !important; /* iOS 줌 방지 */
-    border-radius: 8px !important;
-    border: 2px solid #e1e5e9 !important;
-    box-sizing: border-box !important;
-    transition: border-color 0.3s ease;
-  }
-
-  .form-input:focus {
-    outline: none;
-    border-color: #2563eb !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
-  }
-
-  .login-button {
-    width: 100% !important;
-    padding: 15px !important;
-    font-size: 18px !important;
-    min-height: 50px !important;
-    border-radius: 8px !important;
-    background-color: #2563eb !important;
-    border: none !important;
-    color: white !important;
-    font-weight: 600 !important;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .login-button:hover,
-  .login-button:focus {
-    background-color: #1d4ed8 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-  }
-
-  .login-button:active {
+  to {
+    opacity: 1;
     transform: translateY(0);
-  }
-
-  .error-message {
-    background-color: #fef2f2 !important;
-    color: #dc2626 !important;
-    padding: 12px 16px !important;
-    border-radius: 8px !important;
-    border: 1px solid #fecaca !important;
-    font-size: 14px !important;
-    text-align: center !important;
-    margin-bottom: 20px !important;
-  }
-
-  /* 키보드가 올라왔을 때 레이아웃 조정 */
-  .login-container {
-    min-height: auto;
-    margin-top: 10px !important;
   }
 }
 
-/* 가로 모드에서 키보드 대응 */
-@media (max-width: 768px) and (orientation: landscape) {
-  .login-container {
-    margin: 10px auto !important;
-    padding: 20px !important;
-  }
+.login-logo {
+  text-align: center;
+  margin-bottom: 2rem;
+}
 
-  .login-title {
-    font-size: 20px !important;
-    margin-bottom: 20px !important;
-  }
+.login-logo-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+  animation: logoFloat 3s ease-in-out infinite;
+}
 
-  .form-group {
-    margin-bottom: 15px !important;
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.login-logo-icon i {
+  font-size: 36px;
+  color: white;
+}
+
+.login-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 0.25rem;
+}
+
+.login-subtitle {
+  font-size: 15px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.login-error {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  color: #991b1b;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-left: 4px solid #dc2626;
+  animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
+}
+
+.login-form-group {
+  margin-bottom: 1.5rem;
+}
+
+.login-form-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+}
+
+.login-input {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  font-size: 16px;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  transform: translateY(-2px);
+}
+
+.login-submit-btn {
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border: none;
+  border-radius: 0.75rem;
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
+.login-submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+}
+
+.login-footer {
+  margin-top: 2rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .login-card {
+    padding: 2rem 1.5rem;
+  }
+  
+  .login-page {
+    padding: 1rem;
   }
 }
 </style>
+</head>
+<body>
 
-<div
-  class="login-container"
-  style="
-    max-width: 400px;
-    margin: 50px auto;
-    padding: 30px;
-    background-color: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e1e5e9;
-  "
->
-  <h2 class="login-title" style="text-align: center; margin-bottom: 25px; color: #1f2937; font-weight: 700;">로그인</h2>
+<div class="login-page">
+  <div class="floating-circle circle-1"></div>
+  <div class="floating-circle circle-2"></div>
+  <div class="floating-circle circle-3"></div>
 
-  {% if form.errors %}
-  <div class="error-message" style="color: #dc2626; text-align: center; margin-bottom: 15px; padding: 12px; background-color: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;">
-    <i class="fas fa-exclamation-circle me-2"></i>아이디 또는 비밀번호가 올바르지 않습니다.
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">
+        <i class="fas fa-chart-line"></i>
+      </div>
+      <h1 class="login-title">영업 보고 시스템</h1>
+      <p class="login-subtitle">계정에 로그인하세요</p>
+    </div>
+
+    {% if form.errors %}
+    <div class="login-error">
+      <i class="fas fa-exclamation-circle"></i>
+      <span>아이디 또는 비밀번호가 올바르지 않습니다.</span>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'reporting:login' %}" id="loginForm">
+      {% csrf_token %}
+      
+      <div class="login-form-group">
+        <label for="id_username" class="login-form-label">
+          <i class="fas fa-user"></i>
+          <span>사용자 ID</span>
+        </label>
+        <input
+          type="text"
+          name="username"
+          id="id_username"
+          required
+          autocomplete="username"
+          class="login-input"
+          placeholder="사용자 ID를 입력하세요"
+        />
+      </div>
+
+      <div class="login-form-group">
+        <label for="id_password" class="login-form-label">
+          <i class="fas fa-lock"></i>
+          <span>비밀번호</span>
+        </label>
+        <input
+          type="password"
+          name="password"
+          id="id_password"
+          required
+          autocomplete="current-password"
+          class="login-input"
+          placeholder="비밀번호를 입력하세요"
+        />
+      </div>
+
+      <button type="submit" class="login-submit-btn" id="loginBtn">
+        <i class="fas fa-sign-in-alt"></i>
+        <span>로그인</span>
+      </button>
+    </form>
+
+    <div class="login-footer">
+      <p>&copy; 2025 영업 보고 시스템. All rights reserved.</p>
+    </div>
   </div>
-  {% endif %}
-
-  <form method="post" action="{% url 'reporting:login' %}" class="login-form">
-    {% csrf_token %}
-    <div class="form-group" style="margin-bottom: 15px">
-      <label
-        for="id_username"
-        class="form-label"
-        style="
-          display: block;
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #374151;
-          font-size: 14px;
-        "
-        ><i class="fas fa-user me-2"></i>사용자 ID</label
-      >
-      <input
-        type="text"
-        name="username"
-        id="id_username"
-        required
-        autocomplete="username"
-        class="form-input"
-        style="
-          width: 100%;
-          padding: 12px 16px;
-          border: 2px solid #e1e5e9;
-          border-radius: 8px;
-          box-sizing: border-box;
-          font-size: 16px;
-          transition: border-color 0.3s ease;
-        "
-        placeholder="사용자 ID를 입력하세요"
-      />
-    </div>
-    <div class="form-group" style="margin-bottom: 20px">
-      <label
-        for="id_password"
-        class="form-label"
-        style="
-          display: block;
-          margin-bottom: 5px;
-          font-weight: 500;
-          color: #374151;
-          font-size: 14px;
-        "
-        ><i class="fas fa-lock me-2"></i>비밀번호</label
-      >
-      <input
-        type="password"
-        name="password"
-        id="id_password"
-        required
-        autocomplete="current-password"
-        class="form-input"
-        style="
-          width: 100%;
-          padding: 12px 16px;
-          border: 2px solid #e1e5e9;
-          border-radius: 8px;
-          box-sizing: border-box;
-          font-size: 16px;
-          transition: border-color 0.3s ease;
-        "
-        placeholder="비밀번호를 입력하세요"
-      />
-    </div>
-    <button
-      type="submit"
-      class="btn btn-primary login-button"
-      style="
-        width: 100%; 
-        padding: 12px;
-        background-color: #2563eb;
-        border: none;
-        border-radius: 8px;
-        color: white;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      "
-    >
-      <i class="fas fa-sign-in-alt me-2"></i>로그인
-    </button>
-  </form>
 </div>
 
 <script>
-// 로그인 폼 개선
 document.addEventListener('DOMContentLoaded', function() {
-  const form = document.querySelector('.login-form');
-  const inputs = form.querySelectorAll('input');
+  const loginBtn = document.getElementById('loginBtn');
+  const inputs = document.querySelectorAll('.login-input');
   
-  // 입력 필드 포커스 효과
   inputs.forEach(input => {
     input.addEventListener('focus', function() {
-      this.style.borderColor = '#2563eb';
-      this.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.1)';
+      this.parentElement.style.transform = 'scale(1.02)';
     });
     
     input.addEventListener('blur', function() {
-      this.style.borderColor = '#e1e5e9';
-      this.style.boxShadow = 'none';
+      this.parentElement.style.transform = 'scale(1)';
     });
   });
   
-  // 폼 제출 시 로딩 상태
-  form.addEventListener('submit', function() {
-    const button = this.querySelector('.login-button');
-    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>로그인 중...';
-    button.disabled = true;
+  document.getElementById('loginForm').addEventListener('submit', function() {
+    loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>로그인 중...</span>';
+    loginBtn.disabled = true;
   });
-  
-  // 모바일에서 키보드가 나타날 때 스크롤 조정
-  if (/Mobi|Android/i.test(navigator.userAgent)) {
-    const container = document.querySelector('.login-container');
-    
-    inputs.forEach(input => {
-      input.addEventListener('focus', function() {
-        setTimeout(() => {
-          this.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-      });
-    });
-  }
 });
 </script>
-{% endblock content %}
+</body>
+</html>

@@ -143,10 +143,11 @@ def can_access_user_data(request_user, target_user):
     if user_profile.is_admin():
         return True
     
-    # Manager는 Salesman 데이터만 접근 가능
+    # Manager는 모든 Salesman과 다른 Manager의 데이터 접근 가능 (읽기 권한)
     if user_profile.is_manager():
         target_profile = get_user_profile(target_user)
-        return target_profile.is_salesman()
+        # Manager는 Salesman과 다른 Manager의 데이터 모두 볼 수 있음
+        return target_profile.is_salesman() or target_profile.is_manager()
     
     # Salesman은 자신의 데이터만 접근 가능
     return request_user == target_user
@@ -999,6 +1000,208 @@ def dashboard_view(request):
         monthly_service_data = []
         monthly_service_labels = []
 
+    # ============================================
+    # 📊 새로운 7개 차트를 위한 데이터 준비
+    # ============================================
+    
+    # 1️⃣ 매출 및 납품 추이 (월별 납품 금액 + 건수)
+    monthly_delivery_stats = {
+        'labels': [],
+        'amounts': [],
+        'counts': []
+    }
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        month_data = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            delivery_amount__isnull=False
+        ).aggregate(
+            total=Sum('delivery_amount'),
+            count=Count('id')
+        )
+        
+        monthly_delivery_stats['labels'].append(f"{target_date.month}월")
+        monthly_delivery_stats['amounts'].append(float(month_data['total'] or 0))
+        monthly_delivery_stats['counts'].append(month_data['count'] or 0)
+    
+    # 2️⃣ 영업 퍼널 (미팅 → 견적 → 발주예정 → 납품완료)
+    sales_funnel = {
+        'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
+        'values': [
+            histories_current_year.filter(action_type='customer_meeting').count(),
+            histories_current_year.filter(action_type='quotation').count(),
+            followups.filter(status='order_pending', created_at__year=current_year).count(),
+            histories_current_year.filter(action_type='delivery_schedule').count()
+        ]
+    }
+    
+    # 3️⃣ 고객사별 매출 비중 (Top 5 + 기타)
+    top_customers = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+        followup__isnull=False,
+        followup__company__isnull=False
+    ).values('followup__company__name').annotate(
+        total_revenue=Sum('delivery_amount')
+    ).order_by('-total_revenue')[:5]
+    
+    customer_distribution = {
+        'labels': [],
+        'data': []
+    }
+    
+    total_top5_revenue = 0
+    for item in top_customers:
+        company_name = item['followup__company__name'] or '미정'
+        revenue = float(item['total_revenue'])
+        customer_distribution['labels'].append(company_name)
+        customer_distribution['data'].append(revenue)
+        total_top5_revenue += revenue
+    
+    # 기타 금액 계산
+    total_all_revenue = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False
+    ).aggregate(total=Sum('delivery_amount'))['total'] or 0
+    
+    other_revenue = float(total_all_revenue) - total_top5_revenue
+    if other_revenue > 0:
+        customer_distribution['labels'].append('기타')
+        customer_distribution['data'].append(other_revenue)
+    
+    # 4️⃣ 영업 활동 추이 (월별)
+    monthly_activity_breakdown = {
+        'labels': [],
+        'sales': []
+    }
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        sales_count_month = histories.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule', 'quotation'],
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        monthly_activity_breakdown['labels'].append(f"{target_date.month}월")
+        monthly_activity_breakdown['sales'].append(sales_count_month)
+    
+    # 5️⃣ 개인 성과 지표 추세 (납품액, 전환율, 평균 거래 규모)
+    performance_trends = {
+        'labels': [],
+        'delivery_amount': [],
+        'conversion_rate': [],
+        'avg_deal_size': []
+    }
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        month_meetings = histories.filter(
+            action_type='customer_meeting',
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        month_deliveries = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        month_delivery_stats = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            delivery_amount__isnull=False
+        ).aggregate(
+            total=Sum('delivery_amount'),
+            avg=Avg('delivery_amount')
+        )
+        
+        month_conversion = (month_deliveries / month_meetings * 100) if month_meetings > 0 else 0
+        
+        performance_trends['labels'].append(f"{target_date.month}월")
+        performance_trends['delivery_amount'].append(float(month_delivery_stats['total'] or 0) / 1000000)  # 백만원 단위
+        performance_trends['conversion_rate'].append(round(month_conversion, 1))
+        performance_trends['avg_deal_size'].append(float(month_delivery_stats['avg'] or 0) / 1000000)  # 백만원 단위
+    
+    # 6️⃣ 고객 유형별 통계 (대학/기업/연구소/관공서)
+    # Note: customer_type 필드가 없으므로 더미 데이터 또는 다른 기준 사용
+    customer_type_stats = {
+        'labels': ['대학', '기업', '관공서'],
+        'revenue': [0, 0, 0],
+        'count': [0, 0, 0]
+    }
+    
+    # TODO: Company 모델에 customer_type 필드 추가 후 활성화
+    # 현재는 company name으로 간단히 분류 (예: 대학교 포함 여부 등)
+    company_stats = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+        followup__isnull=False,
+        followup__company__isnull=False
+    ).values('followup__company__name').annotate(
+        total_revenue=Sum('delivery_amount'),
+        count=Count('id')
+    )
+    
+    # 간단한 키워드 기반 분류 (연구소 제외)
+    for item in company_stats:
+        company_name = item['followup__company__name'] or ''
+        revenue = float(item['total_revenue']) / 1000000  # 백만원 단위
+        cnt = item['count']
+        
+        if '대학' in company_name or '대학교' in company_name:
+            customer_type_stats['revenue'][0] += revenue
+            customer_type_stats['count'][0] += cnt
+        elif '청' in company_name or '부' in company_name or '시' in company_name or '구' in company_name:
+            customer_type_stats['revenue'][2] += revenue
+            customer_type_stats['count'][2] += cnt
+        else:
+            # 연구소 포함 모든 기타 기업
+            customer_type_stats['revenue'][1] += revenue
+            customer_type_stats['count'][1] += cnt
+
+    
+    # 7️⃣ 활동 히트맵 (최근 30일 일일 활동 강도)
+    daily_activity_heatmap = []
+    for i in range(29, -1, -1):  # 최근 30일
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        day_activity_count = histories.filter(
+            created_at__gte=day_start,
+            created_at__lt=day_end
+        ).exclude(action_type='memo').count()
+        
+        daily_activity_heatmap.append({
+            'date': day.strftime('%Y-%m-%d'),
+            'day_of_week': day.weekday(),  # 0=월, 6=일
+            'intensity': day_activity_count
+        })
+
     context = {        'page_title': '대시보드',
         'current_year': current_year,  # 현재 연도 정보 추가
         'selected_user': selected_user,  # 선택된 사용자 정보
@@ -1032,6 +1235,14 @@ def dashboard_view(request):
         'customer_revenue_data': customer_amounts,
         'monthly_service_data': monthly_service_data,
         'monthly_service_labels': monthly_service_labels,
+        # 새로운 7개 차트 데이터
+        'monthly_delivery_stats': monthly_delivery_stats,
+        'sales_funnel': sales_funnel,
+        'customer_distribution': customer_distribution,
+        'monthly_activity_breakdown': monthly_activity_breakdown,
+        'performance_trends': performance_trends,
+        'customer_type_stats': customer_type_stats,
+        'daily_activity_heatmap': daily_activity_heatmap,
     }
     
     # 최종 컨텍스트 로깅
@@ -4256,7 +4467,8 @@ def department_edit_view(request, pk):
     
     context = {
         'department': department,
-        'page_title': f'{department.company.name} - 부서/연구실 수정'
+        'page_title': f'{department.company.name} - 부서/연구실 수정',
+        'customers': department.followup_departments.all().select_related('user')  # 소속 연구원/고객 목록
     }
     return render(request, 'reporting/department_form.html', context)
 
@@ -5594,15 +5806,18 @@ def customer_detail_report_view(request, followup_id):
                 messages.error(request, '접근 권한이 없습니다.')
                 return redirect('reporting:customer_report')
             
-            # 하나과학이 아닌 경우 같은 회사 체크
-            if not getattr(request, 'is_hanagwahak', False):
-                user_profile_obj = getattr(request.user, 'userprofile', None)
-                followup_user_profile = getattr(followup.user, 'userprofile', None)
-                if (user_profile_obj and user_profile_obj.company and 
-                    followup_user_profile and followup_user_profile.company and
-                    user_profile_obj.company != followup_user_profile.company):
-                    messages.error(request, '접근 권한이 없습니다.')
-                    return redirect('reporting:customer_report')
+            # Manager는 회사 체크를 건너뜀 (모든 데이터 조회 가능)
+            user_profile = get_user_profile(request.user)
+            if not user_profile.is_manager():
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    followup_user_profile = getattr(followup.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        followup_user_profile and followup_user_profile.company and
+                        user_profile_obj.company != followup_user_profile.company):
+                        messages.error(request, '접근 권한이 없습니다.')
+                        return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
@@ -6061,12 +6276,13 @@ def schedule_delivery_items_api(request, schedule_id):
     try:
         schedule = get_object_or_404(Schedule, pk=schedule_id)
         
-        # 권한 체크: 해당 일정을 볼 수 있는 권한이 있는지 확인
-        if not can_access_user_data(request.user, schedule.user):
-            return JsonResponse({
-                'success': False,
-                'error': '접근 권한이 없습니다.'
-            }, status=403)
+        # 권한 체크: Schedule의 followup을 통해 사용자 확인
+        if schedule.followup and schedule.followup.user:
+            if not can_access_user_data(request.user, schedule.followup.user):
+                return JsonResponse({
+                    'success': False,
+                    'error': '접근 권한이 없습니다.'
+                }, status=403)
         
         # 연결된 History가 있는지 확인 (History 기준 세금계산서 상태 적용을 위해)
         related_history = None
@@ -6280,15 +6496,18 @@ def customer_detail_report_view_simple(request, followup_id):
                 messages.error(request, '접근 권한이 없습니다.')
                 return redirect('reporting:customer_report')
             
-            # 하나과학이 아닌 경우 같은 회사 체크
-            if not getattr(request, 'is_hanagwahak', False):
-                user_profile_obj = getattr(request.user, 'userprofile', None)
-                followup_user_profile = getattr(followup.user, 'userprofile', None)
-                if (user_profile_obj and user_profile_obj.company and 
-                    followup_user_profile and followup_user_profile.company and
-                    user_profile_obj.company != followup_user_profile.company):
-                    messages.error(request, '접근 권한이 없습니다.')
-                    return redirect('reporting:customer_report')
+            # Manager는 회사 체크를 건너뜀 (모든 데이터 조회 가능)
+            user_profile = get_user_profile(request.user)
+            if not user_profile.is_manager():
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    followup_user_profile = getattr(followup.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        followup_user_profile and followup_user_profile.company and
+                        user_profile_obj.company != followup_user_profile.company):
+                        messages.error(request, '접근 권한이 없습니다.')
+                        return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
@@ -6819,24 +7038,28 @@ def update_tax_invoice_status(request):
         return JsonResponse({'error': '서버 오류가 발생했습니다.'}, status=500)
 
 @login_required
-@role_required(['admin', 'salesman'])
+@role_required(['admin', 'salesman', 'manager'])
 def schedule_delivery_items_api(request, schedule_id):
     """Schedule의 DeliveryItem 정보를 반환하는 API"""
     try:
         schedule = Schedule.objects.get(id=schedule_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, schedule.user):
-            return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
-        
-        # 하나과학이 아닌 경우 같은 회사 체크
-        if not getattr(request, 'is_hanagwahak', False):
-            user_profile_obj = getattr(request.user, 'userprofile', None)
-            schedule_user_profile = getattr(schedule.user, 'userprofile', None)
-            if (user_profile_obj and user_profile_obj.company and 
-                schedule_user_profile and schedule_user_profile.company and
-                user_profile_obj.company != schedule_user_profile.company):
+        # 권한 체크: Schedule의 followup을 통해 사용자 확인
+        if schedule.followup and schedule.followup.user:
+            if not can_access_user_data(request.user, schedule.followup.user):
                 return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+            
+            # Manager는 회사 체크를 건너뜀 (모든 데이터 조회 가능)
+            user_profile = get_user_profile(request.user)
+            if not user_profile.is_manager():
+                # 하나과학이 아닌 경우 같은 회사 체크
+                if not getattr(request, 'is_hanagwahak', False):
+                    user_profile_obj = getattr(request.user, 'userprofile', None)
+                    schedule_user_profile = getattr(schedule.followup.user, 'userprofile', None)
+                    if (user_profile_obj and user_profile_obj.company and 
+                        schedule_user_profile and schedule_user_profile.company and
+                        user_profile_obj.company != schedule_user_profile.company):
+                        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
         
         # DeliveryItem 정보 가져오기
         items = []

@@ -1,1969 +1,337 @@
-<!-- reporting/templates/reporting/base.html -->
 {% load static %}
 <!DOCTYPE html>
-<html lang="ko">  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <meta name="csrf-token" content="{{ csrf_token }}" />
-    <!-- PWA 메타태그 강화 -->
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="영업보고" />
-    
-    <!-- PWA 매니페스트 -->
-    <link rel="manifest" href="{% static 'manifest.json' %}" />
-    
-    <!-- 터치 아이콘들 -->
-    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.svg' %}" />
-    <link rel="icon" type="image/svg+xml" sizes="32x32" href="{% static 'icons/apple-touch-icon.svg' %}" />
-    <link rel="icon" type="image/svg+xml" sizes="16x16" href="{% static 'icons/apple-touch-icon.svg' %}" />
-    
-    <!-- 모바일 테마 컬러 -->
-    <meta name="theme-color" content="#007bff" />
-    <meta name="msapplication-TileColor" content="#007bff" />
-    
-    <!-- 모바일 최적화 -->
-    <meta name="format-detection" content="telephone=no" />
-    <meta name="mobile-web-app-status-bar-style" content="black-translucent" />
-    
-    <title>{% block title %}영업 보고 시스템{% endblock %}</title>
-    <link href="{% static 'css/dist/styles.css' %}" rel="stylesheet" />
-    <!-- Font Awesome for icons -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
-    <!-- Bootstrap CSS (if not already included) -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <!-- Chart.js for data visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
-        margin: 0;
-        background-color: #fcfcfc; /* Notion 배경색과 유사하게 변경 */
-        color: #37352f;
-        display: flex; /* 사이드바와 컨텐츠 영역 분리를 위해 flex 사용 (추후 확장 고려) */
-        min-height: 100vh;
-        position: relative;
-      }      /* 모바일 오버레이 */
-      .mobile-overlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        z-index: 1049;
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}영업 보고 시스템{% endblock %}</title>
+  
+  <!-- Google Fonts - Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f5f7fa;
+      color: #1f2937;
+    }
+
+    /* 사이드바 */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 260px;
+      background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+      color: white;
+      z-index: 1000;
+      overflow-y: auto;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .sidebar-header {
+      padding: 2rem 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .sidebar-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .sidebar-nav {
+      padding: 1.5rem 0;
+    }
+
+    .nav-item {
+      margin-bottom: 0.25rem;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      padding: 0.875rem 1.5rem;
+      color: rgba(255, 255, 255, 0.8);
+      text-decoration: none;
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+
+    .nav-link.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border-left: 4px solid #60a5fa;
+    }
+
+    .nav-link i {
+      width: 24px;
+      margin-right: 0.75rem;
+      font-size: 1.125rem;
+    }
+
+    /* 메인 컨텐츠 */
+    .main-content {
+      margin-left: 260px;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .top-bar {
+      background: white;
+      padding: 1rem 2rem;
+      margin: -2rem -2rem 2rem -2rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logout-btn {
+      padding: 0.5rem 1.25rem;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .logout-btn:hover {
+      background: #dc2626;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    }
+
+    /* 모바일 메뉴 */
+    .mobile-toggle {
+      display: none;
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1001;
+      background: #1e3a8a;
+      color: white;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 1.25rem;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s;
       }
 
-      .mobile-overlay.show {
-        display: block;
-      }
-
-      /* 모바일 햄버거 메뉴 - 터치 최적화 */
-      .mobile-menu-toggle {
-        display: none;
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        z-index: 1051;
-        background: #fff;
-        border: 1px solid #e3e2e0;
-        border-radius: 12px;
-        padding: 12px 16px; /* 터치 영역 확대 */
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        min-width: 48px; /* 최소 터치 크기 */
-        min-height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s ease;
-      }
-
-      .mobile-menu-toggle:hover {
-        background: #f8f9fa;
-        transform: scale(1.05);
-      }
-
-      .mobile-menu-toggle:active {
-        transform: scale(0.95);
-        background: #e9ecef;
-      }
-
-      .mobile-menu-toggle i {
-        font-size: 20px; /* 아이콘 크기 증가 */
-        color: #37352f;
-        transition: transform 0.2s ease;
-      }
-
-        /* 메뉴 열릴 때 아이콘 회전 */
-      .mobile-menu-toggle.active i {
-        transform: rotate(90deg);
-      }
-
-      /* 터치 인터페이스 최적화 */
-      @media (pointer: coarse) {
-        /* 터치 디바이스용 최적화 */
-        .btn {
-          min-height: 44px;
-          min-width: 44px;
-          padding: 12px 16px;
-          touch-action: manipulation;
-        }
-        
-        .form-control, .form-select {
-          min-height: 44px;
-          font-size: 16px; /* iOS 줌 방지 */
-          padding: 12px 16px;
-        }
-        
-        .dropdown-item {
-          min-height: 44px;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-        }
-        
-        .nav-link {
-          min-height: 44px;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-        }
-        
-        /* 터치 피드백 */
-        .btn:active,
-        .dropdown-item:active,
-        .nav-link:active {
-          transform: scale(0.98);
-          transition: transform 0.1s ease;
-        }
-        
-        /* 스크롤바 숨기기 (터치 스크롤 시) */
-        .table-responsive {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-        }
-        
-        .table-responsive::-webkit-scrollbar {
-          display: none;
-        }
-      }
-
-      /* Pull-to-refresh 스타일 */
-      .pull-to-refresh {
-        position: fixed;
-        top: -50px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #007bff;
-        color: white;
-        padding: 10px 20px;
-        border-radius: 20px;
-        z-index: 9999;
-        transition: all 0.3s ease;
-        opacity: 0;
-      }
-      
-      .pull-to-refresh.show {
-        top: 20px;
-        opacity: 1;
-      }
-
-      /* 스와이프 표시기 */
-      .swipe-indicator {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        background: rgba(0, 123, 255, 0.8);
-        color: white;
-        padding: 8px 12px;
-        border-radius: 16px;
-        font-size: 12px;
-        z-index: 1000;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-      }
-      
-      .swipe-indicator.left {
-        left: 20px;
-      }
-      
-      .swipe-indicator.right {
-        right: 20px;
-      }
-      
-      .swipe-indicator.show {
-        opacity: 1;
-      }      /* 기본 네비게이션 (추후 사이드바로 변경 가능) */
-      .main-nav {
-        background-color: #ffffff;
-        border-right: 1px solid #edecec; /* Notion 사이드바 경계선과 유사하게 */
-        padding: 20px;
-        width: 240px; /* 사이드바 너비 */
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        z-index: 1050;
-        transition: transform 0.3s ease;
-      }
-
-      .main-nav .logo {
-        font-size: 20px;
-        font-weight: 600;
-        color: #37352f;
-        text-decoration: none;
-        margin-bottom: 30px;
-        display: block;
-      }
-
-      .main-nav ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        flex-grow: 1;
-      }
-
-      .main-nav ul li a {
-        display: block;
-        padding: 10px 15px;
-        color: #5c5a53; /* Notion 메뉴 아이템 색상과 유사하게 */
-        text-decoration: none;
-        border-radius: 4px;
-        margin-bottom: 5px;
-        transition: background-color 0.2s, color 0.2s;
-      }
-
-      .main-nav ul li a:hover,
-      .main-nav ul li a.active {
-        background-color: #ebeaeb; /* Notion 메뉴 호버/활성 색상 */
-        color: #37352f;
-      }
-
-      .main-nav .user-actions {
-        margin-top: auto; /* 사용자 액션 버튼을 하단으로 밀기 */
-      }
-
-      .main-nav .user-actions a {
-        display: block;
-        padding: 10px 15px;
-        color: #5c5a53;
-        text-decoration: none;
-        border-radius: 4px;
-        transition: background-color 0.2s, color 0.2s;
-        text-align: center;
-        border: 1px solid #e3e2e0; /* 버튼 테두리 */
-        margin-top: 10px;
-      }
-
-      .main-nav .user-actions a:hover {
-        background-color: #f7f7f5;
-        color: #37352f;
-      }
-
-      .main-content {
-        flex-grow: 1;
-        padding: 0; /* 상단 헤더를 위해 패딩 제거 */
-        overflow-y: auto; /* 컨텐츠가 길어질 경우 스크롤 */
-      }
-      
-      /* 상단 헤더 바 */
-      .top-header-bar {
-        background-color: #ffffff;
-        border-bottom: 1px solid #edecec;
-        padding: 15px 30px;
-        position: sticky;
-        top: 0;
-        z-index: 1000;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      }
-      
-      .page-title h5 {
-        color: #37352f;
-        font-weight: 600;
-        margin: 0;
-      }
-      
-      .user-actions-top {
-        display: flex;
-        align-items: center;
-      }
-      
-      .user-info-compact {
-        color: #37352f;
-        font-size: 14px;
-        font-weight: 500;
-      }
-      
-      .logout-btn-top {
-        padding: 8px 16px;
-        background: linear-gradient(135deg, #dc3545, #c82333);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-      }
-      
-      .logout-btn-top:hover {
-        background: linear-gradient(135deg, #c82333, #bd2130);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-      }
-      
-      .logout-btn-top:active {
-        transform: translateY(0);
-        box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3);
-      }
-      
-      .login-btn-top {
-        padding: 8px 16px;
-        background: linear-gradient(135deg, #007bff, #0056b3);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        text-decoration: none;
-      }
-      
-      .login-btn-top:hover {
-        background: linear-gradient(135deg, #0056b3, #004494);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
-        color: white;
-        text-decoration: none;
-      }
-      
-      .login-btn-top:active {
-        transform: translateY(0);
-        box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
-      }
-      
-      /* 모바일 반응형 - 상단 헤더 */
-      @media (max-width: 768px) {
-        .top-header-bar {
-          padding: 10px 15px;
-        }
-        
-        .page-title h5 {
-          font-size: 16px;
-        }
-        
-        .user-info-compact {
-          font-size: 12px;
-        }
-        
-        .logout-btn-top {
-          padding: 6px 12px;
-          font-size: 12px;
-        }
-        
-        .login-btn-top {
-          padding: 6px 12px;
-          font-size: 12px;
-        }
-        
-        .container {
-          padding: 20px 15px;
-        }
-      }
-      
-      /* 퀵 네비게이션 바 스타일 */
-      .quick-nav-bar {
-        background-color: #f8f9fa;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-      }
-
-      .quick-nav-bar .btn {
-        border-radius: 6px;
-        font-weight: 500;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-
-      .quick-nav-bar .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-      }
-
-      .quick-nav-bar .btn i {
-        font-size: 14px;
-      }
-
-      @media (max-width: 768px) {
-        .quick-nav-bar {
-          padding: 10px;
-          margin: 0 -15px 20px;
-          border-radius: 0;
-        }
-        
-        .quick-nav-bar .d-flex {
-          overflow-x: auto;
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-          padding-bottom: 5px;
-        }
-        
-        .quick-nav-bar .d-flex::-webkit-scrollbar {
-          display: none;
-        }
-        
-        .quick-nav-bar .btn {
-          flex-shrink: 0;
-          font-size: 12px;
-          padding: 6px 10px;
-        }
-        
-        .quick-nav-bar .btn i {
-          font-size: 12px;
-        }
-      }
-
-      .container {
-        max-width: 900px; /* Notion 페이지 너비와 유사하게 */
-        margin: 0 auto; /* 중앙 정렬 */
-        padding: 30px; /* 컨텐츠 영역 패딩 */
-      }
-
-      .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 15px;
-        margin-bottom: 25px;
-        border-bottom: 1px solid #edecec; /* Notion 구분선과 유사하게 */
-      }
-
-      .page-title {
-        font-size: 28px; /* Notion 페이지 제목 크기와 유사하게 */
-        font-weight: 700; /* Notion 제목 굵기 */
-        color: #1f1e1c; /* Notion 제목 색상 */
-      }
-
-      .btn {
-        display: inline-block;
-        padding: 9px 16px; /* 버튼 패딩 조정 */
-        font-size: 14px;
-        font-weight: 500;
-        text-align: center;
-        text-decoration: none;
-        border-radius: 5px; /* Notion 버튼 둥글기 */
-        cursor: pointer;
-        transition: background-color 0.2s, border-color 0.2s;
-        border: 1px solid transparent; /* 기본 테두리 투명 */
-      }
-
-      .btn-primary {
-        background-color: #2563eb; /* Notion 주요 버튼 색상 */
-        color: white;
-        border-color: #2563eb;
-      }
-
-      .btn-primary:hover {
-        background-color: #1d4ed8;
-        border-color: #1d4ed8;
-      }
-
-      .btn-secondary {
-        background-color: #ffffff;
-        color: #37352f;
-        border: 1px solid #e3e2e0; /* Notion 보조 버튼 테두리 */
-      }
-
-      .btn-secondary:hover {
-        background-color: #f7f7f5; /* Notion 보조 버튼 호버 색상 */
-      }
-
-      .card-list {
-        display: grid;
-        grid-template-columns: repeat(
-          auto-fill,
-          minmax(280px, 1fr)
-        ); /* 카드 최소 너비 조정 */
-        gap: 25px; /* 카드 간격 조정 */
-      }
-
-      .card {
-        background-color: #ffffff;
-        border: 1px solid #edecec; /* Notion 카드 테두리 */
-        border-radius: 6px; /* Notion 카드 둥글기 */
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.03); /* Notion 카드 그림자 */
-        transition: box-shadow 0.2s;
-      }
-      .card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05); /* 호버 시 그림자 강조 */
-      }
-
-      .card-body {
-        padding: 20px; /* 카드 내부 패딩 조정 */
-      }
-
-      .card-title {
-        font-size: 17px; /* 카드 제목 크기 조정 */
-        font-weight: 600;
-        margin-top: 0;
-        margin-bottom: 8px; /* 제목과 부제목 사이 간격 조정 */
-      }
-
-      .card-title a {
-        color: #37352f; /* 카드 제목 링크 색상 */
-        text-decoration: none;
-      }
-
-      .card-title a:hover {
-        text-decoration: underline;
-      }      .card-subtitle {
-        font-size: 13px; /* 카드 부제목 크기 조정 */
-        font-weight: 400;
-        color: #787774; /* 카드 부제목 색상 */
-        margin-bottom: 12px;
-      }
-
-      /* 대시보드 통계 카드 스타일 */
-      .stat-card {
-        border: 1px solid #e3e2e0;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        transition: all 0.2s ease-in-out;
-        min-height: 140px;
-      }
-
-      .stat-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        transform: translateY(-1px);
-      }
-
-      .stat-card .card-body {
-        padding: 16px;
-      }
-
-      .stat-card .icon-wrapper {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-left: 8px;
-      }
-
-      /* 작은 화면에서의 반응형 조정 */
-      @media (max-width: 768px) {
-        .stat-card .card-body {
-          padding: 12px;
-        }
-
-        .stat-card h3 {
-          font-size: 1.2rem;
-        }
-
-        .stat-card .btn-sm {
-          font-size: 0.75rem;
-          padding: 4px 8px;
-        }
-
-        .stat-card .icon-wrapper {
-          width: 32px;
-          height: 32px;
-        }
-      }
-
-      /* 매우 작은 화면에서의 조정 */
-      @media (max-width: 576px) {
-        .stat-card {
-          min-height: 120px;
-        }
-
-        .stat-card .card-body {
-          padding: 10px;
-        }
-
-        .stat-card h3 {
-          font-size: 1.1rem;
-        }
-
-        .stat-card .card-title {
-          font-size: 0.8rem;
-        }
-      }
-      }
-
-      .card-text {
-        font-size: 14px;
-        line-height: 1.6;
-        color: #5c5a53; /* 카드 본문 텍스트 색상 */
-      }
-      .card-text strong {
-        color: #37352f; /* 강조 텍스트 색상 */
-      }
-
-      .text-muted {
-        color: #9b9a97;
-      }
-
-      .text-center {
-        text-align: center;
-      }
-
-      .mt-3 {
-        margin-top: 1rem;
-      }
-      .mb-2 {
-        margin-bottom: 0.5rem;      }
-      /* 추가적인 Notion 스타일 요소들 (아이콘, 테이블, 폼 등)은 필요에 따라 확장합니다. */
-
-      /* 글로벌 로딩 스피너 스타일 */
-      .global-loader {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(255, 255, 255, 0.9);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        backdrop-filter: blur(2px);
-      }
-
-      .loader-content {
-        text-align: center;
-        color: #37352f;
-      }
-
-      .spinner {
-        width: 40px;
-        height: 40px;
-        border: 4px solid #e3e2e0;
-        border-top: 4px solid #2563eb;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 15px;
-      }
-
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-
-      /* 토스트 메시지 스타일 */
-      .toast-container {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9998;
-        max-width: 400px;
-      }
-
-      .toast {
-        background-color: #ffffff;
-        border: 1px solid #e3e2e0;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        margin-bottom: 10px;
-        padding: 15px 20px;
-        position: relative;
-        display: flex;
-        align-items: center;
-        opacity: 0;
-        transform: translateX(100%);
-        transition: all 0.3s ease;
-      }
-
-      .toast.show {
-        opacity: 1;
+      .sidebar.active {
         transform: translateX(0);
       }
 
-      .toast.toast-success {
-        border-left: 4px solid #198754;
+      .main-content {
+        margin-left: 0;
       }
 
-      .toast.toast-error {
-        border-left: 4px solid #dc3545;
+      .mobile-toggle {
+        display: block;
       }
-
-      .toast.toast-warning {
-        border-left: 4px solid #ffc107;
-      }
-
-      .toast.toast-info {
-        border-left: 4px solid #0dcaf0;
-      }
-
-      .toast-icon {
-        margin-right: 12px;
-        font-size: 18px;
-      }
-
-      .toast-success .toast-icon {
-        color: #198754;
-      }
-
-      .toast-error .toast-icon {
-        color: #dc3545;
-      }
-
-      .toast-warning .toast-icon {
-        color: #ffc107;
-      }
-
-      .toast-info .toast-icon {
-        color: #0dcaf0;
-      }
-
-      .toast-message {
-        flex-grow: 1;
-        font-size: 14px;
-        line-height: 1.4;
-      }
-
-      .toast-close {
-        background: none;
-        border: none;
-        font-size: 18px;
-        color: #787774;
-        cursor: pointer;
-        margin-left: 10px;
-        padding: 0;
-        width: 20px;
-        height: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .toast-close:hover {
-        color: #37352f;
-      }      /* 모바일 반응형 최적화 - 강제 적용 */
-      @media (max-width: 768px) {
-        /* 모바일 CSS 적용 확인용 - body에 배경색 변경 */
-        body {
-          flex-direction: column !important;
-          padding-top: 60px !important;
-          background-color: #f8f9fa !important; /* 모바일에서만 회색 배경 */
-        }
-
-        /* 모바일 햄버거 메뉴 표시 */
-        .mobile-menu-toggle {
-          display: block !important;
-        }        .main-nav {
-          position: fixed;
-          top: 0;
-          left: -300px;
-          width: 280px;
-          height: 100vh;
-          padding: 80px 20px 20px;
-          border-right: none;
-          border-bottom: none;
-          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-          z-index: 1050;
-          transition: left 0.3s ease;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .main-nav.show {
-          left: 0;
-        }        .main-nav ul {
-          display: block;
-          flex-wrap: none;
-          gap: 0;
-          margin-bottom: 20px;
-          flex-grow: 1;
-          overflow-y: auto;
-        }
-
-        .main-nav ul li {
-          flex: none;
-          min-width: auto;
-          margin-bottom: 5px;
-        }
-
-        .main-nav ul li a {
-          text-align: left;
-          font-size: 16px;
-          padding: 15px;
-          min-height: 44px; /* 터치 친화적 */
-          display: flex;
-          align-items: center;
-        }
-
-        .main-nav ul li a i {
-          margin-right: 12px;
-          width: 20px;
-          text-align: center;
-        }
-
-        /* 모바일 오버레이 표시 */
-        .mobile-overlay.show {
-          display: block;
-        }
-
-        .main-content {
-          width: 100%;
-          padding: 15px;
-        }
-
-        .container {
-          max-width: 100%;
-          padding: 0 10px;
-        }
-
-        .page-header {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 15px;
-          margin-bottom: 20px;
-        }
-
-        .page-title {
-          font-size: 24px;
-        }
-
-        /* 버튼 모바일 최적화 */
-        .btn {
-          padding: 12px 16px;
-          font-size: 16px;
-          min-height: 44px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        /* 카드 모바일 최적화 */
-        .card {
-          margin-bottom: 15px;
-          border-radius: 8px;
-        }
-
-        .card-body {
-          padding: 15px;
-        }
-
-        /* 테이블 모바일 최적화 */
-        .table th,
-        .table td {
-          padding: 12px 8px;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-
-        /* 폼 모바일 최적화 */
-        .form-control,
-        .form-select {
-          min-height: 44px;
-          font-size: 16px; /* iOS 줌 방지 */
-          border-radius: 8px;
-        }
-
-        /* 드롭다운 모바일 최적화 */
-        .dropdown-menu {
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          margin-top: 8px;
-        }
-
-        .dropdown-item {
-          padding: 12px 16px;
-          font-size: 16px;
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-        }        /* 모달 모바일 최적화 */
-        .modal-dialog {
-          margin: 20px;
-          max-width: calc(100% - 40px);
-        }
-
-        .modal-content {
-          border-radius: 12px;
-        }        /* 모바일 슬라이더 스타일 - 강제 적용 */
-        .mobile-slider {
-          display: flex !important;
-          overflow-x: auto !important;
-          scroll-snap-type: x mandatory !important;
-          gap: 15px !important;
-          padding: 0 15px !important;
-          margin: 0 -15px !important;
-          scrollbar-width: none !important; /* Firefox */
-          -ms-overflow-style: none !important; /* IE and Edge */
-          background-color: #e3f2fd !important; /* 디버깅용 - 슬라이더 배경 */
-        }
-
-        .mobile-slider::-webkit-scrollbar {
-          display: none !important; /* Chrome, Safari */
-        }
-
-        .mobile-slider .card,
-        .mobile-slider .stat-card {
-          flex: 0 0 85% !important;
-          scroll-snap-align: center !important;
-          margin-bottom: 0 !important;
-        }
-
-        /* 모바일 그래프 컨테이너 - 강제 적용 */
-        .mobile-chart-slider {
-          display: flex !important;
-          overflow-x: auto !important;
-          scroll-snap-type: x mandatory !important;
-          gap: 20px !important;
-          padding: 0 15px !important;
-          margin: 0 -15px !important;
-          scrollbar-width: none !important;
-          -ms-overflow-style: none !important;
-          background-color: #fff3e0 !important; /* 디버깅용 - 차트 슬라이더 배경 */
-        }        .mobile-chart-slider::-webkit-scrollbar {
-          display: none !important;
-        }
-
-        /* 모바일 전용 표시/숨김 강제 적용 */
-        .d-md-none {
-          display: block !important;
-        }
-
-        .d-none.d-md-flex {
-          display: none !important;
-        }
-
-        @media (min-width: 769px) {
-          .d-md-none {
-            display: none !important;
-          }
-          
-          .d-none.d-md-flex {
-            display: flex !important;
-          }
-        }
-
-        .mobile-chart-slider .chart-container {
-          flex: 0 0 90%;
-          scroll-snap-align: center;
-          min-height: 300px;
-        }
-
-        /* 모바일 필터 박스 최적화 */
-        .filter-box {
-          padding: 10px;
-          margin-bottom: 15px;
-        }
-
-        .filter-box .btn-group {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 5px;
-        }
-
-        .filter-box .btn {
-          padding: 6px 10px;
-          font-size: 12px;
-          min-height: 32px;
-          flex: 1;
-          min-width: auto;
-        }
-
-        /* 모바일 액션 버튼 최적화 */
-        .action-buttons {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 10px;
-        }
-
-        .action-buttons .btn {
-          padding: 8px 12px;
-          font-size: 13px;
-          min-height: 36px;
-          flex: 1;
-          min-width: auto;
-        }
-
-        /* 모바일 테이블 스크롤 */
-        .table-responsive {
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        /* 모바일 캘린더 최적화 */
-        .fc {
-          font-size: 12px;
-        }
-
-        .fc-toolbar {
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .fc-toolbar-chunk {
-          display: flex;
-          justify-content: center;
-          flex-wrap: wrap;
-          gap: 5px;
-        }
-
-        .fc-button {
-          padding: 6px 10px;
-          font-size: 12px;
-          min-height: 32px;
-        }
-
-        .fc-daygrid-day {
-          min-height: 40px;
-        }
-
-        .fc-daygrid-day-number {
-          font-size: 12px;
-          padding: 4px;
-        }
-
-        .fc-event {
-          font-size: 10px;
-          padding: 1px 3px;
-        }
-
-        /* 모바일 히스토리 카드 */
-        .history-card {
-          padding: 12px;
-          margin-bottom: 10px;
-        }
-
-        .history-card .card-title {
-          font-size: 14px;
-          margin-bottom: 8px;
-        }
-
-        .history-card .card-text {
-          font-size: 12px;
-          line-height: 1.4;
-        }
-
-        /* 모바일 상세 정보 */
-        .detail-info {
-          padding: 10px;
-          font-size: 14px;
-        }
-
-        .detail-info dt {
-          font-size: 13px;
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-
-        .detail-info dd {
-          font-size: 12px;
-          margin-bottom: 8px;
-        }
-        }
-
-        /* 통계 카드 모바일 최적화 */
-        .row.mb-4 .col-lg-3,
-        .row.mb-4 .col-md-6 {
-          margin-bottom: 15px;
-        }
-
-        .card-hover {
-          transition: transform 0.2s ease;
-        }
-
-        .card-hover:active {
-          transform: scale(0.98);
-        }
-
-        /* 네비게이션 사용자 액션 */
-        .main-nav .user-actions a {
-          padding: 15px;
-          font-size: 16px;
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        /* 차트 모바일 최적화 */
-        .chart-container {
-          position: relative;
-          height: 250px;
-          margin-bottom: 20px;
-        }
-
-        /* 캘린더 모바일 최적화 */
-        .calendar-container {
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-        }
-
-        /* 텍스트 크기 조정 */
-        h1, .h1 { font-size: 24px; }
-        h2, .h2 { font-size: 20px; }
-        h3, .h3 { font-size: 18px; }
-        h4, .h4 { font-size: 16px; }
-
-        /* 스페이싱 조정 */
-        .mb-4 { margin-bottom: 20px !important; }
-        .mb-3 { margin-bottom: 15px !important; }
-      }
-
-        .page-title {
-          font-size: 24px;
-        }
-
-        .card-list {
-          grid-template-columns: 1fr;
-          gap: 15px;
-        }
-
-        .toast-container {
-          top: 10px;
-          right: 10px;
-          left: 10px;
-          max-width: none;
-        }
-
-        .toast {
-          margin-bottom: 8px;
-        }
-      }
-
-      /* 태블릿 반응형 */
-      @media (max-width: 1024px) and (min-width: 769px) {
-        .card-list {
-          grid-template-columns: repeat(2, 1fr);
-        }
-      }
-    </style>
-  </head>  <body>
-    <!-- 모바일 햄버거 메뉴 -->
-    <button class="mobile-menu-toggle" id="mobileMenuToggle">
-      <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- 모바일 오버레이 -->
-    <div class="mobile-overlay" id="mobileOverlay"></div>
-
-    <!-- 글로벌 로딩 스피너 -->
-    <div id="globalLoader" class="global-loader">
-      <div class="loader-content">
-        <div class="spinner"></div>
-        <p>로딩 중...</p>
-      </div>
+    }
+  </style>
+
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <!-- 모바일 메뉴 토글 -->
+  <button class="mobile-toggle" onclick="toggleSidebar()">
+    <i class="fas fa-bars"></i>
+  </button>
+
+  <!-- 사이드바 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="sidebar-title">
+        <i class="fas fa-chart-line"></i> 영업 시스템
+      </h1>
     </div>
 
-    <!-- 토스트 메시지 컨테이너 -->
-    <div id="toastContainer" class="toast-container"></div>    <nav class="main-nav" id="mainNav">
-      <!-- 로고 링크 - 로그인 상태에 따라 다르게 -->
-      {% if user.is_authenticated %}
-      <a href="{% url 'reporting:dashboard' %}" class="logo">Sales System</a>
-      {% else %}
-      <a href="{% url 'reporting:login' %}" class="logo">Sales System</a>
-      {% endif %}
-      <!-- 로고 링크 대시보드로 변경 -->
-      <ul>
+    <nav class="sidebar-nav">
+      <ul class="nav flex-column">
         <!-- 대시보드 메뉴 - 로그인한 사용자만 -->
         {% if user.is_authenticated %}
-        <li>
-          <a
-            href="{% url 'reporting:dashboard' %}"
-            class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
-            ><i class="fas fa-home me-2"></i>대시보드</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+            <i class="fas fa-home"></i>
+            <span>대시보드</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- Admin 전용 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'admin' %}
-        <li>
-          <a
-            href="{% url 'reporting:user_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':4' == 'user' %}active{% endif %}"
-            ><i class="fas fa-users me-2"></i>사용자 관리</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:user_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':4' == 'user' %}active{% endif %}">
+            <i class="fas fa-users"></i>
+            <span>사용자 관리</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- Manager 전용 사용자 관리 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'manager' %}
-        <li>
-          <a
-            href="{% url 'reporting:manager_user_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}"
-            ><i class="fas fa-user-friends me-2"></i>직원 관리</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:manager_user_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}">
+            <i class="fas fa-user-friends"></i>
+            <span>직원 관리</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- Admin & Salesman 업체 관리 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'admin' or user.is_authenticated and user.userprofile.role == 'salesman' %}
-        <li>
-          <a
-            href="{% url 'reporting:company_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':7' == 'company' or request.resolver_match.url_name|slice:':10' == 'department' %}active{% endif %}"
-            ><i class="fas fa-building me-2"></i>업체 관리</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:company_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'company' or request.resolver_match.url_name|slice:':10' == 'department' %}active{% endif %}">
+            <i class="fas fa-building"></i>
+            <span>업체 관리</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- Manager 전용 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role == 'manager' %}
-        <li>
-          <a
-            href="{% url 'reporting:customer_report' %}"
-            class="{% if request.resolver_match.url_name == 'customer_report' or request.resolver_match.url_name == 'customer_detail_report' %}active{% endif %}"
-            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:customer_report' %}" class="nav-link {% if request.resolver_match.url_name == 'customer_report' or request.resolver_match.url_name == 'customer_detail_report' %}active{% endif %}">
+            <i class="fas fa-chart-bar"></i>
+            <span>고객 리포트</span>
+          </a>
         </li>
-        <li>
-          <a
-            href="{% url 'reporting:manager_company_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}"
-            ><i class="fas fa-building me-2"></i>업체 조회</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:manager_company_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}">
+            <i class="fas fa-building"></i>
+            <span>업체 조회</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- Salesman & Admin 공통 메뉴 -->
         {% if user.is_authenticated and user.userprofile.role != 'manager' %}
-        <li>
-          <a
-            href="{% url 'reporting:followup_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}"
-            ><i class="fas fa-user-check me-2"></i>팔로우업</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:followup_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}">
+            <i class="fas fa-user-check"></i>
+            <span>팔로우업</span>
+          </a>
         </li>
-        <li>
-          <a
-            href="{% url 'reporting:schedule_list' %}"
-            class="{% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}"
-            ><i class="fas fa-list me-2"></i>일정 목록</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
+            <i class="fas fa-list"></i>
+            <span>일정 목록</span>
+          </a>
         </li>
-        <li>
-          <a
-            href="{% url 'reporting:schedule_calendar' %}"
-            class="{% if request.resolver_match.url_name == 'schedule_calendar' %}active{% endif %}"
-            ><i class="fas fa-calendar me-2"></i>일정 캘린더</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:schedule_calendar' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_calendar' %}active{% endif %}">
+            <i class="fas fa-calendar"></i>
+            <span>일정 캘린더</span>
+          </a>
         </li>
-        <li>
-          <a
-            href="{% url 'reporting:history_list' %}"
-            class="{% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}"
-            ><i class="fas fa-history me-2"></i>히스토리</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:history_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}">
+            <i class="fas fa-history"></i>
+            <span>히스토리</span>
+          </a>
         </li>
-        <li>
-          <a
-            href="{% url 'reporting:customer_report' %}"
-            class="{% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}"
-            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:customer_report' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}">
+            <i class="fas fa-chart-bar"></i>
+            <span>고객 리포트</span>
+          </a>
         </li>
         {% endif %}
 
         <!-- 프로필 메뉴 - 모든 로그인 사용자 -->
         {% if user.is_authenticated %}
-        <li>
-          <a
-            href="{% url 'reporting:profile' %}"
-            class="{% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'profile_edit' %}active{% endif %}"
-            ><i class="fas fa-user-cog me-2"></i>프로필 관리</a
-          >
+        <li class="nav-item">
+          <a href="{% url 'reporting:profile' %}" class="nav-link {% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'profile_edit' %}active{% endif %}">
+            <i class="fas fa-user-cog"></i>
+            <span>프로필 관리</span>
+          </a>
         </li>
         {% endif %}
       </ul>
     </nav>
-    <main class="main-content">
-      <!-- 상단 헤더 바 -->
-      <div class="top-header-bar">
-        <div class="container-fluid d-flex justify-content-between align-items-center">
-          <div class="page-title">
-            <h5 class="mb-0">{% block page_title %}영업 보고 시스템{% endblock %}</h5>
-          </div>
-          <div class="user-actions-top">
-            <!-- PWA 설치 버튼 -->
-            <button id="install-button" class="btn btn-outline-primary btn-sm me-2" style="display: none;">
-              <i class="fas fa-mobile-alt me-1"></i>앱 설치
-            </button>
-            
-            {% if user.is_authenticated %}
-            <span class="user-info-compact me-3">
-              <i class="fas fa-user me-1"></i>{{ user.username }}
-              {% if user.userprofile %}
-              <small class="text-muted ms-1">({{ user.userprofile.get_role_display }})</small>
-              {% endif %}
-            </span>
-            <button id="logoutBtn" onclick="confirmLogout()" class="logout-btn-top">
-              <i class="fas fa-sign-out-alt me-1"></i>로그아웃
-            </button>
-            {% else %}
-            <a href="{% url 'reporting:login' %}" class="login-btn-top">
-              <i class="fas fa-sign-in-alt me-1"></i>로그인
-            </a>
-            {% endif %}
-          </div>
-        </div>
+  </aside>
+
+  <!-- 메인 컨텐츠 -->
+  <main class="main-content">
+    <!-- 상단 바 -->
+    <div class="top-bar">
+      <div class="user-info">
+        <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
+        <span><strong>{{ request.user.username }}</strong></span>
       </div>
-      
-      <div class="container">
-        <!-- Django Messages 표시 -->
-        {% if messages %}
-        <script>
-          document.addEventListener('DOMContentLoaded', function() {
-            {% for message in messages %}
-            {% if message.tags == 'success' %}
-              ToastManager.success('{{ message|escapejs }}');
-            {% elif message.tags == 'error' %}
-              ToastManager.error('{{ message|escapejs }}');
-            {% elif message.tags == 'warning' %}
-              ToastManager.warning('{{ message|escapejs }}');
-            {% else %}
-              ToastManager.info('{{ message|escapejs }}');
-            {% endif %}
-            {% endfor %}
-          });
-        </script>
-        {% endif %} 
-        
-        <!-- 퀵 네비게이션 바 (대시보드 제외) -->
-        {% if user.is_authenticated and request.resolver_match.url_name != 'dashboard' and request.resolver_match.url_name != 'manager_dashboard' %}
-        <div class="quick-nav-bar mb-4">
-          <div class="d-flex flex-wrap gap-2 justify-content-center">
-            <a href="{% url 'reporting:dashboard' %}" class="btn btn-sm btn-outline-dark">
-              <i class="fas fa-home me-1"></i>대시보드
-            </a>
-            
-            {% if user.is_authenticated and user.userprofile.role != 'manager' %}
-            <a href="{% url 'reporting:followup_list' %}" class="btn btn-sm btn-outline-primary">
-              <i class="fas fa-user-check me-1"></i>팔로우업
-            </a>
-            <a href="{% url 'reporting:schedule_list' %}" class="btn btn-sm btn-outline-info">
-              <i class="fas fa-list me-1"></i>일정 목록
-            </a>
-            <a href="{% url 'reporting:schedule_calendar' %}" class="btn btn-sm btn-outline-success">
-              <i class="fas fa-calendar me-1"></i>일정 캘린더
-            </a>
-            <a href="{% url 'reporting:history_list' %}" class="btn btn-sm btn-outline-warning">
-              <i class="fas fa-history me-1"></i>히스토리
-            </a>
-            <a href="{% url 'reporting:company_list' %}" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-building me-1"></i>업체관리
-            </a>
-            {% endif %}
-            
-            {% if user.is_authenticated and user.userprofile.role == 'manager' %}
-            <a href="{% url 'reporting:manager_dashboard' %}" class="btn btn-sm btn-outline-primary">
-              <i class="fas fa-chart-line me-1"></i>Manager 대시보드
-            </a>
-            <a href="{% url 'reporting:schedule_calendar' %}{% if request.GET.user %}?user={{ request.GET.user }}{% endif %}" class="btn btn-sm btn-outline-info">
-              <i class="fas fa-calendar-alt me-1"></i>일정 캘린더
-            </a>
-            <a href="{% url 'reporting:manager_company_list' %}" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-building me-1"></i>업체 조회
-            </a>
-            <a href="{% url 'reporting:manager_user_list' %}" class="btn btn-sm btn-outline-warning">
-              <i class="fas fa-user-friends me-1"></i>직원 관리
-            </a>
-            {% endif %}
+      <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">
+        {% csrf_token %}
+        <button type="submit" class="logout-btn">
+          <i class="fas fa-sign-out-alt"></i> 로그아웃
+        </button>
+      </form>
+    </div>
 
-            {% if user.is_authenticated and user.userprofile.role == 'admin' %}
-            <a href="{% url 'reporting:user_list' %}" class="btn btn-sm btn-outline-danger">
-              <i class="fas fa-users me-1"></i>사용자 관리
-            </a>
-            {% endif %}
-          </div>
-        </div>
-        {% endif %}
+    <!-- 페이지 컨텐츠 -->
+    {% block content %}{% endblock %}
+  </main>
 
-        {% block content %}
-        <!-- 페이지별 컨텐츠가 여기에 표시됩니다. -->
-        {% endblock %}
-      </div>
-    </main>
-    <!-- Bootstrap JavaScript -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>    <!-- 글로벌 JavaScript 유틸리티 -->
-    <script>
-      // 전역 CSRF 토큰 함수
-      function getCSRFToken() {
-        // 1. 메타 태그에서 가져오기
-        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        if (csrfMeta && csrfMeta.getAttribute("content")) {
-          return csrfMeta.getAttribute("content");
-        }
-        
-        // 2. 쿠키에서 가져오기
-        const csrfCookie = document.cookie.split(';')
-          .find(cookie => cookie.trim().startsWith('csrftoken='));
-        if (csrfCookie) {
-          return csrfCookie.split('=')[1];
-        }
-        
-        // 3. 폼의 hidden input에서 가져오기
-        const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
-        if (csrfInput && csrfInput.value) {
-          return csrfInput.value;
-        }
-        
-        console.warn('CSRF token not found!');
-        return '';
-      }
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-      // AJAX 요청을 위한 전역 설정
-      function setupCSRFForAjax() {
-        const csrfToken = getCSRFToken();
-        
-        // fetch API를 위한 기본 헤더 설정 함수
-        window.fetchWithCSRF = function(url, options = {}) {
-          const defaultOptions = {
-            headers: {
-              'X-CSRFToken': csrfToken,
-              'Content-Type': 'application/json',
-              ...options.headers
-            }
-          };
-          return fetch(url, { ...defaultOptions, ...options });
-        };
-      }
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('active');
+    }
 
-      // 글로벌 로딩 스피너 관리
-      const GlobalLoader = {
-        show() {
-          document.getElementById("globalLoader").style.display = "flex";
-        },
-        hide() {
-          document.getElementById("globalLoader").style.display = "none";
-        },
-      };
-
-      // 토스트 메시지 시스템
-      const ToastManager = {
-        show(message, type = "info", duration = 5000) {
-          const container = document.getElementById("toastContainer");
-          const toast = document.createElement("div");
-          toast.className = `toast toast-${type}`;
-
-          const icons = {
-            success: "fas fa-check-circle",
-            error: "fas fa-exclamation-circle",
-            warning: "fas fa-exclamation-triangle",
-            info: "fas fa-info-circle",
-          };
-
-          toast.innerHTML = `
-            <i class="toast-icon ${icons[type] || icons.info}"></i>
-            <div class="toast-message">${message}</div>
-            <button class="toast-close" onclick="this.parentElement.remove()">
-              <i class="fas fa-times"></i>
-            </button>
-          `;
-
-          container.appendChild(toast);
-
-          // 애니메이션으로 표시
-          setTimeout(() => toast.classList.add("show"), 10);
-
-          // 자동 삭제
-          setTimeout(() => {
-            toast.classList.remove("show");
-            setTimeout(() => toast.remove(), 300);
-          }, duration);
-        },
-
-        success(message, duration) {
-          this.show(message, "success", duration);
-        },
-
-        error(message, duration) {
-          this.show(message, "error", duration);
-        },
-
-        warning(message, duration) {
-          this.show(message, "warning", duration);
-        },
-
-        info(message, duration) {
-          this.show(message, "info", duration);
-        },
-      };
-
-      // 폼 제출 시 로딩 표시
-      document.addEventListener("DOMContentLoaded", function () {
-        // 모든 폼에 제출 시 로딩 스피너 표시
-        document.querySelectorAll("form").forEach((form) => {
-          form.addEventListener("submit", function () {
-            GlobalLoader.show();
-          });
-        });
-
-        // 모든 링크 클릭 시 로딩 표시 (외부 링크 제외)
-        document.querySelectorAll("a[href]").forEach((link) => {
-          if (link.hostname === window.location.hostname || !link.hostname) {
-            link.addEventListener("click", function (e) {
-              if (!this.target || this.target === "_self") {
-                GlobalLoader.show();
-              }
-            });
-          }
-        });
-
-        // 페이지 로드 완료 시 로딩 스피너 숨김
-        window.addEventListener("load", function () {
-          GlobalLoader.hide();
-        });
-
-        // Ajax 요청 중 로딩 표시 (jQuery가 있는 경우)
-        if (typeof $ !== "undefined") {
-          $(document)
-            .ajaxStart(function () {
-              GlobalLoader.show();
-            })
-            .ajaxStop(function () {
-              GlobalLoader.hide();
-            });
+    // 모바일에서 링크 클릭 시 사이드바 닫기
+    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+      link.addEventListener('click', function() {
+        if (window.innerWidth <= 768) {
+          document.getElementById('sidebar').classList.remove('active');
         }
       });
+    });
+  </script>
 
-      // 에러 처리 유틸리티
-      const ErrorHandler = {
-        handle(error, userMessage = "오류가 발생했습니다.") {
-          console.error("Application Error:", error);
-          ToastManager.error(userMessage);
-          GlobalLoader.hide();
-        },
-
-        network(error) {
-          this.handle(error, "네트워크 연결을 확인해주세요.");
-        },
-
-        validation(message) {
-          ToastManager.warning(message || "입력값을 확인해주세요.");
-        },
-      };      // 로그아웃 확인 함수
-      function confirmLogout() {
-        // 커스텀 확인 다이얼로그 (더 세련된 스타일)
-        const result = confirm(
-          "🚪 로그아웃 하시겠습니까?\n\n현재 작업 중인 내용이 있다면 저장 후 로그아웃해주세요."
-        );
-
-        if (result) {
-          // 로그아웃 진행 메시지 표시
-          ToastManager.info("로그아웃 중입니다...", 2000);
-          GlobalLoader.show();
-
-          // 약간의 지연 후 로그아웃 실행 (UX 개선)
-          setTimeout(() => {
-            const form = document.createElement("form");
-            form.method = "POST";
-            form.action = '{% url "reporting:logout" %}';
-
-            // CSRF 토큰 추가
-            const csrfInput = document.createElement("input");
-            csrfInput.type = "hidden";
-            csrfInput.name = "csrfmiddlewaretoken";
-            csrfInput.value = "{{ csrf_token }}";
-            form.appendChild(csrfInput);
-
-            document.body.appendChild(form);
-            form.submit();
-          }, 500);
-        }
-      }
-
-      // 전역 에러 핸들러
-      window.addEventListener("error", function (e) {
-        ErrorHandler.handle(e.error, "예상치 못한 오류가 발생했습니다.");
-      });
-
-      window.addEventListener("unhandledrejection", function (e) {
-        ErrorHandler.handle(e.reason, "요청 처리 중 오류가 발생했습니다.");
-      });
-
-      // 브라우저 히스토리 관리 개선
-      (function () {
-        // 뒤로가기 버튼 처리
-        window.addEventListener("pageshow", function (event) {
-          // 브라우저 캐시에서 페이지가 로드되었을 때 새로고침
-          if (event.persisted) {
-            window.location.reload();
-          }
-        });
-
-        // 브라우저 히스토리 상태 관리
-        window.addEventListener("popstate", function (event) {
-          // 로딩 스피너 숨기기 (혹시 남아있을 경우)
-          if (typeof GlobalLoader !== "undefined") {
-            GlobalLoader.hide();
-          }
-        });
-
-        // 페이지 언로드 시 정리
-        window.addEventListener("beforeunload", function () {
-          // 진행 중인 AJAX 요청이 있다면 정리
-          if (typeof GlobalLoader !== "undefined") {
-            GlobalLoader.hide();
-          }
-        });
-
-        // 네트워크 상태 감지
-        window.addEventListener("online", function () {
-          if (typeof ToastManager !== "undefined") {
-            ToastManager.success("인터넷 연결이 복구되었습니다.", 3000);
-          }
-        });
-
-        window.addEventListener("offline", function () {
-          if (typeof ToastManager !== "undefined") {
-            ToastManager.warning("인터넷 연결이 끊어졌습니다.", 5000);
-          }
-        });
-
-        // 페이지 로드 완료 후 초기화
-        document.addEventListener("DOMContentLoaded", function () {
-          // 모든 폼 제출 시 로딩 표시
-          const forms = document.querySelectorAll("form:not([data-no-loader])");
-          forms.forEach(function (form) {
-            form.addEventListener("submit", function () {
-              if (typeof GlobalLoader !== "undefined") {
-                GlobalLoader.show();
-              }
-            });
-          });
-
-          // 모든 링크에 대한 처리
-          const links = document.querySelectorAll(
-            'a[href]:not([target="_blank"]):not([data-no-loader])'
-          );
-          links.forEach(function (link) {
-            link.addEventListener("click", function (event) {
-              // 외부 링크나 특수 링크는 제외
-              const href = link.getAttribute("href");
-              if (
-                href &&
-                !href.startsWith("#") &&
-                !href.startsWith("javascript:") &&
-                !href.startsWith("mailto:") &&
-                !href.startsWith("tel:")
-              ) {
-                if (typeof GlobalLoader !== "undefined") {
-                  GlobalLoader.show();
-                }
-
-                // 3초 후에도 페이지가 로드되지 않으면 로딩 숨기기
-                setTimeout(function () {
-                  if (typeof GlobalLoader !== "undefined") {
-                    GlobalLoader.hide();
-                  }
-                }, 3000);
-              }            });
-          });
-        });
-      })();      // 모바일 네비게이션 토글 기능 및 전체 초기화
-      document.addEventListener('DOMContentLoaded', function() {
-        // CSRF 설정 초기화
-        setupCSRFForAjax();
-        
-        // 모바일 네비게이션 설정
-        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
-        const mainNav = document.getElementById('mainNav');
-        const mobileOverlay = document.getElementById('mobileOverlay');
-
-        if (mobileMenuToggle && mainNav && mobileOverlay) {
-          console.log('Mobile navigation elements found'); // 디버깅용
-          
-          // 햄버거 메뉴 클릭 시 사이드바 토글 (터치 개선)
-          mobileMenuToggle.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('Mobile menu toggle clicked'); // 디버깅용
-            
-            // 토글 버튼 애니메이션
-            mobileMenuToggle.classList.toggle('active');
-            
-            mainNav.classList.toggle('show');
-            mobileOverlay.classList.toggle('show');
-            document.body.style.overflow = mainNav.classList.contains('show') ? 'hidden' : '';
-          });
-
-          // 터치 피드백 개선
-          mobileMenuToggle.addEventListener('touchstart', function() {
-            this.style.transform = 'scale(0.95)';
-          });
-          
-          mobileMenuToggle.addEventListener('touchend', function() {
-            setTimeout(() => {
-              this.style.transform = '';
-            }, 100);
-          });
-
-          // 스와이프 제스처로 메뉴 제어
-          let startX = null;
-          let startY = null;
-          let currentX = null;
-          let currentY = null;
-          
-          document.addEventListener('touchstart', function(e) {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-          }, {passive: true});
-          
-          document.addEventListener('touchmove', function(e) {
-            if (!startX || !startY) return;
-            
-            currentX = e.touches[0].clientX;
-            currentY = e.touches[0].clientY;
-            
-            const diffX = currentX - startX;
-            const diffY = currentY - startY;
-            
-            // 수평 스와이프가 더 클 때만 처리
-            if (Math.abs(diffX) > Math.abs(diffY)) {
-              // 왼쪽에서 오른쪽으로 스와이프 (메뉴 열기)
-              if (diffX > 50 && startX < 50 && !mainNav.classList.contains('show')) {
-                mainNav.classList.add('show');
-                mobileOverlay.classList.add('show');
-                mobileMenuToggle.classList.add('active');
-                document.body.style.overflow = 'hidden';
-              }
-              // 오른쪽에서 왼쪽으로 스와이프 (메뉴 닫기)
-              else if (diffX < -50 && mainNav.classList.contains('show')) {
-                mainNav.classList.remove('show');
-                mobileOverlay.classList.remove('show');
-                mobileMenuToggle.classList.remove('active');
-                document.body.style.overflow = '';
-              }
-            }
-          }, {passive: true});
-          
-          document.addEventListener('touchend', function() {
-            startX = null;
-            startY = null;
-            currentX = null;
-            currentY = null;
-          }, {passive: true});
-
-          // 오버레이 클릭 시 사이드바 닫기
-          mobileOverlay.addEventListener('click', function(e) {
-            e.preventDefault();
-            mainNav.classList.remove('show');
-            mobileOverlay.classList.remove('show');
-            mobileMenuToggle.classList.remove('active');
-            document.body.style.overflow = '';
-          });
-
-          // 네비게이션 링크 클릭 시 메뉴 닫기
-          const navLinks = mainNav.querySelectorAll('a');
-          navLinks.forEach(function(link) {
-            link.addEventListener('click', function() {
-              if (window.innerWidth <= 768) {
-                mainNav.classList.remove('show');
-                mobileOverlay.classList.remove('show');
-                mobileMenuToggle.classList.remove('active');
-                document.body.style.overflow = '';
-              }
-            });
-          });
-
-          // 윈도우 리사이즈 시 모바일 메뉴 초기화
-          window.addEventListener('resize', function() {
-            if (window.innerWidth > 768) {
-              mainNav.classList.remove('show');
-              mobileOverlay.classList.remove('show');
-              document.body.style.overflow = '';
-            }
-          });
-
-          // ESC 키로 사이드바 닫기
-          document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape' && mainNav.classList.contains('show')) {
-              mainNav.classList.remove('show');
-              mobileOverlay.classList.remove('show');
-              mobileMenuToggle.classList.remove('active');
-              document.body.style.overflow = '';
-            }
-          });
-        } else {
-          console.log('Mobile navigation elements not found:', {
-            mobileMenuToggle: !!mobileMenuToggle,
-            mainNav: !!mainNav,
-            mobileOverlay: !!mobileOverlay
-          });
-        }
-      });
-
-      // 터치 인터페이스 개선 기능들
-      (function() {
-        // Pull-to-refresh 기능
-        let startY = 0;
-        let pullDistance = 0;
-        let isPulling = false;
-        
-        document.addEventListener('touchstart', function(e) {
-          if (window.scrollY === 0) {
-            startY = e.touches[0].clientY;
-          }
-        }, {passive: true});
-        
-        document.addEventListener('touchmove', function(e) {
-          if (window.scrollY === 0 && startY !== 0) {
-            pullDistance = e.touches[0].clientY - startY;
-            
-            if (pullDistance > 0) {
-              isPulling = true;
-              // Pull-to-refresh 표시기 업데이트
-              const indicator = document.querySelector('.pull-to-refresh');
-              if (!indicator) {
-                const refreshDiv = document.createElement('div');
-                refreshDiv.className = 'pull-to-refresh';
-                refreshDiv.innerHTML = '<i class="fas fa-sync-alt"></i> 새로고침';
-                document.body.appendChild(refreshDiv);
-              }
-              
-              if (pullDistance > 80) {
-                const refreshIndicator = document.querySelector('.pull-to-refresh');
-                if (refreshIndicator) {
-                  refreshIndicator.classList.add('show');
-                }
-              }
-            }
-          }
-        }, {passive: true});
-        
-        document.addEventListener('touchend', function() {
-          if (isPulling && pullDistance > 80) {
-            // 새로고침 실행
-            window.location.reload();
-          }
-          
-          const indicator = document.querySelector('.pull-to-refresh');
-          if (indicator) {
-            indicator.classList.remove('show');
-          }
-          
-          startY = 0;
-          pullDistance = 0;
-          isPulling = false;
-        }, {passive: true});
-        
-        // 스와이프 표시기 (메뉴용 이외의 일반 스와이프)
-        function showSwipeIndicator(direction, text) {
-          const indicator = document.createElement('div');
-          indicator.className = `swipe-indicator ${direction}`;
-          indicator.textContent = text;
-          document.body.appendChild(indicator);
-          
-          setTimeout(() => indicator.classList.add('show'), 10);
-          setTimeout(() => {
-            indicator.classList.remove('show');
-            setTimeout(() => document.body.removeChild(indicator), 300);
-          }, 1500);
-        }
-        
-        // 터치 피드백 개선
-        document.addEventListener('touchstart', function(e) {
-          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
-          if (target) {
-            target.style.transform = 'scale(0.98)';
-            target.style.transition = 'transform 0.1s ease';
-          }
-        }, {passive: true});
-        
-        document.addEventListener('touchend', function(e) {
-          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
-          if (target) {
-            setTimeout(() => {
-              target.style.transform = '';
-            }, 100);
-          }
-        }, {passive: true});
-        
-        // 스크롤 성능 최적화
-        let scrollTimeout;
-        window.addEventListener('scroll', function() {
-          document.body.classList.add('scrolling');
-          
-          clearTimeout(scrollTimeout);
-          scrollTimeout = setTimeout(() => {
-            document.body.classList.remove('scrolling');
-          }, 150);
-        }, {passive: true});
-      })();
-
-      // PWA 서비스 워커 등록
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('{% static "service-worker.js" %}')
-            .then(function(registration) {
-              console.log('서비스 워커 등록 성공:', registration.scope);
-            })
-            .catch(function(error) {
-              console.log('서비스 워커 등록 실패:', error);
-            });
-        });
-      }
-
-      // PWA 홈 화면 추가 프롬프트
-      let deferredPrompt;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        // 기본 브라우저 프롬프트 막기
-        e.preventDefault();
-        // 나중에 사용하기 위해 이벤트 저장
-        deferredPrompt = e;
-        
-        // 사용자에게 PWA 설치 옵션 보여주기 (선택적)
-        showInstallPromotion();
-      });
-
-      function showInstallPromotion() {
-        // 홈 화면 추가 버튼이 있다면 보여주기
-        const installButton = document.getElementById('install-button');
-        if (installButton) {
-          installButton.style.display = 'block';
-          installButton.addEventListener('click', () => {
-            // 사용자가 설치 버튼을 클릭했을 때
-            if (deferredPrompt) {
-              deferredPrompt.prompt();
-              deferredPrompt.userChoice.then((choiceResult) => {
-                if (choiceResult.outcome === 'accepted') {
-                  console.log('사용자가 PWA 설치를 승인했습니다');
-                } else {
-                  console.log('사용자가 PWA 설치를 거부했습니다');
-                }
-                deferredPrompt = null;
-              });
-            }
-          });
-        }
-      }
-
-      // 앱이 설치되었을 때
-      window.addEventListener('appinstalled', (evt) => {
-        console.log('PWA가 설치되었습니다');
-      });
-
-      // 터치 제스처 개선
-      document.addEventListener('touchstart', function() {}, {passive: true});
-      document.addEventListener('touchmove', function() {}, {passive: true});
-    </script>
-  </body>
+  {% block extra_js %}{% endblock %}
+</body>
 </html>

@@ -2,225 +2,624 @@
 {% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="row">
-    <div class="col-12">
-      <!-- 헤더 섹션 -->
-      <div class="page-header d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h1 class="page-title mb-0">
-            <i class="fas fa-building me-2"></i>{{ company.name }}
-          </h1>
-          <small class="text-muted">부서/연구실 관리</small>
-        </div>
-        <div>
-          {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
-          <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-primary me-2">
-            <i class="fas fa-plus me-1"></i>새 부서/연구실 추가
-          </a>
-          {% endif %}
-          <a href="{% if is_readonly %}{% url 'reporting:manager_company_list' %}{% else %}{% url 'reporting:company_list' %}{% endif %}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left me-1"></i>목록으로
-          </a>
-        </div>
-      </div>
+<style>
+/* 프리미엄 업체 상세 페이지 스타일 */
+.company-detail-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2.5rem 0;
+    margin: -2rem -2rem 2rem -2rem;
+    border-radius: 0 0 20px 20px;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+}
 
-      <!-- 업체 정보 카드 -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="card">
-            <div class="card-body">
-              <div class="row">
-                <div class="col-md-8">
-                  <h5 class="card-title">{{ company.name }}</h5>
-                  <p class="text-muted mb-0">부서/연구실 {{ company.departments.count }}개 | 고객 정보 {{ company.followup_companies.count }}개</p>
-                </div>
-                <div class="col-md-4 text-end">
-                  {% if not is_readonly and user.userprofile.role == 'admin' or company.created_by == user %}
-                  <div class="btn-group">
-                    <a href="{% url 'reporting:company_edit' company.pk %}" class="btn btn-outline-primary">
-                      <i class="fas fa-edit me-1"></i>업체 수정
-                    </a>
-                    <a href="{% url 'reporting:company_delete' company.pk %}" class="btn btn-outline-danger">
-                      <i class="fas fa-trash me-1"></i>업체 삭제
-                    </a>
-                  </div>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+.company-detail-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
 
-      <!-- 매니저 전용: 담당 실무자 정보 -->
-      {% if is_readonly and salesmen_list %}
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="card">
-            <div class="card-header">
-              <h5 class="mb-0">
-                <i class="fas fa-users me-2"></i>담당 실무자 현황
-              </h5>
-            </div>
-            <div class="card-body">
-              {% if salesmen_list %}
-              <div class="row">
-                {% for salesman in salesmen_list %}
-                <div class="col-md-6 col-lg-4 mb-3">
-                  <div class="border rounded p-3">
-                    <div class="d-flex align-items-center mb-2">
-                      <div class="avatar-sm me-2">
-                        <div class="avatar-title bg-primary rounded-circle">
-                          {{ salesman.user.username|first }}
-                        </div>
-                      </div>
-                      <div>
-                        <h6 class="mb-0">{{ salesman.user.username }}</h6>
-                        <small class="text-muted">{{ salesman.user.userprofile.get_role_display }}</small>
-                      </div>
-                    </div>
-                    <div class="text-muted small">
-                      <div class="mb-1">
-                        <i class="fas fa-user-friends me-1"></i>담당 고객: {{ salesman.followup_count }}개
-                      </div>
-                      {% if salesman.recent_activity %}
-                      <div class="mb-1">
-                        <i class="fas fa-clock me-1"></i>최근 활동: {{ salesman.recent_activity.created_at|date:"Y-m-d" }}
-                      </div>
-                      <div class="text-truncate">
-                        <i class="fas fa-comment me-1"></i>{{ salesman.recent_activity.get_action_type_display }}
-                      </div>
-                      {% else %}
-                      <div class="text-muted">
-                        <i class="fas fa-exclamation-circle me-1"></i>활동 기록 없음
-                      </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </div>
-                {% endfor %}
-              </div>
-              {% else %}
-              <div class="text-center text-muted py-4">
-                <i class="fas fa-user-slash fa-2x mb-2"></i>
-                <p>이 업체를 담당하는 실무자가 없습니다.</p>
-              </div>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-      {% endif %}
+.company-detail-header .subtitle {
+    font-size: 1.1rem;
+    opacity: 0.95;
+}
 
-      <!-- 부서 검색 섹션 -->
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="card">
-            <div class="card-body">
-              <h6 class="card-title mb-3">
-                <i class="fas fa-search me-2"></i>부서/연구실 검색
-              </h6>
-              <form method="GET" action="{% url 'reporting:company_detail' company.pk %}">
-                <div class="row g-3">
-                  <div class="col-md-6">
-                    <input type="text" class="form-control" name="dept_search" 
-                           value="{{ dept_search|default:'' }}" 
-                           placeholder="부서/연구실명을 입력하세요..." autocomplete="off">
-                  </div>
-                  <div class="col-md-6">
-                    <div class="btn-group">
-                      <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search me-1"></i>검색
-                      </button>
-                      <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-times me-1"></i>초기화
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
 
-      <!-- 부서/연구실 목록 -->
-      {% if departments %}
-      <div class="card">
-        <div class="card-header">
-          <h5 class="mb-0">부서/연구실 목록 ({{ departments|length }}개)</h5>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive">
-            <table class="table table-hover">
-              <thead>
-                <tr>
-                  <th>부서/연구실명</th>
-                  <th>고객 정보 수</th>
-                  {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
-                  <th>관리</th>
-                  {% endif %}
-                </tr>
-              </thead>
-              <tbody>
-                {% for department in departments %}
-                <tr>
-                  <td>
-                    <strong>{{ department.name }}</strong>
-                  </td>
-                  <td>
-                    <span class="badge bg-success">{{ department.followup_count }}개</span>
-                  </td>
-                  {% if not is_readonly and user.userprofile.role == 'admin' or department.created_by == user %}
-                  <td>
-                    <div class="btn-group">
-                      <a href="{% url 'reporting:department_edit' department.pk %}" 
-                         class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-edit me-1"></i>수정
-                      </a>
-                      <a href="{% url 'reporting:department_delete' department.pk %}" 
-                         class="btn btn-sm btn-outline-danger">
-                        <i class="fas fa-trash me-1"></i>삭제
-                      </a>
-                    </div>
-                  </td>
-                  {% endif %}
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+.stat-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid #f1f3f5;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
 
-      {% else %}
-      <div class="card">
-        <div class="card-body text-center py-5">
-          <i class="fas fa-sitemap fa-3x text-muted mb-3"></i>
-          {% if dept_search %}
-          <h5 class="card-title">검색 결과가 없습니다</h5>
-          <p class="card-text text-muted">
-            "{{ dept_search }}"와 일치하는 부서/연구실이 없습니다.
-          </p>
-          <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-outline-primary">
-            <i class="fas fa-times me-1"></i>검색 초기화
-          </a>
-          {% else %}
-          <h5 class="card-title">등록된 부서/연구실이 없습니다</h5>
-          <p class="card-text text-muted">
-            {{ company.name }}에 첫 번째 부서/연구실을 추가해보세요.
-          </p>
-          {% if user.userprofile.role == 'admin' %}
-          <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-primary">
-            <i class="fas fa-plus me-1"></i>새 부서/연구실 추가
-          </a>
-          {% endif %}
-          {% endif %}
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card:hover {
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+    transform: translateY(-4px);
+}
+
+.stat-card-icon {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.stat-card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #667eea;
+    margin-bottom: 0.25rem;
+}
+
+.stat-card-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.premium-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid #f1f3f5;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.premium-card-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 1.25rem 1.5rem;
+    border-bottom: 2px solid #667eea;
+}
+
+.premium-card-header h5 {
+    margin: 0;
+    font-weight: 700;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.premium-card-body {
+    padding: 1.5rem;
+}
+
+.salesman-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.salesman-card {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 1.25rem;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.salesman-card:hover {
+    background: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.salesman-avatar {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+
+.salesman-info h6 {
+    margin: 0;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.salesman-stats {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.salesman-stats div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 0.25rem;
+}
+
+.salesman-stats i {
+    color: #667eea;
+    width: 16px;
+}
+
+.search-premium-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    transition: all 0.3s ease;
+    margin-bottom: 2rem;
+}
+
+.search-premium-card:hover {
+    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.15);
+}
+
+.search-input-group {
+    position: relative;
+}
+
+.search-input-group input {
+    border-radius: 12px;
+    padding: 0.75rem 1rem 0.75rem 3rem;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.search-input-group input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-input-group .search-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #adb5bd;
+    z-index: 10;
+}
+
+.department-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.department-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.department-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.department-card:hover {
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
+    transform: translateY(-3px);
+    border-color: #667eea;
+}
+
+.department-card:hover::before {
+    transform: scaleX(1);
+}
+
+.department-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.department-name i {
+    color: #667eea;
+}
+
+.department-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.department-stats .badge {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+}
+
+.department-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-action {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+.empty-state-icon {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+}
+
+.empty-state-icon i {
+    font-size: 3rem;
+    color: #667eea;
+}
+
+.empty-state h5 {
+    color: #2d3748;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+    color: #6c757d;
+    margin-bottom: 1.5rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.btn-premium {
+    border-radius: 12px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn-premium-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-premium-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    color: white;
+}
+
+.btn-premium-secondary {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.btn-premium-secondary:hover {
+    background: #667eea;
+    color: white;
+}
+
+.btn-premium-danger {
+    background: white;
+    color: #dc3545;
+    border: 2px solid #dc3545;
+}
+
+.btn-premium-danger:hover {
+    background: #dc3545;
+    color: white;
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .salesman-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .department-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .company-detail-header {
+        padding: 1.5rem 0;
+        margin: -1rem -1rem 1.5rem -1rem;
+    }
+    
+    .company-detail-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+}
+</style>
+
+<div class="container-fluid px-4">
+    <!-- 프리미엄 헤더 -->
+    <div class="company-detail-header">
+        <div class="container">
+            <h1>
+                <i class="fas fa-building me-3"></i>{{ company.name }}
+            </h1>
+            <p class="subtitle mb-0">
+                업체 상세 정보 및 부서/연구실 관리
+            </p>
         </div>
-      </div>
-      {% endif %}
     </div>
-  </div>
+
+    <!-- 통계 카드 그리드 -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i class="fas fa-sitemap"></i>
+            </div>
+            <div class="stat-card-value">{{ company.departments.count }}</div>
+            <div class="stat-card-label">부서/연구실</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-card-value">{{ company.followup_companies.count }}</div>
+            <div class="stat-card-label">고객 정보</div>
+        </div>
+    </div>
+
+    <!-- 액션 버튼 -->
+    <div class="action-buttons mb-4">
+        {% if not is_readonly and user.userprofile.role in 'admin,salesman' %}
+        <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-premium btn-premium-primary">
+            <i class="fas fa-plus me-2"></i>새 부서/연구실 추가
+        </a>
+        {% endif %}
+        
+        {% if not is_readonly and user.userprofile.role == 'admin' or company.created_by == user %}
+        <a href="{% url 'reporting:company_edit' company.pk %}" class="btn btn-premium btn-premium-secondary">
+            <i class="fas fa-edit me-2"></i>업체 수정
+        </a>
+        <a href="{% url 'reporting:company_delete' company.pk %}" class="btn btn-premium btn-premium-danger" onclick="return confirm('정말 삭제하시겠습니까?');">
+            <i class="fas fa-trash me-2"></i>업체 삭제
+        </a>
+        {% endif %}
+        
+        <a href="{% if is_readonly %}{% url 'reporting:manager_company_list' %}{% else %}{% url 'reporting:company_list' %}{% endif %}" class="btn btn-premium btn-premium-secondary">
+            <i class="fas fa-arrow-left me-2"></i>목록으로
+        </a>
+    </div>
+
+    <!-- 매니저 전용: 담당 실무자 정보 -->
+    {% if is_readonly and salesmen_list %}
+    <div class="premium-card">
+        <div class="premium-card-header">
+            <h5>
+                <i class="fas fa-users"></i>
+                담당 실무자 현황
+            </h5>
+        </div>
+        <div class="premium-card-body">
+            {% if salesmen_list %}
+            <div class="salesman-grid">
+                {% for salesman in salesmen_list %}
+                <div class="salesman-card">
+                    <div class="d-flex align-items-start">
+                        <div class="salesman-avatar">
+                            {{ salesman.user.username|first }}
+                        </div>
+                        <div class="salesman-info flex-grow-1">
+                            <h6>{{ salesman.user.username }}</h6>
+                            <small class="text-muted">{{ salesman.user.userprofile.get_role_display }}</small>
+                            
+                            <div class="salesman-stats">
+                                <div>
+                                    <i class="fas fa-user-friends"></i>
+                                    <span>담당 고객: <strong>{{ salesman.followup_count }}개</strong></span>
+                                </div>
+                                {% if salesman.recent_activity %}
+                                <div>
+                                    <i class="fas fa-clock"></i>
+                                    <span>최근 활동: {{ salesman.recent_activity.created_at|date:"Y-m-d" }}</span>
+                                </div>
+                                <div>
+                                    <i class="fas fa-comment"></i>
+                                    <span>{{ salesman.recent_activity.get_action_type_display }}</span>
+                                </div>
+                                {% else %}
+                                <div>
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    <span class="text-muted">활동 기록 없음</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    <i class="fas fa-user-slash"></i>
+                </div>
+                <h5>담당 실무자가 없습니다</h5>
+                <p class="text-muted">이 업체를 담당하는 실무자가 없습니다.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 부서 검색 섹션 -->
+    <div class="search-premium-card">
+        <div class="premium-card-body">
+            <h6 class="mb-3">
+                <i class="fas fa-search me-2"></i>부서/연구실 검색
+            </h6>
+            <form method="GET" action="{% url 'reporting:company_detail' company.pk %}">
+                <div class="row g-3">
+                    <div class="col-lg-8">
+                        <div class="search-input-group">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="form-control" name="dept_search" 
+                                   value="{{ dept_search|default:'' }}" 
+                                   placeholder="부서/연구실명을 입력하세요..." autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" style="border-radius: 12px; padding: 0.75rem;">
+                                <i class="fas fa-search me-2"></i>검색
+                            </button>
+                            <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-outline-secondary" style="border-radius: 12px; padding: 0.75rem;">
+                                <i class="fas fa-redo me-2"></i>초기화
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 부서/연구실 목록 -->
+    {% if departments %}
+    <div class="premium-card">
+        <div class="premium-card-header">
+            <h5>
+                <i class="fas fa-sitemap"></i>
+                부서/연구실 목록
+                <span class="badge bg-primary ms-2" style="border-radius: 8px;">{{ departments|length }}개</span>
+            </h5>
+        </div>
+        <div class="premium-card-body">
+            <div class="department-grid">
+                {% for department in departments %}
+                <div class="department-card">
+                    <div class="department-name">
+                        <i class="fas fa-building"></i>
+                        {{ department.name }}
+                    </div>
+                    
+                    <div class="department-stats">
+                        <span class="badge bg-success">
+                            <i class="fas fa-users me-1"></i>{{ department.followup_count }}명 고객
+                        </span>
+                    </div>
+                    
+                    {% if not is_readonly and user.userprofile.role == 'admin' or department.created_by == user %}
+                    <div class="department-actions">
+                        <a href="{% url 'reporting:department_edit' department.pk %}" 
+                           class="btn btn-action btn-outline-primary">
+                            <i class="fas fa-edit me-1"></i>수정
+                        </a>
+                        <a href="{% url 'reporting:department_delete' department.pk %}" 
+                           class="btn btn-action btn-outline-danger"
+                           onclick="return confirm('정말 삭제하시겠습니까?');">
+                            <i class="fas fa-trash me-1"></i>삭제
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">
+            <i class="fas fa-sitemap"></i>
+        </div>
+        {% if dept_search %}
+        <h5>검색 결과가 없습니다</h5>
+        <p class="text-muted">
+            "{{ dept_search }}"와 일치하는 부서/연구실이 없습니다.
+        </p>
+        <a href="{% url 'reporting:company_detail' company.pk %}" class="btn btn-premium btn-premium-primary">
+            <i class="fas fa-times me-2"></i>검색 초기화
+        </a>
+        {% else %}
+        <h5>등록된 부서/연구실이 없습니다</h5>
+        <p class="text-muted">
+            {{ company.name }}에 첫 번째 부서/연구실을 추가해보세요.
+        </p>
+        {% if user.userprofile.role == 'admin' %}
+        <a href="{% url 'reporting:department_create' company.pk %}" class="btn btn-premium btn-premium-primary">
+            <i class="fas fa-plus me-2"></i>새 부서/연구실 추가
+        </a>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

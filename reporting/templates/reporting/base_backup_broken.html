@@ -1,0 +1,3003 @@
+{% load static %}<!-- reporting/templates/reporting/base.html -->
+
+<!DOCTYPE html>{% load static %}
+
+<html lang="ko"><!DOCTYPE html>
+
+<head><html lang="ko">  <head>
+
+  <meta charset="UTF-8">    <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta name="csrf-token" content="{{ csrf_token }}">    <meta name="csrf-token" content="{{ csrf_token }}" />
+
+  <title>{% block title %}영업 보고 시스템{% endblock %}</title>    
+
+      <title>{% block title %}영업 보고 시스템{% endblock %}</title>
+
+  <!-- Google Fonts - Inter -->    
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">    <!-- Google Fonts - Inter (Modern Professional Font) -->
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>    <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome -->    
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">    <!-- Animate.css for smooth animations -->
+
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
+  <!-- Bootstrap CSS -->    
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">    <link href="{% static 'css/dist/styles.css' %}" rel="stylesheet" />
+
+      <!-- Font Awesome for icons -->
+
+  <!-- Animate.css -->    <link
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">      rel="stylesheet"
+
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+
+  <!-- Chart.js -->    />
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>    <!-- Bootstrap CSS (if not already included) -->
+
+      <link
+
+  <style>      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+
+    * {      rel="stylesheet"
+
+      margin: 0;    />
+
+      padding: 0;    <!-- Chart.js for data visualization -->
+
+      box-sizing: border-box;    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    }    <style>
+
+      /* ============================================
+
+    :root {         🎨 MODERN PREMIUM UI/UX DESIGN SYSTEM
+
+      --sidebar-width: 260px;         ============================================ */
+
+      --primary: #007bff;      
+
+      --primary-dark: #0056b3;      :root {
+
+      --gray-50: #f8f9fa;        /* Primary Colors */
+
+      --gray-100: #e9ecef;        --primary-50: #f0f9ff;
+
+      --gray-200: #dee2e6;        --primary-100: #e0f2fe;
+
+      --gray-300: #ced4da;        --primary-500: #0ea5e9;
+
+      --gray-700: #495057;        --primary-600: #0284c7;
+
+      --gray-800: #343a40;        --primary-700: #0369a1;
+
+      --gray-900: #212529;        
+
+    }        /* Neutral Colors */
+
+        --gray-50: #f8fafc;
+
+    body {        --gray-100: #f1f5f9;
+
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;        --gray-200: #e2e8f0;
+
+      display: flex;        --gray-300: #cbd5e1;
+
+      min-height: 100vh;        --gray-400: #94a3b8;
+
+      background: #f8f9fa;        --gray-500: #64748b;
+
+    }        --gray-600: #475569;
+
+        --gray-700: #334155;
+
+    /* ========== 사이드바 ========== */        --gray-800: #1e293b;
+
+    .main-nav {        --gray-900: #0f172a;
+
+      width: var(--sidebar-width);        
+
+      background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);        /* Spacing */
+
+      color: white;        --spacing-xs: 0.25rem;
+
+      position: fixed;        --spacing-sm: 0.5rem;
+
+      left: 0;        --spacing-md: 1rem;
+
+      top: 0;        --spacing-lg: 1.5rem;
+
+      height: 100vh;        --spacing-xl: 2rem;
+
+      overflow-y: auto;        --spacing-2xl: 3rem;
+
+      z-index: 1000;        
+
+      box-shadow: 2px 0 8px rgba(0,0,0,0.1);        /* Border Radius */
+
+    }        --radius-sm: 0.375rem;
+
+        --radius-md: 0.5rem;
+
+    .main-nav .logo {        --radius-lg: 0.75rem;
+
+      display: block;        --radius-xl: 1rem;
+
+      padding: 1.5rem;        
+
+      font-size: 1.5rem;        /* Shadows */
+
+      font-weight: 800;        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
+      color: white;        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+      text-decoration: none;        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+      text-align: center;        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+      border-bottom: 1px solid rgba(255,255,255,0.1);        
+
+    }        /* Typography */
+
+        --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    .main-nav ul {      }
+
+      list-style: none;      
+
+      padding: 1rem 0;      * {
+
+    }        margin: 0;
+
+        padding: 0;
+
+    .main-nav ul li {        box-sizing: border-box;
+
+      margin: 0;      }
+
+    }      
+
+      body {
+
+    .main-nav ul li a {        font-family: var(--font-family);
+
+      display: flex;        margin: 0;
+
+      align-items: center;        background: linear-gradient(to bottom right, #f8fafc, #f1f5f9);
+
+      padding: 0.875rem 1.5rem;        color: var(--gray-800);
+
+      color: rgba(255,255,255,0.8);        display: flex;
+
+      text-decoration: none;        min-height: 100vh;
+
+      transition: all 0.3s;        position: relative;
+
+      font-weight: 500;        font-size: 15px;
+
+    }        line-height: 1.6;
+
+        -webkit-font-smoothing: antialiased;
+
+    .main-nav ul li a:hover {        -moz-osx-font-smoothing: grayscale;
+
+      background: rgba(255,255,255,0.1);      }
+
+      color: white;      
+
+      padding-left: 2rem;      /* ============================================
+
+    }         📱 MOBILE OVERLAY
+
+         ============================================ */
+
+    .main-nav ul li a.active {      .mobile-overlay {
+
+      background: rgba(255,255,255,0.15);        display: none;
+
+      color: white;        position: fixed;
+
+      border-left: 4px solid #60a5fa;        top: 0;
+
+    }        left: 0;
+
+        width: 100%;
+
+    .main-nav ul li a i {        height: 100%;
+
+      margin-right: 0.75rem;        background: rgba(15, 23, 42, 0.5);
+
+      width: 20px;        backdrop-filter: blur(4px);
+
+      text-align: center;        z-index: 1049;
+
+    }        transition: opacity 0.3s ease;
+
+      }
+
+    /* ========== 메인 컨텐츠 ========== */
+
+    .main-content {      .mobile-overlay.show {
+
+      margin-left: var(--sidebar-width);        display: block;
+
+      flex: 1;        animation: fadeIn 0.3s ease;
+
+      padding: 2rem;      }
+
+      width: calc(100% - var(--sidebar-width));      
+
+    }      @keyframes fadeIn {
+
+        from { opacity: 0; }
+
+    /* ========== 상단 헤더 ========== */        to { opacity: 1; }
+
+    .top-header-bar {      }
+
+      background: white;
+
+      padding: 1rem 1.5rem;      /* ============================================
+
+      margin: -2rem -2rem 2rem -2rem;         🍔 MOBILE HAMBURGER MENU
+
+      border-bottom: 1px solid var(--gray-200);         ============================================ */
+
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);      .mobile-menu-toggle {
+
+    }        display: none;
+
+        position: fixed;
+
+    .top-header-bar .page-title h5 {        top: var(--spacing-lg);
+
+      font-weight: 700;        left: var(--spacing-lg);
+
+      color: var(--gray-900);        z-index: 1051;
+
+      margin: 0;        background: white;
+
+    }        border: 1px solid var(--gray-200);
+
+        border-radius: var(--radius-lg);
+
+    .user-info-compact {        padding: var(--spacing-md);
+
+      font-size: 0.9rem;        cursor: pointer;
+
+      color: var(--gray-700);        box-shadow: var(--shadow-lg);
+
+    }        min-width: 48px;
+
+        min-height: 48px;
+
+    .logout-btn-top {        display: flex;
+
+      padding: 0.5rem 1rem;        align-items: center;
+
+      background: var(--primary);        justify-content: center;
+
+      color: white;        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+      border: none;      }
+
+      border-radius: 0.5rem;
+
+      cursor: pointer;      .mobile-menu-toggle:hover {
+
+      font-weight: 600;        background: var(--gray-50);
+
+      transition: all 0.3s;        transform: translateY(-2px);
+
+    }        box-shadow: var(--shadow-xl);
+
+      }
+
+    .logout-btn-top:hover {
+
+      background: var(--primary-dark);      .mobile-menu-toggle:active {
+
+      transform: translateY(-2px);        transform: scale(0.95);
+
+    }      }
+
+
+
+    /* ========== 모바일 반응형 ========== */      .mobile-menu-toggle i {
+
+    .mobile-menu-toggle {        font-size: 20px;
+
+      display: none;        color: var(--gray-700);
+
+    }        transition: transform 0.3s ease;
+
+      }
+
+    .mobile-overlay {      }
+
+      display: none;
+
+    }        /* 메뉴 열릴 때 아이콘 회전 */
+
+      .mobile-menu-toggle.active i {
+
+    @media (max-width: 768px) {        transform: rotate(90deg);
+
+      .main-nav {      }
+
+        transform: translateX(-100%);
+
+        transition: transform 0.3s;      /* 터치 인터페이스 최적화 */
+
+      }      @media (pointer: coarse) {
+
+        /* 터치 디바이스용 최적화 */
+
+      .main-nav.show {        .btn {
+
+        transform: translateX(0);          min-height: 44px;
+
+      }          min-width: 44px;
+
+          padding: 12px 16px;
+
+      .main-content {          touch-action: manipulation;
+
+        margin-left: 0;        }
+
+        width: 100%;        
+
+      }        .form-control, .form-select {
+
+          min-height: 44px;
+
+      .mobile-menu-toggle {          font-size: 16px; /* iOS 줌 방지 */
+
+        display: flex;          padding: 12px 16px;
+
+        position: fixed;        }
+
+        top: 1rem;        
+
+        left: 1rem;        .dropdown-item {
+
+        z-index: 1001;          min-height: 44px;
+
+        background: white;          padding: 12px 16px;
+
+        border: 1px solid var(--gray-200);          display: flex;
+
+        border-radius: 0.5rem;          align-items: center;
+
+        padding: 0.75rem;        }
+
+        cursor: pointer;        
+
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);        .nav-link {
+
+        align-items: center;          min-height: 44px;
+
+        justify-content: center;          padding: 12px 16px;
+
+      }          display: flex;
+
+          align-items: center;
+
+      .mobile-menu-toggle i {        }
+
+        font-size: 1.25rem;        
+
+        color: var(--gray-700);        /* 터치 피드백 */
+
+      }        .btn:active,
+
+        .dropdown-item:active,
+
+      .mobile-overlay {        .nav-link:active {
+
+        display: none;          transform: scale(0.98);
+
+        position: fixed;          transition: transform 0.1s ease;
+
+        top: 0;        }
+
+        left: 0;        
+
+        width: 100%;        /* 스크롤바 숨기기 (터치 스크롤 시) */
+
+        height: 100%;        .table-responsive {
+
+        background: rgba(0,0,0,0.5);          scrollbar-width: none;
+
+        z-index: 999;          -ms-overflow-style: none;
+
+      }        }
+
+        
+
+      .mobile-overlay.show {        .table-responsive::-webkit-scrollbar {
+
+        display: block;          display: none;
+
+      }        }
+
+    }      }
+
+
+
+    /* 페이지별 추가 스타일 */      /* Pull-to-refresh 스타일 */
+
+    {% block extra_css %}{% endblock %}      .pull-to-refresh {
+
+  </style>        position: fixed;
+
+</head>        top: -50px;
+
+<body>        left: 50%;
+
+        transform: translateX(-50%);
+
+  <!-- 모바일 햄버거 메뉴 -->        background: #007bff;
+
+  <button class="mobile-menu-toggle" id="mobileMenuToggle">        color: white;
+
+    <i class="fas fa-bars"></i>        padding: 10px 20px;
+
+  </button>        border-radius: 20px;
+
+        z-index: 9999;
+
+  <!-- 모바일 오버레이 -->        transition: all 0.3s ease;
+
+  <div class="mobile-overlay" id="mobileOverlay"></div>        opacity: 0;
+
+      }
+
+  <!-- 사이드바 네비게이션 -->      
+
+  <nav class="main-nav" id="mainNav">      .pull-to-refresh.show {
+
+    <!-- 로고 -->        top: 20px;
+
+    {% if user.is_authenticated %}        opacity: 1;
+
+    <a href="{% url 'reporting:dashboard' %}" class="logo">Sales System</a>      }
+
+    {% else %}
+
+    <a href="{% url 'reporting:login' %}" class="logo">Sales System</a>      /* 스와이프 표시기 */
+
+    {% endif %}      .swipe-indicator {
+
+        position: absolute;
+
+    <ul>        top: 50%;
+
+      <!-- 대시보드 -->        transform: translateY(-50%);
+
+      {% if user.is_authenticated %}        background: rgba(0, 123, 255, 0.8);
+
+      <li>        color: white;
+
+        <a href="{% url 'reporting:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">        padding: 8px 12px;
+
+          <i class="fas fa-home"></i>대시보드        border-radius: 16px;
+
+        </a>        font-size: 12px;
+
+      </li>        z-index: 1000;
+
+      {% endif %}        pointer-events: none;
+
+        opacity: 0;
+
+      <!-- Admin 전용 -->        transition: opacity 0.3s ease;
+
+      {% if user.is_authenticated and user.userprofile.role == 'admin' %}      }
+
+      <li>      
+
+        <a href="{% url 'reporting:user_list' %}" class="{% if request.resolver_match.url_name|slice:':4' == 'user' %}active{% endif %}">      .swipe-indicator.left {
+
+          <i class="fas fa-users"></i>사용자 관리        left: 20px;
+
+        </a>      }
+
+      </li>      
+
+      {% endif %}      .swipe-indicator.right {
+
+        right: 20px;
+
+      <!-- Manager 전용 -->      }
+
+      {% if user.is_authenticated and user.userprofile.role == 'manager' %}      
+
+      <li>      .swipe-indicator.show {
+
+        <a href="{% url 'reporting:manager_user_list' %}" class="{% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}">        opacity: 1;
+
+          <i class="fas fa-user-friends"></i>직원 관리      }
+
+        </a>      
+
+      </li>      /* ============================================
+
+      {% endif %}         🎯 MODERN SIDEBAR NAVIGATION
+
+         ============================================ */
+
+      <!-- Admin & Salesman 업체 관리 -->      .main-nav {
+
+      {% if user.is_authenticated and user.userprofile.role == 'admin' or user.is_authenticated and user.userprofile.role == 'salesman' %}        background: white;
+
+      <li>        border-right: 1px solid var(--gray-200);
+
+        <a href="{% url 'reporting:company_list' %}" class="{% if request.resolver_match.url_name|slice:':7' == 'company' %}active{% endif %}">        padding: var(--spacing-xl) 0;
+
+          <i class="fas fa-building"></i>업체 관리        width: 280px;
+
+        </a>        display: flex;
+
+      </li>        flex-direction: column;
+
+      {% endif %}        position: relative;
+
+        z-index: 1050;
+
+      <!-- Manager 전용 리포트 -->        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+      {% if user.is_authenticated and user.userprofile.role == 'manager' %}        box-shadow: var(--shadow-sm);
+
+      <li>      }
+
+        <a href="{% url 'reporting:customer_report' %}" class="{% if request.resolver_match.url_name == 'customer_report' %}active{% endif %}">
+
+          <i class="fas fa-chart-bar"></i>고객 리포트      .main-nav .logo {
+
+        </a>        font-size: 24px;
+
+      </li>        font-weight: 700;
+
+      <li>        background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+
+        <a href="{% url 'reporting:manager_company_list' %}" class="{% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}">        -webkit-background-clip: text;
+
+          <i class="fas fa-building"></i>업체 조회        -webkit-text-fill-color: transparent;
+
+        </a>        background-clip: text;
+
+      </li>        text-decoration: none;
+
+      {% endif %}        margin: 0 var(--spacing-xl) var(--spacing-2xl);
+
+        display: flex;
+
+      <!-- Salesman & Admin 공통 -->        align-items: center;
+
+      {% if user.is_authenticated and user.userprofile.role != 'manager' %}        gap: var(--spacing-md);
+
+      <li>        padding: var(--spacing-md);
+
+        <a href="{% url 'reporting:followup_list' %}" class="{% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}">        border-radius: var(--radius-lg);
+
+          <i class="fas fa-user-check"></i>팔로우업        transition: all 0.2s ease;
+
+        </a>      }
+
+      </li>      
+
+      <li>      .main-nav .logo:hover {
+
+        <a href="{% url 'reporting:schedule_list' %}" class="{% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">        background: var(--gray-50);
+
+          <i class="fas fa-list"></i>일정 목록        -webkit-text-fill-color: var(--primary-600);
+
+        </a>      }
+
+      </li>      
+
+      <li>      .main-nav .logo i {
+
+        <a href="{% url 'reporting:schedule_calendar' %}" class="{% if request.resolver_match.url_name == 'schedule_calendar' %}active{% endif %}">        font-size: 28px;
+
+          <i class="fas fa-calendar"></i>일정 캘린더        background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+
+        </a>        -webkit-background-clip: text;
+
+      </li>        -webkit-text-fill-color: transparent;
+
+      <li>        background-clip: text;
+
+        <a href="{% url 'reporting:history_list' %}" class="{% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}">      }
+
+          <i class="fas fa-history"></i>히스토리
+
+        </a>      .main-nav ul {
+
+      </li>        list-style: none;
+
+      <li>        padding: 0 var(--spacing-md);
+
+        <a href="{% url 'reporting:customer_report' %}" class="{% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}">        margin: 0;
+
+          <i class="fas fa-chart-bar"></i>고객 리포트        flex-grow: 1;
+
+        </a>      }
+
+      </li>      
+
+      {% endif %}      .main-nav ul li {
+
+        margin-bottom: var(--spacing-xs);
+
+      <!-- 프로필 관리 -->      }
+
+      {% if user.is_authenticated %}
+
+      <li>      .main-nav ul li a {
+
+        <a href="{% url 'reporting:profile' %}" class="{% if request.resolver_match.url_name == 'profile' %}active{% endif %}">        display: flex;
+
+          <i class="fas fa-user-cog"></i>프로필 관리        align-items: center;
+
+        </a>        gap: var(--spacing-md);
+
+      </li>        padding: var(--spacing-md) var(--spacing-lg);
+
+      {% endif %}        color: var(--gray-600);
+
+    </ul>        text-decoration: none;
+
+  </nav>        border-radius: var(--radius-md);
+
+        font-weight: 500;
+
+  <!-- 메인 컨텐츠 영역 -->        font-size: 14px;
+
+  <main class="main-content">        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    <!-- 상단 헤더 바 -->        position: relative;
+
+    <div class="top-header-bar">        overflow: hidden;
+
+      <div class="d-flex justify-content-between align-items-center">      }
+
+        <div class="page-title">      
+
+          <h5>{% block page_title %}영업 보고 시스템{% endblock %}</h5>      .main-nav ul li a i {
+
+        </div>        font-size: 18px;
+
+        <div class="user-actions-top d-flex align-items-center gap-3">        min-width: 20px;
+
+          {% if user.is_authenticated %}        transition: transform 0.2s ease;
+
+          <span class="user-info-compact">      }
+
+            <i class="fas fa-user me-1"></i>{{ user.username }}      
+
+            {% if user.userprofile %}      .main-nav ul li a::before {
+
+            <small class="text-muted ms-1">({{ user.userprofile.get_role_display }})</small>        content: '';
+
+            {% endif %}        position: absolute;
+
+          </span>        left: 0;
+
+          <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">        top: 50%;
+
+            {% csrf_token %}        transform: translateY(-50%);
+
+            <button type="submit" class="logout-btn-top">        height: 0;
+
+              <i class="fas fa-sign-out-alt me-1"></i>로그아웃        width: 3px;
+
+            </button>        background: linear-gradient(to bottom, var(--primary-600), var(--primary-500));
+
+          </form>        border-radius: 0 2px 2px 0;
+
+          {% else %}        transition: height 0.2s ease;
+
+          <a href="{% url 'reporting:login' %}" class="btn btn-primary">      }
+
+            <i class="fas fa-sign-in-alt me-1"></i>로그인
+
+          </a>      .main-nav ul li a:hover {
+
+          {% endif %}        background: var(--primary-50);
+
+        </div>        color: var(--primary-700);
+
+      </div>        transform: translateX(4px);
+
+    </div>      }
+
+      
+
+    <!-- 메시지 표시 -->      .main-nav ul li a:hover i {
+
+    {% if messages %}        transform: scale(1.1);
+
+    <div class="messages mb-4">      }
+
+      {% for message in messages %}      
+
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">      .main-nav ul li a:hover::before {
+
+        {{ message }}        height: 70%;
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>      }
+
+      </div>
+
+      {% endfor %}      .main-nav ul li a.active {
+
+    </div>        background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+
+    {% endif %}        color: white;
+
+        box-shadow: var(--shadow-md);
+
+    <!-- 페이지 컨텐츠 -->      }
+
+    {% block content %}{% endblock %}      
+
+  </main>      .main-nav ul li a.active::before {
+
+        display: none;
+
+  <!-- Bootstrap JS -->      }
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+      .main-nav .user-actions {
+
+  <!-- 모바일 메뉴 스크립트 -->        margin-top: auto;
+
+  <script>        padding: var(--spacing-md);
+
+    const mobileMenuToggle = document.getElementById('mobileMenuToggle');        border-top: 1px solid var(--gray-200);
+
+    const mainNav = document.getElementById('mainNav');      }
+
+    const mobileOverlay = document.getElementById('mobileOverlay');
+
+      .main-nav .user-actions a {
+
+    if (mobileMenuToggle) {        display: flex;
+
+      mobileMenuToggle.addEventListener('click', function() {        align-items: center;
+
+        mainNav.classList.toggle('show');        justify-content: center;
+
+        mobileOverlay.classList.toggle('show');        gap: var(--spacing-sm);
+
+      });        padding: var(--spacing-md);
+
+    }        color: var(--gray-700);
+
+        text-decoration: none;
+
+    if (mobileOverlay) {        border-radius: var(--radius-md);
+
+      mobileOverlay.addEventListener('click', function() {        transition: all 0.2s ease;
+
+        mainNav.classList.remove('show');        text-align: center;
+
+        mobileOverlay.classList.remove('show');        border: 1px solid var(--gray-200);
+
+      });        margin-top: var(--spacing-sm);
+
+    }        font-weight: 500;
+
+        font-size: 14px;
+
+    // 링크 클릭 시 모바일 메뉴 닫기      }
+
+    document.querySelectorAll('.main-nav a').forEach(link => {
+
+      link.addEventListener('click', function() {      .main-nav .user-actions a:hover {
+
+        if (window.innerWidth <= 768) {        background: var(--gray-50);
+
+          mainNav.classList.remove('show');        border-color: var(--gray-300);
+
+          mobileOverlay.classList.remove('show');        transform: translateY(-1px);
+
+        }        box-shadow: var(--shadow-sm);
+
+      });      }
+
+    });      
+
+  </script>      /* ============================================
+
+         📄 MAIN CONTENT AREA
+
+  {% block extra_js %}{% endblock %}         ============================================ */
+
+</body>      .main-content {
+
+</html>        flex-grow: 1;
+
+        padding: 0;
+        overflow-y: auto;
+        background: linear-gradient(to bottom right, var(--gray-50), white);
+      }
+      
+      /* ============================================
+         🎯 TOP HEADER BAR
+         ============================================ */
+      .top-header-bar {
+        background: white;
+        border-bottom: 1px solid var(--gray-200);
+        padding: var(--spacing-lg) var(--spacing-2xl);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.95);
+      }
+      
+      .page-title h5 {
+        color: var(--gray-900);
+        font-weight: 700;
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: -0.02em;
+      }
+      
+      .user-actions-top {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+      }
+      
+      .user-info-compact {
+        color: var(--gray-700);
+        font-size: 14px;
+        font-weight: 500;
+        padding: var(--spacing-sm) var(--spacing-md);
+        background: var(--gray-100);
+        border-radius: var(--radius-md);
+      }
+      
+      /* ============================================
+         🎨 MODERN BUTTONS
+         ============================================ */
+      .logout-btn-top,
+      .login-btn-top {
+        padding: var(--spacing-sm) var(--spacing-lg);
+        color: white;
+        border: none;
+        border-radius: var(--radius-md);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        box-shadow: var(--shadow-sm);
+      }
+      
+      .logout-btn-top {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+      }
+      
+      .logout-btn-top:hover {
+        background: linear-gradient(135deg, #dc2626, #b91c1c);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+      
+      .logout-btn-top:active {
+        transform: translateY(0);
+        box-shadow: var(--shadow-sm);
+      }
+      
+      .login-btn-top {
+        background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      
+      .login-btn-top:hover {
+        background: linear-gradient(135deg, #0056b3, #004494);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        color: white;
+        text-decoration: none;
+      }
+      
+      .login-btn-top:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+      }
+      
+      /* 모바일 반응형 - 상단 헤더 */
+      @media (max-width: 768px) {
+        .top-header-bar {
+          padding: 10px 15px;
+        }
+        
+        .page-title h5 {
+          font-size: 16px;
+        }
+        
+        .user-info-compact {
+          font-size: 12px;
+        }
+        
+        .logout-btn-top {
+          padding: 6px 12px;
+          font-size: 12px;
+        }
+        
+        .login-btn-top {
+          padding: 6px 12px;
+          font-size: 12px;
+        }
+        
+        .container {
+          padding: 20px 15px;
+        }
+      }
+      
+      /* 퀵 네비게이션 바 스타일 */
+      .quick-nav-bar {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+
+      .quick-nav-bar .btn {
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .quick-nav-bar .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      }
+
+      .quick-nav-bar .btn i {
+        font-size: 14px;
+      }
+
+      @media (max-width: 768px) {
+        .quick-nav-bar {
+          padding: 10px;
+          margin: 0 -15px 20px;
+          border-radius: 0;
+        }
+        
+        .quick-nav-bar .d-flex {
+          overflow-x: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          padding-bottom: 5px;
+        }
+        
+        .quick-nav-bar .d-flex::-webkit-scrollbar {
+          display: none;
+        }
+        
+        .quick-nav-bar .btn {
+          flex-shrink: 0;
+          font-size: 12px;
+          padding: 6px 10px;
+        }
+        
+        .quick-nav-bar .btn i {
+          font-size: 12px;
+        }
+      }
+
+      .container {
+        max-width: 900px; /* Notion 페이지 너비와 유사하게 */
+        margin: 0 auto; /* 중앙 정렬 */
+        padding: 30px; /* 컨텐츠 영역 패딩 */
+      }
+
+      .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 15px;
+        margin-bottom: 25px;
+        border-bottom: 1px solid #edecec; /* Notion 구분선과 유사하게 */
+      }
+
+      .page-title {
+        font-size: 28px; /* Notion 페이지 제목 크기와 유사하게 */
+        font-weight: 700; /* Notion 제목 굵기 */
+        color: #1f1e1c; /* Notion 제목 색상 */
+      }
+
+      .btn {
+        display: inline-block;
+        padding: 9px 16px; /* 버튼 패딩 조정 */
+        font-size: 14px;
+        font-weight: 500;
+        text-align: center;
+        text-decoration: none;
+        border-radius: 5px; /* Notion 버튼 둥글기 */
+        cursor: pointer;
+        transition: background-color 0.2s, border-color 0.2s;
+        border: 1px solid transparent; /* 기본 테두리 투명 */
+      }
+
+      .btn-primary {
+        background-color: #2563eb; /* Notion 주요 버튼 색상 */
+        color: white;
+        border-color: #2563eb;
+      }
+
+      .btn-primary:hover {
+        background-color: #1d4ed8;
+        border-color: #1d4ed8;
+      }
+
+      .btn-secondary {
+        background-color: #ffffff;
+        color: #37352f;
+        border: 1px solid #e3e2e0; /* Notion 보조 버튼 테두리 */
+      }
+
+      .btn-secondary:hover {
+        background-color: #f7f7f5; /* Notion 보조 버튼 호버 색상 */
+      }
+
+      .card-list {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(280px, 1fr)
+        ); /* 카드 최소 너비 조정 */
+        gap: 25px; /* 카드 간격 조정 */
+      }
+
+      .card {
+        background-color: #ffffff;
+        border: 1px solid #edecec; /* Notion 카드 테두리 */
+        border-radius: 6px; /* Notion 카드 둥글기 */
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.03); /* Notion 카드 그림자 */
+        transition: box-shadow 0.2s;
+      }
+      .card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05); /* 호버 시 그림자 강조 */
+      }
+
+      .card-body {
+        padding: 20px; /* 카드 내부 패딩 조정 */
+      }
+
+      .card-title {
+        font-size: 17px; /* 카드 제목 크기 조정 */
+        font-weight: 600;
+        margin-top: 0;
+        margin-bottom: 8px; /* 제목과 부제목 사이 간격 조정 */
+      }
+
+      .card-title a {
+        color: #37352f; /* 카드 제목 링크 색상 */
+        text-decoration: none;
+      }
+
+      .card-title a:hover {
+        text-decoration: underline;
+      }      .card-subtitle {
+        font-size: 13px; /* 카드 부제목 크기 조정 */
+        font-weight: 400;
+        color: #787774; /* 카드 부제목 색상 */
+        margin-bottom: 12px;
+      }
+
+      /* 대시보드 통계 카드 스타일 */
+      .stat-card {
+        border: 1px solid #e3e2e0;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s ease-in-out;
+        min-height: 140px;
+      }
+
+      .stat-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+      }
+
+      .stat-card .card-body {
+        padding: 16px;
+      }
+
+      .stat-card .icon-wrapper {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 8px;
+      }
+
+      /* 작은 화면에서의 반응형 조정 */
+      @media (max-width: 768px) {
+        .stat-card .card-body {
+          padding: 12px;
+        }
+
+        .stat-card h3 {
+          font-size: 1.2rem;
+        }
+
+        .stat-card .btn-sm {
+          font-size: 0.75rem;
+          padding: 4px 8px;
+        }
+
+        .stat-card .icon-wrapper {
+          width: 32px;
+          height: 32px;
+        }
+      }
+
+      /* 매우 작은 화면에서의 조정 */
+      @media (max-width: 576px) {
+        .stat-card {
+          min-height: 120px;
+        }
+
+        .stat-card .card-body {
+          padding: 10px;
+        }
+
+        .stat-card h3 {
+          font-size: 1.1rem;
+        }
+
+        .stat-card .card-title {
+          font-size: 0.8rem;
+        }
+      }
+      }
+
+      .card-text {
+        font-size: 14px;
+        line-height: 1.6;
+        color: #5c5a53; /* 카드 본문 텍스트 색상 */
+      }
+      .card-text strong {
+        color: #37352f; /* 강조 텍스트 색상 */
+      }
+
+      .text-muted {
+        color: #9b9a97;
+      }
+
+      .text-center {
+        text-align: center;
+      }
+
+      .mt-3 {
+        margin-top: 1rem;
+      }
+      .mb-2 {
+        margin-bottom: 0.5rem;      }
+      /* 추가적인 Notion 스타일 요소들 (아이콘, 테이블, 폼 등)은 필요에 따라 확장합니다. */
+
+      /* 글로벌 로딩 스피너 스타일 */
+      .global-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.9);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        backdrop-filter: blur(2px);
+      }
+
+      .loader-content {
+        text-align: center;
+        color: #37352f;
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e3e2e0;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* 토스트 메시지 스타일 */
+      .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9998;
+        max-width: 400px;
+      }
+
+      .toast {
+        background-color: #ffffff;
+        border: 1px solid #e3e2e0;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        margin-bottom: 10px;
+        padding: 15px 20px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .toast.toast-success {
+        border-left: 4px solid #198754;
+      }
+
+      .toast.toast-error {
+        border-left: 4px solid #dc3545;
+      }
+
+      .toast.toast-warning {
+        border-left: 4px solid #ffc107;
+      }
+
+      .toast.toast-info {
+        border-left: 4px solid #0dcaf0;
+      }
+
+      .toast-icon {
+        margin-right: 12px;
+        font-size: 18px;
+      }
+
+      .toast-success .toast-icon {
+        color: #198754;
+      }
+
+      .toast-error .toast-icon {
+        color: #dc3545;
+      }
+
+      .toast-warning .toast-icon {
+        color: #ffc107;
+      }
+
+      .toast-info .toast-icon {
+        color: #0dcaf0;
+      }
+
+      .toast-message {
+        flex-grow: 1;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .toast-close {
+        background: none;
+        border: none;
+        font-size: 18px;
+        color: #787774;
+        cursor: pointer;
+        margin-left: 10px;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .toast-close:hover {
+        color: #37352f;
+      }      /* 모바일 반응형 최적화 - 강제 적용 */
+      @media (max-width: 768px) {
+        /* 모바일 CSS 적용 확인용 - body에 배경색 변경 */
+        body {
+          flex-direction: column !important;
+          padding-top: 60px !important;
+          background-color: #f8f9fa !important; /* 모바일에서만 회색 배경 */
+        }
+
+        /* 모바일 햄버거 메뉴 표시 */
+        .mobile-menu-toggle {
+          display: block !important;
+        }        .main-nav {
+          position: fixed;
+          top: 0;
+          left: -300px;
+          width: 280px;
+          height: 100vh;
+          padding: 80px 20px 20px;
+          border-right: none;
+          border-bottom: none;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+          z-index: 1050;
+          transition: left 0.3s ease;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .main-nav.show {
+          left: 0;
+        }        .main-nav ul {
+          display: block;
+          flex-wrap: none;
+          gap: 0;
+          margin-bottom: 20px;
+          flex-grow: 1;
+          overflow-y: auto;
+        }
+
+        .main-nav ul li {
+          flex: none;
+          min-width: auto;
+          margin-bottom: 5px;
+        }
+
+        .main-nav ul li a {
+          text-align: left;
+          font-size: 16px;
+          padding: 15px;
+          min-height: 44px; /* 터치 친화적 */
+          display: flex;
+          align-items: center;
+        }
+
+        .main-nav ul li a i {
+          margin-right: 12px;
+          width: 20px;
+          text-align: center;
+        }
+
+        /* 모바일 오버레이 표시 */
+        .mobile-overlay.show {
+          display: block;
+        }
+
+        .main-content {
+          width: 100%;
+          padding: 15px;
+        }
+
+        .container {
+          max-width: 100%;
+          padding: 0 10px;
+        }
+
+        .page-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+
+        .page-title {
+          font-size: 24px;
+        }
+
+        /* 버튼 모바일 최적화 */
+        .btn {
+          padding: 12px 16px;
+          font-size: 16px;
+          min-height: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* 카드 모바일 최적화 */
+        .card {
+          margin-bottom: 15px;
+          border-radius: 8px;
+        }
+
+        .card-body {
+          padding: 15px;
+        }
+
+        /* 테이블 모바일 최적화 */
+        .table th,
+        .table td {
+          padding: 12px 8px;
+          font-size: 14px;
+          white-space: nowrap;
+        }
+
+        /* 폼 모바일 최적화 */
+        .form-control,
+        .form-select {
+          min-height: 44px;
+          font-size: 16px; /* iOS 줌 방지 */
+          border-radius: 8px;
+        }
+
+        /* 드롭다운 모바일 최적화 */
+        .dropdown-menu {
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          margin-top: 8px;
+        }
+
+        .dropdown-item {
+          padding: 12px 16px;
+          font-size: 16px;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+        }        /* 모달 모바일 최적화 */
+        .modal-dialog {
+          margin: 20px;
+          max-width: calc(100% - 40px);
+        }
+
+        .modal-content {
+          border-radius: 12px;
+        }        /* 모바일 슬라이더 스타일 - 강제 적용 */
+        .mobile-slider {
+          display: flex !important;
+          overflow-x: auto !important;
+          scroll-snap-type: x mandatory !important;
+          gap: 15px !important;
+          padding: 0 15px !important;
+          margin: 0 -15px !important;
+          scrollbar-width: none !important; /* Firefox */
+          -ms-overflow-style: none !important; /* IE and Edge */
+          background-color: #e3f2fd !important; /* 디버깅용 - 슬라이더 배경 */
+        }
+
+        .mobile-slider::-webkit-scrollbar {
+          display: none !important; /* Chrome, Safari */
+        }
+
+        .mobile-slider .card,
+        .mobile-slider .stat-card {
+          flex: 0 0 85% !important;
+          scroll-snap-align: center !important;
+          margin-bottom: 0 !important;
+        }
+
+        /* 모바일 그래프 컨테이너 - 강제 적용 */
+        .mobile-chart-slider {
+          display: flex !important;
+          overflow-x: auto !important;
+          scroll-snap-type: x mandatory !important;
+          gap: 20px !important;
+          padding: 0 15px !important;
+          margin: 0 -15px !important;
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+          background-color: #fff3e0 !important; /* 디버깅용 - 차트 슬라이더 배경 */
+        }        .mobile-chart-slider::-webkit-scrollbar {
+          display: none !important;
+        }
+
+        /* 모바일 전용 표시/숨김 강제 적용 */
+        .d-md-none {
+          display: block !important;
+        }
+
+        .d-none.d-md-flex {
+          display: none !important;
+        }
+
+        @media (min-width: 769px) {
+          .d-md-none {
+            display: none !important;
+          }
+          
+          .d-none.d-md-flex {
+            display: flex !important;
+          }
+        }
+
+        .mobile-chart-slider .chart-container {
+          flex: 0 0 90%;
+          scroll-snap-align: center;
+          min-height: 300px;
+        }
+
+        /* 모바일 필터 박스 최적화 */
+        .filter-box {
+          padding: 10px;
+          margin-bottom: 15px;
+        }
+
+        .filter-box .btn-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+
+        .filter-box .btn {
+          padding: 6px 10px;
+          font-size: 12px;
+          min-height: 32px;
+          flex: 1;
+          min-width: auto;
+        }
+
+        /* 모바일 액션 버튼 최적화 */
+        .action-buttons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .action-buttons .btn {
+          padding: 8px 12px;
+          font-size: 13px;
+          min-height: 36px;
+          flex: 1;
+          min-width: auto;
+        }
+
+        /* 모바일 테이블 스크롤 */
+        .table-responsive {
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 모바일 캘린더 최적화 */
+        .fc {
+          font-size: 12px;
+        }
+
+        .fc-toolbar {
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .fc-toolbar-chunk {
+          display: flex;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+
+        .fc-button {
+          padding: 6px 10px;
+          font-size: 12px;
+          min-height: 32px;
+        }
+
+        .fc-daygrid-day {
+          min-height: 40px;
+        }
+
+        .fc-daygrid-day-number {
+          font-size: 12px;
+          padding: 4px;
+        }
+
+        .fc-event {
+          font-size: 10px;
+          padding: 1px 3px;
+        }
+
+        /* 모바일 히스토리 카드 */
+        .history-card {
+          padding: 12px;
+          margin-bottom: 10px;
+        }
+
+        .history-card .card-title {
+          font-size: 14px;
+          margin-bottom: 8px;
+        }
+
+        .history-card .card-text {
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        /* 모바일 상세 정보 */
+        .detail-info {
+          padding: 10px;
+          font-size: 14px;
+        }
+
+        .detail-info dt {
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+
+        .detail-info dd {
+          font-size: 12px;
+          margin-bottom: 8px;
+        }
+        }
+
+        /* 통계 카드 모바일 최적화 */
+        .row.mb-4 .col-lg-3,
+        .row.mb-4 .col-md-6 {
+          margin-bottom: 15px;
+        }
+
+        .card-hover {
+          transition: transform 0.2s ease;
+        }
+
+        .card-hover:active {
+          transform: scale(0.98);
+        }
+
+        /* 네비게이션 사용자 액션 */
+        .main-nav .user-actions a {
+          padding: 15px;
+          font-size: 16px;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        /* 차트 모바일 최적화 */
+        .chart-container {
+          position: relative;
+          height: 250px;
+          margin-bottom: 20px;
+        }
+
+        /* 캘린더 모바일 최적화 */
+        .calendar-container {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        /* 텍스트 크기 조정 */
+        h1, .h1 { font-size: 24px; }
+        h2, .h2 { font-size: 20px; }
+        h3, .h3 { font-size: 18px; }
+        h4, .h4 { font-size: 16px; }
+
+        /* 스페이싱 조정 */
+        .mb-4 { margin-bottom: 20px !important; }
+        .mb-3 { margin-bottom: 15px !important; }
+      }
+
+        .page-title {
+          font-size: 24px;
+        }
+
+        .card-list {
+          grid-template-columns: 1fr;
+          gap: 15px;
+        }
+
+        .toast-container {
+          top: 10px;
+          right: 10px;
+          left: 10px;
+          max-width: none;
+        }
+
+        .toast {
+          margin-bottom: 8px;
+        }
+      }
+
+      /* 태블릿 반응형 */
+      @media (max-width: 1024px) and (min-width: 769px) {
+        .card-list {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      
+      /* ============================================
+         🎨 PREMIUM UI COMPONENTS - PHASE 2
+         ============================================ */
+      
+      /* 📊 통계 카드 개선 */
+      .stat-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-md);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+        position: relative;
+      }
+      
+      .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .stat-card:hover {
+        box-shadow: var(--shadow-xl);
+        transform: translateY(-4px);
+        border-color: var(--primary-200);
+      }
+      
+      .stat-card:hover::before {
+        opacity: 1;
+      }
+
+      .stat-card .card-body {
+        padding: var(--spacing-xl);
+      }
+
+      .stat-card .icon-wrapper {
+        width: 56px;
+        height: 56px;
+        border-radius: var(--radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--primary-50), var(--primary-100));
+        margin-bottom: var(--spacing-md);
+      }
+      
+      .stat-card .icon-wrapper i {
+        font-size: 24px;
+        background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* 📝 폼 요소 개선 */
+      .form-control,
+      .form-select,
+      textarea.form-control {
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md) var(--spacing-lg);
+        font-size: 15px;
+        font-family: var(--font-family);
+        transition: all 0.2s ease;
+        background: white;
+      }
+
+      .form-control:focus,
+      .form-select:focus,
+      textarea.form-control:focus {
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 4px var(--primary-50);
+        outline: none;
+      }
+
+      .form-label {
+        font-weight: 600;
+        color: var(--gray-700);
+        margin-bottom: var(--spacing-sm);
+        font-size: 14px;
+        display: inline-block;
+      }
+
+      .form-group {
+        margin-bottom: var(--spacing-lg);
+      }
+
+      /* 🎯 버튼 전체 개선 */
+      .btn {
+        padding: var(--spacing-md) var(--spacing-xl);
+        font-size: 14px;
+        font-weight: 600;
+        font-family: var(--font-family);
+        border-radius: var(--radius-md);
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-sm);
+        text-decoration: none;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+        color: white;
+      }
+
+      .btn-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: linear-gradient(135deg, #059669, #047857);
+        color: white;
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: linear-gradient(135deg, #dc2626, #b91c1c);
+        color: white;
+      }
+
+      .btn-secondary {
+        background: white;
+        color: var(--gray-700);
+        border: 2px solid var(--gray-200);
+      }
+
+      .btn-secondary:hover {
+        background: var(--gray-50);
+        border-color: var(--gray-300);
+        color: var(--gray-900);
+      }
+
+      .btn-sm {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 13px;
+      }
+
+      .btn-lg {
+        padding: var(--spacing-lg) var(--spacing-2xl);
+        font-size: 16px;
+      }
+
+      /* 📋 테이블 개선 */
+      .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+        background: white;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .table thead th {
+        background: linear-gradient(135deg, var(--gray-50), white);
+        color: var(--gray-900);
+        font-weight: 700;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: var(--spacing-lg);
+        border-bottom: 2px solid var(--gray-200);
+      }
+
+      .table tbody tr {
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--gray-100);
+      }
+
+      .table tbody tr:hover {
+        background: var(--primary-50);
+        transform: scale(1.01);
+        box-shadow: var(--shadow-md);
+      }
+
+      .table tbody td {
+        padding: var(--spacing-lg);
+        color: var(--gray-700);
+        font-size: 14px;
+      }
+
+      .table-striped tbody tr:nth-of-type(odd) {
+        background: var(--gray-50);
+      }
+
+      /* 🎭 모달 개선 */
+      .modal-content {
+        border: none;
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-xl);
+        overflow: hidden;
+      }
+
+      .modal-header {
+        background: linear-gradient(135deg, var(--gray-50), white);
+        border-bottom: 1px solid var(--gray-200);
+        padding: var(--spacing-xl) var(--spacing-2xl);
+      }
+
+      .modal-title {
+        font-weight: 700;
+        color: var(--gray-900);
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+      }
+
+      .modal-body {
+        padding: var(--spacing-2xl);
+      }
+
+      .modal-footer {
+        background: var(--gray-50);
+        border-top: 1px solid var(--gray-200);
+        padding: var(--spacing-lg) var(--spacing-2xl);
+        gap: var(--spacing-md);
+      }
+
+      .btn-close {
+        background: transparent;
+        border: none;
+        font-size: 24px;
+        opacity: 0.5;
+        transition: opacity 0.2s ease;
+      }
+
+      .btn-close:hover {
+        opacity: 1;
+      }
+
+      /* 🎨 배지 개선 */
+      .badge {
+        padding: var(--spacing-xs) var(--spacing-md);
+        border-radius: var(--radius-md);
+        font-weight: 600;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+      }
+
+      .badge-primary {
+        background: var(--primary-100);
+        color: var(--primary-700);
+      }
+
+      .badge-success {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .badge-danger {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .badge-warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .badge-info {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      /* 📊 차트 컨테이너 */
+      .chart-container {
+        background: white;
+        border-radius: var(--radius-xl);
+        padding: var(--spacing-xl);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--gray-200);
+        margin-bottom: var(--spacing-xl);
+      }
+
+      .chart-container canvas {
+        max-height: 400px;
+      }
+
+      /* 🔍 검색바 */
+      .search-bar {
+        position: relative;
+        max-width: 500px;
+      }
+
+      .search-bar input {
+        padding-left: 48px;
+        background: white;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-lg);
+      }
+
+      .search-bar input:focus {
+        border-color: var(--primary-500);
+        box-shadow: 0 0 0 4px var(--primary-50);
+      }
+
+      .search-bar i {
+        position: absolute;
+        left: var(--spacing-lg);
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-400);
+        font-size: 18px;
+      }
+
+      /* 📱 알림/토스트 개선 */
+      .toast {
+        border: none;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-xl);
+        backdrop-filter: blur(10px);
+        animation: slideIn 0.3s ease;
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      .toast-header {
+        background: linear-gradient(135deg, var(--gray-50), white);
+        border-bottom: 1px solid var(--gray-200);
+        font-weight: 600;
+      }
+
+      .toast-body {
+        padding: var(--spacing-lg);
+        color: var(--gray-700);
+      }
+
+      /* 🎯 페이지 헤더 */
+      .page-header {
+        background: white;
+        border-radius: var(--radius-xl);
+        padding: var(--spacing-xl) var(--spacing-2xl);
+        margin-bottom: var(--spacing-2xl);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--gray-200);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .page-title {
+        font-size: 32px;
+        font-weight: 800;
+        color: var(--gray-900);
+        margin: 0;
+        background: linear-gradient(135deg, var(--gray-900), var(--gray-700));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* 🎨 Dropdown 개선 */
+      .dropdown-menu {
+        border: none;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-xl);
+        padding: var(--spacing-sm);
+        margin-top: var(--spacing-sm);
+        animation: fadeIn 0.2s ease;
+      }
+
+      .dropdown-item {
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md) var(--spacing-lg);
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--gray-700);
+        transition: all 0.2s ease;
+      }
+
+      .dropdown-item:hover {
+        background: var(--primary-50);
+        color: var(--primary-700);
+      }
+
+      .dropdown-item i {
+        margin-right: var(--spacing-sm);
+        width: 20px;
+      }
+
+      /* 🎯 필터 박스 */
+      .filter-box {
+        background: white;
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg);
+        margin-bottom: var(--spacing-xl);
+        border: 1px solid var(--gray-200);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .filter-box .btn-group {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+      }
+
+      /* 📊 진행률 바 */
+      .progress {
+        height: 8px;
+        border-radius: var(--radius-md);
+        background: var(--gray-100);
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+        transition: width 0.6s ease;
+      }
+
+      /* 🎨 Alerts */
+      .alert {
+        border: none;
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg) var(--spacing-xl);
+        margin-bottom: var(--spacing-lg);
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .alert-success {
+        background: #dcfce7;
+        color: #166534;
+        border-left: 4px solid #16a34a;
+      }
+
+      .alert-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        border-left: 4px solid #dc2626;
+      }
+
+      .alert-warning {
+        background: #fef3c7;
+        color: #92400e;
+        border-left: 4px solid #f59e0b;
+      }
+
+      .alert-info {
+        background: #dbeafe;
+        color: #1e40af;
+        border-left: 4px solid #3b82f6;
+      }
+
+      /* 🎯 빈 상태 */
+      .empty-state {
+        text-align: center;
+        padding: var(--spacing-2xl) var(--spacing-xl);
+        color: var(--gray-500);
+      }
+
+      .empty-state i {
+        font-size: 64px;
+        color: var(--gray-300);
+        margin-bottom: var(--spacing-lg);
+      }
+
+      .empty-state h3 {
+        color: var(--gray-700);
+        font-weight: 600;
+        margin-bottom: var(--spacing-sm);
+      }
+
+      .empty-state p {
+        color: var(--gray-500);
+        margin-bottom: var(--spacing-lg);
+      }
+      
+    </style>
+  </head>  <body>
+    <!-- 모바일 햄버거 메뉴 -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle">
+      <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- 모바일 오버레이 -->
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+    <!-- 글로벌 로딩 스피너 -->
+    <div id="globalLoader" class="global-loader">
+      <div class="loader-content">
+        <div class="spinner"></div>
+        <p>로딩 중...</p>
+      </div>
+    </div>
+
+    <!-- 토스트 메시지 컨테이너 -->
+    <div id="toastContainer" class="toast-container"></div>    <nav class="main-nav" id="mainNav">
+      <!-- 로고 링크 - 로그인 상태에 따라 다르게 -->
+      {% if user.is_authenticated %}
+      <a href="{% url 'reporting:dashboard' %}" class="logo">Sales System</a>
+      {% else %}
+      <a href="{% url 'reporting:login' %}" class="logo">Sales System</a>
+      {% endif %}
+      <!-- 로고 링크 대시보드로 변경 -->
+      <ul>
+        <!-- 대시보드 메뉴 - 로그인한 사용자만 -->
+        {% if user.is_authenticated %}
+        <li>
+          <a
+            href="{% url 'reporting:dashboard' %}"
+            class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
+            ><i class="fas fa-home me-2"></i>대시보드</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- Admin 전용 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'admin' %}
+        <li>
+          <a
+            href="{% url 'reporting:user_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':4' == 'user' %}active{% endif %}"
+            ><i class="fas fa-users me-2"></i>사용자 관리</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- Manager 전용 사용자 관리 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'manager' %}
+        <li>
+          <a
+            href="{% url 'reporting:manager_user_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}"
+            ><i class="fas fa-user-friends me-2"></i>직원 관리</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- Admin & Salesman 업체 관리 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'admin' or user.is_authenticated and user.userprofile.role == 'salesman' %}
+        <li>
+          <a
+            href="{% url 'reporting:company_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':7' == 'company' or request.resolver_match.url_name|slice:':10' == 'department' %}active{% endif %}"
+            ><i class="fas fa-building me-2"></i>업체 관리</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- Manager 전용 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role == 'manager' %}
+        <li>
+          <a
+            href="{% url 'reporting:customer_report' %}"
+            class="{% if request.resolver_match.url_name == 'customer_report' or request.resolver_match.url_name == 'customer_detail_report' %}active{% endif %}"
+            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:manager_company_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}"
+            ><i class="fas fa-building me-2"></i>업체 조회</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- Salesman & Admin 공통 메뉴 -->
+        {% if user.is_authenticated and user.userprofile.role != 'manager' %}
+        <li>
+          <a
+            href="{% url 'reporting:followup_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}"
+            ><i class="fas fa-user-check me-2"></i>팔로우업</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:schedule_list' %}"
+            class="{% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}"
+            ><i class="fas fa-list me-2"></i>일정 목록</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:schedule_calendar' %}"
+            class="{% if request.resolver_match.url_name == 'schedule_calendar' %}active{% endif %}"
+            ><i class="fas fa-calendar me-2"></i>일정 캘린더</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:history_list' %}"
+            class="{% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}"
+            ><i class="fas fa-history me-2"></i>히스토리</a
+          >
+        </li>
+        <li>
+          <a
+            href="{% url 'reporting:customer_report' %}"
+            class="{% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}"
+            ><i class="fas fa-chart-bar me-2"></i>고객 리포트</a
+          >
+        </li>
+        {% endif %}
+
+        <!-- 프로필 메뉴 - 모든 로그인 사용자 -->
+        {% if user.is_authenticated %}
+        <li>
+          <a
+            href="{% url 'reporting:profile' %}"
+            class="{% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'profile_edit' %}active{% endif %}"
+            ><i class="fas fa-user-cog me-2"></i>프로필 관리</a
+          >
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+    <main class="main-content">
+      <!-- 상단 헤더 바 -->
+      <div class="top-header-bar">
+        <div class="container-fluid d-flex justify-content-between align-items-center">
+          <div class="page-title">
+            <h5 class="mb-0">{% block page_title %}영업 보고 시스템{% endblock %}</h5>
+          </div>
+          <div class="user-actions-top">
+            <!-- PWA 설치 버튼 -->
+            <button id="install-button" class="btn btn-outline-primary btn-sm me-2" style="display: none;">
+              <i class="fas fa-mobile-alt me-1"></i>앱 설치
+            </button>
+            
+            {% if user.is_authenticated %}
+            <span class="user-info-compact me-3">
+              <i class="fas fa-user me-1"></i>{{ user.username }}
+              {% if user.userprofile %}
+              <small class="text-muted ms-1">({{ user.userprofile.get_role_display }})</small>
+              {% endif %}
+            </span>
+            <button id="logoutBtn" onclick="confirmLogout()" class="logout-btn-top">
+              <i class="fas fa-sign-out-alt me-1"></i>로그아웃
+            </button>
+            {% else %}
+            <a href="{% url 'reporting:login' %}" class="login-btn-top">
+              <i class="fas fa-sign-in-alt me-1"></i>로그인
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      
+      <div class="container">
+        <!-- Django Messages 표시 -->
+        {% if messages %}
+        <script>
+          document.addEventListener('DOMContentLoaded', function() {
+            {% for message in messages %}
+            {% if message.tags == 'success' %}
+              ToastManager.success('{{ message|escapejs }}');
+            {% elif message.tags == 'error' %}
+              ToastManager.error('{{ message|escapejs }}');
+            {% elif message.tags == 'warning' %}
+              ToastManager.warning('{{ message|escapejs }}');
+            {% else %}
+              ToastManager.info('{{ message|escapejs }}');
+            {% endif %}
+            {% endfor %}
+          });
+        </script>
+        {% endif %} 
+        
+        <!-- 퀵 네비게이션 바 (대시보드 제외) -->
+        {% if user.is_authenticated and request.resolver_match.url_name != 'dashboard' and request.resolver_match.url_name != 'manager_dashboard' %}
+        <div class="quick-nav-bar mb-4">
+          <div class="d-flex flex-wrap gap-2 justify-content-center">
+            <a href="{% url 'reporting:dashboard' %}" class="btn btn-sm btn-outline-dark">
+              <i class="fas fa-home me-1"></i>대시보드
+            </a>
+            
+            {% if user.is_authenticated and user.userprofile.role != 'manager' %}
+            <a href="{% url 'reporting:followup_list' %}" class="btn btn-sm btn-outline-primary">
+              <i class="fas fa-user-check me-1"></i>팔로우업
+            </a>
+            <a href="{% url 'reporting:schedule_list' %}" class="btn btn-sm btn-outline-info">
+              <i class="fas fa-list me-1"></i>일정 목록
+            </a>
+            <a href="{% url 'reporting:schedule_calendar' %}" class="btn btn-sm btn-outline-success">
+              <i class="fas fa-calendar me-1"></i>일정 캘린더
+            </a>
+            <a href="{% url 'reporting:history_list' %}" class="btn btn-sm btn-outline-warning">
+              <i class="fas fa-history me-1"></i>히스토리
+            </a>
+            <a href="{% url 'reporting:company_list' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="fas fa-building me-1"></i>업체관리
+            </a>
+            {% endif %}
+            
+            {% if user.is_authenticated and user.userprofile.role == 'manager' %}
+            <a href="{% url 'reporting:manager_dashboard' %}" class="btn btn-sm btn-outline-primary">
+              <i class="fas fa-chart-line me-1"></i>Manager 대시보드
+            </a>
+            <a href="{% url 'reporting:schedule_calendar' %}{% if request.GET.user %}?user={{ request.GET.user }}{% endif %}" class="btn btn-sm btn-outline-info">
+              <i class="fas fa-calendar-alt me-1"></i>일정 캘린더
+            </a>
+            <a href="{% url 'reporting:manager_company_list' %}" class="btn btn-sm btn-outline-secondary">
+              <i class="fas fa-building me-1"></i>업체 조회
+            </a>
+            <a href="{% url 'reporting:manager_user_list' %}" class="btn btn-sm btn-outline-warning">
+              <i class="fas fa-user-friends me-1"></i>직원 관리
+            </a>
+            {% endif %}
+
+            {% if user.is_authenticated and user.userprofile.role == 'admin' %}
+            <a href="{% url 'reporting:user_list' %}" class="btn btn-sm btn-outline-danger">
+              <i class="fas fa-users me-1"></i>사용자 관리
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% block content %}
+        <!-- 페이지별 컨텐츠가 여기에 표시됩니다. -->
+        {% endblock %}
+      </div>
+    </main>
+    <!-- Bootstrap JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>    <!-- 글로벌 JavaScript 유틸리티 -->
+    <script>
+      // 전역 CSRF 토큰 함수
+      function getCSRFToken() {
+        // 1. 메타 태그에서 가져오기
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        if (csrfMeta && csrfMeta.getAttribute("content")) {
+          return csrfMeta.getAttribute("content");
+        }
+        
+        // 2. 쿠키에서 가져오기
+        const csrfCookie = document.cookie.split(';')
+          .find(cookie => cookie.trim().startsWith('csrftoken='));
+        if (csrfCookie) {
+          return csrfCookie.split('=')[1];
+        }
+        
+        // 3. 폼의 hidden input에서 가져오기
+        const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (csrfInput && csrfInput.value) {
+          return csrfInput.value;
+        }
+        
+        console.warn('CSRF token not found!');
+        return '';
+      }
+
+      // AJAX 요청을 위한 전역 설정
+      function setupCSRFForAjax() {
+        const csrfToken = getCSRFToken();
+        
+        // fetch API를 위한 기본 헤더 설정 함수
+        window.fetchWithCSRF = function(url, options = {}) {
+          const defaultOptions = {
+            headers: {
+              'X-CSRFToken': csrfToken,
+              'Content-Type': 'application/json',
+              ...options.headers
+            }
+          };
+          return fetch(url, { ...defaultOptions, ...options });
+        };
+      }
+
+      // 글로벌 로딩 스피너 관리
+      const GlobalLoader = {
+        show() {
+          document.getElementById("globalLoader").style.display = "flex";
+        },
+        hide() {
+          document.getElementById("globalLoader").style.display = "none";
+        },
+      };
+
+      // 토스트 메시지 시스템
+      const ToastManager = {
+        show(message, type = "info", duration = 5000) {
+          const container = document.getElementById("toastContainer");
+          const toast = document.createElement("div");
+          toast.className = `toast toast-${type}`;
+
+          const icons = {
+            success: "fas fa-check-circle",
+            error: "fas fa-exclamation-circle",
+            warning: "fas fa-exclamation-triangle",
+            info: "fas fa-info-circle",
+          };
+
+          toast.innerHTML = `
+            <i class="toast-icon ${icons[type] || icons.info}"></i>
+            <div class="toast-message">${message}</div>
+            <button class="toast-close" onclick="this.parentElement.remove()">
+              <i class="fas fa-times"></i>
+            </button>
+          `;
+
+          container.appendChild(toast);
+
+          // 애니메이션으로 표시
+          setTimeout(() => toast.classList.add("show"), 10);
+
+          // 자동 삭제
+          setTimeout(() => {
+            toast.classList.remove("show");
+            setTimeout(() => toast.remove(), 300);
+          }, duration);
+        },
+
+        success(message, duration) {
+          this.show(message, "success", duration);
+        },
+
+        error(message, duration) {
+          this.show(message, "error", duration);
+        },
+
+        warning(message, duration) {
+          this.show(message, "warning", duration);
+        },
+
+        info(message, duration) {
+          this.show(message, "info", duration);
+        },
+      };
+
+      // 폼 제출 시 로딩 표시
+      document.addEventListener("DOMContentLoaded", function () {
+        // 모든 폼에 제출 시 로딩 스피너 표시
+        document.querySelectorAll("form").forEach((form) => {
+          form.addEventListener("submit", function () {
+            GlobalLoader.show();
+          });
+        });
+
+        // 모든 링크 클릭 시 로딩 표시 (외부 링크 제외)
+        document.querySelectorAll("a[href]").forEach((link) => {
+          if (link.hostname === window.location.hostname || !link.hostname) {
+            link.addEventListener("click", function (e) {
+              if (!this.target || this.target === "_self") {
+                GlobalLoader.show();
+              }
+            });
+          }
+        });
+
+        // 페이지 로드 완료 시 로딩 스피너 숨김
+        window.addEventListener("load", function () {
+          GlobalLoader.hide();
+        });
+
+        // Ajax 요청 중 로딩 표시 (jQuery가 있는 경우)
+        if (typeof $ !== "undefined") {
+          $(document)
+            .ajaxStart(function () {
+              GlobalLoader.show();
+            })
+            .ajaxStop(function () {
+              GlobalLoader.hide();
+            });
+        }
+      });
+
+      // 에러 처리 유틸리티
+      const ErrorHandler = {
+        handle(error, userMessage = "오류가 발생했습니다.") {
+          console.error("Application Error:", error);
+          ToastManager.error(userMessage);
+          GlobalLoader.hide();
+        },
+
+        network(error) {
+          this.handle(error, "네트워크 연결을 확인해주세요.");
+        },
+
+        validation(message) {
+          ToastManager.warning(message || "입력값을 확인해주세요.");
+        },
+      };      // 로그아웃 확인 함수
+      function confirmLogout() {
+        // 커스텀 확인 다이얼로그 (더 세련된 스타일)
+        const result = confirm(
+          "🚪 로그아웃 하시겠습니까?\n\n현재 작업 중인 내용이 있다면 저장 후 로그아웃해주세요."
+        );
+
+        if (result) {
+          // 로그아웃 진행 메시지 표시
+          ToastManager.info("로그아웃 중입니다...", 2000);
+          GlobalLoader.show();
+
+          // 약간의 지연 후 로그아웃 실행 (UX 개선)
+          setTimeout(() => {
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = '{% url "reporting:logout" %}';
+
+            // CSRF 토큰 추가
+            const csrfInput = document.createElement("input");
+            csrfInput.type = "hidden";
+            csrfInput.name = "csrfmiddlewaretoken";
+            csrfInput.value = "{{ csrf_token }}";
+            form.appendChild(csrfInput);
+
+            document.body.appendChild(form);
+            form.submit();
+          }, 500);
+        }
+      }
+
+      // 전역 에러 핸들러
+      window.addEventListener("error", function (e) {
+        ErrorHandler.handle(e.error, "예상치 못한 오류가 발생했습니다.");
+      });
+
+      window.addEventListener("unhandledrejection", function (e) {
+        ErrorHandler.handle(e.reason, "요청 처리 중 오류가 발생했습니다.");
+      });
+
+      // 브라우저 히스토리 관리 개선
+      (function () {
+        // 뒤로가기 버튼 처리
+        window.addEventListener("pageshow", function (event) {
+          // 브라우저 캐시에서 페이지가 로드되었을 때 새로고침
+          if (event.persisted) {
+            window.location.reload();
+          }
+        });
+
+        // 브라우저 히스토리 상태 관리
+        window.addEventListener("popstate", function (event) {
+          // 로딩 스피너 숨기기 (혹시 남아있을 경우)
+          if (typeof GlobalLoader !== "undefined") {
+            GlobalLoader.hide();
+          }
+        });
+
+        // 페이지 언로드 시 정리
+        window.addEventListener("beforeunload", function () {
+          // 진행 중인 AJAX 요청이 있다면 정리
+          if (typeof GlobalLoader !== "undefined") {
+            GlobalLoader.hide();
+          }
+        });
+
+        // 네트워크 상태 감지
+        window.addEventListener("online", function () {
+          if (typeof ToastManager !== "undefined") {
+            ToastManager.success("인터넷 연결이 복구되었습니다.", 3000);
+          }
+        });
+
+        window.addEventListener("offline", function () {
+          if (typeof ToastManager !== "undefined") {
+            ToastManager.warning("인터넷 연결이 끊어졌습니다.", 5000);
+          }
+        });
+
+        // 페이지 로드 완료 후 초기화
+        document.addEventListener("DOMContentLoaded", function () {
+          // 모든 폼 제출 시 로딩 표시
+          const forms = document.querySelectorAll("form:not([data-no-loader])");
+          forms.forEach(function (form) {
+            form.addEventListener("submit", function () {
+              if (typeof GlobalLoader !== "undefined") {
+                GlobalLoader.show();
+              }
+            });
+          });
+
+          // 모든 링크에 대한 처리
+          const links = document.querySelectorAll(
+            'a[href]:not([target="_blank"]):not([data-no-loader])'
+          );
+          links.forEach(function (link) {
+            link.addEventListener("click", function (event) {
+              // 외부 링크나 특수 링크는 제외
+              const href = link.getAttribute("href");
+              if (
+                href &&
+                !href.startsWith("#") &&
+                !href.startsWith("javascript:") &&
+                !href.startsWith("mailto:") &&
+                !href.startsWith("tel:")
+              ) {
+                if (typeof GlobalLoader !== "undefined") {
+                  GlobalLoader.show();
+                }
+
+                // 3초 후에도 페이지가 로드되지 않으면 로딩 숨기기
+                setTimeout(function () {
+                  if (typeof GlobalLoader !== "undefined") {
+                    GlobalLoader.hide();
+                  }
+                }, 3000);
+              }            });
+          });
+        });
+      })();      // 모바일 네비게이션 토글 기능 및 전체 초기화
+      document.addEventListener('DOMContentLoaded', function() {
+        // CSRF 설정 초기화
+        setupCSRFForAjax();
+        
+        // 모바일 네비게이션 설정
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const mainNav = document.getElementById('mainNav');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+
+        if (mobileMenuToggle && mainNav && mobileOverlay) {
+          console.log('Mobile navigation elements found'); // 디버깅용
+          
+          // 햄버거 메뉴 클릭 시 사이드바 토글 (터치 개선)
+          mobileMenuToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Mobile menu toggle clicked'); // 디버깅용
+            
+            // 토글 버튼 애니메이션
+            mobileMenuToggle.classList.toggle('active');
+            
+            mainNav.classList.toggle('show');
+            mobileOverlay.classList.toggle('show');
+            document.body.style.overflow = mainNav.classList.contains('show') ? 'hidden' : '';
+          });
+
+          // 터치 피드백 개선
+          mobileMenuToggle.addEventListener('touchstart', function() {
+            this.style.transform = 'scale(0.95)';
+          });
+          
+          mobileMenuToggle.addEventListener('touchend', function() {
+            setTimeout(() => {
+              this.style.transform = '';
+            }, 100);
+          });
+
+          // 스와이프 제스처로 메뉴 제어
+          let startX = null;
+          let startY = null;
+          let currentX = null;
+          let currentY = null;
+          
+          document.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+          }, {passive: true});
+          
+          document.addEventListener('touchmove', function(e) {
+            if (!startX || !startY) return;
+            
+            currentX = e.touches[0].clientX;
+            currentY = e.touches[0].clientY;
+            
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+            
+            // 수평 스와이프가 더 클 때만 처리
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+              // 왼쪽에서 오른쪽으로 스와이프 (메뉴 열기)
+              if (diffX > 50 && startX < 50 && !mainNav.classList.contains('show')) {
+                mainNav.classList.add('show');
+                mobileOverlay.classList.add('show');
+                mobileMenuToggle.classList.add('active');
+                document.body.style.overflow = 'hidden';
+              }
+              // 오른쪽에서 왼쪽으로 스와이프 (메뉴 닫기)
+              else if (diffX < -50 && mainNav.classList.contains('show')) {
+                mainNav.classList.remove('show');
+                mobileOverlay.classList.remove('show');
+                mobileMenuToggle.classList.remove('active');
+                document.body.style.overflow = '';
+              }
+            }
+          }, {passive: true});
+          
+          document.addEventListener('touchend', function() {
+            startX = null;
+            startY = null;
+            currentX = null;
+            currentY = null;
+          }, {passive: true});
+
+          // 오버레이 클릭 시 사이드바 닫기
+          mobileOverlay.addEventListener('click', function(e) {
+            e.preventDefault();
+            mainNav.classList.remove('show');
+            mobileOverlay.classList.remove('show');
+            mobileMenuToggle.classList.remove('active');
+            document.body.style.overflow = '';
+          });
+
+          // 네비게이션 링크 클릭 시 메뉴 닫기
+          const navLinks = mainNav.querySelectorAll('a');
+          navLinks.forEach(function(link) {
+            link.addEventListener('click', function() {
+              if (window.innerWidth <= 768) {
+                mainNav.classList.remove('show');
+                mobileOverlay.classList.remove('show');
+                mobileMenuToggle.classList.remove('active');
+                document.body.style.overflow = '';
+              }
+            });
+          });
+
+          // 윈도우 리사이즈 시 모바일 메뉴 초기화
+          window.addEventListener('resize', function() {
+            if (window.innerWidth > 768) {
+              mainNav.classList.remove('show');
+              mobileOverlay.classList.remove('show');
+              document.body.style.overflow = '';
+            }
+          });
+
+          // ESC 키로 사이드바 닫기
+          document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && mainNav.classList.contains('show')) {
+              mainNav.classList.remove('show');
+              mobileOverlay.classList.remove('show');
+              mobileMenuToggle.classList.remove('active');
+              document.body.style.overflow = '';
+            }
+          });
+        } else {
+          console.log('Mobile navigation elements not found:', {
+            mobileMenuToggle: !!mobileMenuToggle,
+            mainNav: !!mainNav,
+            mobileOverlay: !!mobileOverlay
+          });
+        }
+      });
+
+      // 터치 인터페이스 개선 기능들
+      (function() {
+        // Pull-to-refresh 기능
+        let startY = 0;
+        let pullDistance = 0;
+        let isPulling = false;
+        
+        document.addEventListener('touchstart', function(e) {
+          if (window.scrollY === 0) {
+            startY = e.touches[0].clientY;
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchmove', function(e) {
+          if (window.scrollY === 0 && startY !== 0) {
+            pullDistance = e.touches[0].clientY - startY;
+            
+            if (pullDistance > 0) {
+              isPulling = true;
+              // Pull-to-refresh 표시기 업데이트
+              const indicator = document.querySelector('.pull-to-refresh');
+              if (!indicator) {
+                const refreshDiv = document.createElement('div');
+                refreshDiv.className = 'pull-to-refresh';
+                refreshDiv.innerHTML = '<i class="fas fa-sync-alt"></i> 새로고침';
+                document.body.appendChild(refreshDiv);
+              }
+              
+              if (pullDistance > 80) {
+                const refreshIndicator = document.querySelector('.pull-to-refresh');
+                if (refreshIndicator) {
+                  refreshIndicator.classList.add('show');
+                }
+              }
+            }
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchend', function() {
+          if (isPulling && pullDistance > 80) {
+            // 새로고침 실행
+            window.location.reload();
+          }
+          
+          const indicator = document.querySelector('.pull-to-refresh');
+          if (indicator) {
+            indicator.classList.remove('show');
+          }
+          
+          startY = 0;
+          pullDistance = 0;
+          isPulling = false;
+        }, {passive: true});
+        
+        // 스와이프 표시기 (메뉴용 이외의 일반 스와이프)
+        function showSwipeIndicator(direction, text) {
+          const indicator = document.createElement('div');
+          indicator.className = `swipe-indicator ${direction}`;
+          indicator.textContent = text;
+          document.body.appendChild(indicator);
+          
+          setTimeout(() => indicator.classList.add('show'), 10);
+          setTimeout(() => {
+            indicator.classList.remove('show');
+            setTimeout(() => document.body.removeChild(indicator), 300);
+          }, 1500);
+        }
+        
+        // 터치 피드백 개선
+        document.addEventListener('touchstart', function(e) {
+          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
+          if (target) {
+            target.style.transform = 'scale(0.98)';
+            target.style.transition = 'transform 0.1s ease';
+          }
+        }, {passive: true});
+        
+        document.addEventListener('touchend', function(e) {
+          const target = e.target.closest('.btn, .dropdown-item, .nav-link');
+          if (target) {
+            setTimeout(() => {
+              target.style.transform = '';
+            }, 100);
+          }
+        }, {passive: true});
+        
+        // 스크롤 성능 최적화
+        let scrollTimeout;
+        window.addEventListener('scroll', function() {
+          document.body.classList.add('scrolling');
+          
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            document.body.classList.remove('scrolling');
+          }, 150);
+        }, {passive: true});
+      })();
+    </script>
+  </body>
+</html>

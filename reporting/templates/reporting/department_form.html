@@ -2,55 +2,382 @@
 {% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-8">
-      <div class="page-header d-flex justify-content-between align-items-center mb-4">
-        <h1 class="page-title">{{ page_title }}</h1>
-        <a href="{% if department %}{% url 'reporting:company_detail' department.company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" class="btn btn-secondary">
-          <i class="fas fa-arrow-left me-1"></i>업체로 돌아가기
-        </a>
-      </div>
+<style>
+/* 프리미엄 부서/연구실 폼 스타일 */
+.department-form-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2.5rem 0;
+    margin: -2rem -2rem 2rem -2rem;
+    border-radius: 0 0 20px 20px;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+}
 
-      <div class="card">
-        <div class="card-body">
-          {% if messages %}
-            {% for message in messages %}
-            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-            {% endfor %}
-          {% endif %}
+.department-form-header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
 
-          <!-- 업체 정보 표시 -->
-          <div class="alert alert-info" role="alert">
-            <i class="fas fa-building me-2"></i>
-            <strong>업체/학교:</strong> {% if department %}{{ department.company.name }}{% else %}{{ company.name }}{% endif %}
-          </div>
+.department-form-header .subtitle {
+    font-size: 1rem;
+    opacity: 0.95;
+}
 
-          <form method="post">
-            {% csrf_token %}
+.premium-form-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
 
-            <div class="mb-3">
-              <label for="name" class="form-label">부서/연구실명 *</label>
-              <input type="text" class="form-control" id="name" name="name" 
-                     value="{% if department %}{{ department.name }}{% endif %}" 
-                     placeholder="부서/연구실명을 입력하세요..." autocomplete="off" required>
-            </div>
+.premium-form-card-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 1.25rem 1.5rem;
+    border-bottom: 2px solid #667eea;
+}
 
-            <div class="text-center">
-              <button type="submit" class="btn btn-primary me-2">
-                <i class="fas fa-save me-1"></i>{% if department %}수정하기{% else %}추가하기{% endif %}
-              </button>
-              <a href="{% if department %}{% url 'reporting:company_detail' department.company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" class="btn btn-secondary">
-                <i class="fas fa-times me-1"></i>취소
-              </a>
-            </div>
-          </form>
+.premium-form-card-header h5 {
+    margin: 0;
+    font-weight: 700;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.premium-form-card-body {
+    padding: 2rem;
+}
+
+.form-group-premium {
+    margin-bottom: 1.5rem;
+}
+
+.form-group-premium label {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.form-group-premium .form-control {
+    border-radius: 12px;
+    padding: 0.875rem 1.25rem;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.form-group-premium .form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.info-alert-premium {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border: none;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.info-alert-premium i {
+    color: #1976d2;
+    font-size: 1.25rem;
+}
+
+.info-alert-premium strong {
+    color: #0d47a1;
+}
+
+.btn-premium {
+    border-radius: 12px;
+    padding: 0.75rem 2rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn-premium-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-premium-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    color: white;
+}
+
+.btn-premium-secondary {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.btn-premium-secondary:hover {
+    background: #667eea;
+    color: white;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid #f1f3f5;
+}
+
+.customers-list-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid #f1f3f5;
+    overflow: hidden;
+}
+
+.customers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.customer-item {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 1rem;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.customer-item:hover {
+    background: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.customer-name {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.customer-name i {
+    color: #667eea;
+}
+
+.customer-meta {
+    font-size: 0.875rem;
+    color: #6c757d;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.customer-meta div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.customer-meta i {
+    width: 16px;
+    color: #adb5bd;
+}
+
+.empty-state-customers {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.empty-state-customers i {
+    font-size: 3rem;
+    color: #adb5bd;
+    margin-bottom: 1rem;
+}
+
+.empty-state-customers h6 {
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.empty-state-customers p {
+    color: #adb5bd;
+    font-size: 0.875rem;
+    margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+    .department-form-header {
+        padding: 1.5rem 0;
+        margin: -1rem -1rem 1.5rem -1rem;
+    }
+    
+    .department-form-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .premium-form-card-body {
+        padding: 1.5rem;
+    }
+    
+    .customers-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .btn-premium {
+        width: 100%;
+    }
+}
+</style>
+
+<div class="container-fluid px-4">
+    <!-- 프리미엄 헤더 -->
+    <div class="department-form-header">
+        <div class="container">
+            <h1>
+                <i class="fas fa-sitemap me-3"></i>{{ page_title }}
+            </h1>
+            <p class="subtitle mb-0">
+                부서/연구실 정보 {% if department %}수정{% else %}등록{% endif %}
+            </p>
         </div>
-      </div>
     </div>
-  </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- 메시지 표시 -->
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert" style="border-radius: 12px;">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+
+            <!-- 폼 카드 -->
+            <div class="premium-form-card">
+                <div class="premium-form-card-header">
+                    <h5>
+                        <i class="fas fa-edit"></i>
+                        기본 정보
+                    </h5>
+                </div>
+                <div class="premium-form-card-body">
+                    <!-- 업체 정보 표시 -->
+                    <div class="info-alert-premium">
+                        <i class="fas fa-building"></i>
+                        <div>
+                            <strong>소속 업체/학교:</strong> {% if department %}{{ department.company.name }}{% else %}{{ company.name }}{% endif %}
+                        </div>
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="form-group-premium">
+                            <label for="name">
+                                부서/연구실명 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="name" 
+                                   name="name" 
+                                   value="{% if department %}{{ department.name }}{% endif %}" 
+                                   placeholder="예: 연구개발팀, 바이오연구실, 생명과학과..." 
+                                   autocomplete="off" 
+                                   required>
+                            <small class="text-muted">부서명 또는 연구실명을 정확하게 입력해주세요.</small>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-premium btn-premium-primary">
+                                <i class="fas fa-save me-2"></i>{% if department %}수정 완료{% else %}등록하기{% endif %}
+                            </button>
+                            <a href="{% if department %}{% url 'reporting:company_detail' department.company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" 
+                               class="btn btn-premium btn-premium-secondary">
+                                <i class="fas fa-times me-2"></i>취소
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 소속 연구원/고객 목록 (수정 시만 표시) -->
+            {% if department and customers %}
+            <div class="customers-list-card">
+                <div class="premium-form-card-header">
+                    <h5>
+                        <i class="fas fa-users"></i>
+                        소속 연구원/고객 목록
+                        <span class="badge bg-primary ms-2" style="border-radius: 8px;">{{ customers|length }}명</span>
+                    </h5>
+                </div>
+                <div class="premium-form-card-body">
+                    <div class="customers-grid">
+                        {% for customer in customers %}
+                        <div class="customer-item">
+                            <div class="customer-name">
+                                <i class="fas fa-user"></i>
+                                {{ customer.customer_name }}
+                            </div>
+                            <div class="customer-meta">
+                                {% if customer.position %}
+                                <div>
+                                    <i class="fas fa-id-badge"></i>
+                                    <span>{{ customer.position }}</span>
+                                </div>
+                                {% endif %}
+                                {% if customer.phone %}
+                                <div>
+                                    <i class="fas fa-phone"></i>
+                                    <span>{{ customer.phone }}</span>
+                                </div>
+                                {% endif %}
+                                {% if customer.email %}
+                                <div>
+                                    <i class="fas fa-envelope"></i>
+                                    <span>{{ customer.email }}</span>
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <i class="fas fa-clock"></i>
+                                    <span>등록일: {{ customer.created_at|date:"Y-m-d" }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% elif department %}
+            <div class="customers-list-card">
+                <div class="premium-form-card-body">
+                    <div class="empty-state-customers">
+                        <i class="fas fa-user-slash"></i>
+                        <h6>등록된 연구원/고객이 없습니다</h6>
+                        <p>이 부서/연구실에 아직 등록된 연구원이나 고객이 없습니다.</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
 </div>
 {% endblock %}
