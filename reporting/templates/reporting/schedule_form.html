@@ -102,6 +102,60 @@
               </div>
             </div>
 
+            <!-- 영업 기회 정보 (펀넬 시스템) -->
+            <div class="row mt-4">
+              <div class="col-12">
+                <div class="card border-primary">
+                  <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                      <i class="fas fa-funnel-dollar me-2"></i>영업 기회 정보 (선택사항)
+                    </h5>
+                    <small>예상 매출액을 입력하면 영업 기회가 자동으로 생성되어 펀넬에서 추적됩니다.</small>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          {{ form.expected_revenue.label_tag }}
+                          {{ form.expected_revenue }}
+                          <small class="form-text text-muted">예상되는 거래 금액을 입력하세요</small>
+                          {% if form.expected_revenue.errors %}
+                          <div class="invalid-feedback d-block">
+                            {% for error in form.expected_revenue.errors %}{{ error }}{% endfor %}
+                          </div>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          {{ form.probability.label_tag }}
+                          {{ form.probability }}
+                          <small class="form-text text-muted">0-100 사이 값 (기본값: 50%)</small>
+                          {% if form.probability.errors %}
+                          <div class="invalid-feedback d-block">
+                            {% for error in form.probability.errors %}{{ error }}{% endfor %}
+                          </div>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          {{ form.expected_close_date.label_tag }}
+                          {{ form.expected_close_date }}
+                          <small class="form-text text-muted">계약 예상 날짜</small>
+                          {% if form.expected_close_date.errors %}
+                          <div class="invalid-feedback d-block">
+                            {% for error in form.expected_close_date.errors %}{{ error }}{% endfor %}
+                          </div>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
               <div class="row" id="delivery-section" style="display: none;">
                 <!-- 납품 금액 -->
                 <div class="col-md-6">

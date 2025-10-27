@@ -154,12 +154,19 @@ class Schedule(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업")
+    opportunity = models.ForeignKey('OpportunityTracking', on_delete=models.SET_NULL, null=True, blank=True, related_name='schedules', verbose_name="영업 기회")
     visit_date = models.DateField(verbose_name="방문 날짜")
     visit_time = models.TimeField(verbose_name="방문 시간")
     location = models.CharField(max_length=200, blank=True, null=True, verbose_name="장소")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled', verbose_name="상태")
     activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPE_CHOICES, default='customer_meeting', verbose_name="일정 유형")
     notes = models.TextField(blank=True, null=True, verbose_name="메모")
+    
+    # 견적 관련 필드 (펀넬 시스템 연동)
+    expected_revenue = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="예상 매출액", help_text="예상되는 거래 금액")
+    probability = models.IntegerField(null=True, blank=True, verbose_name="성공 확률 (%)", help_text="0-100 사이의 값")
+    expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일", help_text="계약이 예상되는 날짜")
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -330,3 +337,297 @@ class DeliveryItem(models.Model):
         verbose_name = "납품 품목"
         verbose_name_plural = "납품 품목 목록"
         ordering = ['created_at']
+
+
+# ============================================
+# 펀넬 관리 시스템 모델들
+# ============================================
+
+# 제품 (Product) 모델
+class Product(models.Model):
+    CATEGORY_CHOICES = [
+        ('equipment', '장비'),
+        ('software', '소프트웨어'),
+        ('service', '서비스'),
+        ('maintenance', '유지보수'),
+        ('consumable', '소모품'),
+        ('other', '기타'),
+    ]
+    
+    # 기본 정보
+    product_code = models.CharField(max_length=50, unique=True, verbose_name="제품 코드")
+    name = models.CharField(max_length=200, verbose_name="제품명")
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, verbose_name="카테고리")
+    
+    # 가격
+    standard_price = models.DecimalField(max_digits=15, decimal_places=0, verbose_name="정상가")
+    cost_price = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="원가")
+    
+    # 프로모션
+    is_promo = models.BooleanField(default=False, verbose_name="프로모션 여부")
+    promo_price = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="프로모션 가격")
+    promo_start = models.DateField(null=True, blank=True, verbose_name="프로모션 시작일")
+    promo_end = models.DateField(null=True, blank=True, verbose_name="프로모션 종료일")
+    
+    # 상태
+    is_active = models.BooleanField(default=True, verbose_name="판매 가능")
+    
+    # 설명
+    description = models.TextField(blank=True, null=True, verbose_name="제품 설명")
+    specifications = models.JSONField(default=dict, blank=True, verbose_name="제품 사양")
+    
+    # 통계
+    total_quoted = models.IntegerField(default=0, verbose_name="총 견적 횟수")
+    total_sold = models.IntegerField(default=0, verbose_name="총 판매 횟수")
+    
+    # 타임스탬프
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def __str__(self):
+        return f"{self.name} ({self.product_code})"
+    
+    def get_current_price(self):
+        """현재 적용 가격 반환 (프로모션 고려)"""
+        from datetime import date
+        if self.is_promo and self.promo_price:
+            today = date.today()
+            if self.promo_start and self.promo_end:
+                if self.promo_start <= today <= self.promo_end:
+                    return self.promo_price
+        return self.standard_price
+    
+    class Meta:
+        verbose_name = "제품"
+        verbose_name_plural = "제품 목록"
+        ordering = ['category', 'name']
+
+
+# 견적 (Quote) 모델
+class Quote(models.Model):
+    STAGE_CHOICES = [
+        ('draft', '초안'),
+        ('sent', '발송완료'),
+        ('review', '검토중'),
+        ('negotiation', '협상중'),
+        ('approved', '승인'),
+        ('rejected', '거절'),
+        ('expired', '만료'),
+        ('converted', '계약전환'),
+    ]
+    
+    # 기본 정보
+    quote_number = models.CharField(max_length=50, unique=True, verbose_name="견적번호")
+    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, related_name='quotes', verbose_name="관련 일정")
+    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='quotes', verbose_name="관련 고객")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
+    
+    # 견적 상세
+    quote_date = models.DateField(auto_now_add=True, verbose_name="견적일")
+    valid_until = models.DateField(verbose_name="유효기한")
+    stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='draft', verbose_name="견적 상태")
+    
+    # 금액
+    subtotal = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="소계")
+    discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="할인율(%)")
+    discount_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="할인액")
+    tax_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="부가세")
+    total_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="총액")
+    
+    # 영업 예측
+    probability = models.IntegerField(default=50, verbose_name="성공 확률(%)")
+    expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일")
+    weighted_revenue = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="가중 매출")
+    
+    # 전환 추적
+    converted_to_delivery = models.BooleanField(default=False, verbose_name="납품 전환 여부")
+    converted_history = models.ForeignKey(History, null=True, blank=True, on_delete=models.SET_NULL,
+                                         related_name='source_quote', verbose_name="전환된 납품 기록")
+    
+    # 메모
+    notes = models.TextField(blank=True, null=True, verbose_name="메모")
+    customer_feedback = models.TextField(blank=True, null=True, verbose_name="고객 피드백")
+    
+    # 타임스탬프
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def save(self, *args, **kwargs):
+        from decimal import Decimal
+        
+        # 할인액 계산
+        if self.discount_rate > 0:
+            self.discount_amount = self.subtotal * (Decimal(str(self.discount_rate)) / Decimal('100'))
+        else:
+            self.discount_amount = 0
+        
+        # 부가세 계산 (10%)
+        taxable_amount = self.subtotal - self.discount_amount
+        self.tax_amount = taxable_amount * Decimal('0.1')
+        
+        # 총액 계산
+        self.total_amount = taxable_amount + self.tax_amount
+        
+        # 가중매출 계산
+        self.weighted_revenue = self.total_amount * (Decimal(str(self.probability)) / Decimal('100'))
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.quote_number} - {self.followup.customer_name}"
+    
+    class Meta:
+        verbose_name = "견적"
+        verbose_name_plural = "견적 목록"
+        ordering = ['-quote_date']
+
+
+# 견적 항목 (QuoteItem) 모델
+class QuoteItem(models.Model):
+    quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name='items', verbose_name="견적")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name="제품")
+    
+    # 수량 및 가격
+    quantity = models.IntegerField(default=1, verbose_name="수량")
+    unit_price = models.DecimalField(max_digits=15, decimal_places=0, verbose_name="단가")
+    discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="할인율(%)")
+    subtotal = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="소계")
+    
+    # 메모
+    description = models.TextField(blank=True, null=True, verbose_name="상세 설명")
+    
+    # 정렬
+    order = models.IntegerField(default=0, verbose_name="정렬 순서")
+    
+    def save(self, *args, **kwargs):
+        from decimal import Decimal
+        
+        # 소계 자동 계산
+        base_amount = self.unit_price * self.quantity
+        if self.discount_rate > 0:
+            discount_amount = base_amount * (Decimal(str(self.discount_rate)) / Decimal('100'))
+            self.subtotal = base_amount - discount_amount
+        else:
+            self.subtotal = base_amount
+        
+        super().save(*args, **kwargs)
+        
+        # 견적 총액 재계산
+        quote = self.quote
+        quote.subtotal = sum(item.subtotal for item in quote.items.all())
+        quote.save()
+    
+    def __str__(self):
+        return f"{self.product.name} x {self.quantity}"
+    
+    class Meta:
+        verbose_name = "견적 항목"
+        verbose_name_plural = "견적 항목 목록"
+        ordering = ['order', 'id']
+
+
+# 펀넬 단계 (FunnelStage) 모델
+class FunnelStage(models.Model):
+    STAGE_CHOICES = [
+        ('lead', '리드'),
+        ('contact', '컨택'),
+        ('quote', '견적'),
+        ('negotiation', '협상'),
+        ('closing', '클로징'),
+        ('won', '수주'),
+        ('lost', '실주'),
+    ]
+    
+    name = models.CharField(max_length=20, choices=STAGE_CHOICES, unique=True, verbose_name="단계 코드")
+    display_name = models.CharField(max_length=50, verbose_name="표시명")
+    stage_order = models.IntegerField(unique=True, verbose_name="순서")
+    
+    # 통계 데이터
+    default_probability = models.IntegerField(default=50, verbose_name="기본 확률(%)")
+    avg_duration_days = models.IntegerField(default=7, verbose_name="평균 체류일")
+    
+    # UI
+    color = models.CharField(max_length=20, default='#667eea', verbose_name="색상")
+    icon = models.CharField(max_length=50, default='fa-circle', verbose_name="아이콘")
+    
+    # 설명
+    description = models.TextField(blank=True, verbose_name="설명")
+    success_criteria = models.TextField(blank=True, verbose_name="다음 단계 조건")
+    
+    def __str__(self):
+        return self.display_name
+    
+    class Meta:
+        verbose_name = "펀넬 단계"
+        verbose_name_plural = "펀넬 단계 목록"
+        ordering = ['stage_order']
+
+
+# 영업 기회 추적 (OpportunityTracking) 모델
+class OpportunityTracking(models.Model):
+    followup = models.OneToOneField(FollowUp, on_delete=models.CASCADE, related_name='opportunity', verbose_name="관련 고객")
+    
+    # 현재 상태
+    current_stage = models.CharField(max_length=20, choices=FunnelStage.STAGE_CHOICES, default='lead', verbose_name="현재 단계")
+    stage_entry_date = models.DateField(auto_now_add=True, verbose_name="단계 진입일")
+    
+    # 예측 데이터
+    expected_revenue = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="예상 매출")
+    weighted_revenue = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="가중 매출")
+    probability = models.IntegerField(default=50, verbose_name="성공 확률(%)")
+    expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일")
+    
+    # 단계 이력 (JSON)
+    stage_history = models.JSONField(default=list, verbose_name="단계 이력")
+    
+    # 통계
+    total_quotes_sent = models.IntegerField(default=0, verbose_name="발송 견적 수")
+    total_meetings = models.IntegerField(default=0, verbose_name="총 미팅 수")
+    avg_response_time_hours = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="평균 응답 시간(시간)")
+    
+    # 결과
+    won_date = models.DateField(null=True, blank=True, verbose_name="수주일")
+    lost_date = models.DateField(null=True, blank=True, verbose_name="실주일")
+    lost_reason = models.TextField(blank=True, null=True, verbose_name="실주 사유")
+    actual_revenue = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="실제 매출")
+    
+    # 타임스탬프
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def update_stage(self, new_stage):
+        """단계 업데이트 및 이력 기록"""
+        from datetime import date
+        
+        # 현재 단계 종료 처리
+        if self.stage_history:
+            for history in reversed(self.stage_history):
+                if history.get('stage') == self.current_stage and not history.get('exited'):
+                    history['exited'] = date.today().isoformat()
+                    break
+        
+        # 새 단계 추가
+        self.stage_history.append({
+            'stage': new_stage,
+            'entered': date.today().isoformat(),
+            'exited': None
+        })
+        
+        # 단계 정보 업데이트
+        self.current_stage = new_stage
+        self.stage_entry_date = date.today()
+        
+        # 단계별 기본 확률 설정
+        try:
+            stage_obj = FunnelStage.objects.get(name=new_stage)
+            self.probability = stage_obj.default_probability
+        except FunnelStage.DoesNotExist:
+            pass
+        
+        self.save()
+    
+    def __str__(self):
+        return f"{self.followup.customer_name} - {self.get_current_stage_display()}"
+    
+    class Meta:
+        verbose_name = "영업 기회"
+        verbose_name_plural = "영업 기회 목록"

@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem
+from .models import (
+    FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
+    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking
+)
 
 # UserProfile 인라인 관리자
 class UserProfileInline(admin.StackedInline):
@@ -139,3 +142,143 @@ class DeliveryItemAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('schedule', 'schedule__followup') 
+
+
+# ============================================
+# 펀넬 관리 시스템 Admin
+# ============================================
+
+# Product 모델 관리자 설정
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ('product_code', 'name', 'category', 'standard_price', 'is_promo', 'is_active', 'total_quoted', 'total_sold')
+    list_filter = ('category', 'is_active', 'is_promo')
+    search_fields = ('product_code', 'name', 'description')
+    list_per_page = 20
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('product_code', 'name', 'category', 'description')
+        }),
+        ('가격 정보', {
+            'fields': ('standard_price', 'cost_price')
+        }),
+        ('프로모션', {
+            'fields': ('is_promo', 'promo_price', 'promo_start', 'promo_end'),
+            'classes': ('collapse',)
+        }),
+        ('상태', {
+            'fields': ('is_active',)
+        }),
+        ('통계', {
+            'fields': ('total_quoted', 'total_sold'),
+            'classes': ('collapse',)
+        }),
+        ('상세 정보', {
+            'fields': ('specifications',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('total_quoted', 'total_sold')
+
+
+# QuoteItem 인라인
+class QuoteItemInline(admin.TabularInline):
+    model = QuoteItem
+    extra = 1
+    fields = ('product', 'quantity', 'unit_price', 'discount_rate', 'subtotal', 'description')
+    readonly_fields = ('subtotal',)
+    autocomplete_fields = ['product']
+
+
+# Quote 모델 관리자 설정
+@admin.register(Quote)
+class QuoteAdmin(admin.ModelAdmin):
+    list_display = ('quote_number', 'followup', 'user', 'stage', 'total_amount', 'probability', 'valid_until', 'converted_to_delivery', 'created_at')
+    list_filter = ('stage', 'converted_to_delivery', 'user', 'quote_date')
+    search_fields = ('quote_number', 'followup__customer_name', 'user__username')
+    date_hierarchy = 'quote_date'
+    autocomplete_fields = ['schedule', 'followup', 'user']
+    inlines = [QuoteItemInline]
+    list_per_page = 20
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('quote_number', 'schedule', 'followup', 'user', 'stage')
+        }),
+        ('일정', {
+            'fields': ('quote_date', 'valid_until', 'expected_close_date')
+        }),
+        ('금액 정보', {
+            'fields': ('subtotal', 'discount_rate', 'discount_amount', 'tax_amount', 'total_amount'),
+            'description': '금액은 견적 항목 추가 시 자동 계산됩니다.'
+        }),
+        ('영업 예측', {
+            'fields': ('probability', 'weighted_revenue')
+        }),
+        ('전환 추적', {
+            'fields': ('converted_to_delivery', 'converted_history'),
+            'classes': ('collapse',)
+        }),
+        ('메모', {
+            'fields': ('notes', 'customer_feedback'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('subtotal', 'discount_amount', 'tax_amount', 'total_amount', 'weighted_revenue', 'quote_date')
+
+
+# QuoteItem 모델 관리자 설정
+@admin.register(QuoteItem)
+class QuoteItemAdmin(admin.ModelAdmin):
+    list_display = ('quote', 'product', 'quantity', 'unit_price', 'discount_rate', 'subtotal')
+    list_filter = ('quote__stage', 'product__category')
+    search_fields = ('quote__quote_number', 'product__name')
+    autocomplete_fields = ['quote', 'product']
+    list_per_page = 20
+    
+    readonly_fields = ('subtotal',)
+
+
+# FunnelStage 모델 관리자 설정
+@admin.register(FunnelStage)
+class FunnelStageAdmin(admin.ModelAdmin):
+    list_display = ('display_name', 'name', 'stage_order', 'default_probability', 'avg_duration_days', 'color', 'icon')
+    list_editable = ('stage_order', 'default_probability', 'avg_duration_days')
+    ordering = ('stage_order',)
+    list_per_page = 20
+
+
+# OpportunityTracking 모델 관리자 설정
+@admin.register(OpportunityTracking)
+class OpportunityTrackingAdmin(admin.ModelAdmin):
+    list_display = ('followup', 'current_stage', 'expected_revenue', 'weighted_revenue', 'probability', 'expected_close_date', 'total_quotes_sent', 'total_meetings')
+    list_filter = ('current_stage', 'followup__user', 'stage_entry_date')
+    search_fields = ('followup__customer_name', 'followup__company__name')
+    date_hierarchy = 'stage_entry_date'
+    autocomplete_fields = ['followup']
+    list_per_page = 20
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('followup', 'current_stage', 'stage_entry_date')
+        }),
+        ('예측 데이터', {
+            'fields': ('expected_revenue', 'weighted_revenue', 'probability', 'expected_close_date')
+        }),
+        ('통계', {
+            'fields': ('total_quotes_sent', 'total_meetings', 'avg_response_time_hours')
+        }),
+        ('결과', {
+            'fields': ('won_date', 'lost_date', 'lost_reason', 'actual_revenue'),
+            'classes': ('collapse',)
+        }),
+        ('단계 이력', {
+            'fields': ('stage_history',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('stage_entry_date',)

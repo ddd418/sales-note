@@ -307,7 +307,8 @@ class ScheduleForm(forms.ModelForm):
     
     class Meta:
         model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes']
+        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
+                  'expected_revenue', 'probability', 'expected_close_date']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
@@ -315,6 +316,9 @@ class ScheduleForm(forms.ModelForm):
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
+            'expected_revenue': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '예상 매출액 (원)', 'min': '0'}),
+            'probability': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '성공 확률 (%)', 'min': '0', 'max': '100'}),
+            'expected_close_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         }
         labels = {
             'visit_date': '방문 날짜',
@@ -323,6 +327,9 @@ class ScheduleForm(forms.ModelForm):
             'location': '장소',
             'status': '상태',
             'notes': '메모',
+            'expected_revenue': '예상 매출액 (원)',
+            'probability': '성공 확률 (%)',
+            'expected_close_date': '예상 계약일',
         }
 
     def __init__(self, *args, **kwargs):
@@ -1452,7 +1459,49 @@ def schedule_create_view(request):
             schedule.user = request.user
             schedule.save()
             
-            messages.success(request, '일정이 성공적으로 생성되었습니다.')
+            # 펀넬 관련 필드가 있으면 OpportunityTracking 생성
+            if schedule.expected_revenue and schedule.expected_revenue > 0:
+                from reporting.models import OpportunityTracking, FunnelStage
+                
+                # 이미 OpportunityTracking이 있는지 확인
+                try:
+                    opportunity = schedule.followup.opportunity
+                    # 기존 것이 있으면 업데이트
+                    if schedule.expected_revenue:
+                        opportunity.expected_revenue = schedule.expected_revenue
+                    if schedule.probability:
+                        opportunity.probability = schedule.probability
+                    if schedule.expected_close_date:
+                        opportunity.expected_close_date = schedule.expected_close_date
+                    opportunity.save()
+                    
+                except OpportunityTracking.DoesNotExist:
+                    # 없으면 새로 생성
+                    # 초기 단계 결정 (미팅이면 contact, 납품이면 negotiation)
+                    if schedule.activity_type == 'customer_meeting':
+                        initial_stage = 'contact'
+                    elif schedule.activity_type == 'delivery':
+                        initial_stage = 'negotiation'
+                    else:
+                        initial_stage = 'lead'
+                    
+                    # OpportunityTracking 생성
+                    opportunity = OpportunityTracking.objects.create(
+                        followup=schedule.followup,
+                        current_stage=initial_stage,
+                        expected_revenue=schedule.expected_revenue,
+                        probability=schedule.probability or 50,  # 기본값 50%
+                        expected_close_date=schedule.expected_close_date or schedule.visit_date,
+                    )
+                
+                # Schedule과 연결
+                schedule.opportunity = opportunity
+                schedule.save()
+                
+                messages.success(request, f'일정이 성공적으로 생성되었습니다. 영업 기회도 함께 생성되었습니다.')
+            else:
+                messages.success(request, '일정이 성공적으로 생성되었습니다.')
+            
             return redirect('reporting:schedule_detail', pk=schedule.pk)
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
@@ -3048,219 +3097,526 @@ def manager_user_edit(request, user_id):
 @role_required(['manager'])
 @never_cache
 def manager_dashboard(request):
-    """Manager 전용 대시보드 - 같은 회사 Salesman의 현황을 볼 수 있음"""
-    # 선택된 salesman (기본값: 첫 번째 salesman)
+    """Manager 전용 대시보드 - 실무자 대시보드와 동일한 UI 사용"""
+    from django.db.models import Count, Sum, Avg
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+    import calendar
+    
+    # URL 파라미터 처리
     selected_user_id = request.GET.get('user_id')
     view_all = request.GET.get('view_all') == 'true'
     
-    # 접근 가능한 Salesman 목록 (get_accessible_users에서 이미 회사별 필터링됨)
+    # 접근 가능한 Salesman 목록
     accessible_users = get_accessible_users(request.user)
     salesman_users = accessible_users.filter(userprofile__role='salesman')
     
-    # 추가 보안 체크: 매니저의 회사 정보가 있는지 확인
+    # 보안 체크
     if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
         context = {
             'error_message': '회사 정보가 없어 접근할 수 없습니다.',
             'page_title': 'Manager 대시보드'
         }
-        return render(request, 'reporting/manager_dashboard.html', context)
+        return render(request, 'reporting/dashboard.html', context)
     
     if not salesman_users.exists():
         context = {
             'no_salesmen': True,
             'page_title': 'Manager 대시보드'
         }
-        return render(request, 'reporting/manager_dashboard.html', context)
-      # 선택된 사용자 결정
+        return render(request, 'reporting/dashboard.html', context)
+    
+    # 대상 사용자 결정
     if view_all:
-        selected_user = salesman_users.first()  # 전체보기인 경우에도 기본값 설정
+        # 전체보기: 같은 회사 모든 Salesman의 데이터
+        target_users = salesman_users
+        target_user = None  # 개별 사용자 없음
     elif selected_user_id:
+        # 특정 사용자 선택
         try:
-            selected_user = salesman_users.get(id=selected_user_id)
+            target_user = salesman_users.get(id=selected_user_id)
+            target_users = None
         except User.DoesNotExist:
-            selected_user = salesman_users.first()
+            target_user = salesman_users.first()
+            target_users = None
     else:
-        selected_user = salesman_users.first()
-    # 선택된 사용자의 데이터 가져오기 (dashboard 뷰와 동일한 로직)
-    from datetime import datetime
-    current_year = datetime.now().year
+        # 기본값: 첫 번째 salesman
+        target_user = salesman_users.first()
+        target_users = None
     
-    # 보안 로깅: 매니저가 어떤 데이터에 접근하는지 기록
-    user_company_name = request.user.userprofile.company.name if request.user.userprofile.company else "미정"
-    accessible_company_names = [user.userprofile.company.name if user.userprofile.company else "미정" 
-                               for user in salesman_users]
-    logger.info(f"매니저 {request.user.username} ({user_company_name})가 접근하는 영업사원들: {accessible_company_names}")
+    # 현재 시간
+    now = timezone.now()
+    current_year = now.year
+    current_month = now.month
     
-    # 기본 쿼리셋 (선택된 사용자로 필터링 또는 전체보기)
-    # 추가 보안: salesman_users가 이미 회사별로 필터링되었지만 다시 한 번 체크
+    # 데이터 필터링
     if view_all:
-        # 전체보기인 경우 같은 회사 Salesman의 데이터만
-        followups = FollowUp.objects.filter(user__in=salesman_users)
-        schedules = Schedule.objects.filter(user__in=salesman_users)
-        histories = History.objects.filter(user__in=salesman_users, created_at__year=current_year)
+        # 전체보기: 모든 salesman의 데이터
+        followups = FollowUp.objects.filter(user__in=target_users)
+        schedules = Schedule.objects.filter(user__in=target_users)
+        histories = History.objects.filter(user__in=target_users)
+        histories_current_year = History.objects.filter(user__in=target_users, created_at__year=current_year)
         
-        # 추가 보안 체크: 실제로 가져온 데이터가 매니저와 같은 회사인지 확인
-        manager_company = request.user.userprofile.company
-        followup_companies = set(followups.values_list('user__userprofile__company', flat=True))
-        if followup_companies and manager_company.id not in followup_companies:
-            logger.warning(f"보안 경고: 매니저 {request.user.username}가 다른 회사 데이터에 접근 시도")
-            
+        followup_count = followups.count()
+        schedule_count = schedules.filter(status='scheduled').count()
+        sales_record_count = histories_current_year.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
     else:
-        # 특정 사용자의 데이터
-        followups = FollowUp.objects.filter(user=selected_user)
-        schedules = Schedule.objects.filter(user=selected_user)
-        histories = History.objects.filter(user=selected_user, created_at__year=current_year)
+        # 특정 사용자 데이터
+        followups = FollowUp.objects.filter(user=target_user)
+        schedules = Schedule.objects.filter(user=target_user)
+        histories = History.objects.filter(user=target_user)
+        histories_current_year = History.objects.filter(user=target_user, created_at__year=current_year)
+        
+        followup_count = followups.count()
+        schedule_count = schedules.filter(status='scheduled').count()
+        sales_record_count = histories_current_year.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
     
-    # 통계 계산
-    total_followups = followups.count()
-    active_followups = followups.filter(status='active').count()
+    # 납품 금액 통계 (현재 연도)
+    history_delivery_stats = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False
+    ).aggregate(
+        total_amount=Sum('delivery_amount'),
+        delivery_count=Count('id')
+    )
     
-    # 일정 통계
-    total_schedules = schedules.count()
-    completed_schedules = schedules.filter(status='completed').count()
-    pending_schedules = schedules.filter(status='scheduled').count()
-    
-    # 히스토리 통계 (현재 연도, 메모 제외)
-    total_histories = histories.exclude(action_type='memo').count()
-    delivery_histories = histories.filter(action_type='delivery_schedule')
-    service_histories = histories.filter(action_type='service', service_status='completed')
-    
-    # 납품 금액 계산 - History와 Schedule의 DeliveryItem 모두 포함
-    # 1. History에서 납품 금액
-    history_delivery_amount = delivery_histories.aggregate(
-        total=Sum('delivery_amount')
-    )['total'] or 0
-    
-    # 2. Schedule에 연결된 DeliveryItem에서 납품 금액
     if view_all:
-        # 전체보기인 경우 모든 Salesman의 Schedule DeliveryItem
-        schedule_delivery_amount = DeliveryItem.objects.filter(
-            schedule__user__in=salesman_users,
+        schedule_delivery_stats = DeliveryItem.objects.filter(
+            schedule__user__in=target_users,
             schedule__created_at__year=current_year,
             schedule__activity_type='delivery'
-        ).aggregate(total=Sum('total_price'))['total'] or 0
+        ).aggregate(
+            total_amount=Sum('total_price'),
+            delivery_count=Count('schedule', distinct=True)
+        )
     else:
-        # 특정 사용자의 Schedule DeliveryItem
-        schedule_delivery_amount = DeliveryItem.objects.filter(
-            schedule__user=selected_user,
+        schedule_delivery_stats = DeliveryItem.objects.filter(
+            schedule__user=target_user,
             schedule__created_at__year=current_year,
             schedule__activity_type='delivery'
-        ).aggregate(total=Sum('total_price'))['total'] or 0
-    
-    # 총 납품 금액
-    total_delivery_amount = history_delivery_amount + schedule_delivery_amount
-    
-    # 월별 데이터 (날짜 기준)
-    monthly_data = []
-    monthly_delivery = []
-    for month in range(1, 13):
-        # 고객 미팅은 meeting_date 기준으로 집계 (meeting_date가 없으면 created_at 기준)
-        month_meetings = histories.filter(
-            Q(meeting_date__month=month) | 
-            (Q(meeting_date__isnull=True) & Q(created_at__month=month, action_type='customer_meeting'))
-        ).filter(action_type='customer_meeting')
-        
-        # 납품 일정은 delivery_date 기준으로 집계 (delivery_date가 없으면 created_at 기준)
-        month_deliveries = delivery_histories.filter(
-            Q(delivery_date__month=month) | 
-            (Q(delivery_date__isnull=True) & Q(created_at__month=month))
+        ).aggregate(
+            total_amount=Sum('total_price'),
+            delivery_count=Count('schedule', distinct=True)
         )
+    
+    history_amount = history_delivery_stats['total_amount'] or 0
+    schedule_amount = schedule_delivery_stats['total_amount'] or 0
+    total_delivery_amount = history_amount + schedule_amount
+    
+    # 중복 제거된 납품 횟수
+    history_with_schedule = histories_current_year.filter(
+        action_type='delivery_schedule',
+        schedule__isnull=False
+    ).values_list('schedule_id', flat=True).distinct()
+    
+    history_without_schedule = histories_current_year.filter(
+        action_type='delivery_schedule',
+        schedule__isnull=True
+    ).count()
+    
+    if view_all:
+        schedules_with_delivery = DeliveryItem.objects.filter(
+            schedule__user__in=target_users,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).values_list('schedule_id', flat=True).distinct()
+    else:
+        schedules_with_delivery = DeliveryItem.objects.filter(
+            schedule__user=target_user,
+            schedule__created_at__year=current_year,
+            schedule__activity_type='delivery'
+        ).values_list('schedule_id', flat=True).distinct()
+    
+    unique_schedule_ids = set(history_with_schedule) | set(schedules_with_delivery)
+    delivery_count = len(unique_schedule_ids) + history_without_schedule
+    
+    # 활동 유형별 통계 (현재 연도)
+    activity_stats = histories_current_year.exclude(action_type='memo').values('action_type').annotate(
+        count=Count('id')
+    ).order_by('action_type')
+    
+    # 서비스 통계
+    service_count = histories_current_year.filter(action_type='service', service_status='completed').count()
+    this_month_service_count = histories.filter(
+        action_type='service',
+        service_status='completed',
+        created_at__month=current_month,
+        created_at__year=current_year
+    ).count()
+    
+    # 최근 활동 (5개)
+    recent_activities = histories_current_year.exclude(action_type='memo').order_by('-created_at')[:5]
+    
+    # 월별 고객 추가 현황 (최근 6개월)
+    monthly_customers = []
+    for i in range(6):
+        month_start = (now.replace(day=1) - timedelta(days=32*i)).replace(day=1)
+        month_end = (month_start.replace(day=calendar.monthrange(month_start.year, month_start.month)[1]))
         
-        # 서비스는 완료된 것만 집계
-        month_services = histories.filter(
-            action_type='service',
-            service_status='completed',
-            created_at__month=month
-        )
+        count = followups.filter(
+            created_at__gte=month_start,
+            created_at__lte=month_end
+        ).count()
         
-        # 월별 납품 금액 계산 (History + Schedule DeliveryItem)
-        history_month_amount = month_deliveries.aggregate(total=Sum('delivery_amount'))['total'] or 0
-        
-        # Schedule에서 해당 월의 DeliveryItem 금액
-        if view_all:
-            schedule_month_amount = DeliveryItem.objects.filter(
-                schedule__user__in=salesman_users,
-                schedule__created_at__month=month,
-                schedule__created_at__year=current_year,
-                schedule__activity_type='delivery'
-            ).aggregate(total=Sum('total_price'))['total'] or 0
-        else:
-            schedule_month_amount = DeliveryItem.objects.filter(
-                schedule__user=selected_user,
-                schedule__created_at__month=month,
-                schedule__created_at__year=current_year,
-                schedule__activity_type='delivery'
-            ).aggregate(total=Sum('total_price'))['total'] or 0
-        
-        total_month_amount = history_month_amount + schedule_month_amount
-        
-        monthly_data.append({
-            'month': f'{month}월',
-            'meetings': month_meetings.count(),
-            'deliveries': month_deliveries.count(),
-            'services': month_services.count(),
-            'amount': total_month_amount
+        monthly_customers.append({
+            'month': month_start.strftime('%Y-%m'),
+            'month_name': f"{month_start.year}년 {month_start.month}월",
+            'count': count
         })
+    monthly_customers.reverse()
+    
+    # 일정 완료율
+    schedule_stats = schedules.aggregate(
+        total=Count('id'),
+        completed=Count('id', filter=Q(status='completed')),
+        cancelled=Count('id', filter=Q(status='cancelled')),
+        scheduled=Count('id', filter=Q(status='scheduled'))
+    )
+    
+    completion_rate = 0
+    if schedule_stats['total'] > 0:
+        completion_rate = round((schedule_stats['completed'] / schedule_stats['total']) * 100, 1)
+    
+    # 영업 기록 추이 (최근 14일)
+    fourteen_days_ago = now - timedelta(days=14)
+    daily_activities = []
+    for i in range(14):
+        day = fourteen_days_ago + timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
         
-        monthly_delivery.append(total_month_amount)
+        activity_count = histories_current_year.filter(
+            created_at__gte=day_start,
+            created_at__lt=day_end,
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
+        
+        daily_activities.append({
+            'date': day.strftime('%m/%d'),
+            'full_date': day.strftime('%Y-%m-%d'),
+            'count': activity_count
+        })
     
-    # 고객별 납품 현황 (현재 연도) - History와 Schedule DeliveryItem 모두 포함
-    customer_delivery = {}
+    # 오늘 일정
+    today = now.date()
+    today_schedules = schedules.filter(
+        visit_date=today,
+        status='scheduled'
+    ).order_by('visit_time')[:5]
     
-    # 1. History에서 고객별 납품 금액
-    for history in delivery_histories:
-        customer = history.followup.customer_name or history.followup.company or "고객명 미정" if history.followup else "일반 메모"
-        if customer in customer_delivery:
-            customer_delivery[customer] += history.delivery_amount or 0
-        else:
-            customer_delivery[customer] = history.delivery_amount or 0
+    # 최근 고객 (최근 7일)
+    week_ago = now - timedelta(days=7)
+    recent_customers = followups.filter(
+        created_at__gte=week_ago
+    ).order_by('-created_at')[:5]
     
-    # 2. Schedule DeliveryItem에서 고객별 납품 금액
-    if view_all:
-        schedule_deliveries = DeliveryItem.objects.filter(
-            schedule__user__in=salesman_users,
-            schedule__created_at__year=current_year,
-            schedule__activity_type='delivery'
-        ).select_related('schedule__followup')
-    else:
-        schedule_deliveries = DeliveryItem.objects.filter(
-            schedule__user=selected_user,
-            schedule__created_at__year=current_year,
-            schedule__activity_type='delivery'
-        ).select_related('schedule__followup')
+    # 성과 지표
+    monthly_revenue = histories.filter(
+        action_type='delivery_schedule',
+        created_at__month=current_month,
+        created_at__year=current_year,
+        delivery_amount__isnull=False
+    ).aggregate(total=Sum('delivery_amount'))['total'] or 0
     
-    for delivery_item in schedule_deliveries:
-        if delivery_item.schedule and delivery_item.schedule.followup:
-            customer = (delivery_item.schedule.followup.customer_name or 
-                       delivery_item.schedule.followup.company or "고객명 미정")
-            if customer in customer_delivery:
-                customer_delivery[customer] += delivery_item.total_price or 0
-            else:
-                customer_delivery[customer] = delivery_item.total_price or 0
-      # 상위 10개 고객
-    top_customers = sorted(customer_delivery.items(), key=lambda x: x[1], reverse=True)[:10]
+    monthly_meetings = histories.filter(
+        action_type='customer_meeting',
+        created_at__month=current_month,
+        created_at__year=current_year
+    ).count()
     
-    context = {
-        'selected_user': selected_user,
-        'salesman_users': salesman_users,
-        'view_all': view_all,
-        'current_year': current_year,
-        'total_followups': total_followups,
-        'active_followups': active_followups,
-        'total_schedules': total_schedules,
-        'completed_schedules': completed_schedules,
-        'pending_schedules': pending_schedules,
-        'total_histories': total_histories,
-        'total_delivery_amount': total_delivery_amount,
-        'total_services': service_histories.count(),
-        'monthly_data': monthly_data,
-        'monthly_delivery': monthly_delivery,
-        'top_customers': top_customers,
-        'page_title': f'Manager 대시보드 - {"전체보기" if view_all else selected_user.username}'
+    monthly_services = histories.filter(
+        action_type='service',
+        service_status='completed',
+        created_at__month=current_month,
+        created_at__year=current_year
+    ).count()
+    
+    # 납품 전환율
+    total_meetings = histories_current_year.filter(action_type='customer_meeting').count()
+    total_deliveries = histories_current_year.filter(action_type='delivery_schedule').count()
+    conversion_rate = (total_deliveries / total_meetings * 100) if total_meetings > 0 else 0
+    
+    # 평균 거래 규모
+    avg_deal_size = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False
+    ).aggregate(avg=Avg('delivery_amount'))['avg'] or 0
+    
+    # 월별 납품 금액 데이터 (최근 6개월)
+    monthly_revenue_data = []
+    monthly_revenue_labels = []
+    
+    for i in range(5, -1, -1):
+        target_date = now - timedelta(days=30*i)
+        month_revenue = histories.filter(
+            action_type='delivery_schedule',
+            created_at__month=target_date.month,
+            created_at__year=target_date.year,
+            delivery_amount__isnull=False
+        ).aggregate(total=Sum('delivery_amount'))['total'] or 0
+        
+        monthly_revenue_data.append(float(month_revenue))
+        monthly_revenue_labels.append(f"{target_date.year}년 {target_date.month}월")
+    
+    # 고객별 납품 현황 (상위 5개)
+    customer_revenue_data = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+        followup__isnull=False
+    ).values('followup__customer_name', 'followup__company').annotate(
+        total_revenue=Sum('delivery_amount')
+    ).order_by('-total_revenue')[:5]
+    
+    customer_labels = [f"{item['followup__customer_name'] or '미정'} ({item['followup__company'] or '미정'})" for item in customer_revenue_data]
+    customer_amounts = [float(item['total_revenue']) for item in customer_revenue_data]
+    
+    # ============================================
+    # 📊 새로운 7개 차트를 위한 데이터 준비
+    # ============================================
+    
+    # 1️⃣ 매출 및 납품 추이 (월별 납품 금액 + 건수)
+    monthly_delivery_stats = {
+        'labels': [],
+        'amounts': [],
+        'counts': []
     }
-    return render(request, 'reporting/manager_dashboard.html', context)
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        month_data = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            delivery_amount__isnull=False
+        ).aggregate(
+            total=Sum('delivery_amount'),
+            count=Count('id')
+        )
+        
+        monthly_delivery_stats['labels'].append(f"{target_date.month}월")
+        monthly_delivery_stats['amounts'].append(float(month_data['total'] or 0))
+        monthly_delivery_stats['counts'].append(month_data['count'] or 0)
+    
+    # 2️⃣ 영업 퍼널 (미팅 → 견적 → 발주예정 → 납품완료)
+    sales_funnel = {
+        'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
+        'values': [
+            histories_current_year.filter(action_type='customer_meeting').count(),
+            histories_current_year.filter(action_type='quotation').count(),
+            followups.filter(status='order_pending', created_at__year=current_year).count(),
+            histories_current_year.filter(action_type='delivery_schedule').count()
+        ]
+    }
+    
+    # 3️⃣ 고객사별 매출 비중 (Top 5 + 기타)
+    top_customers = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+        followup__isnull=False,
+        followup__company__isnull=False
+    ).values('followup__company__name').annotate(
+        total_revenue=Sum('delivery_amount')
+    ).order_by('-total_revenue')[:5]
+    
+    customer_distribution = {
+        'labels': [],
+        'data': []
+    }
+    
+    total_top5_revenue = 0
+    for item in top_customers:
+        company_name = item['followup__company__name'] or '미정'
+        revenue = float(item['total_revenue'])
+        customer_distribution['labels'].append(company_name)
+        customer_distribution['data'].append(revenue)
+        total_top5_revenue += revenue
+    
+    # 기타 금액 계산
+    total_all_revenue = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False
+    ).aggregate(total=Sum('delivery_amount'))['total'] or 0
+    
+    other_revenue = float(total_all_revenue) - total_top5_revenue
+    if other_revenue > 0:
+        customer_distribution['labels'].append('기타')
+        customer_distribution['data'].append(other_revenue)
+    
+    # 4️⃣ 영업 활동 추이 (월별)
+    monthly_activity_breakdown = {
+        'labels': [],
+        'sales': []
+    }
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        sales_count_month = histories.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule', 'quotation'],
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        monthly_activity_breakdown['labels'].append(f"{target_date.month}월")
+        monthly_activity_breakdown['sales'].append(sales_count_month)
+    
+    # 5️⃣ 개인 성과 지표 추세 (납품액, 전환율, 평균 거래 규모)
+    performance_trends = {
+        'labels': [],
+        'delivery_amount': [],
+        'conversion_rate': [],
+        'avg_deal_size': []
+    }
+    
+    for i in range(11, -1, -1):  # 최근 12개월
+        target_date = now - timedelta(days=30*i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year+1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            month_end = target_date.replace(month=target_date.month+1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        month_meetings = histories.filter(
+            action_type='customer_meeting',
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        month_deliveries = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end
+        ).count()
+        
+        month_delivery_stats = histories.filter(
+            action_type='delivery_schedule',
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            delivery_amount__isnull=False
+        ).aggregate(
+            total=Sum('delivery_amount'),
+            avg=Avg('delivery_amount')
+        )
+        
+        month_conversion = (month_deliveries / month_meetings * 100) if month_meetings > 0 else 0
+        
+        performance_trends['labels'].append(f"{target_date.month}월")
+        performance_trends['delivery_amount'].append(float(month_delivery_stats['total'] or 0) / 1000000)  # 백만원 단위
+        performance_trends['conversion_rate'].append(round(month_conversion, 1))
+        performance_trends['avg_deal_size'].append(float(month_delivery_stats['avg'] or 0) / 1000000)  # 백만원 단위
+    
+    # 6️⃣ 고객 유형별 통계 (대학/기업/관공서)
+    customer_type_stats = {
+        'labels': ['대학', '기업', '관공서'],
+        'revenue': [0, 0, 0],
+        'count': [0, 0, 0]
+    }
+    
+    # 간단한 키워드 기반 분류
+    company_stats = histories_current_year.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+        followup__isnull=False,
+        followup__company__isnull=False
+    ).values('followup__company__name').annotate(
+        total_revenue=Sum('delivery_amount'),
+        count=Count('id')
+    )
+    
+    for item in company_stats:
+        company_name = item['followup__company__name'] or ''
+        revenue = float(item['total_revenue']) / 1000000  # 백만원 단위
+        cnt = item['count']
+        
+        if '대학' in company_name or '대학교' in company_name:
+            customer_type_stats['revenue'][0] += revenue
+            customer_type_stats['count'][0] += cnt
+        elif '청' in company_name or '부' in company_name or '시' in company_name or '구' in company_name:
+            customer_type_stats['revenue'][2] += revenue
+            customer_type_stats['count'][2] += cnt
+        else:
+            customer_type_stats['revenue'][1] += revenue
+            customer_type_stats['count'][1] += cnt
+    
+    # 7️⃣ 활동 히트맵 (최근 30일 일일 활동 강도)
+    daily_activity_heatmap = []
+    for i in range(29, -1, -1):  # 최근 30일
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        day_activity_count = histories.filter(
+            created_at__gte=day_start,
+            created_at__lt=day_end
+        ).exclude(action_type='memo').count()
+        
+        daily_activity_heatmap.append({
+            'date': day.strftime('%Y-%m-%d'),
+            'day_of_week': day.weekday(),  # 0=월, 6=일
+            'intensity': day_activity_count
+        })
+    
+    # Context 구성
+    context = {
+        'page_title': f"Manager 대시보드 - {'전체보기' if view_all else target_user.username}",
+        'current_year': current_year,
+        'followup_count': followup_count,
+        'schedule_count': schedule_count,
+        'sales_record_count': sales_record_count,
+        'total_delivery_amount': total_delivery_amount,
+        'delivery_count': delivery_count,
+        'service_count': service_count,
+        'this_month_service_count': this_month_service_count,
+        'activity_stats': activity_stats,
+        'recent_activities': recent_activities,
+        'monthly_customers': monthly_customers,
+        'schedule_stats': schedule_stats,
+        'completion_rate': completion_rate,
+        'daily_activities': daily_activities,
+        'today_schedules': today_schedules,
+        'recent_customers': recent_customers,
+        'monthly_revenue': monthly_revenue,
+        'monthly_meetings': monthly_meetings,
+        'monthly_services': monthly_services,
+        'conversion_rate': conversion_rate,
+        'avg_deal_size': avg_deal_size,
+        'monthly_revenue_data': json.dumps(monthly_revenue_data, cls=DjangoJSONEncoder),
+        'monthly_revenue_labels': json.dumps(monthly_revenue_labels, cls=DjangoJSONEncoder),
+        'customer_labels': json.dumps(customer_labels, cls=DjangoJSONEncoder),
+        'customer_amounts': json.dumps(customer_amounts, cls=DjangoJSONEncoder),
+        # 새로운 7개 차트 데이터
+        'monthly_delivery_stats': monthly_delivery_stats,
+        'sales_funnel': sales_funnel,
+        'customer_distribution': customer_distribution,
+        'monthly_activity_breakdown': monthly_activity_breakdown,
+        'performance_trends': performance_trends,
+        'customer_type_stats': customer_type_stats,
+        'daily_activity_heatmap': daily_activity_heatmap,
+        # 관리자용 추가 정보
+        'salesman_users': salesman_users,
+        'selected_user': target_user,
+        'view_all': view_all,
+    }
+    
+    return render(request, 'reporting/dashboard.html', context)
 
-@role_required(['manager', 'admin'])
+
+@role_required(['manager'])
 def salesman_detail(request, user_id):
     """특정 Salesman의 상세 정보 조회 (Manager, Admin 전용)"""
     try:
@@ -7526,3 +7882,288 @@ def profile_edit_view(request):
         'password_form': password_form,
     }
     return render(request, 'reporting/profile_edit.html', context)
+
+
+# ===== 펀넬 관리 뷰 =====
+from .models import OpportunityTracking, Quote, FunnelStage
+from .funnel_analytics import FunnelAnalytics
+
+
+@login_required
+def funnel_dashboard_view(request):
+    """펀넬 대시보드 - 전체 개요"""
+    analytics = FunnelAnalytics()
+    
+    # 필터: 사용자별
+    filter_user = None
+    if not request.user.is_superuser:
+        filter_user = request.user
+    elif request.GET.get('user'):
+        try:
+            filter_user = User.objects.get(id=request.GET.get('user'))
+        except User.DoesNotExist:
+            pass
+    
+    # 파이프라인 요약
+    pipeline_summary = analytics.get_pipeline_summary(user=filter_user)
+    
+    # 단계별 분석
+    stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
+    
+    # 월별 예측
+    monthly_forecast = analytics.get_monthly_forecast(months=3, user=filter_user)
+    
+    # 상위 영업 기회
+    top_opportunities = analytics.get_top_opportunities(limit=10, user=filter_user)
+    
+    # 수주/실주 요약
+    won_lost_summary = analytics.get_won_lost_summary(user=filter_user)
+    
+    # 차트 데이터 (JSON)
+    stage_chart_data = {
+        'labels': [s['stage'] for s in stage_breakdown],
+        'counts': [s['count'] for s in stage_breakdown],
+        'values': [float(s['weighted_value']) for s in stage_breakdown],
+        'colors': [s['color'] for s in stage_breakdown],
+    }
+    
+    forecast_chart_data = {
+        'labels': [f['month_name'] for f in monthly_forecast],
+        'expected': [float(f['expected']) for f in monthly_forecast],
+        'weighted': [float(f['weighted']) for f in monthly_forecast],
+    }
+    
+    # 사용자 목록 (슈퍼유저용)
+    users = User.objects.filter(is_active=True).order_by('username') if request.user.is_superuser else []
+    
+    context = {
+        'page_title': '펀넬 대시보드',
+        'pipeline_summary': pipeline_summary,
+        'stage_breakdown': stage_breakdown,
+        'monthly_forecast': monthly_forecast,
+        'top_opportunities': top_opportunities,
+        'won_lost_summary': won_lost_summary,
+        'stage_chart_data': json.dumps(stage_chart_data, cls=DjangoJSONEncoder),
+        'forecast_chart_data': json.dumps(forecast_chart_data, cls=DjangoJSONEncoder),
+        'filter_user': filter_user,
+        'users': users,
+    }
+    
+    return render(request, 'reporting/funnel/dashboard.html', context)
+
+
+@login_required
+def funnel_pipeline_view(request):
+    """펀넬 파이프라인 - 칸반 보드"""
+    # 필터: 사용자별
+    filter_user = None
+    if not request.user.is_superuser:
+        filter_user = request.user
+    elif request.GET.get('user'):
+        try:
+            filter_user = User.objects.get(id=request.GET.get('user'))
+        except User.DoesNotExist:
+            pass
+    
+    # 단계 목록
+    stages = FunnelStage.objects.all().order_by('stage_order')
+    
+    # 각 단계별 영업 기회
+    pipeline_data = []
+    for stage in stages:
+        opps = OpportunityTracking.objects.filter(
+            current_stage=stage.name
+        ).select_related('followup', 'followup__company', 'followup__user')
+        
+        if filter_user:
+            opps = opps.filter(followup__user=filter_user)
+        
+        opportunities = []
+        for opp in opps.order_by('-weighted_revenue'):
+            opportunities.append({
+                'id': opp.id,
+                'customer_name': opp.followup.customer_name or '고객명 미정',
+                'company_name': opp.followup.company.name if opp.followup.company else '업체명 미정',
+                'expected_revenue': opp.expected_revenue,
+                'weighted_revenue': opp.weighted_revenue,
+                'probability': opp.probability,
+                'expected_close_date': opp.expected_close_date,
+                'user': opp.followup.user.username,
+                'followup_id': opp.followup.id,
+            })
+        
+        pipeline_data.append({
+            'stage': stage,
+            'opportunities': opportunities,
+            'count': len(opportunities),
+            'total_weighted': sum(o['weighted_revenue'] for o in opportunities),
+        })
+    
+    # 사용자 목록 (슈퍼유저용)
+    users = User.objects.filter(is_active=True).order_by('username') if request.user.is_superuser else []
+    
+    context = {
+        'page_title': '파이프라인 보드',
+        'pipeline_data': pipeline_data,
+        'filter_user': filter_user,
+        'users': users,
+    }
+    
+    return render(request, 'reporting/funnel/pipeline.html', context)
+
+
+@login_required
+def funnel_analytics_view(request):
+    """펀넬 분석 - 전환율 및 병목 분석"""
+    analytics = FunnelAnalytics()
+    
+    # 필터: 사용자별
+    filter_user = None
+    if not request.user.is_superuser:
+        filter_user = request.user
+    elif request.GET.get('user'):
+        try:
+            filter_user = User.objects.get(id=request.GET.get('user'))
+        except User.DoesNotExist:
+            pass
+    
+    # 전환율 분석
+    conversion_rates = analytics.get_conversion_rates(user=filter_user)
+    
+    # 병목 분석
+    bottleneck_analysis = analytics.get_bottleneck_analysis(user=filter_user)
+    
+    # 단계별 평균 체류 시간 차트
+    duration_chart_data = {
+        'labels': [b['stage'] for b in bottleneck_analysis],
+        'expected': [b['expected_duration'] for b in bottleneck_analysis],
+        'actual': [b['actual_duration'] for b in bottleneck_analysis],
+        'colors': [b['color'] for b in bottleneck_analysis],
+    }
+    
+    # 전환율 차트
+    conversion_chart_data = {
+        'labels': [f"{c['from_stage']} → {c['to_stage']}" for c in conversion_rates],
+        'rates': [c['rate'] for c in conversion_rates],
+    }
+    
+    # 사용자 목록 (슈퍼유저용)
+    users = User.objects.filter(is_active=True).order_by('username') if request.user.is_superuser else []
+    
+    context = {
+        'page_title': '펀넬 분석',
+        'conversion_rates': conversion_rates,
+        'bottleneck_analysis': bottleneck_analysis,
+        'duration_chart_data': json.dumps(duration_chart_data, cls=DjangoJSONEncoder),
+        'conversion_chart_data': json.dumps(conversion_chart_data, cls=DjangoJSONEncoder),
+        'filter_user': filter_user,
+        'users': users,
+    }
+    
+    return render(request, 'reporting/funnel/analytics.html', context)
+
+
+@login_required
+def funnel_forecast_view(request):
+    """펀넬 예측 - 매출 예측"""
+    analytics = FunnelAnalytics()
+    
+    # 필터: 사용자별
+    filter_user = None
+    if not request.user.is_superuser:
+        filter_user = request.user
+    elif request.GET.get('user'):
+        try:
+            filter_user = User.objects.get(id=request.GET.get('user'))
+        except User.DoesNotExist:
+            pass
+    
+    # 월별 예측 (6개월)
+    monthly_forecast = analytics.get_monthly_forecast(months=6, user=filter_user)
+    
+    # 단계별 분석 (예측에 포함될 기회들)
+    stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
+    
+    # 예측 차트 데이터
+    forecast_chart_data = {
+        'labels': [f['month_name'] for f in monthly_forecast],
+        'expected': [float(f['expected']) for f in monthly_forecast],
+        'weighted': [float(f['weighted']) for f in monthly_forecast],
+        'counts': [f['count'] for f in monthly_forecast],
+    }
+    
+    # 단계별 기여도 차트
+    contribution_chart_data = {
+        'labels': [s['stage'] for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+        'values': [float(s['weighted_value']) for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+        'colors': [s['color'] for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+    }
+    
+    # 사용자 목록 (슈퍼유저용)
+    users = User.objects.filter(is_active=True).order_by('username') if request.user.is_superuser else []
+    
+    context = {
+        'page_title': '매출 예측',
+        'monthly_forecast': monthly_forecast,
+        'stage_breakdown': [s for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+        'forecast_chart_data': json.dumps(forecast_chart_data, cls=DjangoJSONEncoder),
+        'contribution_chart_data': json.dumps(contribution_chart_data, cls=DjangoJSONEncoder),
+        'filter_user': filter_user,
+        'users': users,
+    }
+    
+    return render(request, 'reporting/funnel/forecast.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_opportunity_stage_api(request, opportunity_id):
+    """
+    OpportunityTracking의 단계를 업데이트하는 API
+    드래그앤드롭으로 단계 변경 시 호출
+    """
+    try:
+        opportunity = OpportunityTracking.objects.get(id=opportunity_id)
+        
+        # 권한 체크 - 담당자 또는 관리자만 수정 가능
+        if not (request.user == opportunity.followup.user or 
+                request.user.is_staff or 
+                request.user.is_superuser):
+            return JsonResponse({
+                'success': False,
+                'error': '권한이 없습니다.'
+            }, status=403)
+        
+        # 요청에서 새로운 단계 가져오기
+        import json as json_module
+        data = json_module.loads(request.body)
+        new_stage = data.get('stage')
+        
+        if not new_stage:
+            return JsonResponse({
+                'success': False,
+                'error': '단계가 지정되지 않았습니다.'
+            }, status=400)
+        
+        # 단계 업데이트
+        old_stage = opportunity.current_stage
+        opportunity.update_stage(new_stage)
+        opportunity.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{old_stage}에서 {new_stage}(으)로 단계가 변경되었습니다.',
+            'old_stage': old_stage,
+            'new_stage': new_stage
+        })
+        
+    except OpportunityTracking.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': '영업 기회를 찾을 수 없습니다.'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
