@@ -103,22 +103,22 @@
             </div>
 
             <!-- 영업 기회 정보 (펀넬 시스템) -->
-            <div class="row mt-4">
+            <div class="row mt-4" id="funnel-section">
               <div class="col-12">
                 <div class="card border-primary">
                   <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">
                       <i class="fas fa-funnel-dollar me-2"></i>영업 기회 정보 (선택사항)
                     </h5>
-                    <small>예상 매출액을 입력하면 영업 기회가 자동으로 생성되어 펀넬에서 추적됩니다.</small>
+                    <small>예상 매출액을 입력하면 영업 기회가 자동으로 생성되어 펀넬에서 추적됩니다. (서비스 일정은 제외)</small>
                   </div>
                   <div class="card-body">
                     <div class="row">
-                      <div class="col-md-4">
+                      <div class="col-md-3">
                         <div class="mb-3">
                           {{ form.expected_revenue.label_tag }}
                           {{ form.expected_revenue }}
-                          <small class="form-text text-muted">예상되는 거래 금액을 입력하세요</small>
+                          <small class="form-text text-muted">품목 입력 시 자동 계산됩니다</small>
                           {% if form.expected_revenue.errors %}
                           <div class="invalid-feedback d-block">
                             {% for error in form.expected_revenue.errors %}{{ error }}{% endfor %}
@@ -126,7 +126,7 @@
                           {% endif %}
                         </div>
                       </div>
-                      <div class="col-md-4">
+                      <div class="col-md-3">
                         <div class="mb-3">
                           {{ form.probability.label_tag }}
                           {{ form.probability }}
@@ -138,7 +138,7 @@
                           {% endif %}
                         </div>
                       </div>
-                      <div class="col-md-4">
+                      <div class="col-md-3">
                         <div class="mb-3">
                           {{ form.expected_close_date.label_tag }}
                           {{ form.expected_close_date }}
@@ -146,6 +146,37 @@
                           {% if form.expected_close_date.errors %}
                           <div class="invalid-feedback d-block">
                             {% for error in form.expected_close_date.errors %}{{ error }}{% endfor %}
+                          </div>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-md-3">
+                        <div class="mb-3">
+                          <label class="form-label">가중 매출액</label>
+                          <div class="form-control-plaintext">
+                            <span id="weighted-revenue-display" class="fw-bold text-success fs-5">0원</span>
+                          </div>
+                          <small class="form-text text-muted">예상 매출 × 확률</small>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- 구매 확정 체크박스 -->
+                    <div class="row mt-2">
+                      <div class="col-12">
+                        <div class="form-check">
+                          {{ form.purchase_confirmed }}
+                          <label class="form-check-label" for="{{ form.purchase_confirmed.id_for_label }}">
+                            <strong>{{ form.purchase_confirmed.label }}</strong>
+                            <i class="fas fa-check-circle text-success ms-1"></i>
+                          </label>
+                          <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>
+                            구매가 확정되면 체크하세요. 펀넬 단계가 자동으로 <strong>클로징(Closing)</strong>으로 전환됩니다.
+                          </div>
+                          {% if form.purchase_confirmed.errors %}
+                          <div class="invalid-feedback d-block">
+                            {% for error in form.purchase_confirmed.errors %}{{ error }}{% endfor %}
                           </div>
                           {% endif %}
                         </div>
@@ -184,61 +215,89 @@
                 </div>
               </div>
 
-              <!-- 납품 품목 (수정 모드에서만 표시) -->
-              {% if schedule %}
-              <div class="mb-4">
+              <!-- 견적/납품 품목 섹션 -->
+              <div class="mb-4" id="quote-delivery-items-section" style="display: none;">
                 <!-- 기존 텍스트 입력 방식 숨김 -->
                 <div style="display: none;">
-                  <label for="{{ form.delivery_items.id_for_label }}" class="form-label">
-                    <i class="fas fa-boxes me-1"></i>납품 품목
-                  </label>
                   {{ form.delivery_items }}
                 </div>
                 
-                <!-- 납품 품목 요약 및 관리 버튼 (읽기 전용) -->
+                {% if schedule %}
+                <!-- 수정 모드: 상세 페이지로 이동 -->
                 <div class="card">
                   <div class="card-header d-flex justify-content-between align-items-center bg-warning text-dark">
                     <div>
-                      <h5 class="mb-0">
-                        <i class="fas fa-boxes me-2"></i>납품 품목
+                      <h5 class="mb-0" id="items-section-title">
+                        <i class="fas fa-boxes me-2"></i>품목 관리
                       </h5>
-                      <small class="schedule-delivery-items-summary text-muted">수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리 페이지나 캘린더에서 수정하세요.</small>
+                      <small class="text-muted">수정 모드에서는 품목을 변경할 수 없습니다. 상세 페이지에서 품목을 관리하세요.</small>
                     </div>
-                    <button type="button" class="btn btn-secondary btn-sm" disabled title="수정 모드에서는 납품 품목을 변경할 수 없습니다">
-                      <i class="fas fa-lock me-1"></i>읽기 전용
-                    </button>
+                    <a href="{% url 'reporting:schedule_detail' schedule.pk %}" class="btn btn-primary btn-sm">
+                      <i class="fas fa-boxes me-1"></i>품목 관리하기
+                    </a>
                   </div>
                   <div class="card-body">
                     <div class="row">
                       <div class="col-md-8">
-                        <label class="form-label fw-bold">납품 품목 내역</label>
-                        <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly 
-                                  placeholder="수정 모드에서는 납품 품목을 변경할 수 없습니다. 히스토리에서 수정하세요."></textarea>
+                        <label class="form-label fw-bold">품목 내역</label>
+                        <textarea class="form-control" rows="3" readonly 
+                                  placeholder="상세 페이지에서 품목을 관리할 수 있습니다."></textarea>
                       </div>
                       <div class="col-md-4">
-                        <label class="form-label fw-bold">총 납품 금액 (부가세 포함)</label>
+                        <label class="form-label fw-bold">총 금액 (부가세 포함)</label>
                         <div class="input-group">
-                          <input type="number" id="schedule-delivery-total-amount" class="form-control" readonly value="0">
+                          <input type="number" class="form-control" readonly value="0">
                           <span class="input-group-text">원</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-                
-                {% if form.delivery_items.errors %}
-                <div class="invalid-feedback d-block">
-                  {% for error in form.delivery_items.errors %}{{ error }}{% endfor %}
+                {% else %}
+                <!-- 생성 모드: 품목 입력 UI -->
+                <div class="card">
+                  <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0" id="items-section-title">
+                      <i class="fas fa-file-invoice me-2"></i>견적 품목
+                    </h5>
+                    <button type="button" class="btn btn-light btn-sm" onclick="loadQuoteItems()" id="load-quote-btn" style="display: none;">
+                      <i class="fas fa-file-import me-1"></i>견적에서 불러오기
+                    </button>
+                  </div>
+                  <div class="card-body">
+                    <!-- 품목 입력 컨테이너 -->
+                    <div id="items-container" class="mb-3"></div>
+                    
+                    <!-- 품목 추가 버튼 -->
+                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addItem()">
+                      <i class="fas fa-plus me-1"></i>품목 추가
+                    </button>
+                    
+                    <!-- 합계 표시 -->
+                    <div class="row mt-3 pt-3 border-top">
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span>소계:</span>
+                          <span id="subtotal-amount" class="fw-bold">0원</span>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span>부가세 (10%):</span>
+                          <span id="tax-amount" class="fw-bold">0원</span>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="d-flex justify-content-between">
+                          <span class="fs-5">총액:</span>
+                          <span id="total-amount" class="fw-bold text-primary fs-5">0원</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {% endif %}
               </div>
-              {% else %}
-              <!-- 생성 모드에서는 납품 품목 섹션을 숨김 -->
-              <!-- 납품 품목은 일정 생성 후 히스토리에서 관리 -->
-              <div style="display: none;">
-                {{ form.delivery_items }}
-              </div>
-              {% endif %}
             </div>
 
             <!-- 버튼 섹션 -->
@@ -655,36 +714,365 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // 활동 유형 변경 시 납품 섹션 표시/숨김
+    // 활동 유형 변경 시 납품 섹션 및 펀넬 섹션 표시/숨김
     const activityTypeField = document.querySelector('[name="activity_type"]');
     const deliverySection = document.getElementById('delivery-section');
+    const funnelSection = document.getElementById('funnel-section');
     
-    if (activityTypeField && deliverySection) {
+    if (activityTypeField) {
         // 초기 상태 설정
-        toggleDeliverySection();
+        toggleSections();
         
         // 변경 이벤트 리스너 추가
-        activityTypeField.addEventListener('change', toggleDeliverySection);
+        activityTypeField.addEventListener('change', toggleSections);
     }
     
-    function toggleDeliverySection() {
-        const deliverySection = document.getElementById('delivery-section');
+    function toggleSections() {
         const activityTypeField = document.querySelector('[name="activity_type"]');
-        
-        // 요소들이 존재하지 않으면 함수 종료
-        if (!deliverySection || !activityTypeField) {
-            return;
-        }
+        if (!activityTypeField) return;
         
         const selectedValue = activityTypeField.value;
         
-        if (selectedValue === 'delivery') {
-            deliverySection.style.display = 'block';
-        } else {
-            deliverySection.style.display = 'none';
+        // 품목 섹션: 견적 또는 납품일 때만 표시
+        const deliverySection = document.getElementById('delivery-section');
+        if (deliverySection) {
+            deliverySection.style.display = (selectedValue === 'delivery' || selectedValue === 'quote') ? 'block' : 'none';
+            
+            // 섹션 제목 변경
+            const sectionTitle = deliverySection.closest('.card')?.querySelector('.card-header h5');
+            if (sectionTitle) {
+                if (selectedValue === 'quote') {
+                    sectionTitle.innerHTML = '<i class="fas fa-file-invoice me-2"></i>견적 품목';
+                } else if (selectedValue === 'delivery') {
+                    sectionTitle.innerHTML = '<i class="fas fa-boxes me-2"></i>납품 품목';
+                }
+            }
+        }
+        
+        // 품목 입력 안내 섹션 (생성 모드)
+        const itemsSection = document.getElementById('quote-delivery-items-section');
+        if (itemsSection) {
+            const shouldShow = (selectedValue === 'delivery' || selectedValue === 'quote');
+            itemsSection.style.display = shouldShow ? 'block' : 'none';
+            
+            // 견적 불러오기 버튼 표시/숨김 (납품일 때만 표시)
+            const loadQuoteBtn = document.getElementById('load-quote-btn');
+            if (loadQuoteBtn) {
+                loadQuoteBtn.style.display = (selectedValue === 'delivery') ? 'inline-block' : 'none';
+            }
+            
+            // 품목 컨테이너 확인
+            const itemsContainer = document.getElementById('items-container');
+            if (itemsContainer) {
+                const existingItems = itemsContainer.querySelectorAll('.item-row');
+                
+                if (shouldShow) {
+                    // 품목이 없으면 하나 추가
+                    if (existingItems.length === 0) {
+                        addItem();
+                    }
+                    // 품목 필드에 required 추가
+                    existingItems.forEach(item => {
+                        const nameInput = item.querySelector('input[name$="[name]"]');
+                        const quantityInput = item.querySelector('input[name$="[quantity]"]');
+                        if (nameInput) nameInput.setAttribute('required', 'required');
+                        if (quantityInput) quantityInput.setAttribute('required', 'required');
+                    });
+                } else {
+                    // 숨겨질 때는 required 제거
+                    existingItems.forEach(item => {
+                        const nameInput = item.querySelector('input[name$="[name]"]');
+                        const quantityInput = item.querySelector('input[name$="[quantity]"]');
+                        if (nameInput) nameInput.removeAttribute('required');
+                        if (quantityInput) quantityInput.removeAttribute('required');
+                    });
+                }
+            }
+        }
+        
+        // 품목 섹션 제목 변경 (수정 모드)
+        const itemsSectionTitle = document.getElementById('items-section-title');
+        if (itemsSectionTitle) {
+            if (selectedValue === 'quote') {
+                itemsSectionTitle.innerHTML = '<i class="fas fa-file-invoice me-2"></i>견적 품목';
+            } else if (selectedValue === 'delivery') {
+                itemsSectionTitle.innerHTML = '<i class="fas fa-boxes me-2"></i>납품 품목';
+            }
+        }
+        
+        // 펀넬 섹션: 서비스가 아닐 때만 표시
+        const funnelSection = document.getElementById('funnel-section');
+        if (funnelSection) {
+            if (selectedValue === 'service') {
+                funnelSection.style.display = 'none';
+            } else {
+                funnelSection.style.display = 'block';
+                
+                // 납품 선택 시 확률 자동 100% 설정 및 예상 계약일 설정
+                if (selectedValue === 'delivery') {
+                    const probabilityField = document.querySelector('[name="probability"]');
+                    const visitDateField = document.querySelector('[name="visit_date"]');
+                    const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+                    
+                    if (probabilityField && probabilityField.value === '') {
+                        probabilityField.value = 100;
+                    }
+                    
+                    if (visitDateField && expectedCloseDateField && visitDateField.value && !expectedCloseDateField.value) {
+                        expectedCloseDateField.value = visitDateField.value;
+                    }
+                    
+                    // 가중 매출액 업데이트
+                    updateWeightedRevenue();
+                }
+            }
         }
     }
+    
+    // 레거시 함수 유지 (하위 호환성)
+    function toggleDeliverySection() {
+        toggleSections();
+    }
 });
+
+// 품목 관리 관련 함수들 (전역 함수로 정의)
+let itemIndex = 0;
+
+function addItem(itemData = {}) {
+    const container = document.getElementById('items-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'item-row row mb-3 p-3 border rounded bg-light';
+    
+    // 현재 활동 유형 확인
+    const activityTypeField = document.querySelector('[name="activity_type"]');
+    const isItemsVisible = activityTypeField && (activityTypeField.value === 'quote' || activityTypeField.value === 'delivery');
+    const requiredAttr = isItemsVisible ? 'required' : '';
+    
+    newItem.innerHTML = `
+        <div class="col-md-4">
+            <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+            <input type="text" name="items[${itemIndex}][name]" class="form-control" 
+                   value="${itemData.name || ''}" placeholder="품목명을 입력하세요" ${requiredAttr}>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
+            <input type="number" name="items[${itemIndex}][quantity]" 
+                   class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" 
+                   placeholder="수량" ${requiredAttr}>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label fw-bold">단가 (부가세 별도)</label>
+            <input type="number" name="items[${itemIndex}][unit_price]" 
+                   class="form-control unit-price-input" step="0.01" min="0" 
+                   value="${itemData.unit_price || ''}" placeholder="0">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-bold">금액 (부가세 포함)</label>
+            <div class="form-control-plaintext">
+                <span class="item-total fw-bold text-primary">0원</span>
+            </div>
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+            <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeItem(this)" title="삭제">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+    
+    container.appendChild(newItem);
+    itemIndex++;
+    
+    // 이벤트 리스너 추가
+    const quantityInput = newItem.querySelector('.quantity-input');
+    const unitPriceInput = newItem.querySelector('.unit-price-input');
+    
+    quantityInput.addEventListener('input', calculateItemTotal);
+    unitPriceInput.addEventListener('input', calculateItemTotal);
+    
+    // 초기 계산
+    if (itemData.quantity && itemData.unit_price) {
+        calculateItemTotal({ target: quantityInput });
+    }
+    
+    // 애니메이션 효과
+    newItem.style.opacity = '0';
+    newItem.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+        newItem.style.transition = 'all 0.3s ease';
+        newItem.style.opacity = '1';
+        newItem.style.transform = 'translateY(0)';
+    }, 10);
+}
+
+function removeItem(button) {
+    if (document.querySelectorAll('.item-row').length <= 1) {
+        alert('최소 하나의 품목은 있어야 합니다.');
+        return;
+    }
+    
+    const item = button.closest('.item-row');
+    item.style.transition = 'all 0.3s ease';
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+        item.remove();
+        calculateTotal();
+    }, 300);
+}
+
+function calculateItemTotal(event) {
+    const item = event.target.closest('.item-row');
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    // 부가세 포함 계산: (단가 * 수량) * 1.1
+    const subtotal = quantity * unitPrice;
+    const total = subtotal * 1.1;
+    
+    item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+    calculateTotal();
+}
+
+function calculateTotal() {
+    const items = document.querySelectorAll('.item-row');
+    let subtotal = 0;
+    
+    items.forEach(item => {
+        const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+        const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+        subtotal += quantity * unitPrice;
+    });
+    
+    const tax = subtotal * 0.1;
+    const total = subtotal + tax;
+    
+    // 화면 업데이트
+    document.getElementById('subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+    document.getElementById('tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+    document.getElementById('total-amount').textContent = Math.round(total).toLocaleString() + '원';
+    
+    // 예상 매출액 필드에 자동 반영
+    const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
+    if (expectedRevenueField) {
+        expectedRevenueField.value = Math.round(total);
+        
+        // 가중 매출액도 자동 계산
+        updateWeightedRevenue();
+    }
+}
+
+function updateWeightedRevenue() {
+    const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
+    const probabilityField = document.querySelector('[name="probability"]');
+    const weightedRevenueDisplay = document.getElementById('weighted-revenue-display');
+    
+    if (expectedRevenueField && probabilityField && weightedRevenueDisplay) {
+        const expectedRevenue = parseFloat(expectedRevenueField.value) || 0;
+        const probability = parseFloat(probabilityField.value) || 0;
+        const weightedRevenue = (expectedRevenue * probability) / 100;
+        
+        weightedRevenueDisplay.textContent = Math.round(weightedRevenue).toLocaleString() + '원';
+    }
+}
+
+// 페이지 로드 시 초기 품목 추가 (견적/납품 선택 시에만)
+document.addEventListener('DOMContentLoaded', function() {
+    const itemsContainer = document.getElementById('items-container');
+    const activityTypeField = document.querySelector('[name="activity_type"]');
+    
+    // 페이지 로드 시 활동 유형이 견적 또는 납품이면 품목 1개 추가
+    if (itemsContainer && activityTypeField) {
+        const activityType = activityTypeField.value;
+        if (activityType === 'quote' || activityType === 'delivery') {
+            addItem(); // 기본 1개 품목 추가
+        }
+    }
+    
+    // 확률 변경 시에도 가중 매출액 업데이트
+    const probabilityField = document.querySelector('[name="probability"]');
+    if (probabilityField) {
+        probabilityField.addEventListener('input', updateWeightedRevenue);
+    }
+    
+    // 납품일 때 방문 날짜 변경 시 예상 계약일도 자동 업데이트
+    const visitDateField = document.querySelector('[name="visit_date"]');
+    if (visitDateField && activityTypeField) {
+        visitDateField.addEventListener('change', function() {
+            if (activityTypeField.value === 'delivery') {
+                const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+                if (expectedCloseDateField && this.value) {
+                    expectedCloseDateField.value = this.value;
+                }
+            }
+        });
+    }
+});
+
+// 견적에서 품목 불러오기
+function loadQuoteItems() {
+    const followupField = document.querySelector('[name="followup"]');
+    if (!followupField || !followupField.value) {
+        alert('먼저 팔로우업을 선택하세요.');
+        return;
+    }
+    
+    const followupId = followupField.value;
+    
+    // 해당 팔로우업의 견적 일정 조회
+    fetch(`/reporting/api/followups/${followupId}/quote-items/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            
+            if (!data.items || data.items.length === 0) {
+                alert('이 고객의 견적 품목이 없습니다.');
+                return;
+            }
+            
+            // 기존 품목 삭제
+            const container = document.getElementById('items-container');
+            container.innerHTML = '';
+            itemIndex = 0;
+            
+            // 견적 품목 추가
+            data.items.forEach(item => {
+                addItem({
+                    name: item.item_name,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price
+                });
+            });
+            
+            // 합계 계산 (예상 매출액 자동 반영)
+            calculateTotal();
+            
+            // 납품이므로 확률 100%로 설정
+            const probabilityField = document.querySelector('[name="probability"]');
+            if (probabilityField) {
+                probabilityField.value = 100;
+            }
+            
+            // 예상 계약일을 방문 날짜로 설정
+            const visitDateField = document.querySelector('[name="visit_date"]');
+            const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+            if (visitDateField && expectedCloseDateField && visitDateField.value) {
+                expectedCloseDateField.value = visitDateField.value;
+            }
+            
+            // 가중 매출액 업데이트
+            updateWeightedRevenue();
+            
+            alert(`견적 품목 ${data.items.length}개를 불러왔습니다.\n확률: 100%, 예상 계약일: ${visitDateField.value || '방문 날짜'}`);
+        })
+        .catch(error => {
+            console.error('견적 불러오기 오류:', error);
+            alert('견적을 불러오는 중 오류가 발생했습니다.');
+        });
+}
 
 // 납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)
 let scheduleDeliveryItemIndex = 0;

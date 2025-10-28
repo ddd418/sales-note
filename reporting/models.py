@@ -147,6 +147,7 @@ class Schedule(models.Model):
     
     ACTIVITY_TYPE_CHOICES = [
         ('customer_meeting', '고객 미팅'),
+        ('quote', '견적 제출'),
         ('delivery', '납품 일정'),
         ('service', '서비스'),
     ]
@@ -166,6 +167,7 @@ class Schedule(models.Model):
     expected_revenue = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="예상 매출액", help_text="예상되는 거래 금액")
     probability = models.IntegerField(null=True, blank=True, verbose_name="성공 확률 (%)", help_text="0-100 사이의 값")
     expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일", help_text="계약이 예상되는 날짜")
+    purchase_confirmed = models.BooleanField(default=False, verbose_name="구매 확정", help_text="구매가 확정된 경우 체크 (클로징 단계로 전환)")
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
@@ -577,6 +579,9 @@ class OpportunityTracking(models.Model):
     probability = models.IntegerField(default=50, verbose_name="성공 확률(%)")
     expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일")
     
+    # 수주 추적
+    backlog_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="수주 금액", help_text="예정된 일정의 총 매출액")
+    
     # 단계 이력 (JSON)
     stage_history = models.JSONField(default=list, verbose_name="단계 이력")
     
@@ -595,8 +600,19 @@ class OpportunityTracking(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def update_stage(self, new_stage):
-        """단계 업데이트 및 이력 기록"""
+        """단계 업데이트 및 이력 기록 (중간 단계 자동 채움)"""
         from datetime import date
+        
+        # 단계 순서 정의
+        stage_order = ['lead', 'contact', 'quote', 'negotiation', 'closing', 'won', 'lost']
+        
+        try:
+            current_index = stage_order.index(self.current_stage)
+            new_index = stage_order.index(new_stage)
+        except ValueError:
+            # 잘못된 단계명이면 그냥 업데이트
+            current_index = -1
+            new_index = -1
         
         # 현재 단계 종료 처리
         if self.stage_history:
@@ -604,6 +620,18 @@ class OpportunityTracking(models.Model):
                 if history.get('stage') == self.current_stage and not history.get('exited'):
                     history['exited'] = date.today().isoformat()
                     break
+        
+        # 중간 단계를 건너뛰는 경우, 자동으로 중간 단계 추가
+        if current_index != -1 and new_index != -1 and new_index > current_index + 1:
+            # 건너뛴 중간 단계들을 모두 추가
+            for i in range(current_index + 1, new_index):
+                skipped_stage = stage_order[i]
+                self.stage_history.append({
+                    'stage': skipped_stage,
+                    'entered': date.today().isoformat(),
+                    'exited': date.today().isoformat(),
+                    'note': '자동 추가됨 (단계 건너뛰기)'
+                })
         
         # 새 단계 추가
         self.stage_history.append({
@@ -624,6 +652,33 @@ class OpportunityTracking(models.Model):
             pass
         
         self.save()
+    
+    def update_revenue_amounts(self):
+        """관련 일정들로부터 수주 금액 계산"""
+        from decimal import Decimal
+        
+        # 수주 금액: 예정됨(scheduled) 상태의 일정들 합계
+        backlog_schedules = self.schedules.filter(
+            status='scheduled',
+            expected_revenue__isnull=False
+        )
+        self.backlog_amount = sum(
+            s.expected_revenue for s in backlog_schedules
+        ) or Decimal('0')
+        
+        self.save()
+    
+    def save(self, *args, **kwargs):
+        """저장 시 가중 매출 자동 계산"""
+        from decimal import Decimal
+        
+        # 가중 매출 계산: 예상 매출 × (확률 / 100)
+        if self.expected_revenue and self.probability is not None:
+            self.weighted_revenue = self.expected_revenue * (Decimal(str(self.probability)) / Decimal('100'))
+        else:
+            self.weighted_revenue = 0
+        
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.followup.customer_name} - {self.get_current_stage_display()}"

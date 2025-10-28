@@ -227,9 +227,9 @@ class FunnelAnalytics:
     
     @staticmethod
     def get_top_opportunities(limit=10, user=None):
-        """예측 매출 상위 영업 기회"""
+        """예측 매출 상위 영업 기회 (won 포함, lost 제외)"""
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'lost']
+            current_stage='lost'
         ).select_related('followup', 'followup__company', 'followup__user')
         
         if user:
@@ -253,6 +253,7 @@ class FunnelAnalytics:
                 'company_name': opp.followup.company.name if opp.followup.company else '업체명 미정',
                 'expected_revenue': opp.expected_revenue,
                 'weighted_revenue': opp.weighted_revenue,
+                'backlog_amount': opp.backlog_amount,
                 'probability': opp.probability,
                 'current_stage': stage_display,
                 'stage_color': stage_color,

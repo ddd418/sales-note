@@ -29,6 +29,7 @@ urlpatterns = [
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),
     path('schedules/<int:schedule_id>/histories/', views.schedule_histories_api, name='schedule_histories_api'),
     path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
+    path('schedules/<int:pk>/update-funnel/', views.schedule_update_funnel, name='schedule_update_funnel'),
     path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),
@@ -76,6 +77,7 @@ urlpatterns = [
     path('api/companies/autocomplete/', views.company_autocomplete, name='company_autocomplete'),
     path('api/departments/autocomplete/', views.department_autocomplete, name='department_autocomplete'),
     path('api/followups/autocomplete/', views.followup_autocomplete, name='followup_autocomplete'),
+    path('api/followups/<int:followup_id>/quote-items/', views.followup_quote_items_api, name='followup_quote_items_api'),
     path('api/companies/create/', views.company_create_api, name='company_create_api'),
     path('api/departments/create/', views.department_create_api, name='department_create_api'),
     path('api/followups/create/', views.followup_create_ajax, name='followup_create_ajax'),

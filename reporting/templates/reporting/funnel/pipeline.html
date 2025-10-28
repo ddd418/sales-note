@@ -309,7 +309,10 @@
                         <i class="fas fa-building"></i> {{ opp.company_name }}
                     </div>
                     <div class="opp-revenue">
-                        {{ opp.expected_revenue|floatformat:0 }}원
+                        예상: {{ opp.expected_revenue|floatformat:0 }}원
+                    </div>
+                    <div class="opp-revenue" style="color: #007bff;">
+                        수주: {{ opp.backlog_amount|floatformat:0 }}원
                     </div>
                     <div class="opp-weighted">
                         가중: {{ opp.weighted_revenue|floatformat:0 }}원

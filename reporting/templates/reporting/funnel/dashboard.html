@@ -365,12 +365,16 @@
                                     <small class="text-muted fw-semibold">예상 매출</small>
                                 </div>
                                 <div class="col-md-2 text-end">
+                                    <strong style="font-size: 1.15rem; color: #007bff;">{{ opp.backlog_amount|floatformat:0 }}</strong>원<br>
+                                    <small class="text-muted fw-semibold">수주</small>
+                                </div>
+                                <div class="col-md-2 text-end">
                                     <strong style="font-size: 1.15rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                                         {{ opp.weighted_revenue|floatformat:0 }}
                                     </strong>원<br>
                                     <small class="text-muted fw-semibold">가중 매출</small>
                                 </div>
-                                <div class="col-md-2 text-center">
+                                <div class="col-md-1 text-center">
                                     <div class="progress" style="height: 22px; border-radius: 11px;">
                                         <div class="progress-bar" role="progressbar" 
                                              style="width: {{ opp.probability }}%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-weight: 700;"

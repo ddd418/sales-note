@@ -1,8 +1,9 @@
 """
 영업 보고 시스템 시그널
 - 납품 완료 시 OpportunityTracking 자동 업데이트
+- Schedule 삭제 시 연결된 OpportunityTracking도 삭제
 """
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from datetime import date
 from .models import History, OpportunityTracking, Schedule
@@ -65,7 +66,12 @@ def update_opportunity_on_delivery(sender, instance, created, **kwargs):
 def update_opportunity_on_schedule_change(sender, instance, **kwargs):
     """
     일정의 상태나 금액이 변경될 때 OpportunityTracking 업데이트
+    서비스 일정은 제외 (영업 기회와 무관)
     """
+    # 서비스 일정은 영업 기회와 무관하므로 처리 안함
+    if instance.activity_type == 'service':
+        return
+    
     # 새로 생성되는 경우는 처리 안함 (create_view에서 처리)
     if not instance.pk:
         return
@@ -109,6 +115,7 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
             # OpportunityTracking을 'won'으로 변경
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'won'
+            opportunity.stage_entry_date = date.today()
             
             # stage_history 업데이트
             if opportunity.stage_history is None:
@@ -123,7 +130,62 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
             opportunity.stage_history.append({
                 'stage': 'won',
                 'entered': date.today().isoformat(),
-                'exited': None
+                'exited': None,
+                'note': f'납품 완료로 자동 전환 (일정 ID: {instance.id})'
+            })
+        
+        # 일정 상태가 예정 → 완료로 변경되고 고객 미팅인 경우
+        elif (instance.status == 'completed' and 
+              old_schedule.status == 'scheduled' and 
+              instance.activity_type == 'customer_meeting' and
+              opportunity.current_stage == 'lead'):
+            
+            # lead → contact 단계로 변경 (미팅 완료)
+            old_stage = opportunity.current_stage
+            opportunity.current_stage = 'contact'
+            opportunity.stage_entry_date = date.today()
+            
+            # stage_history 업데이트
+            if opportunity.stage_history is None:
+                opportunity.stage_history = []
+            
+            # 이전 단계 종료
+            for stage_entry in opportunity.stage_history:
+                if stage_entry.get('stage') == old_stage and not stage_entry.get('exited'):
+                    stage_entry['exited'] = date.today().isoformat()
+            
+            # contact 단계 추가
+            opportunity.stage_history.append({
+                'stage': 'contact',
+                'entered': date.today().isoformat(),
+                'exited': None,
+                'note': f'고객 미팅 완료로 자동 전환 (일정 ID: {instance.id})'
             })
         
         opportunity.save()
+
+
+@receiver(post_delete, sender=Schedule)
+def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
+    """
+    Schedule 삭제 시 연결된 OpportunityTracking도 함께 삭제
+    단, 다른 Schedule이 같은 OpportunityTracking을 참조하고 있으면 삭제 안함
+    """
+    # 서비스 일정은 OpportunityTracking과 무관
+    if instance.activity_type == 'service':
+        return
+    
+    # OpportunityTracking이 연결되어 있지 않으면 종료
+    if not instance.opportunity:
+        return
+    
+    opportunity = instance.opportunity
+    
+    # 같은 OpportunityTracking을 참조하는 다른 Schedule이 있는지 확인
+    other_schedules = Schedule.objects.filter(
+        opportunity=opportunity
+    ).exclude(pk=instance.pk).exists()
+    
+    # 다른 Schedule이 없으면 OpportunityTracking도 삭제
+    if not other_schedules:
+        opportunity.delete()
