@@ -66,6 +66,9 @@
                   >
                 </div>
 
+                <!-- opportunity 필드를 숨김 필드로 추가 (견적 선택 시 자동 설정) -->
+                {{ form.opportunity }}
+
                 <div class="mb-3">
                   {{ form.visit_date.label_tag }} {{ form.visit_date }}
                 </div>
@@ -260,7 +263,7 @@
                     <h5 class="mb-0" id="items-section-title">
                       <i class="fas fa-file-invoice me-2"></i>견적 품목
                     </h5>
-                    <button type="button" class="btn btn-light btn-sm" onclick="loadQuoteItems()" id="load-quote-btn" style="display: none;">
+                    <button type="button" class="btn btn-light btn-sm" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
                       <i class="fas fa-file-import me-1"></i>견적에서 불러오기
                     </button>
                   </div>
@@ -1009,8 +1012,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// 견적에서 품목 불러오기
-function loadQuoteItems() {
+// 견적에서 품목 불러오기 (버튼 클릭 시 모달 표시)
+function loadFromQuote() {
     const followupField = document.querySelector('[name="followup"]');
     if (!followupField || !followupField.value) {
         alert('먼저 팔로우업을 선택하세요.');
@@ -1028,50 +1031,169 @@ function loadQuoteItems() {
                 return;
             }
             
-            if (!data.items || data.items.length === 0) {
+            if (!data.quotes || data.quotes.length === 0) {
                 alert('이 고객의 견적 품목이 없습니다.');
                 return;
             }
             
-            // 기존 품목 삭제
-            const container = document.getElementById('items-container');
-            container.innerHTML = '';
-            itemIndex = 0;
-            
-            // 견적 품목 추가
-            data.items.forEach(item => {
-                addItem({
-                    name: item.item_name,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price
-                });
-            });
-            
-            // 합계 계산 (예상 매출액 자동 반영)
-            calculateTotal();
-            
-            // 납품이므로 확률 100%로 설정
-            const probabilityField = document.querySelector('[name="probability"]');
-            if (probabilityField) {
-                probabilityField.value = 100;
-            }
-            
-            // 예상 계약일을 방문 날짜로 설정
-            const visitDateField = document.querySelector('[name="visit_date"]');
-            const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
-            if (visitDateField && expectedCloseDateField && visitDateField.value) {
-                expectedCloseDateField.value = visitDateField.value;
-            }
-            
-            // 가중 매출액 업데이트
-            updateWeightedRevenue();
-            
-            alert(`견적 품목 ${data.items.length}개를 불러왔습니다.\n확률: 100%, 예상 계약일: ${visitDateField.value || '방문 날짜'}`);
+            // 항상 견적 선택 모달 표시
+            showQuoteSelectionModal(data.quotes);
         })
         .catch(error => {
             console.error('견적 불러오기 오류:', error);
             alert('견적을 불러오는 중 오류가 발생했습니다.');
         });
+}
+
+// 견적 선택 모달 표시
+function showQuoteSelectionModal(quotes) {
+    const modalHtml = `
+        <div class="modal fade" id="quoteSelectionModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title"><i class="fas fa-file-invoice me-2"></i>견적 선택</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3"><i class="fas fa-info-circle text-info me-2"></i>불러올 견적을 선택하세요:</p>
+                        <div class="list-group" id="quoteListGroup">
+                            ${quotes.map((quote, index) => `
+                                <button type="button" class="list-group-item list-group-item-action quote-item" data-quote-index="${index}">
+                                    <div class="d-flex w-100 justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                <i class="fas fa-file-alt text-primary me-2"></i>
+                                                ${quote.opportunity_title || '견적 ' + (index + 1)}
+                                            </h6>
+                                            <p class="mb-1">
+                                                <span class="badge bg-success me-2">예상 매출: ${quote.expected_revenue.toLocaleString()}원</span>
+                                                <span class="badge bg-info">품목 ${quote.items.length}개</span>
+                                            </p>
+                                            <small class="text-muted">
+                                                ${quote.items.map(item => item.item_name).join(', ')}
+                                            </small>
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-calendar-alt me-1"></i>${quote.quote_date}
+                                        </small>
+                                    </div>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-1"></i>취소
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 기존 모달 제거
+    const existingModal = document.getElementById('quoteSelectionModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 새 모달 추가
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 전역 변수에 quotes 저장
+    window.currentQuotes = quotes;
+    
+    // 모달 표시
+    const modalElement = document.getElementById('quoteSelectionModal');
+    const modal = new bootstrap.Modal(modalElement);
+    window.currentQuoteModal = modal;
+    
+    // 이벤트 리스너 추가
+    document.querySelectorAll('.quote-item').forEach(button => {
+        button.addEventListener('click', function() {
+            const index = parseInt(this.dataset.quoteIndex);
+            selectQuote(index);
+        });
+    });
+    
+    modal.show();
+}
+
+// 견적 선택 처리
+function selectQuote(index) {
+    console.log('selectQuote called with index:', index);
+    console.log('window.currentQuotes:', window.currentQuotes);
+    
+    if (!window.currentQuotes || !window.currentQuotes[index]) {
+        console.error('견적 데이터를 찾을 수 없습니다. index:', index);
+        alert('견적 데이터를 불러오는 중 오류가 발생했습니다.');
+        return;
+    }
+    
+    const selectedQuote = window.currentQuotes[index];
+    console.log('selectedQuote:', selectedQuote);
+    
+    loadQuoteItems(selectedQuote);
+    
+    if (window.currentQuoteModal) {
+        window.currentQuoteModal.hide();
+    }
+}
+
+// 선택된 견적 품목 불러오기
+function loadQuoteItems(quote) {
+    console.log('loadQuoteItems called with quote:', quote);
+    
+    if (!quote || !quote.items) {
+        console.error('잘못된 견적 데이터:', quote);
+        alert('견적 데이터가 올바르지 않습니다.');
+        return;
+    }
+    
+    // 선택한 견적의 opportunity를 폼의 opportunity 필드에 설정
+    const opportunityField = document.querySelector('[name="opportunity"]');
+    if (opportunityField && quote.opportunity_id) {
+        console.log('Setting opportunity field to:', quote.opportunity_id);
+        opportunityField.value = quote.opportunity_id;
+    } else {
+        console.warn('Opportunity field not found or opportunity_id is missing');
+    }
+    
+    // 기존 품목 삭제
+    const container = document.getElementById('items-container');
+    container.innerHTML = '';
+    itemIndex = 0;
+    
+    // 견적 품목 추가
+    quote.items.forEach(item => {
+        addItem({
+            name: item.item_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price
+        });
+    });
+    
+    // 합계 계산 (예상 매출액 자동 반영)
+    calculateTotal();
+    
+    // 납품이므로 확률 100%로 설정
+    const probabilityField = document.querySelector('[name="probability"]');
+    if (probabilityField) {
+        probabilityField.value = 100;
+    }
+    
+    // 예상 계약일을 방문 날짜로 설정
+    const visitDateField = document.querySelector('[name="visit_date"]');
+    const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+    if (visitDateField && expectedCloseDateField && visitDateField.value) {
+        expectedCloseDateField.value = visitDateField.value;
+    }
+    
+    // 가중 매출액 업데이트
+    updateWeightedRevenue();
+    
+    alert(`견적 품목 ${quote.items.length}개를 불러왔습니다.\n견적일: ${quote.quote_date}\n확률: 100%, 예상 계약일: ${visitDateField.value || '방문 날짜'}`);
 }
 
 // 납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)

@@ -567,7 +567,10 @@ class FunnelStage(models.Model):
 
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
-    followup = models.OneToOneField(FollowUp, on_delete=models.CASCADE, related_name='opportunity', verbose_name="관련 고객")
+    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")
+    
+    # 영업 기회 제목 (구분용)
+    title = models.CharField(max_length=200, blank=True, null=True, verbose_name="영업 기회 제목", help_text="예: '장비 A 구매', '소모품 정기 공급' 등")
     
     # 현재 상태
     current_stage = models.CharField(max_length=20, choices=FunnelStage.STAGE_CHOICES, default='lead', verbose_name="현재 단계")
@@ -597,6 +600,7 @@ class OpportunityTracking(models.Model):
     actual_revenue = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="실제 매출")
     
     # 타임스탬프
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def update_stage(self, new_stage):
@@ -681,6 +685,8 @@ class OpportunityTracking(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
+        if self.title:
+            return f"{self.followup.customer_name} - {self.title} ({self.get_current_stage_display()})"
         return f"{self.followup.customer_name} - {self.get_current_stage_display()}"
     
     class Meta:

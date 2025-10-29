@@ -305,9 +305,17 @@ class ScheduleForm(forms.ModelForm):
         help_text='고객명, 업체명 또는 부서명으로 검색할 수 있습니다.'
     )
     
+    opportunity = forms.ModelChoiceField(
+        queryset=OpportunityTracking.objects.none(),
+        required=False,
+        widget=forms.HiddenInput(),  # Select 대신 HiddenInput 사용
+        label='연결할 영업 기회',
+        help_text='납품/미팅 일정인 경우 기존 영업 기회를 선택하세요. 견적은 자동으로 새 영업 기회가 생성됩니다.'
+    )
+    
     class Meta:
         model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
+        fields = ['followup', 'opportunity', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
                   'expected_revenue', 'probability', 'expected_close_date', 'purchase_confirmed']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
@@ -360,6 +368,19 @@ class ScheduleForm(forms.ModelForm):
             # 자동완성 URL 설정
             from django.urls import reverse
             self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
+        
+        # OpportunityTracking 필드 설정
+        if self.instance.pk and self.instance.followup:
+            # 수정 시: 해당 고객의 진행 중인 영업 기회 목록
+            self.fields['opportunity'].queryset = self.instance.followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
+        elif 'followup' in self.data:
+            # 생성 시 followup이 선택된 경우
+            try:
+                followup_id = int(self.data.get('followup'))
+                followup = FollowUp.objects.get(pk=followup_id)
+                self.fields['opportunity'].queryset = followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
+            except (ValueError, TypeError, FollowUp.DoesNotExist):
+                pass
             
         # 하나과학이 아닌 경우 activity_type에서 서비스 제거
         if request and not getattr(request, 'is_hanagwahak', False):
@@ -1491,33 +1512,48 @@ def schedule_create_view(request):
                         )
             
             # 펀넬 관련: 서비스는 제외, 고객 미팅/납품/견적만 영업 기회 생성
-            # 기존 OpportunityTracking이 있으면 해당 정보를 활용
+            # 폼에서 선택된 opportunity가 있는지 확인
+            selected_opportunity = schedule.opportunity  # 폼에서 선택한 opportunity
+            logger.info(f"[OPPORTUNITY_DEBUG] selected_opportunity from form: {selected_opportunity}")
+            logger.info(f"[OPPORTUNITY_DEBUG] selected_opportunity ID: {selected_opportunity.id if selected_opportunity else None}")
             should_create_or_update_opportunity = False
             
-            # 기존 Opportunity가 있는지 먼저 확인
-            try:
-                existing_opportunity = schedule.followup.opportunity
-                has_existing_opportunity = True
-            except OpportunityTracking.DoesNotExist:
-                has_existing_opportunity = False
+            # 기존 Opportunity 찾기 (같은 고객의 진행 중인 영업 기회)
+            existing_opportunities = schedule.followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
+            has_existing_opportunity = existing_opportunities.exists()
+            logger.info(f"[OPPORTUNITY_DEBUG] existing_opportunities count: {existing_opportunities.count()}")
+            if existing_opportunities.exists():
+                logger.info(f"[OPPORTUNITY_DEBUG] latest opportunity ID: {existing_opportunities.first().id}")
             
             # Opportunity 생성/업데이트 조건 판단
             if schedule.activity_type != 'service':
-                if has_existing_opportunity:
+                # 견적 일정은 항상 새로운 영업 기회 생성
+                if schedule.activity_type == 'quote':
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False  # 강제로 새로 생성
+                # 사용자가 특정 opportunity를 선택한 경우
+                elif selected_opportunity:
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = True
+                elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
                     should_create_or_update_opportunity = True
                 elif schedule.expected_revenue and schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
                     should_create_or_update_opportunity = True
-                elif schedule.activity_type == 'quote':
-                    # 견적 일정은 예상 매출액 없어도 생성
-                    should_create_or_update_opportunity = True
             
             if should_create_or_update_opportunity:
                 
-                # 이미 OpportunityTracking이 있는지 확인
-                try:
-                    opportunity = schedule.followup.opportunity
+                # 이미 OpportunityTracking이 있는지 확인 (견적은 제외)
+                # 이미 OpportunityTracking이 있는지 확인 (견적은 제외)
+                if has_existing_opportunity:
+                    # 사용자가 선택한 opportunity 우선, 없으면 가장 최근 것
+                    if selected_opportunity:
+                        opportunity = selected_opportunity
+                        logger.info(f"[OPPORTUNITY_DEBUG] Using selected_opportunity: {opportunity.id}")
+                    else:
+                        opportunity = existing_opportunities.first()
+                        logger.info(f"[OPPORTUNITY_DEBUG] Using latest opportunity: {opportunity.id}")
                     
                     # 구매 확정 시 클로징 단계로 전환
                     if schedule.purchase_confirmed and opportunity.current_stage != 'closing':
@@ -1557,14 +1593,14 @@ def schedule_create_view(request):
                     
                     opportunity.save()
                     
-                    # 수주/실주 금액 업데이트
+                    # 수주 금액 업데이트
                     opportunity.update_revenue_amounts()
                     
                     # 기존 Opportunity를 Schedule과 연결
                     schedule.opportunity = opportunity
                     schedule.save()
                     
-                except OpportunityTracking.DoesNotExist:
+                else:
                     # 없으면 새로 생성
                     # 초기 단계 결정:
                     # 1. 예정됨(scheduled): lead (리드) - 아직 실행 전
@@ -1590,11 +1626,21 @@ def schedule_create_view(request):
                         # 취소됨 등 기타 상태
                         initial_stage = 'lead'  # 기본값
                     
+                    # 영업 기회 제목 생성 (일정 유형 기반)
+                    activity_type_names = {
+                        'customer_meeting': '고객 미팅',
+                        'quote': '견적',
+                        'delivery': '납품',
+                        'service': '서비스'
+                    }
+                    opportunity_title = f"{activity_type_names.get(schedule.activity_type, '영업 기회')} - {schedule.visit_date.strftime('%m/%d')}"
+                    
                     # OpportunityTracking 생성
                     from datetime import date
                     from decimal import Decimal
                     opportunity = OpportunityTracking.objects.create(
                         followup=schedule.followup,
+                        title=opportunity_title,
                         current_stage=initial_stage,
                         expected_revenue=schedule.expected_revenue or Decimal('0'),
                         probability=schedule.probability or 50,  # 기본값 50%
@@ -1611,7 +1657,7 @@ def schedule_create_view(request):
                     schedule.opportunity = opportunity
                     schedule.save()
                     
-                    # 수주/실주 금액 업데이트
+                    # 수주 금액 업데이트
                     opportunity.update_revenue_amounts()
                 
                 messages.success(request, f'일정이 성공적으로 생성되었습니다. 영업 기회도 함께 생성되었습니다.')
@@ -1641,14 +1687,14 @@ def schedule_create_view(request):
         if followup_id:
             try:
                 followup = FollowUp.objects.get(pk=followup_id)
-                # 해당 팔로우업에 OpportunityTracking이 있는지 확인
-                if hasattr(followup, 'opportunity'):
-                    opportunity = followup.opportunity
-                    initial_data['expected_revenue'] = opportunity.expected_revenue
-                    initial_data['probability'] = opportunity.probability
-                    initial_data['expected_close_date'] = opportunity.expected_close_date
+                # 해당 팔로우업에 진행 중인 OpportunityTracking이 있는지 확인
+                latest_opportunity = followup.opportunities.exclude(current_stage='lost').order_by('-created_at').first()
+                if latest_opportunity:
+                    initial_data['expected_revenue'] = latest_opportunity.expected_revenue
+                    initial_data['probability'] = latest_opportunity.probability
+                    initial_data['expected_close_date'] = latest_opportunity.expected_close_date
                     initial_data['followup'] = followup
-                    messages.info(request, f'기존 펀넬 정보를 불러왔습니다. (예상 매출: {opportunity.expected_revenue:,}원)')
+                    messages.info(request, f'기존 펀넬 정보를 불러왔습니다. (예상 매출: {latest_opportunity.expected_revenue:,}원)')
             except FollowUp.DoesNotExist:
                 pass
         
@@ -1890,12 +1936,11 @@ def schedule_delete_view(request, pk):
             schedule_date = schedule.visit_date.strftime("%Y년 %m월 %d일")
             
             # OpportunityTracking 저장 (삭제 전 저장)
-            opportunity = None
-            try:
-                opportunity = schedule.followup.opportunity
+            opportunity = schedule.opportunity  # followup.opportunity → schedule.opportunity
+            if opportunity:
                 logger.info(f"OpportunityTracking 발견: #{opportunity.id}, 현재 수주: {opportunity.backlog_amount}원")
-            except Exception as e:
-                logger.info(f"OpportunityTracking 없음: {e}")
+            else:
+                logger.info(f"OpportunityTracking 없음")
             
             # 관련 히스토리 확인
             related_histories = schedule.histories.all()
@@ -1919,18 +1964,48 @@ def schedule_delete_view(request, pk):
             # OpportunityTracking 처리
             if opportunity:
                 try:
-                    # 삭제된 일정 외에 다른 일정이 남아있는지 확인
-                    remaining_schedules = opportunity.schedules.count()
+                    # DB를 새로고침하여 삭제된 일정이 제외된 상태로 가져오기
+                    opportunity.refresh_from_db()
                     
-                    if remaining_schedules == 0:
+                    # 삭제된 일정 외에 다른 일정이 남아있는지 확인
+                    remaining_schedules = opportunity.schedules.all().order_by('-visit_date', '-id')
+                    remaining_count = remaining_schedules.count()
+                    
+                    logger.info(f"남은 일정 개수: {remaining_count}개")
+                    for s in remaining_schedules:
+                        logger.info(f"  - 일정 ID: {s.id}, 유형: {s.get_activity_type_display()}, 상태: {s.get_status_display()}, 예상매출: {s.expected_revenue or 0}원")
+                    
+                    if remaining_count == 0:
                         # 남은 일정이 없으면 OpportunityTracking도 삭제
                         opportunity_id = opportunity.id
                         opportunity.delete()
                         logger.info(f"OpportunityTracking #{opportunity_id} 삭제 (관련 일정 모두 삭제됨)")
                     else:
-                        # 남은 일정이 있으면 수주 금액만 업데이트
+                        # 남은 일정이 있으면 가장 최근 일정을 기준으로 펀넬 단계 재조정
+                        latest_schedule = remaining_schedules.first()
+                        
+                        # 가장 최근 일정의 유형에 따라 단계 결정
+                        new_stage = None
+                        if latest_schedule.activity_type == 'delivery':
+                            new_stage = 'won'
+                        elif latest_schedule.activity_type == 'quote':
+                            new_stage = 'quote'
+                        elif latest_schedule.activity_type == 'customer_meeting':
+                            # 견적 후 미팅인지 확인
+                            has_quote = remaining_schedules.filter(activity_type='quote').exists()
+                            new_stage = 'negotiation' if has_quote else 'contact'
+                        else:
+                            new_stage = 'lead'
+                        
+                        # 단계가 변경되어야 하는 경우
+                        if new_stage and new_stage != opportunity.current_stage:
+                            logger.info(f"펀넬 단계 재조정: {opportunity.current_stage} → {new_stage}")
+                            opportunity.update_stage(new_stage)
+                        
+                        # 수주 금액 업데이트
+                        old_backlog = opportunity.backlog_amount
                         opportunity.update_revenue_amounts()
-                        logger.info(f"OpportunityTracking #{opportunity.id} 수주 업데이트 완료 - 업데이트 후: {opportunity.backlog_amount}원")
+                        logger.info(f"OpportunityTracking #{opportunity.id} 수주 업데이트: {old_backlog}원 → {opportunity.backlog_amount}원")
                 except Exception as e:
                     logger.error(f"OpportunityTracking 처리 중 오류: {e}")
                     import traceback
@@ -4458,10 +4533,17 @@ def schedule_move_api(request, pk):
         schedule.visit_date = new_visit_date
         schedule.save()
         
-        # OpportunityTracking의 날짜도 업데이트
-        try:
-            opportunity = schedule.followup.opportunity
+        # 연결된 OpportunityTracking의 날짜도 업데이트
+        if schedule.opportunity:
+            opportunity = schedule.opportunity
             opportunity.stage_entry_date = new_visit_date
+            
+            # 견적 일정이면 title도 업데이트 (날짜 변경 반영)
+            if schedule.activity_type == 'quote' and opportunity.title:
+                # 기존 title이 "견적 - MM/DD" 형식이면 날짜 부분 업데이트
+                import re
+                if re.match(r'견적 - \d{1,2}/\d{1,2}', opportunity.title):
+                    opportunity.title = f"견적 - {new_visit_date.month}/{new_visit_date.day}"
             
             # stage_history의 가장 최근 항목도 업데이트
             if opportunity.stage_history:
@@ -4471,8 +4553,6 @@ def schedule_move_api(request, pk):
                         break
             
             opportunity.save()
-        except OpportunityTracking.DoesNotExist:
-            pass  # OpportunityTracking이 없으면 무시
         
         return JsonResponse({
             'success': True, 
@@ -4505,13 +4585,14 @@ def schedule_status_update_api(request, schedule_id):
         
         # 상태 변경 시 수주 금액 업데이트
         backlog_amount = 0
-        try:
-            opportunity = schedule.followup.opportunity
-            opportunity.update_revenue_amounts()
-            backlog_amount = float(opportunity.backlog_amount)
-        except Exception as e:
-            # OpportunityTracking이 없거나 오류 발생 시 무시
-            print(f"수주 업데이트 중 오류: {e}")
+        if schedule.opportunity:
+            try:
+                opportunity = schedule.opportunity
+                opportunity.update_revenue_amounts()
+                backlog_amount = float(opportunity.backlog_amount)
+            except Exception as e:
+                # 오류 발생 시 무시
+                print(f"수주 업데이트 중 오류: {e}")
         
         status_display = {
             'scheduled': '예정됨',
@@ -8587,7 +8668,7 @@ def followup_quote_items_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 견적 일정 중 가장 최근 것 조회
+        # 해당 팔로우업의 모든 견적 일정 조회
         quote_schedules = Schedule.objects.filter(
             followup=followup,
             activity_type='quote'
@@ -8598,29 +8679,42 @@ def followup_quote_items_api(request, followup_id):
                 'error': '이 고객의 견적이 없습니다.'
             })
         
-        # 가장 최근 견적 일정
-        latest_quote = quote_schedules.first()
-        
-        # 해당 견적의 품목 조회
+        # 모든 견적 정보 수집
         from reporting.models import DeliveryItem
-        items = DeliveryItem.objects.filter(schedule=latest_quote)
+        quotes_data = []
         
-        if not items.exists():
+        for quote_schedule in quote_schedules:
+            logger.info(f"[QUOTE_ITEMS_API] Schedule ID: {quote_schedule.id}, visit_date: {quote_schedule.visit_date}")
+            items = DeliveryItem.objects.filter(schedule=quote_schedule)
+            
+            if items.exists():
+                items_data = [{
+                    'item_name': item.item_name,
+                    'quantity': item.quantity,
+                    'unit_price': float(item.unit_price) if item.unit_price else 0,
+                } for item in items]
+                
+                quote_data = {
+                    'schedule_id': quote_schedule.id,
+                    'quote_date': quote_schedule.visit_date.strftime('%Y-%m-%d'),
+                    'expected_revenue': float(quote_schedule.expected_revenue) if quote_schedule.expected_revenue else 0,
+                    'items': items_data,
+                    'opportunity_title': quote_schedule.opportunity.title if quote_schedule.opportunity else None,
+                    'opportunity_id': quote_schedule.opportunity.id if quote_schedule.opportunity else None,  # opportunity ID 추가
+                }
+                quotes_data.append(quote_data)
+                logger.info(f"[QUOTE_ITEMS_API] Added quote: {quote_data['quote_date']}, opp_id: {quote_data['opportunity_id']}")
+        
+        if not quotes_data:
             return JsonResponse({
                 'error': '견적 품목이 없습니다.'
             })
         
-        # 품목 데이터 변환
-        items_data = [{
-            'item_name': item.item_name,
-            'quantity': item.quantity,
-            'unit_price': float(item.unit_price) if item.unit_price else 0,
-        } for item in items]
-        
+        logger.info(f"[QUOTE_ITEMS_API] Returning {len(quotes_data)} quotes")
         return JsonResponse({
             'success': True,
-            'items': items_data,
-            'quote_date': latest_quote.visit_date.strftime('%Y-%m-%d'),
+            'quotes': quotes_data,  # 모든 견적 반환
+            'count': len(quotes_data),
         })
         
     except Exception as e:
