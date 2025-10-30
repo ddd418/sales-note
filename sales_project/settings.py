@@ -10,6 +10,17 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+
+# Railway 환경 감지 - 프로덕션 설정으로 자동 전환
+if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('DATABASE_URL'):
+    print("🚂 Railway environment detected - loading production settings")
+    from sales_project.settings_production import *
+    # settings_production을 사용하므로 이 파일의 나머지 설정은 무시됨
+else:
+    # 로컬 개발 환경 설정 (아래 계속)
+    pass
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
