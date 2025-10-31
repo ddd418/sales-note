@@ -3,7 +3,8 @@ from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
-    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking
+    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
+    Company, Department
 )
 
 # UserProfile 인라인 관리자
@@ -29,6 +30,25 @@ class UserAdmin(BaseUserAdmin):
 # 기존 User 관리자 해제 후 새로운 관리자 등록
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
+
+# Company 모델 관리자 설정
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'created_by', 'created_at')
+    search_fields = ('name',)
+    list_filter = ('created_by', 'created_at')
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+
+# Department 모델 관리자 설정
+@admin.register(Department)
+class DepartmentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'company', 'created_by', 'created_at')
+    search_fields = ('name', 'company__name')
+    list_filter = ('company', 'created_by', 'created_at')
+    autocomplete_fields = ['company']
+    date_hierarchy = 'created_at'
+    list_per_page = 20
 
 # UserProfile 모델 관리자 설정
 @admin.register(UserProfile)
@@ -282,3 +302,82 @@ class OpportunityTrackingAdmin(admin.ModelAdmin):
     )
     
     readonly_fields = ('stage_entry_date',)
+
+
+# ============================================
+# 선결제 관리 시스템 Admin
+# ============================================
+
+# PrepaymentUsage 인라인
+class PrepaymentUsageInline(admin.TabularInline):
+    model = PrepaymentUsage
+    extra = 0
+    fields = ('used_at', 'product_name', 'quantity', 'amount', 'remaining_balance', 'schedule')
+    readonly_fields = ('used_at', 'remaining_balance')
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+# Prepayment 모델 관리자 설정
+@admin.register(Prepayment)
+class PrepaymentAdmin(admin.ModelAdmin):
+    list_display = ('customer', 'payment_date', 'amount', 'balance', 'payment_method', 'status', 'created_by', 'created_at')
+    list_filter = ('status', 'payment_method', 'payment_date', 'created_by')
+    search_fields = ('customer__customer_name', 'company__name', 'payer_name', 'memo')
+    date_hierarchy = 'payment_date'
+    autocomplete_fields = ['customer', 'company', 'created_by']
+    inlines = [PrepaymentUsageInline]
+    list_per_page = 20
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('customer', 'company', 'created_by')
+        }),
+        ('금액 정보', {
+            'fields': ('amount', 'balance')
+        }),
+        ('입금 정보', {
+            'fields': ('payment_date', 'payment_method', 'payer_name')
+        }),
+        ('메모', {
+            'fields': ('memo',)
+        }),
+        ('상태', {
+            'fields': ('status',)
+        }),
+        ('취소 정보', {
+            'fields': ('cancelled_at', 'cancel_reason'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('created_at',)
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.usages.exists():
+            # 사용 내역이 있으면 금액 수정 불가
+            return self.readonly_fields + ('amount', 'balance')
+        return self.readonly_fields
+
+
+# PrepaymentUsage 모델 관리자 설정
+@admin.register(PrepaymentUsage)
+class PrepaymentUsageAdmin(admin.ModelAdmin):
+    list_display = ('prepayment', 'used_at', 'product_name', 'quantity', 'amount', 'remaining_balance', 'schedule')
+    list_filter = ('used_at', 'prepayment__customer')
+    search_fields = ('prepayment__customer__customer_name', 'product_name', 'memo')
+    date_hierarchy = 'used_at'
+    autocomplete_fields = ['prepayment', 'schedule', 'schedule_item']
+    list_per_page = 20
+    
+    readonly_fields = ('used_at', 'remaining_balance')
+    
+    def has_add_permission(self, request):
+        # Admin에서 직접 추가 불가 (뷰에서만 생성)
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        # 삭제 불가 (잔액 계산 무결성)
+        return False

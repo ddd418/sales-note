@@ -148,4 +148,14 @@ urlpatterns = [
     
     # 펀넬 API
     path('api/funnel/update-stage/<int:opportunity_id>/', views.update_opportunity_stage_api, name='update_opportunity_stage_api'),
+    
+    # 선결제 URL들
+    path('prepayment/', views.prepayment_list_view, name='prepayment_list'),
+    path('prepayment/create/', views.prepayment_create_view, name='prepayment_create'),
+    path('prepayment/<int:pk>/', views.prepayment_detail_view, name='prepayment_detail'),
+    path('prepayment/customer/<int:customer_id>/', views.prepayment_customer_view, name='prepayment_customer'),
+    path('prepayment/customer/<int:customer_id>/excel/', views.prepayment_customer_excel, name='prepayment_customer_excel'),
+    
+    # 선결제 API
+    path('api/prepayments/', views.prepayment_api_list, name='prepayment_api_list'),
 ]

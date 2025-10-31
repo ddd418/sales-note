@@ -185,6 +185,67 @@
                         </div>
                       </div>
                     </div>
+                    
+                    <!-- 선결제 사용 섹션 (납품만 표시) -->
+                    <div id="prepayment-section" style="display: none;" class="mt-4">
+                      <div class="card border-info">
+                        <div class="card-header bg-info bg-opacity-10">
+                          <h6 class="mb-0">
+                            <i class="fas fa-wallet me-2 text-info"></i>선결제 사용 (납품 일정만)
+                          </h6>
+                        </div>
+                        <div class="card-body">
+                          <!-- 선결제 사용 체크박스 -->
+                          <div class="form-check mb-3">
+                            {{ form.use_prepayment }}
+                            <label class="form-check-label" for="{{ form.use_prepayment.id_for_label }}">
+                              <strong>{{ form.use_prepayment.label }}</strong>
+                            </label>
+                            <div class="form-text">
+                              <i class="fas fa-info-circle me-1"></i>
+                              고객의 선결제 잔액에서 금액을 차감하려면 체크하세요.
+                            </div>
+                          </div>
+                          
+                          <!-- 선결제 선택 및 금액 입력 (선결제 사용 체크 시 표시) -->
+                          <div id="prepayment-details" style="display: none;">
+                            <div class="row">
+                              <div class="col-md-6">
+                                <div class="mb-3">
+                                  {{ form.prepayment.label_tag }}
+                                  {{ form.prepayment }}
+                                  <small class="form-text text-muted" id="prepayment-balance-info"></small>
+                                  {% if form.prepayment.errors %}
+                                  <div class="invalid-feedback d-block">
+                                    {% for error in form.prepayment.errors %}{{ error }}{% endfor %}
+                                  </div>
+                                  {% endif %}
+                                </div>
+                              </div>
+                              
+                              <div class="col-md-6">
+                                <div class="mb-3">
+                                  {{ form.prepayment_amount.label_tag }}
+                                  {{ form.prepayment_amount }}
+                                  <small class="form-text text-muted">선결제에서 차감할 금액을 입력하세요</small>
+                                  {% if form.prepayment_amount.errors %}
+                                  <div class="invalid-feedback d-block">
+                                    {% for error in form.prepayment_amount.errors %}{{ error }}{% endfor %}
+                                  </div>
+                                  {% endif %}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- 선결제 안내 -->
+                            <div class="alert alert-warning mb-0">
+                              <i class="fas fa-exclamation-triangle me-2"></i>
+                              <strong>주의:</strong> 선결제 금액은 저장 후 자동으로 차감되며, 수정할 수 없습니다.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -258,9 +319,10 @@
                 </div>
                 {% else %}
                 <!-- 생성 모드: 품목 입력 UI -->
-                <div class="card">
+                <!-- 견적 품목 UI -->
+                <div class="card" id="quote-items-card">
                   <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0" id="items-section-title">
+                    <h5 class="mb-0">
                       <i class="fas fa-file-invoice me-2"></i>견적 품목
                     </h5>
                     <button type="button" class="btn btn-light btn-sm" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
@@ -295,6 +357,43 @@
                           <span class="fs-5">총액:</span>
                           <span id="total-amount" class="fw-bold text-primary fs-5">0원</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 납품 품목 UI -->
+                <div class="card" id="delivery-items-card" style="display: none;">
+                  <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <div>
+                      <h5 class="mb-0">
+                        <i class="fas fa-boxes me-2"></i>납품 품목
+                      </h5>
+                      <small class="text-muted">품목을 추가하고 선결제 차감 금액이 자동 계산됩니다.</small>
+                    </div>
+                    <div>
+                      <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromQuote()" id="delivery-load-quote-btn" style="display: none;">
+                        <i class="fas fa-file-import me-1"></i>견적에서 불러오기
+                      </button>
+                      <button type="button" class="btn btn-primary btn-sm" onclick="openScheduleDeliveryModal()">
+                        <i class="fas fa-edit me-1"></i>품목 관리
+                      </button>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <div class="col-md-8">
+                        <label class="form-label fw-bold">품목 내역</label>
+                        <textarea id="schedule-delivery-items-display" class="form-control" rows="3" readonly 
+                                  placeholder="'품목 관리' 버튼을 클릭하여 납품 품목을 추가하세요."></textarea>
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label fw-bold">총 금액 (부가세 포함)</label>
+                        <div class="input-group">
+                          <input type="number" id="schedule-delivery-total-amount" class="form-control" readonly value="0">
+                          <span class="input-group-text">원</span>
+                        </div>
+                        <small class="text-muted schedule-delivery-items-summary"></small>
                       </div>
                     </div>
                   </div>
@@ -536,6 +635,11 @@ document.addEventListener('DOMContentLoaded', function() {
         followupField.value = item.id;
         resultsDiv.style.display = 'none';
         currentSelection = -1;
+        
+        // change 이벤트 발생 (선결제 목록 업데이트를 위해)
+        const event = new Event('change', { bubbles: true });
+        followupField.dispatchEvent(event);
+        console.log('팔로우업 선택됨:', item.id, item.text);
     }
 
     // 이벤트 리스너
@@ -758,15 +862,33 @@ document.addEventListener('DOMContentLoaded', function() {
             const shouldShow = (selectedValue === 'delivery' || selectedValue === 'quote');
             itemsSection.style.display = shouldShow ? 'block' : 'none';
             
+            // 견적/납품 카드 전환 (생성 모드에만 존재)
+            const quoteItemsCard = document.getElementById('quote-items-card');
+            const deliveryItemsCard = document.getElementById('delivery-items-card');
+            
+            if (quoteItemsCard && deliveryItemsCard) {
+                if (selectedValue === 'quote') {
+                    quoteItemsCard.style.display = 'block';
+                    deliveryItemsCard.style.display = 'none';
+                } else if (selectedValue === 'delivery') {
+                    quoteItemsCard.style.display = 'none';
+                    deliveryItemsCard.style.display = 'block';
+                }
+            }
+            
             // 견적 불러오기 버튼 표시/숨김 (납품일 때만 표시)
             const loadQuoteBtn = document.getElementById('load-quote-btn');
+            const deliveryLoadQuoteBtn = document.getElementById('delivery-load-quote-btn');
             if (loadQuoteBtn) {
                 loadQuoteBtn.style.display = (selectedValue === 'delivery') ? 'inline-block' : 'none';
             }
+            if (deliveryLoadQuoteBtn) {
+                deliveryLoadQuoteBtn.style.display = (selectedValue === 'delivery') ? 'inline-block' : 'none';
+            }
             
-            // 품목 컨테이너 확인
+            // 품목 컨테이너 확인 (견적 모드)
             const itemsContainer = document.getElementById('items-container');
-            if (itemsContainer) {
+            if (itemsContainer && selectedValue === 'quote') {
                 const existingItems = itemsContainer.querySelectorAll('.item-row');
                 
                 if (shouldShow) {
@@ -1484,6 +1606,15 @@ function calculateScheduleTotal() {
   document.getElementById('schedule-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
   document.getElementById('schedule-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
   document.getElementById('schedule-total-amount').textContent = Math.round(total).toLocaleString() + '원';
+  
+  // 선결제 사용 체크되어 있으면 자동으로 차감 금액에 총액 입력
+  const usePrepaymentCheckbox = document.getElementById('id_use_prepayment');
+  const prepaymentAmountInput = document.getElementById('id_prepayment_amount');
+  
+  if (usePrepaymentCheckbox && usePrepaymentCheckbox.checked && prepaymentAmountInput) {
+    prepaymentAmountInput.value = Math.round(total);
+    console.log('선결제 차감 금액 자동 입력:', Math.round(total));
+  }
 }
 
 function saveScheduleDeliveryItems() {
@@ -1566,6 +1697,15 @@ function saveScheduleDeliveryItems() {
   
   if (deliverySummary) {
     deliverySummary.textContent = `총 ${scheduleDeliveryItemsData.length}개 품목, ${Math.round(totalAmount).toLocaleString()}원`;
+  }
+  
+  // 선결제 사용 체크되어 있으면 차감 금액 자동 입력
+  const usePrepaymentCheckbox = document.getElementById('id_use_prepayment');
+  const prepaymentAmountInput = document.getElementById('id_prepayment_amount');
+  
+  if (usePrepaymentCheckbox && usePrepaymentCheckbox.checked && prepaymentAmountInput && totalAmount > 0) {
+    prepaymentAmountInput.value = Math.round(totalAmount);
+    console.log('납품 품목 적용 - 선결제 차감 금액 자동 입력:', Math.round(totalAmount));
   }
   
   // 모달 닫기
@@ -2392,6 +2532,175 @@ document.addEventListener('DOMContentLoaded', function() {
                 alertDiv.remove();
             }
         }, 5000);
+    }
+    
+    // ===== 선결제 관련 기능 =====
+    
+    console.log('=== 선결제 JavaScript 초기화 시작 ===');
+    
+    // 견적/납품 선택 시 선결제 섹션 표시
+    const activityTypeField = document.getElementById('id_activity_type');
+    const prepaymentSection = document.getElementById('prepayment-section');
+    const usePrepaymentCheckbox = document.getElementById('id_use_prepayment');
+    const prepaymentDetails = document.getElementById('prepayment-details');
+    const prepaymentSelect = document.getElementById('id_prepayment');
+    const prepaymentAmountInput = document.getElementById('id_prepayment_amount');
+    const prepaymentBalanceInfo = document.getElementById('prepayment-balance-info');
+    
+    console.log('선결제 요소 확인:', {
+        activityTypeField: activityTypeField ? 'OK' : 'NULL',
+        prepaymentSection: prepaymentSection ? 'OK' : 'NULL',
+        usePrepaymentCheckbox: usePrepaymentCheckbox ? 'OK' : 'NULL',
+        prepaymentDetails: prepaymentDetails ? 'OK' : 'NULL',
+        prepaymentSelect: prepaymentSelect ? 'OK' : 'NULL',
+        prepaymentAmountInput: prepaymentAmountInput ? 'OK' : 'NULL',
+        prepaymentBalanceInfo: prepaymentBalanceInfo ? 'OK' : 'NULL'
+    });
+    
+    // 활동 유형 변경 시
+    if (activityTypeField) {
+        activityTypeField.addEventListener('change', function() {
+            const selectedType = this.value;
+            console.log('활동 유형 변경:', selectedType);
+            // 납품 일정만 선결제 섹션 표시
+            if (selectedType === 'delivery') {
+                prepaymentSection.style.display = 'block';
+                console.log('선결제 섹션 표시');
+            } else {
+                prepaymentSection.style.display = 'none';
+                usePrepaymentCheckbox.checked = false;
+                prepaymentDetails.style.display = 'none';
+                console.log('선결제 섹션 숨김');
+            }
+        });
+        
+        // 초기 로드 시 체크
+        const initialType = activityTypeField.value;
+        console.log('초기 활동 유형:', initialType);
+        if (initialType === 'delivery') {
+            prepaymentSection.style.display = 'block';
+            console.log('초기 로드 - 선결제 섹션 표시');
+        }
+    }
+    
+    // 선결제 사용 체크박스
+    if (usePrepaymentCheckbox) {
+        usePrepaymentCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                prepaymentDetails.style.display = 'block';
+                prepaymentSelect.required = true;
+                prepaymentAmountInput.required = true;
+                
+                // 체크 시 현재 납품 품목 총액을 차감 금액에 자동 입력
+                const totalAmountElement = document.getElementById('schedule-total-amount');
+                if (totalAmountElement && totalAmountElement.textContent) {
+                    const totalText = totalAmountElement.textContent.replace(/[^0-9]/g, '');
+                    if (totalText && parseInt(totalText) > 0) {
+                        prepaymentAmountInput.value = totalText;
+                        console.log('선결제 체크 - 차감 금액 자동 입력:', totalText);
+                    }
+                }
+            } else {
+                prepaymentDetails.style.display = 'none';
+                prepaymentSelect.required = false;
+                prepaymentAmountInput.required = false;
+                prepaymentSelect.value = '';
+                prepaymentAmountInput.value = '';
+            }
+        });
+        
+        // 초기 로드 시 체크
+        if (usePrepaymentCheckbox.checked) {
+            prepaymentDetails.style.display = 'block';
+        }
+    }
+    
+    // 선결제 선택 시 잔액 표시
+    if (prepaymentSelect) {
+        prepaymentSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                // 선택된 옵션의 텍스트에서 잔액 추출
+                const optionText = selectedOption.text;
+                const balanceMatch = optionText.match(/잔액:\s*([\d,]+)/);
+                if (balanceMatch) {
+                    const balance = balanceMatch[1];
+                    prepaymentBalanceInfo.innerHTML = `<i class="fas fa-info-circle text-info"></i> 잔액: <strong>${balance}원</strong>`;
+                    prepaymentBalanceInfo.style.color = '#0d6efd';
+                }
+            } else {
+                prepaymentBalanceInfo.innerHTML = '';
+            }
+        });
+    }
+    
+    // 고객 변경 시 선결제 목록 갱신 (AJAX)
+    const followupField = document.getElementById('id_followup');
+    if (followupField) {
+        // 일반 change 이벤트
+        followupField.addEventListener('change', function() {
+            const followupId = this.value;
+            console.log('고객 변경됨 (일반 이벤트):', followupId);
+            updatePrepaymentList(followupId);
+        });
+        
+        // Select2 change 이벤트 (jQuery가 있을 경우)
+        if (typeof jQuery !== 'undefined') {
+            jQuery(followupField).on('change', function() {
+                const followupId = this.value;
+                console.log('고객 변경됨 (Select2 이벤트):', followupId);
+                updatePrepaymentList(followupId);
+            });
+        }
+        
+        // 페이지 로드 시 이미 고객이 선택되어 있으면 선결제 목록 로드
+        if (followupField.value) {
+            console.log('페이지 로드 시 고객 ID:', followupField.value);
+            updatePrepaymentList(followupField.value);
+        }
+    }
+    
+    // 선결제 목록 업데이트 함수
+    function updatePrepaymentList(followupId) {
+        if (followupId && prepaymentSelect) {
+            // AJAX로 해당 고객의 선결제 목록 가져오기
+            console.log('선결제 목록 요청:', `/reporting/api/prepayments/?customer_id=${followupId}`);
+            fetch(`/reporting/api/prepayments/?customer_id=${followupId}`)
+                .then(response => {
+                    console.log('API 응답 상태:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('선결제 데이터:', data);
+                    // 선결제 목록 업데이트
+                    prepaymentSelect.innerHTML = '<option value="">---------</option>';
+                    data.prepayments.forEach(prepayment => {
+                        const option = document.createElement('option');
+                        option.value = prepayment.id;
+                        option.text = `${prepayment.payment_date} - ${prepayment.payer_name || '미지정'} (잔액: ${prepayment.balance.toLocaleString()}원)`;
+                        prepaymentSelect.appendChild(option);
+                        console.log('선결제 옵션 추가:', option.text);
+                    });
+                    
+                    if (data.prepayments.length === 0) {
+                        prepaymentBalanceInfo.innerHTML = '<i class="fas fa-exclamation-circle text-warning"></i> 사용 가능한 선결제가 없습니다.';
+                        console.log('사용 가능한 선결제 없음');
+                    } else {
+                        prepaymentBalanceInfo.innerHTML = '';
+                        console.log(`${data.prepayments.length}개의 선결제 로드됨`);
+                    }
+                })
+                .catch(error => {
+                    console.error('선결제 목록 조회 오류:', error);
+                });
+        } else {
+            if (prepaymentSelect) {
+                prepaymentSelect.innerHTML = '<option value="">---------</option>';
+            }
+            if (prepaymentBalanceInfo) {
+                prepaymentBalanceInfo.innerHTML = '';
+            }
+        }
     }
 });
 </script>

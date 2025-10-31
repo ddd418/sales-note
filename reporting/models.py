@@ -169,6 +169,11 @@ class Schedule(models.Model):
     expected_close_date = models.DateField(null=True, blank=True, verbose_name="예상 계약일", help_text="계약이 예상되는 날짜")
     purchase_confirmed = models.BooleanField(default=False, verbose_name="구매 확정", help_text="구매가 확정된 경우 체크 (클로징 단계로 전환)")
     
+    # 선결제 관련 필드
+    use_prepayment = models.BooleanField(default=False, verbose_name="선결제 사용", help_text="선결제 잔액에서 차감하는 경우 체크")
+    prepayment = models.ForeignKey('Prepayment', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_schedules', verbose_name="사용한 선결제")
+    prepayment_amount = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="선결제 사용 금액", help_text="선결제에서 차감된 금액")
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -692,3 +697,61 @@ class OpportunityTracking(models.Model):
     class Meta:
         verbose_name = "영업 기회"
         verbose_name_plural = "영업 기회 목록"
+
+
+# 선결제 (Prepayment) 모델
+class Prepayment(models.Model):
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', '현금'),
+        ('transfer', '계좌이체'),
+        ('card', '카드'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('active', '활성'),
+        ('depleted', '소진'),
+        ('cancelled', '취소'),
+    ]
+    
+    customer = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='prepayments', verbose_name="고객")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, verbose_name="업체/학교")
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="선결제 금액")
+    balance = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="잔액")
+    payment_date = models.DateField(verbose_name="입금 날짜")
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='transfer', verbose_name="입금 방법")
+    payer_name = models.CharField(max_length=100, blank=True, verbose_name="입금자명")
+    memo = models.TextField(blank=True, verbose_name="메모")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="등록자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="등록일시")
+    cancelled_at = models.DateTimeField(null=True, blank=True, verbose_name="취소일시")
+    cancel_reason = models.TextField(blank=True, verbose_name="취소 사유")
+    
+    def __str__(self):
+        return f"{self.customer.customer_name} - {self.payment_date} ({self.balance:,}원)"
+    
+    class Meta:
+        verbose_name = "선결제"
+        verbose_name_plural = "선결제 목록"
+        ordering = ['-payment_date', '-created_at']
+
+
+# 선결제 사용 내역 (PrepaymentUsage) 모델
+class PrepaymentUsage(models.Model):
+    prepayment = models.ForeignKey(Prepayment, on_delete=models.CASCADE, related_name='usages', verbose_name="선결제")
+    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, null=True, blank=True, related_name='prepayment_usages', verbose_name="납품 일정")
+    schedule_item = models.ForeignKey(DeliveryItem, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="납품 품목")
+    product_name = models.CharField(max_length=200, verbose_name="품목명")
+    quantity = models.IntegerField(default=1, verbose_name="수량")
+    amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="차감 금액")
+    remaining_balance = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="사용 후 잔액")
+    used_at = models.DateTimeField(auto_now_add=True, verbose_name="사용 일시")
+    memo = models.TextField(blank=True, verbose_name="메모")
+    
+    def __str__(self):
+        return f"{self.prepayment.customer.customer_name} - {self.product_name} ({self.amount:,}원)"
+    
+    class Meta:
+        verbose_name = "선결제 사용 내역"
+        verbose_name_plural = "선결제 사용 내역 목록"
+        ordering = ['-used_at']

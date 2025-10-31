@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -313,10 +313,23 @@ class ScheduleForm(forms.ModelForm):
         help_text='납품/미팅 일정인 경우 기존 영업 기회를 선택하세요. 견적은 자동으로 새 영업 기회가 생성됩니다.'
     )
     
+    # 선결제 관련 필드
+    prepayment = forms.ModelChoiceField(
+        queryset=Prepayment.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+            'id': 'id_prepayment',
+        }),
+        label='사용할 선결제',
+        help_text='고객의 선결제 잔액에서 차감할 선결제를 선택하세요.'
+    )
+    
     class Meta:
         model = Schedule
         fields = ['followup', 'opportunity', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
-                  'expected_revenue', 'probability', 'expected_close_date', 'purchase_confirmed']
+                  'expected_revenue', 'probability', 'expected_close_date', 'purchase_confirmed',
+                  'use_prepayment', 'prepayment', 'prepayment_amount']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
@@ -328,6 +341,8 @@ class ScheduleForm(forms.ModelForm):
             'probability': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '성공 확률 (%)', 'min': '0', 'max': '100'}),
             'expected_close_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'purchase_confirmed': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'use_prepayment': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_use_prepayment'}),
+            'prepayment_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '차감할 금액 (원)', 'min': '0', 'id': 'id_prepayment_amount'}),
         }
         labels = {
             'visit_date': '방문 날짜',
@@ -340,6 +355,8 @@ class ScheduleForm(forms.ModelForm):
             'probability': '성공 확률 (%)',
             'expected_close_date': '예상 계약일',
             'purchase_confirmed': '구매 확정',
+            'use_prepayment': '선결제 사용',
+            'prepayment_amount': '선결제 차감 금액 (원)',
         }
 
     def __init__(self, *args, **kwargs):
@@ -373,12 +390,28 @@ class ScheduleForm(forms.ModelForm):
         if self.instance.pk and self.instance.followup:
             # 수정 시: 해당 고객의 진행 중인 영업 기회 목록
             self.fields['opportunity'].queryset = self.instance.followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
+            # 수정 시: 해당 고객의 사용 가능한 선결제 목록
+            self.fields['prepayment'].queryset = Prepayment.objects.filter(
+                customer=self.instance.followup,
+                status='active',
+                balance__gt=0
+            ).order_by('-payment_date')
+            # 선결제 옵션 라벨 설정
+            self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
         elif 'followup' in self.data:
             # 생성 시 followup이 선택된 경우
             try:
                 followup_id = int(self.data.get('followup'))
                 followup = FollowUp.objects.get(pk=followup_id)
                 self.fields['opportunity'].queryset = followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
+                # 생성 시: 선택된 고객의 사용 가능한 선결제 목록
+                self.fields['prepayment'].queryset = Prepayment.objects.filter(
+                    customer=followup,
+                    status='active',
+                    balance__gt=0
+                ).order_by('-payment_date')
+                # 선결제 옵션 라벨 설정
+                self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
             except (ValueError, TypeError, FollowUp.DoesNotExist):
                 pass
             
@@ -1482,6 +1515,38 @@ def schedule_create_view(request):
             schedule.user = request.user
             schedule.save()
             
+            # 선결제 처리 로직
+            if schedule.use_prepayment and schedule.prepayment and schedule.prepayment_amount:
+                from reporting.models import Prepayment, PrepaymentUsage
+                from decimal import Decimal
+                
+                prepayment = schedule.prepayment
+                prepayment_amount = Decimal(str(schedule.prepayment_amount))
+                
+                # 선결제 잔액 확인
+                if prepayment.balance >= prepayment_amount:
+                    # 선결제 잔액 차감
+                    prepayment.balance -= prepayment_amount
+                    
+                    # 잔액이 0이 되면 상태를 'depleted'로 변경
+                    if prepayment.balance <= 0:
+                        prepayment.status = 'depleted'
+                    
+                    prepayment.save()
+                    
+                    # PrepaymentUsage 생성 (품목 정보는 나중에 추가)
+                    PrepaymentUsage.objects.create(
+                        prepayment=prepayment,
+                        schedule=schedule,
+                        amount=prepayment_amount,
+                        remaining_balance=prepayment.balance,
+                        memo=f"{schedule.get_activity_type_display()} - {schedule.followup.customer_name}"
+                    )
+                    
+                    messages.success(request, f'선결제 {prepayment_amount:,}원이 차감되었습니다. (남은 잔액: {prepayment.balance:,}원)')
+                else:
+                    messages.warning(request, f'선결제 잔액({prepayment.balance:,}원)이 부족합니다.')
+            
             # 품목 데이터 처리 (견적 또는 납품)
             if schedule.activity_type in ['quote', 'delivery']:
                 from reporting.models import DeliveryItem
@@ -1510,6 +1575,18 @@ def schedule_create_view(request):
                             quantity=int(item_data['quantity']),
                             unit_price=Decimal(str(item_data.get('unit_price', 0))) if item_data.get('unit_price') else Decimal('0')
                         )
+                
+                # 선결제 사용 시 PrepaymentUsage에 품목 정보 업데이트
+                if schedule.use_prepayment and schedule.prepayment:
+                    from reporting.models import PrepaymentUsage
+                    usage = PrepaymentUsage.objects.filter(schedule=schedule).first()
+                    if usage and items_data:
+                        # 첫 번째 품목 정보를 사용 (여러 품목이 있을 경우)
+                        first_item = items_data.get('0', {})
+                        if first_item.get('name'):
+                            usage.product_name = first_item['name']
+                            usage.quantity = int(first_item.get('quantity', 0))
+                            usage.save()
             
             # 펀넬 관련: 서비스는 제외, 고객 미팅/납품/견적만 영업 기회 생성
             # 폼에서 선택된 opportunity가 있는지 확인
@@ -8723,3 +8800,429 @@ def followup_quote_items_api(request, followup_id):
         return JsonResponse({
             'error': f'오류가 발생했습니다: {str(e)}'
         }, status=500)
+
+
+# ============================================
+# 선결제 관리
+# ============================================
+
+@login_required
+def prepayment_list_view(request):
+    """선결제 목록 뷰"""
+    from reporting.models import Prepayment
+    from django.db.models import Q, Sum
+    
+    # 회사 필터 적용 - created_by로 필터링 (UserProfile의 company는 UserCompany이고, Prepayment의 company는 고객사 Company)
+    user_profile = get_user_profile(request.user)
+    base_queryset = Prepayment.objects.select_related('customer', 'company', 'created_by')
+    
+    # Admin이 아닌 경우 자신의 회사 사용자들이 등록한 선결제만 조회
+    if user_profile and user_profile.role != 'admin':
+        # 같은 UserCompany 소속 사용자들의 ID 목록
+        from reporting.models import UserProfile
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        base_queryset = base_queryset.filter(created_by_id__in=same_company_users)
+    
+    # 검색 필터
+    search_query = request.GET.get('search', '')
+    status_filter = request.GET.get('status', '')
+    
+    if search_query:
+        base_queryset = base_queryset.filter(
+            Q(customer__customer_name__icontains=search_query) |
+            Q(payer_name__icontains=search_query) |
+            Q(memo__icontains=search_query)
+        )
+    
+    if status_filter:
+        base_queryset = base_queryset.filter(status=status_filter)
+    
+    # 정렬
+    prepayments = base_queryset.order_by('-payment_date', '-created_at')
+    
+    # 통계
+    stats = base_queryset.aggregate(
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance')
+    )
+    
+    # 사용 금액 계산
+    total_amount = stats['total_amount'] or 0
+    total_balance = stats['total_balance'] or 0
+    stats['total_used'] = total_amount - total_balance
+    
+    context = {
+        'page_title': '선결제 현황',
+        'prepayments': prepayments,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'stats': stats,
+    }
+    
+    return render(request, 'reporting/prepayment/list.html', context)
+
+
+@login_required
+def prepayment_create_view(request):
+    """선결제 등록 뷰"""
+    from reporting.models import Prepayment, FollowUp
+    from django import forms
+    
+    # Tailwind CSS 클래스
+    input_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+    select_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+    textarea_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+    
+    class PrepaymentForm(forms.ModelForm):
+        customer = forms.ModelChoiceField(
+            queryset=FollowUp.objects.all(),
+            label='고객',
+            widget=forms.Select(attrs={'class': select_class})
+        )
+        
+        class Meta:
+            model = Prepayment
+            fields = ['customer', 'amount', 'payment_date', 'payment_method', 'payer_name', 'memo']
+            widgets = {
+                'amount': forms.NumberInput(attrs={'class': input_class, 'placeholder': '금액 입력'}),
+                'payment_date': forms.DateInput(attrs={'class': input_class, 'type': 'date'}),
+                'payment_method': forms.Select(attrs={'class': select_class}),
+                'payer_name': forms.TextInput(attrs={'class': input_class, 'placeholder': '입금자명 (선택)'}),
+                'memo': forms.Textarea(attrs={'class': textarea_class, 'rows': 3, 'placeholder': '메모 (선택)'}),
+            }
+    
+    if request.method == 'POST':
+        form = PrepaymentForm(request.POST)
+        if form.is_valid():
+            prepayment = form.save(commit=False)
+            prepayment.balance = prepayment.amount  # 초기 잔액 = 입금액
+            prepayment.company = prepayment.customer.company
+            prepayment.created_by = request.user
+            prepayment.save()
+            
+            messages.success(request, f'{prepayment.customer.customer_name}의 선결제 {prepayment.amount:,}원이 등록되었습니다.')
+            return redirect('reporting:prepayment_detail', pk=prepayment.pk)
+    else:
+        form = PrepaymentForm()
+    
+    # 고객 목록 필터링 (회사별)
+    user_profile = get_user_profile(request.user)
+    if user_profile and user_profile.role != 'admin':
+        # 같은 UserCompany 소속 사용자들이 등록한 고객만 표시
+        from reporting.models import UserProfile
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        form.fields['customer'].queryset = FollowUp.objects.filter(user_id__in=same_company_users)
+    
+    context = {
+        'page_title': '선결제 등록',
+        'form': form,
+    }
+    
+    return render(request, 'reporting/prepayment/form.html', context)
+
+
+@login_required
+def prepayment_detail_view(request, pk):
+    """선결제 상세 뷰"""
+    from reporting.models import Prepayment
+    
+    prepayment = get_object_or_404(Prepayment, pk=pk)
+    
+    # 권한 체크 - 같은 UserCompany 소속인지 확인
+    user_profile = get_user_profile(request.user)
+    if user_profile and user_profile.role != 'admin':
+        # 같은 UserCompany 소속 사용자가 등록한 선결제인지 확인
+        from reporting.models import UserProfile
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        
+        if prepayment.created_by_id not in same_company_users:
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
+    
+    # 사용 내역
+    usages = prepayment.usages.select_related('schedule', 'schedule__followup').order_by('-used_at')
+    
+    # 금액 계산
+    total_used = prepayment.amount - prepayment.balance
+    usage_percent = 0
+    if prepayment.amount > 0:
+        usage_percent = round((total_used / prepayment.amount) * 100, 1)
+        balance_percent = round((prepayment.balance / prepayment.amount) * 100, 1)
+    else:
+        balance_percent = 0
+    
+    context = {
+        'page_title': f'선결제 상세 - {prepayment.customer.customer_name}',
+        'prepayment': prepayment,
+        'usages': usages,
+        'total_used': total_used,
+        'usage_percent': usage_percent,
+        'balance_percent': balance_percent,
+    }
+    
+    return render(request, 'reporting/prepayment/detail.html', context)
+
+
+@login_required
+def prepayment_customer_view(request, customer_id):
+    """고객별 선결제 관리 뷰"""
+    from reporting.models import Prepayment, FollowUp
+    from django.db.models import Sum, Q, Count
+    
+    # 고객 정보 가져오기
+    customer = get_object_or_404(FollowUp, pk=customer_id)
+    
+    # 권한 체크
+    user_profile = get_user_profile(request.user)
+    if user_profile and user_profile.role != 'admin':
+        from reporting.models import UserProfile
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        
+        if customer.user_id not in same_company_users:
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
+    
+    # 해당 고객의 모든 선결제 조회
+    prepayments = Prepayment.objects.filter(
+        customer=customer
+    ).select_related('company', 'created_by').order_by('-payment_date', '-created_at')
+    
+    # 통계 계산
+    stats = prepayments.aggregate(
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance'),
+        count=Count('id')
+    )
+    
+    total_amount = stats['total_amount'] or 0
+    total_balance = stats['total_balance'] or 0
+    stats['total_used'] = total_amount - total_balance
+    
+    # 상태별 개수
+    active_count = prepayments.filter(status='active').count()
+    depleted_count = prepayments.filter(status='depleted').count()
+    cancelled_count = prepayments.filter(status='cancelled').count()
+    
+    context = {
+        'page_title': f'{customer.customer_name} - 선결제 관리',
+        'customer': customer,
+        'prepayments': prepayments,
+        'stats': stats,
+        'active_count': active_count,
+        'depleted_count': depleted_count,
+        'cancelled_count': cancelled_count,
+    }
+    
+    return render(request, 'reporting/prepayment/customer.html', context)
+
+
+@login_required
+def prepayment_customer_excel(request, customer_id):
+    """고객별 선결제 엑셀 다운로드"""
+    from reporting.models import Prepayment, FollowUp
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from django.http import HttpResponse
+    from datetime import datetime
+    
+    # 고객 정보 가져오기
+    customer = get_object_or_404(FollowUp, pk=customer_id)
+    
+    # 권한 체크
+    user_profile = get_user_profile(request.user)
+    if user_profile and user_profile.role != 'admin':
+        from reporting.models import UserProfile
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        
+        if customer.user_id not in same_company_users:
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
+    
+    # 해당 고객의 모든 선결제 조회
+    prepayments = Prepayment.objects.filter(
+        customer=customer
+    ).select_related('company', 'created_by').order_by('-payment_date', '-created_at')
+    
+    # 엑셀 생성
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{customer.customer_name} 선결제"
+    
+    # 스타일 정의
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    center_alignment = Alignment(horizontal="center", vertical="center")
+    right_alignment = Alignment(horizontal="right", vertical="center")
+    
+    # 제목
+    ws.merge_cells('A1:J1')
+    title_cell = ws['A1']
+    title_cell.value = f"{customer.customer_name} 선결제 내역"
+    title_cell.font = Font(bold=True, size=14)
+    title_cell.alignment = center_alignment
+    ws.row_dimensions[1].height = 30
+    
+    # 헤더
+    headers = ['No', '결제일', '지불자', '결제방법', '선결제금액', '사용금액', '남은잔액', '상태', '등록자', '등록일']
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=3, column=col_num)
+        cell.value = header
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+        cell.border = border
+    
+    # 컬럼 너비 설정
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 15
+    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['G'].width = 15
+    ws.column_dimensions['H'].width = 10
+    ws.column_dimensions['I'].width = 12
+    ws.column_dimensions['J'].width = 16
+    
+    # 데이터 행
+    total_amount = 0
+    total_used = 0
+    total_balance = 0
+    
+    for idx, prepayment in enumerate(prepayments, 1):
+        row = idx + 3
+        used_amount = prepayment.amount - prepayment.balance
+        
+        total_amount += prepayment.amount
+        total_used += used_amount
+        total_balance += prepayment.balance
+        
+        # 데이터
+        data = [
+            idx,
+            prepayment.payment_date.strftime('%Y-%m-%d'),
+            prepayment.payer_name or '-',
+            prepayment.get_payment_method_display(),
+            prepayment.amount,
+            used_amount,
+            prepayment.balance,
+            prepayment.get_status_display(),
+            prepayment.created_by.get_full_name() or prepayment.created_by.username,
+            prepayment.created_at.strftime('%Y-%m-%d %H:%M')
+        ]
+        
+        for col_num, value in enumerate(data, 1):
+            cell = ws.cell(row=row, column=col_num)
+            cell.value = value
+            cell.border = border
+            
+            # 정렬
+            if col_num == 1 or col_num == 8:  # No, 상태
+                cell.alignment = center_alignment
+            elif col_num >= 5 and col_num <= 7:  # 금액
+                cell.alignment = right_alignment
+                if isinstance(value, (int, float)):
+                    cell.number_format = '#,##0'
+            
+            # 상태별 배경색
+            if col_num == 8:
+                if prepayment.status == 'active':
+                    cell.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+                elif prepayment.status == 'depleted':
+                    cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+                elif prepayment.status == 'cancelled':
+                    cell.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
+            
+            # 잔액에 따른 배경색
+            if col_num == 7:  # 남은잔액
+                if prepayment.balance > 0:
+                    cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+                else:
+                    cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+    
+    # 합계 행
+    summary_row = len(prepayments) + 4
+    ws.merge_cells(f'A{summary_row}:D{summary_row}')
+    summary_cell = ws.cell(row=summary_row, column=1)
+    summary_cell.value = "합계"
+    summary_cell.font = Font(bold=True, size=11)
+    summary_cell.alignment = center_alignment
+    summary_cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    summary_cell.border = border
+    
+    for col in range(2, 5):
+        ws.cell(row=summary_row, column=col).border = border
+        ws.cell(row=summary_row, column=col).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    
+    # 합계 금액
+    for col_num, value in [(5, total_amount), (6, total_used), (7, total_balance)]:
+        cell = ws.cell(row=summary_row, column=col_num)
+        cell.value = value
+        cell.font = Font(bold=True, size=11)
+        cell.alignment = right_alignment
+        cell.number_format = '#,##0'
+        cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        cell.border = border
+    
+    for col in range(8, 11):
+        ws.cell(row=summary_row, column=col).border = border
+        ws.cell(row=summary_row, column=col).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    
+    # HTTP 응답
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f"{customer.customer_name}_선결제내역_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{filename}'
+    
+    wb.save(response)
+    return response
+
+
+@login_required
+def prepayment_api_list(request):
+    """고객별 선결제 목록 API (AJAX용)"""
+    from reporting.models import Prepayment
+    from django.http import JsonResponse
+    
+    customer_id = request.GET.get('customer_id')
+    if not customer_id:
+        return JsonResponse({'prepayments': []})
+    
+    try:
+        prepayments = Prepayment.objects.filter(
+            customer_id=customer_id,
+            status='active',
+            balance__gt=0
+        ).order_by('-payment_date')
+        
+        prepayments_data = [{
+            'id': p.id,
+            'payment_date': p.payment_date.strftime('%Y-%m-%d'),
+            'payer_name': p.payer_name or '미지정',
+            'amount': float(p.amount),
+            'balance': float(p.balance),
+        } for p in prepayments]
+        
+        return JsonResponse({'prepayments': prepayments_data})
+    except Exception as e:
+        return JsonResponse({'prepayments': [], 'error': str(e)})
