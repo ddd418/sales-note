@@ -196,7 +196,7 @@
                     <i class="fas fa-user-circle me-2"></i>{{ customer.customer_name }}
                 </div>
                 <div class="customer-company">
-                    <i class="fas fa-building me-2"></i>{{ customer.company.company_name|default:"업체 정보 없음" }}
+                    <i class="fas fa-building me-2"></i>{{ customer.company.name|default:"업체 정보 없음" }}
                 </div>
             </div>
             <div class="no-print">
