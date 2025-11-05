@@ -844,129 +844,18 @@ function displayHistoryDeliveryItems() {
 document.addEventListener('DOMContentLoaded', function() {
     displayHistoryDeliveryItems();
     
-    // 납품 품목 폼과 관련 요소들 확인
+    // 납품 품목 폼 제출 처리
     const deliveryForm = document.getElementById('delivery-items-form');
-    const editButton = document.getElementById('edit-delivery-items');
-    const modal = document.getElementById('deliveryItemsModal');
-    
-    console.log('=== DOM 요소 확인 ===');
-    console.log('납품 품목 폼:', deliveryForm ? '존재함' : '없음');
-    console.log('편집 버튼:', editButton ? '존재함' : '없음');
-    console.log('모달:', modal ? '존재함' : '없음');
-    
     if (deliveryForm) {
-        console.log('폼 액션:', deliveryForm.action);
-        console.log('폼 메소드:', deliveryForm.method);
-        
         deliveryForm.addEventListener('submit', function(e) {
-            console.log('=== 납품 품목 폼 제출 디버깅 ===');
-            console.log('폼 제출 이벤트 발생');
-            
-            // 일시적으로 폼 제출을 막아서 로그 확인
-            e.preventDefault();
-            console.log('폼 제출 일시 중단 (디버깅용)');
-            
-            // 폼 데이터 수집 및 로깅
-            const formData = new FormData(deliveryForm);
-            console.log('FormData 내용:');
-            for (let [key, value] of formData.entries()) {
-                console.log(`${key}: ${value}`);
-            }
-            
-            // 폼 액션 URL 확인
-            console.log('폼 액션 URL:', deliveryForm.action);
-            console.log('폼 메소드:', deliveryForm.method);
-            
-            // 입력 필드들 확인
-            const deliveryItems = document.querySelectorAll('.delivery-item');
-            console.log(`총 ${deliveryItems.length}개의 납품 품목 아이템 발견`);
-            
-            deliveryItems.forEach((item, index) => {
-                const nameInput = item.querySelector('input[name*="[name]"]');
-                const quantityInput = item.querySelector('input[name*="[quantity]"]');
-                const unitPriceInput = item.querySelector('input[name*="[unit_price]"]');
-                
-                console.log(`품목 ${index + 1}:`);
-                console.log('  - 품목명:', nameInput ? nameInput.value : '없음');
-                console.log('  - 수량:', quantityInput ? quantityInput.value : '없음');
-                console.log('  - 단가:', unitPriceInput ? unitPriceInput.value : '없음');
-                console.log('  - name 속성:', nameInput ? nameInput.name : '없음');
-                console.log('  - quantity 속성:', quantityInput ? quantityInput.name : '없음');
-                console.log('  - unit_price 속성:', unitPriceInput ? unitPriceInput.name : '없음');
-            });
-            
-            console.log('=== 디버깅 완료 ===');
-            console.log('실제 폼 제출을 원하면 이 부분을 주석 처리하고 다시 테스트하세요');
-            
-            // 5초 후에 실제 폼 제출 (선택사항)
-            console.log('5초 후 실제 폼 제출...');
-            setTimeout(() => {
-                console.log('실제 폼 제출 시작');
-                deliveryForm.submit();
-            }, 5000);
-        });
-        
-        console.log('납품 품목 폼 디버깅 리스너 등록 완료');
-    } else {
-        console.error('납품 품목 폼을 찾을 수 없습니다!');
-    }
-    
-    // 편집 버튼에 클릭 이벤트 추가 (추가 디버깅)
-    if (editButton) {
-        editButton.addEventListener('click', function() {
-            console.log('=== 품목 편집 버튼 클릭됨 ===');
-            console.log('모달 열기 시도');
+            console.log('납품 품목 폼 제출');
+            // 정상적으로 폼 제출 허용 (e.preventDefault() 제거)
         });
     }
     
-    // 모달 이벤트 리스너 (추가 디버깅)
+    // 모달 이벤트 리스너
+    const modal = document.getElementById('deliveryItemsModal');
     if (modal) {
-        modal.addEventListener('shown.bs.modal', function() {
-            console.log('=== 모달이 완전히 열렸음 ===');
-            const container = document.getElementById('delivery-items-container');
-            console.log('품목 컨테이너:', container ? '존재함' : '없음');
-            if (container) {
-                console.log('컨테이너 내용:', container.innerHTML.length > 0 ? '있음' : '비어있음');
-            }
-            
-            // 모달이 열린 후 저장 버튼에 디버깅 이벤트 추가
-            const saveButton = modal.querySelector('button[type="submit"]');
-            console.log('저장 버튼:', saveButton ? '존재함' : '없음');
-            
-            if (saveButton) {
-                console.log('저장 버튼 텍스트:', saveButton.textContent);
-                
-                // 저장 버튼 클릭 이벤트 추가 (폼 제출 전에 발생)
-                saveButton.addEventListener('click', function(e) {
-                    console.log('=== 저장 버튼 클릭됨 ===');
-                    console.log('이벤트 객체:', e);
-                    console.log('기본 동작 방지됨:', e.defaultPrevented);
-                    
-                    // 폼 유효성 검사 상태 확인
-                    const form = document.getElementById('delivery-items-form');
-                    if (form) {
-                        console.log('폼 유효성:', form.checkValidity());
-                        console.log('폼 내 필수 필드들:');
-                        
-                        const requiredFields = form.querySelectorAll('[required]');
-                        requiredFields.forEach((field, index) => {
-                            console.log(`  필수 필드 ${index + 1}: ${field.name || field.id}, 값: "${field.value}", 유효: ${field.checkValidity()}`);
-                        });
-                        
-                        // 모든 입력 필드 확인
-                        const allInputs = form.querySelectorAll('input');
-                        console.log(`총 ${allInputs.length}개 입력 필드 발견`);
-                        
-                        allInputs.forEach((input, index) => {
-                            if (input.name && input.name.includes('delivery_items')) {
-                                console.log(`  입력 필드 ${index + 1}: ${input.name} = "${input.value}"`);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-        
         modal.addEventListener('hidden.bs.modal', function() {
             console.log('=== 모달이 닫혔음 ===');
         });

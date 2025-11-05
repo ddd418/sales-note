@@ -89,6 +89,25 @@
     color: white;
   }
 
+  .btn-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s;
+  }
+
+  .btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+    color: white;
+  }
+
   .page-header {
     margin-bottom: 2rem;
   }
@@ -176,8 +195,14 @@
             </h1>
             <p class="text-muted">고객별 선결제 현황 및 관리</p>
         </div>
-        <a href="{% url 'reporting:prepayment_create' %}" class="btn-create">
-            <i class="fas fa-plus"></i> 선결제 등록
+        <div class="d-flex gap-2">
+            <a href="{% url 'reporting:prepayment_list_excel' %}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> 엑셀 다운로드
+            </a>
+            <a href="{% url 'reporting:prepayment_create' %}" class="btn-create">
+                <i class="fas fa-plus"></i> 선결제 등록
+            </a>
+        </div>
         </a>
     </div>
 
@@ -309,10 +334,20 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            <a href="{% url 'reporting:prepayment_detail' prepayment.pk %}" 
-                               class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye me-1"></i> 상세
-                            </a>
+                            <div class="btn-group" role="group">
+                                <a href="{% url 'reporting:prepayment_detail' prepayment.pk %}" 
+                                   class="btn btn-sm btn-outline-primary" title="상세보기">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{% url 'reporting:prepayment_edit' prepayment.pk %}" 
+                                   class="btn btn-sm btn-outline-success" title="수정">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'reporting:prepayment_delete' prepayment.pk %}" 
+                                   class="btn btn-sm btn-outline-danger" title="삭제">
+                                    <i class="fas fa-trash-alt"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}

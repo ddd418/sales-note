@@ -313,15 +313,29 @@
                                     <span class="text-muted">{{ usage.used_at|date:"Y-m-d" }}</span>
                                 </td>
                                 <td>
-                                    <div class="fw-semibold">{{ usage.product_name }}</div>
+                                    {% if usage.delivery_items %}
+                                        {% for item in usage.delivery_items %}
+                                        <div class="fw-semibold">{{ item.item_name }}</div>
+                                        {% if not forloop.last %}<hr class="my-1">{% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="fw-semibold">{{ usage.product_name|default:"-" }}</div>
+                                    {% endif %}
                                     {% if usage.schedule %}
                                     <small class="text-muted">
-                                        납품: {{ usage.schedule.delivery_date|date:"Y-m-d" }}
+                                        납품: {{ usage.schedule.visit_date|date:"Y-m-d" }}
                                     </small>
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
-                                    <span class="text-muted">{{ usage.quantity|default:"-" }}</span>
+                                    {% if usage.delivery_items %}
+                                        {% for item in usage.delivery_items %}
+                                        <div class="text-muted">{{ item.quantity|floatformat:0|intcomma }}</div>
+                                        {% if not forloop.last %}<hr class="my-1">{% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">{{ usage.quantity|default:"-" }}</span>
+                                    {% endif %}
                                 </td>
                                 <td class="text-end">
                                     <span class="fw-semibold text-danger">
@@ -384,6 +398,12 @@
             <!-- 액션 버튼 -->
             <div class="action-card no-print">
                 <h3 class="h6 fw-bold mb-3">작업</h3>
+                <a href="{% url 'reporting:prepayment_edit' prepayment.pk %}" class="btn-action" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+                    <i class="fas fa-edit me-2"></i>수정하기
+                </a>
+                <a href="{% url 'reporting:prepayment_delete' prepayment.pk %}" class="btn-action" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white;">
+                    <i class="fas fa-trash-alt me-2"></i>삭제하기
+                </a>
                 <a href="{% url 'reporting:prepayment_list' %}" class="btn-action btn-back">
                     <i class="fas fa-arrow-left me-2"></i>목록으로
                 </a>

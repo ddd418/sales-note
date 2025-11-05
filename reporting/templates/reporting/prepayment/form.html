@@ -229,6 +229,20 @@
                     <div class="help-text">원 단위로 입력해주세요.</div>
                 </div>
 
+                <!-- 잔액 (수정 모드에서만 표시) -->
+                {% if prepayment %}
+                <div class="col-md-6">
+                    <label for="id_balance" class="form-label">
+                        잔액 <span class="required-mark">*</span>
+                    </label>
+                    {{ form.balance }}
+                    {% if form.balance.errors %}
+                        <div class="error-message">{{ form.balance.errors.0 }}</div>
+                    {% endif %}
+                    <div class="help-text">현재 남은 선결제 잔액</div>
+                </div>
+                {% endif %}
+
                 <!-- 결제일 -->
                 <div class="col-md-6">
                     <label for="id_payment_date" class="form-label">
@@ -240,6 +254,20 @@
                     {% endif %}
                     <div class="help-text">실제 결제가 완료된 날짜</div>
                 </div>
+
+                <!-- 상태 (수정 모드에서만 표시) -->
+                {% if prepayment %}
+                <div class="col-md-6">
+                    <label for="id_status" class="form-label">
+                        상태 <span class="required-mark">*</span>
+                    </label>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                        <div class="error-message">{{ form.status.errors.0 }}</div>
+                    {% endif %}
+                    <div class="help-text">선결제 사용 상태</div>
+                </div>
+                {% endif %}
 
                 <!-- 메모 -->
                 <div class="col-12">

@@ -319,7 +319,7 @@
       </div>
     </div>
     <div class="stat-actions">
-      <a href="{% url 'reporting:followup_list' %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
+      <a href="{% url 'reporting:followup_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
       <a href="{% url 'reporting:followup_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
     </div>
   </div>
@@ -334,7 +334,7 @@
       </div>
     </div>
     <div class="stat-actions">
-      <a href="{% url 'reporting:schedule_list' %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
+      <a href="{% url 'reporting:schedule_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
       <a href="{% url 'reporting:schedule_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
     </div>
   </div>
@@ -349,7 +349,7 @@
       </div>
     </div>
     <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 기록</a>
+      <a href="{% url 'reporting:history_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 기록</a>
       <a href="{% url 'reporting:history_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
     </div>
   </div>
@@ -367,7 +367,7 @@
       </div>
     </div>
     <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule" class="stat-btn stat-btn-primary" style="flex: 1 1 100%;"><i class="fas fa-truck"></i> 납품 기록</a>
+      <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-primary" style="flex: 1 1 100%;"><i class="fas fa-truck"></i> 납품 기록</a>
     </div>
   </div>
 
@@ -382,11 +382,30 @@
       </div>
     </div>
     <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}?action_type=service" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
+      <a href="{% url 'reporting:history_list' %}?action_type=service{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
       <a href="{% url 'reporting:history_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
     </div>
   </div>
   {% endif %}
+
+  <!-- 선결제 카드 -->
+  <div class="stat-card">
+    <div class="stat-header">
+      <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);"><i class="fas fa-wallet"></i></div>
+      <div class="stat-info">
+        <div class="stat-label">선결제 잔액</div>
+        <div class="stat-value">
+          {% load currency_filters %}
+          {{ prepayment_stats.total_balance|currency_format|default:"0" }}
+        </div>
+        <div class="stat-subtitle">사용 가능 {{ prepayment_stats.active_count }}건</div>
+      </div>
+    </div>
+    <div class="stat-actions">
+      <a href="{% url 'reporting:prepayment_list' %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
+      <a href="{% url 'reporting:prepayment_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 등록</a>
+    </div>
+  </div>
 </div>
 
 <!-- 빠른 액션 -->
@@ -395,12 +414,12 @@
   <div class="actions-grid">
     <a href="{% url 'reporting:followup_create' %}" class="action-btn"><i class="fas fa-user-plus action-icon"></i><span>새 고객 추가</span></a>
     <a href="{% url 'reporting:schedule_create' %}" class="action-btn"><i class="fas fa-calendar-plus action-icon"></i><span>일정 추가</span></a>
-    <a href="{% url 'reporting:schedule_calendar' %}" class="action-btn"><i class="fas fa-calendar action-icon"></i><span>캘린더 보기</span></a>
+    <a href="{% url 'reporting:schedule_calendar' %}{% if view_all %}?view_all=true{% elif selected_user %}?user_id={{ selected_user.id }}{% endif %}" class="action-btn"><i class="fas fa-calendar action-icon"></i><span>캘린더 보기</span></a>
     <a href="{% url 'reporting:history_create' %}" class="action-btn"><i class="fas fa-plus-circle action-icon"></i><span>영업 기록</span></a>
     {% if request.is_hanagwahak %}
     <a href="{% url 'reporting:history_create' %}" class="action-btn"><i class="fas fa-concierge-bell action-icon"></i><span>서비스 기록</span></a>
     {% endif %}
-    <a href="{% url 'reporting:schedule_list' %}?status=scheduled" class="action-btn"><i class="fas fa-clock action-icon"></i><span>오늘 일정</span></a>
+    <a href="{% url 'reporting:schedule_list' %}?status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="action-btn"><i class="fas fa-clock action-icon"></i><span>오늘 일정</span></a>
   </div>
 </div>
 
@@ -432,6 +451,19 @@
     <i class="fas fa-chart-line performance-icon"></i>
     <div class="performance-value">{{ avg_deal_size|currency_format|default:"0" }}원</div>
     <div class="performance-label">평균 거래 규모</div>
+  </div>
+
+  <!-- 선결제 통계 카드 -->
+  <div class="performance-card" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+    <i class="fas fa-wallet performance-icon"></i>
+    <div class="performance-value">{{ prepayment_stats.total_balance|currency_format|default:"0" }}원</div>
+    <div class="performance-label">선결제 잔액 ({{ prepayment_stats.active_count }}건)</div>
+  </div>
+
+  <div class="performance-card" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);">
+    <i class="fas fa-credit-card performance-icon"></i>
+    <div class="performance-value">{{ prepayment_stats.total_used|currency_format|default:"0" }}원</div>
+    <div class="performance-label">선결제 사용액 (총 {{ prepayment_stats.total_count }}건)</div>
   </div>
 </div>
 

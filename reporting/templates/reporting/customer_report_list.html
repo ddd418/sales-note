@@ -167,13 +167,16 @@
                         총 납품 금액 <i class="fas fa-sort sort-icon"></i>
                       </th>
                       <th class="text-center sortable" data-column="4" data-type="number">
+                        선결제 <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="text-center sortable" data-column="5" data-type="number">
                         세금계산서 <i class="fas fa-sort sort-icon"></i>
                       </th>
-                      <th class="text-center sortable" data-column="5" data-type="date">
+                      <th class="text-center sortable" data-column="6" data-type="date">
                         최근 접촉일 <i class="fas fa-sort sort-icon"></i>
                       </th>
                       {% if user.userprofile.role in 'admin,manager' %}
-                      <th class="text-center sortable" data-column="6" data-type="text">
+                      <th class="text-center sortable" data-column="7" data-type="text">
                         담당자 <i class="fas fa-sort sort-icon"></i>
                       </th>
                       {% endif %}
@@ -208,6 +211,24 @@
                             -
                           {% endif %}
                         </strong>
+                      </td>
+                      <td class="text-center">
+                        {% if followup.prepayment_count > 0 %}
+                          <div style="font-size: 0.85rem;">
+                            <div>
+                              <span class="badge bg-info">{{ followup.prepayment_count }}건</span>
+                            </div>
+                            <div class="mt-1">
+                              <small class="text-muted">잔액:</small>
+                              <strong class="text-info">
+                                {% load currency_filters %}
+                                {{ followup.prepayment_balance|currency_format }}원
+                              </strong>
+                            </div>
+                          </div>
+                        {% else %}
+                          <span class="text-muted">-</span>
+                        {% endif %}
                       </td>
                       <td class="text-center">
                         {% if followup.tax_invoices_issued > 0 or followup.tax_invoices_pending > 0 %}

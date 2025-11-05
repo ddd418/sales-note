@@ -153,8 +153,11 @@ urlpatterns = [
     path('prepayment/', views.prepayment_list_view, name='prepayment_list'),
     path('prepayment/create/', views.prepayment_create_view, name='prepayment_create'),
     path('prepayment/<int:pk>/', views.prepayment_detail_view, name='prepayment_detail'),
+    path('prepayment/<int:pk>/edit/', views.prepayment_edit_view, name='prepayment_edit'),
+    path('prepayment/<int:pk>/delete/', views.prepayment_delete_view, name='prepayment_delete'),
     path('prepayment/customer/<int:customer_id>/', views.prepayment_customer_view, name='prepayment_customer'),
     path('prepayment/customer/<int:customer_id>/excel/', views.prepayment_customer_excel, name='prepayment_customer_excel'),
+    path('prepayment/excel/', views.prepayment_list_excel, name='prepayment_list_excel'),
     
     # 선결제 API
     path('api/prepayments/', views.prepayment_api_list, name='prepayment_api_list'),

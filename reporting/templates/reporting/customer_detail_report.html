@@ -74,7 +74,7 @@
 
       <!-- 통계 요약 카드 -->
       <div class="row mb-4">
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center bg-primary text-white">
             <div class="card-body">
               <h5 class="card-title">
@@ -84,7 +84,7 @@
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center bg-success text-white">
             <div class="card-body">
               <h5 class="card-title"><i class="fas fa-truck"></i> 총 납품</h5>
@@ -92,7 +92,7 @@
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
           <div class="card text-center bg-warning text-white">
             <div class="card-body">
               <h5 class="card-title">
@@ -104,7 +104,22 @@
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2-4">
+          <div class="card text-center text-white" style="background-color: #17a2b8;">
+            <div class="card-body">
+              <h5 class="card-title">
+                <i class="fas fa-money-bill-wave"></i> 선결제
+              </h5>
+              {% if prepayment_count > 0 %}
+              <h6>{{ prepayment_count }}건</h6>
+              <h6>잔액: {% load currency_filters %}{{ prepayment_balance|currency_format }}원</h6>
+              {% else %}
+              <h6>-</h6>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2-4">
           <div class="card text-center bg-info text-white">
             <div class="card-body">
               <h5 class="card-title">
@@ -603,6 +618,19 @@
 </script>
 
 <style>
+  /* 5개 카드 레이아웃을 위한 클래스 */
+  .col-md-2-4 {
+    flex: 0 0 20%;
+    max-width: 20%;
+  }
+
+  @media (max-width: 768px) {
+    .col-md-2-4 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+  }
+
   .timeline {
     position: relative;
     padding-left: 30px;

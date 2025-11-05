@@ -1,0 +1,177 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}선결제 삭제 확인{% endblock %}
+
+{% block extra_css %}
+<style>
+  .delete-card {
+    max-width: 600px;
+    margin: 3rem auto;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+  }
+
+  .delete-header {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .delete-icon {
+    width: 80px;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    font-size: 2.5rem;
+  }
+
+  .delete-body {
+    padding: 2rem;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .info-label {
+    color: #6b7280;
+    font-weight: 600;
+  }
+
+  .info-value {
+    color: #111827;
+    font-weight: 500;
+  }
+
+  .warning-box {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 1.5rem 0;
+  }
+
+  .btn-delete {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+    border: none;
+    padding: 0.875rem 2rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    transition: all 0.3s;
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  .btn-delete:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
+    color: white;
+  }
+
+  .btn-cancel {
+    background: white;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    padding: 0.875rem 2rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    transition: all 0.3s;
+  }
+
+  .btn-cancel:hover {
+    background: #f9fafb;
+    color: #6b7280;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="delete-card">
+    <div class="delete-header">
+      <div class="delete-icon">
+        <i class="fas fa-exclamation-triangle"></i>
+      </div>
+      <h2 class="mb-2">선결제 삭제 확인</h2>
+      <p class="mb-0">정말로 이 선결제를 삭제하시겠습니까?</p>
+    </div>
+
+    <div class="delete-body">
+      <div class="info-row">
+        <span class="info-label">고객명</span>
+        <span class="info-value">{{ prepayment.customer.customer_name }}</span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">업체</span>
+        <span class="info-value">{{ prepayment.company.name }}</span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">선결제 금액</span>
+        <span class="info-value">{{ prepayment.amount|floatformat:0|intcomma }}원</span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">잔액</span>
+        <span class="info-value">{{ prepayment.balance|floatformat:0|intcomma }}원</span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">결제일</span>
+        <span class="info-value">{{ prepayment.payment_date|date:"Y-m-d" }}</span>
+      </div>
+
+      <div class="warning-box">
+        <i class="fas fa-exclamation-circle me-2" style="color: #f59e0b;"></i>
+        <strong>주의:</strong> 삭제된 선결제는 복구할 수 없습니다.
+        {% if prepayment.usages.count > 0 %}
+        <br><br>
+        <i class="fas fa-info-circle me-2" style="color: #3b82f6;"></i>
+        이 선결제에는 <strong>{{ prepayment.usages.count }}개의 사용 내역</strong>이 있습니다. 
+        삭제하려면 먼저 사용 내역을 삭제하거나, 상태를 "취소"로 변경하세요.
+        {% endif %}
+      </div>
+
+      <form method="post">
+        {% csrf_token %}
+        
+        {% if prepayment.usages.count > 0 %}
+        <!-- 사용 내역이 있으면 취소 버튼만 표시 -->
+        <div class="mb-3">
+          <label class="form-label fw-bold">취소 사유</label>
+          <textarea name="cancel_reason" class="form-control" rows="2" placeholder="취소 사유를 입력하세요 (선택)"></textarea>
+        </div>
+        <button type="submit" name="action" value="cancel" class="btn btn-delete" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+          <i class="fas fa-ban me-2"></i> 취소 상태로 변경
+        </button>
+        {% else %}
+        <!-- 사용 내역이 없으면 삭제 버튼 표시 -->
+        <button type="submit" name="action" value="delete" class="btn btn-delete">
+          <i class="fas fa-trash-alt me-2"></i> 삭제하기
+        </button>
+        {% endif %}
+        
+        <a href="{% url 'reporting:prepayment_detail' prepayment.pk %}" class="btn-cancel">
+          <i class="fas fa-times me-2"></i> 취소
+        </a>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

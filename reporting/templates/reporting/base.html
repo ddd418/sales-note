@@ -313,6 +313,41 @@
       <div class="user-info">
         <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
         <span><strong>{{ request.user.username }}</strong></span>
+        
+        <!-- 매니저용 실무자 선택 드롭다운 -->
+        {% if request.user.userprofile.role == 'manager' %}
+        <div class="dropdown ms-3" style="display: inline-block;">
+          <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="userFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-filter"></i>
+            {% if request.GET.view_all %}
+              전체 팀원
+            {% elif request.GET.user_id %}
+              {% for user in accessible_salesmen %}
+                {% if user.id|stringformat:"s" == request.GET.user_id %}
+                  {{ user.username }}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              필터링
+            {% endif %}
+          </button>
+          <ul class="dropdown-menu" aria-labelledby="userFilterDropdown">
+            <li><a class="dropdown-item" href="?view_all=true">
+              <i class="fas fa-users"></i> 전체 팀원
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            {% for user in accessible_salesmen %}
+            <li><a class="dropdown-item" href="?user_id={{ user.id }}">
+              <i class="fas fa-user"></i> {{ user.username }}
+            </a></li>
+            {% endfor %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ request.path }}">
+              <i class="fas fa-times"></i> 필터 해제
+            </a></li>
+          </ul>
+        </div>
+        {% endif %}
       </div>
       <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">
         {% csrf_token %}

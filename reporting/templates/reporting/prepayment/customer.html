@@ -322,7 +322,7 @@
                                 {% endif %}
                             </td>
                             <td class="text-end fw-bold">{{ prepayment.amount|intcomma }}원</td>
-                            <td class="text-end text-danger">{{ prepayment.amount|add:prepayment.balance|add:"-"|add:prepayment.balance|intcomma }}원</td>
+                            <td class="text-end text-danger">{{ prepayment.used_amount|intcomma }}원</td>
                             <td class="text-end text-primary">{{ prepayment.balance|intcomma }}원</td>
                             <td class="text-center">
                                 {% if prepayment.status == 'active' %}
