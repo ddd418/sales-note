@@ -9403,10 +9403,10 @@ def prepayment_customer_view(request, customer_id):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:prepayment_list')
     
-    # 해당 고객의 모든 선결제 조회 (등록 순서대로: 먼저 등록한 것이 위로)
+    # 해당 고객의 모든 선결제 조회 (결제일 오래된 순)
     prepayments = Prepayment.objects.filter(
         customer=customer
-    ).select_related('company', 'created_by').prefetch_related('usages').order_by('id')
+    ).select_related('company', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     
     # 각 선결제의 사용금액 계산
     for prepayment in prepayments:
@@ -9466,12 +9466,12 @@ def prepayment_customer_excel(request, customer_id):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:prepayment_list')
     
-    # 해당 고객의 모든 선결제 조회 (등록 순서대로: 먼저 등록한 것이 위로)
+    # 해당 고객의 모든 선결제 조회 (결제일 오래된 순)
     prepayments = Prepayment.objects.filter(
         customer=customer
     ).select_related('company', 'created_by').prefetch_related(
         'usages__schedule__delivery_items_set'
-    ).order_by('id')
+    ).order_by('payment_date', 'id')
     
     # 엑셀 생성
     wb = Workbook()
