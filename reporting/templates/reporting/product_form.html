@@ -1,0 +1,140 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{% if product %}제품 수정{% else %}제품 등록{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-box"></i>
+                        {% if product %}제품 수정{% else %}신규 제품 등록{% endif %}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <!-- 기본 정보 -->
+                        <div class="mb-3">
+                            <label class="form-label">품번 <span class="text-danger">*</span></label>
+                            <input type="text" name="product_code" class="form-control" 
+                                   value="{{ product.product_code }}" required
+                                   placeholder="예: PROD-001">
+                            <small class="text-muted">고유한 제품 코드를 입력하세요</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">제품 설명</label>
+                            <textarea name="description" class="form-control" rows="3" 
+                                      placeholder="제품에 대한 상세 설명을 입력하세요 (선택사항)">{{ product.description }}</textarea>
+                        </div>
+
+                        <!-- 가격 정보 -->
+                        <h5 class="mt-4 mb-3">가격 정보</h5>
+                        <div class="mb-3">
+                            <label class="form-label">단가 (원) <span class="text-danger">*</span></label>
+                            <input type="number" name="standard_price" class="form-control" 
+                                   value="{{ product.standard_price|default:'' }}" required
+                                   min="0" step="1" placeholder="0">
+                        </div>
+
+                        <!-- 프로모션 정보 -->
+                        <h5 class="mt-4 mb-3">프로모션 설정</h5>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="is_promo" name="is_promo"
+                                       {% if product.is_promo %}checked{% endif %}
+                                       onchange="togglePromoFields()">
+                                <label class="form-check-label" for="is_promo">
+                                    프로모션 적용
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="promoFields" style="display: {% if product.is_promo %}block{% else %}none{% endif %};">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">프로모션 가격 (원)</label>
+                                    <input type="number" name="promo_price" class="form-control" 
+                                           value="{{ product.promo_price|default:'' }}"
+                                           min="0" step="1" placeholder="할인가">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">시작일</label>
+                                    <input type="date" name="promo_start" class="form-control" 
+                                           value="{{ product.promo_start|date:'Y-m-d' }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">종료일</label>
+                                    <input type="date" name="promo_end" class="form-control" 
+                                           value="{{ product.promo_end|date:'Y-m-d' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 상태 -->
+                        <h5 class="mt-4 mb-3">판매 상태</h5>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="is_active" name="is_active"
+                                       {% if not product or product.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    판매 가능 상태로 설정
+                                </label>
+                                <small class="form-text text-muted d-block">
+                                    비활성화하면 견적/납품 작성 시 제품 선택 목록에 표시되지 않습니다
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- 버튼 -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{% url 'reporting:product_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> 취소
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                {% if product %}수정 완료{% else %}등록{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if product %}
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6>통계 정보</h6>
+                    <div class="row text-center">
+                        <div class="col-md-6">
+                            <div class="p-3">
+                                <h4 class="text-primary">{{ product.total_quoted }}</h4>
+                                <small class="text-muted">총 견적 횟수</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="p-3">
+                                <h4 class="text-success">{{ product.total_sold }}</h4>
+                                <small class="text-muted">총 판매 횟수</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePromoFields() {
+    const isChecked = document.getElementById('is_promo').checked;
+    document.getElementById('promoFields').style.display = isChecked ? 'block' : 'none';
+}
+</script>
+{% endblock %}

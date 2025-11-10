@@ -35,6 +35,9 @@
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: #f5f7fa;
       color: #1f2937;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
     }
 
     /* 사이드바 */
@@ -78,6 +81,10 @@
       text-decoration: none;
       transition: all 0.3s;
       font-weight: 500;
+      pointer-events: auto !important;
+      cursor: pointer !important;
+      position: relative;
+      z-index: 1;
     }
 
     .nav-link:hover {
@@ -99,9 +106,14 @@
 
     /* 메인 컨텐츠 */
     .main-content {
-      margin-left: 260px;
+      margin-top: 0 !important;
+      margin-right: 0 !important;
+      margin-bottom: 0 !important;
+      margin-left: 260px !important;
       min-height: 100vh;
-      padding: 2rem;
+      padding: 2rem !important;
+      position: relative;
+      z-index: 1;
     }
 
     .top-bar {
@@ -182,15 +194,15 @@
   </button>
 
   <!-- 사이드바 -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <h1 class="sidebar-title">
+  <aside class="sidebar" id="sidebar" style="position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; width: 260px !important; background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%) !important; color: white !important; z-index: 1000 !important; overflow-y: auto !important; box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1) !important; pointer-events: auto !important;">
+    <div class="sidebar-header" style="padding: 2rem 1.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+      <h1 class="sidebar-title" style="font-size: 1.5rem; font-weight: 800; margin: 0; color: white;">
         <i class="fas fa-chart-line"></i> 영업 시스템
       </h1>
     </div>
 
-    <nav class="sidebar-nav">
-      <ul class="nav flex-column">
+    <nav class="sidebar-nav" style="padding: 1.5rem 0;">
+      <ul class="nav flex-column" style="list-style: none; margin: 0; padding: 0;">
         <!-- 대시보드 메뉴 - 로그인한 사용자만 -->
         {% if user.is_authenticated %}
         <li class="nav-item">
@@ -289,6 +301,12 @@
           <a href="{% url 'reporting:prepayment_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':10' == 'prepayment' %}active{% endif %}">
             <i class="fas fa-wallet"></i>
             <span>선결제 관리</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{% url 'reporting:product_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'product' %}active{% endif %}">
+            <i class="fas fa-box"></i>
+            <span>제품 관리</span>
           </a>
         </li>
         {% endif %}

@@ -1,0 +1,179 @@
+{% extends 'reporting/base.html' %}
+{% load humanize %}
+
+{% block title %}제품 관리{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-box"></i> 제품 관리</h2>
+        <a href="{% url 'reporting:product_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> 신규 제품 등록
+        </a>
+    </div>
+
+    <!-- 검색 및 필터 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">검색</label>
+                    <input type="text" name="search" class="form-control" 
+                           placeholder="품번, 설명 검색..." 
+                           value="{{ search_query }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">상태</label>
+                    <select name="is_active" class="form-select">
+                        <option value="">전체</option>
+                        <option value="true" {% if is_active == 'true' %}selected{% endif %}>활성</option>
+                        <option value="false" {% if is_active == 'false' %}selected{% endif %}>비활성</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">정렬</label>
+                    <select name="sort" class="form-select">
+                        <option value="code" {% if sort_by == 'code' %}selected{% endif %}>품번순</option>
+                        <option value="price" {% if sort_by == 'price' %}selected{% endif %}>가격순</option>
+                    </select>
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button type="submit" class="btn btn-secondary w-100">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 제품 목록 -->
+    <div class="card">
+        <div class="card-body">
+            {% if page_obj %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>품번</th>
+                            <th>설명</th>
+                            <th>단가</th>
+                            <th>현재가</th>
+                            <th>상태</th>
+                            <th>견적 횟수</th>
+                            <th>판매 횟수</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in page_obj %}
+                        <tr>
+                            <td>
+                                <code>{{ product.product_code }}</code>
+                            </td>
+                            <td>
+                                {% if product.description %}
+                                {{ product.description|truncatewords:10 }}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {{ product.standard_price|floatformat:0|intcomma }}원
+                            </td>
+                            <td class="text-end">
+                                {% if product.is_promo %}
+                                <span class="badge bg-danger">프로모션</span><br>
+                                <strong class="text-danger">{{ product.get_current_price|floatformat:0|intcomma }}원</strong>
+                                {% else %}
+                                {{ product.get_current_price|floatformat:0|intcomma }}원
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if product.is_active %}
+                                <span class="badge bg-success">활성</span>
+                                {% else %}
+                                <span class="badge bg-secondary">비활성</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {{ product.quote_count }}
+                            </td>
+                            <td class="text-center">
+                                {{ product.delivery_count }}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'reporting:product_edit' product.id %}" 
+                                       class="btn btn-outline-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-outline-danger" 
+                                            onclick="deleteProduct({{ product.id }}, '{{ product.product_code }}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 페이지네이션 -->
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="페이지네이션">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">처음</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">이전</a>
+                    </li>
+                    {% endif %}
+
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">다음</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">마지막</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+                <p class="text-muted">등록된 제품이 없습니다.</p>
+                <a href="{% url 'reporting:product_create' %}" class="btn btn-primary">
+                    첫 제품 등록하기
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 삭제 확인 폼 -->
+<form id="deleteForm" method="post" style="display: none;">
+    {% csrf_token %}
+</form>
+
+<script>
+function deleteProduct(productId, productCode) {
+    if (confirm(`제품 "${productCode}"을(를) 삭제하시겠습니까?\n\n이미 견적이나 납품에 사용된 제품은 삭제할 수 없습니다.`)) {
+        const form = document.getElementById('deleteForm');
+        form.action = `/reporting/products/${productId}/delete/`;
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

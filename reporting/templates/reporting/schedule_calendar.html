@@ -917,10 +917,7 @@
               </ul>
             </div>
           {% else %}
-            <!-- 실무자용 추가 버튼 -->
-            <a href="{% url 'reporting:schedule_create' %}" class="btn btn-premium-white">
-              <i class="fas fa-plus me-2"></i>새 일정 추가
-            </a>
+            <!-- 캘린더에서만 일정 추가 가능 -->
           {% endif %}
         {% endif %}
       </div>
@@ -1582,7 +1579,9 @@
     formData.append('csrfmiddlewaretoken', csrfToken);
     formData.append('status', newStatus);
 
-    fetch(`{% url 'reporting:schedule_status_update' 999 %}`.replace('999', scheduleId), {
+    const url = `{% url 'reporting:schedule_status_update' 999 %}`.replace('999', scheduleId);
+
+    fetch(url, {
       method: 'POST',
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -1600,7 +1599,7 @@
           badge.textContent = data.status_display;
         }
 
-        // 버튼 상태 업데이트 - 더 안전한 방법
+        // 버튼 상태 업데이트
         const modal = document.getElementById('scheduleDetailModal');
         if (modal) {
           const buttons = modal.querySelectorAll('.btn-group button');
@@ -1615,7 +1614,7 @@
         // 캘린더 다시 로드하여 변경사항 반영
         loadSchedules();
 
-        // 성공 메시지 표시 (alert 대신 더 부드러운 방식)
+        // 성공 메시지 표시
         if (typeof showToast !== 'undefined') {
           showToast(data.message, 'success');
         } else {
@@ -1626,7 +1625,7 @@
       }
     })
     .catch(error => {
-      console.error('Error:', error);
+      console.error('상태 업데이트 오류:', error);
       alert('상태 업데이트 중 오류가 발생했습니다.');
     });
   }
@@ -4527,6 +4526,37 @@
   document.addEventListener("DOMContentLoaded", function () {
     // 서버에서 일정 데이터 로드
     loadSchedules();
+    
+    // URL 파라미터에서 schedule_id 확인하여 모달 자동 열기
+    const urlParams = new URLSearchParams(window.location.search);
+    const scheduleId = urlParams.get('schedule_id');
+    if (scheduleId) {
+      console.log('🎯 URL에서 schedule_id 감지:', scheduleId);
+      // 일정 데이터 로드 후 모달 열기
+      setTimeout(() => {
+        const schedule = schedules.find(s => s.id == scheduleId);
+        if (schedule) {
+          console.log('✅ 일정 찾음, 모달 열기:', schedule);
+          showScheduleModal(schedule);
+          // URL에서 파라미터 제거 (깔끔하게)
+          window.history.replaceState({}, '', window.location.pathname);
+        } else {
+          console.log('❌ 일정을 찾을 수 없음. schedules 로드 대기 중...');
+          // 일정이 아직 로드되지 않았을 수 있으므로 재시도
+          const checkInterval = setInterval(() => {
+            const schedule = schedules.find(s => s.id == scheduleId);
+            if (schedule) {
+              console.log('✅ 재시도 성공, 모달 열기:', schedule);
+              showScheduleModal(schedule);
+              window.history.replaceState({}, '', window.location.pathname);
+              clearInterval(checkInterval);
+            }
+          }, 100);
+          // 5초 후 중단
+          setTimeout(() => clearInterval(checkInterval), 5000);
+        }
+      }, 500);
+    }
 
     // renderCalendar 함수를 전역 변수에 할당
     renderCalendar = function() {
@@ -5121,24 +5151,24 @@
                     <p class="mb-0">${schedule.notes}</p>
                   </div>
                   ` : ''}
-                  ${schedule.activity_type === 'delivery' && (schedule.delivery_items || schedule.delivery_amount) ? `
+                  ${(schedule.activity_type === 'delivery' || schedule.activity_type === 'quote') && (schedule.delivery_items || schedule.delivery_amount) ? `
                   <div class="col-12">
                     <div class="card border-warning">
                       <div class="card-header bg-warning text-dark">
                         <h6 class="mb-0">
-                          <i class="fas fa-boxes me-2"></i>납품 품목 정보
+                          <i class="fas fa-boxes me-2"></i>${schedule.activity_type === 'quote' ? '견적 품목 정보' : '납품 품목 정보'}
                         </h6>
                       </div>
                       <div class="card-body">
                         ${schedule.delivery_items ? `
 <div class="mb-3">
-<label class="form-label fw-bold">납품 품목</label>
+<label class="form-label fw-bold">${schedule.activity_type === 'quote' ? '견적 품목' : '납품 품목'}</label>
 <div class="form-control-plaintext border rounded p-2 bg-light delivery-items-display">${formatDeliveryItems(schedule.delivery_items)}</div>
 </div>
 ` : ''}
                         ${schedule.delivery_amount ? `
                         <div class="mb-0">
-                          <label class="form-label fw-bold">총 납품 금액</label>
+                          <label class="form-label fw-bold">총 ${schedule.activity_type === 'quote' ? '견적' : '납품'} 금액</label>
                           <p class="mb-0 text-primary fw-bold">${parseInt(schedule.delivery_amount).toLocaleString()}원</p>
                         </div>
                         ` : ''}

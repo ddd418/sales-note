@@ -957,18 +957,38 @@
     const container = document.getElementById('history-delivery-items-container');
     const newItem = document.createElement('div');
     newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
+    
+    const itemName = itemData.item_name || '';
+    const quantity = itemData.quantity || '';
+    const unitPrice = itemData.unit_price || '';
+    const productId = itemData.product_id || '';
+    
     newItem.innerHTML = `
+      <div class="col-12 mb-3">
+        <label class="form-label fw-bold">제품 검색 및 선택 <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <input type="text" class="form-control product-search" placeholder="품번으로 검색..." onkeyup="searchHistoryProducts(this)">
+          <button class="btn btn-outline-secondary" type="button" onclick="clearHistoryProductSearch(this)">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <select class="form-select mt-2 product-select" onchange="onHistoryProductSelected(this)" required>
+          <option value="">제품을 선택하세요</option>
+        </select>
+        <input type="hidden" class="product-id" value="${productId}">
+      </div>
       <div class="col-md-4">
-        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-        <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+        <label class="form-label fw-bold">품목명</label>
+        <input type="text" class="form-control item-name" value="${itemName}" readonly>
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
-        <input type="number" class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" placeholder="수량" required>
+        <input type="number" class="form-control quantity-input" min="1" value="${quantity}" placeholder="수량" required>
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">단가 (부가세 별도)</label>
-        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+        <input type="text" class="form-control unit-price-display" value="${unitPrice ? parseInt(unitPrice).toLocaleString() : ''}" readonly>
+        <input type="hidden" class="unit-price-input" value="${unitPrice}">
       </div>
       <div class="col-md-3">
         <label class="form-label fw-bold">금액 (부가세 포함)</label>
@@ -986,6 +1006,9 @@
     container.appendChild(newItem);
     historyDeliveryItemIndex++;
     deliveryItemIndex++; // 동기화
+    
+    // 제품 목록 로드
+    loadHistoryProductList(newItem.querySelector('.product-select'));
     
     // 이벤트 리스너 추가
     const quantityInput = newItem.querySelector('.quantity-input');
@@ -1072,6 +1095,7 @@
       const itemName = item.querySelector('.item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      const productId = item.querySelector('.product-id').value.trim();
       
       if (itemName && quantity > 0) {
         const subtotal = quantity * unitPrice;
@@ -1081,7 +1105,8 @@
           item_name: itemName,
           quantity: quantity,
           unit_price: unitPrice,
-          total_price: total
+          total_price: total,
+          product_id: productId
         });
         
         totalAmount += total;
@@ -1110,6 +1135,15 @@
         unitPriceInput.name = `delivery_items[${index}][unit_price]`;
         unitPriceInput.value = unitPrice;
         form.appendChild(unitPriceInput);
+        
+        // 제품 ID
+        if (productId) {
+          const productIdInput = document.createElement('input');
+          productIdInput.type = 'hidden';
+          productIdInput.name = `delivery_items[${index}][product_id]`;
+          productIdInput.value = productId;
+          form.appendChild(productIdInput);
+        }
       }
     });
     
@@ -1165,9 +1199,16 @@
       const newItem = document.createElement('div');
       newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
       newItem.innerHTML = `
+          <div class="col-12 mb-2">
+              <label class="form-label fw-bold">제품 선택 (선택사항)</label>
+              <select class="form-select product-select" onchange="onHistoryProductSelected(this)">
+                  <option value="">직접 입력 또는 제품 선택</option>
+              </select>
+              <input type="hidden" class="product-id" name="delivery_items[${deliveryItemIndex}][product_id]" value="">
+          </div>
           <div class="col-md-4">
               <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-              <input type="text" name="delivery_items[${deliveryItemIndex}][name]" class="form-control" placeholder="품목명을 입력하세요" required>
+              <input type="text" name="delivery_items[${deliveryItemIndex}][name]" class="form-control item-name" placeholder="품목명을 입력하세요" required>
           </div>
           <div class="col-md-2">
               <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -1193,6 +1234,9 @@
       container.appendChild(newItem);
       deliveryItemIndex++;
       historyDeliveryItemIndex++; // 동기화
+      
+      // 제품 목록 로드
+      loadHistoryProductList(newItem.querySelector('.product-select'));
       
       // 이벤트 리스너 추가
       const quantityInput = newItem.querySelector('.quantity-input');
@@ -1318,5 +1362,126 @@
           }
       {% endif %}
   });
+
+// ============================================
+// 히스토리 제품 선택 관련 함수들
+// ============================================
+
+// 제품 목록 로드 (히스토리용)
+function loadHistoryProductList(selectElement) {
+  fetch('/api/products/')
+    .then(response => response.json())
+    .then(data => {
+      const products = data.products || [];
+      
+      // 기본 옵션 유지
+      selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+      
+      // 제품 추가
+      products.forEach(product => {
+        const option = document.createElement('option');
+        option.value = product.id;
+        option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+        option.dataset.name = product.name;
+        option.dataset.price = product.current_price;
+        option.dataset.code = product.product_code;
+        selectElement.appendChild(option);
+      });
+      
+      // 전체 제품 데이터를 selectElement에 저장
+      selectElement.dataset.allProducts = JSON.stringify(products);
+    })
+    .catch(error => {
+      console.error('제품 목록 로드 실패:', error);
+    });
+}
+
+// 제품 검색 함수 (히스토리용)
+function searchHistoryProducts(searchInput) {
+  const deliveryItem = searchInput.closest('.delivery-item');
+  const selectElement = deliveryItem.querySelector('.product-select');
+  const searchQuery = searchInput.value.toLowerCase().trim();
+  
+  // 전체 제품 데이터 가져오기
+  const allProducts = JSON.parse(selectElement.dataset.allProducts || '[]');
+  
+  // 검색어가 없으면 전체 목록 표시
+  if (!searchQuery) {
+    selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+    allProducts.forEach(product => {
+      const option = document.createElement('option');
+      option.value = product.id;
+      option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+      option.dataset.name = product.name;
+      option.dataset.price = product.current_price;
+      option.dataset.code = product.product_code;
+      selectElement.appendChild(option);
+    });
+    return;
+  }
+  
+  // 검색어로 필터링
+  const filteredProducts = allProducts.filter(product => 
+    product.product_code.toLowerCase().includes(searchQuery) ||
+    (product.name && product.name.toLowerCase().includes(searchQuery))
+  );
+  
+  // 검색 결과로 select 업데이트
+  selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+  
+  if (filteredProducts.length === 0) {
+    selectElement.innerHTML = '<option value="">검색 결과가 없습니다</option>';
+  } else {
+    filteredProducts.forEach(product => {
+      const option = document.createElement('option');
+      option.value = product.id;
+      option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+      option.dataset.name = product.name;
+      option.dataset.price = product.current_price;
+      option.dataset.code = product.product_code;
+      selectElement.appendChild(option);
+    });
+  }
+}
+
+// 검색어 초기화 (히스토리용)
+function clearHistoryProductSearch(button) {
+  const deliveryItem = button.closest('.delivery-item');
+  const searchInput = deliveryItem.querySelector('.product-search');
+  searchInput.value = '';
+  searchHistoryProducts(searchInput);
+}
+
+// 제품 선택 시 호출 (히스토리용)
+function onHistoryProductSelected(selectElement) {
+  const selectedOption = selectElement.options[selectElement.selectedIndex];
+  
+  if (!selectedOption.value) {
+    return;
+  }
+  
+  const deliveryItem = selectElement.closest('.delivery-item');
+  const productId = selectedOption.value;
+  const productCode = selectedOption.dataset.code;
+  const productPrice = selectedOption.dataset.price;
+  
+  // 제품 정보 자동 입력 (품번 사용)
+  deliveryItem.querySelector('.product-id').value = productId;
+  deliveryItem.querySelector('.item-name').value = productCode;
+  deliveryItem.querySelector('.unit-price-input').value = productPrice;
+  deliveryItem.querySelector('.unit-price-display').value = parseInt(productPrice).toLocaleString();
+  
+  // 수량이 비어있으면 1로 설정
+  const quantityInput = deliveryItem.querySelector('.quantity-input');
+  if (!quantityInput.value) {
+    quantityInput.value = 1;
+  }
+  
+  // 금액 재계산
+  if (typeof calculateHistoryItemTotal === 'function') {
+    calculateHistoryItemTotal({ target: quantityInput });
+  }
+}
+
 </script>
 {% endblock %}

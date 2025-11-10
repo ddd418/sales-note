@@ -150,13 +150,7 @@
             </ul>
           </div>
           {% else %}
-          <!-- 실무자용 추가 버튼 -->
-          <a
-            href="{% url 'reporting:history_create' %}"
-            class="btn btn-primary me-2"
-          >
-            <i class="fas fa-plus me-1"></i>새 활동 기록
-          </a>
+          <!-- 메모 추가 버튼만 유지 -->
           <a
             href="{% url 'reporting:memo_create' %}"
             class="btn btn-success"
@@ -507,20 +501,6 @@
                         >
                           <i class="fas fa-eye me-1"></i>상세보기
                         </a>
-                        {% if history.user == request.user and user.userprofile.role != 'manager' and history.created_by == history.user or request.user.is_staff %}
-                        <a
-                          href="{% url 'reporting:history_edit' history.pk %}"
-                          class="btn btn-sm btn-outline-primary me-1"
-                        >
-                          <i class="fas fa-edit me-1"></i>수정
-                        </a>
-                        <a
-                          href="{% url 'reporting:history_delete' history.pk %}"
-                          class="btn btn-sm btn-outline-danger"
-                        >
-                          <i class="fas fa-trash-alt me-1"></i>삭제
-                        </a>
-                        {% endif %}
                       </div>
                     </div>
                   </div>
@@ -539,15 +519,6 @@
             {% if followup %} 이 팔로우업에 대한 활동 기록이 없습니다. {% else%}
             아직 등록된 활동 기록이 없습니다. {% endif %}
           </h5>
-          {% if user.is_authenticated %}
-          <p class="text-muted mb-3">첫 번째 활동을 기록해보세요!</p>
-          <a
-            href="{% url 'reporting:history_create' %}"
-            class="btn btn-primary"
-          >
-            <i class="fas fa-plus me-1"></i>첫 활동 기록하기
-          </a>
-          {% endif %}
         </div>
       </div>
       {% endif %}

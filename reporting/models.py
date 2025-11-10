@@ -319,6 +319,12 @@ class ScheduleFile(models.Model):
 class DeliveryItem(models.Model):
     schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, related_name='delivery_items_set', verbose_name="일정", blank=True, null=True)
     history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='delivery_items_set', verbose_name="히스토리", blank=True, null=True)
+    
+    # 제품 마스터 연동 (기존 데이터 호환성을 위해 null 허용)
+    product = models.ForeignKey('Product', on_delete=models.SET_NULL, null=True, blank=True, 
+                               related_name='delivery_items', verbose_name="제품")
+    
+    # 기존 필드들 (product가 없을 때 직접 입력)
     item_name = models.CharField(max_length=200, verbose_name="품목명")
     quantity = models.PositiveIntegerField(verbose_name="수량")
     unit = models.CharField(max_length=50, default="개", verbose_name="단위")
@@ -330,6 +336,13 @@ class DeliveryItem(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
     def save(self, *args, **kwargs):
+        # product가 선택된 경우 제품 정보로 자동 채우기
+        if self.product:
+            self.item_name = self.product.product_code
+            
+            if not self.unit_price:  # 단가가 입력되지 않은 경우에만
+                self.unit_price = self.product.get_current_price()
+        
         # 총액 자동 계산 (부가세 10% 포함)
         if self.unit_price and self.quantity:
             from decimal import Decimal
@@ -352,23 +365,11 @@ class DeliveryItem(models.Model):
 
 # 제품 (Product) 모델
 class Product(models.Model):
-    CATEGORY_CHOICES = [
-        ('equipment', '장비'),
-        ('software', '소프트웨어'),
-        ('service', '서비스'),
-        ('maintenance', '유지보수'),
-        ('consumable', '소모품'),
-        ('other', '기타'),
-    ]
-    
     # 기본 정보
-    product_code = models.CharField(max_length=50, unique=True, verbose_name="제품 코드")
-    name = models.CharField(max_length=200, verbose_name="제품명")
-    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, verbose_name="카테고리")
+    product_code = models.CharField(max_length=50, unique=True, verbose_name="제품 코드 (품번)")
     
     # 가격
-    standard_price = models.DecimalField(max_digits=15, decimal_places=0, verbose_name="정상가")
-    cost_price = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="원가")
+    standard_price = models.DecimalField(max_digits=15, decimal_places=0, verbose_name="정상가 (단가)")
     
     # 프로모션
     is_promo = models.BooleanField(default=False, verbose_name="프로모션 여부")
@@ -392,7 +393,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def __str__(self):
-        return f"{self.name} ({self.product_code})"
+        return self.product_code
     
     def get_current_price(self):
         """현재 적용 가격 반환 (프로모션 고려)"""
@@ -407,7 +408,7 @@ class Product(models.Model):
     class Meta:
         verbose_name = "제품"
         verbose_name_plural = "제품 목록"
-        ordering = ['category', 'name']
+        ordering = ['product_code']
 
 
 # 견적 (Quote) 모델
@@ -492,7 +493,7 @@ class Quote(models.Model):
 # 견적 항목 (QuoteItem) 모델
 class QuoteItem(models.Model):
     quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name='items', verbose_name="견적")
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, verbose_name="제품")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='quoteitems', verbose_name="제품")
     
     # 수량 및 가격
     quantity = models.IntegerField(default=1, verbose_name="수량")

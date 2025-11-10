@@ -171,17 +171,17 @@ class DeliveryItemAdmin(admin.ModelAdmin):
 # Product 모델 관리자 설정
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('product_code', 'name', 'category', 'standard_price', 'is_promo', 'is_active', 'total_quoted', 'total_sold')
-    list_filter = ('category', 'is_active', 'is_promo')
-    search_fields = ('product_code', 'name', 'description')
+    list_display = ('product_code', 'standard_price', 'is_promo', 'is_active', 'total_quoted', 'total_sold')
+    list_filter = ('is_active', 'is_promo')
+    search_fields = ('product_code', 'description')
     list_per_page = 20
     
     fieldsets = (
         ('기본 정보', {
-            'fields': ('product_code', 'name', 'category', 'description')
+            'fields': ('product_code', 'description')
         }),
         ('가격 정보', {
-            'fields': ('standard_price', 'cost_price')
+            'fields': ('standard_price',)
         }),
         ('프로모션', {
             'fields': ('is_promo', 'promo_price', 'promo_start', 'promo_end'),
@@ -254,8 +254,8 @@ class QuoteAdmin(admin.ModelAdmin):
 @admin.register(QuoteItem)
 class QuoteItemAdmin(admin.ModelAdmin):
     list_display = ('quote', 'product', 'quantity', 'unit_price', 'discount_rate', 'subtotal')
-    list_filter = ('quote__stage', 'product__category')
-    search_fields = ('quote__quote_number', 'product__name')
+    list_filter = ('quote__stage',)
+    search_fields = ('quote__quote_number', 'product__product_code')
     autocomplete_fields = ['quote', 'product']
     list_per_page = 20
     

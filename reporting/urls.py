@@ -20,7 +20,7 @@ urlpatterns = [
     path('schedules/calendar/', views.schedule_calendar_view, name='schedule_calendar'),
     path('schedules/api/', views.schedule_api_view, name='schedule_api'),
     path('schedules/<int:pk>/', views.schedule_detail_view, name='schedule_detail'),
-    path('schedules/create/', views.schedule_create_view, name='schedule_create'),
+    path('schedules/create/', views.schedule_create_view, name='schedule_create'),  # 캘린더 더블클릭에서 사용
     path('schedules/<int:pk>/edit/', views.schedule_edit_view, name='schedule_edit'),
     path('schedules/<int:pk>/update-delivery-items/', views.schedule_update_delivery_items, name='schedule_update_delivery_items'),
     path('schedules/<int:schedule_id>/delivery-items-api/', views.schedule_delivery_items_api, name='schedule_delivery_items_api'),
@@ -34,8 +34,8 @@ urlpatterns = [
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),
     path('histories/<int:pk>/', views.history_detail_view, name='history_detail'),
-    path('histories/create/', views.history_create_view, name='history_create'),
-    path('histories/create-from-schedule/<int:schedule_id>/', views.history_create_from_schedule, name='history_create_from_schedule'),
+    # 삭제됨 - 히스토리 직접 추가 불가: path('histories/create/', views.history_create_view, name='history_create'),
+    path('histories/create-from-schedule/<int:schedule_id>/', views.history_create_from_schedule, name='history_create_from_schedule'),  # 캘린더에서 사용
     path('histories/<int:pk>/edit/', views.history_edit_view, name='history_edit'),
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
@@ -161,4 +161,13 @@ urlpatterns = [
     
     # 선결제 API
     path('api/prepayments/', views.prepayment_api_list, name='prepayment_api_list'),
+    
+    # 제품 관리 URL들
+    path('products/', views.product_list, name='product_list'),
+    path('products/create/', views.product_create, name='product_create'),
+    path('products/<int:product_id>/edit/', views.product_edit, name='product_edit'),
+    path('products/<int:product_id>/delete/', views.product_delete, name='product_delete'),
+    
+    # 제품 API
+    path('api/products/', views.product_api_list, name='product_api_list'),
 ]

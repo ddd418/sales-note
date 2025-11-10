@@ -250,12 +250,6 @@
         </div>
         {% if not no_salesmen %}        
         <div class="d-flex gap-2">
-          <!-- 일정 캘린더 버튼을 메인으로 이동 -->
-          <a href="{% url 'reporting:schedule_calendar' %}{% if not view_all %}?user={{ selected_user.id }}
-          {% endif %}" 
-          class="btn btn-outline-success">
-            <i class="fas fa-calendar-alt me-1"></i>일정 캘린더</a>
-          
           <div class="btn-group">
             <button
               type="button"
@@ -447,6 +441,50 @@
 
       <!-- 추가 성과 카드 -->
       <div class="row mb-4 d-none d-md-flex">
+        <!-- 펀넬 분석 카드 -->
+        <div class="col-lg-3 col-md-6 mb-3">
+          <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% else %}?user_id={{ selected_user.id }}{% endif %}" class="text-decoration-none">
+            <div class="card text-white card-hover" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <small class="text-white-50 mb-1 d-block">펀넬 분석</small>
+                    <h3 class="mb-0"><i class="fas fa-chart-line"></i></h3>
+                    <small class="text-white-50">영업 전환율 분석</small>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-filter fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- 캘린더 카드 -->
+        <div class="col-lg-3 col-md-6 mb-3">
+          <a href="{% url 'reporting:schedule_calendar' %}{% if not view_all %}?user={{ selected_user.id }}{% endif %}" class="text-decoration-none">
+            <div class="card text-white card-hover" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+              <div class="card-body">
+                <div class="d-flex align-items-center">
+                  <div class="flex-grow-1">
+                    <small class="text-white-50 mb-1 d-block">일정 캘린더</small>
+                    <h3 class="mb-0"><i class="fas fa-calendar-alt"></i></h3>
+                    <small class="text-white-50">일정 한눈에 보기</small>
+                  </div>
+                  <div class="avatar-sm">
+                    <div class="avatar-title bg-white-10 rounded">
+                      <i class="fas fa-calendar-check fa-lg"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+
         {% if request.is_hanagwahak %}
         <div class="col-lg-3 col-md-6 mb-3">
           {% if view_all %}

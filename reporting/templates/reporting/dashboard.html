@@ -1,10 +1,12 @@
 {% extends "reporting/base.html" %}
+{% load humanize %}
 
 {% block extra_css %}
 <style>
-/* 프리미엄 대시보드 디자인 */
+/* ========================================
+    DASHBOARD STYLES
+   ======================================== */
 
-/* 매니저 필터 헤더 */
 .page-title {
   font-size: 1.875rem;
   font-weight: 800;
@@ -30,13 +32,15 @@
 .stat-card {
   background: white;
   border-radius: 1.25rem;
-  padding: 1.75rem;
+  padding: 2rem;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
-  cursor: pointer;
   border: 1px solid #e5e7eb;
+  display: block;
+  text-decoration: none;
+  color: inherit;
 }
 
 .stat-card::before {
@@ -52,8 +56,10 @@
 }
 
 .stat-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  transform: translateY(-6px);
+  box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.3);
+  text-decoration: none;
+  color: inherit;
 }
 
 .stat-card:hover::before {
@@ -64,7 +70,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
 }
 
 .stat-icon {
@@ -99,52 +105,434 @@
 }
 
 .stat-value {
-  font-size: 2.25rem;
+  font-size: 2.75rem;
   font-weight: 900;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   line-height: 1;
+  margin-bottom: 0.5rem;
 }
 
 .stat-subtitle {
-  font-size: 0.75rem;
-  color: #6b7280;
+  font-size: 0.875rem;
+  color: #9ca3af;
   margin-top: 0.25rem;
+  font-weight: 500;
 }
 
-.stat-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
-.stat-btn {
-  flex: 1;
-  padding: 0.625rem;
-  border-radius: 0.75rem;
-  font-size: 0.75rem;
+.stat-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  border: 2px solid;
-  text-align: center;
-  text-decoration: none;
-  transition: all 0.3s;
+  margin-top: 0.75rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.625rem;
 }
 
-.stat-btn-primary {
-  background: #6366f1;
+.stat-trend.up {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.stat-trend.down {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.stat-trend.neutral {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+/* ========================================
+   🎯 NEW INFOGRAPHIC DASHBOARD STYLES
+   ======================================== */
+
+/* Infographic Container */
+.infographic-dashboard {
+  max-width: 1400px;
+  margin: 0 auto 3rem;
+}
+
+/* Hero Metrics Section */
+.hero-metrics {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 2rem;
+  padding: 3rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 20px 60px -15px rgba(102, 126, 234, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-metrics::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+.hero-primary {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-icon {
+  width: 100px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
   color: white;
-  border-color: #6366f1;
+  backdrop-filter: blur(10px);
 }
 
-.stat-btn-outline {
-  background: transparent;
+.hero-content {
+  flex: 1;
+  color: white;
+}
+
+.hero-label {
+  font-size: 1.125rem;
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.hero-value {
+  font-size: 4rem;
+  font-weight: 900;
+  line-height: 1;
+  margin-bottom: 1rem;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.1);
+}
+
+.hero-meta {
+  display: flex;
+  gap: 2rem;
+  font-size: 1rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(10px);
+}
+
+.text-success { color: #a7f3d0 !important; }
+.text-warning { color: #fde68a !important; }
+.text-danger { color: #fca5a5 !important; }
+
+/* Quick Stats Grid */
+.quick-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-stat {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.quick-stat:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.quick-stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  color: white;
+  flex-shrink: 0;
+}
+
+.bg-gradient-blue { background: linear-gradient(135deg, #667eea 0%, #4c63d2 100%); }
+.bg-gradient-green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.bg-gradient-purple { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
+.bg-gradient-orange { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+
+.quick-stat-body {
+  flex: 1;
+  color: white;
+}
+
+.quick-stat-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.quick-stat-label {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+/* Activity Timeline */
+.activity-timeline {
+  background: white;
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.timeline-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.timeline-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.timeline-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.timeline-stat-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  position: relative;
+}
+
+.timeline-stat-circle::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.5), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.bg-info { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+.bg-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.bg-purple { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
+
+.timeline-stat-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+.timeline-connector {
+  flex: 0.5;
+  height: 4px;
+  background: linear-gradient(90deg, #e2e8f0 0%, #cbd5e1 50%, #e2e8f0 100%);
+  border-radius: 2px;
+  position: relative;
+  top: -35px;
+}
+
+/* Quick Navigation */
+.quick-navigation {
+  background: white;
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.nav-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+
+/* Quick Navigation 카드 스타일 (사이드바 nav-item과 충돌 방지) */
+.quick-navigation .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: #f8fafc;
+  border-radius: 1.25rem;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.quick-navigation .nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 0%, rgba(99, 102, 241, 0.05) 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.quick-navigation .nav-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.1);
+  border-color: #6366f1;
+  text-decoration: none;
+}
+
+.quick-navigation .nav-item:hover::before {
+  opacity: 1;
+}
+
+.quick-navigation .nav-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  color: white;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-navigation .nav-customers .nav-icon { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); }
+.quick-navigation .nav-calendar .nav-icon { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.quick-navigation .nav-history .nav-icon { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+.quick-navigation .nav-funnel .nav-icon { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
+.quick-navigation .nav-prepayment .nav-icon { background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%); }
+.quick-navigation .nav-delivery .nav-icon { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+
+.quick-navigation .nav-content {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-navigation .nav-label {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+}
+
+.quick-navigation .nav-count {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.quick-navigation .nav-arrow {
+  font-size: 1.25rem;
+  color: #cbd5e1;
+  transition: all 0.3s;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-navigation .nav-item:hover .nav-arrow {
   color: #6366f1;
-  border-color: #6366f1;
+  transform: translateX(4px);
 }
 
-.stat-btn:hover {
-  transform: scale(1.05);
+/* Responsive */
+@media (max-width: 1200px) {
+  .quick-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .nav-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-primary {
+    flex-direction: column;
+    text-align: center;
+  }
+  .hero-value {
+    font-size: 3rem;
+  }
+  .quick-stats {
+    grid-template-columns: 1fr;
+  }
+  .timeline-stats {
+    flex-direction: column;
+    gap: 2rem;
+  }
+  .timeline-connector {
+    display: none;
+  }
+  .nav-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 빠른 액션 */
@@ -307,167 +695,242 @@
 </div>
 {% endif %}
 
-<!-- 통계 카드 -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon primary"><i class="fas fa-handshake"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">고객 정보</div>
-        <div class="stat-value">{{ followup_count }}</div>
-        <div class="stat-subtitle">건</div>
+<!-- 🎯 NEW: 인포그래픽 대시보드 -->
+<div class="infographic-dashboard">
+  <!-- Hero Section: 오늘의 핵심 지표 -->
+  <div class="hero-metrics">
+    <div class="hero-primary">
+      <div class="hero-icon">
+        <i class="fas fa-trophy"></i>
       </div>
-    </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:followup_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
-      <a href="{% url 'reporting:followup_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
-    </div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon success"><i class="fas fa-calendar-alt"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">진행 일정</div>
-        <div class="stat-value">{{ schedule_count }}</div>
-        <div class="stat-subtitle">건</div>
-      </div>
-    </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:schedule_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
-      <a href="{% url 'reporting:schedule_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
-    </div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon info"><i class="fas fa-history"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">영업 기록</div>
-        <div class="stat-value">{{ sales_record_count }}</div>
-        <div class="stat-subtitle">{{ current_year }}년</div>
-      </div>
-    </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}?{% if view_all %}view_all=true{% elif selected_user %}user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 기록</a>
-      <a href="{% url 'reporting:history_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
-    </div>
-  </div>
-
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon warning"><i class="fas fa-won-sign"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">총 납품 금액</div>
-        <div class="stat-value">
+      <div class="hero-content">
+        <div class="hero-label">{{ current_year }}년 총 납품 실적</div>
+        <div class="hero-value">
           {% load currency_filters %}
-          {% if total_delivery_amount > 0 %}{{ total_delivery_amount|currency_format }}{% else %}0{% endif %}
+          {{ total_delivery_amount|currency_format|default:"0" }}
         </div>
-        <div class="stat-subtitle">{{ delivery_count }}건 / {{ current_year }}년</div>
-      </div>
-    </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-primary" style="flex: 1 1 100%;"><i class="fas fa-truck"></i> 납품 기록</a>
-    </div>
-  </div>
-
-  {% if request.is_hanagwahak %}
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon purple"><i class="fas fa-concierge-bell"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">서비스</div>
-        <div class="stat-value">{{ service_count }}</div>
-        <div class="stat-subtitle">{{ current_year }}년 / 이번 달 {{ this_month_service_count }}건</div>
-      </div>
-    </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:history_list' %}?action_type=service{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
-      <a href="{% url 'reporting:history_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 추가</a>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- 선결제 카드 -->
-  <div class="stat-card">
-    <div class="stat-header">
-      <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);"><i class="fas fa-wallet"></i></div>
-      <div class="stat-info">
-        <div class="stat-label">선결제 잔액</div>
-        <div class="stat-value">
-          {% load currency_filters %}
-          {{ prepayment_stats.total_balance|currency_format|default:"0" }}
+        <div class="hero-meta">
+          <span class="meta-item">
+            <i class="fas fa-box"></i> {{ delivery_count }}건 완료
+          </span>
+          <span class="meta-item {% if meeting_to_delivery_rate >= 15 %}text-success{% elif meeting_to_delivery_rate >= 10 %}text-warning{% else %}text-danger{% endif %}" title="고객 미팅 대비 납품 전환율">
+            <i class="fas fa-handshake"></i> 미팅→납품 {{ meeting_to_delivery_rate|floatformat:1 }}%
+          </span>
+          <span class="meta-item {% if quote_to_delivery_rate >= 50 %}text-success{% elif quote_to_delivery_rate >= 30 %}text-warning{% else %}text-danger{% endif %}" title="견적 제출 대비 납품 전환율">
+            <i class="fas fa-file-invoice"></i> 견적→납품 {{ quote_to_delivery_rate|floatformat:1 }}%
+          </span>
         </div>
-        <div class="stat-subtitle">사용 가능 {{ prepayment_stats.active_count }}건</div>
       </div>
     </div>
-    <div class="stat-actions">
-      <a href="{% url 'reporting:prepayment_list' %}" class="stat-btn stat-btn-outline"><i class="fas fa-list"></i> 목록</a>
-      <a href="{% url 'reporting:prepayment_create' %}" class="stat-btn stat-btn-primary"><i class="fas fa-plus"></i> 등록</a>
+
+    <!-- Quick Stats Grid -->
+    <div class="quick-stats">
+      <a href="{% url 'reporting:schedule_list' %}?schedule_type=quote&status=pending{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
+        <div class="quick-stat-icon bg-gradient-blue">
+          <i class="fas fa-file-invoice"></i>
+        </div>
+        <div class="quick-stat-body">
+          <div class="quick-stat-value">{{ quote_count|default:"0" }}</div>
+          <div class="quick-stat-label">처리해야할 견적</div>
+        </div>
+      </a>
+
+      <a href="{% url 'reporting:schedule_list' %}?status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
+        <div class="quick-stat-icon bg-gradient-green">
+          <i class="fas fa-calendar-check"></i>
+        </div>
+        <div class="quick-stat-body">
+          <div class="quick-stat-value">{{ schedule_count }}</div>
+          <div class="quick-stat-label">예정 일정</div>
+        </div>
+      </a>
+
+      <a href="{% url 'reporting:schedule_list' %}?activity_type=delivery&start_date={{ month_start|date:'Y-m-d' }}&end_date={{ month_end|date:'Y-m-d' }}{% if selected_user %}&user={{ selected_user.id }}{% endif %}" class="quick-stat">
+        <div class="quick-stat-icon bg-gradient-purple">
+          <i class="fas fa-calendar-day"></i>
+        </div>
+        <div class="quick-stat-body">
+          <div class="quick-stat-value">{{ monthly_revenue|currency_format|default:"0" }}</div>
+          <div class="quick-stat-label">이번 달 매출</div>
+        </div>
+      </a>
+
+      <div class="quick-stat">
+        <div class="quick-stat-icon bg-gradient-orange">
+          <i class="fas fa-calendar-alt"></i>
+        </div>
+        <div class="quick-stat-body">
+          <div class="quick-stat-value">{{ total_delivery_amount|currency_format|default:"0" }}</div>
+          <div class="quick-stat-label">올해 매출</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Timeline: 이번 달 활동 -->
+  <div class="activity-timeline">
+    <h3 class="timeline-title">
+      <i class="fas fa-calendar-alt"></i> 이번 달 활동 현황
+    </h3>
+    <div class="timeline-stats">
+      <div class="timeline-stat">
+        <div class="timeline-stat-circle bg-info">
+          <span>{{ monthly_meetings|default:"0" }}회</span>
+        </div>
+        <div class="timeline-stat-label">미팅 진행</div>
+      </div>
+      <div class="timeline-connector"></div>
+      <div class="timeline-stat">
+        <div class="timeline-stat-circle bg-primary">
+          <span>{{ monthly_quote_count|default:"0" }}건</span>
+        </div>
+        <div class="timeline-stat-label">견적 횟수</div>
+      </div>
+      <div class="timeline-connector"></div>
+      <div class="timeline-stat">
+        <div class="timeline-stat-circle bg-success">
+          <span>{{ monthly_delivery_count|default:"0" }}건</span>
+        </div>
+        <div class="timeline-stat-label">납품 횟수</div>
+      </div>
+      <div class="timeline-connector"></div>
+      <div class="timeline-stat">
+        <div class="timeline-stat-circle bg-warning">
+          <span>{{ prepayment_stats.monthly_count|default:"0" }}건</span>
+        </div>
+        <div class="timeline-stat-label">선결제 횟수</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 평균 리드 타임 & 제품별 매출 비중 -->
+  <div class="row mt-4">
+    <!-- 평균 리드 타임 -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm border-0" style="border-radius: 1rem;">
+        <div class="card-body p-4">
+          <h5 class="card-title mb-4 d-flex align-items-center">
+            <i class="fas fa-clock text-info me-2"></i> 평균 리드 타임 (견적→납품)
+          </h5>
+          
+          {% if lead_time_analysis.total_cases > 0 %}
+          <div class="row text-center mb-4">
+            <div class="col-4">
+              <div class="p-3 bg-light rounded">
+                <h3 class="text-primary mb-1">{{ lead_time_analysis.average_days }}</h3>
+                <small class="text-muted">평균 (일)</small>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 bg-light rounded">
+                <h3 class="text-success mb-1">{{ lead_time_analysis.min_days }}</h3>
+                <small class="text-muted">최소 (일)</small>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 bg-light rounded">
+                <h3 class="text-danger mb-1">{{ lead_time_analysis.max_days }}</h3>
+                <small class="text-muted">최대 (일)</small>
+              </div>
+            </div>
+          </div>
+          
+          <hr>
+          
+          <h6 class="mb-3">리드 타임 상위 5건</h6>
+          <div style="max-height: 250px; overflow-y: auto;">
+            {% for detail in lead_time_analysis.details|slice:":5" %}
+            <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded">
+              <div>
+                <strong>{{ detail.customer_name }}</strong>
+                <small class="text-muted d-block">{{ detail.company_name }}</small>
+              </div>
+              <div class="text-end">
+                <span class="badge bg-primary">{{ detail.lead_time_days }}일</span>
+                <small class="text-muted d-block">{{ detail.quote_date }} → {{ detail.delivery_date }}</small>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          
+          <div class="mt-3 text-center">
+            <small class="text-muted">총 {{ lead_time_analysis.total_cases }}건의 견적→납품 데이터 분석</small>
+          </div>
+          {% else %}
+          <div class="text-center py-5">
+            <i class="fas fa-clock fa-3x text-muted mb-3"></i>
+            <p class="text-muted">견적에서 납품까지 완료된 데이터가 없습니다.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 제품군별 매출 비중 -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm border-0" style="border-radius: 1rem;">
+        <div class="card-body p-4">
+          <h5 class="card-title mb-4 d-flex align-items-center">
+            <i class="fas fa-box-open text-success me-2"></i> 제품군별 매출 비중
+          </h5>
+          
+          {% if product_sales_distribution.product_count > 0 %}
+          <div style="height: 200px; margin-bottom: 1rem;">
+            <canvas id="productSalesChart"></canvas>
+          </div>
+          
+          <hr>
+          
+          <h6 class="mb-3">제품별 상세 (상위 5개)</h6>
+          <div style="max-height: 200px; overflow-y: auto;">
+            {% for product in product_sales_distribution.top_5 %}
+            <div class="mb-2 p-2 bg-light rounded">
+              <div class="d-flex justify-content-between align-items-start mb-1">
+                <div>
+                  <strong style="font-size: 0.9rem;">{{ product.product_name }}</strong>
+                  {% if product.product_description %}
+                  <small class="text-muted d-block" style="font-size: 0.75rem;">{{ product.product_description|truncatechars:30 }}</small>
+                  {% endif %}
+                </div>
+                <span class="badge bg-success">{{ product.percentage }}%</span>
+              </div>
+              <div class="row small text-muted" style="font-size: 0.75rem;">
+                <div class="col-4">
+                  매출: {{ product.total_revenue|floatformat:0|intcomma }}원
+                </div>
+                <div class="col-4">
+                  수량: {{ product.quantity }}개
+                </div>
+                <div class="col-4">
+                  주문: {{ product.order_count }}건
+                </div>
+              </div>
+              <div class="progress mt-1" style="height: 4px;">
+                <div class="progress-bar bg-success" style="width: {{ product.percentage }}%"></div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          
+          <div class="mt-3 text-center">
+            <small class="text-muted">
+              총 {{ product_sales_distribution.product_count }}개 제품 | 
+              전체 매출: {{ product_sales_distribution.total_revenue|floatformat:0|intcomma }}원
+            </small>
+          </div>
+          {% else %}
+          <div class="text-center py-5">
+            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+            <p class="text-muted">제품별 매출 데이터가 없습니다.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- 빠른 액션 -->
-<div class="quick-actions">
-  <h2 class="section-title"><i class="fas fa-bolt"></i> 빠른 액션</h2>
-  <div class="actions-grid">
-    <a href="{% url 'reporting:followup_create' %}" class="action-btn"><i class="fas fa-user-plus action-icon"></i><span>새 고객 추가</span></a>
-    <a href="{% url 'reporting:schedule_create' %}" class="action-btn"><i class="fas fa-calendar-plus action-icon"></i><span>일정 추가</span></a>
-    <a href="{% url 'reporting:schedule_calendar' %}{% if view_all %}?view_all=true{% elif selected_user %}?user_id={{ selected_user.id }}{% endif %}" class="action-btn"><i class="fas fa-calendar action-icon"></i><span>캘린더 보기</span></a>
-    <a href="{% url 'reporting:history_create' %}" class="action-btn"><i class="fas fa-plus-circle action-icon"></i><span>영업 기록</span></a>
-    {% if request.is_hanagwahak %}
-    <a href="{% url 'reporting:history_create' %}" class="action-btn"><i class="fas fa-concierge-bell action-icon"></i><span>서비스 기록</span></a>
-    {% endif %}
-    <a href="{% url 'reporting:schedule_list' %}?status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="action-btn"><i class="fas fa-clock action-icon"></i><span>오늘 일정</span></a>
-  </div>
-</div>
-
-<!-- 성과 지표 -->
-<h2 class="section-title"><i class="fas fa-trophy" style="color: #fbbf24;"></i> 성과 지표 대시보드</h2>
-<div class="performance-grid">
-  <div class="performance-card bg-success">
-    <i class="fas fa-trophy performance-icon"></i>
-    <div class="performance-value">
-      {% load currency_filters %}
-      {{ monthly_revenue|currency_format|default:"0" }}원
-    </div>
-    <div class="performance-label">이번 달 납품액</div>
-  </div>
-
-  <div class="performance-card bg-info">
-    <i class="fas fa-handshake performance-icon"></i>
-    <div class="performance-value">{{ monthly_meetings|default:"0" }}회</div>
-    <div class="performance-label">이번 달 미팅</div>
-  </div>
-
-  <div class="performance-card bg-warning">
-    <i class="fas fa-percentage performance-icon"></i>
-    <div class="performance-value">{{ conversion_rate|floatformat:1|default:"0" }}%</div>
-    <div class="performance-label">납품 전환율</div>
-  </div>
-
-  <div class="performance-card bg-primary">
-    <i class="fas fa-chart-line performance-icon"></i>
-    <div class="performance-value">{{ avg_deal_size|currency_format|default:"0" }}원</div>
-    <div class="performance-label">평균 거래 규모</div>
-  </div>
-
-  <!-- 선결제 통계 카드 -->
-  <div class="performance-card" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
-    <i class="fas fa-wallet performance-icon"></i>
-    <div class="performance-value">{{ prepayment_stats.total_balance|currency_format|default:"0" }}원</div>
-    <div class="performance-label">선결제 잔액 ({{ prepayment_stats.active_count }}건)</div>
-  </div>
-
-  <div class="performance-card" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);">
-    <i class="fas fa-credit-card performance-icon"></i>
-    <div class="performance-value">{{ prepayment_stats.total_used|currency_format|default:"0" }}원</div>
-    <div class="performance-label">선결제 사용액 (총 {{ prepayment_stats.total_count }}건)</div>
-  </div>
-</div>
-
-<!-- 📊 새로운 분석 차트 그리드 -->
+<!-- 📊 분석 차트 섹션 -->
 <h2 class="section-title" style="margin-top: 3rem;"><i class="fas fa-chart-bar" style="color: #6366f1;"></i> 영업 분석 대시보드</h2>
 
 <!-- 1행: 매출 추이 & 영업 퍼널 -->
@@ -493,7 +956,7 @@
   </div>
 </div>
 
-<!-- 2행: 고객사별 매출 & 서비스/영업 트렌드 -->
+<!-- 2행: 고객사별 매출 & 고객 유형별 통계 -->
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
   <!-- 3. 고객사별 매출 비중 (Doughnut) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
@@ -505,35 +968,12 @@
     </div>
   </div>
 
-  <!-- 4. 영업 활동 추이 (Line Chart) -->
-  <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-    <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
-      <i class="fas fa-chart-line" style="color: #8b5cf6;"></i> 영업 활동 추이
-    </h3>
-    <div style="position: relative; height: 300px;">
-      <canvas id="serviceVsSalesChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- 3행: 개인 성과 & 고객 유형별 -->
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-  <!-- 5. 개인 성과 지표 추세 (Multi Line) -->
-  <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-    <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
-      <i class="fas fa-user-chart" style="color: #06b6d4;"></i> 개인 성과 지표 추세
-    </h3>
-    <div style="position: relative; height: 250px;">
-      <canvas id="personalPerformanceChart"></canvas>
-    </div>
-  </div>
-
-  <!-- 6. 고객 유형별 통계 (Grouped Bar) -->
+  <!-- 4. 고객 유형별 통계 (Grouped Bar) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
       <i class="fas fa-users" style="color: #ef4444;"></i> 고객 유형별 통계
     </h3>
-    <div style="position: relative; height: 250px;">
+    <div style="position: relative; height: 300px;">
       <canvas id="customerTypeChart"></canvas>
     </div>
   </div>
@@ -551,6 +991,138 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  
+  // 🔥 FORCE FIX: 사이드바 겹침 문제 강제 해결
+  const sidebar = document.querySelector('aside.sidebar#sidebar');
+  const mainContent = document.querySelector('.main-content');
+  const infographicDashboard = document.querySelector('.infographic-dashboard');
+  
+  if (sidebar) {
+    sidebar.style.display = 'block';
+    sidebar.style.position = 'fixed';
+    sidebar.style.left = '0';
+    sidebar.style.top = '0';
+    sidebar.style.width = '260px';
+    sidebar.style.zIndex = '9999';  // 최상위
+    sidebar.style.pointerEvents = 'auto';  // 클릭 가능
+    console.log('✅ Sidebar forced to top with z-index 9999');
+  }
+  
+  if (mainContent) {
+    mainContent.style.marginLeft = '260px';
+    mainContent.style.position = 'relative';
+    mainContent.style.zIndex = '1';
+    mainContent.style.width = 'calc(100% - 260px)';  // 사이드바 제외한 너비
+    
+    console.log('🔧 Main content width limited to avoid sidebar');
+  }
+  
+  if (infographicDashboard) {
+    infographicDashboard.style.position = 'relative';
+    infographicDashboard.style.zIndex = '1';
+    infographicDashboard.style.marginLeft = '0';
+    infographicDashboard.style.maxWidth = '100%';
+    infographicDashboard.style.overflow = 'visible';
+  }
+  
+  // 🎯 모든 카드들이 사이드바 영역 침범 못하도록
+  const allCards = document.querySelectorAll('.hero-metrics, .activity-timeline, .quick-navigation, .infographic-dashboard > *');
+  allCards.forEach(card => {
+    card.style.position = 'relative';
+    card.style.zIndex = '1';
+    card.style.marginLeft = '0';
+    card.style.maxWidth = '100%';
+  });
+  
+  console.log('✅ All cards prevented from overlapping sidebar');
+  
+  // 🐛 클릭 디버깅
+  setTimeout(() => {
+    console.log('========== CLICK DEBUG ==========');
+    
+    // 사이드바 위치 확인
+    if (sidebar) {
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const sidebarStyle = window.getComputedStyle(sidebar);
+      console.log('📍 Sidebar Info:', {
+        position: sidebarStyle.position,
+        zIndex: sidebarStyle.zIndex,
+        pointerEvents: sidebarStyle.pointerEvents,
+        display: sidebarStyle.display,
+        visibility: sidebarStyle.visibility,
+        opacity: sidebarStyle.opacity,
+        rect: {
+          left: sidebarRect.left,
+          top: sidebarRect.top,
+          width: sidebarRect.width,
+          height: sidebarRect.height
+        }
+      });
+      
+      // 사이드바 중앙 지점 클릭 테스트
+      const centerX = 130;
+      const centerY = 200;
+      const elementAtCenter = document.elementFromPoint(centerX, centerY);
+      console.log(`🎯 Element at sidebar center (${centerX}, ${centerY}):`, {
+        element: elementAtCenter,
+        tagName: elementAtCenter?.tagName,
+        className: elementAtCenter?.className,
+        isSidebar: elementAtCenter === sidebar,
+        isSidebarChild: sidebar?.contains(elementAtCenter)
+      });
+      
+      // 첫 번째 nav-link 테스트
+      const firstNavLink = sidebar.querySelector('.nav-link');
+      if (firstNavLink) {
+        const linkRect = firstNavLink.getBoundingClientRect();
+        const linkStyle = window.getComputedStyle(firstNavLink);
+        console.log('🔗 First nav-link:', {
+          href: firstNavLink.href,
+          zIndex: linkStyle.zIndex,
+          pointerEvents: linkStyle.pointerEvents,
+          position: linkStyle.position,
+          display: linkStyle.display,
+          rect: linkRect
+        });
+        
+        const linkCenterX = linkRect.left + linkRect.width / 2;
+        const linkCenterY = linkRect.top + linkRect.height / 2;
+        const elementAtLink = document.elementFromPoint(linkCenterX, linkCenterY);
+        console.log(`🎯 Element at nav-link center (${linkCenterX.toFixed(0)}, ${linkCenterY.toFixed(0)}):`, {
+          element: elementAtLink,
+          tagName: elementAtLink?.tagName,
+          className: elementAtLink?.className,
+          isLink: elementAtLink === firstNavLink,
+          isLinkChild: firstNavLink?.contains(elementAtLink)
+        });
+      }
+    }
+    
+    // 모든 요소의 z-index 확인
+    const allElements = document.querySelectorAll('*');
+    const highZIndexElements = [];
+    allElements.forEach(el => {
+      const zIndex = parseInt(window.getComputedStyle(el).zIndex);
+      if (zIndex > 9000) {
+        const rect = el.getBoundingClientRect();
+        if (rect.left < 260) {  // 사이드바 영역과 겹치는 요소만
+          highZIndexElements.push({
+            element: el,
+            tagName: el.tagName,
+            className: el.className,
+            zIndex: zIndex,
+            rect: rect
+          });
+        }
+      }
+    });
+    
+    if (highZIndexElements.length > 0) {
+      console.warn('⚠️ Elements with high z-index overlapping sidebar area:', highZIndexElements);
+    }
+    
+    console.log('===================================');
+  }, 1500);
   
   // ============================================
   // 1️⃣ 매출 및 납품 추이 (Combo Chart: Bar + Line)
@@ -724,146 +1296,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ============================================
-  // 4️⃣ 영업 활동 추이 (Line Chart)
-  // ============================================
-  const serviceVsSalesCtx = document.getElementById('serviceVsSalesChart');
-  if (serviceVsSalesCtx) {
-    {% if monthly_activity_breakdown.labels|length > 0 %}
-    const months = {{ monthly_activity_breakdown.labels|safe }};
-    const salesActivities = {{ monthly_activity_breakdown.sales|safe }};
-
-    new Chart(serviceVsSalesCtx, {
-      type: 'line',
-      data: {
-        labels: months,
-        datasets: [
-          {
-            label: '영업 활동',
-            data: salesActivities,
-            backgroundColor: 'rgba(99, 102, 241, 0.1)',
-            borderColor: 'rgba(99, 102, 241, 1)',
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 5,
-            pointBackgroundColor: '#6366f1',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                return '영업 활동: ' + context.parsed.y + '건';
-              }
-            }
-          }
-        },
-        scales: {
-          y: { 
-            beginAtZero: true,
-            title: { display: true, text: '활동 건수' }
-          }
-        }
-      }
-    });
-    {% else %}
-    serviceVsSalesCtx.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.875rem;">데이터가 없습니다</div>';
-    {% endif %}
-  }
-
-  // ============================================
-  // 5️⃣ 개인 성과 지표 추세 (Multi-Line Chart)
-  // ============================================
-  const personalPerformanceCtx = document.getElementById('personalPerformanceChart');
-  if (personalPerformanceCtx) {
-    {% if performance_trends.labels|length > 0 %}
-    const months = {{ performance_trends.labels|safe }};
-    const deliveryAmounts = {{ performance_trends.delivery_amount|safe }};
-    const conversionRates = {{ performance_trends.conversion_rate|safe }};
-    const avgDealSizes = {{ performance_trends.avg_deal_size|safe }};
-
-    new Chart(personalPerformanceCtx, {
-      type: 'line',
-      data: {
-        labels: months,
-        datasets: [
-          {
-            label: '납품액 (백만원)',
-            data: deliveryAmounts,
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99, 102, 241, 0.1)',
-            borderWidth: 3,
-            tension: 0.4,
-            fill: true,
-            yAxisID: 'y-amount'
-          },
-          {
-            label: '전환율 (%)',
-            data: conversionRates,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            borderWidth: 3,
-            tension: 0.4,
-            fill: false,
-            yAxisID: 'y-rate'
-          },
-          {
-            label: '평균 거래 규모 (백만원)',
-            data: avgDealSizes,
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-            borderWidth: 3,
-            tension: 0.4,
-            fill: false,
-            yAxisID: 'y-size'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: true, position: 'top' }
-        },
-        scales: {
-          'y-amount': {
-            type: 'linear',
-            position: 'left',
-            beginAtZero: true,
-            title: { display: true, text: '납품액 (백만원)', color: '#6366f1' }
-          },
-          'y-rate': {
-            type: 'linear',
-            position: 'right',
-            beginAtZero: true,
-            max: 100,
-            title: { display: true, text: '전환율 (%)', color: '#10b981' },
-            grid: { drawOnChartArea: false }
-          },
-          'y-size': {
-            type: 'linear',
-            position: 'right',
-            beginAtZero: true,
-            display: false
-          }
-        }
-      }
-    });
-    {% else %}
-    personalPerformanceCtx.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.875rem;">데이터가 없습니다</div>';
-    {% endif %}
-  }
-
-  // ============================================
   // 6️⃣ 고객 유형별 통계 (Grouped Bar Chart)
   // ============================================
   const customerTypeCtx = document.getElementById('customerTypeChart');
@@ -1001,5 +1433,63 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
   }
 });
+
+// 제품별 매출 차트
+const productData = {{ product_chart_data|safe }};
+if (productData.labels && productData.labels.length > 0) {
+  const productCtx = document.getElementById('productSalesChart');
+  if (productCtx) {
+    new Chart(productCtx.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: productData.labels,
+        datasets: [{
+          data: productData.data,
+          backgroundColor: [
+            'rgba(16, 185, 129, 0.8)',
+            'rgba(59, 130, 246, 0.8)',
+            'rgba(245, 158, 11, 0.8)',
+            'rgba(239, 68, 68, 0.8)',
+            'rgba(139, 92, 246, 0.8)'
+          ],
+          borderColor: [
+            'rgb(16, 185, 129)',
+            'rgb(59, 130, 246)',
+            'rgb(245, 158, 11)',
+            'rgb(239, 68, 68)',
+            'rgb(139, 92, 246)'
+          ],
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              padding: 10,
+              font: {
+                size: 11
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.parsed || 0;
+                const percentage = productData.percentages[context.dataIndex];
+                return label + ': ' + value.toLocaleString() + '원 (' + percentage + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
 </script>
 {% endblock %}

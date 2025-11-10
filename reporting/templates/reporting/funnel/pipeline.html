@@ -1,5 +1,6 @@
 {% extends 'reporting/base.html' %}
 {% load static %}
+{% load currency_filters %}
 
 {% block extra_css %}
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -260,22 +261,23 @@
                         <i class="fas fa-columns text-primary"></i> 파이프라인 보드
                     </h2>
                     <div class="d-flex gap-2">
-                        {% if users %}
+                        {% if salesman_users %}
                         <div class="btn-group">
-                            <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
-                                <i class="fas fa-filter"></i> 
-                                {% if filter_user %}{{ filter_user.username }}{% else %}전체 사용자{% endif %}
+                            <a href="?view_all=true" class="btn {% if view_all %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                <i class="fas fa-users"></i> 전체보기
+                            </a>
+                            <button type="button" class="btn {% if selected_user %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="fas fa-user"></i> 
+                                {% if selected_user %}{{ selected_user.username }}{% else %}실무자 선택{% endif %}
                             </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="?">전체 사용자</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                {% for user in users %}
-                                <li><a class="dropdown-item" href="?user={{ user.id }}">{{ user.username }}</a></li>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                {% for user in salesman_users %}
+                                <li><a class="dropdown-item {% if selected_user.id == user.id %}active{% endif %}" href="?user_id={{ user.id }}">{{ user.username }}</a></li>
                                 {% endfor %}
                             </ul>
                         </div>
                         {% endif %}
-                        <a href="{% url 'reporting:funnel_dashboard' %}" class="btn btn-outline-secondary">
+                        <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% elif selected_user %}?user_id={{ selected_user.id }}{% endif %}" class="btn btn-outline-secondary">
                             <i class="fas fa-chart-line"></i> 대시보드
                         </a>
                     </div>
@@ -309,13 +311,13 @@
                         <i class="fas fa-building"></i> {{ opp.company_name }}
                     </div>
                     <div class="opp-revenue">
-                        예상: {{ opp.expected_revenue|floatformat:0 }}원
+                        예상: {{ opp.expected_revenue|currency_format }}원
                     </div>
                     <div class="opp-revenue" style="color: #007bff;">
-                        수주: {{ opp.backlog_amount|floatformat:0 }}원
+                        수주: {{ opp.backlog_amount|currency_format }}원
                     </div>
                     <div class="opp-weighted">
-                        가중: {{ opp.weighted_revenue|floatformat:0 }}원
+                        가중: {{ opp.weighted_revenue|currency_format }}원
                     </div>
                     <div class="probability-bar">
                         <div class="probability-fill" style="width: {{ opp.probability }}%;"></div>
@@ -348,7 +350,7 @@
                     <i class="fas fa-calculator"></i> 단계 합계
                 </div>
                 <div class="column-total-amount">
-                    {{ stage_data.total_weighted|floatformat:0 }}원
+                    {{ stage_data.total_weighted|currency_format }}원
                 </div>
                 <div class="text-muted small mt-1">
                     (가중치 적용)

@@ -1,5 +1,6 @@
 {% extends 'reporting/base.html' %}
 {% load static %}
+{% load currency_filters %}
 
 {% block extra_css %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -145,18 +146,21 @@
                 </h1>
                 <p class="mb-0 opacity-90">영업 파이프라인 전체 현황을 한눈에 확인하세요</p>
             </div>
-            {% if users %}
+            {% if salesman_users %}
             <div class="filter-btn-group">
                 <div class="btn-group">
-                    <button type="button" class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" style="font-weight: 600;">
-                        <i class="fas fa-filter"></i> 
-                        {% if filter_user %}{{ filter_user.username }}{% else %}전체 사용자{% endif %}
+                    <a href="?view_all=true" class="btn {% if view_all %}btn-primary{% else %}btn-light{% endif %}" style="font-weight: 600;">
+                        <i class="fas fa-users"></i> 전체보기
+                    </a>
+                    <button type="button" class="btn {% if selected_user %}btn-primary{% else %}btn-light{% endif %} dropdown-toggle" data-bs-toggle="dropdown" style="font-weight: 600;">
+                        <i class="fas fa-user"></i> 
+                        {% if selected_user %}{{ selected_user.username }}{% else %}실무자 선택{% endif %}
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="?"><i class="fas fa-users me-2"></i>전체 사용자</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        {% for user in users %}
-                        <li><a class="dropdown-item" href="?user={{ user.id }}"><i class="fas fa-user me-2"></i>{{ user.username }}</a></li>
+                        {% for user in salesman_users %}
+                        <li><a class="dropdown-item {% if selected_user.id == user.id %}active{% endif %}" href="?user_id={{ user.id }}">
+                            <i class="fas fa-user me-2"></i>{{ user.username }}
+                        </a></li>
                         {% endfor %}
                     </ul>
                 </div>
@@ -192,7 +196,7 @@
                         <div>
                             <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">예상 매출</small>
                             <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #28a745 0%, #218838 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.total_expected|floatformat:0 }}
+                                {{ pipeline_summary.total_expected|currency_format }}
                             </h3>
                             <small class="text-muted">원</small>
                         </div>
@@ -208,9 +212,9 @@
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
-                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">가중 매출</small>
-                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.total_weighted|floatformat:0 }}
+                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">가중 예상</small>
+                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                                {{ pipeline_summary.total_weighted|currency_format }}
                             </h3>
                             <small class="text-muted">원</small>
                         </div>
@@ -271,7 +275,7 @@
                     </div>
                     <div class="mt-4 p-3" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; border-left: 4px solid #667eea;">
                         <strong style="color: #2d3748;">총 수주 금액:</strong> 
-                        <span style="font-size: 1.3rem; font-weight: 700; color: #28a745;">{{ won_lost_summary.won_revenue|floatformat:0 }}원</span>
+                        <span style="font-size: 1.3rem; font-weight: 700; color: #28a745;">{{ won_lost_summary.won_revenue|currency_format }}원</span>
                     </div>
                 </div>
             </div>
@@ -328,7 +332,7 @@
                                         </span>
                                     </td>
                                     <td class="text-end">{{ stage.count }}</td>
-                                    <td class="text-end">{{ stage.weighted_value|floatformat:0 }}</td>
+                                    <td class="text-end">{{ stage.weighted_value|currency_format }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -361,16 +365,16 @@
                                     </span>
                                 </div>
                                 <div class="col-md-2 text-end">
-                                    <strong style="font-size: 1.15rem; color: #28a745;">{{ opp.expected_revenue|floatformat:0 }}</strong>원<br>
+                                    <strong style="font-size: 1.15rem; color: #28a745;">{{ opp.expected_revenue|currency_format }}</strong>원<br>
                                     <small class="text-muted fw-semibold">예상 매출</small>
                                 </div>
                                 <div class="col-md-2 text-end">
-                                    <strong style="font-size: 1.15rem; color: #007bff;">{{ opp.backlog_amount|floatformat:0 }}</strong>원<br>
+                                    <strong style="font-size: 1.15rem; color: #007bff;">{{ opp.backlog_amount|currency_format }}</strong>원<br>
                                     <small class="text-muted fw-semibold">수주</small>
                                 </div>
                                 <div class="col-md-2 text-end">
                                     <strong style="font-size: 1.15rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                        {{ opp.weighted_revenue|floatformat:0 }}
+                                        {{ opp.weighted_revenue|currency_format }}
                                     </strong>원<br>
                                     <small class="text-muted fw-semibold">가중 매출</small>
                                 </div>

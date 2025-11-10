@@ -18,15 +18,7 @@
             <i class="fas fa-arrow-left me-1"></i>목록으로
           </a>
           {% if user.is_authenticated and user == history.user and user.userprofile.role != 'manager' %}
-            {% if history.followup or history.action_type != 'memo' %}
-              <!-- 팔로우업이 있거나 메모가 아닌 경우 기존 수정/삭제 버튼 -->
-              <a
-                href="{% url 'reporting:history_edit' history.pk %}"
-                class="btn btn-outline-primary me-2"
-              >
-                <i class="fas fa-edit me-1"></i>수정
-              </a>
-            {% else %}
+            {% if not history.followup and history.action_type == 'memo' %}
               <!-- 팔로우업이 없는 메모의 경우 인라인 편집 버튼 -->
               <button
                 id="edit-memo-btn"
@@ -52,13 +44,6 @@
                 <i class="fas fa-times me-1"></i>취소
               </button>
             {% endif %}
-            <a
-              href="{% url 'reporting:history_delete' history.pk %}"
-              class="btn btn-outline-danger"
-              onclick="return confirm('정말로 이 활동 기록을 삭제하시겠습니까?\\n\\n삭제된 데이터는 복구할 수 없습니다.')"
-            >
-              <i class="fas fa-trash me-1"></i>삭제
-            </a>
           {% endif %}
         </div>
       </div>

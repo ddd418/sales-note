@@ -291,3 +291,119 @@ class FunnelAnalytics:
             'lost_count': lost_summary['count'],
             'win_rate': round(win_rate, 1)
         }
+    
+    @staticmethod
+    def get_average_lead_time(user=None):
+        """평균 리드 타임 분석 (견적~납품 소요일)"""
+        from .models import Schedule
+        
+        # 견적 일정과 납품 일정을 가진 팔로우업들
+        lead_times = []
+        
+        followups_with_schedules = FollowUp.objects.prefetch_related('schedules').all()
+        if user:
+            followups_with_schedules = followups_with_schedules.filter(user=user)
+        
+        for followup in followups_with_schedules:
+            # 해당 팔로우업의 견적 일정들
+            quote_schedules = followup.schedules.filter(activity_type='quote').order_by('visit_date')
+            # 해당 팔로우업의 납품 일정들
+            delivery_schedules = followup.schedules.filter(activity_type='delivery').order_by('visit_date')
+            
+            if quote_schedules.exists() and delivery_schedules.exists():
+                # 첫 견적 날짜
+                first_quote_date = quote_schedules.first().visit_date
+                # 첫 납품 날짜
+                first_delivery_date = delivery_schedules.first().visit_date
+                
+                # 리드 타임 계산 (일 수)
+                lead_time_days = (first_delivery_date - first_quote_date).days
+                
+                # 음수가 아닌 경우만 (견적이 납품보다 먼저인 경우)
+                if lead_time_days >= 0:
+                    lead_times.append({
+                        'followup': followup,
+                        'customer_name': followup.customer_name,
+                        'company_name': followup.company.name if followup.company else '업체명 미정',
+                        'quote_date': first_quote_date,
+                        'delivery_date': first_delivery_date,
+                        'lead_time_days': lead_time_days,
+                    })
+        
+        # 평균 계산
+        if lead_times:
+            avg_lead_time = sum(lt['lead_time_days'] for lt in lead_times) / len(lead_times)
+            max_lead_time = max(lt['lead_time_days'] for lt in lead_times)
+            min_lead_time = min(lt['lead_time_days'] for lt in lead_times)
+        else:
+            avg_lead_time = 0
+            max_lead_time = 0
+            min_lead_time = 0
+        
+        return {
+            'average_days': round(avg_lead_time, 1),
+            'max_days': max_lead_time,
+            'min_days': min_lead_time,
+            'total_cases': len(lead_times),
+            'details': sorted(lead_times, key=lambda x: x['lead_time_days'], reverse=True)[:10]  # 상위 10개
+        }
+    
+    @staticmethod
+    def get_product_sales_distribution(user=None):
+        """제품군별 매출 비중"""
+        from .models import DeliveryItem, Product
+        
+        # 납품 완료된 품목들의 제품별 집계 (status='completed'인 Schedule)
+        delivery_items = DeliveryItem.objects.select_related('product', 'schedule').filter(
+            product__isnull=False,  # 제품이 연결된 품목만
+            schedule__status='completed'  # 완료된 일정만
+        )
+        
+        if user:
+            delivery_items = delivery_items.filter(schedule__user=user)
+        
+        # 제품별로 그룹화하여 매출 집계
+        product_sales = {}
+        total_revenue = Decimal('0')
+        
+        for item in delivery_items:
+            product_name = item.product.product_code if item.product else item.item_name
+            product_desc = item.product.description if item.product else ''
+            item_total = item.total_price or Decimal('0')
+            
+            if product_name not in product_sales:
+                product_sales[product_name] = {
+                    'product_name': product_name,
+                    'product_description': product_desc,
+                    'total_revenue': Decimal('0'),
+                    'quantity': 0,
+                    'order_count': 0,
+                }
+            
+            product_sales[product_name]['total_revenue'] += item_total
+            product_sales[product_name]['quantity'] += item.quantity or 0
+            product_sales[product_name]['order_count'] += 1
+            total_revenue += item_total
+        
+        # 비중 계산 및 정렬
+        product_list = []
+        for product_name, data in product_sales.items():
+            percentage = (float(data['total_revenue']) / float(total_revenue) * 100) if total_revenue > 0 else 0
+            product_list.append({
+                'product_name': data['product_name'],
+                'product_description': data['product_description'],
+                'total_revenue': data['total_revenue'],
+                'quantity': data['quantity'],
+                'order_count': data['order_count'],
+                'percentage': round(percentage, 1),
+            })
+        
+        # 매출액 기준 내림차순 정렬
+        product_list = sorted(product_list, key=lambda x: x['total_revenue'], reverse=True)
+        
+        return {
+            'total_revenue': total_revenue,
+            'product_count': len(product_list),
+            'products': product_list,
+            'top_5': product_list[:5] if len(product_list) >= 5 else product_list,
+        }

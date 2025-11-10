@@ -1,5 +1,71 @@
-{% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
-보고 시스템{% endblock %} {% block content %}
+{% extends "reporting/base.html" %} 
+{% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %} 
+
+{% block extra_css %}
+<style>
+/* 팔로우업 모달 z-index 조정 */
+#followupModal {
+  z-index: 100050 !important;
+}
+#followupModal .modal-dialog {
+  z-index: 100051 !important;
+  position: relative;
+}
+#followupModal .modal-content {
+  z-index: 100052 !important;
+  position: relative;
+  pointer-events: auto !important;
+}
+
+/* 납품 품목 모달 z-index 조정 */
+#scheduleDeliveryItemsModal {
+  z-index: 100000 !important;
+}
+#scheduleDeliveryItemsModal .modal-dialog {
+  z-index: 100001 !important;
+  position: relative;
+}
+#scheduleDeliveryItemsModal .modal-content {
+  z-index: 100002 !important;
+  position: relative;
+  pointer-events: auto !important;
+}
+
+/* 견적 선택 모달 z-index 조정 */
+#quoteSelectionModal {
+  z-index: 100100 !important;
+}
+#quoteSelectionModal .modal-dialog {
+  z-index: 100101 !important;
+  position: relative;
+}
+#quoteSelectionModal .modal-content {
+  z-index: 100102 !important;
+  position: relative;
+  pointer-events: auto !important;
+}
+
+/* 모달 backdrop 설정 */
+.modal-backdrop.show {
+  opacity: 0.5;
+}
+div.modal-backdrop {
+  z-index: 99999 !important;
+}
+
+/* 모달이 열렸을 때 나머지 페이지 요소들의 z-index 낮추기 */
+body.modal-open .container,
+body.modal-open .card,
+body.modal-open form,
+body.modal-open .row,
+body.modal-open .col-md-10 {
+  position: relative;
+  z-index: 1 !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-md-10">
@@ -19,7 +85,7 @@
           >
           {% else %}
           <a
-            href="{% url 'reporting:schedule_list' %}"
+            href="{% url 'reporting:schedule_calendar' %}"
             class="btn btn-secondary"
             >취소</a
           >
@@ -530,7 +596,7 @@
 </div>
 
 <!-- 팔로우업 신규 추가 모달 (메인 form 밖으로 이동) -->
-<div class="modal fade" id="followupModal" tabindex="-1" aria-labelledby="followupModalLabel" aria-hidden="true">
+<div class="modal fade" id="followupModal" tabindex="-1" aria-labelledby="followupModalLabel" aria-hidden="true" style="z-index: 100050;" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
@@ -808,8 +874,124 @@ document.addEventListener('DOMContentLoaded', function() {
     let departmentSearchTimeout;
     
     // 모달 열릴 때 초기화
-    followupModal.addEventListener('show.bs.modal', function() {
+    followupModal.addEventListener('show.bs.modal', function(e) {
+        console.log('팔로우업 모달 열기 시작');
+        
+        // 모달을 body의 직접 자식으로 이동 (다른 요소들의 z-index 영향 제거)
+        if (followupModal.parentElement !== document.body) {
+            document.body.appendChild(followupModal);
+            console.log('모달을 body로 이동');
+        }
+        
         resetModal();
+        // 모달과 backdrop의 z-index 강제 설정
+        followupModal.style.zIndex = '100050';
+        followupModal.style.display = 'block';
+    });
+    
+    // 모달 열린 후 backdrop z-index 조정 및 상호작용 활성화
+    followupModal.addEventListener('shown.bs.modal', function() {
+        console.log('팔로우업 모달 완전히 열림');
+        
+        // 다른 모든 모달 닫기
+        const otherModals = document.querySelectorAll('.modal:not(#followupModal)');
+        otherModals.forEach(modal => {
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+        });
+        
+        // 페이지 요소들 뒤로 보내기
+        const pageElements = document.querySelectorAll('.container, .card, form:not(#followupForm)');
+        pageElements.forEach(el => {
+            el.style.position = 'relative';
+            el.style.zIndex = '1';
+        });
+        
+        // backdrop z-index 조정
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        console.log('발견된 backdrop 수:', backdrops.length);
+        backdrops.forEach((backdrop, index) => {
+            console.log(`Backdrop ${index} z-index:`, backdrop.style.zIndex);
+            backdrop.style.zIndex = '100049';
+        });
+        
+        // 모달 dialog와 content의 상호작용 보장
+        const modalDialog = followupModal.querySelector('.modal-dialog');
+        const modalContent = followupModal.querySelector('.modal-content');
+        
+        console.log('모달 요소 확인:', {
+            modal: followupModal.style.zIndex,
+            dialog: modalDialog ? 'found' : 'not found',
+            content: modalContent ? 'found' : 'not found'
+        });
+        
+        if (modalDialog) {
+            modalDialog.style.position = 'relative';
+            modalDialog.style.zIndex = '100051';
+            modalDialog.style.pointerEvents = 'auto';
+        }
+        if (modalContent) {
+            modalContent.style.position = 'relative';
+            modalContent.style.zIndex = '100052';
+            modalContent.style.pointerEvents = 'auto';
+            
+            // 모달 내부의 모든 인터랙티브 요소들에 pointer-events 설정
+            const interactiveElements = modalContent.querySelectorAll('input, select, textarea, button, a, .btn, .form-control');
+            interactiveElements.forEach(el => {
+                el.style.pointerEvents = 'auto';
+            });
+        }
+        
+        // body의 overflow 확인
+        document.body.style.overflow = 'hidden';
+        document.body.style.paddingRight = '';
+        
+        // 모달 자체가 클릭 가능한지 테스트
+        followupModal.style.pointerEvents = 'auto';
+        
+        // 디버깅: 모달 위에 있는 요소 확인
+        setTimeout(() => {
+            const modalRect = followupModal.getBoundingClientRect();
+            const centerX = modalRect.left + modalRect.width / 2;
+            const centerY = modalRect.top + modalRect.height / 2;
+            const elementAtPoint = document.elementFromPoint(centerX, centerY);
+            
+            console.log('모달 중앙 좌표:', centerX, centerY);
+            console.log('모달 중앙에 있는 실제 요소:', elementAtPoint);
+            console.log('해당 요소의 z-index:', window.getComputedStyle(elementAtPoint).zIndex);
+            console.log('해당 요소의 pointer-events:', window.getComputedStyle(elementAtPoint).pointerEvents);
+            
+            // 모든 높은 z-index 요소 찾기
+            const allElements = document.querySelectorAll('*');
+            const highZIndexElements = [];
+            allElements.forEach(el => {
+                const zIndex = window.getComputedStyle(el).zIndex;
+                if (zIndex !== 'auto' && parseInt(zIndex) > 1000) {
+                    highZIndexElements.push({
+                        element: el,
+                        zIndex: zIndex,
+                        id: el.id,
+                        className: el.className
+                    });
+                }
+            });
+            console.log('높은 z-index를 가진 요소들:', highZIndexElements);
+        }, 100);
+        
+        console.log('모달 설정 완료');
+    });
+    
+    // 모달 닫힐 때 원래대로 복원
+    followupModal.addEventListener('hidden.bs.modal', function() {
+        console.log('팔로우업 모달 닫힘');
+        
+        // 페이지 요소들 z-index 복원
+        const pageElements = document.querySelectorAll('.container, .card, form:not(#followupForm)');
+        pageElements.forEach(el => {
+            el.style.zIndex = '';
+        });
     });
     
     // 모달 초기화
@@ -1635,8 +1817,13 @@ document.addEventListener('DOMContentLoaded', function() {
     border-radius: 0 0 6px 6px;
     max-height: 300px;
     overflow-y: auto;
-    z-index: 1000;
+    z-index: 100;
     display: none;
+  }
+  
+  /* 모달 내부의 autocomplete는 더 높은 z-index */
+  #followupModal .autocomplete-results {
+    z-index: 100060;
   }
 
   .autocomplete-item {
@@ -1915,17 +2102,34 @@ window.toggleSections = function() {
         
         // 품목 컨테이너 확인 (견적 모드)
         const itemsContainer = document.getElementById('items-container');
+        console.log('items-container 요소:', itemsContainer);
         if (itemsContainer) {
             const existingItems = itemsContainer.querySelectorAll('.item-row');
+            console.log('기존 품목 개수:', existingItems.length);
             
             // 견적 모드일 때만 required 추가, 그 외에는 제거
             if (selectedValue === 'quote') {
+                console.log('견적 모드: 품목 체크 시작');
                 // 품목이 없으면 하나 추가
                 if (existingItems.length === 0) {
+                    console.log('기존 품목 없음, addItem 호출');
                     // addItem 함수가 정의되어 있으면 호출
-                    if (typeof addItem === 'function') {
-                        addItem();
+                    if (typeof window.addItem === 'function') {
+                        console.log('window.addItem 함수 호출');
+                        window.addItem();
+                        console.log('window.addItem 호출 완료');
+                    } else {
+                        console.error('window.addItem 함수가 정의되지 않음!');
                     }
+                } else {
+                    console.log('기존 품목 있음:', existingItems.length, '개');
+                    // 기존 품목들에 제품 목록 로드
+                    existingItems.forEach(item => {
+                        const productSelect = item.querySelector('.quote-product-select');
+                        if (productSelect && typeof loadQuoteProductList === 'function') {
+                            loadQuoteProductList(productSelect);
+                        }
+                    });
                 }
                 // 품목 필드에 required 추가
                 existingItems.forEach(item => {
@@ -2007,8 +2211,15 @@ document.addEventListener('DOMContentLoaded', function() {
 // 품목 관리 관련 함수들 (전역 함수로 정의)
 let itemIndex = 0;
 
-function addItem(itemData = {}) {
+// addItem 함수를 window 객체에 등록하여 전역에서 사용 가능하도록
+window.addItem = function(itemData = {}) {
+    console.log('addItem 호출됨, itemData:', itemData);
     const container = document.getElementById('items-container');
+    if (!container) {
+        console.error('items-container를 찾을 수 없습니다!');
+        return;
+    }
+    
     const newItem = document.createElement('div');
     newItem.className = 'item-row row mb-3 p-3 border rounded bg-light';
     
@@ -2017,23 +2228,46 @@ function addItem(itemData = {}) {
     const isItemsVisible = activityTypeField && (activityTypeField.value === 'quote' || activityTypeField.value === 'delivery');
     const requiredAttr = isItemsVisible ? 'required' : '';
     
+    const itemName = itemData.name || '';
+    const quantity = itemData.quantity || '';
+    const unitPrice = itemData.unit_price || '';
+    const productId = itemData.product_id || '';
+    
     newItem.innerHTML = `
+        <div class="col-12 mb-3">
+            <label class="form-label fw-bold">제품 검색 및 선택 <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="text" class="form-control quote-product-search" placeholder="품번으로 검색..." 
+                       onkeyup="searchQuoteProducts(this)" onfocus="searchQuoteProducts(this)">
+                <button class="btn btn-outline-secondary" type="button" onclick="clearQuoteProductSearch(this)">
+                    <i class="fas fa-times"></i>
+                </button>
+                <button class="btn btn-success" type="button" onclick="openQuoteProductModal(this)" title="새 제품 추가">
+                    <i class="fas fa-plus"></i> 제품 추가
+                </button>
+            </div>
+            <!-- 검색 결과 드롭다운 -->
+            <div class="quote-search-results" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: calc(100% - 30px); box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>
+            <input type="hidden" name="items[${itemIndex}][product_id]" class="quote-product-id" value="${productId}">
+        </div>
         <div class="col-md-4">
-            <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-            <input type="text" name="items[${itemIndex}][name]" class="form-control" 
-                   value="${itemData.name || ''}" placeholder="품목명을 입력하세요" ${requiredAttr}>
+            <label class="form-label fw-bold">품목명</label>
+            <input type="text" name="items[${itemIndex}][name]" class="form-control quote-item-name" 
+                   value="${itemName}" readonly>
         </div>
         <div class="col-md-2">
             <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
             <input type="number" name="items[${itemIndex}][quantity]" 
-                   class="form-control quantity-input" min="1" value="${itemData.quantity || ''}" 
-                   placeholder="수량" ${requiredAttr}>
+                   class="form-control quantity-input" min="1" value="${quantity}" 
+                   placeholder="수량" ${requiredAttr} oninput="calculateItemTotal(event)">
         </div>
         <div class="col-md-2">
             <label class="form-label fw-bold">단가 (부가세 별도)</label>
-            <input type="number" name="items[${itemIndex}][unit_price]" 
-                   class="form-control unit-price-input" step="0.01" min="0" 
-                   value="${itemData.unit_price || ''}" placeholder="0">
+            <input type="text" class="form-control quote-unit-price-display" 
+                   value="${unitPrice ? parseInt(unitPrice).toLocaleString() : ''}" 
+                   oninput="updateQuoteUnitPrice(this)" placeholder="단가 입력">
+            <input type="hidden" name="items[${itemIndex}][unit_price]" 
+                   class="unit-price-input" value="${unitPrice}">
         </div>
         <div class="col-md-3">
             <label class="form-label fw-bold">금액 (부가세 포함)</label>
@@ -2049,7 +2283,13 @@ function addItem(itemData = {}) {
     `;
     
     container.appendChild(newItem);
+    console.log('품목 추가 완료, itemIndex:', itemIndex);
+    console.log('현재 container의 자식 수:', container.children.length);
     itemIndex++;
+    
+    // 제품 목록 로드 (newItem 자체를 전달)
+    console.log('제품 목록 로드 시작');
+    loadQuoteProductList(newItem);
     
     // 이벤트 리스너 추가
     const quantityInput = newItem.querySelector('.quantity-input');
@@ -2275,6 +2515,80 @@ function showQuoteSelectionModal(quotes) {
     const modal = new bootstrap.Modal(modalElement);
     window.currentQuoteModal = modal;
     
+    // 모달 이벤트 리스너 추가
+    modalElement.addEventListener('show.bs.modal', function(e) {
+        console.log('견적 선택 모달 열기 시작');
+        
+        if (modalElement.parentElement !== document.body) {
+            document.body.appendChild(modalElement);
+            console.log('견적 선택 모달을 body로 이동');
+        }
+        
+        modalElement.style.zIndex = '100100';
+        modalElement.style.display = 'block';
+    });
+    
+    modalElement.addEventListener('shown.bs.modal', function() {
+        console.log('견적 선택 모달 완전히 열림');
+        
+        // 다른 모든 모달 닫기
+        const otherModals = document.querySelectorAll('.modal:not(#quoteSelectionModal)');
+        otherModals.forEach(modal => {
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+        });
+        
+        // 페이지 요소들 뒤로 보내기
+        const pageElements = document.querySelectorAll('.container, .card, form');
+        pageElements.forEach(el => {
+            el.style.position = 'relative';
+            el.style.zIndex = '1';
+        });
+        
+        // backdrop z-index 조정
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => {
+            backdrop.style.zIndex = '100099';
+        });
+        
+        // 모달 dialog와 content의 상호작용 보장
+        const modalDialog = modalElement.querySelector('.modal-dialog');
+        const modalContent = modalElement.querySelector('.modal-content');
+        
+        if (modalDialog) {
+            modalDialog.style.position = 'relative';
+            modalDialog.style.zIndex = '100101';
+            modalDialog.style.pointerEvents = 'auto';
+        }
+        if (modalContent) {
+            modalContent.style.position = 'relative';
+            modalContent.style.zIndex = '100102';
+            modalContent.style.pointerEvents = 'auto';
+            
+            // 모달 내부의 모든 인터랙티브 요소들에 pointer-events 설정
+            const interactiveElements = modalContent.querySelectorAll('input, select, textarea, button, a, .btn, .form-control, .list-group-item');
+            interactiveElements.forEach(el => {
+                el.style.pointerEvents = 'auto';
+            });
+        }
+        
+        modalElement.style.pointerEvents = 'auto';
+        
+        console.log('견적 선택 모달 설정 완료');
+    });
+    
+    // 모달 닫힐 때 원래대로 복원
+    modalElement.addEventListener('hidden.bs.modal', function() {
+        console.log('견적 선택 모달 닫힘');
+        
+        const pageElements = document.querySelectorAll('.container, .card, form');
+        pageElements.forEach(el => {
+            el.style.zIndex = '';
+        });
+    });
+    
     // 이벤트 리스너 추가
     document.querySelectorAll('.quote-item').forEach(button => {
         button.addEventListener('click', function() {
@@ -2416,7 +2730,7 @@ function openScheduleDeliveryModal() {
   
   // 모달 HTML 생성
   const modalHtml = `
-    <div class="modal fade" id="scheduleDeliveryItemsModal" tabindex="-1" aria-labelledby="scheduleDeliveryModalLabel" aria-hidden="true">
+    <div class="modal fade" id="scheduleDeliveryItemsModal" tabindex="-1" aria-labelledby="scheduleDeliveryModalLabel" aria-hidden="true" style="z-index: 100000;" data-bs-backdrop="static" data-bs-keyboard="false">
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header bg-warning text-dark">
@@ -2495,6 +2809,83 @@ function openScheduleDeliveryModal() {
   // 모달 표시
   const modal = new bootstrap.Modal(document.getElementById('scheduleDeliveryItemsModal'));
   modal.show();
+  
+  // 모달 backdrop z-index 설정 및 상호작용 활성화
+  const modalElement = document.getElementById('scheduleDeliveryItemsModal');
+  
+  // 모달을 body의 직접 자식으로 이동
+  modalElement.addEventListener('show.bs.modal', function(e) {
+    console.log('납품 품목 모달 열기 시작');
+    
+    if (modalElement.parentElement !== document.body) {
+      document.body.appendChild(modalElement);
+      console.log('납품 품목 모달을 body로 이동');
+    }
+    
+    modalElement.style.zIndex = '100000';
+    modalElement.style.display = 'block';
+  });
+  
+  modalElement.addEventListener('shown.bs.modal', function () {
+    console.log('납품 품목 모달 완전히 열림');
+    
+    // 다른 모든 모달 닫기
+    const otherModals = document.querySelectorAll('.modal:not(#scheduleDeliveryItemsModal)');
+    otherModals.forEach(modal => {
+      const modalInstance = bootstrap.Modal.getInstance(modal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+    });
+    
+    // 페이지 요소들 뒤로 보내기
+    const pageElements = document.querySelectorAll('.container, .card, form:not(#schedule-delivery-form)');
+    pageElements.forEach(el => {
+      el.style.position = 'relative';
+      el.style.zIndex = '1';
+    });
+    
+    // backdrop z-index 조정
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops.forEach(backdrop => {
+      backdrop.style.zIndex = '99999';
+    });
+    
+    // 모달 dialog와 content의 상호작용 보장
+    const modalDialog = modalElement.querySelector('.modal-dialog');
+    const modalContent = modalElement.querySelector('.modal-content');
+    
+    if (modalDialog) {
+      modalDialog.style.position = 'relative';
+      modalDialog.style.zIndex = '100001';
+      modalDialog.style.pointerEvents = 'auto';
+    }
+    if (modalContent) {
+      modalContent.style.position = 'relative';
+      modalContent.style.zIndex = '100002';
+      modalContent.style.pointerEvents = 'auto';
+      
+      // 모달 내부의 모든 인터랙티브 요소들에 pointer-events 설정
+      const interactiveElements = modalContent.querySelectorAll('input, select, textarea, button, a, .btn, .form-control');
+      interactiveElements.forEach(el => {
+        el.style.pointerEvents = 'auto';
+      });
+    }
+    
+    modalElement.style.pointerEvents = 'auto';
+    
+    console.log('납품 품목 모달 설정 완료');
+  });
+  
+  // 모달 닫힐 때 원래대로 복원
+  modalElement.addEventListener('hidden.bs.modal', function() {
+    console.log('납품 품목 모달 닫힘');
+    
+    const pageElements = document.querySelectorAll('.container, .card, form:not(#schedule-delivery-form)');
+    pageElements.forEach(el => {
+      el.style.zIndex = '';
+    });
+  });
 
   // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
   loadExistingScheduleDeliveryItems() || addScheduleDeliveryItem();
@@ -2607,11 +2998,28 @@ function addScheduleDeliveryItem(itemData = {}) {
   const itemName = itemData.item_name || '';
   const quantity = itemData.quantity || '';
   const unitPrice = itemData.unit_price || '';
+  const productId = itemData.product_id || '';
   
   newItem.innerHTML = `
+    <div class="col-12 mb-3">
+      <label class="form-label fw-bold">제품 검색 및 선택 <span class="text-danger">*</span></label>
+      <div class="input-group">
+        <input type="text" class="form-control product-search" placeholder="품번으로 검색..." onkeyup="searchProducts(this)">
+        <button class="btn btn-outline-secondary" type="button" onclick="clearProductSearch(this)">
+          <i class="fas fa-times"></i>
+        </button>
+        <button class="btn btn-success" type="button" onclick="openDeliveryProductModal(this)" title="새 제품 추가">
+          <i class="fas fa-plus"></i> 제품 추가
+        </button>
+      </div>
+      <select class="form-select mt-2 product-select" onchange="onProductSelected(this)" required>
+        <option value="">제품을 선택하세요</option>
+      </select>
+      <input type="hidden" class="product-id quote-product-id" value="${productId}">
+    </div>
     <div class="col-md-4">
-      <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-      <input type="text" class="form-control item-name" value="${itemName}" placeholder="품목명을 입력하세요" required>
+      <label class="form-label fw-bold">품목명</label>
+      <input type="text" class="form-control item-name" value="${itemName}" readonly>
     </div>
     <div class="col-md-2">
       <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -2619,7 +3027,10 @@ function addScheduleDeliveryItem(itemData = {}) {
     </div>
     <div class="col-md-2">
       <label class="form-label fw-bold">단가 (부가세 별도)</label>
-      <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${unitPrice}" placeholder="0">
+      <input type="text" class="form-control unit-price-display" 
+             value="${unitPrice ? parseInt(unitPrice).toLocaleString() : ''}" 
+             oninput="updateDeliveryUnitPrice(this)" placeholder="단가 입력">
+      <input type="hidden" class="unit-price-input" value="${unitPrice}">
     </div>
     <div class="col-md-3">
       <label class="form-label fw-bold">금액 (부가세 포함)</label>
@@ -2636,6 +3047,9 @@ function addScheduleDeliveryItem(itemData = {}) {
   
   container.appendChild(newItem);
   scheduleDeliveryItemIndex++;
+  
+  // 제품 목록 로드
+  loadProductList(newItem.querySelector('.product-select'));
   
   // 이벤트 리스너 추가
   const quantityInput = newItem.querySelector('.quantity-input');
@@ -2736,18 +3150,22 @@ function saveScheduleDeliveryItems() {
     const itemNameElem = item.querySelector('.item-name');
     const quantityElem = item.querySelector('.quantity-input');
     const unitPriceElem = item.querySelector('.unit-price-input');
+    const productIdElem = item.querySelector('.product-id');
     
     console.log(`  품목명 요소:`, itemNameElem);
     console.log(`  수량 요소:`, quantityElem);
     console.log(`  단가 요소:`, unitPriceElem);
+    console.log(`  제품 ID 요소:`, productIdElem);
     
     const itemName = itemNameElem ? itemNameElem.value.trim() : '';
     const quantity = quantityElem ? parseFloat(quantityElem.value) || 0 : 0;
     const unitPrice = unitPriceElem ? parseFloat(unitPriceElem.value) || 0 : 0;
+    const productId = productIdElem ? productIdElem.value.trim() : '';
     
     console.log(`  품목명: "${itemName}"`);
     console.log(`  수량: ${quantity}`);
     console.log(`  단가: ${unitPrice}`);
+    console.log(`  제품 ID: ${productId}`);
     
     if (itemName && quantity > 0) {
       const subtotal = quantity * unitPrice;
@@ -2758,7 +3176,8 @@ function saveScheduleDeliveryItems() {
         item_name: itemName,      // 기존 호환성 유지
         quantity: quantity,
         unit_price: unitPrice,
-        total_price: total
+        total_price: total,
+        product_id: productId     // 제품 ID 추가
       });
       
       totalAmount += total;
@@ -2889,6 +3308,15 @@ function saveAllItems() {
       unitPriceInput.value = itemData.unit_price;
       form.appendChild(unitPriceInput);
       
+      // 제품 ID
+      if (itemData.product_id) {
+        const productIdInput = document.createElement('input');
+        productIdInput.type = 'hidden';
+        productIdInput.name = `delivery_items[${index}][product_id]`;
+        productIdInput.value = itemData.product_id;
+        form.appendChild(productIdInput);
+      }
+      
       savedCount++;
     });
   }
@@ -2902,6 +3330,7 @@ function saveAllItems() {
         const itemName = item.querySelector('.item-name')?.value.trim();
         const quantity = parseFloat(item.querySelector('.quantity-input')?.value) || 0;
         const unitPrice = parseFloat(item.querySelector('.unit-price-input')?.value) || 0;
+        const productId = item.querySelector('.product-id')?.value.trim();
         
         if (itemName && quantity > 0) {
           // 품목명
@@ -2925,6 +3354,15 @@ function saveAllItems() {
           unitPriceInput.value = unitPrice;
           form.appendChild(unitPriceInput);
           
+          // 제품 ID
+          if (productId) {
+            const productIdInput = document.createElement('input');
+            productIdInput.type = 'hidden';
+            productIdInput.name = `delivery_items[${index}][product_id]`;
+            productIdInput.value = productId;
+            form.appendChild(productIdInput);
+          }
+          
           savedCount++;
         }
       });
@@ -2936,13 +3374,15 @@ function saveAllItems() {
   if (quoteContainer && savedCount === 0) {
     const quoteItems = document.querySelectorAll('#items-container .item-row');
     quoteItems.forEach((item, index) => {
-      const itemNameInput = item.querySelector('input[name^="items"][name$="[name]"]');
+      const itemNameInput = item.querySelector('.quote-item-name');
       const quantityInput = item.querySelector('input[name^="items"][name$="[quantity]"]');
-      const unitPriceInput = item.querySelector('input[name^="items"][name$="[unit_price]"]');
+      const unitPriceInput = item.querySelector('.unit-price-input');
+      const productIdInput = item.querySelector('.quote-product-id');
       
       const itemName = itemNameInput?.value.trim();
       const quantity = parseFloat(quantityInput?.value) || 0;
       const unitPrice = parseFloat(unitPriceInput?.value) || 0;
+      const productId = productIdInput?.value.trim();
       
       if (itemName && quantity > 0) {
         // 품목명
@@ -2965,6 +3405,15 @@ function saveAllItems() {
         unitPriceHidden.name = `delivery_items[${index}][unit_price]`;
         unitPriceHidden.value = unitPrice;
         form.appendChild(unitPriceHidden);
+        
+        // 제품 ID
+        if (productId) {
+          const productIdHidden = document.createElement('input');
+          productIdHidden.type = 'hidden';
+          productIdHidden.name = `delivery_items[${index}][product_id]`;
+          productIdHidden.value = productId;
+          form.appendChild(productIdHidden);
+        }
         
         savedCount++;
       }
@@ -3037,6 +3486,449 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
 });
 
+// ============================================
+// 제품 선택 관련 함수들
+// ============================================
+
+// 제품 목록 로드
+function loadProductList(selectElement) {
+  fetch('/reporting/api/products/')
+    .then(response => response.json())
+    .then(data => {
+      const products = data.products || [];
+      
+      // 기본 옵션 유지
+      selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+      
+      // 제품 추가
+      products.forEach(product => {
+        const option = document.createElement('option');
+        option.value = product.id;
+        option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+        option.dataset.name = product.name;
+        option.dataset.price = product.current_price;
+        option.dataset.code = product.product_code;
+        selectElement.appendChild(option);
+      });
+      
+      // 전체 제품 데이터를 selectElement에 저장
+      selectElement.dataset.allProducts = JSON.stringify(products);
+    })
+    .catch(error => {
+      console.error('제품 목록 로드 실패:', error);
+    });
+}
+
+// 제품 검색 함수
+function searchProducts(searchInput) {
+  const deliveryItem = searchInput.closest('.delivery-item');
+  const selectElement = deliveryItem.querySelector('.product-select');
+  const searchQuery = searchInput.value.toLowerCase().trim();
+  
+  // 전체 제품 데이터 가져오기
+  const allProductsStr = selectElement.dataset.allProducts || '[]';
+  console.log('allProducts 데이터:', allProductsStr);
+  const allProducts = JSON.parse(allProductsStr);
+  console.log('파싱된 제품 수:', allProducts.length);
+  
+  // 검색어가 없으면 전체 목록 표시
+  if (!searchQuery) {
+    selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+    allProducts.forEach(product => {
+      const option = document.createElement('option');
+      option.value = product.id;
+      option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+      option.dataset.name = product.name;
+      option.dataset.price = product.current_price;
+      option.dataset.code = product.product_code;
+      selectElement.appendChild(option);
+    });
+    return;
+  }
+  
+  // 검색어로 필터링
+  console.log('검색어:', searchQuery);
+  const filteredProducts = allProducts.filter(product => 
+    product.product_code.toLowerCase().includes(searchQuery) ||
+    (product.name && product.name.toLowerCase().includes(searchQuery))
+  );
+  console.log('검색 결과 수:', filteredProducts.length);
+  
+  // 검색 결과로 select 업데이트
+  selectElement.innerHTML = '<option value="">제품을 선택하세요</option>';
+  
+  if (filteredProducts.length === 0) {
+    selectElement.innerHTML = '<option value="">검색 결과가 없습니다</option>';
+  } else {
+    filteredProducts.forEach(product => {
+      const option = document.createElement('option');
+      option.value = product.id;
+      option.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+      option.dataset.name = product.name;
+      option.dataset.price = product.current_price;
+      option.dataset.code = product.product_code;
+      selectElement.appendChild(option);
+    });
+  }
+}
+
+// 검색어 초기화
+function clearProductSearch(button) {
+  const deliveryItem = button.closest('.delivery-item');
+  const searchInput = deliveryItem.querySelector('.product-search');
+  searchInput.value = '';
+  searchProducts(searchInput);
+}
+
+// 제품 선택 시 호출
+function onProductSelected(selectElement) {
+  const selectedOption = selectElement.options[selectElement.selectedIndex];
+  
+  if (!selectedOption.value) {
+    return;
+  }
+  
+  const deliveryItem = selectElement.closest('.delivery-item');
+  const productId = selectedOption.value;
+  const productCode = selectedOption.dataset.code;
+  const productPrice = selectedOption.dataset.price;
+  
+  // 제품 정보 자동 입력 (품번 사용)
+  deliveryItem.querySelector('.product-id').value = productId;
+  deliveryItem.querySelector('.item-name').value = productCode;
+  deliveryItem.querySelector('.unit-price-input').value = productPrice;
+  deliveryItem.querySelector('.unit-price-display').value = parseInt(productPrice).toLocaleString();
+  
+  // 수량이 비어있으면 1로 설정
+  const quantityInput = deliveryItem.querySelector('.quantity-input');
+  if (!quantityInput.value) {
+    quantityInput.value = 1;
+  }
+  
+  // 금액 재계산
+  calculateScheduleItemTotal({ target: quantityInput });
+}
+
+// 납품 품목의 단가 업데이트 (사용자가 직접 입력)
+function updateDeliveryUnitPrice(displayInput) {
+  const deliveryItem = displayInput.closest('.delivery-item');
+  
+  // 콤마 제거하고 숫자만 추출
+  const rawValue = displayInput.value.replace(/[^\d]/g, '');
+  const numericValue = rawValue ? parseInt(rawValue) : 0;
+  
+  // hidden input에 실제 값 저장
+  deliveryItem.querySelector('.unit-price-input').value = numericValue;
+  
+  // 표시용 input에 천단위 콤마 적용
+  displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : '';
+  
+  // 금액 재계산
+  const quantityInput = deliveryItem.querySelector('.quantity-input');
+  calculateScheduleItemTotal({ target: quantityInput });
+}
+
+// 새 제품 추가 모달 열기 (납품 품목에서)
+let currentDeliveryItemRow = null;
+
+function openDeliveryProductModal(button) {
+  currentDeliveryItemRow = button.closest('.delivery-item');
+  
+  // 제품 추가 모달 열기
+  const productModal = new bootstrap.Modal(document.getElementById('productAddModal'));
+  productModal.show();
+}
+
+// ============================================
+// 견적 품목용 제품 검색 및 선택 함수
+// ============================================
+
+function loadQuoteProductList(itemRow) {
+  console.log('loadQuoteProductList 호출됨');
+  fetch('/reporting/api/products/')
+    .then(response => response.json())
+    .then(data => {
+      const products = data.products || [];
+      console.log('견적 제품 목록 로드 완료, 제품 수:', products.length);
+      
+      // 전체 제품 데이터를 itemRow에 저장
+      itemRow.dataset.allProducts = JSON.stringify(products);
+      console.log('견적 제품 데이터 저장 완료, allProducts 길이:', itemRow.dataset.allProducts.length);
+    })
+    .catch(error => {
+      console.error('제품 목록 로드 실패:', error);
+    });
+}
+
+// 제품 검색 함수 (견적용)
+function searchQuoteProducts(searchInput) {
+  console.log('searchQuoteProducts 호출됨');
+  const itemRow = searchInput.closest('.item-row');
+  const resultsDiv = itemRow.querySelector('.quote-search-results');
+  const searchQuery = searchInput.value.toLowerCase().trim();
+  const productIdInput = itemRow.querySelector('.quote-product-id');
+  const itemNameInput = itemRow.querySelector('.quote-item-name');
+  
+  console.log('검색어:', searchQuery);
+  
+  // 전체 제품 데이터 가져오기
+  const allProductsStr = itemRow.dataset.allProducts || '[]';
+  console.log('allProducts 데이터:', allProductsStr.substring(0, 100) + '...');
+  const allProducts = JSON.parse(allProductsStr);
+  console.log('파싱된 견적 제품 수:', allProducts.length);
+  
+  // 검색어가 없으면 결과 숨김
+  if (!searchQuery) {
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+    return;
+  }
+  
+  // 검색어로 필터링
+  console.log('검색어로 필터링 중...');
+  const filteredProducts = allProducts.filter(product => 
+    product.product_code.toLowerCase().includes(searchQuery) ||
+    (product.name && product.name.toLowerCase().includes(searchQuery))
+  );
+  console.log('검색 결과 수:', filteredProducts.length);
+  
+  // 검색 결과 표시
+  resultsDiv.innerHTML = '';
+  
+  if (filteredProducts.length === 0) {
+    resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
+    resultsDiv.style.display = 'block';
+  } else {
+    filteredProducts.forEach(product => {
+      const resultItem = document.createElement('div');
+      resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+      resultItem.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
+      resultItem.dataset.productId = product.id;
+      resultItem.dataset.productCode = product.product_code;
+      resultItem.dataset.productPrice = product.current_price;
+      
+      // 호버 효과
+      resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
+      resultItem.onmouseout = function() { this.style.background = 'white'; };
+      
+      // 클릭 이벤트
+      resultItem.onclick = function() {
+        productIdInput.value = this.dataset.productId;
+        itemNameInput.value = this.dataset.productCode;
+        searchInput.value = this.dataset.productCode;
+        
+        // 단가 업데이트
+        const unitPriceDisplay = itemRow.querySelector('.quote-unit-price-display');
+        const unitPriceInput = itemRow.querySelector('.unit-price-input');
+        if (unitPriceDisplay && unitPriceInput) {
+          unitPriceDisplay.value = parseInt(this.dataset.productPrice).toLocaleString();
+          unitPriceInput.value = this.dataset.productPrice;
+        }
+        
+        // 결과 숨김
+        resultsDiv.style.display = 'none';
+        resultsDiv.innerHTML = '';
+        
+        // 금액 계산
+        const quantityInput = itemRow.querySelector('.quantity-input');
+        if (quantityInput) {
+          calculateItemTotal({ target: quantityInput });
+        }
+      };
+      
+      resultsDiv.appendChild(resultItem);
+    });
+    resultsDiv.style.display = 'block';
+  }
+  
+  console.log('검색 완료');
+}
+
+// 검색어 초기화 (견적용)
+function clearQuoteProductSearch(button) {
+  const itemRow = button.closest('.item-row');
+  const searchInput = itemRow.querySelector('.quote-product-search');
+  const resultsDiv = itemRow.querySelector('.quote-search-results');
+  searchInput.value = '';
+  resultsDiv.style.display = 'none';
+  resultsDiv.innerHTML = '';
+}
+
+// 제품 선택 시 호출 (견적용)
+function onQuoteProductSelected(selectElement) {
+  const selectedOption = selectElement.options[selectElement.selectedIndex];
+  
+  if (!selectedOption.value) {
+    return;
+  }
+  
+  const itemRow = selectElement.closest('.item-row');
+  const productId = selectedOption.value;
+  const productCode = selectedOption.dataset.code;
+  const productPrice = selectedOption.dataset.price;
+  
+  // 제품 정보 자동 입력 (품번 사용)
+  itemRow.querySelector('.quote-product-id').value = productId;
+  itemRow.querySelector('.quote-item-name').value = productCode;
+  itemRow.querySelector('.unit-price-input').value = productPrice;
+  itemRow.querySelector('.quote-unit-price-display').value = parseInt(productPrice).toLocaleString();
+  
+  // 수량이 비어있으면 1로 설정
+  const quantityInput = itemRow.querySelector('.quantity-input');
+  if (!quantityInput.value) {
+    quantityInput.value = 1;
+  }
+  
+  // 금액 재계산
+  calculateItemTotal({ target: quantityInput });
+}
+
+// 견적 품목의 단가 업데이트 (사용자가 직접 입력)
+function updateQuoteUnitPrice(displayInput) {
+  const itemRow = displayInput.closest('.item-row');
+  
+  // 콤마 제거하고 숫자만 추출
+  const rawValue = displayInput.value.replace(/[^\d]/g, '');
+  const numericValue = rawValue ? parseInt(rawValue) : 0;
+  
+  // hidden input에 실제 값 저장
+  itemRow.querySelector('.unit-price-input').value = numericValue;
+  
+  // 표시용 input에 천단위 콤마 적용
+  displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : '';
+  
+  // 금액 재계산
+  const quantityInput = itemRow.querySelector('.quantity-input');
+  calculateItemTotal({ target: quantityInput });
+}
+
+// 새 제품 추가 모달 열기 (견적 품목에서)
+let currentQuoteItemRow = null;
+
+function openQuoteProductModal(button) {
+  currentQuoteItemRow = button.closest('.item-row');
+  
+  // 제품 추가 모달 열기
+  const productModal = new bootstrap.Modal(document.getElementById('productAddModal'));
+  productModal.show();
+}
+
+</script>
+
+<script>
+// 제품 추가 모달 처리
+document.addEventListener('DOMContentLoaded', function() {
+  const productAddModal = document.getElementById('productAddModal');
+  const productAddForm = document.getElementById('productAddForm');
+  
+  if (productAddModal && productAddForm) {
+    // 모달 열릴 때
+    productAddModal.addEventListener('show.bs.modal', function(e) {
+      console.log('제품 추가 모달 열기');
+      
+      if (productAddModal.parentElement !== document.body) {
+        document.body.appendChild(productAddModal);
+      }
+      
+      productAddModal.style.zIndex = '100200';
+      productAddModal.style.display = 'block';
+      
+      // 폼 초기화
+      productAddForm.reset();
+    });
+    
+    // 모달 완전히 열린 후
+    productAddModal.addEventListener('shown.bs.modal', function() {
+      // 페이지 요소들 뒤로 보내기
+      const pageElements = document.querySelectorAll('.container, .card, form:not(#productAddForm)');
+      pageElements.forEach(el => {
+        el.style.position = 'relative';
+        el.style.zIndex = '1';
+      });
+      
+      // backdrop z-index 조정
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      backdrops.forEach(backdrop => {
+        backdrop.style.zIndex = '100199';
+      });
+      
+      // 모달 요소들 상호작용 보장
+      const modalDialog = productAddModal.querySelector('.modal-dialog');
+      const modalContent = productAddModal.querySelector('.modal-content');
+      
+      if (modalDialog) {
+        modalDialog.style.position = 'relative';
+        modalDialog.style.zIndex = '100201';
+        modalDialog.style.pointerEvents = 'auto';
+      }
+      if (modalContent) {
+        modalContent.style.position = 'relative';
+        modalContent.style.zIndex = '100202';
+        modalContent.style.pointerEvents = 'auto';
+        
+        const interactiveElements = modalContent.querySelectorAll('input, select, textarea, button');
+        interactiveElements.forEach(el => {
+          el.style.pointerEvents = 'auto';
+        });
+      }
+      
+      productAddModal.style.pointerEvents = 'auto';
+    });
+    
+    // 모달 닫힐 때
+    productAddModal.addEventListener('hidden.bs.modal', function() {
+      const pageElements = document.querySelectorAll('.container, .card, form:not(#productAddForm)');
+      pageElements.forEach(el => {
+        el.style.zIndex = '';
+      });
+    });
+    
+    // 폼 제출
+    productAddForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const formData = new FormData(productAddForm);
+      
+      fetch('/reporting/products/create/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // 성공 메시지
+          alert('제품이 성공적으로 추가되었습니다.');
+          
+          // 모달 닫기
+          const modal = bootstrap.Modal.getInstance(productAddModal);
+          modal.hide();
+          
+          // 제품 목록 새로고침
+          if (currentDeliveryItemRow) {
+            const selectElement = currentDeliveryItemRow.querySelector('.product-select');
+            loadProductList(selectElement);
+            currentDeliveryItemRow = null;
+          }
+          if (currentQuoteItemRow) {
+            const selectElement = currentQuoteItemRow.querySelector('.quote-product-select');
+            loadQuoteProductList(selectElement);
+            currentQuoteItemRow = null;
+          }
+        } else {
+          // 오류 메시지
+          alert('제품 추가 실패: ' + (data.error || '알 수 없는 오류'));
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('제품 추가 중 오류가 발생했습니다.');
+      });
+    });
+  }
+});
 </script>
 
 <!-- 자동완성을 위한 CSS 스타일 -->
@@ -3051,8 +3943,12 @@ document.addEventListener('DOMContentLoaded', function() {
     border-top: none;
     max-height: 200px;
     overflow-y: auto;
-    z-index: 1000;
+    z-index: 100060;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+#followupModal .autocomplete-suggestions {
+    z-index: 100060;
 }
 
 .autocomplete-suggestion {
@@ -3081,5 +3977,42 @@ body.modal-open .alert:not(#modalAlertContainer .alert):not(#toastContainer .ale
     pointer-events: none;
 }
 </style>
+
+<!-- 제품 추가 모달 -->
+<div class="modal fade" id="productAddModal" tabindex="-1" aria-labelledby="productAddModalLabel" aria-hidden="true" style="z-index: 100200;" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title" id="productAddModalLabel">
+          <i class="fas fa-plus-circle me-2"></i>제품 추가
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="productAddForm">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="product_code" class="form-label fw-bold">품번 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="product_code" name="product_code" required>
+          </div>
+          <div class="mb-3">
+            <label for="standard_price" class="form-label fw-bold">표준단가 <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="standard_price" name="standard_price" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label for="description" class="form-label fw-bold">제품설명</label>
+            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-success">
+            <i class="fas fa-save me-1"></i>저장
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

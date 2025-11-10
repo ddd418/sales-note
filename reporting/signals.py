@@ -176,10 +176,13 @@ def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
         return
     
     # OpportunityTracking이 연결되어 있지 않으면 종료
-    if not instance.opportunity:
+    try:
+        opportunity = instance.opportunity
+        if not opportunity:
+            return
+    except OpportunityTracking.DoesNotExist:
+        # opportunity가 이미 삭제된 경우 무시
         return
-    
-    opportunity = instance.opportunity
     
     # 같은 OpportunityTracking을 참조하는 다른 Schedule이 있는지 확인
     other_schedules = Schedule.objects.filter(
@@ -188,4 +191,8 @@ def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
     
     # 다른 Schedule이 없으면 OpportunityTracking도 삭제
     if not other_schedules:
-        opportunity.delete()
+        try:
+            opportunity.delete()
+        except OpportunityTracking.DoesNotExist:
+            # 이미 삭제된 경우 무시
+            pass

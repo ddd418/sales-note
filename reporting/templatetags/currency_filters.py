@@ -1,4 +1,5 @@
 from django import template
+from decimal import Decimal
 
 register = template.Library()
 
@@ -8,7 +9,11 @@ def currency_format(value):
     if value is None:
         return "0"
     try:
-        return f"{int(value):,}"
+        # Decimal, float, int 모두 처리
+        if isinstance(value, (int, float, Decimal)):
+            return f"{int(value):,}"
+        # 문자열인 경우 숫자로 변환 시도
+        return f"{int(float(value)):,}"
     except (ValueError, TypeError):
         return "0"
 
