@@ -76,9 +76,8 @@ def migrate_delivery_items_to_products():
             product_code=product_code,
             defaults={
                 'description': f'{product_code}',  # 기본 설명은 품번과 동일
-                'list_price': Decimal(str(avg_price)),
-                'current_price': Decimal(str(avg_price)),
-                'status': 'active',
+                'standard_price': Decimal(str(avg_price)),
+                'is_active': True,
             }
         )
         
