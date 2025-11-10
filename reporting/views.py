@@ -1663,6 +1663,8 @@ def schedule_create_view(request):
                                 PrepaymentUsage.objects.create(
                                     prepayment=prepayment,
                                     schedule=schedule,
+                                    product_name=f"{schedule.get_activity_type_display()}",
+                                    quantity=1,
                                     amount=amount,
                                     remaining_balance=prepayment.balance,
                                     memo=f"{schedule.get_activity_type_display()} - {schedule.followup.customer_name}"
@@ -1984,6 +1986,8 @@ def schedule_edit_view(request, pk):
                                 PrepaymentUsage.objects.create(
                                     prepayment=prepayment,
                                     schedule=updated_schedule,
+                                    product_name=f"{updated_schedule.get_activity_type_display()}",
+                                    quantity=1,
                                     amount=amount,
                                     remaining_balance=prepayment.balance,
                                     memo=f"{updated_schedule.get_activity_type_display()} - {updated_schedule.followup.customer_name}"
