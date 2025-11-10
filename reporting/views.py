@@ -1376,11 +1376,12 @@ def dashboard_view(request):
     context['lead_time_analysis'] = lead_time_analysis
     context['product_sales_distribution'] = product_sales_distribution
     
-    # 제품 차트 데이터
+    # 제품 차트 데이터 (상위 10개까지 표시)
+    top_products = product_sales_distribution['products'][:10] if len(product_sales_distribution['products']) > 10 else product_sales_distribution['products']
     product_chart_data = {
-        'labels': [p['product_name'] for p in product_sales_distribution['top_5']],
-        'data': [float(p['total_revenue']) for p in product_sales_distribution['top_5']],
-        'percentages': [p['percentage'] for p in product_sales_distribution['top_5']],
+        'labels': [p['product_name'] for p in top_products],
+        'data': [float(p['total_revenue']) for p in top_products],
+        'percentages': [p['percentage'] for p in top_products],
     }
     context['product_chart_data'] = json.dumps(product_chart_data, cls=DjangoJSONEncoder)
     
