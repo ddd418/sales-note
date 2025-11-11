@@ -4,6 +4,61 @@
   /* ============================================
      프리미엄 캘린더 스타일
      ============================================ */
+
+  /* 제품 검색 드롭다운 z-index 설정 */
+  .calendar-search-results,
+  .calendar-main-search-results {
+    z-index: 999999 !important;
+    position: absolute !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    border-radius: 4px !important;
+    background: white !important;
+    border: 1px solid #ccc !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  
+  /* 모달 내에서 드롭다운이 다른 요소들보다 위에 오도록 */
+  .modal-body .calendar-search-results,
+  .modal-body .calendar-main-search-results {
+    z-index: 999999 !important;
+  }
+  
+  /* 소계 박스의 z-index를 낮춰서 드롭다운이 위에 오도록 */
+  .modal-body .card.bg-light {
+    z-index: 1 !important;
+    position: relative !important;
+  }
+  
+  /* 드롭다운이 있는 행의 position 설정 */
+  .delivery-item {
+    position: relative !important;
+    z-index: 2 !important;
+  }
+  
+  /* 드롭다운 스크롤바 스타일링 */
+  .calendar-search-results::-webkit-scrollbar,
+  .calendar-main-search-results::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .calendar-search-results::-webkit-scrollbar-track,
+  .calendar-main-search-results::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  
+  .calendar-search-results::-webkit-scrollbar-thumb,
+  .calendar-main-search-results::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  
+  .calendar-search-results::-webkit-scrollbar-thumb:hover,
+  .calendar-main-search-results::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
   
   /* 페이지 헤더 */
   .schedule-calendar-header {
@@ -3727,8 +3782,19 @@
     newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
     newItem.innerHTML = `
       <div class="col-md-4">
-        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-        <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+        <label class="form-label fw-bold">제품 선택 <span class="text-danger">*</span></label>
+        <div class="position-relative">
+          <input type="text" 
+                 class="form-control calendar-main-product-search" 
+                 placeholder="제품 코드 또는 설명을 입력하세요" 
+                 autocomplete="off"
+                 value="${itemData.product_code || ''}"
+                 onfocus="searchCalendarMainProducts(this)"
+                 oninput="searchCalendarMainProducts(this)">
+          <div class="calendar-main-search-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; max-height: 200px; overflow-y: auto; z-index: 9999;"></div>
+          <input type="hidden" class="calendar-main-product-id" value="${itemData.product_id || ''}">
+        </div>
+        <input type="text" class="form-control mt-2 calendar-main-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -3835,7 +3901,7 @@
     // 유효성 검사
     let hasValidItems = false;
     items.forEach((item) => {
-      const itemName = item.querySelector('.item-name').value.trim();
+      const itemName = item.querySelector('.calendar-main-item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       
       if (itemName && quantity > 0) {
@@ -3859,7 +3925,7 @@
     
     let validIndex = 0;
     items.forEach((item) => {
-      const itemName = item.querySelector('.item-name').value.trim();
+      const itemName = item.querySelector('.calendar-main-item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
       
@@ -4348,8 +4414,19 @@
     newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
     newItem.innerHTML = `
       <div class="col-md-4">
-        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
-        <input type="text" class="form-control item-name" value="${itemData.item_name || ''}" placeholder="품목명을 입력하세요" required>
+        <label class="form-label fw-bold">제품 선택 <span class="text-danger">*</span></label>
+        <div class="position-relative">
+          <input type="text" 
+                 class="form-control calendar-product-search" 
+                 placeholder="제품 코드 또는 설명을 입력하세요" 
+                 autocomplete="off"
+                 value="${itemData.product_code || ''}"
+                 onfocus="searchCalendarProducts(this)"
+                 oninput="searchCalendarProducts(this)">
+          <div class="calendar-search-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; max-height: 200px; overflow-y: auto; z-index: 9999;"></div>
+          <input type="hidden" class="calendar-product-id" value="${itemData.product_id || ''}">
+        </div>
+        <input type="text" class="form-control mt-2 calendar-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -4460,7 +4537,7 @@
     }
     
     items.forEach((item, index) => {
-      const itemName = item.querySelector('.item-name').value.trim();
+      const itemName = item.querySelector('.calendar-item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
       
@@ -4526,6 +4603,310 @@
     modal.hide();
     
     showSuccessMessage('납품 품목이 적용되었습니다.');
+  }
+
+  // ============================================
+  // 캘린더 제품 검색 관련 함수들
+  // ============================================
+
+  // 드롭다운 위치 조정 함수 (소계 박스와 겹치지 않도록)
+  function adjustDropdownPosition(resultsDiv, searchInput) {
+    const searchRect = searchInput.getBoundingClientRect();
+    const modalBody = searchInput.closest('.modal-body');
+    
+    if (!modalBody) return;
+    
+    const modalRect = modalBody.getBoundingClientRect();
+    
+    // 소계 박스 찾기
+    const totalCard = modalBody.querySelector('.card.bg-light');
+    let availableHeight = 200; // 기본값
+    
+    if (totalCard) {
+      const totalCardRect = totalCard.getBoundingClientRect();
+      // 검색창 하단부터 소계 박스 상단까지의 거리 계산
+      const spaceToTotalCard = totalCardRect.top - searchRect.bottom - 10; // 10px 여백
+      availableHeight = Math.max(80, Math.min(200, spaceToTotalCard)); // 최소 80px, 최대 200px
+    } else {
+      // 소계 박스가 없으면 모달 하단까지의 거리 계산
+      const spaceToBottom = modalRect.bottom - searchRect.bottom - 20; // 20px 여백
+      availableHeight = Math.max(80, Math.min(200, spaceToBottom));
+    }
+    
+    // 항상 아래로 펼치되, 높이만 조정
+    resultsDiv.style.top = '100%';
+    resultsDiv.style.bottom = 'auto';
+    resultsDiv.style.marginTop = '2px';
+    resultsDiv.style.marginBottom = '0';
+    resultsDiv.style.maxHeight = availableHeight + 'px';
+    resultsDiv.style.overflowY = 'auto';
+    
+    console.log(`드롭다운 높이 조정: ${availableHeight}px`);
+  }
+
+  // 제품 검색 함수
+  function searchCalendarProducts(searchInput) {
+    console.log('searchCalendarProducts 호출됨');
+    const deliveryItem = searchInput.closest('.delivery-item');
+    const resultsDiv = deliveryItem.querySelector('.calendar-search-results');
+    const searchQuery = searchInput.value.toLowerCase().trim();
+    const productIdInput = deliveryItem.querySelector('.calendar-product-id');
+    const itemNameInput = deliveryItem.querySelector('.calendar-item-name');
+    
+    console.log('검색어:', searchQuery);
+    
+    // 외부 클릭으로 다른 드롭다운들 닫기
+    document.querySelectorAll('.calendar-search-results').forEach(div => {
+        if (div !== resultsDiv) {
+            div.style.display = 'none';
+        }
+    });
+    
+    if (!searchQuery) {
+        resultsDiv.style.display = 'none';
+        productIdInput.value = '';
+        itemNameInput.value = '';
+        return;
+    }
+    
+    // 전체 제품 데이터 가져오기
+    fetch('/reporting/api/products/')
+        .then(response => response.json())
+        .then(data => {
+            const products = data.products || [];
+            console.log('제품 데이터 로드됨:', products.length);
+            
+            // 검색어로 필터링
+            const filteredProducts = products.filter(product => 
+                product.product_code.toLowerCase().includes(searchQuery) ||
+                (product.description && product.description.toLowerCase().includes(searchQuery))
+            );
+            console.log('표시할 제품 수:', filteredProducts.length);
+            
+            // 검색 결과 표시
+            resultsDiv.innerHTML = '';
+            
+            if (filteredProducts.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
+                resultsDiv.style.display = 'block';
+            } else {
+                console.log('제품 목록 DOM 생성 시작...');
+                
+                // 최대 10개까지만 표시
+                const displayProducts = filteredProducts.slice(0, 10);
+                
+                displayProducts.forEach((product, index) => {
+                    console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
+                    const resultItem = document.createElement('div');
+                    resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+                    resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
+                    resultItem.dataset.productId = product.id;
+                    resultItem.dataset.productCode = product.product_code;
+                    resultItem.dataset.productPrice = product.current_price || product.standard_price;
+                    resultItem.dataset.productDescription = product.description || product.product_code;
+                    
+                    // 호버 효과
+                    resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
+                    resultItem.onmouseout = function() { this.style.background = 'white'; };
+                    
+                    // 클릭 이벤트
+                    resultItem.onclick = function() {
+                        productIdInput.value = this.dataset.productId;
+                        itemNameInput.value = this.dataset.productDescription;
+                        searchInput.value = this.dataset.productCode;
+                        
+                        // 단가 업데이트
+                        const unitPriceInput = deliveryItem.querySelector('.unit-price-input');
+                        unitPriceInput.value = this.dataset.productPrice;
+                        
+                        // 수량이 없으면 1로 설정
+                        const quantityInput = deliveryItem.querySelector('.quantity-input');
+                        if (!quantityInput.value) {
+                            quantityInput.value = 1;
+                        }
+                        
+                        // 금액 계산
+                        calculateEditItemTotal({ target: quantityInput });
+                        
+                        // 드롭다운 닫기
+                        resultsDiv.style.display = 'none';
+                    };
+                    
+                    resultsDiv.appendChild(resultItem);
+                });
+                
+                // 드롭다운 위치 조정 (소계 박스와 겹치지 않도록)
+                adjustDropdownPosition(resultsDiv, searchInput);
+                resultsDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('제품 검색 중 오류 발생:', error);
+            resultsDiv.innerHTML = '<div style="padding: 8px; color: #dc2626;">제품 로드 중 오류가 발생했습니다</div>';
+            // 오류 시에도 위치 조정
+            adjustDropdownPosition(resultsDiv, searchInput);
+            resultsDiv.style.display = 'block';
+        });
+  }
+
+  // 캘린더 제품 검색 초기화 함수
+  function clearCalendarProductSearch(deliveryItem) {
+    const searchInput = deliveryItem.querySelector('.calendar-product-search');
+    const resultsDiv = deliveryItem.querySelector('.calendar-search-results');
+    const productIdInput = deliveryItem.querySelector('.calendar-product-id');
+    const itemNameInput = deliveryItem.querySelector('.calendar-item-name');
+    const unitPriceInput = deliveryItem.querySelector('.unit-price-input');
+    
+    if (searchInput) searchInput.value = '';
+    if (resultsDiv) resultsDiv.style.display = 'none';
+    if (productIdInput) productIdInput.value = '';
+    if (itemNameInput) itemNameInput.value = '';
+    if (unitPriceInput) unitPriceInput.value = '';
+    
+    // 총합 다시 계산
+    calculateEditTotal();
+  }
+
+  // ============================================
+  // 캘린더 메인 납품 모달 제품 검색 관련 함수들
+  // ============================================
+
+  // 메인 납품 모달 제품 검색 함수
+  function searchCalendarMainProducts(searchInput) {
+    console.log('searchCalendarMainProducts 호출됨');
+    const deliveryItem = searchInput.closest('.delivery-item');
+    const resultsDiv = deliveryItem.querySelector('.calendar-main-search-results');
+    const searchQuery = searchInput.value.toLowerCase().trim();
+    const productIdInput = deliveryItem.querySelector('.calendar-main-product-id');
+    const itemNameInput = deliveryItem.querySelector('.calendar-main-item-name');
+    
+    console.log('검색어:', searchQuery);
+    
+    // 외부 클릭으로 다른 드롭다운들 닫기
+    document.querySelectorAll('.calendar-main-search-results').forEach(div => {
+        if (div !== resultsDiv) {
+            div.style.display = 'none';
+        }
+    });
+    
+    if (!searchQuery) {
+        resultsDiv.style.display = 'none';
+        productIdInput.value = '';
+        itemNameInput.value = '';
+        return;
+    }
+    
+    // 전체 제품 데이터 가져오기
+    fetch('/reporting/api/products/')
+        .then(response => response.json())
+        .then(data => {
+            const products = data.products || [];
+            console.log('제품 데이터 로드됨:', products.length);
+            
+            // 검색어로 필터링
+            const filteredProducts = products.filter(product => 
+                product.product_code.toLowerCase().includes(searchQuery) ||
+                (product.description && product.description.toLowerCase().includes(searchQuery))
+            );
+            console.log('표시할 제품 수:', filteredProducts.length);
+            
+            // 검색 결과 표시
+            resultsDiv.innerHTML = '';
+            
+            if (filteredProducts.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
+                resultsDiv.style.display = 'block';
+            } else {
+                console.log('제품 목록 DOM 생성 시작...');
+                
+                // 최대 10개까지만 표시
+                const displayProducts = filteredProducts.slice(0, 10);
+                
+                displayProducts.forEach((product, index) => {
+                    console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
+                    const resultItem = document.createElement('div');
+                    resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+                    resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
+                    resultItem.dataset.productId = product.id;
+                    resultItem.dataset.productCode = product.product_code;
+                    resultItem.dataset.productPrice = product.current_price || product.standard_price;
+                    resultItem.dataset.productDescription = product.description || product.product_code;
+                    
+                    // 호버 효과
+                    resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
+                    resultItem.onmouseout = function() { this.style.background = 'white'; };
+                    
+                    // 클릭 이벤트
+                    resultItem.onclick = function() {
+                        productIdInput.value = this.dataset.productId;
+                        itemNameInput.value = this.dataset.productDescription;
+                        searchInput.value = this.dataset.productCode;
+                        
+                        // 단가 업데이트
+                        const unitPriceInput = deliveryItem.querySelector('.unit-price-input');
+                        unitPriceInput.value = this.dataset.productPrice;
+                        
+                        // 수량이 없으면 1로 설정
+                        const quantityInput = deliveryItem.querySelector('.quantity-input');
+                        if (!quantityInput.value) {
+                            quantityInput.value = 1;
+                        }
+                        
+                        // 금액 계산
+                        calculateCalendarItemTotal({ target: quantityInput });
+                        
+                        // 드롭다운 닫기
+                        resultsDiv.style.display = 'none';
+                    };
+                    
+                    resultsDiv.appendChild(resultItem);
+                });
+                
+                // 드롭다운 위치 조정 (소계 박스와 겹치지 않도록)
+                adjustDropdownPosition(resultsDiv, searchInput);
+                resultsDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('제품 검색 중 오류 발생:', error);
+            resultsDiv.innerHTML = '<div style="padding: 8px; color: #dc2626;">제품 로드 중 오류가 발생했습니다</div>';
+            // 오류 시에도 위치 조정
+            adjustDropdownPosition(resultsDiv, searchInput);
+            resultsDiv.style.display = 'block';
+        });
+  }
+
+  // 캘린더 메인 납품 모달 품목 총액 계산 함수
+  function calculateCalendarItemTotal(event) {
+    const item = event.target.closest('.delivery-item');
+    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    
+    // 부가세 포함 계산: (단가 * 수량) * 1.1
+    const subtotal = quantity * unitPrice;
+    const total = subtotal * 1.1;
+    
+    item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+    calculateCalendarTotal();
+  }
+
+  function calculateCalendarTotal() {
+    const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
+    let subtotal = 0;
+    
+    items.forEach(item => {
+      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      subtotal += quantity * unitPrice;
+    });
+    
+    const tax = subtotal * 0.1;
+    const total = subtotal + tax;
+    
+    // 화면 업데이트
+    document.getElementById('calendar-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
+    document.getElementById('calendar-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
+    document.getElementById('calendar-total-amount').textContent = Math.round(total).toLocaleString() + '원';
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -5819,6 +6200,24 @@
         }
       }, 3000);
     }
+
+    // 캘린더 제품 검색 드롭다운 외부 클릭 이벤트
+    document.addEventListener('click', function(event) {
+        const isSearchInput = event.target.classList.contains('calendar-product-search') || 
+                             event.target.classList.contains('calendar-main-product-search');
+        const isSearchResult = event.target.closest('.calendar-search-results') || 
+                              event.target.closest('.calendar-main-search-results');
+        
+        if (!isSearchInput && !isSearchResult) {
+            // 모든 캘린더 검색 결과 드롭다운 닫기
+            document.querySelectorAll('.calendar-search-results').forEach(div => {
+                div.style.display = 'none';
+            });
+            document.querySelectorAll('.calendar-main-search-results').forEach(div => {
+                div.style.display = 'none';
+            });
+        }
+    });
 
   });
 </script>
