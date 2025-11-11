@@ -663,8 +663,6 @@ function loadExistingItems() {
         const deliveryText = `{{ delivery_text|escapejs }}`;
         const lines = deliveryText.split('\n').filter(line => line.trim());
         
-        console.log('Parsing delivery text:', deliveryText);
-        console.log('Lines found:', lines);
         
         let hasValidItems = false;
         lines.forEach(line => {
@@ -680,7 +678,6 @@ function loadExistingItems() {
                     // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
                     const unitPrice = Math.round(totalPrice / 1.1 / quantity);
                     
-                    console.log(`Adding item: ${itemName}, quantity: ${quantity}, unit price: ${unitPrice}`);
                     
                     addDeliveryItem({
                         item_name: itemName,
@@ -837,7 +834,6 @@ function displayHistoryDeliveryItems() {
     const deliveryText = `{{ delivery_text|escapejs }}`;
     if (!deliveryText) return;
     
-    console.log('Parsing delivery text for display:', deliveryText);
     
     const lines = deliveryText.split('\n').filter(line => line.trim());
     const items = [];
@@ -939,7 +935,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const deliveryForm = document.getElementById('delivery-items-form');
     if (deliveryForm) {
         deliveryForm.addEventListener('submit', function(e) {
-            console.log('납품 품목 폼 제출');
             
             // 제품이 선택되지 않은 품목 제거
             const items = document.querySelectorAll('.delivery-item');
@@ -948,7 +943,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // product_id가 없거나 빈 값이면 해당 품목 제거
                 if (!productId || !productId.value || productId.value === '') {
-                    console.log('빈 품목 제거:', item);
                     item.remove();
                 }
             });
@@ -962,11 +956,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modal) {
         // 모달 열릴 때
         modal.addEventListener('show.bs.modal', function(e) {
-            console.log('납품 품목 모달 열기 시작');
             
             if (modal.parentElement !== document.body) {
                 document.body.appendChild(modal);
-                console.log('납품 품목 모달을 body로 이동');
             }
             
             modal.style.zIndex = '100000';
@@ -975,7 +967,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 모달 완전히 열린 후
         modal.addEventListener('shown.bs.modal', function() {
-            console.log('납품 품목 모달 완전히 열림');
             
             // 다른 모든 모달 닫기
             const otherModals = document.querySelectorAll('.modal:not(#deliveryItemsModal)');
@@ -1022,12 +1013,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             modal.style.pointerEvents = 'auto';
             
-            console.log('납품 품목 모달 설정 완료');
         });
         
         // 모달 닫힐 때
         modal.addEventListener('hidden.bs.modal', function() {
-            console.log('=== 모달이 닫혔음 ===');
             
             // 페이지 요소들 z-index 복원
             const pageElements = document.querySelectorAll('.container, .card, form:not(#delivery-items-form)');
@@ -1043,35 +1032,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 제품 검색 함수
     function searchDetailProducts(searchInput) {
-        console.log('searchDetailProducts 호출됨');
         const deliveryItem = searchInput.closest('.delivery-item');
         const resultsDiv = deliveryItem.querySelector('.detail-search-results');
         const searchQuery = searchInput.value.toLowerCase().trim();
         const productIdInput = deliveryItem.querySelector('.detail-product-id');
         const itemNameInput = deliveryItem.querySelector('.detail-item-name');
         
-        console.log('검색어:', searchQuery);
         
         // 전체 제품 데이터 가져오기 (schedule_form.html과 동일한 방식)
         fetch('/reporting/api/products/')
             .then(response => response.json())
             .then(data => {
                 const products = data.products || [];
-                console.log('제품 데이터 로드됨:', products.length);
                 
                 // 검색어로 필터링 (검색어가 없으면 전체 목록 표시)
                 let filteredProducts;
                 if (!searchQuery) {
-                    console.log('검색어 없음 - 전체 제품 목록 표시');
                     filteredProducts = products;
                 } else {
-                    console.log('검색어로 필터링 중...');
                     filteredProducts = products.filter(product => 
                         product.product_code.toLowerCase().includes(searchQuery) ||
                         (product.description && product.description.toLowerCase().includes(searchQuery))
                     );
                 }
-                console.log('표시할 제품 수:', filteredProducts.length);
                 
                 // 검색 결과 표시
                 resultsDiv.innerHTML = '';
@@ -1080,13 +1063,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
                     resultsDiv.style.display = 'block';
                 } else {
-                    console.log('제품 목록 DOM 생성 시작...');
                     
                     // 최대 10개까지만 표시
                     const displayProducts = filteredProducts.slice(0, 10);
                     
                     displayProducts.forEach((product, index) => {
-                        console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
                         const resultItem = document.createElement('div');
                         resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
                         resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
@@ -1132,7 +1113,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(error => {
-                console.error('제품 검색 중 오류 발생:', error);
                 resultsDiv.innerHTML = '<div style="padding: 8px; color: #dc2626;">제품 로드 중 오류가 발생했습니다</div>';
                 resultsDiv.style.display = 'block';
             });
@@ -1213,7 +1193,6 @@ document.addEventListener('DOMContentLoaded', function() {
   if (productAddModal && productAddForm) {
     // 모달 열릴 때
     productAddModal.addEventListener('show.bs.modal', function(e) {
-      console.log('제품 추가 모달 열기');
       
       if (productAddModal.parentElement !== document.body) {
         document.body.appendChild(productAddModal);
@@ -1307,7 +1286,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       })
       .catch(error => {
-        console.error('Error:', error);
         alert('제품 추가 중 오류가 발생했습니다.');
       });
     });

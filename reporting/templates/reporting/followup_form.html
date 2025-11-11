@@ -576,7 +576,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     })
                     .catch(error => {
-                        console.error('Error:', error);
                         suggestions.style.display = 'none';
                     });
             }, 300);
@@ -698,7 +697,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             alert('서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.');
         })
         .finally(() => {
@@ -751,7 +749,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             alert('서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.');
         })
         .finally(() => {
@@ -818,7 +815,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         deptAddBtn.style.display = 'block';
                     }
                 })
-                .catch(error => console.error('Error loading company:', error));
         {% endif %}
         
         {% if form.department.value %}
@@ -830,7 +826,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         document.getElementById('department-search').value = data.department.name;
                     }
                 })
-                .catch(error => console.error('Error loading department:', error));
         {% endif %}
     {% endif %}
 });

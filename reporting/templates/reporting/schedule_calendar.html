@@ -1592,9 +1592,6 @@
     role: '{{ user.userprofile.role }}'
   };
   
-  // 디버깅용 콘솔 로그
-  console.log('Current user info:', currentUser);
-  
   // 전역 변수 선언 (window 객체에 명시적으로 할당)
   window.currentDate = new Date();
   window.selectedDate = null;
@@ -1617,7 +1614,6 @@
     window.allHistoryData = [];
     currentSchedulesData = window.currentSchedulesData;
     allHistoryData = window.allHistoryData;
-    console.log('전역 변수 초기화 완료');
   });
 
   // 일정 상태 업데이트 함수 - 전역 스코프로 이동
@@ -1685,7 +1681,6 @@
       }
     })
     .catch(error => {
-      console.error('상태 업데이트 오류:', error);
       alert('상태 업데이트 중 오류가 발생했습니다.');
     });
   }
@@ -1746,7 +1741,6 @@
       }
     })
     .catch(error => {
-      console.error('Error:', error);
       alert('우선순위 업데이트 중 오류가 발생했습니다.');
     });
   }
@@ -1763,8 +1757,6 @@
     // 텍스트 포맷팅 함수 (줄바꿈 처리 및 공백 정리)
     function formatText(text) {
       if (!text) return '';
-      
-      console.log('Original text:', JSON.stringify(text)); // 디버깅용
       
       // 1. 모든 종류의 공백과 줄바꿈을 정규화
       let formattedText = text
@@ -1810,8 +1802,6 @@
       // 6. 최종 텍스트 생성
       formattedText = cleanedLines.join('\n');
       
-      console.log('Processed text:', JSON.stringify(formattedText)); // 디버깅용
-      
       // 7. HTML 이스케이프 적용
       formattedText = escapeHtml(formattedText);
       
@@ -1822,12 +1812,8 @@
     // 납품 품목 전용 포맷팅 함수
     function formatDeliveryItems(text) {
       if (!text) {
-        console.log('formatDeliveryItems: 텍스트가 없음');
         return '';
       }
-      
-      console.log('formatDeliveryItems original:', JSON.stringify(text));
-      console.log('formatDeliveryItems original length:', text.length);
       
       // 모든 종류의 줄바꿈 패턴을 처리
       let processedText = text
@@ -1838,28 +1824,21 @@
         .replace(/\r/g, '\n')      // 실제 \r을 \n으로
         .trim();                   // 앞뒤 공백 제거
       
-      console.log('formatDeliveryItems processed:', JSON.stringify(processedText));
-      
       // 텍스트를 줄 단위로 분할하고 각 라인의 앞뒤 공백도 제거
       const lines = processedText.split('\n')
         .map(line => line.trim())  // 각 라인의 앞뒤 공백 제거
         .filter(line => line);     // 빈 라인 제거
       
-      console.log('formatDeliveryItems lines count:', lines.length);
-      console.log('formatDeliveryItems lines:', lines);
-      
       if (lines.length === 0) return '';
       
       // 각 줄을 개별적으로 HTML 이스케이프 후 br 태그로 연결
       const formattedLines = lines.map((line, index) => {
-        console.log(`formatDeliveryItems line ${index + 1}: "${line}"`);
         const div = document.createElement('div');
         div.textContent = line;
         return div.innerHTML; // HTML 이스케이프된 텍스트
       });
       
       const result = formattedLines.join('<br>');
-      console.log('formatDeliveryItems result:', result);
       return result;
     }
 
@@ -1920,10 +1899,6 @@
                         const isManagerMemo = history.action_type === 'memo' && 
                                             history.content && 
                                             history.content.includes('[매니저 메모 -');
-                        console.log('History ID:', history.id, 'Type:', history.action_type, 'Is Manager Memo:', isManagerMemo);
-                        if (isManagerMemo) {
-                          console.log('Content preview:', history.content.substring(0, 50));
-                        }
                         return isManagerMemo ? 
                           `<button class="btn btn-sm btn-outline-danger" onclick="deleteManagerMemo(${history.id}, ${scheduleId})" title="매니저 메모 삭제">
                             <i class="fas fa-trash"></i>
@@ -2082,7 +2057,6 @@
         }
       })
       .catch(error => {
-        console.error('Error loading histories:', error);
         const container = document.getElementById(`scheduleHistories-${scheduleId}`);
         container.innerHTML = `
           <div class="alert alert-warning mb-0">
@@ -2104,7 +2078,6 @@
         return response.json();
       })
       .then((data) => {
-        console.log("Loaded schedules:", data); // 디버깅용
         schedules = data;
         window.schedules = data;
         window.currentSchedulesData = data;
@@ -2112,7 +2085,7 @@
         renderCalendar();
       })
       .catch((error) => {
-        console.error("일정 로딩 실패:", error);        schedules = []; // 빈 배열로 초기화
+        schedules = []; // 빈 배열로 초기화
         renderCalendar();
       });
   }
@@ -2149,9 +2122,6 @@
         .querySelector('meta[name="csrf-token"]')
         ?.getAttribute("content");
 
-    console.log("CSRF 토큰:", csrfToken);
-    console.log("삭제 URL:", scheduleDeleteUrl.replace("{id}", scheduleId));
-
     if (!csrfToken) {
       alert("CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.");
       return;
@@ -2170,10 +2140,6 @@
       body: formData,
     })
       .then((response) => {
-        console.log("응답 상태:", response.status);
-        console.log("응답 URL:", response.url);
-        console.log("응답 헤더:", response.headers.get('content-type'));
-
         if (!response.ok) {
           // 상태 코드에 따른 상세 오류 메시지
           let errorMessage = `HTTP 오류! 상태: ${response.status}`;
@@ -2191,14 +2157,11 @@
           try {
             return JSON.parse(text);
           } catch (e) {
-            console.error("JSON 파싱 오류:", e);
-            console.error("응답 텍스트:", text);
             throw new Error("서버 응답을 처리할 수 없습니다. (JSON 파싱 오류)");
           }
         });
       })
       .then((data) => {
-        console.log("응답 데이터:", data);
 
         if (data.success) {
           // 성공 메시지 표시
@@ -2222,9 +2185,6 @@
           throw new Error(data.error || "일정 삭제에 실패했습니다.");
         }        })
         .catch((error) => {
-          console.error("일정 삭제 오류:", error);
-          console.error("오류 세부 정보:", error.message);
-
           // 상세한 오류 메시지 생성
           let userErrorMessage = "일정 삭제 중 오류가 발생했습니다.";
           if (error.message.includes("서버 내부 오류")) {
@@ -2326,8 +2286,6 @@
         }
       })
       .catch((error) => {
-        console.error("일정 삭제 오류:", error);
-        
         let userErrorMessage = "일정 삭제 중 오류가 발생했습니다.";
         if (error.message.includes("권한")) {
           userErrorMessage += "\n삭제 권한이 없습니다.";
@@ -2429,7 +2387,6 @@
       }
     })
     .catch(error => {
-      console.error('펀넬 정보 저장 오류:', error);
       
       if (typeof showToast !== 'undefined') {
         showToast('펀넬 정보 저장 중 오류가 발생했습니다: ' + error.message, 'error');
@@ -2496,7 +2453,6 @@
       }
     })
     .catch(error => {
-      console.error('일정 이동 오류:', error);
       alert('일정 이동 중 오류가 발생했습니다.');
     })
     .finally(() => {
@@ -2529,7 +2485,6 @@
         showErrorMessage('히스토리 정보를 불러올 수 없습니다.');
       }
     } catch (error) {
-      console.error('Error loading history:', error);
       showErrorMessage('히스토리 정보를 불러오는 중 오류가 발생했습니다.');
     }
   }
@@ -2578,7 +2533,6 @@
       }
     })
     .catch(error => {
-      console.error('Error deleting history:', error);
       showErrorMessage(`활동 기록 삭제 중 오류가 발생했습니다: ${error.message}`);
     });
   }
@@ -2596,12 +2550,10 @@
       // Schedule의 DeliveryItem 가져오기
       const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
       if (!response.ok) {
-        console.log('Schedule DeliveryItem API 응답 실패 또는 데이터 없음');
         return historyDeliveryItems || '';
       }
       
       const data = await response.json();
-      console.log('Schedule DeliveryItem 응답:', data);
       
       let combinedText = historyDeliveryItems || '';
       
@@ -2623,26 +2575,20 @@
       
       return combinedText;
     } catch (error) {
-      console.error('Schedule DeliveryItem 가져오기 실패:', error);
       return historyDeliveryItems || '';
     }
   }
 
   // 히스토리 편집 폼 표시
   async function showHistoryEditForm(history, scheduleId) {
-    console.log('=== showHistoryEditForm 시작 ===');
-    console.log('History data:', history);
-    console.log('Schedule ID:', scheduleId);
     
     const contentDiv = document.getElementById(`historyContent-${history.id}`);
     if (!contentDiv) {
-      console.error('Content div를 찾을 수 없습니다:', `historyContent-${history.id}`);
       return;
     }
 
     // Schedule DeliveryItem과 합쳐진 텍스트 가져오기
     const combinedDeliveryItems = await getCombinedDeliveryItemsText(history.id, scheduleId, history.delivery_items);
-    console.log('합쳐진 delivery_items:', combinedDeliveryItems);
     
     // Schedule DeliveryItem 정보도 별도로 가져오기 (구조화된 형태로)
     let scheduleDeliveryItems = [];
@@ -2656,11 +2602,8 @@
         if (scheduleDeliveryItems.length > 0) {
           scheduleTaxInvoiceStatus = scheduleDeliveryItems[0].tax_invoice_issued;
         }
-        console.log('Schedule DeliveryItem 구조화 데이터:', scheduleDeliveryItems);
-        console.log('Schedule 세금계산서 상태:', scheduleTaxInvoiceStatus);
       }
     } catch (error) {
-      console.error('Schedule DeliveryItem 구조화 데이터 가져오기 실패:', error);
     }
     
     // 연결된 스케줄에 납품 품목이 있고 세금계산서 상태가 다르면 동기화
@@ -2669,7 +2612,6 @@
       finalTaxInvoiceStatus = scheduleTaxInvoiceStatus;
       // 히스토리의 세금계산서 상태와 다르면 업데이트
       if (history.tax_invoice_issued !== scheduleTaxInvoiceStatus) {
-        console.log(`세금계산서 상태 동기화: ${history.tax_invoice_issued} -> ${scheduleTaxInvoiceStatus}`);
         // 백엔드에서 동기화 (별도 요청)
         updateTaxInvoiceStatusSilent(history.id, scheduleTaxInvoiceStatus);
       }
@@ -2884,7 +2826,6 @@
         scheduleContent.innerHTML = scheduleItemsHtml;
         scheduleSection.style.display = 'block';
         
-        console.log(`Schedule DeliveryItem ${scheduleDeliveryItems.length}개를 History 편집 폼에 표시 완료`);
       }
     }
     
@@ -2950,7 +2891,6 @@
       }
     })
     .catch(error => {
-      console.error('Error updating tax invoice status:', error);
       showErrorMessage('세금계산서 상태 변경 중 오류가 발생했습니다.');
       // 체크박스 상태 되돌리기
       const checkbox = document.getElementById(`editTaxInvoice-${historyId}`);
@@ -2966,7 +2906,6 @@
                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     
     if (!csrfToken) {
-      console.error('CSRF 토큰을 찾을 수 없습니다.');
       return;
     }
     
@@ -2982,13 +2921,10 @@
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        console.log('세금계산서 상태 자동 동기화 완료:', isChecked);
       } else {
-        console.error('세금계산서 자동 동기화 실패:', data.error);
       }
     })
     .catch(error => {
-      console.error('세금계산서 자동 동기화 중 오류:', error);
     });
   }
 
@@ -3023,7 +2959,6 @@
         
         // 새 이벤트 리스너 추가
         function refreshHistoryModalAfterScheduleUpdate() {
-          console.log('스케줄 모달이 닫혔습니다. 히스토리 모달 새로고침 시작...');
           setTimeout(() => {
             refreshHistoryModal(currentHistoryId, scheduleId);
           }, 500);
@@ -3051,7 +2986,6 @@
           window.allHistoryData.push(data.history);
         }
         
-        console.log('히스토리 데이터 새로고침 완료:', data.history);
         
         // 스케줄 목록도 새로고침하여 최신 상태 반영
         await refreshScheduleData();
@@ -3076,11 +3010,9 @@
         
         showSuccessMessage('연결된 일정 품목 변경사항이 반영되었습니다.');
       } else {
-        console.error('히스토리 데이터 새로고침 실패:', data.error);
         showErrorMessage('변경사항 반영 중 오류가 발생했습니다.');
       }
     } catch (error) {
-      console.error('히스토리 모달 새로고침 중 오류:', error);
       showErrorMessage('변경사항 반영 중 오류가 발생했습니다.');
     }
   }
@@ -3100,10 +3032,8 @@
         window.currentSchedulesData = data;
         schedules = window.schedules;
         currentSchedulesData = window.currentSchedulesData;
-        console.log('스케줄 데이터 새로고침 완료');
       }
     } catch (error) {
-      console.error('스케줄 데이터 새로고침 실패:', error);
     }
   }
 
@@ -3115,10 +3045,6 @@
 
   // 히스토리 업데이트
   function updateHistory(event, historyId, scheduleId) {
-    console.log('=== updateHistory 시작 ===');
-    console.log('Event:', event);
-    console.log('History ID:', historyId);
-    console.log('Schedule ID:', scheduleId);
     
     if (event) {
       event.preventDefault();
@@ -3127,39 +3053,28 @@
     
     const form = document.getElementById(`historyEditForm-${historyId}`);
     if (!form) {
-      console.error('편집 폼을 찾을 수 없습니다:', `historyEditForm-${historyId}`);
       return false;
     }
     
-    console.log('Form found:', form);
     
     const formData = new FormData(form);
     
     // FormData 내용 로깅
-    console.log('=== FormData 내용 ===');
     for (let [key, value] of formData.entries()) {
-      console.log(`${key}:`, value);
     }
     
     // 삭제할 파일 정보 추가
     const deleteCheckboxes = form.querySelectorAll('input[name="delete_file"]:checked');
-    console.log('Delete checkboxes found:', deleteCheckboxes.length);
     deleteCheckboxes.forEach(checkbox => {
-      console.log('Adding delete_files:', checkbox.value);
       formData.append('delete_files', checkbox.value);
     });
     
     // 파일 업로드 정보 확인
     const fileInput = form.querySelector('input[type="file"]');
     if (fileInput && fileInput.files.length > 0) {
-      console.log('=== 파일 업로드 정보 ===');
-      console.log('File input found:', fileInput);
-      console.log('Files selected:', fileInput.files.length);
       for (let i = 0; i < fileInput.files.length; i++) {
-        console.log(`File ${i + 1}:`, fileInput.files[i].name, fileInput.files[i].size);
       }
     } else {
-      console.log('파일이 선택되지 않았습니다.');
     }
     
     // CSRF 토큰 추가
@@ -3167,19 +3082,15 @@
                      document.querySelector('meta[name=csrf-token]')?.getAttribute('content') ||
                      '{{ csrf_token }}';
     
-    console.log('CSRF Token:', csrfToken);
     
     if (csrfToken && csrfToken !== '{{ csrf_token }}') {
       formData.append('csrfmiddlewaretoken', csrfToken);
     }
     
     // 최종 FormData 내용 확인
-    console.log('=== 최종 FormData 내용 ===');
     for (let [key, value] of formData.entries()) {
       if (value instanceof File) {
-        console.log(`${key}: File(${value.name}, ${value.size} bytes)`);
       } else {
-        console.log(`${key}: ${value}`);
       }
     }
     
@@ -3189,9 +3100,7 @@
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장중...';
     
-    console.log('=== AJAX 요청 시작 ===');
     const updateUrl = `{% url 'reporting:history_update_api' 0 %}`.replace('0', historyId);
-    console.log('Update URL:', updateUrl);
     
     // AJAX로 히스토리 업데이트
     fetch(updateUrl, {
@@ -3203,24 +3112,17 @@
       }
     })
     .then(response => {
-      console.log('=== 서버 응답 수신 ===');
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
       
       if (!response.ok) {
         return response.text().then(text => {
-          console.error('Error response text:', text);
           throw new Error(`HTTP ${response.status}: ${text}`);
         });
       }
       return response.json();
     })
     .then(data => {
-      console.log('=== JSON 응답 데이터 ===');
-      console.log('Response data:', data);
       
       if (data.success) {
-        console.log('✅ 성공: 히스토리 업데이트 완료');
         showSuccessMessage('활동 기록이 성공적으로 수정되었습니다.');
         
         // 히스토리 목록 새로고침
@@ -3231,8 +3133,6 @@
           forceUpdateScheduleModal(scheduleId);
         }, 500); // 히스토리 로드 완료 후 실행
       } else {
-        console.error('❌ 실패: 서버 응답 오류');
-        console.error('Error message:', data.error);
         showErrorMessage(data.error || '활동 기록 수정 중 오류가 발생했습니다.');
         // 버튼 복원
         submitBtn.disabled = false;
@@ -3240,9 +3140,6 @@
       }
     })
     .catch(error => {
-      console.error('=== 요청 실패 ===');
-      console.error('Error:', error);
-      console.error('Error stack:', error.stack);
       showErrorMessage(`활동 기록 수정 중 오류가 발생했습니다: ${error.message}`);
       // 버튼 복원
       submitBtn.disabled = false;
@@ -3294,23 +3191,16 @@
       event.stopPropagation();
     }
     
-    console.log('=== 히스토리 폼 제출 시작 ===');
-    console.log('Schedule ID:', scheduleId);
-    console.log('Event prevented:', !!event);
     
     const form = event ? event.target : document.getElementById(`inlineHistoryForm-${scheduleId}`);
     if (!form) {
-      console.error('폼을 찾을 수 없습니다:', `inlineHistoryForm-${scheduleId}`);
       return false;
     }
     
     const formData = new FormData(form);
     
     // 폼 데이터 상세 로그
-    console.log('Form element:', form);
-    console.log('Form data entries:');
     for (let [key, value] of formData.entries()) {
-      console.log(`  ${key}: ${value}`);
     }
     
     // CSRF 토큰 추가 (여러 방법으로 시도)
@@ -3318,25 +3208,17 @@
     const csrfToken2 = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
     const csrfToken3 = '{{ csrf_token }}';
     
-    console.log('CSRF 토큰 확인:');
-    console.log('  Method 1 (form):', csrfToken1);
-    console.log('  Method 2 (meta):', csrfToken2);
-    console.log('  Method 3 (template):', csrfToken3);
     
     const csrfToken = csrfToken1 || csrfToken2 || csrfToken3;
-    console.log('  선택된 CSRF 토큰:', csrfToken);
     
     if (csrfToken && csrfToken !== '{{ csrf_token }}') {
       formData.append('csrfmiddlewaretoken', csrfToken);
-      console.log('CSRF 토큰이 FormData에 추가됨');
     } else {
-      console.error('유효한 CSRF 토큰을 찾을 수 없음!');
     }
     
     // 버튼 비활성화
     const submitBtn = form.querySelector('button.btn-success') || form.querySelector('button[type="submit"]');
     if (!submitBtn) {
-      console.error('저장 버튼을 찾을 수 없습니다');
       return false;
     }
     
@@ -3345,13 +3227,10 @@
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장중...';
     
     // 최종 폼 데이터 확인
-    console.log('최종 전송될 데이터:');
     for (let [key, value] of formData.entries()) {
-      console.log(`  ${key}: ${value}`);
     }
     
     const submitUrl = `{% url 'reporting:history_create_from_schedule' 0 %}`.replace('0', scheduleId);
-    console.log('Submit URL:', submitUrl);
     
     // AJAX로 히스토리 생성
     fetch(submitUrl, {
@@ -3363,25 +3242,17 @@
       }
     })
     .then(response => {
-      console.log('=== 서버 응답 수신 ===');
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-      console.log('Response ok:', response.ok);
       
       if (!response.ok) {
         return response.text().then(text => {
-          console.error('Error response text:', text);
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         });
       }
       return response.json();
     })
     .then(data => {
-      console.log('=== JSON 응답 데이터 ===');
-      console.log('Response data:', data);
       
       if (data.success) {
-        console.log('✅ 성공: 히스토리 저장 완료');
         // 성공 메시지 표시
         showSuccessMessage('활동 기록이 성공적으로 저장되었습니다.');
         
@@ -3396,21 +3267,14 @@
           loadSchedules();
         }
       } else {
-        console.error('❌ 실패: 서버 응답 오류');
-        console.error('Error message:', data.error);
-        console.error('Form errors:', data.form_errors);
         // 오류 메시지 표시
         showErrorMessage(data.error || '활동 기록 저장 중 오류가 발생했습니다.');
       }
     })
     .catch(error => {
-      console.error('=== 요청 실패 ===');
-      console.error('Error:', error);
-      console.error('Error stack:', error.stack);
       showErrorMessage(`활동 기록 저장 중 오류가 발생했습니다: ${error.message}`);
     })
     .finally(() => {
-      console.log('=== 요청 완료 (정리) ===');
       // 버튼 복원
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -3492,9 +3356,6 @@
     // FormData에 CSRF 토큰 추가
     formData.set('csrfmiddlewaretoken', csrfToken);
     
-    console.log('Submitting manager memo for schedule:', scheduleId);
-    console.log('CSRF Token:', csrfToken);
-    console.log('Memo content:', formData.get('memo'));
     
     // 매니저 메모를 위한 API 호출
     const apiUrl = "{% url 'reporting:schedule_add_memo' 0 %}".replace('0', scheduleId);
@@ -3508,11 +3369,9 @@
       body: formData,
     })
     .then(response => {
-      console.log('Response status:', response.status);
       return response.json();
     })
     .then(data => {
-      console.log('Response data:', data);
       if (data.success) {
         showSuccessMessage('매니저 메모가 성공적으로 추가되었습니다.');
         resetManagerMemoForm(scheduleId);
@@ -3523,7 +3382,6 @@
       }
     })
     .catch(error => {
-      console.error('Manager memo submission error:', error);
       showErrorMessage('매니저 메모 추가 중 오류가 발생했습니다: ' + error.message);
     });
     
@@ -3544,7 +3402,6 @@
       return;
     }
 
-    console.log('Deleting manager memo:', historyId);
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -3578,7 +3435,6 @@
       }
     })
     .catch(error => {
-      console.error('Manager memo deletion error:', error);
       showErrorMessage('매니저 메모 삭제 중 오류가 발생했습니다: ' + error.message);
     });
   }
@@ -3728,18 +3584,13 @@
           .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
           .replace(/\r/g, '\n');     // 실제 \r을 \n으로
         
-        console.log('원본 납품 품목 데이터:', JSON.stringify(schedule.delivery_items));
-        console.log('처리된 납품 품목 데이터:', JSON.stringify(deliveryItemsText));
-        console.log('줄바꿈으로 분리된 라인들:', deliveryItemsText.split('\n'));
         
         const lines = deliveryItemsText.split('\n').filter(line => line.trim());
         let hasData = false;
         
-        console.log(`총 ${lines.length}개의 품목 라인 발견`);
         
         lines.forEach((line, index) => {
           const trimmedLine = line.trim();
-          console.log(`라인 ${index + 1}: "${trimmedLine}"`);
           
           if (trimmedLine) {
             // 더 관대한 정규식으로 매칭 ("품목명: 수량개 (금액원)" 형태)
@@ -3753,7 +3604,6 @@
               // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
               const unitPrice = Math.round(totalPrice / 1.1 / quantity);
               
-              console.log(`품목 ${index + 1} 파싱 성공: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
               
               addCalendarDeliveryItem({
                 item_name: itemName,
@@ -3762,17 +3612,14 @@
               });
               hasData = true;
             } else {
-              console.warn(`품목 ${index + 1} 파싱 실패: "${trimmedLine}" - 정규식에 매칭되지 않음`);
             }
           }
         });
         
-        console.log(`총 ${hasData ? '성공' : '실패'} - 로드된 품목 수: ${document.querySelectorAll('#calendar-delivery-items-container .delivery-item').length}`);
         return hasData;
       }
     }
     
-    console.log('기존 납품 품목 데이터 없음');
     return false;
   }
 
@@ -3991,7 +3838,6 @@
       }, 500);
     })
     .catch(error => {
-      console.error('저장 오류:', error);
       showErrorMessage('납품 품목 저장 중 오류가 발생했습니다: ' + error.message);
     })
     .finally(() => {
@@ -4005,7 +3851,6 @@
 
   // 스케줄 모달의 납품 품목 정보를 강제로 업데이트
   function forceUpdateScheduleModal(scheduleId) {
-    console.log('=== forceUpdateScheduleModal 시작 ===', scheduleId);
     
     // API에서 최신 스케줄 데이터 가져오기
     let apiUrl = "{% url 'reporting:schedule_api' %}";
@@ -4016,7 +3861,6 @@
     fetch(apiUrl)
       .then(response => response.json())
       .then(data => {
-        console.log('최신 스케줄 데이터 가져오기 완료');
         
         // schedules 배열 업데이트
         schedules = data;
@@ -4027,7 +3871,6 @@
         // 해당 스케줄 찾기
         const updatedSchedule = schedules.find(s => s.id == scheduleId);
         if (updatedSchedule) {
-          console.log('업데이트할 스케줄 찾음:', updatedSchedule.delivery_items);
           
           // 모든 가능한 모달 ID 패턴 시도
           const possibleModalIds = [
@@ -4040,10 +3883,8 @@
           let modalElement = null;
           for (const modalId of possibleModalIds) {
             const element = document.getElementById(modalId);
-            console.log(`모달 ID "${modalId}" 확인:`, element);
             if (element && (element.classList.contains('show') || element.style.display !== 'none')) {
               modalElement = element;
-              console.log(`✅ 활성 모달 발견: ${modalId}`);
               break;
             }
           }
@@ -4051,28 +3892,22 @@
           // ID로 찾을 수 없으면 클래스로 찾기
           if (!modalElement) {
             const openModals = document.querySelectorAll('.modal.show');
-            console.log('클래스로 찾은 열린 모달들:', openModals.length);
             openModals.forEach((modal, index) => {
-              console.log(`모달 ${index}:`, modal.id, modal.classList);
             });
             
             // 첫 번째 열린 모달 사용
             if (openModals.length > 0) {
               modalElement = openModals[0];
-              console.log('✅ 첫 번째 열린 모달 사용:', modalElement.id);
             }
           }
           
           if (modalElement) {
-            console.log('모달 발견, 납품 품목 정보 업데이트 시작');
             
             // 납품 품목 div 찾아서 업데이트
             const deliveryItemsDiv = modalElement.querySelector('.delivery-items-display');
-            console.log('deliveryItemsDiv 찾기 결과:', deliveryItemsDiv);
             
             if (deliveryItemsDiv) {
               if (updatedSchedule.delivery_items) {
-                console.log('납품 품목 업데이트 중...:', updatedSchedule.delivery_items);
                 
                 // formatDeliveryItems 함수 대신 직접 HTML 생성
                 let deliveryItemsText = updatedSchedule.delivery_items;
@@ -4098,21 +3933,15 @@
                 });
                 
                 const formattedHtml = htmlLines.join('<br>');
-                console.log('포맷된 납품 품목:', formattedHtml);
                 
                 deliveryItemsDiv.innerHTML = formattedHtml;
-                console.log('✅ 납품 품목 div 업데이트 완료');
               } else {
-                console.log('납품 품목이 없음');
                 deliveryItemsDiv.innerHTML = '';
               }
             } else {
-              console.log('❌ 납품 품목 div를 찾을 수 없음');
               // 모든 .delivery-items-display 클래스 찾기
               const allDeliveryDivs = modalElement.querySelectorAll('.delivery-items-display');
-              console.log('모달 내 모든 .delivery-items-display 요소:', allDeliveryDivs.length);
               allDeliveryDivs.forEach((div, index) => {
-                console.log(`delivery div ${index}:`, div);
                 if (updatedSchedule.delivery_items) {
                   // formatDeliveryItems 함수 대신 직접 HTML 생성
                   let deliveryItemsText = updatedSchedule.delivery_items
@@ -4134,39 +3963,30 @@
                   });
                   
                   div.innerHTML = htmlLines.join('<br>');
-                  console.log(`✅ delivery div ${index} 업데이트 완료`);
                 }
               });
             }
             
             // 납품 금액 업데이트
             const deliveryAmountElements = modalElement.querySelectorAll('.text-primary.fw-bold');
-            console.log('납품 금액 요소들:', deliveryAmountElements.length);
             deliveryAmountElements.forEach((element, index) => {
-              console.log(`금액 요소 ${index}:`, element.textContent);
               if (element.textContent.includes('원') && updatedSchedule.delivery_amount) {
                 const formattedAmount = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
-                console.log(`납품 금액 업데이트 (${index}):`, formattedAmount);
                 element.textContent = formattedAmount;
               }
             });
             
-            console.log('✅ 모달 업데이트 완료');
           } else {
-            console.log('❌ 열린 모달을 찾을 수 없음');
           }
         } else {
-          console.log('❌ 해당 스케줄을 찾을 수 없음');
         }
       })
       .catch(error => {
-        console.error('❌ 스케줄 데이터 가져오기 실패:', error);
       });
   }
 
   // 스케줄 데이터를 다시 로드하여 화면 업데이트
   function refreshScheduleData(scheduleId) {
-    console.log('=== refreshScheduleData 시작 ===', scheduleId);
     
     // API에서 최신 스케줄 데이터 가져오기
     let apiUrl = "{% url 'reporting:schedule_api' %}";
@@ -4177,7 +3997,6 @@
     fetch(apiUrl)
       .then(response => response.json())
       .then(data => {
-        console.log('스케줄 데이터 새로고침 완료');
         
         // schedules 배열 업데이트
         schedules = data;
@@ -4188,70 +4007,52 @@
         // 해당 스케줄 찾기
         const updatedSchedule = schedules.find(s => s.id == scheduleId);
         if (updatedSchedule) {
-          console.log('업데이트된 스케줄:', updatedSchedule);
           
           // 현재 열린 모달의 납품 품목 정보 업데이트
           const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
           if (scheduleModal && updatedSchedule.delivery_items) {
             const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
             if (deliveryItemsDiv) {
-              console.log('납품 품목 div 업데이트:', updatedSchedule.delivery_items);
               deliveryItemsDiv.innerHTML = formatDeliveryItems(updatedSchedule.delivery_items);
             }
             
             const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
             if (deliveryAmountP && updatedSchedule.delivery_amount) {
-              console.log('납품 금액 업데이트:', updatedSchedule.delivery_amount);
               deliveryAmountP.textContent = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
             }
           }
         }
       })
       .catch(error => {
-        console.error('스케줄 데이터 새로고침 실패:', error);
       });
   }
 
   // 화면의 납품 품목 표시 업데이트 함수
   function updateScheduleDeliveryDisplay(scheduleId, deliveryItemsText, deliveryAmount) {
-    console.log('=== updateScheduleDeliveryDisplay 시작 ===');
-    console.log('  scheduleId:', scheduleId);
-    console.log('  deliveryItemsText:', deliveryItemsText);
-    console.log('  deliveryAmount:', deliveryAmount);
     
     // schedules 배열에서 해당 일정 업데이트
     const scheduleIndex = schedules.findIndex(s => s.id == scheduleId);
-    console.log('  scheduleIndex:', scheduleIndex);
     if (scheduleIndex !== -1) {
       schedules[scheduleIndex].delivery_items = deliveryItemsText;
       schedules[scheduleIndex].delivery_amount = deliveryAmount;
-      console.log('  schedules 배열 업데이트 완료');
     }
     
     // 현재 열린 모달의 납품 품목 표시 업데이트
     const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
-    console.log('  scheduleModal:', scheduleModal);
     if (scheduleModal) {
       const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
-      console.log('  deliveryItemsDiv:', deliveryItemsDiv);
       if (deliveryItemsDiv && deliveryItemsText) {
         const formattedItems = formatDeliveryItems(deliveryItemsText);
-        console.log('  formattedItems:', formattedItems);
         deliveryItemsDiv.innerHTML = formattedItems;
-        console.log('  납품 품목 표시 업데이트 완료');
       }
       
       const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
-      console.log('  deliveryAmountP:', deliveryAmountP);
       if (deliveryAmountP && deliveryAmount) {
         const formattedAmount = `${deliveryAmount.toLocaleString()}원`;
-        console.log('  formattedAmount:', formattedAmount);
         deliveryAmountP.textContent = formattedAmount;
-        console.log('  납품 금액 표시 업데이트 완료');
       }
     }
     
-    console.log('=== updateScheduleDeliveryDisplay 완료 ===');
   }
 
   // 편집 모드 납품 품목 모달 관련 함수들
@@ -4367,8 +4168,6 @@
       // \n 문자가 \\n으로 이스케이프되어 있을 수 있으므로 실제 줄바꿈으로 변환
       deliveryItemsText = deliveryItemsText.replace(/\\n/g, '\n');
       
-      console.log('기존 납품 품목 데이터:', deliveryItemsText);
-      console.log('줄바꿈으로 분리된 라인들:', deliveryItemsText.split('\n'));
       
       const lines = deliveryItemsText.split('\n');
       let hasData = false;
@@ -4386,7 +4185,6 @@
             // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
             const unitPrice = Math.round(totalPrice / 1.1 / quantity);
             
-            console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
             
             addEditDeliveryItem({
               item_name: itemName,
@@ -4399,12 +4197,10 @@
       });
       
       if (hasData) {
-        console.log('기존 납품 품목 로드 완료');
       }
       return hasData;
     }
     
-    console.log('기존 납품 품목 데이터 없음');
     return false;
   }
 
@@ -4641,19 +4437,16 @@
     resultsDiv.style.maxHeight = availableHeight + 'px';
     resultsDiv.style.overflowY = 'auto';
     
-    console.log(`드롭다운 높이 조정: ${availableHeight}px`);
   }
 
   // 제품 검색 함수
   function searchCalendarProducts(searchInput) {
-    console.log('searchCalendarProducts 호출됨');
     const deliveryItem = searchInput.closest('.delivery-item');
     const resultsDiv = deliveryItem.querySelector('.calendar-search-results');
     const searchQuery = searchInput.value.toLowerCase().trim();
     const productIdInput = deliveryItem.querySelector('.calendar-product-id');
     const itemNameInput = deliveryItem.querySelector('.calendar-item-name');
     
-    console.log('검색어:', searchQuery);
     
     // 외부 클릭으로 다른 드롭다운들 닫기
     document.querySelectorAll('.calendar-search-results').forEach(div => {
@@ -4674,14 +4467,12 @@
         .then(response => response.json())
         .then(data => {
             const products = data.products || [];
-            console.log('제품 데이터 로드됨:', products.length);
             
             // 검색어로 필터링
             const filteredProducts = products.filter(product => 
                 product.product_code.toLowerCase().includes(searchQuery) ||
                 (product.description && product.description.toLowerCase().includes(searchQuery))
             );
-            console.log('표시할 제품 수:', filteredProducts.length);
             
             // 검색 결과 표시
             resultsDiv.innerHTML = '';
@@ -4690,13 +4481,11 @@
                 resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
                 resultsDiv.style.display = 'block';
             } else {
-                console.log('제품 목록 DOM 생성 시작...');
                 
                 // 최대 10개까지만 표시
                 const displayProducts = filteredProducts.slice(0, 10);
                 
                 displayProducts.forEach((product, index) => {
-                    console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
                     const resultItem = document.createElement('div');
                     resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
                     resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
@@ -4741,7 +4530,6 @@
             }
         })
         .catch(error => {
-            console.error('제품 검색 중 오류 발생:', error);
             resultsDiv.innerHTML = '<div style="padding: 8px; color: #dc2626;">제품 로드 중 오류가 발생했습니다</div>';
             // 오류 시에도 위치 조정
             adjustDropdownPosition(resultsDiv, searchInput);
@@ -4773,14 +4561,12 @@
 
   // 메인 납품 모달 제품 검색 함수
   function searchCalendarMainProducts(searchInput) {
-    console.log('searchCalendarMainProducts 호출됨');
     const deliveryItem = searchInput.closest('.delivery-item');
     const resultsDiv = deliveryItem.querySelector('.calendar-main-search-results');
     const searchQuery = searchInput.value.toLowerCase().trim();
     const productIdInput = deliveryItem.querySelector('.calendar-main-product-id');
     const itemNameInput = deliveryItem.querySelector('.calendar-main-item-name');
     
-    console.log('검색어:', searchQuery);
     
     // 외부 클릭으로 다른 드롭다운들 닫기
     document.querySelectorAll('.calendar-main-search-results').forEach(div => {
@@ -4801,14 +4587,12 @@
         .then(response => response.json())
         .then(data => {
             const products = data.products || [];
-            console.log('제품 데이터 로드됨:', products.length);
             
             // 검색어로 필터링
             const filteredProducts = products.filter(product => 
                 product.product_code.toLowerCase().includes(searchQuery) ||
                 (product.description && product.description.toLowerCase().includes(searchQuery))
             );
-            console.log('표시할 제품 수:', filteredProducts.length);
             
             // 검색 결과 표시
             resultsDiv.innerHTML = '';
@@ -4817,13 +4601,11 @@
                 resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
                 resultsDiv.style.display = 'block';
             } else {
-                console.log('제품 목록 DOM 생성 시작...');
                 
                 // 최대 10개까지만 표시
                 const displayProducts = filteredProducts.slice(0, 10);
                 
                 displayProducts.forEach((product, index) => {
-                    console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
                     const resultItem = document.createElement('div');
                     resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
                     resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
@@ -4868,7 +4650,6 @@
             }
         })
         .catch(error => {
-            console.error('제품 검색 중 오류 발생:', error);
             resultsDiv.innerHTML = '<div style="padding: 8px; color: #dc2626;">제품 로드 중 오류가 발생했습니다</div>';
             // 오류 시에도 위치 조정
             adjustDropdownPosition(resultsDiv, searchInput);
@@ -4917,22 +4698,18 @@
     const urlParams = new URLSearchParams(window.location.search);
     const scheduleId = urlParams.get('schedule_id');
     if (scheduleId) {
-      console.log('🎯 URL에서 schedule_id 감지:', scheduleId);
       // 일정 데이터 로드 후 모달 열기
       setTimeout(() => {
         const schedule = schedules.find(s => s.id == scheduleId);
         if (schedule) {
-          console.log('✅ 일정 찾음, 모달 열기:', schedule);
           showScheduleModal(schedule);
           // URL에서 파라미터 제거 (깔끔하게)
           window.history.replaceState({}, '', window.location.pathname);
         } else {
-          console.log('❌ 일정을 찾을 수 없음. schedules 로드 대기 중...');
           // 일정이 아직 로드되지 않았을 수 있으므로 재시도
           const checkInterval = setInterval(() => {
             const schedule = schedules.find(s => s.id == scheduleId);
             if (schedule) {
-              console.log('✅ 재시도 성공, 모달 열기:', schedule);
               showScheduleModal(schedule);
               window.history.replaceState({}, '', window.location.pathname);
               clearInterval(checkInterval);
@@ -5190,7 +4967,6 @@
               // 서버에 일정 이동 요청
               moveSchedule(data.scheduleId, targetDate, data.scheduleData);
             } catch (error) {
-              console.error("드롭 처리 중 오류:", error);
               alert("일정 이동 중 오류가 발생했습니다.");
             }
 
@@ -5365,7 +5141,6 @@
         .join("");
     }    // 에러 처리
     function handleError(error) {
-      console.error("Error:", error);
       ToastManager.error("일정 데이터를 불러오는 중 오류가 발생했습니다.");
     }
 
@@ -5373,7 +5148,6 @@
     function formatDeliveryItemsForSchedule(text) {
       if (!text) return '';
       
-      console.log('Original delivery items:', JSON.stringify(text)); // 디버깅
       
       // 모든 종류의 줄바꿈 패턴을 처리
       let processedText = text
@@ -5383,14 +5157,12 @@
         .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
         .replace(/\r/g, '\n');     // 실제 \r을 \n으로
       
-      console.log('Processed delivery items:', JSON.stringify(processedText)); // 디버깅
       
       // 텍스트를 줄 단위로 분할
       const lines = processedText.split('\n').filter(line => line.trim());
       
       if (lines.length === 0) return processedText; // 줄 분할이 안되면 원본 반환
       
-      console.log('Lines:', lines); // 디버깅
       
       // HTML 이스케이프 후 각 줄을 div로 래핑
       const formattedLines = lines.map((line, index) => {
@@ -5833,8 +5605,6 @@
               .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
               .replace(/\r/g, '\n');     // 실제 \r을 \n으로
             
-            console.log('Processing delivery items:', JSON.stringify(schedule.delivery_items));
-            console.log('Processed delivery items:', JSON.stringify(processedText));
             
             // innerHTML 대신 textContent 사용 후 줄바꿈 처리
             deliveryItemsElement.textContent = processedText;
@@ -5940,7 +5710,6 @@
           }
         })
         .catch(error => {
-          console.error('Error loading customer histories:', error);
           document.getElementById('customerHistoriesContent').innerHTML = 
             '<div class="alert alert-danger">활동 기록을 불러오는 중 오류가 발생했습니다.</div>';
         });
@@ -6108,7 +5877,6 @@
     function formatDeliveryItems(text) {
       if (!text) return '';
       
-      console.log('formatDeliveryItems (modal) original:', JSON.stringify(text));
       
       // 모든 종류의 줄바꿈 패턴을 처리
       let processedText = text

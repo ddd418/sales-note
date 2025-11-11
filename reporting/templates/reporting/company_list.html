@@ -725,7 +725,6 @@ function loadDepartmentList(companyId, companyName) {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             showDepartmentErrorState('서버와의 통신에 실패했습니다.');
         });
 }
@@ -749,7 +748,6 @@ function loadCustomerList(companyId, companyName) {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             showCustomerErrorState('서버와의 통신에 실패했습니다.');
         });
 }

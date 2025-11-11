@@ -1129,15 +1129,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 테스트 함수 (브라우저 콘솔에서 사용 가능)
     window.testScheduleFilter = function() {
-        console.log('=== 일정 필터 테스트 ===');
         const scheduleCards = document.querySelectorAll('[data-visit-month]');
-        console.log('총 일정 카드:', scheduleCards.length);
         
         const selected = Array.from(document.querySelectorAll('.month-checkbox:checked')).map(cb => cb.value);
-        console.log('선택된 월:', selected.length > 0 ? selected : '없음 (전체 표시)');
         
         const visible = document.querySelectorAll('[data-visit-month]:not([style*="display: none"])').length;
-        console.log('표시된 카드:', visible);
     };
     
     // 활동기록 클릭 처리 함수
@@ -1182,7 +1178,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             alert('활동 기록 확인 중 오류가 발생했습니다.');
         })
         .finally(() => {

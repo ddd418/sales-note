@@ -1306,14 +1306,11 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
     
     // Schedule DeliveryItem을 가져와서 History에 추가 표시하는 함수
     async function loadScheduleDeliveryItems() {
-        console.log('=== History 목록에서 Schedule DeliveryItem 로드 시작 ===');
         
         // 납품 일정 타입의 History 카드들을 찾기
         const deliveryHistoryCards = document.querySelectorAll('.timeline-item[data-action-type="delivery_schedule"]');
-        console.log(`발견된 납품 일정 History: ${deliveryHistoryCards.length}개`);
         
         if (deliveryHistoryCards.length === 0) {
-            console.log('납품 일정 History가 없습니다.');
             return;
         }
         
@@ -1322,18 +1319,14 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
             const historyId = card.getAttribute('data-history-id');
             const scheduleId = card.getAttribute('data-schedule-id');
             const actionType = card.getAttribute('data-action-type');
-            console.log(`카드 ${index + 1}: historyId=${historyId}, scheduleId=${scheduleId}, actionType=${actionType}`);
         });
         
         for (const card of deliveryHistoryCards) {
             const historyId = card.getAttribute('data-history-id');
             const scheduleId = card.getAttribute('data-schedule-id');
             
-            console.log(`\n--- History ${historyId} 처리 시작 ---`);
-            console.log(`Schedule ID: ${scheduleId}`);
             
             if (!scheduleId) {
-                console.log(`History ${historyId}: Schedule ID가 없음 - 건너뜀`);
                 continue;
             }
             
@@ -1342,45 +1335,32 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
             const deliveryItemsDiv = card.querySelector('.delivery-info .delivery-items');
             const existingDeliveryInfo = card.querySelector('.delivery-info');
             
-            console.log('기존 납품 정보 확인:');
-            console.log('- 금액 요소:', deliveryAmountDiv);
-            console.log('- 품목 요소:', deliveryItemsDiv);
-            console.log('- 기존 delivery-info:', existingDeliveryInfo);
             
             if (deliveryAmountDiv) {
-                console.log('- 금액 텍스트:', deliveryAmountDiv.textContent);
             }
             if (deliveryItemsDiv) {
-                console.log('- 품목 텍스트:', deliveryItemsDiv.textContent);
             }
             
             const hasAmount = deliveryAmountDiv && deliveryAmountDiv.textContent.trim() && !deliveryAmountDiv.textContent.includes('0원');
             const hasItems = deliveryItemsDiv && deliveryItemsDiv.textContent.trim();
             const hasDeliveryInfo = existingDeliveryInfo !== null;
             
-            console.log(`기존 데이터 상태: 금액=${hasAmount}, 품목=${hasItems}, delivery-info=${hasDeliveryInfo}`);
             
             // Schedule DeliveryItem 가져오기
-            console.log(`Schedule DeliveryItem API 호출: /reporting/schedules/${scheduleId}/delivery-items-api/`);
             
             try {
                 const response = await fetch(`/reporting/schedules/${scheduleId}/delivery-items-api/`);
-                console.log(`API 응답 상태: ${response.status}`);
                 
                 if (!response.ok) {
-                    console.log(`History ${historyId}: Schedule DeliveryItem API 응답 실패 - Status: ${response.status}`);
                     continue;
                 }
                 
                 const data = await response.json();
-                console.log(`History ${historyId}: Schedule DeliveryItem 응답 데이터:`, data);
                 
                 // API 응답 구조 확인 - data.items 또는 data.delivery_items 체크
                 const deliveryItems = data.items || data.delivery_items || [];
-                console.log(`실제 delivery items:`, deliveryItems);
                 
                 if (deliveryItems && deliveryItems.length > 0) {
-                    console.log(`Schedule DeliveryItem 발견: ${deliveryItems.length}개`);
                     
                     // Schedule DeliveryItem이 있는 경우 표시
                     let totalAmount = 0;
@@ -1390,25 +1370,17 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                         const itemTotal = Math.round(item.total_price);
                         totalAmount += itemTotal;
                         itemTexts.push(`${item.item_name}: ${item.quantity}개 (${itemTotal.toLocaleString()}원)`);
-                        console.log(`  - 품목 ${index + 1}: ${item.item_name}, ${item.quantity}개, ${itemTotal.toLocaleString()}원`);
                     });
                     
-                    console.log(`총 금액: ${totalAmount.toLocaleString()}원`);
-                    console.log('품목 목록:', itemTexts);
                     
                     // 카드 구조 확인
                     const cardBody = card.querySelector('.card-body');
                     const existingDeliveryInfos = card.querySelectorAll('.delivery-info');
-                    console.log('카드 구조 확인:');
-                    console.log('- cardBody:', cardBody);
-                    console.log('- 기존 delivery-info 개수:', existingDeliveryInfos.length);
                     
                     // 금액 정보가 없는 경우 Schedule 금액 추가 (delivery-info가 없을 때만)
                     if (!hasAmount && !hasDeliveryInfo && totalAmount > 0) {
-                        console.log('Schedule 금액 정보 추가 중... (delivery-info 없음 확인)');
                         
                         const targetParent = cardBody || card.querySelector('.card') || card;
-                        console.log('금액 추가 대상 부모:', targetParent);
                         
                         if (targetParent) {
                             const amountDiv = document.createElement('div');
@@ -1422,23 +1394,17 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                             const firstP = targetParent.querySelector('p');
                             if (firstP) {
                                 firstP.insertAdjacentElement('afterend', amountDiv);
-                                console.log('금액 정보를 첫 번째 p 태그 다음에 추가했습니다.');
                             } else {
                                 targetParent.appendChild(amountDiv);
-                                console.log('금액 정보를 부모 요소 끝에 추가했습니다.');
                             }
                         }
                     } else {
-                        console.log('금액 정보 추가 건너뜀 (기존 delivery-info 있음 또는 금액 없음)');
-                        console.log(`- hasAmount: ${hasAmount}, hasDeliveryInfo: ${hasDeliveryInfo}, totalAmount: ${totalAmount}`);
                     }
                     
                     // 품목 정보가 없는 경우 Schedule 품목 추가
                     if (!hasItems && itemTexts.length > 0) {
-                        console.log('Schedule 품목 정보 추가 중...');
                         
                         const targetParent = cardBody || card.querySelector('.card') || card;
-                        console.log('품목 추가 대상 부모:', targetParent);
                         
                         if (targetParent) {
                             const itemsDiv = document.createElement('div');
@@ -1452,35 +1418,26 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                             const amountInfo = targetParent.querySelector('.delivery-info');
                             if (amountInfo) {
                                 amountInfo.insertAdjacentElement('afterend', itemsDiv);
-                                console.log('품목 정보를 금액 정보 다음에 추가했습니다.');
                             } else {
                                 // 첫 번째 p 태그 이후에 삽입
                                 const firstP = targetParent.querySelector('p');
                                 if (firstP) {
                                     firstP.insertAdjacentElement('afterend', itemsDiv);
-                                    console.log('품목 정보를 첫 번째 p 태그 다음에 추가했습니다.');
                                 } else {
                                     targetParent.appendChild(itemsDiv);
-                                    console.log('품목 정보를 부모 요소 끝에 추가했습니다.');
                                 }
                             }
                         }
                     } else {
-                        console.log('품목 정보 추가 건너뜀 (기존 품목 있음 또는 Schedule 품목 없음)');
                     }
                     
-                    console.log(`History ${historyId}: Schedule DeliveryItem 정보 추가 완료`);
                 } else {
-                    console.log(`History ${historyId}: Schedule DeliveryItem이 비어있음`);
                 }
             } catch (error) {
-                console.error(`History ${historyId}: Schedule DeliveryItem 가져오기 실패`, error);
             }
             
-            console.log(`--- History ${historyId} 처리 완료 ---\n`);
         }
         
-        console.log('=== Schedule DeliveryItem 로드 완료 ===');
     }
     
     // History 목록 로드 후 Schedule DeliveryItem 정보 추가
@@ -1506,14 +1463,12 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                     'history_id': historyId
                 })            })
             .then(response => {
-                console.log('Response status:', response.status);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.json();
             })
             .then(data => {
-                console.log('Response data:', data);
                 if (data.success) {
                     // 버튼 상태 업데이트
                     const newStatus = data.tax_invoice_issued;
@@ -1545,7 +1500,6 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                 }
             })
             .catch(error => {
-                console.error('Error details:', error);
                 if (error.message.includes('403')) {
                     alert('권한이 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
                 } else if (error.message.includes('CSRF')) {
@@ -1555,7 +1509,6 @@ document.addEventListener('DOMContentLoaded', function() {    // CSRF 토큰 가
                 }
                 
                 // 디버깅을 위한 CSRF 토큰 확인
-                console.log('CSRF Token used:', csrftoken);
             })
             .finally(() => {
                 // 버튼 재활성화
@@ -1848,15 +1801,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 테스트 함수 (브라우저 콘솔에서 사용 가능)
     window.testHistoryFilter = function() {
-        console.log('=== 히스토리 필터 테스트 ===');
         const timelineItems = document.querySelectorAll('.timeline-item');
-        console.log('총 히스토리 아이템:', timelineItems.length);
         
         const selected = Array.from(document.querySelectorAll('.month-checkbox:checked')).map(cb => cb.value);
-        console.log('선택된 월:', selected.length > 0 ? selected : '없음 (전체 표시)');
         
         const visible = document.querySelectorAll('.timeline-item:not([style*="display: none"])').length;
-        console.log('표시된 아이템:', visible);
     };
     
     // 답글 메모 관련 함수들
@@ -1909,7 +1858,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Reply memo addition error:', error);
             alert('메모 추가 중 오류가 발생했습니다: ' + error.message);
         });
     }
@@ -1944,7 +1892,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Reply memo deletion error:', error);
             alert('메모 삭제 중 오류가 발생했습니다: ' + error.message);
         });
     };

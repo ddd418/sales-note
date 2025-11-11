@@ -261,7 +261,6 @@ function toggleUserStatus(userId, username, isActive) {
         GlobalLoader.hide();
       }
       
-      console.error('Error:', error);
       if (typeof showToast !== 'undefined') {
         showToast('네트워크 오류가 발생했습니다.', 'error');
       } else {
@@ -331,7 +330,6 @@ function deleteUser(userId, username) {
         GlobalLoader.hide();
       }
       
-      console.error('Error:', error);
       if (typeof showToast !== 'undefined') {
         showToast('네트워크 오류가 발생했습니다.', 'error');
       } else {
@@ -344,7 +342,6 @@ function deleteUser(userId, username) {
 function confirmAction(message) {
   if (confirm(message)) {
     // 기존 확인 액션
-    console.log('Action confirmed');
   }
 }
 </script>

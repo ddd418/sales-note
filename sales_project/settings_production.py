@@ -103,16 +103,6 @@ WSGI_APPLICATION = 'sales_project.wsgi.application'
 
 # Database
 # Railway/Production PostgreSQL
-print("=" * 50)
-print("DATABASE CONFIGURATION DEBUG")
-print(f"DATABASE_URL exists: {'DATABASE_URL' in os.environ}")
-print(f"RAILWAY_ENVIRONMENT exists: {'RAILWAY_ENVIRONMENT' in os.environ}")
-if 'DATABASE_URL' in os.environ:
-    db_url = os.environ.get('DATABASE_URL')
-    # 비밀번호 마스킹
-    masked_url = db_url.split('@')[1] if '@' in db_url else 'invalid'
-    print(f"DATABASE_URL host: {masked_url}")
-print("=" * 50)
 
 if 'DATABASE_URL' in os.environ:
     # Use DATABASE_URL from environment (PostgreSQL plugin in Railway)
@@ -123,7 +113,6 @@ if 'DATABASE_URL' in os.environ:
             conn_health_checks=True,
         )
     }
-    print(f"✅ Using PostgreSQL: {DATABASES['default']['ENGINE']}")
 else:
     # Local SQLite for development
     DATABASES = {
@@ -132,7 +121,6 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("⚠️  WARNING: Using SQLite (DATABASE_URL not found)")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

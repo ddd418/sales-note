@@ -782,9 +782,6 @@
 <script>
   // 납품 품목 모달을 표시하는 함수 (전역 함수로 정의)
   function showDeliveryItemsModal(historyId, deliveryDate) {
-    console.log('🚀 showDeliveryItemsModal 호출됨!');
-    console.log('  historyId:', historyId);
-    console.log('  deliveryDate:', deliveryDate);
     
     // 납품일 설정
     const deliveryDateElement = document.getElementById('deliveryDateText');
@@ -799,7 +796,6 @@
         const contentDiv = document.getElementById('modalDeliveryItems');
 
         if (!contentDiv) {
-          console.error('modalDeliveryItems element not found');
           return;
         }
 
@@ -873,7 +869,6 @@
         }
       })
       .catch(error => {
-        console.error('Error:', error);
         const contentDiv = document.getElementById('modalDeliveryItems');
         if (contentDiv) {
           contentDiv.innerHTML = `
@@ -901,10 +896,8 @@
       });
     });
     
-    console.log('🎭 showDeliveryItemsModal 모달 표시 중...');
     modal.show();
     
-    console.log('🔧 forceModalToFront 호출');
     // 강력한 z-index 해결
     forceModalToFront('deliveryItemsModal');
   }
@@ -919,7 +912,6 @@
 
     const contentDiv = document.getElementById('modalDeliveryItems');
     if (!contentDiv) {
-      console.error('modalDeliveryItems element not found');
       return;
     }
 
@@ -1089,7 +1081,6 @@
         const contentDiv = document.getElementById('modalDeliveryItems');
 
         if (!contentDiv) {
-          console.error('modalDeliveryItems element not found');
           return;
         }
 
@@ -1162,7 +1153,6 @@
         }
       })
       .catch(error => {
-        console.error('Error:', error);
         const contentDiv = document.getElementById('modalDeliveryItems');
         if (contentDiv) {
           contentDiv.innerHTML = `
@@ -1228,7 +1218,6 @@
           integratedDeliveryData = JSON.parse(jsonElement.textContent);
         }
       } catch (error) {
-        console.warn('통합 납품 데이터 파싱 실패:', error);
         integratedDeliveryData = [];
       }
 
@@ -1327,7 +1316,6 @@
       }
     }
     } catch (error) {
-      console.error('전체 납품내역 데이터 처리 중 오류:', error);
       
       // 오류 발생 시 기본값 설정
       const totalItemsCountElement = document.getElementById('totalItemsCount');
@@ -1406,7 +1394,6 @@
         try {
           processAllDeliveryData();
         } catch (error) {
-          console.error('전체 납품내역 탭 로드 중 오류:', error);
         }
       });
     }
@@ -1418,7 +1405,6 @@
         try {
           enhanceTimelineWithScheduleData();
         } catch (error) {
-          console.error('전체 타임라인 탭 로드 중 오류:', error);
         }
       });
     }
@@ -1848,7 +1834,6 @@
           }
         })
         .catch((error) => {
-          console.error("Error:", error);
           if (error.message.includes("403")) {
             alert("권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.");
           } else {
@@ -1887,7 +1872,6 @@
           }
         })
         .catch((error) => {
-          console.error("Error:", error);
           alert("서버 오류가 발생했습니다.");
         });
     };
@@ -1989,7 +1973,6 @@
           }
         })
         .catch((error) => {
-          console.error("Error:", error);
           alert("서버 오류가 발생했습니다.");
         });
     }
@@ -1997,76 +1980,57 @@
 
   // 모달 z-index 문제 해결을 위한 전역 함수
   function forceModalToFront(modalId) {
-    console.log('🔧 forceModalToFront 시작:', modalId);
     
     // 기존 백드롭 정리
     const existingBackdrops = document.querySelectorAll('.modal-backdrop');
     if (existingBackdrops.length > 0) {
-      console.log('🗑️ 기존 백드롭 제거:', existingBackdrops.length, '개');
       existingBackdrops.forEach(backdrop => backdrop.remove());
     }
     
     const modalElement = document.getElementById(modalId);
     if (!modalElement) {
-      console.error('❌ 모달 요소를 찾을 수 없음:', modalId);
       return;
     }
     
-    console.log('✅ 모달 요소 찾음:', modalElement);
     
     // 모든 다른 요소들의 z-index를 낮춤
     const elementsToLower = document.querySelectorAll('.sidebar, #sidebar, .offcanvas, .navbar, nav, .header');
-    console.log('📝 z-index를 낮출 요소들:', elementsToLower.length, '개');
     
     elementsToLower.forEach((el, index) => {
-      console.log(`  ${index + 1}. ${el.tagName}.${el.className} z-index: ${el.style.zIndex} -> 9998`);
       el.style.zIndex = '9998';
     });
     
     // 모달 자체의 z-index 최고로 설정
-    console.log('🎯 모달 z-index 설정 전:', modalElement.style.zIndex);
     modalElement.style.cssText = 'z-index: 10000 !important; position: fixed !important;';
-    console.log('🎯 모달 z-index 설정 후:', window.getComputedStyle(modalElement).zIndex);
     
     // 모달이 표시된 후 백드롭 처리
     let checkCount = 0;
     const checkModal = setInterval(() => {
       checkCount++;
-      console.log(`🔍 백드롭 체크 ${checkCount}회차`);
       
       const backdrop = document.querySelector('.modal-backdrop');
       const dialog = modalElement.querySelector('.modal-dialog');
       const content = modalElement.querySelector('.modal-content');
       
-      console.log('  백드롭:', backdrop ? '✅ 존재' : '❌ 없음');
-      console.log('  다이얼로그:', dialog ? '✅ 존재' : '❌ 없음');
-      console.log('  컨텐츠:', content ? '✅ 존재' : '❌ 없음');
       
       if (backdrop) {
-        console.log('🎨 백드롭 스타일 적용 중...');
         backdrop.style.cssText = 'z-index: 9999 !important; pointer-events: none !important;';
         
-        console.log('🎨 다이얼로그 스타일 적용 중...');
         dialog.style.cssText = 'z-index: 10001 !important; pointer-events: auto !important; position: relative !important;';
         
-        console.log('🎨 컨텐츠 스타일 적용 중...');
         content.style.cssText = 'z-index: 10002 !important; pointer-events: auto !important; position: relative !important;';
         
         // 모달 전체에 클릭 이벤트 활성화
-        console.log('👆 모달 pointer-events 활성화 중...');
         modalElement.style.pointerEvents = 'auto';
         
         // 클릭 이벤트 테스트 추가
-        console.log('🎯 클릭 이벤트 리스너 추가 중...');
         
         // 모달 닫기 이벤트 리스너 추가
         modalElement.addEventListener('hidden.bs.modal', function() {
-          console.log('🚪 모달이 닫혔습니다 - 백드롭 정리 중...');
           
           // 모든 백드롭 제거
           const allBackdrops = document.querySelectorAll('.modal-backdrop');
           allBackdrops.forEach(backdrop => {
-            console.log('🗑️ 백드롭 제거:', backdrop);
             backdrop.remove();
           });
           
@@ -2080,7 +2044,6 @@
             el.style.zIndex = '';
           });
           
-          console.log('✅ 모달 정리 완료');
         });
         
         // 모든 모달 내부 요소들에 클릭 이벤트 확인
@@ -2088,9 +2051,6 @@
         allModalElements.forEach((el, index) => {
           if (el.tagName === 'BUTTON') {
             el.addEventListener('click', function(e) {
-              console.log(`🎯 버튼 클릭 감지됨: ${el.textContent.trim()}`);
-              console.log('이벤트:', e);
-              console.log('현재 타겟:', e.currentTarget);
             });
           }
         });
@@ -2098,47 +2058,35 @@
         // 모달 백드롭 클릭 테스트
         if (backdrop) {
           backdrop.addEventListener('click', function(e) {
-            console.log('🎭 백드롭 클릭됨 - 이상함! pointer-events가 none이어야 함');
           });
         }
         
         // 모달 다이얼로그 클릭 테스트
         dialog.addEventListener('click', function(e) {
-          console.log('📝 다이얼로그 클릭됨:', e.target.tagName);
         });
         
         // 모달 컨텐츠 클릭 테스트
         content.addEventListener('click', function(e) {
-          console.log('📄 컨텐츠 클릭됨:', e.target.tagName, e.target.textContent?.slice(0, 30));
         });
         
-        console.log('🎉 모든 z-index 설정 완료!');
-        console.log('최종 z-index 값들:');
-        console.log('  모달:', window.getComputedStyle(modalElement).zIndex);
-        console.log('  백드롭:', window.getComputedStyle(backdrop).zIndex);
-        console.log('  다이얼로그:', window.getComputedStyle(dialog).zIndex);
-        console.log('  컨텐츠:', window.getComputedStyle(content).zIndex);
         
         clearInterval(checkModal);
       }
       
       // 최대 100회 체크 후 중단
       if (checkCount >= 100) {
-        console.error('❌ 백드롭을 찾지 못함 - 체크 중단');
         clearInterval(checkModal);
       }
     }, 50);
     
     // 5초 후 강제 종료
     setTimeout(() => {
-      console.log('⏰ 5초 타임아웃 - 체크 종료');
       clearInterval(checkModal);
     }, 5000);
   }
 
   // 모달 강제 닫기 함수
   function forceCloseModal(modalId) {
-    console.log('🚪 강제 모달 닫기:', modalId);
     
     const modalElement = document.getElementById(modalId);
     if (modalElement) {
@@ -2164,7 +2112,6 @@
       document.body.style.overflow = '';
       document.body.style.paddingRight = '';
       
-      console.log('✅ 모달 강제 닫기 완료');
     }
   }
 
@@ -2199,33 +2146,25 @@
   
   // 페이지 로드 시 상태 확인
   document.addEventListener('DOMContentLoaded', function() {
-    console.log('🌟 페이지 로드 완료 - 초기 상태 체크');
     
     // 모달 요소 확인
     const modal = document.getElementById('deliveryItemsModal');
-    console.log('모달 요소:', modal ? '✅ 존재' : '❌ 없음');
     
     // 사이드바 요소들 확인
     const sidebarElements = document.querySelectorAll('.sidebar, #sidebar, .offcanvas, .navbar, nav');
-    console.log('사이드바 관련 요소들:', sidebarElements.length, '개');
     
     sidebarElements.forEach((el, index) => {
       const computedStyle = window.getComputedStyle(el);
-      console.log(`  ${index + 1}. ${el.tagName}.${el.className}: z-index=${computedStyle.zIndex}`);
     });
     
     // Bootstrap 버전 확인
-    console.log('Bootstrap:', window.bootstrap ? '✅ 로드됨' : '❌ 없음');
     
     // 테스트 버튼 확인
     const testBtn = document.querySelector('.test-modal-btn');
-    console.log('테스트 버튼:', testBtn ? '✅ 존재' : '❌ 없음');
     
-    console.log('🎯 상태 체크 완료!');
     
     // 전역 클릭 이벤트 추적
     document.addEventListener('click', function(e) {
-      console.log('🖱️ 클릭 이벤트 감지:', {
         target: e.target.tagName,
         className: e.target.className,
         id: e.target.id,
@@ -2237,7 +2176,6 @@
     // 마우스 오버 이벤트 추적 (모달 영역에서만)
     document.addEventListener('mouseover', function(e) {
       if (e.target.closest('.modal')) {
-        console.log('🖱️ 모달 내부 마우스 오버:', {
           target: e.target.tagName,
           className: e.target.className,
           pointerEvents: window.getComputedStyle(e.target).pointerEvents
@@ -2248,7 +2186,6 @@
     // ESC 키로 모달 강제 닫기
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
-        console.log('⌨️ ESC 키 감지 - 모든 모달 닫기');
         forceCloseModal('deliveryItemsModal');
       }
     });

@@ -689,21 +689,17 @@ window.updatePrepaymentList = function(followupId) {
     
     if (followupId && checkboxContainer) {
         // AJAX로 해당 고객의 선결제 목록 가져오기
-        console.log('선결제 목록 요청:', `/reporting/api/prepayments/?customer_id=${followupId}`);
         fetch(`/reporting/api/prepayments/?customer_id=${followupId}`)
             .then(response => {
-                console.log('API 응답 상태:', response.status);
                 return response.json();
             })
             .then(data => {
-                console.log('선결제 데이터:', data);
                 
                 // 기존 내용 초기화
                 checkboxContainer.innerHTML = '';
                 
                 if (data.prepayments.length === 0) {
                     checkboxContainer.innerHTML = '<p class="text-muted text-center mb-0">사용 가능한 선결제가 없습니다.</p>';
-                    console.log('사용 가능한 선결제 없음');
                 } else {
                     // 선결제별로 체크박스 생성
                     data.prepayments.forEach(prepayment => {
@@ -748,18 +744,15 @@ window.updatePrepaymentList = function(followupId) {
                         checkboxContainer.appendChild(div);
                     });
                     
-                    console.log(`${data.prepayments.length}개의 선결제 로드됨`);
                 }
             })
             .catch(error => {
-                console.error('선결제 목록 조회 오류:', error);
                 checkboxContainer.innerHTML = '<p class="text-danger text-center mb-0">선결제 목록을 불러올 수 없습니다.</p>';
             });
     } else {
         if (checkboxContainer) {
             checkboxContainer.innerHTML = '<p class="text-muted text-center mb-0">고객을 먼저 선택하세요.</p>';
         }
-        console.log('updatePrepaymentList 조건 불만족:', { followupId, hasContainer: !!checkboxContainer });
     }
 };
 
@@ -837,7 +830,6 @@ window.updatePrepaymentCalculation = function() {
         prepaymentAmountsInput.value = JSON.stringify(prepaymentAmounts);
     }
     
-    console.log('선결제 계산:', {
         deliveryTotal,
         totalPrepayment,
         actualPayment,
@@ -875,12 +867,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 모달 열릴 때 초기화
     followupModal.addEventListener('show.bs.modal', function(e) {
-        console.log('팔로우업 모달 열기 시작');
         
         // 모달을 body의 직접 자식으로 이동 (다른 요소들의 z-index 영향 제거)
         if (followupModal.parentElement !== document.body) {
             document.body.appendChild(followupModal);
-            console.log('모달을 body로 이동');
         }
         
         resetModal();
@@ -891,7 +881,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 모달 열린 후 backdrop z-index 조정 및 상호작용 활성화
     followupModal.addEventListener('shown.bs.modal', function() {
-        console.log('팔로우업 모달 완전히 열림');
         
         // 다른 모든 모달 닫기
         const otherModals = document.querySelectorAll('.modal:not(#followupModal)');
@@ -911,9 +900,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // backdrop z-index 조정
         const backdrops = document.querySelectorAll('.modal-backdrop');
-        console.log('발견된 backdrop 수:', backdrops.length);
         backdrops.forEach((backdrop, index) => {
-            console.log(`Backdrop ${index} z-index:`, backdrop.style.zIndex);
             backdrop.style.zIndex = '100049';
         });
         
@@ -921,7 +908,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const modalDialog = followupModal.querySelector('.modal-dialog');
         const modalContent = followupModal.querySelector('.modal-content');
         
-        console.log('모달 요소 확인:', {
             modal: followupModal.style.zIndex,
             dialog: modalDialog ? 'found' : 'not found',
             content: modalContent ? 'found' : 'not found'
@@ -958,10 +944,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const centerY = modalRect.top + modalRect.height / 2;
             const elementAtPoint = document.elementFromPoint(centerX, centerY);
             
-            console.log('모달 중앙 좌표:', centerX, centerY);
-            console.log('모달 중앙에 있는 실제 요소:', elementAtPoint);
-            console.log('해당 요소의 z-index:', window.getComputedStyle(elementAtPoint).zIndex);
-            console.log('해당 요소의 pointer-events:', window.getComputedStyle(elementAtPoint).pointerEvents);
             
             // 모든 높은 z-index 요소 찾기
             const allElements = document.querySelectorAll('*');
@@ -977,15 +959,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
             });
-            console.log('높은 z-index를 가진 요소들:', highZIndexElements);
         }, 100);
         
-        console.log('모달 설정 완료');
     });
     
     // 모달 닫힐 때 원래대로 복원
     followupModal.addEventListener('hidden.bs.modal', function() {
-        console.log('팔로우업 모달 닫힘');
         
         // 페이지 요소들 z-index 복원
         const pageElements = document.querySelectorAll('.container, .card, form:not(#followupForm)');
@@ -1061,7 +1040,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showCompanySuggestions(data);
             })
             .catch(error => {
-                console.error('업체 검색 실패:', error);
                 modalCompanySuggestions.innerHTML = '<div class="autocomplete-suggestion" style="color: #666;">검색 중 오류가 발생했습니다</div>';
                 modalCompanySuggestions.style.display = 'block';
             });
@@ -1080,7 +1058,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showDepartmentSuggestions(data);
             })
             .catch(error => {
-                console.error('부서 검색 실패:', error);
                 modalDepartmentSuggestions.innerHTML = '<div class="autocomplete-suggestion" style="color: #666;">검색 중 오류가 발생했습니다</div>';
                 modalDepartmentSuggestions.style.display = 'block';
             });
@@ -1228,7 +1205,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             showAlert('danger', '서버 오류가 발생했습니다.');
         })
         .finally(() => {
@@ -1274,7 +1250,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             showAlert('danger', '서버 오류가 발생했습니다.');
         })
         .finally(() => {
@@ -1330,7 +1305,6 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.success) {
                 if (!originalFollowupSelect) {
-                    console.error('팔로우업 선택 박스를 찾을 수 없습니다');
                     showModalAlert('warning', '팔로우업이 생성되었지만 자동 선택에 실패했습니다. 페이지를 새로고침해주세요.');
                     return;
                 }
@@ -1358,7 +1332,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('Error:', error);
             showModalAlert('danger', '서버 오류가 발생했습니다.');
         })
         .finally(() => {
@@ -1408,7 +1381,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('업체 생성 오류:', error);
             showModalAlert('danger', '서버 오류가 발생했습니다.');
         })
         .finally(() => {
@@ -1463,7 +1435,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            console.error('부서 생성 오류:', error);
             showModalAlert('danger', '서버 오류가 발생했습니다.');
         })
         .finally(() => {
@@ -1588,16 +1559,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (prepaymentDetails) {
                     prepaymentDetails.style.display = 'none';
                 }
-                console.log('선결제 섹션 숨김');
             }
         });
         
         // 초기 로드 시 체크
         const initialType = activityTypeField.value;
-        console.log('초기 활동 유형:', initialType);
         if (initialType === 'delivery') {
             prepaymentSection.style.display = 'block';
-            console.log('초기 로드 - 선결제 섹션 표시');
         }
     }
     
@@ -1606,17 +1574,14 @@ document.addEventListener('DOMContentLoaded', function() {
         usePrepaymentCheckbox.addEventListener('change', function() {
             if (this.checked) {
                 prepaymentDetails.style.display = 'block';
-                console.log('선결제 상세 영역 표시');
                 
                 // 체크 시 현재 고객의 선결제 목록 로드
                 const followupField = document.getElementById('id_followup');
                 if (followupField && followupField.value) {
                     updatePrepaymentList(followupField.value);
-                    console.log('선결제 목록 로드 시작:', followupField.value);
                 }
             } else {
                 prepaymentDetails.style.display = 'none';
-                console.log('선결제 상세 영역 숨김');
                 
                 // 체크박스 초기화
                 const checkboxes = document.querySelectorAll('.prepayment-checkbox');
@@ -1639,7 +1604,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // 초기 로드 시 체크
         if (usePrepaymentCheckbox.checked) {
             prepaymentDetails.style.display = 'block';
-            console.log('초기 로드 - 선결제 상세 영역 표시');
         }
     }
     
@@ -1649,7 +1613,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // 일반 change 이벤트
         followupField.addEventListener('change', function() {
             const followupId = this.value;
-            console.log('고객 변경됨 (일반 이벤트):', followupId);
             updatePrepaymentList(followupId);
         });
         
@@ -1657,14 +1620,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof jQuery !== 'undefined') {
             jQuery(followupField).on('change', function() {
                 const followupId = this.value;
-                console.log('고객 변경됨 (Select2 이벤트):', followupId);
                 updatePrepaymentList(followupId);
             });
         }
         
         // 페이지 로드 시 이미 고객이 선택되어 있으면 선결제 목록 로드
         if (followupField.value) {
-            console.log('페이지 로드 시 고객 ID:', followupField.value);
             updatePrepaymentList(followupField.value);
         }
     }
@@ -1687,7 +1648,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     remainingAmount = parseInt(deliveryTotalElement.textContent.replace(/[^0-9]/g, '')) || 0;
                 }
                 
-                console.log('전액사용 - 납품 총액:', remainingAmount);
                 
                 if (remainingAmount <= 0) {
                     alert('납품 품목을 먼저 입력하세요.');
@@ -1695,7 +1655,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                console.log('납품 총액:', remainingAmount);
                 
                 const checkboxes = document.querySelectorAll('.prepayment-checkbox');
                 
@@ -1714,7 +1673,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         amountInput.value = useAmount;
                         remainingAmount -= useAmount;
                         
-                        console.log(`선결제 ${checkbox.value}: ${useAmount}원 사용 (잔액: ${balance}원, 남은금액: ${remainingAmount}원)`);
                     } else {
                         // 남은 금액이 없으면 선택 해제
                         checkbox.checked = false;
@@ -1749,20 +1707,13 @@ document.addEventListener('DOMContentLoaded', function() {
 {% if schedule %}
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
-        console.log('=== 수정 모드 선결제 자동 로드 시작 ===');
         const hiddenFollowupField = document.getElementById('id_followup');
-        console.log('hiddenFollowupField 요소:', hiddenFollowupField);
-        console.log('hiddenFollowupField.value:', hiddenFollowupField ? hiddenFollowupField.value : 'null');
         
         const checkboxContainer = document.getElementById('prepayment-checkboxes');
-        console.log('checkboxContainer 요소:', checkboxContainer);
         
         if (hiddenFollowupField && hiddenFollowupField.value) {
-            console.log('수정 모드 - 페이지 로드 시 고객 ID:', hiddenFollowupField.value);
-            console.log('updatePrepaymentList 함수 호출 시작');
             updatePrepaymentList(hiddenFollowupField.value);
         } else {
-            console.log('조건 불만족:', {
                 hasElement: !!hiddenFollowupField,
                 hasValue: hiddenFollowupField ? !!hiddenFollowupField.value : false
             });
@@ -1934,7 +1885,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 element.dispatchEvent(clickEvent);
             }
         } catch (error) {
-            console.warn('날짜/시간 선택기를 열 수 없습니다:', error);
             // 실패 시 포커스로 대체
             element.focus();
         }
@@ -2030,22 +1980,18 @@ document.addEventListener('DOMContentLoaded', function() {
 // DOMContentLoaded 밖에서 전역 함수로 정의
 // ==========================================
 window.toggleSections = function() {
-    console.log('=== toggleSections 실행 (전역) ===');
     const activityTypeField = document.querySelector('[name="activity_type"]');
     if (!activityTypeField) {
-        console.log('활동 유형 필드를 찾을 수 없습니다!');
         return;
     }
     
     const selectedValue = activityTypeField.value;
-    console.log('선택된 활동 유형:', selectedValue);
     
     // 품목 섹션: 견적 또는 납품일 때만 표시
     const deliverySection = document.getElementById('delivery-section');
     if (deliverySection) {
         const shouldShowDelivery = (selectedValue === 'delivery' || selectedValue === 'quote');
         deliverySection.style.display = shouldShowDelivery ? 'block' : 'none';
-        console.log('delivery-section 표시:', shouldShowDelivery);
         
         // 섹션 제목 변경
         const sectionTitle = deliverySection.closest('.card')?.querySelector('.card-header h5');
@@ -2060,17 +2006,12 @@ window.toggleSections = function() {
     
     // 품목 입력 안내 섹션 (생성 모드)
     const itemsSection = document.getElementById('quote-delivery-items-section');
-    console.log('quote-delivery-items-section 요소:', itemsSection);
     if (itemsSection) {
         const shouldShow = (selectedValue === 'delivery' || selectedValue === 'quote');
-        console.log('quote-delivery-items-section 표시:', shouldShow);
         
         // 강제로 block 설정하고 로그 출력
         if (shouldShow) {
             itemsSection.style.display = 'block';
-            console.log('>>> 강제로 display: block 설정함');
-            console.log('>>> 현재 itemsSection.style.display:', itemsSection.style.display);
-            console.log('>>> itemsSection의 computed style:', window.getComputedStyle(itemsSection).display);
         } else {
             itemsSection.style.display = 'none';
         }
@@ -2102,27 +2043,19 @@ window.toggleSections = function() {
         
         // 품목 컨테이너 확인 (견적 모드)
         const itemsContainer = document.getElementById('items-container');
-        console.log('items-container 요소:', itemsContainer);
         if (itemsContainer) {
             const existingItems = itemsContainer.querySelectorAll('.item-row');
-            console.log('기존 품목 개수:', existingItems.length);
             
             // 견적 모드일 때만 required 추가, 그 외에는 제거
             if (selectedValue === 'quote') {
-                console.log('견적 모드: 품목 체크 시작');
                 // 품목이 없으면 하나 추가
                 if (existingItems.length === 0) {
-                    console.log('기존 품목 없음, addItem 호출');
                     // addItem 함수가 정의되어 있으면 호출
                     if (typeof window.addItem === 'function') {
-                        console.log('window.addItem 함수 호출');
                         window.addItem();
-                        console.log('window.addItem 호출 완료');
                     } else {
-                        console.error('window.addItem 함수가 정의되지 않음!');
                     }
                 } else {
-                    console.log('기존 품목 있음:', existingItems.length, '개');
                     // 기존 품목들에 제품 목록 로드
                     existingItems.forEach(item => {
                         const productSelect = item.querySelector('.quote-product-select');
@@ -2200,7 +2133,6 @@ window.toggleDeliverySection = function() {
 document.addEventListener('DOMContentLoaded', function() {
     const activityTypeField = document.querySelector('[name="activity_type"]');
     if (activityTypeField) {
-        console.log('### 페이지 로드 - 초기 toggleSections 실행 ###');
         window.toggleSections();
         
         // 변경 이벤트 리스너 추가
@@ -2213,10 +2145,8 @@ let itemIndex = 0;
 
 // addItem 함수를 window 객체에 등록하여 전역에서 사용 가능하도록
 window.addItem = function(itemData = {}) {
-    console.log('addItem 호출됨, itemData:', itemData);
     const container = document.getElementById('items-container');
     if (!container) {
-        console.error('items-container를 찾을 수 없습니다!');
         return;
     }
     
@@ -2283,12 +2213,9 @@ window.addItem = function(itemData = {}) {
     `;
     
     container.appendChild(newItem);
-    console.log('품목 추가 완료, itemIndex:', itemIndex);
-    console.log('현재 container의 자식 수:', container.children.length);
     itemIndex++;
     
     // 제품 목록 로드 (newItem 자체를 전달)
-    console.log('제품 목록 로드 시작');
     loadQuoteProductList(newItem);
     
     // 이벤트 리스너 추가
@@ -2446,7 +2373,6 @@ function loadFromQuote() {
             showQuoteSelectionModal(data.quotes);
         })
         .catch(error => {
-            console.error('견적 불러오기 오류:', error);
             alert('견적을 불러오는 중 오류가 발생했습니다.');
         });
 }
@@ -2517,11 +2443,9 @@ function showQuoteSelectionModal(quotes) {
     
     // 모달 이벤트 리스너 추가
     modalElement.addEventListener('show.bs.modal', function(e) {
-        console.log('견적 선택 모달 열기 시작');
         
         if (modalElement.parentElement !== document.body) {
             document.body.appendChild(modalElement);
-            console.log('견적 선택 모달을 body로 이동');
         }
         
         modalElement.style.zIndex = '100100';
@@ -2529,7 +2453,6 @@ function showQuoteSelectionModal(quotes) {
     });
     
     modalElement.addEventListener('shown.bs.modal', function() {
-        console.log('견적 선택 모달 완전히 열림');
         
         // 다른 모든 모달 닫기
         const otherModals = document.querySelectorAll('.modal:not(#quoteSelectionModal)');
@@ -2576,12 +2499,10 @@ function showQuoteSelectionModal(quotes) {
         
         modalElement.style.pointerEvents = 'auto';
         
-        console.log('견적 선택 모달 설정 완료');
     });
     
     // 모달 닫힐 때 원래대로 복원
     modalElement.addEventListener('hidden.bs.modal', function() {
-        console.log('견적 선택 모달 닫힘');
         
         const pageElements = document.querySelectorAll('.container, .card, form');
         pageElements.forEach(el => {
@@ -2602,17 +2523,13 @@ function showQuoteSelectionModal(quotes) {
 
 // 견적 선택 처리
 function selectQuote(index) {
-    console.log('selectQuote called with index:', index);
-    console.log('window.currentQuotes:', window.currentQuotes);
     
     if (!window.currentQuotes || !window.currentQuotes[index]) {
-        console.error('견적 데이터를 찾을 수 없습니다. index:', index);
         alert('견적 데이터를 불러오는 중 오류가 발생했습니다.');
         return;
     }
     
     const selectedQuote = window.currentQuotes[index];
-    console.log('selectedQuote:', selectedQuote);
     
     loadQuoteItems(selectedQuote);
     
@@ -2623,40 +2540,31 @@ function selectQuote(index) {
 
 // 선택된 견적 품목 불러오기
 function loadQuoteItems(quote) {
-    console.log('loadQuoteItems called with quote:', quote);
     
     if (!quote || !quote.items) {
-        console.error('잘못된 견적 데이터:', quote);
         alert('견적 데이터가 올바르지 않습니다.');
         return;
     }
     
-    console.log('Quote items count:', quote.items.length);
-    console.log('Quote items:', quote.items);
     
     // 선택한 견적의 opportunity를 폼의 opportunity 필드에 설정
     const opportunityField = document.querySelector('[name="opportunity"]');
     if (opportunityField && quote.opportunity_id) {
-        console.log('Setting opportunity field to:', quote.opportunity_id);
         opportunityField.value = quote.opportunity_id;
     } else {
-        console.warn('Opportunity field not found or opportunity_id is missing');
     }
     
     // 현재 활동 유형 확인
     const activityTypeField = document.querySelector('[name="activity_type"]');
     const currentActivityType = activityTypeField ? activityTypeField.value : '';
-    console.log('Current activity type:', currentActivityType);
     
     if (currentActivityType === 'delivery') {
         // 납품 모드: 납품 품목 데이터 배열에 추가
-        console.log('Delivery mode: Adding items to scheduleDeliveryItemsData');
         scheduleDeliveryItemsData = quote.items.map(item => ({
             name: item.item_name,
             quantity: item.quantity,
             unit_price: item.unit_price
         }));
-        console.log('scheduleDeliveryItemsData:', scheduleDeliveryItemsData);
         
         // 납품 품목 개수 업데이트
         updateScheduleDeliveryItemCount();
@@ -2669,17 +2577,12 @@ function loadQuoteItems(quote) {
         
     } else {
         // 견적 모드: 기존 방식대로 items-container에 추가
-        console.log('Quote mode: Adding items to items-container');
         const container = document.getElementById('items-container');
-        console.log('Items container:', container);
-        console.log('Clearing existing items...');
         container.innerHTML = '';
         itemIndex = 0;
         
         // 견적 품목 추가
-        console.log('Adding quote items...');
         quote.items.forEach((item, index) => {
-            console.log(`Adding item ${index}:`, item);
             addItem({
                 name: item.item_name,
                 quantity: item.quantity,
@@ -2687,7 +2590,6 @@ function loadQuoteItems(quote) {
             });
         });
         
-        console.log('Total items added:', itemIndex);
         
         // 합계 계산 (예상 매출액 자동 반영)
         calculateTotal();
@@ -2815,11 +2717,9 @@ function openScheduleDeliveryModal() {
   
   // 모달을 body의 직접 자식으로 이동
   modalElement.addEventListener('show.bs.modal', function(e) {
-    console.log('납품 품목 모달 열기 시작');
     
     if (modalElement.parentElement !== document.body) {
       document.body.appendChild(modalElement);
-      console.log('납품 품목 모달을 body로 이동');
     }
     
     modalElement.style.zIndex = '100000';
@@ -2827,7 +2727,6 @@ function openScheduleDeliveryModal() {
   });
   
   modalElement.addEventListener('shown.bs.modal', function () {
-    console.log('납품 품목 모달 완전히 열림');
     
     // 다른 모든 모달 닫기
     const otherModals = document.querySelectorAll('.modal:not(#scheduleDeliveryItemsModal)');
@@ -2874,12 +2773,10 @@ function openScheduleDeliveryModal() {
     
     modalElement.style.pointerEvents = 'auto';
     
-    console.log('납품 품목 모달 설정 완료');
   });
   
   // 모달 닫힐 때 원래대로 복원
   modalElement.addEventListener('hidden.bs.modal', function() {
-    console.log('납품 품목 모달 닫힘');
     
     const pageElements = document.querySelectorAll('.container, .card, form:not(#schedule-delivery-form)');
     pageElements.forEach(el => {
@@ -2907,7 +2804,6 @@ function loadExistingScheduleDeliveryItems() {
   // 2순위: 템플릿 변수에서 데이터 확인
   {% if delivery_text %}
     const deliveryText = `{{ delivery_text|escapejs }}`;
-    console.log('기존 납품 품목 데이터 (템플릿):', deliveryText);
     
     const lines = deliveryText.split('\n');
     let hasData = false;
@@ -2925,7 +2821,6 @@ function loadExistingScheduleDeliveryItems() {
           // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
           const unitPrice = Math.round(totalPrice / 1.1 / quantity);
           
-          console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
           
           addScheduleDeliveryItem({
             item_name: itemName,
@@ -2938,7 +2833,6 @@ function loadExistingScheduleDeliveryItems() {
     });
     
     if (hasData) {
-      console.log('기존 납품 품목 로드 완료 (템플릿)');
       return true;
     }
   {% endif %}
@@ -2950,7 +2844,6 @@ function loadExistingScheduleDeliveryItems() {
   if (deliveryItemsField && deliveryItemsField.value.trim()) {
     // 기존 데이터가 있는 경우 파싱해서 로드
     const deliveryItemsText = deliveryItemsField.value.trim();
-    console.log('기존 납품 품목 데이터 (폼 필드):', deliveryItemsText);
     
     const lines = deliveryItemsText.split('\n');
     let hasData = false;
@@ -2968,7 +2861,6 @@ function loadExistingScheduleDeliveryItems() {
           // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
           const unitPrice = Math.round(totalPrice / 1.1 / quantity);
           
-          console.log(`품목 로드: ${itemName}, 수량: ${quantity}, 단가: ${unitPrice}, 총액: ${totalPrice}`);
           
           addScheduleDeliveryItem({
             item_name: itemName,
@@ -2981,12 +2873,10 @@ function loadExistingScheduleDeliveryItems() {
     });
     
     if (hasData) {
-      console.log('기존 납품 품목 로드 완료 (폼 필드)');
     }
     return hasData;
   }
   
-  console.log('기존 납품 품목 데이터 없음');
   return false;
 }
 
@@ -3131,7 +3021,6 @@ function saveScheduleDeliveryItems() {
   
   // 컨테이너가 없으면 (모달을 열지 않은 경우) 아무것도 하지 않음
   if (!container) {
-    console.log('납품 품목 컨테이너가 없습니다. 건너뜁니다.');
     return;
   }
   
@@ -3140,31 +3029,20 @@ function saveScheduleDeliveryItems() {
   let itemsText = [];
   let totalAmount = 0;
   
-  console.log('=== saveDeliveryItems 디버깅 ===');
-  console.log('품목 개수:', items.length);
   
   items.forEach((item, index) => {
-    console.log(`품목 ${index + 1} 처리 중...`);
     
     const itemNameElem = item.querySelector('.item-name');
     const quantityElem = item.querySelector('.quantity-input');
     const unitPriceElem = item.querySelector('.unit-price-input');
     const productIdElem = item.querySelector('.product-id');
     
-    console.log(`  품목명 요소:`, itemNameElem);
-    console.log(`  수량 요소:`, quantityElem);
-    console.log(`  단가 요소:`, unitPriceElem);
-    console.log(`  제품 ID 요소:`, productIdElem);
     
     const itemName = itemNameElem ? itemNameElem.value.trim() : '';
     const quantity = quantityElem ? parseFloat(quantityElem.value) || 0 : 0;
     const unitPrice = unitPriceElem ? parseFloat(unitPriceElem.value) || 0 : 0;
     const productId = productIdElem ? productIdElem.value.trim() : '';
     
-    console.log(`  품목명: "${itemName}"`);
-    console.log(`  수량: ${quantity}`);
-    console.log(`  단가: ${unitPrice}`);
-    console.log(`  제품 ID: ${productId}`);
     
     if (itemName && quantity > 0) {
       const subtotal = quantity * unitPrice;
@@ -3209,7 +3087,6 @@ function saveScheduleDeliveryItems() {
     deliveryTotalField.value = Math.round(totalAmount);
   }
   
-  console.log('납품 품목 저장 완료:', scheduleDeliveryItemsData);
   
   // 모달 닫기
   const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleDeliveryItemsModal'));
@@ -3219,7 +3096,6 @@ function saveScheduleDeliveryItems() {
   
   // 성공 메시지 (선택사항)
   if (scheduleDeliveryItemsData.length > 0) {
-    console.log(`${scheduleDeliveryItemsData.length}개 품목이 적용되었습니다.`);
   }
 }
 
@@ -3251,22 +3127,17 @@ function updateScheduleDeliveryItemCount() {
   
   if (deliveryTotalField) {
     deliveryTotalField.value = Math.round(totalAmount);
-    console.log('총액 필드 업데이트:', Math.round(totalAmount));
   }
   
   // 선결제 계산 업데이트
   if (typeof updatePrepaymentCalculation === 'function') {
-    console.log('선결제 계산 업데이트 호출');
     updatePrepaymentCalculation();
   }
   
-  console.log(`${scheduleDeliveryItemsData.length}개 품목 표시 완료`);
 }
 
 // 모든 품목 저장 (견적 + 납품)
 function saveAllItems() {
-  console.log('=== 품목 저장 시작 ===');
-  console.log('scheduleDeliveryItemsData:', scheduleDeliveryItemsData);
   
   // 기존 숨겨진 필드 제거
   const existingHiddenFields = document.querySelectorAll('input[name^="delivery_items["]');
@@ -3275,7 +3146,6 @@ function saveAllItems() {
   // 스케줄 form 선택 (로그아웃 form이 아닌!)
   const form = Array.from(document.querySelectorAll('form[method="post"]')).find(f => f.action.includes('schedule'));
   if (!form) {
-    console.error('스케줄 form을 찾을 수 없습니다!');
     return;
   }
   
@@ -3283,7 +3153,6 @@ function saveAllItems() {
   
   // 1. 먼저 scheduleDeliveryItemsData 배열에서 저장 (모달에서 적용한 데이터)
   if (scheduleDeliveryItemsData && scheduleDeliveryItemsData.length > 0) {
-    console.log(`scheduleDeliveryItemsData에서 ${scheduleDeliveryItemsData.length}개 품목 저장`);
     
     scheduleDeliveryItemsData.forEach((itemData, index) => {
       // 품목명
@@ -3323,7 +3192,6 @@ function saveAllItems() {
   else {
     const deliveryContainer = document.getElementById('schedule-delivery-items-container');
     if (deliveryContainer) {
-      console.log('DOM에서 직접 납품 품목 읽기');
       const deliveryItems = document.querySelectorAll('#schedule-delivery-items-container .delivery-item');
       deliveryItems.forEach((item, index) => {
         const itemName = item.querySelector('.item-name')?.value.trim();
@@ -3419,7 +3287,6 @@ function saveAllItems() {
     });
   }
   
-  console.log(`총 ${savedCount}개의 품목이 저장됩니다.`);
 }
 
 // 페이지 로드 시 기존 납품 품목 데이터 표시
@@ -3437,7 +3304,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const deliveryText = `{{ delivery_text|escapejs }}`;
         const deliveryAmount = {{ delivery_amount|default:"0" }};
         
-        console.log('Loading delivery data from template (edit mode):', deliveryText);
         
         if (deliveryDisplayField) {
             deliveryDisplayField.value = deliveryText;
@@ -3481,7 +3347,6 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
     {% else %}
     // 생성 모드에서는 납품 품목 관련 처리 안 함
-    console.log('일정 생성 모드: 납품 품목은 일정 생성 후 히스토리에서 관리합니다.');
     {% endif %}
 });
 
@@ -3491,10 +3356,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 제품 목록 로드 (드롭다운 방식)
 function loadProductList(deliveryItem) {
-  console.log('loadProductList 호출됨, deliveryItem:', deliveryItem);
   
   if (!deliveryItem) {
-    console.error('deliveryItem이 null입니다');
     return Promise.reject('deliveryItem이 null입니다');
   }
   
@@ -3502,11 +3365,9 @@ function loadProductList(deliveryItem) {
     .then(response => response.json())
     .then(data => {
       const products = data.products || [];
-      console.log('제품 목록 로드됨, 제품 수:', products.length);
       
       // 전체 제품 데이터를 deliveryItem에 저장
       deliveryItem.dataset.allProducts = JSON.stringify(products);
-      console.log('제품 데이터가 deliveryItem에 저장됨');
       
       // 제품 데이터가 저장되었음을 알리는 이벤트 발생
       deliveryItem.dispatchEvent(new CustomEvent('productsLoaded', { 
@@ -3516,39 +3377,32 @@ function loadProductList(deliveryItem) {
       return products;
     })
     .catch(error => {
-      console.error('제품 목록 로드 실패:', error);
       throw error;
     });
 }
 
 // 제품 검색 함수
 function searchProducts(searchInput) {
-  console.log('searchProducts 호출됨 (모달용)');
   const deliveryItem = searchInput.closest('.delivery-item');
   const resultsDiv = deliveryItem.querySelector('.product-search-results');
   const searchQuery = searchInput.value.toLowerCase().trim();
   const productIdInput = deliveryItem.querySelector('.product-id');
   const itemNameInput = deliveryItem.querySelector('.item-name');
   
-  console.log('모달 검색어:', searchQuery);
   
   // 전체 제품 데이터 가져오기
   const allProductsStr = deliveryItem.dataset.allProducts || '[]';
-  console.log('모달 allProducts 데이터:', allProductsStr.substring(0, 100) + '...');
   
   try {
     const allProducts = JSON.parse(allProductsStr);
-    console.log('모달 파싱된 제품 수:', allProducts.length);
     
     // 제품 데이터가 없는 경우
     if (allProducts.length === 0) {
       // 제품 데이터가 로드 중일 수 있으므로 잠시 기다려보기
-      console.log('제품 데이터가 없음. 로드 완료를 기다립니다...');
       
       // productsLoaded 이벤트를 기다림
       const waitForProducts = () => {
         deliveryItem.addEventListener('productsLoaded', function handler(event) {
-          console.log('제품 로드 완료 이벤트 받음:', event.detail.products.length);
           deliveryItem.removeEventListener('productsLoaded', handler);
           searchProducts(searchInput); // 재귀 호출
         }, { once: true });
@@ -3574,32 +3428,26 @@ function searchProducts(searchInput) {
     // 검색어로 필터링 (검색어가 없으면 전체 목록 표시)
     let filteredProducts;
     if (!searchQuery) {
-      console.log('검색어 없음 - 전체 제품 목록 표시');
       filteredProducts = allProducts;
     } else {
-      console.log('모달 검색어로 필터링 중...');
       filteredProducts = allProducts.filter(product => 
         product.product_code.toLowerCase().includes(searchQuery) ||
         (product.name && product.name.toLowerCase().includes(searchQuery))
       );
     }
-    console.log('모달 표시할 제품 수:', filteredProducts.length);
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
-    console.log('모달 resultsDiv 요소:', resultsDiv);
     
     if (filteredProducts.length === 0) {
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
       resultsDiv.style.display = 'block';
     } else {
-      console.log('모달 제품 목록 DOM 생성 시작...');
       
       // 최대 10개까지만 표시 (너무 많으면 UI가 복잡해짐)
       const displayProducts = filteredProducts.slice(0, 10);
       
       displayProducts.forEach((product, index) => {
-        console.log(`모달 결과 항목 ${index + 1} 생성:`, product.product_code);
         const resultItem = document.createElement('div');
         resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
         resultItem.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
@@ -3636,7 +3484,6 @@ function searchProducts(searchInput) {
           }
         };
         
-        console.log(`모달 결과 항목 ${index + 1} DOM에 추가`);
         resultsDiv.appendChild(resultItem);
       });
       
@@ -3649,14 +3496,10 @@ function searchProducts(searchInput) {
       }
       
       resultsDiv.style.display = 'block';
-      console.log('모달 모든 결과 DOM 추가 완료 - resultsDiv.style.display:', resultsDiv.style.display);
-      console.log('모달 resultsDiv 자식 요소 개수:', resultsDiv.children.length);
     }
     
-    console.log('모달 검색/목록 표시 완료');
     
   } catch (error) {
-    console.error('모달 제품 검색 중 오류 발생:', error);
     resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
       <i class="fas fa-exclamation-triangle"></i> 검색 중 오류가 발생했습니다: ${error.message}
     </div>`;
@@ -3736,7 +3579,6 @@ function openDeliveryProductModal(button) {
 // ============================================
 
 function loadQuoteProductList(itemRow) {
-  console.log('loadQuoteProductList 호출됨');
   fetch('/reporting/api/products/')
     .then(response => {
       if (!response.ok) {
@@ -3749,10 +3591,8 @@ function loadQuoteProductList(itemRow) {
     })
     .then(data => {
       const products = data.products || [];
-      console.log('견적 제품 목록 로드 완료, 제품 수:', products.length);
       
       if (products.length === 0) {
-        console.warn('등록된 제품이 없습니다.');
         // 검색 입력 필드에 안내 메시지 표시
         const searchInput = itemRow.querySelector('.quote-product-search');
         if (searchInput) {
@@ -3764,7 +3604,6 @@ function loadQuoteProductList(itemRow) {
       
       // 전체 제품 데이터를 itemRow에 저장
       itemRow.dataset.allProducts = JSON.stringify(products);
-      console.log('견적 제품 데이터 저장 완료, allProducts 길이:', itemRow.dataset.allProducts.length);
       
       // 검색 입력 필드 활성화
       const searchInput = itemRow.querySelector('.quote-product-search');
@@ -3774,7 +3613,6 @@ function loadQuoteProductList(itemRow) {
       }
     })
     .catch(error => {
-      console.error('제품 목록 로드 실패:', error);
       // 사용자에게 에러 알림
       const searchInput = itemRow.querySelector('.quote-product-search');
       if (searchInput) {
@@ -3795,22 +3633,18 @@ function loadQuoteProductList(itemRow) {
 
 // 제품 검색 함수 (견적용)
 function searchQuoteProducts(searchInput) {
-  console.log('searchQuoteProducts 호출됨');
   const itemRow = searchInput.closest('.item-row');
   const resultsDiv = itemRow.querySelector('.quote-search-results');
   const searchQuery = searchInput.value.toLowerCase().trim();
   const productIdInput = itemRow.querySelector('.quote-product-id');
   const itemNameInput = itemRow.querySelector('.quote-item-name');
   
-  console.log('검색어:', searchQuery);
   
   // 전체 제품 데이터 가져오기
   const allProductsStr = itemRow.dataset.allProducts || '[]';
-  console.log('allProducts 데이터:', allProductsStr.substring(0, 100) + '...');
   
   try {
     const allProducts = JSON.parse(allProductsStr);
-    console.log('파싱된 견적 제품 수:', allProducts.length);
     
     // 제품 데이터가 없는 경우
     if (allProducts.length === 0) {
@@ -3825,34 +3659,26 @@ function searchQuoteProducts(searchInput) {
     // 검색어가 없으면 전체 목록 표시 (검색어가 있으면 필터링)
     let filteredProducts;
     if (!searchQuery) {
-      console.log('검색어 없음 - 전체 제품 목록 표시');
       filteredProducts = allProducts;
     } else {
-      console.log('검색어로 필터링 중...');
       filteredProducts = allProducts.filter(product => 
         product.product_code.toLowerCase().includes(searchQuery) ||
         (product.name && product.name.toLowerCase().includes(searchQuery))
       );
     }
-    console.log('표시할 제품 수:', filteredProducts.length);
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
-    console.log('resultsDiv 요소:', resultsDiv);
-    console.log('resultsDiv 현재 스타일:', resultsDiv.style);
     
     if (filteredProducts.length === 0) {
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
       resultsDiv.style.display = 'block';
-      console.log('검색 결과 없음 - resultsDiv.style.display:', resultsDiv.style.display);
     } else {
-      console.log('검색 결과 DOM 생성 시작...');
       
       // 최대 10개까지만 표시 (너무 많으면 UI가 복잡해짐)
       const displayProducts = filteredProducts.slice(0, 10);
       
       displayProducts.forEach((product, index) => {
-        console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
         const resultItem = document.createElement('div');
         resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
         resultItem.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
@@ -3889,7 +3715,6 @@ function searchQuoteProducts(searchInput) {
         }
       };
       
-      console.log(`결과 항목 ${index + 1} DOM에 추가`);
       resultsDiv.appendChild(resultItem);
     });
     
@@ -3902,15 +3727,10 @@ function searchQuoteProducts(searchInput) {
     }
     
     resultsDiv.style.display = 'block';
-    console.log('모든 결과 DOM 추가 완료 - resultsDiv.style.display:', resultsDiv.style.display);
-    console.log('resultsDiv 자식 요소 개수:', resultsDiv.children.length);
-    console.log('resultsDiv getBoundingClientRect():', resultsDiv.getBoundingClientRect());
   }
   
-  console.log('검색 완료');
   
   } catch (error) {
-    console.error('제품 검색 중 오류 발생:', error);
     resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
       <i class="fas fa-exclamation-triangle"></i> 검색 중 오류가 발생했습니다: ${error.message}
     </div>`;
@@ -3998,7 +3818,6 @@ document.addEventListener('DOMContentLoaded', function() {
   if (productAddModal && productAddForm) {
     // 모달 열릴 때
     productAddModal.addEventListener('show.bs.modal', function(e) {
-      console.log('제품 추가 모달 열기');
       
       if (productAddModal.parentElement !== document.body) {
         document.body.appendChild(productAddModal);
@@ -4097,7 +3916,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       })
       .catch(error => {
-        console.error('Error:', error);
         alert('제품 추가 중 오류가 발생했습니다.');
       });
     });

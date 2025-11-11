@@ -1024,7 +1024,6 @@ document.addEventListener('DOMContentLoaded', function() {
     sidebar.style.width = '260px';
     sidebar.style.zIndex = '9999';  // 최상위
     sidebar.style.pointerEvents = 'auto';  // 클릭 가능
-    console.log('✅ Sidebar forced to top with z-index 9999');
   }
   
   if (mainContent) {
@@ -1033,7 +1032,6 @@ document.addEventListener('DOMContentLoaded', function() {
     mainContent.style.zIndex = '1';
     mainContent.style.width = 'calc(100% - 260px)';  // 사이드바 제외한 너비
     
-    console.log('🔧 Main content width limited to avoid sidebar');
   }
   
   if (infographicDashboard) {
@@ -1053,17 +1051,14 @@ document.addEventListener('DOMContentLoaded', function() {
     card.style.maxWidth = '100%';
   });
   
-  console.log('✅ All cards prevented from overlapping sidebar');
   
   // 🐛 클릭 디버깅
   setTimeout(() => {
-    console.log('========== CLICK DEBUG ==========');
     
     // 사이드바 위치 확인
     if (sidebar) {
       const sidebarRect = sidebar.getBoundingClientRect();
       const sidebarStyle = window.getComputedStyle(sidebar);
-      console.log('📍 Sidebar Info:', {
         position: sidebarStyle.position,
         zIndex: sidebarStyle.zIndex,
         pointerEvents: sidebarStyle.pointerEvents,
@@ -1082,7 +1077,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const centerX = 130;
       const centerY = 200;
       const elementAtCenter = document.elementFromPoint(centerX, centerY);
-      console.log(`🎯 Element at sidebar center (${centerX}, ${centerY}):`, {
         element: elementAtCenter,
         tagName: elementAtCenter?.tagName,
         className: elementAtCenter?.className,
@@ -1095,7 +1089,6 @@ document.addEventListener('DOMContentLoaded', function() {
       if (firstNavLink) {
         const linkRect = firstNavLink.getBoundingClientRect();
         const linkStyle = window.getComputedStyle(firstNavLink);
-        console.log('🔗 First nav-link:', {
           href: firstNavLink.href,
           zIndex: linkStyle.zIndex,
           pointerEvents: linkStyle.pointerEvents,
@@ -1107,7 +1100,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const linkCenterX = linkRect.left + linkRect.width / 2;
         const linkCenterY = linkRect.top + linkRect.height / 2;
         const elementAtLink = document.elementFromPoint(linkCenterX, linkCenterY);
-        console.log(`🎯 Element at nav-link center (${linkCenterX.toFixed(0)}, ${linkCenterY.toFixed(0)}):`, {
           element: elementAtLink,
           tagName: elementAtLink?.tagName,
           className: elementAtLink?.className,
@@ -1137,10 +1129,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     if (highZIndexElements.length > 0) {
-      console.warn('⚠️ Elements with high z-index overlapping sidebar area:', highZIndexElements);
     }
     
-    console.log('===================================');
   }, 1500);
   
   // ============================================
