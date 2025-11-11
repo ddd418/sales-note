@@ -1446,6 +1446,8 @@ def schedule_list_view(request):
     
     # 검색 기능
     search_query = request.GET.get('search')
+    product_search = request.GET.get('product_search')  # 제품 검색 추가
+    
     if search_query:
         schedules = schedules.filter(
             Q(followup__customer_name__icontains=search_query) |
@@ -1454,6 +1456,13 @@ def schedule_list_view(request):
             Q(location__icontains=search_query) |
             Q(notes__icontains=search_query)
         )
+    
+    # 제품 검색 (별도 필드로 분리)
+    if product_search:
+        schedules = schedules.filter(
+            Q(delivery_items_set__product__product_code__icontains=product_search) |
+            Q(delivery_items_set__product__description__icontains=product_search)
+        ).distinct()
     
     # 담당자 필터링
     user_filter = request.GET.get('user')
@@ -1505,6 +1514,7 @@ def schedule_list_view(request):
     
     activity_total_count = activity_count_queryset.count()  # 활동 유형 필터용 전체 카운트
     meeting_count = activity_count_queryset.filter(activity_type='customer_meeting').count()
+    quote_count = activity_count_queryset.filter(activity_type='quote').count()  # 견적 카운트 추가
     delivery_count = activity_count_queryset.filter(activity_type='delivery').count()
     service_count = activity_count_queryset.filter(activity_type='service').count()
     
@@ -1560,9 +1570,11 @@ def schedule_list_view(request):
         'cancelled_count': cancelled_count,
         'activity_total_count': activity_total_count,
         'meeting_count': meeting_count,
+        'quote_count': quote_count,  # 견적 카운트 추가
         'delivery_count': delivery_count,
         'service_count': service_count,
         'search_query': search_query,
+        'product_search': product_search,  # 제품 검색 추가
         'user_filter': user_filter,
         'selected_user': selected_user,
         'date_from': date_from,
@@ -2839,6 +2851,7 @@ def history_list_view(request):
     base_queryset_for_counts = histories
     total_count = base_queryset_for_counts.count()
     meeting_count = base_queryset_for_counts.filter(action_type='customer_meeting').count()
+    quote_count = base_queryset_for_counts.filter(action_type='quote').count()  # 견적 카운트 추가
     delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
     service_count = base_queryset_for_counts.filter(action_type='service', service_status='completed').count()
     memo_count = base_queryset_for_counts.filter(action_type='memo').count()
@@ -2926,6 +2939,7 @@ def history_list_view(request):
         'month_filter': month_filter,
         'total_count': total_count,
         'meeting_count': meeting_count,
+        'quote_count': quote_count,  # 견적 카운트 추가
         'delivery_count': delivery_count,
         'service_count': service_count,
         'memo_count': memo_count,

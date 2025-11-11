@@ -196,6 +196,12 @@
                   <i class="fas fa-handshake me-1"></i>고객 미팅 ({{meeting_count }})
                 </a>
                 <a
+                  href="{% url 'reporting:history_list' %}?action_type=quote{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  class="btn {% if action_type_filter == 'quote' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                >
+                  <i class="fas fa-file-invoice-dollar me-1"></i>견적 ({{ quote_count }})
+                </a>
+                <a
                   href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'delivery_schedule' %}btn-success{% else %}btn-outline-success{% endif %}"
                 >
@@ -306,10 +312,10 @@
             {% for history in histories %}
             <div class="timeline-item" data-action-type="{{ history.action_type }}" data-history-id="{{ history.id }}"{% if history.schedule %} data-schedule-id="{{ history.schedule.id }}"{% endif %}>
               <div
-                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
+                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'quote' %}bg-info {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
               >
                 <i
-                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
+                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'quote' %}fa-file-invoice-dollar {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
                 ></i>
               </div>
 

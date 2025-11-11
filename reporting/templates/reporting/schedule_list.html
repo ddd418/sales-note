@@ -252,28 +252,28 @@
               </h6>
               <div class="btn-group" role="group" aria-label="일정 상태 필터">
                 <a
-                  href="?{% if activity_type_filter %}activity_type={{ activity_type_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
+                  href="?{% if activity_type_filter %}activity_type={{ activity_type_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if product_search %}product_search={{ product_search }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
                   class="btn {% if not status_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
                 </a>
                 <a
-                  href="?status=scheduled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?status=scheduled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'scheduled' %}btn-info{% else %}btn-outline-info{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-clock me-1"></i>예정됨 ({{ scheduled_count}})
                 </a>
                 <a
-                  href="?status=completed{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?status=completed{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'completed' %}btn-success{% else %}btn-outline-success{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-check me-1"></i>완료됨 ({{ completed_count}})
                 </a>
                 <a
-                  href="?status=cancelled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?status=cancelled{% if activity_type_filter %}&activity_type={{ activity_type_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if status_filter == 'cancelled' %}btn-danger{% else %}btn-outline-danger{% endif %}"
                   style="font-size: 0.75rem;"
                 >
@@ -293,28 +293,35 @@
               </h6>
               <div class="btn-group" role="group" aria-label="활동 유형 필터">
                 <a
-                  href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
+                  href="?{% if status_filter %}status={{ status_filter }}&{% endif %}{% if search_query %}search={{ search_query }}&{% endif %}{% if product_search %}product_search={{ product_search }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}{% endif %}"
                   class="btn {% if not activity_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ activity_total_count }})
                 </a>
                 <a
-                  href="?activity_type=customer_meeting{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?activity_type=customer_meeting{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-handshake me-1"></i>미팅 ({{ meeting_count }})
                 </a>
                 <a
-                  href="?activity_type=delivery{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?activity_type=quote{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  class="btn {% if activity_type_filter == 'quote' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                  style="font-size: 0.75rem;"
+                >
+                  <i class="fas fa-file-invoice-dollar me-1"></i>견적 ({{ quote_count }})
+                </a>
+                <a
+                  href="?activity_type=delivery{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'delivery' %}btn-warning{% else %}btn-outline-warning{% endif %}"
                   style="font-size: 0.75rem;"
                 >
                   <i class="fas fa-truck me-1"></i>납품 ({{ delivery_count }})
                 </a>
                 <a
-                  href="?activity_type=service{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  href="?activity_type=service{% if status_filter %}&status={{ status_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if product_search %}&product_search={{ product_search }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if activity_type_filter == 'service' %}btn-success{% else %}btn-outline-success{% endif %}"
                   style="font-size: 0.75rem;"
                 >
@@ -338,8 +345,8 @@
               <form method="GET" action="{% url 'reporting:schedule_list' %}">
                 <div class="row g-3">
                   <!-- 검색어 -->
-                  <div class="col-md-4">
-                    <label for="search" class="form-label">검색어</label>
+                  <div class="col-md-3">
+                    <label for="search" class="form-label">일반 검색</label>
                     <input 
                       type="text" 
                       class="form-control" 
@@ -348,6 +355,20 @@
                       value="{{ search_query|default:'' }}"
                       placeholder="고객명, 업체명, 장소, 메모..."
                     >
+                  </div>
+                  
+                  <!-- 제품 검색 -->
+                  <div class="col-md-3">
+                    <label for="product_search" class="form-label">제품 검색</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      id="product_search"
+                      name="product_search" 
+                      value="{{ product_search|default:'' }}"
+                      placeholder="제품 품번, 제품명..."
+                    >
+                    <small class="text-muted">납품 일정에 포함된 제품으로 검색</small>
                   </div>
                   
                   <!-- 담당자 필터 -->
@@ -403,12 +424,16 @@
                 <!-- 현재 필터 유지 -->
                 {% if status_filter %}
                 <input type="hidden" name="status" value="{{ status_filter }}">
+                {% endif %}
+                {% if activity_type_filter %}
+                <input type="hidden" name="activity_type" value="{{ activity_type_filter }}">
                 {% endif %}                <!-- 검색 결과 정보 -->
-                {% if search_query or user_filter or date_from or date_to %}
+                {% if search_query or product_search or user_filter or date_from or date_to %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_count }}건
-                    {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if search_query %} | 일반검색: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if product_search %} | 제품검색: "<strong>{{ product_search }}</strong>"{% endif %}
                     {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
                     {% if date_from %} | 시작: <strong>{{ date_from }}</strong>{% endif %}
                     {% if date_to %} | 종료: <strong>{{ date_to }}</strong>{% endif %}
@@ -448,10 +473,12 @@
               </h6>
               <div class="d-flex gap-2">
                 <span
-                  class="badge {% if schedule.activity_type == 'customer_meeting' %}bg-info{% elif schedule.activity_type == 'delivery' %}bg-warning text-dark{% elif schedule.activity_type == 'service' %}bg-success{% else %}bg-secondary{% endif %}"
+                  class="badge {% if schedule.activity_type == 'customer_meeting' %}bg-info{% elif schedule.activity_type == 'quote' %}bg-primary{% elif schedule.activity_type == 'delivery' %}bg-warning text-dark{% elif schedule.activity_type == 'service' %}bg-success{% else %}bg-secondary{% endif %}"
                 >
                   {% if schedule.activity_type == 'customer_meeting' %}
                     <i class="fas fa-handshake me-1"></i>미팅
+                  {% elif schedule.activity_type == 'quote' %}
+                    <i class="fas fa-file-invoice-dollar me-1"></i>견적
                   {% elif schedule.activity_type == 'delivery' %}
                     <i class="fas fa-truck me-1"></i>납품
                   {% elif schedule.activity_type == 'service' %}
