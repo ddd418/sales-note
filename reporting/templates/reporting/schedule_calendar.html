@@ -1615,10 +1615,15 @@
         loadSchedules();
 
         // 성공 메시지 표시
+        let message = data.message;
+        if (data.additional_message) {
+          message += '\n' + data.additional_message;
+        }
+        
         if (typeof showToast !== 'undefined') {
-          showToast(data.message, 'success');
+          showToast(message, 'success');
         } else {
-          alert(data.message);
+          alert(message);
         }
       } else {
         alert('오류: ' + data.error);

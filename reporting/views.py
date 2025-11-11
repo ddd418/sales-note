@@ -1023,16 +1023,18 @@ def dashboard_view(request):
         visit_date__lt=month_end.date()
     ).count()
     
-    # 이번 달 납품 일정 수
+    # 이번 달 납품 일정 수 (취소된 일정 제외)
     monthly_delivery_count = schedules.filter(
         activity_type='delivery',
+        status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         visit_date__gte=month_start.date(),
         visit_date__lt=month_end.date()
     ).count()
     
-    # 이번 달 매출 (납품 일정의 DeliveryItem 총액 합산)
+    # 이번 달 매출 (납품 일정의 DeliveryItem 총액 합산, 취소된 일정 제외)
     monthly_delivery_schedules = schedules.filter(
         activity_type='delivery',
+        status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         visit_date__gte=month_start.date(),
         visit_date__lt=month_end.date()
     )
@@ -1040,17 +1042,20 @@ def dashboard_view(request):
         schedule__in=monthly_delivery_schedules
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
-    # 이번 달 선결제 사용 횟수
-    if user_profile.is_admin() and not selected_user:
-        monthly_prepayment_count = PrepaymentUsage.objects.filter(
-            used_at__gte=month_start,
-            used_at__lt=month_end
+    # Prepayment 모델 명시적 import
+    from .models import Prepayment
+    
+    # 이번 달 선결제 건수 (새로 등록된 선결제)
+    if user_profile.is_admin():
+        monthly_prepayment_count = Prepayment.objects.filter(
+            created_at__gte=month_start,
+            created_at__lt=month_end
         ).count()
     else:
-        monthly_prepayment_count = PrepaymentUsage.objects.filter(
-            prepayment__customer__user=target_user,
-            used_at__gte=month_start,
-            used_at__lt=month_end
+        monthly_prepayment_count = Prepayment.objects.filter(
+            created_by=target_user,
+            created_at__gte=month_start,
+            created_at__lt=month_end
         ).count()
     
     # 이번 달 서비스 수 (완료된 것만)
@@ -1066,7 +1071,7 @@ def dashboard_view(request):
     
     total_meetings = schedules_current_year.filter(activity_type='customer_meeting').count()
     total_quotes = schedules_current_year.filter(activity_type='quote').count()
-    total_deliveries = schedules_current_year.filter(activity_type='delivery').count()
+    total_deliveries = schedules_current_year.filter(activity_type='delivery', status__in=['scheduled', 'completed']).count()  # 취소된 일정 제외
     
     # 견적 → 납품 전환율: 견적을 낸 것 중 납품까지 완료된 비율
     # 같은 opportunity를 가진 견적과 납품을 매칭
@@ -1200,6 +1205,7 @@ def dashboard_view(request):
     # 3️⃣ 고객사별 매출 비중 (Top 5 + 기타) - Schedule 기준
     top_customers = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
@@ -1221,7 +1227,8 @@ def dashboard_view(request):
     
     # 기타 금액 계산 - Schedule 기준
     total_all_revenue = DeliveryItem.objects.filter(
-        schedule__in=schedules_current_year
+        schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed']  # 취소된 일정 제외
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
     other_revenue = float(total_all_revenue) - total_top5_revenue
@@ -1240,6 +1247,7 @@ def dashboard_view(request):
     # 현재는 company name으로 간단히 분류 (예: 대학교 포함 여부 등)
     company_stats = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
@@ -1361,7 +1369,7 @@ def dashboard_view(request):
         'active_count': prepayments.filter(status='active', balance__gt=0).count(),
         'depleted_count': prepayments.filter(status='depleted').count(),
         'total_count': prepayments.count(),
-        'monthly_count': monthly_prepayment_count,  # 이번 달 선결제 사용 횟수
+        'monthly_count': monthly_prepayment_count,  # 이번 달 선결제 등록 건수
     }
     
     context['prepayment_stats'] = prepayment_stats
@@ -1473,6 +1481,7 @@ def schedule_list_view(request):
     # 필터 값 가져오기
     status_filter = request.GET.get('status')
     activity_type_filter = request.GET.get('activity_type')
+    product_filter = request.GET.get('product')  # 제품 필터 추가
     
     # 기본 쿼리셋 (검색, 담당자, 날짜 필터가 적용된 상태)
     base_queryset = schedules
@@ -1505,6 +1514,12 @@ def schedule_list_view(request):
     
     if activity_type_filter:
         schedules = schedules.filter(activity_type=activity_type_filter)
+    
+    # 제품 필터 적용
+    if product_filter:
+        schedules = schedules.filter(
+            delivery_items_set__product__product_code__icontains=product_filter
+        ).distinct()
     
     # 정렬 (예정됨 우선, 그 다음 최신 날짜순)
     # Django의 Case를 사용해서 상태별 우선순위 설정
@@ -1705,6 +1720,27 @@ def schedule_create_view(request):
                     if created_count > 0:
                         messages.success(request, f'{created_count}개의 품목이 저장되었습니다.')
                 
+                # 납품 품목 저장 후 펀넬 예상 수주액 업데이트
+                if schedule.activity_type == 'delivery' and has_delivery_items and schedule.opportunity:
+                    from decimal import Decimal
+                    delivery_items = schedule.delivery_items_set.all()
+                    if delivery_items.exists():
+                        delivery_total = sum(Decimal(str(item.total_price or 0)) for item in delivery_items)
+                        if delivery_total > 0:
+                            # 펀넬의 예상 수주액 업데이트
+                            opportunity = schedule.opportunity
+                            if not opportunity.expected_revenue or opportunity.expected_revenue == 0:
+                                opportunity.expected_revenue = delivery_total
+                                opportunity.save()
+                                opportunity.update_revenue_amounts()
+                                logger.info(f"[DELIVERY_FUNNEL] 펀넬 ID {opportunity.id}의 예상 수주액을 납품 품목 총액 {delivery_total:,}원으로 업데이트")
+                            
+                            # 일정의 예상 수주액도 업데이트
+                            if not schedule.expected_revenue or schedule.expected_revenue == 0:
+                                schedule.expected_revenue = delivery_total
+                                schedule.save()
+                                logger.info(f"[DELIVERY_FUNNEL] 일정 ID {schedule.id}의 예상 수주액을 납품 품목 총액 {delivery_total:,}원으로 업데이트")
+                
                 # 선결제 사용 시 PrepaymentUsage에 품목 정보 업데이트
                 if schedule.use_prepayment:
                     from reporting.models import PrepaymentUsage, DeliveryItem
@@ -1747,6 +1783,9 @@ def schedule_create_view(request):
                 elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
                     should_create_or_update_opportunity = True
+                elif schedule.activity_type == 'delivery':
+                    # 납품 일정은 항상 펀넬 생성 (납품 품목에서 금액 계산 가능)
+                    should_create_or_update_opportunity = True
                 elif schedule.expected_revenue and schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
                     should_create_or_update_opportunity = True
@@ -1784,6 +1823,22 @@ def schedule_create_view(request):
                     # 값이 없으면 기존 opportunity 값 유지
                     if schedule.expected_revenue:
                         opportunity.expected_revenue = schedule.expected_revenue
+                    elif not opportunity.expected_revenue and schedule.activity_type == 'delivery':
+                        # 납품 일정이고 예상 수주액이 없으면 납품 품목에서 계산
+                        from decimal import Decimal
+                        delivery_total = Decimal('0')
+                        
+                        # 저장된 납품 품목들에서 총액 계산
+                        delivery_items = schedule.delivery_items_set.all()
+                        if delivery_items.exists():
+                            delivery_total = sum(Decimal(str(item.total_price or 0)) for item in delivery_items)
+                        
+                        if delivery_total > 0:
+                            opportunity.expected_revenue = delivery_total
+                            schedule.expected_revenue = delivery_total
+                        elif not opportunity.expected_revenue:
+                            # opportunity에도 값이 없으면 schedule에 opportunity 값 복사
+                            schedule.expected_revenue = opportunity.expected_revenue
                     elif not opportunity.expected_revenue:
                         # opportunity에도 값이 없으면 schedule에 opportunity 값 복사
                         schedule.expected_revenue = opportunity.expected_revenue
@@ -4248,6 +4303,7 @@ def manager_dashboard(request):
     # 3️⃣ 고객사별 매출 비중 (Top 5 + 기타) - Schedule 기준
     top_customers = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
@@ -4269,7 +4325,8 @@ def manager_dashboard(request):
     
     # 기타 금액 계산 - Schedule 기준
     total_all_revenue = DeliveryItem.objects.filter(
-        schedule__in=schedules_current_year
+        schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed']  # 취소된 일정 제외
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
     other_revenue = float(total_all_revenue) - total_top5_revenue
@@ -4350,6 +4407,7 @@ def manager_dashboard(request):
     # 간단한 키워드 기반 분류
     company_stats = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
@@ -4969,20 +5027,189 @@ def schedule_move_api(request, pk):
 @require_POST
 def schedule_status_update_api(request, schedule_id):
     """일정 상태 업데이트 API"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         schedule = get_object_or_404(Schedule, id=schedule_id)
+        logger.info(f"🔍 일정 상태 업데이트 요청: ID {schedule_id}, 현재 상태: {schedule.status}")
         
         # 권한 체크: 수정 권한이 있는 경우만 상태 변경 가능 (Manager는 읽기 전용)
         if not can_modify_user_data(request.user, schedule.user):
+            logger.warning(f"❌ 권한 없음: 사용자 {request.user.username}가 일정 {schedule_id} 수정 시도")
             return JsonResponse({'error': '수정 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
         
         new_status = request.POST.get('status')
+        logger.info(f"📝 새로운 상태: {new_status}")
+        
         if new_status not in ['scheduled', 'completed', 'cancelled']:
             return JsonResponse({'error': '잘못된 상태값입니다.'}, status=400)
         
         old_status = schedule.status
+        logger.info(f"🔄 상태 변경: {old_status} → {new_status}")
+        
+        # 취소 처리 시 추가 작업
+        if new_status == 'cancelled' and old_status != 'cancelled':
+            logger.info("🚨 취소 처리 시작!")
+            from datetime import date
+            from reporting.models import DeliveryItem, History
+            
+            # 1. 납품 품목 기록은 유지 (삭제하지 않음 - 카운팅에서만 제외)
+            delivery_items = DeliveryItem.objects.filter(schedule=schedule)
+            logger.info(f"📦 찾은 납품 품목: {delivery_items.count()}개")
+            
+            if delivery_items.exists():
+                logger.info(f"� {delivery_items.count()}개 납품 품목은 유지됨 (취소 시에도 삭제하지 않음)")
+                logger.info("💡 납품 품목은 카운팅에서만 제외되고 데이터는 보존됩니다")
+            
+            # 2. 관련 납품 히스토리 삭제 (납품 활동 기록)
+            delivery_histories = History.objects.filter(schedule=schedule, action_type='delivery')
+            delivery_histories_count = delivery_histories.count()
+            logger.info(f"📝 찾은 납품 기록: {delivery_histories_count}개")
+            
+            if delivery_histories_count > 0:
+                delivery_histories.delete()
+                logger.info(f"🗑️ {delivery_histories_count}개 납품 기록 삭제 완료")
+            
+            # 3. 펀넬을 실주로 처리
+            if schedule.opportunity:
+                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
+                opportunity = schedule.opportunity
+                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
+                
+                if opportunity.current_stage != 'lost':  # 이미 실주가 아닌 경우만
+                    logger.info("🎯 펀넬 실주 처리 중...")
+                    opportunity.current_stage = 'lost'
+                    opportunity.lost_date = date.today()
+                    opportunity.lost_reason = f"납품일정 취소 (일정 ID: {schedule.id})"
+                    
+                    # 단계 이력에 실주 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            logger.info(f"이전 단계 {history.get('stage')} 종료 처리")
+                            break
+                    
+                    # 실주 단계 추가
+                    lost_entry = {
+                        'stage': 'lost',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'납품일정 취소로 인한 실주 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(lost_entry)
+                    logger.info("🎯 실주 단계 이력 추가")
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+                    logger.info("✅ 펀넬 실주 처리 완료")
+                else:
+                    logger.info(f"⚠️ 펀넬이 이미 {opportunity.current_stage} 상태라서 실주 처리 안함")
+            else:
+                logger.warning("❌ 연결된 펀넬이 없음 - 실주 처리 불가")
+        
+        # 완료 처리 시 추가 작업 (실주였던 펀넬을 수주로 되돌리기)
+        if new_status == 'completed' and old_status == 'cancelled':
+            logger.info("🎉 취소에서 완료로 변경 - 펀넬 수주 처리 시작!")
+            from datetime import date
+            
+            # 펀넬을 수주로 되돌리기
+            if schedule.opportunity:
+                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
+                opportunity = schedule.opportunity
+                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
+                
+                if opportunity.current_stage == 'lost':  # 실주 상태인 경우만 수주로 변경
+                    logger.info("🎯 펀넬 수주로 되돌리기...")
+                    opportunity.current_stage = 'won'
+                    opportunity.won_date = date.today()
+                    opportunity.lost_date = None  # 실주 날짜 제거
+                    opportunity.lost_reason = None  # 실주 사유 제거
+                    
+                    # 단계 이력에 수주 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 lost 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if history.get('stage') == 'lost' and not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            history['note'] = f"{history.get('note', '')} → 취소 철회로 복구"
+                            logger.info("이전 실주 단계 종료 처리")
+                            break
+                    
+                    # 수주 단계 추가
+                    won_entry = {
+                        'stage': 'won',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'취소 철회 후 납품 완료로 자동 수주 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(won_entry)
+                    logger.info("🎯 수주 단계 이력 추가")
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+                    logger.info("✅ 펀넬 수주 처리 완료")
+                else:
+                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 수주 처리 안함")
+            else:
+                logger.warning("❌ 연결된 펀넬이 없음 - 수주 처리 불가")
+        
+        # 일반적인 납품 완료 시 펀넬을 수주로 업데이트 (scheduled → completed)
+        if new_status == 'completed' and old_status == 'scheduled' and schedule.activity_type == 'delivery':
+            logger.info("🎉 납품 일정 완료 - 펀넬 수주 처리 시작!")
+            from datetime import date
+            
+            # 펀넬을 수주로 업데이트
+            if schedule.opportunity:
+                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
+                opportunity = schedule.opportunity
+                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
+                
+                if opportunity.current_stage != 'won' and opportunity.current_stage != 'lost':  # 아직 수주/실주가 아닌 경우
+                    logger.info("🎯 펀넬 수주 처리 중...")
+                    opportunity.current_stage = 'won'
+                    opportunity.won_date = date.today()
+                    
+                    # 단계 이력에 수주 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            logger.info(f"이전 단계 {history.get('stage')} 종료 처리")
+                            break
+                    
+                    # 수주 단계 추가
+                    won_entry = {
+                        'stage': 'won',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'납품 완료로 자동 수주 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(won_entry)
+                    logger.info("🎯 수주 단계 이력 추가")
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+                    logger.info("✅ 펀넬 수주 처리 완료")
+                elif opportunity.current_stage == 'won':
+                    logger.info("⚠️ 펀넬이 이미 수주 상태")
+                else:
+                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 수주 처리 안함")
+            else:
+                logger.warning("❌ 연결된 펀넬이 없음 - 수주 처리 불가")
+        
         schedule.status = new_status
         schedule.save()
+        logger.info(f"✅ 일정 상태 저장 완료: {new_status}")
         
         # 상태 변경 시 수주 금액 업데이트
         backlog_amount = 0
@@ -4991,9 +5218,10 @@ def schedule_status_update_api(request, schedule_id):
                 opportunity = schedule.opportunity
                 opportunity.update_revenue_amounts()
                 backlog_amount = float(opportunity.backlog_amount)
+                logger.info(f"💰 수주 금액 업데이트: {backlog_amount:,}원")
             except Exception as e:
                 # 오류 발생 시 무시
-                print(f"수주 업데이트 중 오류: {e}")
+                logger.error(f"수주 업데이트 중 오류: {e}")
         
         status_display = {
             'scheduled': '예정됨',
@@ -5001,15 +5229,33 @@ def schedule_status_update_api(request, schedule_id):
             'cancelled': '취소됨'
         }
         
-        return JsonResponse({
+        response_data = {
             'success': True,
             'new_status': new_status,
             'status_display': status_display[new_status],
             'message': f'일정 상태가 "{status_display[new_status]}"로 변경되었습니다.',
             'backlog_amount': backlog_amount,
-        })
+        }
+        
+        # 취소 시 추가 정보 제공
+        if new_status == 'cancelled' and old_status != 'cancelled':
+            additional_messages = []
+            if 'deleted_items_count' in locals() and deleted_items_count > 0:
+                additional_messages.append(f'{deleted_items_count}개 납품 품목이 삭제되었습니다.')
+            if 'delivery_histories_count' in locals() and delivery_histories_count > 0:
+                additional_messages.append(f'{delivery_histories_count}개 납품 기록이 삭제되었습니다.')
+            if schedule.opportunity and schedule.opportunity.current_stage == 'lost':
+                additional_messages.append('펀넬 상태가 실주로 변경되었습니다.')
+            
+            if additional_messages:
+                response_data['additional_message'] = ' '.join(additional_messages)
+                logger.info(f"📋 추가 메시지: {response_data['additional_message']}")
+        
+        logger.info("🎉 일정 상태 업데이트 완료")
+        return JsonResponse(response_data)
         
     except Exception as e:
+        logger.error(f"❌ 일정 상태 업데이트 오류: {str(e)}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
 
 @login_required

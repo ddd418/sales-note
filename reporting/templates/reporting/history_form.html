@@ -975,7 +975,7 @@
         <select class="form-select mt-2 product-select" onchange="onHistoryProductSelected(this)" required>
           <option value="">제품을 선택하세요</option>
         </select>
-        <input type="hidden" class="product-id" value="${productId}">
+        <input type="hidden" class="product-id quote-product-id" value="${productId}">
       </div>
       <div class="col-md-4">
         <label class="form-label fw-bold">품목명</label>
@@ -1204,7 +1204,7 @@
               <select class="form-select product-select" onchange="onHistoryProductSelected(this)">
                   <option value="">직접 입력 또는 제품 선택</option>
               </select>
-              <input type="hidden" class="product-id" name="delivery_items[${deliveryItemIndex}][product_id]" value="">
+              <input type="hidden" class="product-id quote-product-id" name="delivery_items[${deliveryItemIndex}][product_id]" value="">
           </div>
           <div class="col-md-4">
               <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>

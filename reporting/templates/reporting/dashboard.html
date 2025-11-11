@@ -646,6 +646,22 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+/* 제품 카드 호버 효과 */
+.hover-card {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.hover-card:hover {
+  background-color: #e5f3ff !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.hover-card:hover .badge {
+  background-color: #007bff !important;
+}
 </style>
 {% endblock %}
 
@@ -798,7 +814,7 @@
         <div class="timeline-stat-circle bg-warning">
           <span>{{ prepayment_stats.monthly_count|default:"0" }}건</span>
         </div>
-        <div class="timeline-stat-label">선결제 횟수</div>
+        <div class="timeline-stat-label">선결제 건수</div>
       </div>
     </div>
   </div>
@@ -884,31 +900,34 @@
           <h6 class="mb-3">제품별 상세 (전체 {{ product_sales_distribution.product_count }}개)</h6>
           <div style="max-height: 300px; overflow-y: auto;">
             {% for product in product_sales_distribution.products %}
-            <div class="mb-2 p-2 bg-light rounded">
-              <div class="d-flex justify-content-between align-items-start mb-1">
-                <div>
-                  <strong style="font-size: 0.9rem;">{{ product.product_name }}</strong>
-                  {% if product.product_description %}
-                  <small class="text-muted d-block" style="font-size: 0.75rem;">{{ product.product_description|truncatechars:30 }}</small>
-                  {% endif %}
+            <a href="{% url 'reporting:schedule_list' %}?product={{ product.product_name|urlencode }}" 
+               class="text-decoration-none text-dark">
+              <div class="mb-2 p-2 bg-light rounded hover-card">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                  <div>
+                    <strong style="font-size: 0.9rem;">{{ product.product_name }}</strong>
+                    {% if product.product_description %}
+                    <small class="text-muted d-block" style="font-size: 0.75rem;">{{ product.product_description|truncatechars:30 }}</small>
+                    {% endif %}
+                  </div>
+                  <span class="badge bg-success">{{ product.percentage }}%</span>
                 </div>
-                <span class="badge bg-success">{{ product.percentage }}%</span>
+                <div class="row small text-muted" style="font-size: 0.75rem;">
+                  <div class="col-4">
+                    매출: {{ product.total_revenue|floatformat:0|intcomma }}원
+                  </div>
+                  <div class="col-4">
+                    수량: {{ product.quantity }}개
+                  </div>
+                  <div class="col-4">
+                    주문: {{ product.order_count }}건
+                  </div>
+                </div>
+                <div class="progress mt-1" style="height: 4px;">
+                  <div class="progress-bar bg-success" style="width: {{ product.percentage }}%"></div>
+                </div>
               </div>
-              <div class="row small text-muted" style="font-size: 0.75rem;">
-                <div class="col-4">
-                  매출: {{ product.total_revenue|floatformat:0|intcomma }}원
-                </div>
-                <div class="col-4">
-                  수량: {{ product.quantity }}개
-                </div>
-                <div class="col-4">
-                  주문: {{ product.order_count }}건
-                </div>
-              </div>
-              <div class="progress mt-1" style="height: 4px;">
-                <div class="progress-bar bg-success" style="width: {{ product.percentage }}%"></div>
-              </div>
-            </div>
+            </a>
             {% endfor %}
           </div>
           
