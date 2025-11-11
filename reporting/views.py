@@ -10397,35 +10397,72 @@ def product_list(request):
     if is_active:
         products = products.filter(is_active=(is_active == 'true'))
     
+    # 견적 횟수와 판매 횟수를 미리 계산 (정렬을 위해)
+    from django.db.models import Count, Case, When, IntegerField, Value
+    from django.db.models.functions import Coalesce
+    
+    products = products.annotate(
+        quote_count=Count(
+            'delivery_items__schedule',
+            distinct=True,
+            filter=Q(delivery_items__schedule__isnull=False)
+        ),
+        completed_schedule_count=Count(
+            'delivery_items__schedule',
+            distinct=True, 
+            filter=Q(delivery_items__schedule__status='completed')
+        ),
+        history_count=Count(
+            'delivery_items__history',
+            distinct=True,
+            filter=Q(delivery_items__history__isnull=False)
+        )
+    ).annotate(
+        delivery_count=Coalesce('completed_schedule_count', Value(0)) + Coalesce('history_count', Value(0))
+    )
+    
     # 정렬
     sort_by = request.GET.get('sort', 'code')
-    if sort_by == 'price':
-        products = products.order_by('-standard_price')
-    else:  # 'code'
-        products = products.order_by('product_code')
+    sort_order = request.GET.get('order', 'asc')  # asc 또는 desc
     
-    # 각 제품의 견적/판매 횟수 계산
-    for product in products:
-        # 해당 제품의 모든 DeliveryItem 확인
-        all_items = DeliveryItem.objects.filter(product=product)
-        
-        # 견적 횟수: Schedule에서 해당 제품이 사용된 횟수 (status 무관)
-        quote_schedules = all_items.filter(
-            schedule__isnull=False
-        ).values('schedule').distinct()
-        product.quote_count = quote_schedules.count()
-        
-        # 판매 횟수: status='completed'인 Schedule의 개수
-        delivery_schedules = all_items.filter(
-            schedule__status='completed',
-            schedule__isnull=False
-        ).values('schedule').distinct()
-        
-        delivery_histories = all_items.filter(
-            history__isnull=False
-        ).values('history').distinct()
-        
-        product.delivery_count = delivery_schedules.count() + delivery_histories.count()
+    # 정렬 필드 매핑
+    sort_fields = {
+        'code': 'product_code',
+        'description': 'description',
+        'price': 'standard_price',
+        'status': 'is_active',
+        'quote_count': 'quote_count',
+        'delivery_count': 'delivery_count',
+    }
+    
+    # 기본 정렬 필드
+    order_field = sort_fields.get(sort_by, 'product_code')
+    
+    # 내림차순인 경우 '-' 추가
+    if sort_order == 'desc':
+        order_field = '-' + order_field
+    
+    # 현재가(프로모션 가격 포함) 정렬은 따로 처리
+    if sort_by == 'promo_price':
+        from django.db.models import Case, When, F
+        if sort_order == 'desc':
+            products = products.order_by(
+                Case(
+                    When(is_promo=True, then=F('promotion_price')),
+                    default=F('standard_price')
+                ).desc()
+            )
+        else:
+            products = products.order_by(
+                Case(
+                    When(is_promo=True, then=F('promotion_price')),
+                    default=F('standard_price')
+                )
+            )
+    else:
+        products = products.order_by(order_field)
+    
+    # 각 제품의 견적/판매 횟수는 이미 annotate로 계산됨 - 아래 루프 제거
     
     # 페이지네이션
     paginator = Paginator(products, 20)
@@ -10437,6 +10474,7 @@ def product_list(request):
         'search_query': search_query,
         'is_active': is_active,
         'sort_by': sort_by,
+        'sort_order': sort_order,
     }
     
     return render(request, 'reporting/product_list.html', context)
