@@ -35,14 +35,22 @@ for schedule_id, delivery_amount in schedule_history_mapping.items():
         
         opportunity = schedule.opportunity
         old_revenue = opportunity.actual_revenue or 0
+        old_expected = opportunity.expected_revenue or 0
         
-        # actual_revenue 업데이트
+        # actual_revenue와 expected_revenue 업데이트
         opportunity.actual_revenue = Decimal(str(delivery_amount))
-        opportunity.save(update_fields=['actual_revenue'])
+        
+        # expected_revenue가 없거나 actual_revenue보다 작으면 업데이트
+        if not opportunity.expected_revenue or opportunity.expected_revenue < Decimal(str(delivery_amount)):
+            opportunity.expected_revenue = Decimal(str(delivery_amount))
+        
+        opportunity.save()
+        opportunity.update_revenue_amounts()  # weighted_revenue 재계산
         
         print(f"✅ Schedule {schedule_id} ({schedule.followup.customer_name})")
         print(f"   Opportunity ID: {opportunity.id}")
-        print(f"   이전: {old_revenue:,}원 → 현재: {delivery_amount:,}원")
+        print(f"   실제 수주액: {old_revenue:,}원 → {delivery_amount:,}원")
+        print(f"   예상 수주액: {old_expected:,}원 → {opportunity.expected_revenue:,}원")
         
         updated_count += 1
         

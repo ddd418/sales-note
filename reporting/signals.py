@@ -244,23 +244,37 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
             instance.product.total_sold += instance.quantity
             instance.product.save(update_fields=['total_sold'])
     
-    # 2. OpportunityTracking 수주 금액 업데이트
+    # 2. OpportunityTracking 수주 금액 업데이트 (Schedule 또는 History 통해)
+    target_schedule = None
+    
     if created and instance.schedule:
-        schedule = instance.schedule
-        
+        target_schedule = instance.schedule
+    elif created and instance.history and instance.history.schedule:
+        target_schedule = instance.history.schedule
+    
+    if target_schedule:
         # Schedule에 연결된 OpportunityTracking 찾기
-        if hasattr(schedule, 'opportunity') and schedule.opportunity:
-            opportunity = schedule.opportunity
+        if hasattr(target_schedule, 'opportunity') and target_schedule.opportunity:
+            opportunity = target_schedule.opportunity
             
-            # 해당 Schedule의 모든 DeliveryItem 총액 계산
+            # 해당 Schedule의 모든 DeliveryItem 총액 계산 (Schedule + History)
             total_delivery_amount = 0
-            for item in schedule.delivery_items_set.all():
+            from decimal import Decimal
+            
+            # Schedule의 DeliveryItem
+            for item in target_schedule.delivery_items_set.all():
                 if item.total_price:
                     total_delivery_amount += item.total_price
                 elif item.unit_price and item.quantity:
-                    # total_price가 없으면 계산 (부가세 포함)
-                    from decimal import Decimal
                     total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+            
+            # History의 DeliveryItem
+            for history in target_schedule.histories.all():
+                for item in history.delivery_items_set.all():
+                    if item.total_price:
+                        total_delivery_amount += item.total_price
+                    elif item.unit_price and item.quantity:
+                        total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
             
             # OpportunityTracking의 actual_revenue 업데이트
             if total_delivery_amount > 0:
@@ -286,7 +300,7 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
                         'stage': 'won',
                         'entered': date.today().isoformat(),
                         'exited': None,
-                        'note': f'납품 완료 (Schedule ID: {schedule.id})'
+                        'note': f'납품 완료 (Schedule ID: {target_schedule.id})'
                     })
                 
                 opportunity.save()
@@ -297,7 +311,7 @@ def update_product_sales_count_on_delete(sender, instance, **kwargs):
     """
     DeliveryItem 삭제 시:
     1. 연결된 Product의 판매횟수 감소 (납품 완료 시에만)
-    2. Schedule의 OpportunityTracking 수주 금액 재계산
+    2. Schedule의 OpportunityTracking 수주 금액 재계산 (Schedule + History 포함)
     """
     # 1. 제품 판매횟수 감소 (납품 완료 시에만)
     if instance.product_id and instance.schedule_id:
@@ -316,22 +330,43 @@ def update_product_sales_count_on_delete(sender, instance, **kwargs):
             pass
     
     # 2. OpportunityTracking 수주 금액 재계산
-    if instance.schedule_id:
+    target_schedule_id = instance.schedule_id
+    
+    # History를 통한 삭제인 경우
+    if not target_schedule_id and instance.history_id:
         try:
-            schedule = Schedule.objects.get(id=instance.schedule_id)
+            from .models import History
+            history = History.objects.get(id=instance.history_id)
+            target_schedule_id = history.schedule_id
+        except Exception:
+            pass
+    
+    if target_schedule_id:
+        try:
+            schedule = Schedule.objects.get(id=target_schedule_id)
             
             # Schedule에 연결된 OpportunityTracking 찾기
             if hasattr(schedule, 'opportunity') and schedule.opportunity:
                 opportunity = schedule.opportunity
                 
-                # 해당 Schedule의 남은 DeliveryItem 총액 재계산
+                # 해당 Schedule의 남은 DeliveryItem 총액 재계산 (Schedule + History)
                 total_delivery_amount = 0
+                from decimal import Decimal
+                
+                # Schedule의 DeliveryItem
                 for item in schedule.delivery_items_set.exclude(pk=instance.pk):
                     if item.total_price:
                         total_delivery_amount += item.total_price
                     elif item.unit_price and item.quantity:
-                        from decimal import Decimal
                         total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+                
+                # History의 DeliveryItem
+                for history in schedule.histories.all():
+                    for item in history.delivery_items_set.exclude(pk=instance.pk):
+                        if item.total_price:
+                            total_delivery_amount += item.total_price
+                        elif item.unit_price and item.quantity:
+                            total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
                 
                 # OpportunityTracking의 actual_revenue 업데이트
                 opportunity.actual_revenue = total_delivery_amount if total_delivery_amount > 0 else None
