@@ -90,7 +90,6 @@ def migrate_schedules_to_funnel(dry_run=True):
                 opportunity = OpportunityTracking.objects.create(
                     followup=followup,
                     title=f"{followup.customer_name} - {first_schedule.get_activity_type_display()}",
-                    source='existing_migration',
                     current_stage='quote' if first_schedule.activity_type == 'quote' else 'won',
                     stage_entry_date=first_schedule.visit_date or date.today(),
                     created_at=first_schedule.visit_date or date.today(),
