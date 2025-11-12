@@ -10441,12 +10441,18 @@ def product_list(request):
         quote_count=Count(
             'delivery_items__schedule',
             distinct=True,
-            filter=Q(delivery_items__schedule__isnull=False)
+            filter=Q(
+                delivery_items__schedule__isnull=False,
+                delivery_items__schedule__activity_type='quote'
+            )
         ),
         completed_schedule_count=Count(
             'delivery_items__schedule',
             distinct=True, 
-            filter=Q(delivery_items__schedule__status='completed')
+            filter=Q(
+                delivery_items__schedule__status='completed',
+                delivery_items__schedule__activity_type='delivery'
+            )
         ),
         history_count=Count(
             'delivery_items__history',

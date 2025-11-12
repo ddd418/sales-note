@@ -2,11 +2,12 @@
 영업 보고 시스템 시그널
 - 납품 완료 시 OpportunityTracking 자동 업데이트
 - Schedule 삭제 시 연결된 OpportunityTracking도 삭제
+- DeliveryItem 생성/삭제 시 Product 판매횟수 자동 업데이트
 """
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from datetime import date
-from .models import History, OpportunityTracking, Schedule
+from .models import History, OpportunityTracking, Schedule, DeliveryItem
 
 
 @receiver(post_save, sender=History)
@@ -112,6 +113,24 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
             old_schedule.status != 'completed' and 
             instance.activity_type == 'delivery'):
             
+            # 납품 품목의 제품 판매횟수 증가
+            for delivery_item in instance.delivery_items_set.all():
+                if delivery_item.product:
+                    delivery_item.product.total_sold += delivery_item.quantity
+                    delivery_item.product.save(update_fields=['total_sold'])
+            
+            # 납품 품목 총액 계산하여 actual_revenue 업데이트
+            total_delivery_amount = 0
+            for item in instance.delivery_items_set.all():
+                if item.total_price:
+                    total_delivery_amount += item.total_price
+                elif item.unit_price and item.quantity:
+                    from decimal import Decimal
+                    total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+            
+            if total_delivery_amount > 0:
+                opportunity.actual_revenue = total_delivery_amount
+            
             # OpportunityTracking을 'won'으로 변경
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'won'
@@ -133,6 +152,20 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
                 'exited': None,
                 'note': f'납품 완료로 자동 전환 (일정 ID: {instance.id})'
             })
+        
+        # 일정 상태가 완료 → 예정으로 변경되고 납품 일정인 경우 (판매횟수 감소)
+        elif (instance.status != 'completed' and 
+              old_schedule.status == 'completed' and 
+              instance.activity_type == 'delivery'):
+            
+            # 납품 품목의 제품 판매횟수 감소
+            for delivery_item in instance.delivery_items_set.all():
+                if delivery_item.product:
+                    delivery_item.product.total_sold = max(0, delivery_item.product.total_sold - delivery_item.quantity)
+                    delivery_item.product.save(update_fields=['total_sold'])
+            
+            # actual_revenue 초기화 (완료 취소)
+            opportunity.actual_revenue = None
         
         # 일정 상태가 예정 → 완료로 변경되고 고객 미팅인 경우
         elif (instance.status == 'completed' and 
@@ -195,4 +228,117 @@ def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
             opportunity.delete()
         except OpportunityTracking.DoesNotExist:
             # 이미 삭제된 경우 무시
+            pass
+
+
+@receiver(post_save, sender=DeliveryItem)
+def update_product_sales_count_on_create(sender, instance, created, **kwargs):
+    """
+    DeliveryItem 생성 시:
+    1. 연결된 Product의 판매횟수 증가 (납품 완료 시에만)
+    2. Schedule의 OpportunityTracking 수주 금액 업데이트
+    """
+    if created and instance.product and instance.schedule:
+        # 1. 제품 판매횟수 증가 (납품 완료 시에만)
+        if instance.schedule.status == 'completed':
+            instance.product.total_sold += instance.quantity
+            instance.product.save(update_fields=['total_sold'])
+    
+    # 2. OpportunityTracking 수주 금액 업데이트
+    if created and instance.schedule:
+        schedule = instance.schedule
+        
+        # Schedule에 연결된 OpportunityTracking 찾기
+        if hasattr(schedule, 'opportunity') and schedule.opportunity:
+            opportunity = schedule.opportunity
+            
+            # 해당 Schedule의 모든 DeliveryItem 총액 계산
+            total_delivery_amount = 0
+            for item in schedule.delivery_items_set.all():
+                if item.total_price:
+                    total_delivery_amount += item.total_price
+                elif item.unit_price and item.quantity:
+                    # total_price가 없으면 계산 (부가세 포함)
+                    from decimal import Decimal
+                    total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+            
+            # OpportunityTracking의 actual_revenue 업데이트
+            if total_delivery_amount > 0:
+                opportunity.actual_revenue = total_delivery_amount
+                
+                # won 단계가 아니면 won으로 변경
+                if opportunity.current_stage != 'won':
+                    old_stage = opportunity.current_stage
+                    opportunity.current_stage = 'won'
+                    opportunity.stage_entry_date = date.today()
+                    
+                    # stage_history 업데이트
+                    if opportunity.stage_history is None:
+                        opportunity.stage_history = []
+                    
+                    # 이전 단계 종료
+                    for stage_entry in opportunity.stage_history:
+                        if stage_entry.get('stage') == old_stage and not stage_entry.get('exited'):
+                            stage_entry['exited'] = date.today().isoformat()
+                    
+                    # won 단계 추가
+                    opportunity.stage_history.append({
+                        'stage': 'won',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'납품 완료 (Schedule ID: {schedule.id})'
+                    })
+                
+                opportunity.save()
+
+
+@receiver(post_delete, sender=DeliveryItem)
+def update_product_sales_count_on_delete(sender, instance, **kwargs):
+    """
+    DeliveryItem 삭제 시:
+    1. 연결된 Product의 판매횟수 감소 (납품 완료 시에만)
+    2. Schedule의 OpportunityTracking 수주 금액 재계산
+    """
+    # 1. 제품 판매횟수 감소 (납품 완료 시에만)
+    if instance.product_id and instance.schedule_id:
+        try:
+            from .models import Product
+            schedule = Schedule.objects.get(id=instance.schedule_id)
+            
+            # 납품 완료 상태일 때만 판매횟수 감소
+            if schedule.status == 'completed':
+                product = Product.objects.get(id=instance.product_id)
+                # 판매횟수가 음수가 되지 않도록 보호
+                product.total_sold = max(0, product.total_sold - instance.quantity)
+                product.save(update_fields=['total_sold'])
+        except Exception:
+            # Product 또는 Schedule이 이미 삭제된 경우 무시
+            pass
+    
+    # 2. OpportunityTracking 수주 금액 재계산
+    if instance.schedule_id:
+        try:
+            schedule = Schedule.objects.get(id=instance.schedule_id)
+            
+            # Schedule에 연결된 OpportunityTracking 찾기
+            if hasattr(schedule, 'opportunity') and schedule.opportunity:
+                opportunity = schedule.opportunity
+                
+                # 해당 Schedule의 남은 DeliveryItem 총액 재계산
+                total_delivery_amount = 0
+                for item in schedule.delivery_items_set.exclude(pk=instance.pk):
+                    if item.total_price:
+                        total_delivery_amount += item.total_price
+                    elif item.unit_price and item.quantity:
+                        from decimal import Decimal
+                        total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+                
+                # OpportunityTracking의 actual_revenue 업데이트
+                opportunity.actual_revenue = total_delivery_amount if total_delivery_amount > 0 else None
+                opportunity.save()
+        except Schedule.DoesNotExist:
+            # Schedule이 이미 삭제된 경우 무시 (CASCADE 삭제 중)
+            pass
+        except Exception:
+            # 기타 예외 무시
             pass

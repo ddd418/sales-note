@@ -3629,19 +3629,17 @@
     newItem.className = 'delivery-item row mb-3 p-3 border rounded bg-light';
     newItem.innerHTML = `
       <div class="col-md-4">
-        <label class="form-label fw-bold">제품 선택 <span class="text-danger">*</span></label>
-        <div class="position-relative">
-          <input type="text" 
-                 class="form-control calendar-main-product-search" 
-                 placeholder="제품 코드 또는 설명을 입력하세요" 
-                 autocomplete="off"
-                 value="${itemData.product_code || ''}"
-                 onfocus="searchCalendarMainProducts(this)"
-                 oninput="searchCalendarMainProducts(this)">
-          <div class="calendar-main-search-results" style="display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-bottom: none; max-height: 200px; overflow-y: auto; z-index: 1060; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
-          <input type="hidden" class="calendar-main-product-id" value="${itemData.product_id || ''}">
+        <label class="form-label fw-bold">품목명 <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <input type="text" class="form-control calendar-main-item-name" value="${itemData.item_name || ''}" placeholder="제품을 선택하세요" readonly style="background-color: #f8f9fa;">
+          <button class="btn btn-primary" type="button" onclick="openCalendarProductSearchModal(this)" title="품번 검색">
+            <i class="fas fa-search"></i>
+          </button>
+          <button class="btn btn-success" type="button" onclick="openDeliveryProductModal(this)" title="새 제품 추가">
+            <i class="fas fa-plus"></i>
+          </button>
         </div>
-        <input type="text" class="form-control mt-2 calendar-main-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
+        <input type="hidden" class="calendar-main-product-id" value="${itemData.product_id || ''}">
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -3738,6 +3736,102 @@
     document.getElementById('calendar-total-amount').textContent = Math.round(total).toLocaleString() + '원';
   }
 
+  // 캘린더용 제품 검색 모달 (품번 검색 버튼에서 호출)
+  function openCalendarProductSearchModal(button) {
+    const deliveryItem = button.closest('.delivery-item');
+    let allProducts = [];
+    try {
+      const allProductsStr = deliveryItem.dataset.allProducts || '[]';
+      allProducts = JSON.parse(allProductsStr);
+    } catch (e) {
+      console.warn('제품 데이터 파싱 실패, 서버에서 로드 시도', e);
+    }
+
+    const modalHtml = `
+      <div class="modal fade" id="calendarProductSearchModal" tabindex="-1" style="z-index: 100200;">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="fas fa-search me-2"></i>품번으로 제품 검색</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3"><input type="text" class="form-control" id="calendarModalSearchInput" placeholder="품번을 입력하세요..."></div>
+              <div id="calendarModalResults" style="max-height:400px; overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    const existing = document.getElementById('calendarProductSearchModal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modalElement = document.getElementById('calendarProductSearchModal');
+    const modal = new bootstrap.Modal(modalElement);
+    const searchInput = document.getElementById('calendarModalSearchInput');
+    const resultsList = document.getElementById('calendarModalResults');
+
+    function renderResults(items) {
+      if (!items || items.length === 0) {
+        resultsList.innerHTML = '<div class="text-muted p-3 text-center">검색 결과가 없습니다</div>';
+        return;
+      }
+      resultsList.innerHTML = items.map(p=>`<div class="border-bottom p-3 calendar-product-item" data-id="${p.id}" data-code="${p.product_code}" data-price="${p.current_price}" style="cursor:pointer;"><div class="d-flex justify-content-between"><div><div class="fw-bold">${p.product_code}</div><small class="text-muted">${p.description||''}</small></div><div class="text-end fw-bold text-primary">${parseInt(p.current_price).toLocaleString()}원</div></div></div>`).join('');
+      resultsList.querySelectorAll('.calendar-product-item').forEach(el=>{
+        el.onclick = function(){
+          const pid = this.dataset.id;
+          const pcode = this.dataset.code;
+          const pprice = this.dataset.price;
+          const pidInput = deliveryItem.querySelector('.calendar-main-product-id');
+          const nameInput = deliveryItem.querySelector('.calendar-main-item-name');
+          const hiddenPrice = deliveryItem.querySelector('.unit-price-input');
+          const priceDisplay = deliveryItem.querySelector('.unit-price-display');
+          
+          if (pidInput) pidInput.value = pid;
+          if (nameInput) nameInput.value = pcode;
+          if (hiddenPrice) hiddenPrice.value = pprice;
+          if (priceDisplay) priceDisplay.value = parseInt(pprice).toLocaleString();
+          
+          // 수량이 비어있으면 1로 설정
+          const qty = deliveryItem.querySelector('.quantity-input');
+          if (qty && !qty.value) qty.value = 1;
+          
+          // 금액 계산
+          if (qty) calculateCalendarItemTotal({target: qty});
+          
+          // 모달 닫기
+          const inst = bootstrap.Modal.getInstance(modalElement);
+          if (inst) inst.hide();
+        };
+      });
+    }
+
+    function performSearch() {
+      const q = searchInput.value.toLowerCase().trim();
+      if (!allProducts || allProducts.length === 0) {
+        fetch('/reporting/api/products/').then(r=>r.json()).then(data=>{ allProducts = data.products || []; renderResults(allProducts.filter(p=>!q||p.product_code.toLowerCase().includes(q)||(p.name && p.name.toLowerCase().includes(q)))); }).catch(()=>{ resultsList.innerHTML = '<div class="text-danger p-3">제품을 불러올 수 없습니다.</div>'});
+        return;
+      }
+      renderResults(allProducts.filter(p=>!q||p.product_code.toLowerCase().includes(q)||(p.name && p.name.toLowerCase().includes(q))));
+    }
+
+    searchInput.addEventListener('input', performSearch);
+    modal.show();
+    modalElement.addEventListener('shown.bs.modal', function(){ performSearch(); searchInput.focus(); }, {once:true});
+    modalElement.addEventListener('hidden.bs.modal', function(){ modalElement.remove(); }, {once:true});
+  }
+
+  // 제품 추가 모달이 전역에 정의되어 있지 않을 수 있으므로 안전하게 호출하는 래퍼
+  function openDeliveryProductModal(button) {
+    const productModalElem = document.getElementById('productAddModal');
+    if (productModalElem) {
+      const productModal = new bootstrap.Modal(productModalElem);
+      productModal.show();
+    } else {
+      alert('제품 추가 모달을 찾을 수 없습니다.');
+    }
+  }
+
   // 저장 버튼: 서버에 실제 저장하고 전체 동기화
   function saveCalendarDeliveryItems() {
     const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
@@ -3772,6 +3866,7 @@
     
     let validIndex = 0;
     items.forEach((item) => {
+      const productId = item.querySelector('.calendar-main-product-id')?.value || '';
       const itemName = item.querySelector('.calendar-main-item-name').value.trim();
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
@@ -3781,6 +3876,7 @@
         const total = subtotal * 1.1;
         
         deliveryItemsData.push({
+          product_id: productId,
           item_name: itemName,
           quantity: quantity,
           unit_price: unitPrice,
@@ -3791,6 +3887,9 @@
         itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
         
         // 서버 전송용 FormData에 추가
+        if (productId) {
+          formData.append(`delivery_items[${validIndex}][product_id]`, productId);
+        }
         formData.append(`delivery_items[${validIndex}][name]`, itemName);
         formData.append(`delivery_items[${validIndex}][quantity]`, quantity);
         formData.append(`delivery_items[${validIndex}][unit_price]`, unitPrice);
