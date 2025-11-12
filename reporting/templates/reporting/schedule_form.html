@@ -2177,7 +2177,7 @@ window.addItem = function(itemData = {}) {
                 </button>
             </div>
             <!-- 검색 결과 드롭다운 -->
-            <div class="quote-search-results" style="display: none; position: absolute; z-index: 100001; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; top: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-top: 2px;"></div>
+            <div class="quote-search-results" style="display: none; position: absolute; z-index: 1060; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; bottom: 100%; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
             <input type="hidden" name="items[${itemIndex}][product_id]" class="quote-product-id" value="${productId}">
         </div>
         <div class="col-md-4">
@@ -2903,7 +2903,7 @@ function addScheduleDeliveryItem(itemData = {}) {
         </button>
       </div>
       <!-- 검색 결과 드롭다운 -->
-      <div class="product-search-results" style="display: none; position: absolute; z-index: 100001; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; top: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-top: 2px;"></div>
+      <div class="product-search-results" style="display: none; position: absolute; z-index: 1060; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; bottom: 100%; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
       <input type="hidden" class="product-id quote-product-id" value="${productId}">
     </div>
     <div class="col-md-4">
@@ -3385,99 +3385,71 @@ function loadProductList(deliveryItem) {
 function searchProducts(searchInput) {
   const deliveryItem = searchInput.closest('.delivery-item');
   const resultsDiv = deliveryItem.querySelector('.product-search-results');
-  const searchQuery = searchInput.value.toLowerCase().trim();
+  const searchQuery = searchInput.value.trim();
   const productIdInput = deliveryItem.querySelector('.product-id');
   const itemNameInput = deliveryItem.querySelector('.item-name');
   
+  // 검색어를 포함하여 서버에서 제품 데이터 가져오기 (캐시 방지)
+  const searchParams = new URLSearchParams({
+    search: searchQuery,
+    _t: Date.now()  // 캐시 방지용 타임스탬프
+  });
   
-  // 전체 제품 데이터 가져오기
-  const allProductsStr = deliveryItem.dataset.allProducts || '[]';
-  
-  try {
-    const allProducts = JSON.parse(allProductsStr);
-    
-    // 제품 데이터가 없는 경우
-    if (allProducts.length === 0) {
-      // 제품 데이터가 로드 중일 수 있으므로 잠시 기다려보기
+  fetch(`/reporting/api/products/?${searchParams}`)
+    .then(response => response.json())
+    .then(data => {
+      const products = data.products || [];
       
-      // productsLoaded 이벤트를 기다림
-      const waitForProducts = () => {
-        deliveryItem.addEventListener('productsLoaded', function handler(event) {
-          deliveryItem.removeEventListener('productsLoaded', handler);
-          searchProducts(searchInput); // 재귀 호출
-        }, { once: true });
-      };
+      // 검색 결과 표시
+      resultsDiv.innerHTML = '';
       
-      // 3초 후에도 데이터가 없으면 에러 메시지 표시
-      setTimeout(() => {
-        const currentData = deliveryItem.dataset.allProducts || '[]';
-        const currentProducts = JSON.parse(currentData);
-        if (currentProducts.length === 0) {
+      if (products.length === 0) {
+        if (!searchQuery) {
           resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
             <i class="fas fa-exclamation-triangle"></i> 등록된 제품이 없습니다. 
             <a href="/reporting/products/" target="_blank" style="color: #2563eb; text-decoration: underline;">제품 관리</a>에서 제품을 등록하세요.
           </div>`;
-          resultsDiv.style.display = 'block';
+        } else {
+          resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
         }
-      }, 3000);
-      
-      waitForProducts();
-      return;
-    }
-    
-    // 검색어로 필터링 (검색어가 없으면 전체 목록 표시)
-    let filteredProducts;
-    if (!searchQuery) {
-      filteredProducts = allProducts;
-    } else {
-      filteredProducts = allProducts.filter(product => 
-        product.product_code.toLowerCase().includes(searchQuery) ||
-        (product.name && product.name.toLowerCase().includes(searchQuery))
-      );
-    }
-    
-    // 검색 결과 표시
-    resultsDiv.innerHTML = '';
-    
-    if (filteredProducts.length === 0) {
-      resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
-      resultsDiv.style.display = 'block';
-    } else {
-      
-      // 최대 10개까지만 표시 (너무 많으면 UI가 복잡해짐)
-      const displayProducts = filteredProducts.slice(0, 10);
-      
-      displayProducts.forEach((product, index) => {
-        const resultItem = document.createElement('div');
-        resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
-        resultItem.textContent = `${product.product_code} - ${parseInt(product.current_price).toLocaleString()}원`;
-        resultItem.dataset.productId = product.id;
-        resultItem.dataset.productCode = product.product_code;
-        resultItem.dataset.productPrice = product.current_price;
+        resultsDiv.style.display = 'block';
+      } else {
         
-        // 호버 효과
-        resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
-        resultItem.onmouseout = function() { this.style.background = 'white'; };
+        // 최대 10개까지만 표시
+        const displayProducts = products.slice(0, 10);
         
-        // 클릭 이벤트
-        resultItem.onclick = function() {
-          productIdInput.value = this.dataset.productId;
-          itemNameInput.value = this.dataset.productCode;
-          searchInput.value = this.dataset.productCode;
+        displayProducts.forEach((product, index) => {
+          const resultItem = document.createElement('div');
+          resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+          resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
+          resultItem.dataset.productId = product.id;
+          resultItem.dataset.productCode = product.product_code;
+          resultItem.dataset.productPrice = product.current_price || product.standard_price;
+          resultItem.dataset.productDescription = product.description || product.product_code;
           
-          // 단가 업데이트
-          const unitPriceDisplay = deliveryItem.querySelector('.unit-price-display');
-          const unitPriceInput = deliveryItem.querySelector('.unit-price-input');
-          if (unitPriceDisplay && unitPriceInput) {
-            unitPriceDisplay.value = parseInt(this.dataset.productPrice).toLocaleString();
-            unitPriceInput.value = this.dataset.productPrice;
-          }
+          // 호버 효과
+          resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
+          resultItem.onmouseout = function() { this.style.background = 'white'; };
           
-          // 결과 숨김
-          resultsDiv.style.display = 'none';
-          resultsDiv.innerHTML = '';
-          
-          // 금액 계산
+          // 클릭 이벤트
+          resultItem.onclick = function() {
+            productIdInput.value = this.dataset.productId;
+            itemNameInput.value = this.dataset.productDescription;
+            searchInput.value = this.dataset.productCode;
+            
+            // 단가 업데이트
+            const unitPriceDisplay = deliveryItem.querySelector('.unit-price-display');
+            const unitPriceInput = deliveryItem.querySelector('.unit-price-input');
+            if (unitPriceDisplay && unitPriceInput) {
+              unitPriceDisplay.value = parseInt(this.dataset.productPrice).toLocaleString();
+              unitPriceInput.value = this.dataset.productPrice;
+            }
+            
+            // 결과 숨김
+            resultsDiv.style.display = 'none';
+            resultsDiv.innerHTML = '';
+            
+            // 금액 계산
           const quantityInput = deliveryItem.querySelector('.quantity-input');
           if (quantityInput) {
             calculateScheduleDeliveryTotal({ target: quantityInput });

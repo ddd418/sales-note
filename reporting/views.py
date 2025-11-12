@@ -7280,8 +7280,15 @@ def customer_report_view(request):
     from django.utils import timezone
     followups_with_stats.sort(key=lambda x: x.last_contact or timezone.now().replace(year=1900), reverse=True)
     
+    # 페이지네이션 추가
+    from django.core.paginator import Paginator
+    paginator = Paginator(followups_with_stats, 30)  # 페이지당 30개
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
     context = {
-        'followups': followups_with_stats,
+        'followups': page_obj,
+        'page_obj': page_obj,
         'total_customers': len(followups_with_stats),
         'total_amount_sum': total_amount_sum,
         'total_meetings_sum': total_meetings_sum,
@@ -9571,9 +9578,16 @@ def prepayment_list_view(request):
     total_balance = stats['total_balance'] or 0
     stats['total_used'] = total_amount - total_balance
     
+    # 페이지네이션 추가
+    from django.core.paginator import Paginator
+    paginator = Paginator(prepayments, 30)  # 페이지당 30개
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
     context = {
         'page_title': '선결제 현황',
-        'prepayments': prepayments,
+        'prepayments': page_obj,
+        'page_obj': page_obj,
         'search_query': search_query,
         'status_filter': status_filter,
         'stats': stats,

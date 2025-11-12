@@ -483,64 +483,7 @@
       </div>
       
       <!-- 페이지네이션 -->
-      {% if page_obj.paginator.num_pages > 1 %}
-      <nav aria-label="페이지 네비게이션" class="mt-4">
-        <ul class="pagination justify-content-center">
-          {% if page_obj.has_previous %}
-          <li class="page-item">
-            <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="처음">
-              <span aria-hidden="true">&laquo;&laquo;</span>
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="이전">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% else %}
-          <li class="page-item disabled">
-            <span class="page-link">&laquo;&laquo;</span>
-          </li>
-          <li class="page-item disabled">
-            <span class="page-link">&laquo;</span>
-          </li>
-          {% endif %}
-          
-          {% for num in page_obj.paginator.page_range %}
-            {% if page_obj.number == num %}
-            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-            <li class="page-item">
-              <a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a>
-            </li>
-            {% endif %}
-          {% endfor %}
-          
-          {% if page_obj.has_next %}
-          <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="다음">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="마지막">
-              <span aria-hidden="true">&raquo;&raquo;</span>
-            </a>
-          </li>
-          {% else %}
-          <li class="page-item disabled">
-            <span class="page-link">&raquo;</span>
-          </li>
-          <li class="page-item disabled">
-            <span class="page-link">&raquo;&raquo;</span>
-          </li>
-          {% endif %}
-        </ul>
-        <div class="text-center text-muted mt-2">
-          <small>{{ page_obj.start_index }}-{{ page_obj.end_index }} / 전체 {{ page_obj.paginator.count }}개</small>
-        </div>
-      </nav>
-      {% endif %}
+      {% include 'reporting/components/pagination.html' %}
       
       {% else %}
       <div class="card">
@@ -673,36 +616,6 @@
     padding: 8px 6px;
     white-space: nowrap;
   }
-}
-
-/* 페이지네이션 스타일 */
-.pagination {
-  margin: 20px 0;
-}
-
-.pagination .page-link {
-  color: #667eea;
-  border-color: #dee2e6;
-  padding: 8px 12px;
-}
-
-.pagination .page-link:hover {
-  background-color: #f8f9fa;
-  border-color: #dee2e6;
-  color: #5568d3;
-}
-
-.pagination .page-item.active .page-link {
-  background-color: #667eea;
-  border-color: #667eea;
-  color: white;
-}
-
-.pagination .page-item.disabled .page-link {
-  color: #6c757d;
-  pointer-events: none;
-  background-color: #fff;
-  border-color: #dee2e6;
 }
 
 /* 작은 화면에서 카드 한 줄에 하나씩 */

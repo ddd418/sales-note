@@ -725,7 +725,7 @@ function addDeliveryItem(itemData = {}) {
                 </button>
             </div>
             <!-- 검색 결과 드롭다운 -->
-            <div class="detail-search-results" style="display: none; position: absolute; z-index: 100001; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; top: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-top: 2px;"></div>
+            <div class="detail-search-results" style="display: none; position: absolute; z-index: 1060; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; bottom: 100%; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
             <input type="hidden" name="delivery_items[${deliveryItemIndex}][product_id]" class="detail-product-id" value="${productId}">
         </div>
         <div class="col-md-4">
@@ -1039,33 +1039,27 @@ document.addEventListener('DOMContentLoaded', function() {
         const itemNameInput = deliveryItem.querySelector('.detail-item-name');
         
         
-        // 전체 제품 데이터 가져오기 (schedule_form.html과 동일한 방식)
-        fetch('/reporting/api/products/')
+        // 검색어를 포함하여 제품 데이터 가져오기 (캐시 방지)
+        const searchParams = new URLSearchParams({
+            search: searchQuery,
+            _t: Date.now()  // 캐시 방지용 타임스탬프
+        });
+        
+        fetch(`/reporting/api/products/?${searchParams}`)
             .then(response => response.json())
             .then(data => {
                 const products = data.products || [];
                 
-                // 검색어로 필터링 (검색어가 없으면 전체 목록 표시)
-                let filteredProducts;
-                if (!searchQuery) {
-                    filteredProducts = products;
-                } else {
-                    filteredProducts = products.filter(product => 
-                        product.product_code.toLowerCase().includes(searchQuery) ||
-                        (product.description && product.description.toLowerCase().includes(searchQuery))
-                    );
-                }
-                
                 // 검색 결과 표시
                 resultsDiv.innerHTML = '';
                 
-                if (filteredProducts.length === 0) {
+                if (products.length === 0) {
                     resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
                     resultsDiv.style.display = 'block';
                 } else {
                     
                     // 최대 10개까지만 표시
-                    const displayProducts = filteredProducts.slice(0, 10);
+                    const displayProducts = products.slice(0, 10);
                     
                     displayProducts.forEach((product, index) => {
                         const resultItem = document.createElement('div');

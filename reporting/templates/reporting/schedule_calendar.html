@@ -3638,7 +3638,7 @@
                  value="${itemData.product_code || ''}"
                  onfocus="searchCalendarMainProducts(this)"
                  oninput="searchCalendarMainProducts(this)">
-          <div class="calendar-main-search-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; max-height: 200px; overflow-y: auto; z-index: 9999;"></div>
+          <div class="calendar-main-search-results" style="display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-bottom: none; max-height: 200px; overflow-y: auto; z-index: 1060; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
           <input type="hidden" class="calendar-main-product-id" value="${itemData.product_id || ''}">
         </div>
         <input type="text" class="form-control mt-2 calendar-main-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
@@ -4219,7 +4219,7 @@
                  value="${itemData.product_code || ''}"
                  onfocus="searchCalendarProducts(this)"
                  oninput="searchCalendarProducts(this)">
-          <div class="calendar-search-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; max-height: 200px; overflow-y: auto; z-index: 9999;"></div>
+          <div class="calendar-search-results" style="display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-bottom: none; max-height: 200px; overflow-y: auto; z-index: 1060; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
           <input type="hidden" class="calendar-product-id" value="${itemData.product_id || ''}">
         </div>
         <input type="text" class="form-control mt-2 calendar-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
