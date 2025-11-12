@@ -9265,7 +9265,7 @@ def funnel_dashboard_view(request):
         ).select_related('followup', 'followup__company').order_by('delivery_date')
     
     logger.info("=" * 80)
-    logger.info(f"[펀넬 대시보드] 올해({current_year}년) 완료된 납품 데이터")
+    logger.info(f"[펀넬 대시보드] 올해({current_year}년) 완료된 납품 데이터 분석")
     logger.info(f"[펀넬 대시보드] 필터 사용자: {filter_user.username if filter_user else '전체'}")
     logger.info("=" * 80)
     
@@ -9275,15 +9275,15 @@ def funnel_dashboard_view(request):
         company_name = schedule.followup.company.name if (schedule.followup and schedule.followup.company) else '회사정보없음'
         logger.info(f"  {idx}. [{schedule.visit_date}] {customer_name} ({company_name}) - {schedule.user.username}")
     
-    logger.info(f"\n📋 History 테이블 - 납품: {history_deliveries.count()}건")
+    logger.info(f"\n📋 History 테이블 - 납품 기록: {history_deliveries.count()}건 (참고용, Schedule 완료 후 자동 생성)")
     for idx, history in enumerate(history_deliveries, 1):
         customer_name = history.followup.customer_name if history.followup else '고객정보없음'
         company_name = history.followup.company.name if (history.followup and history.followup.company) else '회사정보없음'
         delivery_date = history.delivery_date or '날짜정보없음'
         logger.info(f"  {idx}. [{delivery_date}] {customer_name} ({company_name}) - {history.user.username}")
     
-    total_deliveries = schedule_deliveries.count() + history_deliveries.count()
-    logger.info(f"\n✅ 전체 납품 건수: {total_deliveries}건 (Schedule: {schedule_deliveries.count()}, History: {history_deliveries.count()})")
+    logger.info(f"\n✅ 펀넬 차트 '납품 완료' 집계: {schedule_deliveries.count()}건 (Schedule 완료 기준)")
+    logger.info(f"💡 History는 Schedule 완료 후 자동 생성되는 이력이므로 중복 카운트하지 않음")
     logger.info("=" * 80)
     # ===== 디버깅 로그 끝 =====
     
