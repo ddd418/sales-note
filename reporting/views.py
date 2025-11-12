@@ -9162,6 +9162,9 @@ from .funnel_analytics import FunnelAnalytics
 @login_required
 def funnel_dashboard_view(request):
     """펀넬 대시보드 - 전체 개요"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     analytics = FunnelAnalytics()
     user_profile = get_user_profile(request.user)
     
@@ -9230,6 +9233,59 @@ def funnel_dashboard_view(request):
     # 사용자 목록 (Admin/Manager용)
     accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
+    
+    # ===== 디버깅: 올해 완료된 납품 데이터 로그 출력 =====
+    from django.utils import timezone
+    current_year = timezone.now().year
+    
+    # Schedule 기반 완료된 납품
+    if filter_user:
+        schedule_deliveries = Schedule.objects.filter(
+            user=filter_user,
+            visit_date__year=current_year,
+            activity_type='delivery',
+            status='completed'
+        ).select_related('followup', 'followup__company').order_by('visit_date')
+        
+        history_deliveries = History.objects.filter(
+            user=filter_user,
+            delivery_date__year=current_year,
+            action_type='delivery_schedule'
+        ).select_related('followup', 'followup__company').order_by('delivery_date')
+    else:
+        schedule_deliveries = Schedule.objects.filter(
+            visit_date__year=current_year,
+            activity_type='delivery',
+            status='completed'
+        ).select_related('followup', 'followup__company').order_by('visit_date')
+        
+        history_deliveries = History.objects.filter(
+            delivery_date__year=current_year,
+            action_type='delivery_schedule'
+        ).select_related('followup', 'followup__company').order_by('delivery_date')
+    
+    logger.info("=" * 80)
+    logger.info(f"[펀넬 대시보드] 올해({current_year}년) 완료된 납품 데이터")
+    logger.info(f"[펀넬 대시보드] 필터 사용자: {filter_user.username if filter_user else '전체'}")
+    logger.info("=" * 80)
+    
+    logger.info(f"\n📦 Schedule 테이블 - 완료된 납품: {schedule_deliveries.count()}건")
+    for idx, schedule in enumerate(schedule_deliveries, 1):
+        customer_name = schedule.followup.customer_name if schedule.followup else '고객정보없음'
+        company_name = schedule.followup.company.name if (schedule.followup and schedule.followup.company) else '회사정보없음'
+        logger.info(f"  {idx}. [{schedule.visit_date}] {customer_name} ({company_name}) - {schedule.user.username}")
+    
+    logger.info(f"\n📋 History 테이블 - 납품: {history_deliveries.count()}건")
+    for idx, history in enumerate(history_deliveries, 1):
+        customer_name = history.followup.customer_name if history.followup else '고객정보없음'
+        company_name = history.followup.company.name if (history.followup and history.followup.company) else '회사정보없음'
+        delivery_date = history.delivery_date or '날짜정보없음'
+        logger.info(f"  {idx}. [{delivery_date}] {customer_name} ({company_name}) - {history.user.username}")
+    
+    total_deliveries = schedule_deliveries.count() + history_deliveries.count()
+    logger.info(f"\n✅ 전체 납품 건수: {total_deliveries}건 (Schedule: {schedule_deliveries.count()}, History: {history_deliveries.count()})")
+    logger.info("=" * 80)
+    # ===== 디버깅 로그 끝 =====
     
     context = {
         'page_title': '펀넬 대시보드',
