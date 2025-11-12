@@ -1556,11 +1556,15 @@ def schedule_list_view(request):
         except (User.DoesNotExist, ValueError):
             pass
     
-    # 페이지네이션 제거 - 항상 모든 데이터 로드
-    page_obj = schedules
+    # 페이지네이션 추가
+    from django.core.paginator import Paginator
+    paginator = Paginator(schedules, 30)  # 페이지당 30개
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
     
     context = {
         'schedules': page_obj,
+        'page_obj': page_obj,
         'page_title': '일정 목록',
         'status_filter': status_filter,
         'activity_type_filter': activity_type_filter,
@@ -2929,11 +2933,15 @@ def history_list_view(request):
     else:
         page_title = '활동 히스토리'
     
-    # 페이지네이션 제거 - 항상 모든 데이터 로드
-    page_obj = histories
+    # 페이지네이션 추가
+    from django.core.paginator import Paginator
+    paginator = Paginator(histories, 30)  # 페이지당 30개
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
     
     context = {
         'histories': page_obj,
+        'page_obj': page_obj,
         'page_title': page_title,
         'action_type_filter': action_type_filter,
         'month_filter': month_filter,
