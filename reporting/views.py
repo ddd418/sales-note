@@ -1332,10 +1332,8 @@ def dashboard_view(request):
             customer_type_stats['count'][1] += cnt
 
     
-    # 7️⃣ 활동 히트맵 (현재 달) - 모든 일정 카운팅
+    # 7️⃣ 활동 히트맵 (현재 달) - 현재 사용자의 일정만
     daily_activity_heatmap = []
-    # 히트맵은 항상 모든 일정을 표시 (권한 필터링 없이)
-    all_schedules = Schedule.objects.all()
     
     # 현재 달의 첫날과 마지막 날 계산
     current_month_start = now.replace(day=1).date()
@@ -1345,10 +1343,10 @@ def dashboard_view(request):
         next_month = now.replace(month=now.month + 1, day=1)
     current_month_end = (next_month - timedelta(days=1)).date()
     
-    # 현재 달의 각 날짜별 활동 카운트
+    # 현재 달의 각 날짜별 활동 카운트 (현재 사용자만)
     current_date = current_month_start
     while current_date <= current_month_end:
-        day_activity_count = all_schedules.filter(
+        day_activity_count = schedules.filter(
             visit_date=current_date
         ).count()
         
@@ -4567,10 +4565,8 @@ def manager_dashboard(request):
             customer_type_stats['revenue'][1] += revenue
             customer_type_stats['count'][1] += cnt
     
-    # 7️⃣ 활동 히트맵 (현재 달) - 모든 일정 카운팅
+    # 7️⃣ 활동 히트맵 (현재 달) - 선택된 사용자(들)의 일정만
     daily_activity_heatmap = []
-    # 히트맵은 항상 모든 일정을 표시 (권한 필터링 없이)
-    all_schedules = Schedule.objects.all()
     
     # 현재 달의 첫날과 마지막 날 계산
     current_month_start = now.replace(day=1).date()
@@ -4580,10 +4576,10 @@ def manager_dashboard(request):
         next_month = now.replace(month=now.month + 1, day=1)
     current_month_end = (next_month - timedelta(days=1)).date()
     
-    # 현재 달의 각 날짜별 활동 카운트
+    # 현재 달의 각 날짜별 활동 카운트 (선택된 사용자만)
     current_date = current_month_start
     while current_date <= current_month_end:
-        day_activity_count = all_schedules.filter(
+        day_activity_count = schedules.filter(
             visit_date=current_date
         ).count()
         
