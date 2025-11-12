@@ -771,7 +771,7 @@
         </div>
       </a>
 
-      <div class="quick-stat">
+      <a href="{% url 'reporting:schedule_list' %}?date_from={{ current_year }}-01-01&date_to={{ current_year }}-12-31" class="quick-stat">
         <div class="quick-stat-icon bg-gradient-orange">
           <i class="fas fa-calendar-alt"></i>
         </div>
@@ -779,7 +779,7 @@
           <div class="quick-stat-value">{{ total_delivery_amount|currency_format|default:"0" }}</div>
           <div class="quick-stat-label">올해 매출</div>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 
@@ -1335,7 +1335,6 @@ document.addEventListener('DOMContentLoaded', function() {
         justify-content: center;
         font-size: 0.875rem;
         font-weight: 600;
-        cursor: pointer;
         transition: transform 0.2s, box-shadow 0.2s;
       `;
       
@@ -1354,9 +1353,21 @@ document.addEventListener('DOMContentLoaded', function() {
       
       cell.title = `${data.date}: ${data.intensity}건의 활동`;
       
+      // 일정이 있는 경우에만 클릭 가능하게 설정
+      if (data.intensity > 0) {
+        cell.style.cursor = 'pointer';
+        cell.addEventListener('click', function() {
+          window.location.href = `{% url 'reporting:schedule_list' %}?date_from=${data.date}&date_to=${data.date}`;
+        });
+      } else {
+        cell.style.cursor = 'default';
+      }
+      
       cell.addEventListener('mouseenter', function() {
-        this.style.transform = 'scale(1.1)';
-        this.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.2)';
+        if (data.intensity > 0) {
+          this.style.transform = 'scale(1.1)';
+          this.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.2)';
+        }
       });
       
       cell.addEventListener('mouseleave', function() {
