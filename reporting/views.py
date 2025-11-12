@@ -10697,6 +10697,7 @@ def product_api_list(request):
         'id': p.id,
         'product_code': p.product_code,
         'name': p.product_code,
+        'description': p.description,  # description 필드 추가
         'standard_price': float(p.standard_price),
         'current_price': float(p.get_current_price()),
         'is_promo': p.is_promo,
