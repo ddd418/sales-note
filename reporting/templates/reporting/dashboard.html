@@ -1052,86 +1052,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   
   
-  // 🐛 클릭 디버깅
-  setTimeout(() => {
-    
-    // 사이드바 위치 확인
-    if (sidebar) {
-      const sidebarRect = sidebar.getBoundingClientRect();
-      const sidebarStyle = window.getComputedStyle(sidebar);
-        position: sidebarStyle.position,
-        zIndex: sidebarStyle.zIndex,
-        pointerEvents: sidebarStyle.pointerEvents,
-        display: sidebarStyle.display,
-        visibility: sidebarStyle.visibility,
-        opacity: sidebarStyle.opacity,
-        rect: {
-          left: sidebarRect.left,
-          top: sidebarRect.top,
-          width: sidebarRect.width,
-          height: sidebarRect.height
-        }
-      });
-      
-      // 사이드바 중앙 지점 클릭 테스트
-      const centerX = 130;
-      const centerY = 200;
-      const elementAtCenter = document.elementFromPoint(centerX, centerY);
-        element: elementAtCenter,
-        tagName: elementAtCenter?.tagName,
-        className: elementAtCenter?.className,
-        isSidebar: elementAtCenter === sidebar,
-        isSidebarChild: sidebar?.contains(elementAtCenter)
-      });
-      
-      // 첫 번째 nav-link 테스트
-      const firstNavLink = sidebar.querySelector('.nav-link');
-      if (firstNavLink) {
-        const linkRect = firstNavLink.getBoundingClientRect();
-        const linkStyle = window.getComputedStyle(firstNavLink);
-          href: firstNavLink.href,
-          zIndex: linkStyle.zIndex,
-          pointerEvents: linkStyle.pointerEvents,
-          position: linkStyle.position,
-          display: linkStyle.display,
-          rect: linkRect
-        });
-        
-        const linkCenterX = linkRect.left + linkRect.width / 2;
-        const linkCenterY = linkRect.top + linkRect.height / 2;
-        const elementAtLink = document.elementFromPoint(linkCenterX, linkCenterY);
-          element: elementAtLink,
-          tagName: elementAtLink?.tagName,
-          className: elementAtLink?.className,
-          isLink: elementAtLink === firstNavLink,
-          isLinkChild: firstNavLink?.contains(elementAtLink)
-        });
-      }
-    }
-    
-    // 모든 요소의 z-index 확인
-    const allElements = document.querySelectorAll('*');
-    const highZIndexElements = [];
-    allElements.forEach(el => {
-      const zIndex = parseInt(window.getComputedStyle(el).zIndex);
-      if (zIndex > 9000) {
-        const rect = el.getBoundingClientRect();
-        if (rect.left < 260) {  // 사이드바 영역과 겹치는 요소만
-          highZIndexElements.push({
-            element: el,
-            tagName: el.tagName,
-            className: el.className,
-            zIndex: zIndex,
-            rect: rect
-          });
-        }
-      }
-    });
-    
-    if (highZIndexElements.length > 0) {
-    }
-    
-  }, 1500);
   
   // ============================================
   // 1️⃣ 매출 및 납품 추이 (Combo Chart: Bar + Line)
@@ -1139,9 +1059,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const revenueDeliveryCtx = document.getElementById('revenueDeliveryChart');
   if (revenueDeliveryCtx) {
     {% if monthly_delivery_stats %}
-    const months = {{ monthly_delivery_stats.labels|safe }};
-    const deliveryAmounts = {{ monthly_delivery_stats.amounts|safe }};
-    const deliveryCounts = {{ monthly_delivery_stats.counts|safe }};
+    const deliveryStats = {{ monthly_delivery_stats|safe }};
+    const months = deliveryStats.labels;
+    const deliveryAmounts = deliveryStats.amounts;
+    const deliveryCounts = deliveryStats.counts;
 
     new Chart(revenueDeliveryCtx, {
       type: 'bar',
@@ -1222,8 +1143,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const salesFunnelCtx = document.getElementById('salesFunnelChart');
   if (salesFunnelCtx) {
     {% if sales_funnel %}
-    const funnelStages = {{ sales_funnel.stages|safe }};
-    const funnelValues = {{ sales_funnel.values|safe }};
+    const funnelData = {{ sales_funnel|safe }};
+    const funnelStages = funnelData.stages;
+    const funnelValues = funnelData.values;
     const funnelColors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b'];
 
     new Chart(salesFunnelCtx, {
@@ -1265,9 +1187,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================
   const customerShareCtx = document.getElementById('customerShareChart');
   if (customerShareCtx) {
-    {% if customer_distribution.labels|length > 0 %}
-    const topCustomers = {{ customer_distribution.labels|safe }};
-    const customerRevenues = {{ customer_distribution.data|safe }};
+    {% if customer_distribution %}
+    const customerDist = {{ customer_distribution|safe }};
+    const topCustomers = customerDist.labels;
+    const customerRevenues = customerDist.data;
 
     new Chart(customerShareCtx, {
       type: 'doughnut',
@@ -1309,10 +1232,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================
   const customerTypeCtx = document.getElementById('customerTypeChart');
   if (customerTypeCtx) {
-    {% if customer_type_stats.labels|length > 0 %}
-    const customerTypes = {{ customer_type_stats.labels|safe }};
-    const revenues = {{ customer_type_stats.revenue|safe }};
-    const counts = {{ customer_type_stats.count|safe }};
+    {% if customer_type_stats %}
+    const typeStats = {{ customer_type_stats|safe }};
+    const customerTypes = typeStats.labels;
+    const revenues = typeStats.revenue;
+    const counts = typeStats.count;
 
     // 데이터가 모두 0인지 확인
     const hasData = revenues.some(v => v > 0) || counts.some(c => c > 0);
@@ -1365,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================
   const heatmapContainer = document.getElementById('activityHeatmap');
   if (heatmapContainer) {
-    {% if daily_activity_heatmap|length > 0 %}
+    {% if daily_activity_heatmap %}
     const heatmapData = {{ daily_activity_heatmap|safe }};
     
     // 히트맵 셀 생성
