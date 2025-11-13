@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
+from django.db.models import Sum
 
 # 사용자 소속 회사 (UserCompany) 모델 - 직원들의 소속 회사
 class UserCompany(models.Model):
@@ -664,7 +665,7 @@ class OpportunityTracking(models.Model):
         self.save()
     
     def update_revenue_amounts(self):
-        """관련 일정들로부터 수주 금액 계산"""
+        """관련 일정들로부터 수주 금액과 실제 매출 계산"""
         from decimal import Decimal
         
         # 수주 금액: 예정됨(scheduled) 상태의 일정들 합계
@@ -675,6 +676,27 @@ class OpportunityTracking(models.Model):
         self.backlog_amount = sum(
             s.expected_revenue for s in backlog_schedules
         ) or Decimal('0')
+        
+        # 실제 매출: 완료됨(completed) 상태의 납품 일정들의 DeliveryItem 총액
+        if self.current_stage == 'won':
+            from .models import DeliveryItem
+            completed_schedules = self.schedules.filter(
+                status='completed',
+                activity_type='delivery'
+            )
+            
+            # DeliveryItem에서 실제 납품 금액 계산
+            delivery_total = DeliveryItem.objects.filter(
+                schedule__in=completed_schedules
+            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
+            
+            # expected_revenue가 있으면 그것도 고려
+            schedule_revenue = sum(
+                s.expected_revenue for s in completed_schedules if s.expected_revenue
+            ) or Decimal('0')
+            
+            # 둘 중 큰 값 사용 (DeliveryItem이 더 정확함)
+            self.actual_revenue = delivery_total if delivery_total > 0 else schedule_revenue
         
         self.save()
     

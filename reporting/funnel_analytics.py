@@ -273,9 +273,11 @@ class FunnelAnalytics:
             won_qs = won_qs.filter(followup__user=user)
             lost_qs = lost_qs.filter(followup__user=user)
         
+        # actual_revenue가 없으면 expected_revenue 사용
         won_summary = won_qs.aggregate(
             count=Count('id'),
-            total_revenue=Sum('actual_revenue')
+            total_actual=Sum('actual_revenue'),
+            total_expected=Sum('expected_revenue')
         )
         
         lost_summary = lost_qs.aggregate(
@@ -285,9 +287,12 @@ class FunnelAnalytics:
         total = won_summary['count'] + lost_summary['count']
         win_rate = (won_summary['count'] / total * 100) if total > 0 else 0
         
+        # actual_revenue가 있으면 그것 사용, 없으면 expected_revenue 사용
+        total_revenue = won_summary['total_actual'] or won_summary['total_expected'] or 0
+        
         return {
             'won_count': won_summary['count'],
-            'won_revenue': won_summary['total_revenue'] or 0,
+            'won_revenue': total_revenue,
             'lost_count': lost_summary['count'],
             'win_rate': round(win_rate, 1)
         }
