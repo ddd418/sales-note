@@ -49,8 +49,8 @@ def create_missing_opportunities():
         if delivery_items.exists():
             delivery_total = sum(Decimal(str(item.total_price or 0)) for item in delivery_items)
         
-        # 예상 수주액 결정 (우선순위: 일정의 expected_revenue > 납품 품목 총액)
-        expected_revenue = schedule.expected_revenue or delivery_total or Decimal('0')
+        # 예상 수주액: DeliveryItem 총액 우선 (실제 납품 금액이 정확함)
+        expected_revenue = delivery_total or schedule.expected_revenue or Decimal('0')
         
         # OpportunityTracking 생성
         activity_type_names = {
