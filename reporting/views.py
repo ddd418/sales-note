@@ -1886,12 +1886,16 @@ def schedule_create_view(request):
                     if schedule.purchase_confirmed and opportunity.current_stage != 'closing':
                         opportunity.update_stage('closing')
                     
+                    # 취소된 일정인 경우 실주 단계로 전환
+                    elif schedule.status == 'cancelled' and opportunity.current_stage != 'lost':
+                        opportunity.update_stage('lost')
+                    
                     # 납품 완료인 경우 won 단계로 전환
                     elif schedule.activity_type == 'delivery' and schedule.status == 'completed' and opportunity.current_stage != 'won':
                         opportunity.update_stage('won')
                     
                     # 납품 예정인 경우 closing 단계로 전환
-                    elif schedule.activity_type == 'delivery' and schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                    elif schedule.activity_type == 'delivery' and schedule.status == 'scheduled' and opportunity.current_stage not in ['won', 'closing']:
                         opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
@@ -2202,12 +2206,16 @@ def schedule_edit_view(request, pk):
                     if updated_schedule.purchase_confirmed and opportunity.current_stage != 'closing':
                         opportunity.update_stage('closing')
                     
+                    # 취소된 일정인 경우 실주 단계로 전환
+                    elif updated_schedule.status == 'cancelled' and opportunity.current_stage != 'lost':
+                        opportunity.update_stage('lost')
+                    
                     # 납품 완료인 경우 won 단계로 전환
                     elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed' and opportunity.current_stage != 'won':
                         opportunity.update_stage('won')
                     
                     # 납품 예정인 경우 closing 단계로 전환
-                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage not in ['won', 'closing']:
                         opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
