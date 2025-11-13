@@ -9186,6 +9186,22 @@ def funnel_dashboard_view(request):
     analytics = FunnelAnalytics()
     user_profile = get_user_profile(request.user)
     
+    # FunnelStage 초기 데이터 확인 및 생성
+    if not FunnelStage.objects.exists():
+        logger.info("[펀넬 관리] FunnelStage 데이터가 없어 기본 단계 생성")
+        default_stages = [
+            {'name': 'lead', 'display_name': '리드', 'stage_order': 1, 'default_probability': 10, 'color': '#94a3b8', 'icon': 'fa-user-plus'},
+            {'name': 'contact', 'display_name': '컨택', 'stage_order': 2, 'default_probability': 25, 'color': '#60a5fa', 'icon': 'fa-phone'},
+            {'name': 'quote', 'display_name': '견적', 'stage_order': 3, 'default_probability': 40, 'color': '#8b5cf6', 'icon': 'fa-file-invoice'},
+            {'name': 'negotiation', 'display_name': '협상', 'stage_order': 4, 'default_probability': 60, 'color': '#f59e0b', 'icon': 'fa-handshake'},
+            {'name': 'closing', 'display_name': '클로징', 'stage_order': 5, 'default_probability': 80, 'color': '#10b981', 'icon': 'fa-check-circle'},
+            {'name': 'won', 'display_name': '수주', 'stage_order': 6, 'default_probability': 100, 'color': '#22c55e', 'icon': 'fa-trophy'},
+            {'name': 'lost', 'display_name': '실주', 'stage_order': 7, 'default_probability': 0, 'color': '#ef4444', 'icon': 'fa-times-circle'},
+        ]
+        for stage_data in default_stages:
+            FunnelStage.objects.create(**stage_data)
+        logger.info(f"[펀넬 관리] {len(default_stages)}개 기본 단계 생성 완료")
+    
     # 매니저용 실무자 필터
     selected_user_id = request.GET.get('user_id')
     view_all = request.GET.get('view_all') == 'true'
