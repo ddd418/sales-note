@@ -9225,6 +9225,18 @@ def funnel_dashboard_view(request):
     # 단계별 분석
     stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
     
+    # OpportunityTracking 데이터 확인
+    if filter_user:
+        opp_count = OpportunityTracking.objects.filter(followup__user=filter_user).count()
+        logger.info(f"[펀넬 관리 DB] 사용자 {filter_user.username}의 OpportunityTracking: {opp_count}건")
+    else:
+        opp_count = OpportunityTracking.objects.count()
+        logger.info(f"[펀넬 관리 DB] 전체 OpportunityTracking: {opp_count}건")
+    
+    logger.info(f"[펀넬 관리 DB] stage_breakdown 결과: {len(stage_breakdown)}개 단계")
+    for stage in stage_breakdown:
+        logger.info(f"  - {stage['stage']}: {stage['count']}건 (가중매출: {stage['weighted_value']:,}원)")
+    
     # 월별 예측
     monthly_forecast = analytics.get_monthly_forecast(months=3, user=filter_user)
     
