@@ -424,7 +424,7 @@
 // 단계별 차트
 const stageData = {{ stage_chart_data|safe }};
 
-const ctx = document.getElementById('stageChart').getContext('2d');
+const stageCtx = document.getElementById('stageChart').getContext('2d');
 new Chart(stageCtx, {
     type: 'bar',
     data: {

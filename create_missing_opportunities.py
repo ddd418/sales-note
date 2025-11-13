@@ -30,7 +30,8 @@ def create_missing_opportunities():
     for schedule in completed_deliveries:
         # 이미 OpportunityTracking이 있는지 확인
         if hasattr(schedule, 'opportunity') and schedule.opportunity:
-            print(f"[SKIP] 일정 ID {schedule.id} ({schedule.followup.company_name}, {schedule.visit_date}): 이미 OpportunityTracking 존재 (ID: {schedule.opportunity.id})")
+            company_name = schedule.followup.company.name if schedule.followup.company else "업체명 미정"
+            print(f"[SKIP] 일정 ID {schedule.id} ({company_name}, {schedule.visit_date}): 이미 OpportunityTracking 존재 (ID: {schedule.opportunity.id})")
             skipped_count += 1
             continue
         
@@ -74,7 +75,8 @@ def create_missing_opportunities():
         # 수주/실주 금액 업데이트
         opportunity.update_revenue_amounts()
         
-        print(f"[CREATE] 일정 ID {schedule.id} ({schedule.followup.company_name}, {schedule.visit_date}): OpportunityTracking 생성 완료 (ID: {opportunity.id}, 금액: {expected_revenue:,}원)")
+        company_name = schedule.followup.company.name if schedule.followup.company else "업체명 미정"
+        print(f"[CREATE] 일정 ID {schedule.id} ({company_name}, {schedule.visit_date}): OpportunityTracking 생성 완료 (ID: {opportunity.id}, 금액: {expected_revenue:,}원)")
         created_count += 1
     
     print(f"\n[SUMMARY]")
