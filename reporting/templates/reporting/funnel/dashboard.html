@@ -423,6 +423,11 @@
 <script>
 // 단계별 차트
 const stageData = {{ stage_chart_data|safe }};
+console.log('[펀넬 관리 대시보드] stage_chart_data:', stageData);
+console.log('[펀넬 관리 대시보드] labels:', stageData.labels);
+console.log('[펀넬 관리 대시보드] counts:', stageData.counts);
+console.log('[펀넬 관리 대시보드] values:', stageData.values);
+
 const stageCtx = document.getElementById('stageChart').getContext('2d');
 new Chart(stageCtx, {
     type: 'bar',
