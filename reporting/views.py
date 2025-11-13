@@ -1841,21 +1841,20 @@ def schedule_create_view(request):
             # 펀넬 관련: 서비스는 제외, 고객 미팅/납품/견적만 영업 기회 생성
             # 폼에서 선택된 opportunity가 있는지 확인
             selected_opportunity = schedule.opportunity  # 폼에서 선택한 opportunity
-            logger.info(f"[OPPORTUNITY_DEBUG] selected_opportunity from form: {selected_opportunity}")
-            logger.info(f"[OPPORTUNITY_DEBUG] selected_opportunity ID: {selected_opportunity.id if selected_opportunity else None}")
             should_create_or_update_opportunity = False
             
             # 기존 Opportunity 찾기 (같은 고객의 진행 중인 영업 기회)
             existing_opportunities = schedule.followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
             has_existing_opportunity = existing_opportunities.exists()
-            logger.info(f"[OPPORTUNITY_DEBUG] existing_opportunities count: {existing_opportunities.count()}")
-            if existing_opportunities.exists():
-                logger.info(f"[OPPORTUNITY_DEBUG] latest opportunity ID: {existing_opportunities.first().id}")
             
             # Opportunity 생성/업데이트 조건 판단
             if schedule.activity_type != 'service':
                 # 견적 일정은 항상 새로운 영업 기회 생성
                 if schedule.activity_type == 'quote':
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False  # 강제로 새로 생성
+                # 납품 완료 일정은 항상 새로운 영업 기회 생성 (납품마다 별도 추적)
+                elif schedule.activity_type == 'delivery' and schedule.status == 'completed':
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = False  # 강제로 새로 생성
                 # 사용자가 특정 opportunity를 선택한 경우
@@ -1866,7 +1865,7 @@ def schedule_create_view(request):
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
                     should_create_or_update_opportunity = True
                 elif schedule.activity_type == 'delivery':
-                    # 납품 일정은 항상 펀넬 생성 (납품 품목에서 금액 계산 가능)
+                    # 납품 예정 일정은 펀넬 생성 (납품 품목에서 금액 계산 가능)
                     should_create_or_update_opportunity = True
                 elif schedule.expected_revenue and schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
@@ -1880,10 +1879,8 @@ def schedule_create_view(request):
                     # 사용자가 선택한 opportunity 우선, 없으면 가장 최근 것
                     if selected_opportunity:
                         opportunity = selected_opportunity
-                        logger.info(f"[OPPORTUNITY_DEBUG] Using selected_opportunity: {opportunity.id}")
                     else:
                         opportunity = existing_opportunities.first()
-                        logger.info(f"[OPPORTUNITY_DEBUG] Using latest opportunity: {opportunity.id}")
                     
                     # 구매 확정 시 클로징 단계로 전환
                     if schedule.purchase_confirmed and opportunity.current_stage != 'closing':
@@ -2172,14 +2169,22 @@ def schedule_edit_view(request, pk):
             
             # Opportunity 생성/업데이트 조건 판단
             if updated_schedule.activity_type != 'service':
-                if has_existing_opportunity:
+                # 견적 일정은 항상 새로운 영업 기회 생성
+                if updated_schedule.activity_type == 'quote':
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False  # 강제로 새로 생성
+                # 납품 완료 일정은 항상 새로운 영업 기회 생성 (납품마다 별도 추적)
+                elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed':
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False  # 강제로 새로 생성
+                elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
                     should_create_or_update_opportunity = True
                 elif updated_schedule.expected_revenue and updated_schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
                     should_create_or_update_opportunity = True
-                elif updated_schedule.activity_type == 'quote':
-                    # 견적 일정은 예상 매출액 없어도 생성
+                elif updated_schedule.activity_type == 'delivery':
+                    # 납품 예정 일정은 펀넬 생성 (납품 품목에서 금액 계산 가능)
                     should_create_or_update_opportunity = True
             
             if should_create_or_update_opportunity:
