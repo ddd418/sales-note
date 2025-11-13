@@ -9245,6 +9245,18 @@ def funnel_dashboard_view(request):
     if filter_user:
         opp_count = OpportunityTracking.objects.filter(followup__user=filter_user).count()
         logger.info(f"[펀넬 관리 DB] 사용자 {filter_user.username}의 OpportunityTracking: {opp_count}건")
+        
+        # 수주 상태의 OpportunityTracking 상세 확인
+        won_opps = OpportunityTracking.objects.filter(
+            followup__user=filter_user,
+            current_stage='won'
+        ).select_related('followup')
+        
+        logger.info(f"[펀넬 관리 DB] 수주 상태 OpportunityTracking 상세:")
+        for opp in won_opps:
+            customer_name = opp.followup.customer_name if opp.followup else '고객정보없음'
+            company_name = opp.followup.company.name if (opp.followup and opp.followup.company) else '회사정보없음'
+            logger.info(f"  - {customer_name} ({company_name}) - 예상매출: {opp.expected_revenue:,}원")
     else:
         opp_count = OpportunityTracking.objects.count()
         logger.info(f"[펀넬 관리 DB] 전체 OpportunityTracking: {opp_count}건")
