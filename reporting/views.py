@@ -1192,13 +1192,22 @@ def dashboard_view(request):
     # 2️⃣ 영업 퍼널 (미팅 → 견적 제출 → 발주 예정 → 납품 완료)
     # 기준: 모두 일정(Schedule) 기반으로 집계
     schedules_current_year = schedules.filter(visit_date__year=current_year)
+    
+    meeting_count = schedules_current_year.filter(activity_type='customer_meeting').count()
+    quote_count = schedules_current_year.filter(activity_type='quote').count()
+    scheduled_delivery_count = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
+    completed_delivery_count = schedules_current_year.filter(activity_type='delivery', status='completed').count()
+    
+    logger.info(f"[실무자 대시보드 펀넬] 사용자: {target_user.username}")
+    logger.info(f"[실무자 대시보드 펀넬] 미팅: {meeting_count}, 견적: {quote_count}, 발주예정: {scheduled_delivery_count}, 납품완료: {completed_delivery_count}")
+    
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
         'values': [
-            schedules_current_year.filter(activity_type='customer_meeting').count(),
-            schedules_current_year.filter(activity_type='quote').count(),
-            schedules_current_year.filter(activity_type='delivery', status='scheduled').count(),
-            schedules_current_year.filter(activity_type='delivery', status='completed').count()
+            meeting_count,
+            quote_count,
+            scheduled_delivery_count,
+            completed_delivery_count
         ]
     }
     
@@ -4369,13 +4378,22 @@ def manager_dashboard(request):
     # 2️⃣ 영업 퍼널 (미팅 → 견적 제출 → 발주 예정 → 납품 완료)
     # 기준: 모두 일정(Schedule) 기반으로 집계
     schedules_current_year = schedules.filter(visit_date__year=current_year)
+    
+    meeting_count_mgr = schedules_current_year.filter(activity_type='customer_meeting').count()
+    quote_count_mgr = schedules_current_year.filter(activity_type='quote').count()
+    scheduled_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
+    completed_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='completed').count()
+    
+    logger.info(f"[매니저 대시보드 펀넬] 선택된 사용자: {selected_user.username if selected_user else '전체'}")
+    logger.info(f"[매니저 대시보드 펀넬] 미팅: {meeting_count_mgr}, 견적: {quote_count_mgr}, 발주예정: {scheduled_delivery_count_mgr}, 납품완료: {completed_delivery_count_mgr}")
+    
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
         'values': [
-            schedules_current_year.filter(activity_type='customer_meeting').count(),
-            schedules_current_year.filter(activity_type='quote').count(),
-            schedules_current_year.filter(activity_type='delivery', status='scheduled').count(),
-            schedules_current_year.filter(activity_type='delivery', status='completed').count()
+            meeting_count_mgr,
+            quote_count_mgr,
+            scheduled_delivery_count_mgr,
+            completed_delivery_count_mgr
         ]
     }
     
