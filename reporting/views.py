@@ -1886,9 +1886,13 @@ def schedule_create_view(request):
                     if schedule.purchase_confirmed and opportunity.current_stage != 'closing':
                         opportunity.update_stage('closing')
                     
-                    # 납품 일정인 경우 won 단계로 전환 (예정/완료 모두)
-                    elif schedule.activity_type == 'delivery' and opportunity.current_stage != 'won':
+                    # 납품 완료인 경우 won 단계로 전환
+                    elif schedule.activity_type == 'delivery' and schedule.status == 'completed' and opportunity.current_stage != 'won':
                         opportunity.update_stage('won')
+                    
+                    # 납품 예정인 경우 closing 단계로 전환
+                    elif schedule.activity_type == 'delivery' and schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                        opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
                     elif schedule.activity_type == 'customer_meeting' and opportunity.current_stage == 'quote':
@@ -1946,13 +1950,15 @@ def schedule_create_view(request):
                 else:
                     # 없으면 새로 생성
                     # 초기 단계 결정:
-                    # 1. 예정됨(scheduled): lead (리드) - 아직 실행 전
+                    # 1. 예정됨(scheduled) + 납품: closing (클로징) - 납품 예정
                     # 2. 완료됨(completed) + 고객 미팅: contact (컨택) - 미팅 완료
                     # 3. 완료됨(completed) + 납품: won (수주) - 납품 완료
                     if schedule.status == 'scheduled':
-                        # 예정 단계 - 아직 실행 전
+                        # 예정 단계
                         if schedule.activity_type == 'quote':
                             initial_stage = 'quote'  # 견적 제출 예정
+                        elif schedule.activity_type == 'delivery':
+                            initial_stage = 'closing'  # 납품 예정 = 클로징
                         else:
                             initial_stage = 'lead'
                     elif schedule.status == 'completed':
@@ -2196,9 +2202,13 @@ def schedule_edit_view(request, pk):
                     if updated_schedule.purchase_confirmed and opportunity.current_stage != 'closing':
                         opportunity.update_stage('closing')
                     
-                    # 납품 일정인 경우 won 단계로 전환 (예정/완료 모두)
-                    elif updated_schedule.activity_type == 'delivery' and opportunity.current_stage != 'won':
+                    # 납품 완료인 경우 won 단계로 전환
+                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed' and opportunity.current_stage != 'won':
                         opportunity.update_stage('won')
+                    
+                    # 납품 예정인 경우 closing 단계로 전환
+                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                        opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
                     elif updated_schedule.activity_type == 'customer_meeting' and opportunity.current_stage == 'quote':
@@ -2252,6 +2262,8 @@ def schedule_edit_view(request, pk):
                     if updated_schedule.status == 'scheduled':
                         if updated_schedule.activity_type == 'quote':
                             initial_stage = 'quote'
+                        elif updated_schedule.activity_type == 'delivery':
+                            initial_stage = 'closing'  # 납품 예정 = 클로징
                         else:
                             initial_stage = 'lead'
                     elif updated_schedule.status == 'completed':
@@ -2260,7 +2272,7 @@ def schedule_edit_view(request, pk):
                         elif updated_schedule.activity_type == 'quote':
                             initial_stage = 'quote'
                         elif updated_schedule.activity_type == 'delivery':
-                            initial_stage = 'won'
+                            initial_stage = 'won'  # 납품 완료 = 수주
                         else:
                             initial_stage = 'lead'
                     else:
