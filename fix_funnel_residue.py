@@ -76,6 +76,15 @@ def fix_funnel_residue():
             print()
             continue
         
+        # 견적만 있는데 수주(won) 단계인 경우 삭제 (잘못된 펀넬)
+        if has_quote and not has_delivery and opportunity.current_stage == 'won':
+            print(f"  ⚠️  견적만 있는데 수주 단계인 잘못된 펀넬 발견")
+            print(f"  ✓ OpportunityTracking #{opportunity.id} 삭제")
+            opportunity.delete()
+            deleted_count += 1
+            print()
+            continue
+        
         # 금액 재계산
         opportunity.update_revenue_amounts()
         opportunity.refresh_from_db()
