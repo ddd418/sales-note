@@ -9960,10 +9960,10 @@ def followup_meetings_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 모든 미팅 일정 조회
+        # 해당 팔로우업의 모든 미팅 일정 조회 (완료/예정 모두 포함)
         meeting_schedules = Schedule.objects.filter(
             followup=followup,
-            activity_type='contact'
+            activity_type='customer_meeting'  # 'contact'가 아닌 'customer_meeting'
         ).select_related('opportunity').order_by('-visit_date', '-visit_time')
         
         if not meeting_schedules.exists():
