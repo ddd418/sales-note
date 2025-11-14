@@ -875,7 +875,7 @@ html, body {
 
     <!-- Quick Stats Grid -->
     <div class="quick-stats">
-      <a href="{% url 'reporting:schedule_list' %}?schedule_type=quote&status=pending{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
+      <a href="{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
         <div class="quick-stat-icon bg-gradient-blue">
           <i class="fas fa-file-invoice"></i>
         </div>

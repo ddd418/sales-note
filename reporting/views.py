@@ -996,29 +996,13 @@ def dashboard_view(request):
         visit_date__lt=month_end.date()
     ).count()
     
-    # 처리해야 할 견적 (납품으로 전환 안 된 모든 견적, 날짜 무관)
-    # 같은 opportunity에 납품 일정이 없는 견적만 카운트
-    all_quotes = schedules.filter(activity_type='quote')
-    logger.info(f"[DASHBOARD] 전체 견적 일정 수: {all_quotes.count()}")
-    
-    quotes_without_delivery = []
-    for quote in all_quotes:
-        # opportunity가 있는 경우, 같은 opportunity에 납품 일정이 있는지 확인
-        if quote.opportunity:
-            has_delivery = schedules.filter(
-                opportunity=quote.opportunity,
-                activity_type='delivery'
-            ).exists()
-            
-            if not has_delivery:
-                quotes_without_delivery.append(quote.id)
-        else:
-            # opportunity가 없는 견적은 처리 대상으로 간주
-            quotes_without_delivery.append(quote.id)
-    
-    quote_count = len(quotes_without_delivery)
-    logger.info(f"[DASHBOARD] 납품되지 않은 견적 ID: {quotes_without_delivery}")
-    logger.info(f"[DASHBOARD] 처리해야 할 견적 수: {quote_count}")
+    # 처리해야 할 견적 (예정 상태의 견적만)
+    # 견적은 납품 생성 시 자동으로 완료 처리되므로, 예정 상태인 것만 처리 대상
+    quote_count = schedules.filter(
+        activity_type='quote',
+        status='scheduled'
+    ).count()
+    logger.info(f"[DASHBOARD] 처리해야 할 견적 수 (예정 상태): {quote_count}")
     
     # 이번 달 견적 횟수 (이번 달의 모든 견적 일정)
     monthly_quote_count = schedules.filter(
@@ -1841,6 +1825,19 @@ def schedule_create_view(request):
                             usage.quantity = first_item.quantity
                             usage.save()
                             break  # 첫 번째 usage만 업데이트
+            
+            # 납품 일정 생성 시 연결된 견적을 자동 완료 처리
+            if schedule.activity_type == 'delivery' and schedule.opportunity:
+                # 같은 opportunity를 가진 예정 상태의 견적을 모두 완료 처리
+                related_quotes = Schedule.objects.filter(
+                    opportunity=schedule.opportunity,
+                    activity_type='quote',
+                    status='scheduled'
+                )
+                completed_quotes = related_quotes.update(status='completed')
+                if completed_quotes > 0:
+                    logger.info(f"[QUOTE_AUTO_COMPLETE] 납품 생성으로 인해 {completed_quotes}개의 견적이 자동 완료 처리됨")
+                    messages.info(request, f'{completed_quotes}개의 관련 견적이 자동으로 완료 처리되었습니다.')
             
             # 펀넬 관련: 서비스는 제외, 고객 미팅/납품/견적만 영업 기회 생성
             # 폼에서 선택된 opportunity가 있는지 확인

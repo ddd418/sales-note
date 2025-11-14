@@ -667,17 +667,25 @@ class OpportunityTracking(models.Model):
     def update_revenue_amounts(self):
         """관련 일정들로부터 수주 금액과 실제 매출 계산"""
         from decimal import Decimal
+        from django.db.models import Sum
         
-        # backlog_amount: closing 단계일 때만 예정된 일정들의 합계
+        # backlog_amount: closing 단계일 때만 예정된 납품 일정들의 DeliveryItem 합계
         # (won 단계에서는 이미 실제 매출로 전환되므로 backlog에 포함 안 함)
         if self.current_stage == 'closing':
+            from .models import DeliveryItem
+            
+            # 예정된(scheduled) 납품 일정만 조회
             backlog_schedules = self.schedules.filter(
                 status='scheduled',
-                expected_revenue__isnull=False
+                activity_type='delivery'
             )
-            self.backlog_amount = sum(
-                s.expected_revenue for s in backlog_schedules
-            ) or Decimal('0')
+            
+            # DeliveryItem의 total_price 합산
+            backlog_total = DeliveryItem.objects.filter(
+                schedule__in=backlog_schedules
+            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
+            
+            self.backlog_amount = backlog_total
         else:
             # closing이 아닌 단계에서는 backlog_amount를 0으로 설정
             self.backlog_amount = Decimal('0')

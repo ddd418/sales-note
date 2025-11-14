@@ -2137,6 +2137,40 @@ window.toggleSections = function() {
             deliveryLoadQuoteBtn.style.display = (selectedValue === 'delivery') ? 'inline-block' : 'none';
         }
         
+        // 견적 일정의 상태 필드 제어 (견적은 자동으로 완료 처리되므로 수동 변경 불가)
+        const statusField = document.querySelector('[name="status"]');
+        if (statusField) {
+            if (selectedValue === 'quote') {
+                // 견적 일정은 항상 예정(scheduled) 상태로 고정
+                statusField.value = 'scheduled';
+                statusField.disabled = true;
+                
+                // 도움말 추가
+                const statusWrapper = statusField.closest('.mb-3');
+                if (statusWrapper) {
+                    let helpText = statusWrapper.querySelector('.quote-status-help');
+                    if (!helpText) {
+                        helpText = document.createElement('small');
+                        helpText.className = 'form-text text-muted quote-status-help';
+                        helpText.innerHTML = '<i class="fas fa-info-circle me-1"></i>견적은 납품 생성 시 자동으로 완료 처리됩니다.';
+                        statusWrapper.appendChild(helpText);
+                    }
+                }
+            } else {
+                // 다른 활동 유형은 상태 변경 가능
+                statusField.disabled = false;
+                
+                // 도움말 제거
+                const statusWrapper = statusField.closest('.mb-3');
+                if (statusWrapper) {
+                    const helpText = statusWrapper.querySelector('.quote-status-help');
+                    if (helpText) {
+                        helpText.remove();
+                    }
+                }
+            }
+        }
+        
         // 품목 컨테이너 확인 (견적 모드)
         const itemsContainer = document.getElementById('items-container');
         console.log('items-container 요소:', itemsContainer);

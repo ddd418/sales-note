@@ -202,7 +202,7 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
 def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
     """
     Schedule 삭제 시 연결된 OpportunityTracking도 함께 삭제
-    단, 다른 Schedule이 같은 OpportunityTracking을 참조하고 있으면 삭제 안함
+    단, 다른 Schedule이 같은 OpportunityTracking을 참조하고 있으면 삭제 안하고 금액만 재계산
     """
     # 서비스 일정은 OpportunityTracking과 무관
     if instance.activity_type == 'service':
@@ -222,12 +222,19 @@ def delete_opportunity_when_schedule_deleted(sender, instance, **kwargs):
         opportunity=opportunity
     ).exclude(pk=instance.pk).exists()
     
-    # 다른 Schedule이 없으면 OpportunityTracking도 삭제
     if not other_schedules:
+        # 다른 Schedule이 없으면 OpportunityTracking도 삭제
         try:
             opportunity.delete()
         except OpportunityTracking.DoesNotExist:
             # 이미 삭제된 경우 무시
+            pass
+    else:
+        # 다른 Schedule이 남아있으면 수주 금액과 실제 매출 재계산
+        try:
+            opportunity.update_revenue_amounts()
+        except Exception:
+            # 재계산 실패 시 무시
             pass
 
 
@@ -349,28 +356,8 @@ def update_product_sales_count_on_delete(sender, instance, **kwargs):
             if hasattr(schedule, 'opportunity') and schedule.opportunity:
                 opportunity = schedule.opportunity
                 
-                # 해당 Schedule의 남은 DeliveryItem 총액 재계산 (Schedule + History)
-                total_delivery_amount = 0
-                from decimal import Decimal
-                
-                # Schedule의 DeliveryItem
-                for item in schedule.delivery_items_set.exclude(pk=instance.pk):
-                    if item.total_price:
-                        total_delivery_amount += item.total_price
-                    elif item.unit_price and item.quantity:
-                        total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
-                
-                # History의 DeliveryItem
-                for history in schedule.histories.all():
-                    for item in history.delivery_items_set.exclude(pk=instance.pk):
-                        if item.total_price:
-                            total_delivery_amount += item.total_price
-                        elif item.unit_price and item.quantity:
-                            total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
-                
-                # OpportunityTracking의 actual_revenue 업데이트
-                opportunity.actual_revenue = total_delivery_amount if total_delivery_amount > 0 else None
-                opportunity.save()
+                # OpportunityTracking의 backlog_amount와 actual_revenue 재계산
+                opportunity.update_revenue_amounts()
         except Schedule.DoesNotExist:
             # Schedule이 이미 삭제된 경우 무시 (CASCADE 삭제 중)
             pass
