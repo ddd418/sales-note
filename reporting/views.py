@@ -11189,7 +11189,9 @@ def product_api_list(request):
             Q(description__icontains=search)
         )
     
-    products = products.order_by('product_code')[:50]  # 최대 50개
+    # 제한 제거 - 모든 제품을 가져와서 클라이언트에서 검색
+    # 성능을 위해 필요시 제한 추가 가능: products = products.order_by('product_code')[:1000]
+    products = products.order_by('product_code')
     
     products_data = [{
         'id': p.id,
