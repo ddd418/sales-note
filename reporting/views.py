@@ -9944,6 +9944,67 @@ def followup_quote_items_api(request, followup_id):
         }, status=500)
 
 
+@login_required
+@require_http_methods(["GET"])
+def followup_meetings_api(request, followup_id):
+    """
+    특정 팔로우업의 미팅 일정을 가져오는 API
+    견적 일정 생성 시 미팅을 선택하여 펀넬을 연결하기 위해 사용
+    """
+    try:
+        followup = get_object_or_404(FollowUp, pk=followup_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, followup.user):
+            return JsonResponse({
+                'error': '접근 권한이 없습니다.'
+            }, status=403)
+        
+        # 해당 팔로우업의 모든 미팅 일정 조회
+        meeting_schedules = Schedule.objects.filter(
+            followup=followup,
+            activity_type='contact'
+        ).select_related('opportunity').order_by('-visit_date', '-visit_time')
+        
+        if not meeting_schedules.exists():
+            return JsonResponse({
+                'error': '이 고객의 미팅 일정이 없습니다.'
+            })
+        
+        # 모든 미팅 정보 수집
+        meetings_data = []
+        
+        for meeting_schedule in meeting_schedules:
+            logger.info(f"[MEETINGS_API] Schedule ID: {meeting_schedule.id}, visit_date: {meeting_schedule.visit_date}")
+            
+            meeting_data = {
+                'schedule_id': meeting_schedule.id,
+                'visit_date': meeting_schedule.visit_date.strftime('%Y-%m-%d'),
+                'expected_revenue': float(meeting_schedule.expected_revenue) if meeting_schedule.expected_revenue else None,
+                'probability': meeting_schedule.probability,
+                'expected_close_date': meeting_schedule.expected_close_date.strftime('%Y-%m-%d') if meeting_schedule.expected_close_date else None,
+                'notes': meeting_schedule.notes,
+                'opportunity_title': meeting_schedule.opportunity.title if meeting_schedule.opportunity else None,
+                'opportunity_id': meeting_schedule.opportunity.id if meeting_schedule.opportunity else None,
+            }
+            meetings_data.append(meeting_data)
+            logger.info(f"[MEETINGS_API] Added meeting: {meeting_data['visit_date']}, opp_id: {meeting_data['opportunity_id']}")
+        
+        logger.info(f"[MEETINGS_API] Returning {len(meetings_data)} meetings")
+        return JsonResponse({
+            'success': True,
+            'meetings': meetings_data,
+            'count': len(meetings_data),
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
 # ============================================
 # 선결제 관리
 # ============================================

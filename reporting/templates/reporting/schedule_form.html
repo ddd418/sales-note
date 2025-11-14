@@ -52,6 +52,39 @@
 div.modal-backdrop {
   z-index: 99999 !important;
 }
+
+/* 제품 검색 결과 드롭다운 스타일 */
+.product-search-results,
+.quote-search-results {
+  max-height: 400px;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+.product-search-results::-webkit-scrollbar,
+.quote-search-results::-webkit-scrollbar {
+  width: 8px;
+}
+
+.product-search-results::-webkit-scrollbar-track,
+.quote-search-results::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 4px;
+}
+
+.product-search-results::-webkit-scrollbar-thumb,
+.quote-search-results::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.product-search-results::-webkit-scrollbar-thumb:hover,
+.quote-search-results::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
 </style>
 {% endblock %}
 
@@ -489,9 +522,14 @@ div.modal-backdrop {
                     <h5 class="mb-0">
                       <i class="fas fa-file-invoice me-2"></i>견적 품목
                     </h5>
-                    <button type="button" class="btn btn-light btn-sm" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
-                      <i class="fas fa-file-import me-1"></i>견적에서 불러오기
-                    </button>
+                    <div>
+                      <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromMeeting()" id="load-meeting-btn" style="display: none;">
+                        <i class="fas fa-user-tie me-1"></i>미팅에서 불러오기
+                      </button>
+                      <button type="button" class="btn btn-light btn-sm" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
+                        <i class="fas fa-file-import me-1"></i>견적에서 불러오기
+                      </button>
+                    </div>
                   </div>
                   <div class="card-body">
                     <!-- 품목 입력 컨테이너 -->
@@ -2083,6 +2121,12 @@ window.toggleSections = function() {
             }
         }
         
+        // 미팅 불러오기 버튼 표시/숨김 (견적일 때만 표시)
+        const loadMeetingBtn = document.getElementById('load-meeting-btn');
+        if (loadMeetingBtn) {
+            loadMeetingBtn.style.display = (selectedValue === 'quote') ? 'inline-block' : 'none';
+        }
+        
         // 견적 불러오기 버튼 표시/숨김 (납품일 때만 표시)
         const loadQuoteBtn = document.getElementById('load-quote-btn');
         const deliveryLoadQuoteBtn = document.getElementById('delivery-load-quote-btn');
@@ -2412,6 +2456,224 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // 견적에서 품목 불러오기 (버튼 클릭 시 모달 표시)
+// 미팅에서 불러오기 (견적 작성 시)
+function loadFromMeeting() {
+    const followupField = document.querySelector('[name="followup"]');
+    if (!followupField || !followupField.value) {
+        alert('먼저 팔로우업을 선택하세요.');
+        return;
+    }
+    
+    const followupId = followupField.value;
+    
+    // 해당 팔로우업의 미팅 일정 조회
+    fetch(`/reporting/api/followups/${followupId}/meetings/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            
+            if (!data.meetings || data.meetings.length === 0) {
+                alert('이 고객의 미팅 일정이 없습니다.');
+                return;
+            }
+            
+            // 미팅 선택 모달 표시
+            showMeetingSelectionModal(data.meetings);
+        })
+        .catch(error => {
+            console.error('미팅 불러오기 오류:', error);
+            alert('미팅을 불러오는 중 오류가 발생했습니다.');
+        });
+}
+
+// 미팅 선택 모달 표시
+function showMeetingSelectionModal(meetings) {
+    const modalHtml = `
+        <div class="modal fade" id="meetingSelectionModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title"><i class="fas fa-user-tie me-2"></i>미팅 선택</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3"><i class="fas fa-info-circle text-info me-2"></i>연결할 미팅을 선택하세요:</p>
+                        <div class="list-group" id="meetingListGroup">
+                            ${meetings.map((meeting, index) => `
+                                <button type="button" class="list-group-item list-group-item-action meeting-item" data-meeting-index="${index}">
+                                    <div class="d-flex w-100 justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                <i class="fas fa-calendar-check text-success me-2"></i>
+                                                ${meeting.opportunity_title || '미팅 ' + (index + 1)}
+                                            </h6>
+                                            ${meeting.expected_revenue ? `
+                                                <p class="mb-1">
+                                                    <span class="badge bg-success me-2">예상 매출: ${meeting.expected_revenue.toLocaleString()}원</span>
+                                                    ${meeting.probability ? `<span class="badge bg-info">확률: ${meeting.probability}%</span>` : ''}
+                                                </p>
+                                            ` : ''}
+                                            ${meeting.notes ? `
+                                                <small class="text-muted">
+                                                    <i class="fas fa-sticky-note me-1"></i>${meeting.notes.substring(0, 100)}${meeting.notes.length > 100 ? '...' : ''}
+                                                </small>
+                                            ` : ''}
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-calendar-alt me-1"></i>${meeting.visit_date}
+                                        </small>
+                                    </div>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-1"></i>취소
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 기존 모달 제거
+    const existingModal = document.getElementById('meetingSelectionModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 새 모달 추가
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 전역 변수에 meetings 저장
+    window.currentMeetings = meetings;
+    
+    // 모달 표시
+    const modalElement = document.getElementById('meetingSelectionModal');
+    const modal = new bootstrap.Modal(modalElement);
+    window.currentMeetingModal = modal;
+    
+    // 모달 이벤트 리스너 추가
+    modalElement.addEventListener('show.bs.modal', function(e) {
+        console.log('미팅 선택 모달 열기 시작');
+        
+        if (modalElement.parentElement !== document.body) {
+            document.body.appendChild(modalElement);
+            console.log('미팅 선택 모달을 body로 이동');
+        }
+        
+        modalElement.style.zIndex = '100100';
+        modalElement.style.display = 'block';
+    });
+    
+    modalElement.addEventListener('shown.bs.modal', function() {
+        console.log('미팅 선택 모달 완전히 열림');
+        
+        // backdrop z-index 조정
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => {
+            backdrop.style.zIndex = '100099';
+        });
+        
+        modalElement.style.pointerEvents = 'auto';
+        
+        const modalContent = modalElement.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.style.pointerEvents = 'auto';
+        }
+    });
+    
+    // 모달 닫힐 때 정리
+    modalElement.addEventListener('hidden.bs.modal', function() {
+        console.log('미팅 선택 모달 닫힘');
+    });
+    
+    // 이벤트 리스너 추가
+    document.querySelectorAll('.meeting-item').forEach(button => {
+        button.addEventListener('click', function() {
+            const index = parseInt(this.dataset.meetingIndex);
+            selectMeeting(index);
+        });
+    });
+    
+    modal.show();
+}
+
+// 미팅 선택 처리
+function selectMeeting(index) {
+    console.log('selectMeeting called with index:', index);
+    console.log('window.currentMeetings:', window.currentMeetings);
+    
+    if (!window.currentMeetings || !window.currentMeetings[index]) {
+        console.error('미팅 데이터를 찾을 수 없습니다. index:', index);
+        alert('미팅 데이터를 불러오는 중 오류가 발생했습니다.');
+        return;
+    }
+    
+    const selectedMeeting = window.currentMeetings[index];
+    console.log('selectedMeeting:', selectedMeeting);
+    
+    loadMeetingData(selectedMeeting);
+    
+    if (window.currentMeetingModal) {
+        window.currentMeetingModal.hide();
+    }
+}
+
+// 선택된 미팅 데이터 불러오기
+function loadMeetingData(meeting) {
+    console.log('loadMeetingData called with meeting:', meeting);
+    
+    if (!meeting) {
+        console.error('잘못된 미팅 데이터:', meeting);
+        alert('미팅 데이터가 올바르지 않습니다.');
+        return;
+    }
+    
+    // 선택한 미팅의 opportunity를 폼의 opportunity 필드에 설정
+    const opportunityField = document.querySelector('[name="opportunity"]');
+    if (opportunityField && meeting.opportunity_id) {
+        console.log('Setting opportunity field to:', meeting.opportunity_id);
+        opportunityField.value = meeting.opportunity_id;
+        
+        // 펀넬 정보도 자동으로 로드
+        if (typeof loadOpportunityData === 'function') {
+            loadOpportunityData(meeting.opportunity_id);
+        }
+    } else {
+        console.warn('Opportunity field not found or opportunity_id is missing');
+    }
+    
+    // 예상 매출액 설정
+    const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
+    if (expectedRevenueField && meeting.expected_revenue) {
+        expectedRevenueField.value = meeting.expected_revenue;
+    }
+    
+    // 확률 설정
+    const probabilityField = document.querySelector('[name="probability"]');
+    if (probabilityField && meeting.probability) {
+        probabilityField.value = meeting.probability;
+    }
+    
+    // 예상 계약일 설정
+    const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+    if (expectedCloseDateField && meeting.expected_close_date) {
+        expectedCloseDateField.value = meeting.expected_close_date;
+    }
+    
+    // 가중 매출액 업데이트
+    if (typeof updateWeightedRevenue === 'function') {
+        updateWeightedRevenue();
+    }
+    
+    alert(`미팅과 연결되었습니다.\n미팅일: ${meeting.visit_date}\n펀넬 정보가 자동으로 입력됩니다.`);
+}
+
 function loadFromQuote() {
     const followupField = document.querySelector('[name="followup"]');
     if (!followupField || !followupField.value) {
@@ -3571,19 +3833,20 @@ function searchProducts(searchInput) {
       return;
     }
     
-    // 검색어로 필터링 (검색어가 없으면 전체 목록 표시)
-    let filteredProducts;
+    // 검색어가 없으면 결과를 표시하지 않음
     if (!searchQuery) {
-      console.log('검색어 없음 - 전체 제품 목록 표시');
-      filteredProducts = allProducts;
-    } else {
-      console.log('모달 검색어로 필터링 중...');
-      filteredProducts = allProducts.filter(product => 
-        product.product_code.toLowerCase().includes(searchQuery) ||
-        (product.name && product.name.toLowerCase().includes(searchQuery))
-      );
+      console.log('검색어 없음 - 결과 숨김');
+      resultsDiv.style.display = 'none';
+      resultsDiv.innerHTML = '';
+      return;
     }
-    console.log('모달 표시할 제품 수:', filteredProducts.length);
+    
+    console.log('모달 검색어로 필터링 중...');
+    const filteredProducts = allProducts.filter(product => 
+      product.product_code.toLowerCase().includes(searchQuery) ||
+      (product.name && product.name.toLowerCase().includes(searchQuery))
+    );
+    console.log('모달 필터링된 제품 수:', filteredProducts.length);
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
@@ -3595,8 +3858,10 @@ function searchProducts(searchInput) {
     } else {
       console.log('모달 제품 목록 DOM 생성 시작...');
       
-      // 최대 10개까지만 표시 (너무 많으면 UI가 복잡해짐)
-      const displayProducts = filteredProducts.slice(0, 10);
+      // 최대 50개까지 표시 (스크롤 가능)
+      const maxDisplay = 50;
+      const displayProducts = filteredProducts.slice(0, maxDisplay);
+      const hasMore = filteredProducts.length > maxDisplay;
       
       displayProducts.forEach((product, index) => {
         console.log(`모달 결과 항목 ${index + 1} 생성:`, product.product_code);
@@ -3641,10 +3906,10 @@ function searchProducts(searchInput) {
       });
       
       // 더 많은 제품이 있으면 알림 추가
-      if (filteredProducts.length > 10) {
+      if (hasMore) {
         const moreInfo = document.createElement('div');
-        moreInfo.style.cssText = 'padding: 8px; color: #666; background: #f8f9fa; border-top: 1px solid #ddd; font-size: 12px;';
-        moreInfo.textContent = `+ ${filteredProducts.length - 10}개 더 있음 (검색어를 입력하여 좁혀보세요)`;
+        moreInfo.style.cssText = 'padding: 8px; color: #666; background: #f8f9fa; border-top: 2px solid #ddd; font-size: 12px; text-align: center; font-weight: 500;';
+        moreInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i> ${filteredProducts.length - maxDisplay}개 더 있음 (총 ${filteredProducts.length}개) - 검색어를 더 구체적으로 입력하세요`;
         resultsDiv.appendChild(moreInfo);
       }
       
@@ -4043,19 +4308,20 @@ function searchQuoteProducts(searchInput) {
       return;
     }
     
-    // 검색어가 없으면 전체 목록 표시 (검색어가 있으면 필터링)
-    let filteredProducts;
+    // 검색어가 없으면 결과를 표시하지 않음 (검색어가 있을 때만 필터링)
     if (!searchQuery) {
-      console.log('검색어 없음 - 전체 제품 목록 표시');
-      filteredProducts = allProducts;
-    } else {
-      console.log('검색어로 필터링 중...');
-      filteredProducts = allProducts.filter(product => 
-        product.product_code.toLowerCase().includes(searchQuery) ||
-        (product.name && product.name.toLowerCase().includes(searchQuery))
-      );
+      console.log('검색어 없음 - 결과 숨김');
+      resultsDiv.style.display = 'none';
+      resultsDiv.innerHTML = '';
+      return;
     }
-    console.log('표시할 제품 수:', filteredProducts.length);
+    
+    console.log('검색어로 필터링 중...');
+    const filteredProducts = allProducts.filter(product => 
+      product.product_code.toLowerCase().includes(searchQuery) ||
+      (product.name && product.name.toLowerCase().includes(searchQuery))
+    );
+    console.log('필터링된 제품 수:', filteredProducts.length);
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
@@ -4069,8 +4335,10 @@ function searchQuoteProducts(searchInput) {
     } else {
       console.log('검색 결과 DOM 생성 시작...');
       
-      // 최대 10개까지만 표시 (너무 많으면 UI가 복잡해짐)
-      const displayProducts = filteredProducts.slice(0, 10);
+      // 최대 50개까지 표시 (스크롤 가능)
+      const maxDisplay = 50;
+      const displayProducts = filteredProducts.slice(0, maxDisplay);
+      const hasMore = filteredProducts.length > maxDisplay;
       
       displayProducts.forEach((product, index) => {
         console.log(`결과 항목 ${index + 1} 생성:`, product.product_code);
@@ -4115,10 +4383,10 @@ function searchQuoteProducts(searchInput) {
     });
     
     // 더 많은 제품이 있으면 알림 추가
-    if (filteredProducts.length > 10) {
+    if (hasMore) {
       const moreInfo = document.createElement('div');
-      moreInfo.style.cssText = 'padding: 8px; color: #666; background: #f8f9fa; border-top: 1px solid #ddd; font-size: 12px;';
-      moreInfo.textContent = `+ ${filteredProducts.length - 10}개 더 있음 (검색어를 입력하여 좁혀보세요)`;
+      moreInfo.style.cssText = 'padding: 8px; color: #666; background: #f8f9fa; border-top: 2px solid #ddd; font-size: 12px; text-align: center; font-weight: 500;';
+      moreInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i> ${filteredProducts.length - maxDisplay}개 더 있음 (총 ${filteredProducts.length}개) - 검색어를 더 구체적으로 입력하세요`;
       resultsDiv.appendChild(moreInfo);
     }
     
