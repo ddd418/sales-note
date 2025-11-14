@@ -668,16 +668,21 @@ class OpportunityTracking(models.Model):
         """관련 일정들로부터 수주 금액과 실제 매출 계산"""
         from decimal import Decimal
         
-        # 수주 금액: 예정됨(scheduled) 상태의 일정들 합계
-        backlog_schedules = self.schedules.filter(
-            status='scheduled',
-            expected_revenue__isnull=False
-        )
-        self.backlog_amount = sum(
-            s.expected_revenue for s in backlog_schedules
-        ) or Decimal('0')
+        # backlog_amount: closing 단계일 때만 예정된 일정들의 합계
+        # (won 단계에서는 이미 실제 매출로 전환되므로 backlog에 포함 안 함)
+        if self.current_stage == 'closing':
+            backlog_schedules = self.schedules.filter(
+                status='scheduled',
+                expected_revenue__isnull=False
+            )
+            self.backlog_amount = sum(
+                s.expected_revenue for s in backlog_schedules
+            ) or Decimal('0')
+        else:
+            # closing이 아닌 단계에서는 backlog_amount를 0으로 설정
+            self.backlog_amount = Decimal('0')
         
-        # 실제 매출: 완료됨(completed) 상태의 납품 일정들의 DeliveryItem 총액
+        # 실제 매출: won 단계이고 완료됨(completed) 상태의 납품 일정들의 DeliveryItem 총액
         if self.current_stage == 'won':
             from .models import DeliveryItem
             completed_schedules = self.schedules.filter(
@@ -697,6 +702,9 @@ class OpportunityTracking(models.Model):
             
             # 둘 중 큰 값 사용 (DeliveryItem이 더 정확함)
             self.actual_revenue = delivery_total if delivery_total > 0 else schedule_revenue
+        else:
+            # won 단계가 아니면 actual_revenue는 None
+            self.actual_revenue = None
         
         self.save()
     

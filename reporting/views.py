@@ -2635,7 +2635,71 @@ def schedule_update_funnel(request, pk):
             schedule.save()
             logger.info(f"일정 {pk} 펀넬 정보 업데이트 완료")
             
-            # OpportunityTracking 업데이트는 pre_save 시그널에서 자동으로 처리됨
+            # OpportunityTracking 생성 또는 업데이트
+            if schedule.activity_type != 'service':  # 서비스 일정은 제외
+                from .models import OpportunityTracking
+                from datetime import date
+                
+                # OpportunityTracking이 없으면 생성
+                if not schedule.opportunity:
+                    logger.info(f"OpportunityTracking 없음 - 새로 생성")
+                    
+                    # 일정 타입에 따른 초기 단계 결정
+                    if schedule.activity_type == 'customer_meeting':
+                        initial_stage = 'lead'
+                    elif schedule.activity_type == 'quote':
+                        initial_stage = 'quote'
+                    elif schedule.activity_type == 'delivery':
+                        initial_stage = 'closing'
+                    else:
+                        initial_stage = 'contact'
+                    
+                    opportunity = OpportunityTracking.objects.create(
+                        followup=schedule.followup,
+                        current_stage=initial_stage,
+                        stage_entry_date=date.today(),
+                        expected_revenue=schedule.expected_revenue or Decimal('0'),
+                        probability=schedule.probability or 50,
+                        weighted_revenue=schedule.expected_revenue * (schedule.probability or 50) / 100 if schedule.expected_revenue else Decimal('0'),
+                        expected_close_date=schedule.expected_close_date,
+                        stage_history=[{
+                            'stage': initial_stage,
+                            'entered': date.today().isoformat(),
+                            'exited': None,
+                            'note': '일정 수정 시 펀넬 정보 입력으로 생성'
+                        }]
+                    )
+                    
+                    # Schedule과 연결
+                    schedule.opportunity = opportunity
+                    schedule.save(update_fields=['opportunity'])
+                    logger.info(f"OpportunityTracking {opportunity.id} 생성 및 연결 완료")
+                    
+                else:
+                    # OpportunityTracking이 있으면 업데이트
+                    logger.info(f"OpportunityTracking {schedule.opportunity.id} 업데이트")
+                    opportunity = schedule.opportunity
+                    
+                    # 예상 매출액 업데이트
+                    if schedule.expected_revenue:
+                        opportunity.expected_revenue = schedule.expected_revenue
+                        # 가중치 매출액도 업데이트
+                        probability = schedule.probability if schedule.probability is not None else opportunity.probability or 50
+                        opportunity.weighted_revenue = schedule.expected_revenue * probability / 100
+                    
+                    # 확률 업데이트
+                    if schedule.probability is not None:
+                        opportunity.probability = schedule.probability
+                        # 가중치 매출액 재계산
+                        if opportunity.expected_revenue:
+                            opportunity.weighted_revenue = opportunity.expected_revenue * schedule.probability / 100
+                    
+                    # 예상 계약일 업데이트
+                    if schedule.expected_close_date:
+                        opportunity.expected_close_date = schedule.expected_close_date
+                    
+                    opportunity.save()
+                    logger.info(f"OpportunityTracking {opportunity.id} 업데이트 완료")
             
             return JsonResponse({
                 'success': True,
