@@ -830,12 +830,14 @@ def dashboard_view(request):
         schedules = Schedule.objects.filter(user=target_user)
         followups = FollowUp.objects.filter(user=target_user)
 
-    # 올해 매출 통계 (Schedule의 DeliveryItem 기준)
+    # 올해 매출 통계 (Schedule의 DeliveryItem 기준, 취소된 일정 제외)
     if user_profile.is_admin() and not selected_user:
         # Admin은 모든 사용자 데이터
         schedule_delivery_stats = DeliveryItem.objects.filter(
             schedule__visit_date__year=current_year,
             schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
         ).aggregate(
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
@@ -846,6 +848,8 @@ def dashboard_view(request):
             schedule__user=target_user,
             schedule__visit_date__year=current_year,
             schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
         ).aggregate(
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
@@ -1890,13 +1894,13 @@ def schedule_create_view(request):
                     elif schedule.status == 'cancelled' and opportunity.current_stage != 'lost':
                         opportunity.update_stage('lost')
                     
+                    # 납품 예정인 경우 closing 단계로 전환 (won/lost 에서도 전환)
+                    elif schedule.activity_type == 'delivery' and schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                        opportunity.update_stage('closing')
+                    
                     # 납품 완료인 경우 won 단계로 전환
                     elif schedule.activity_type == 'delivery' and schedule.status == 'completed' and opportunity.current_stage != 'won':
                         opportunity.update_stage('won')
-                    
-                    # 납품 예정인 경우 closing 단계로 전환
-                    elif schedule.activity_type == 'delivery' and schedule.status == 'scheduled' and opportunity.current_stage not in ['won', 'closing']:
-                        opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
                     elif schedule.activity_type == 'customer_meeting' and opportunity.current_stage == 'quote':
@@ -2183,12 +2187,13 @@ def schedule_edit_view(request, pk):
                 if updated_schedule.activity_type == 'quote':
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = False  # 강제로 새로 생성
-                # 납품 완료 일정은 항상 새로운 영업 기회 생성 (납품마다 별도 추적)
-                elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed':
+                # 납품 완료이면서 기존 opportunity가 없는 경우만 새로 생성
+                elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed' and not has_existing_opportunity:
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = False  # 강제로 새로 생성
                 elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
+                    should_create_or_update_opportunity = True
                     should_create_or_update_opportunity = True
                 elif updated_schedule.expected_revenue and updated_schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
@@ -2202,29 +2207,44 @@ def schedule_edit_view(request, pk):
                 if has_existing_opportunity and existing_opportunity:
                     opportunity = existing_opportunity
                     
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 일정 ID: {updated_schedule.id}, activity_type: {updated_schedule.activity_type}, status: {updated_schedule.status}")
+                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 현재 opportunity ID: {opportunity.id}, current_stage: {opportunity.current_stage}")
+                    
                     # 구매 확정 시 클로징 단계로 전환
                     if updated_schedule.purchase_confirmed and opportunity.current_stage != 'closing':
+                        logger.info(f"[STAGE_UPDATE] 구매 확정 → closing")
                         opportunity.update_stage('closing')
                     
                     # 취소된 일정인 경우 실주 단계로 전환
                     elif updated_schedule.status == 'cancelled' and opportunity.current_stage != 'lost':
+                        logger.info(f"[STAGE_UPDATE] 취소됨 → lost")
                         opportunity.update_stage('lost')
+                    
+                    # 납품 예정인 경우 closing 단계로 전환 (won/lost 에서도 전환)
+                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
+                        logger.info(f"[STAGE_UPDATE] 납품 예정 (현재: {opportunity.current_stage}) → closing")
+                        opportunity.update_stage('closing')
                     
                     # 납품 완료인 경우 won 단계로 전환
                     elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed' and opportunity.current_stage != 'won':
+                        logger.info(f"[STAGE_UPDATE] 납품 완료 (현재: {opportunity.current_stage}) → won")
                         opportunity.update_stage('won')
-                    
-                    # 납품 예정인 경우 closing 단계로 전환
-                    elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage not in ['won', 'closing']:
-                        opportunity.update_stage('closing')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
                     elif updated_schedule.activity_type == 'customer_meeting' and opportunity.current_stage == 'quote':
+                        logger.info(f"[STAGE_UPDATE] 견적 후 미팅 → negotiation")
                         opportunity.update_stage('negotiation')
                     
                     # 견적 일정인 경우 quote 단계로 전환 필요
                     elif updated_schedule.activity_type == 'quote' and opportunity.current_stage != 'quote':
+                        logger.info(f"[STAGE_UPDATE] 견적 일정 → quote")
                         opportunity.update_stage('quote')
+                    else:
+                        logger.info(f"[STAGE_UPDATE] 단계 전환 조건 미충족 - 단계 유지: {opportunity.current_stage}")
+                    
+                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 업데이트 후 opportunity.current_stage: {opportunity.current_stage}")
                     
                     # 기존 것이 있으면 업데이트 (값이 있을 때만)
                     # 값이 없으면 기존 opportunity 값 유지
@@ -4181,6 +4201,8 @@ def manager_dashboard(request):
             schedule__user__in=target_users,
             schedule__created_at__year=current_year,
             schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
         ).aggregate(
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
@@ -4190,6 +4212,8 @@ def manager_dashboard(request):
             schedule__user=target_user,
             schedule__created_at__year=current_year,
             schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
         ).aggregate(
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
@@ -5287,6 +5311,85 @@ def schedule_status_update_api(request, schedule_id):
                     logger.info(f"⚠️ 펀넬이 이미 {opportunity.current_stage} 상태라서 실주 처리 안함")
             else:
                 logger.warning("❌ 연결된 펀넬이 없음 - 실주 처리 불가")
+        
+        # 예정 처리 시 추가 작업 (펀넬을 클로징으로 변경)
+        if new_status == 'scheduled' and schedule.activity_type == 'delivery':
+            logger.info("🔄 예정으로 변경 - 펀넬 클로징 처리 시작!")
+            from datetime import date
+            
+            # 펀넬을 클로징으로 변경
+            if schedule.opportunity:
+                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
+                opportunity = schedule.opportunity
+                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
+                
+                # lost나 won 상태에서 클로징으로 변경
+                if opportunity.current_stage == 'lost':
+                    logger.info("🎯 실주에서 펀넬 클로징으로 되돌리기...")
+                    opportunity.current_stage = 'closing'
+                    opportunity.lost_date = None  # 실주 날짜 제거
+                    opportunity.lost_reason = None  # 실주 사유 제거
+                    
+                    # 단계 이력에 클로징 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 lost 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if history.get('stage') == 'lost' and not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            history['note'] = f"{history.get('note', '')} → 취소 철회로 복구"
+                            logger.info("이전 실주 단계 종료 처리")
+                            break
+                    
+                    # 클로징 단계 추가
+                    closing_entry = {
+                        'stage': 'closing',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'취소 철회 후 납품 예정으로 클로징 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(closing_entry)
+                    logger.info("🎯 클로징 단계 이력 추가")
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+                    logger.info("✅ 펀넬 클로징 처리 완료")
+                    
+                elif opportunity.current_stage == 'won':
+                    logger.info("🎯 수주에서 펀넬 클로징으로 되돌리기...")
+                    opportunity.current_stage = 'closing'
+                    opportunity.won_date = None  # 수주 날짜 제거
+                    
+                    # 단계 이력에 클로징 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 won 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if history.get('stage') == 'won' and not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            history['note'] = f"{history.get('note', '')} → 완료 철회로 예정 복귀"
+                            logger.info("이전 수주 단계 종료 처리")
+                            break
+                    
+                    # 클로징 단계 추가
+                    closing_entry = {
+                        'stage': 'closing',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'완료 철회 후 납품 예정으로 클로징 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(closing_entry)
+                    logger.info("🎯 클로징 단계 이력 추가")
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+                    logger.info("✅ 펀넬 클로징 처리 완료")
+                else:
+                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 클로징 처리 안함")
+            else:
+                logger.warning("❌ 연결된 펀넬이 없음 - 클로징 처리 불가")
         
         # 완료 처리 시 추가 작업 (실주였던 펀넬을 수주로 되돌리기)
         if new_status == 'completed' and old_status == 'cancelled':

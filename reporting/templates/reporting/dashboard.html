@@ -7,6 +7,17 @@
     DASHBOARD STYLES
    ======================================== */
 
+/* 모바일 기본 설정 - overflow 방지 */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
 .page-title {
   font-size: 1.875rem;
   font-weight: 800;
@@ -27,6 +38,29 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+/* 차트 그리드 레이아웃 */
+.dashboard-chart-row {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* 데스크탑(기본) 레이아웃 */
+.dashboard-chart-row-2-1 {
+  grid-template-columns: 2fr 1fr;
+}
+
+.dashboard-chart-row-1-1 {
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 
 .stat-card {
@@ -153,12 +187,13 @@
 
 /* Infographic Container */
 .infographic-dashboard {
-  max-width: 1400px;
-  margin: 0 auto 3rem;
+  width: 100%;
+  margin: 0 0 3rem;
 }
 
 /* Hero Metrics Section */
 .hero-metrics {
+  width: 100%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 2rem;
   padding: 3rem;
@@ -307,6 +342,7 @@
 
 /* Activity Timeline */
 .activity-timeline {
+  width: 100%;
   background: white;
   border-radius: 1.5rem;
   padding: 2.5rem;
@@ -537,6 +573,7 @@
 
 /* 빠른 액션 */
 .quick-actions {
+  width: 100%;
   background: white;
   border-radius: 1.25rem;
   padding: 2rem;
@@ -557,6 +594,19 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .actions-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .action-btn {
@@ -591,6 +641,13 @@
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .performance-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 
 .performance-card {
@@ -661,6 +718,83 @@
 
 .hover-card:hover .badge {
   background-color: #007bff !important;
+}
+
+/* ========================================
+   📱 모바일 반응형 (최우선 순위)
+   ======================================== */
+@media (max-width: 768px) {
+  /* 🔥 Bootstrap container 오버라이드 */
+  .container-fluid {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* 🔥 메인 컨텐츠 전체 */
+  .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    padding: 1rem !important;
+  }
+
+  /* 🔥 모든 차트 행은 무조건 1열 */
+  .dashboard-chart-row,
+  .dashboard-chart-row-2-1,
+  .dashboard-chart-row-1-1 {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  
+  /* 🔥 Bootstrap row/col 오버라이드 */
+  .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  .row.mt-4 .col-lg-6,
+  .col-lg-6,
+  [class*="col-"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+  
+  /* 🔥 카드류 공통 폭 */
+  .card,
+  .stat-card,
+  .analytics-card,
+  .hero-metrics,
+  .activity-timeline,
+  .quick-actions,
+  .quick-navigation {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  /* 🔥 이미지 축소 */
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  
+  /* 🔥 페이지 타이틀 */
+  .page-title {
+    font-size: 1.5rem !important;
+  }
+  
+  /* 🔥 디버깅: 모든 요소의 box-sizing 강제 */
+  * {
+    box-sizing: border-box !important;
+  }
 }
 </style>
 {% endblock %}
@@ -953,7 +1087,7 @@
 <h2 class="section-title" style="margin-top: 3rem;"><i class="fas fa-chart-bar" style="color: #6366f1;"></i> 영업 분석 대시보드</h2>
 
 <!-- 1행: 매출 추이 & 영업 퍼널 -->
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+<div class="dashboard-chart-row dashboard-chart-row-2-1">
   <!-- 1. 매출 및 납품 추이 (Combo Chart) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
@@ -976,7 +1110,7 @@
 </div>
 
 <!-- 2행: 고객사별 매출 & 고객 유형별 통계 -->
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+<div class="dashboard-chart-row dashboard-chart-row-1-1">
   <!-- 3. 고객사별 매출 비중 (Doughnut) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
