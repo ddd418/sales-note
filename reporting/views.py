@@ -1050,7 +1050,6 @@ def dashboard_view(request):
         activity_type='quote',
         status='scheduled'
     ).count()
-    logger.info(f"[DASHBOARD] 처리해야 할 견적 수 (예정 상태): {quote_count}")
     
     # 이번 달 견적 횟수 (이번 달의 모든 견적 일정)
     monthly_quote_count = schedules.filter(
@@ -1125,11 +1124,6 @@ def dashboard_view(request):
     
     # 견적 → 납품 전환율 (견적을 낸 것 중 납품으로 전환된 비율)
     quote_to_delivery_rate = (quotes_with_delivery / total_quotes * 100) if total_quotes > 0 else 0
-    
-    # 디버깅 로그 추가
-    logger.info(f"[CONVERSION_RATE] (schedule 기준) 미팅: {schedule_meetings}, 견적: {total_quotes}, 납품(완료): {schedule_deliveries_completed}")
-    logger.info(f"[CONVERSION_RATE] 견적 중 납품 완료: {quotes_with_delivery}/{total_quotes}")
-    logger.info(f"[CONVERSION_RATE] 미팅→납품 (일정 기준): {meeting_to_delivery_rate:.1f}%, 견적→납품: {quote_to_delivery_rate:.1f}%")
     
     # 평균 거래 규모 (현재 연도 기준)
     avg_deal_size = histories_current_year.filter(
@@ -1227,9 +1221,6 @@ def dashboard_view(request):
     quote_count_funnel = schedules_current_year.filter(activity_type='quote').count()
     scheduled_delivery_count = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
     completed_delivery_count = schedules_current_year.filter(activity_type='delivery', status='completed').count()
-    
-    logger.info(f"[실무자 대시보드 펀넬] 사용자: {target_user.username}")
-    logger.info(f"[실무자 대시보드 펀넬] 미팅: {meeting_count}, 견적: {quote_count_funnel}, 발주예정: {scheduled_delivery_count}, 납품완료: {completed_delivery_count}")
     
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
@@ -1485,22 +1476,6 @@ def dashboard_view(request):
     }
     context['product_chart_data'] = json.dumps(product_chart_data, cls=DjangoJSONEncoder)
     
-    # 최종 컨텍스트 로깅
-    logger.info(f"[DASHBOARD] 최종 컨텍스트 전달:")
-    logger.info(f"[DASHBOARD] - is_hanagwahak (context): {context['is_hanagwahak']}")
-    logger.info(f"[DASHBOARD] - is_admin (context): {context['is_admin']}")
-    logger.info(f"[DASHBOARD] - user_company_name (context): {context['user_company_name']}")
-    logger.info(f"[DASHBOARD] - service_count: {context['service_count']}")
-    logger.info(f"[DASHBOARD] - this_month_service_count: {context['this_month_service_count']}")
-    
-    # monthly_services 타입 확인 후 로깅
-    monthly_services = context.get('monthly_services')
-    if hasattr(monthly_services, '__len__'):
-        logger.info(f"[DASHBOARD] - monthly_services 데이터 개수: {len(monthly_services)}")
-    else:
-        logger.info(f"[DASHBOARD] - monthly_services 데이터: {monthly_services} (타입: {type(monthly_services)})")
-        
-    logger.info(f"[DASHBOARD] - monthly_service_data: {context['monthly_service_data']}")
     return render(request, 'reporting/dashboard.html', context)
 
 # ============ 일정(Schedule) 관련 뷰들 ============
