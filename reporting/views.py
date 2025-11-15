@@ -3652,7 +3652,6 @@ class CustomLoginView(LoginView):
     redirect_authenticated_user = True
     
     def form_valid(self, form):
-        messages.success(self.request, f'안녕하세요, {form.get_user().username}님! 성공적으로 로그인되었습니다.')
         return super().form_valid(form)
     
     def form_invalid(self, form):
@@ -3664,11 +3663,6 @@ class CustomLogoutView(LogoutView):
     next_page = reverse_lazy('reporting:login')
     
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated:
-            username = request.user.username
-            response = super().dispatch(request, *args, **kwargs)
-            messages.info(request, f'{username}님, 성공적으로 로그아웃되었습니다.')
-            return response
         return super().dispatch(request, *args, **kwargs)
 
 # ============ 사용자 관리 뷰들 ============
