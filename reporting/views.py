@@ -831,12 +831,9 @@ def dashboard_view(request):
     view_all = request.GET.get('view_all') == 'true'
     selected_user = None
     
-    logger.info(f"[DASHBOARD FILTER] user_filter={user_filter}, view_all={view_all}, session_user_id={request.session.get('selected_user_id')}")
-    
     if user_profile.can_view_all_users():
         # 전체 팀원 선택 시 세션 초기화
         if view_all:
-            logger.info(f"[DASHBOARD FILTER] view_all=True, 세션 초기화")
             if 'selected_user_id' in request.session:
                 del request.session['selected_user_id']
             target_user = None  # 전체 팀원 데이터 표시
@@ -844,13 +841,11 @@ def dashboard_view(request):
             # user_filter가 없으면 세션에서 가져오기
             if not user_filter:
                 user_filter = request.session.get('selected_user_id')
-                logger.info(f"[DASHBOARD FILTER] 세션에서 user_filter 가져옴: {user_filter}")
             
             if user_filter:
                 try:
                     selected_user = User.objects.get(id=user_filter)
                     target_user = selected_user
-                    logger.info(f"[DASHBOARD FILTER] 특정 사용자 선택: {selected_user.username}")
                     # 세션에 저장
                     request.session['selected_user_id'] = str(user_filter)
                 except (User.DoesNotExist, ValueError):
@@ -860,12 +855,9 @@ def dashboard_view(request):
                     if 'selected_user_id' in request.session:
                         del request.session['selected_user_id']
             else:
-                logger.info(f"[DASHBOARD FILTER] user_filter 없음, 전체 팀원")
                 target_user = None  # 전체 팀원 데이터 표시
     else:
         target_user = request.user
-    
-    logger.info(f"[DASHBOARD FILTER] 최종 target_user: {target_user.username if target_user else 'None(전체)'}")
     
     # 매니저용 팀원 목록
     salesman_users = []
@@ -9531,7 +9523,6 @@ def funnel_dashboard_view(request):
     
     # FunnelStage 초기 데이터 확인 및 생성
     if not FunnelStage.objects.exists():
-        logger.info("[펀넬 관리] FunnelStage 데이터가 없어 기본 단계 생성")
         default_stages = [
             {'name': 'lead', 'display_name': '리드', 'stage_order': 1, 'default_probability': 10, 'color': '#94a3b8', 'icon': 'fa-user-plus'},
             {'name': 'contact', 'display_name': '컨택', 'stage_order': 2, 'default_probability': 25, 'color': '#60a5fa', 'icon': 'fa-phone'},
@@ -9543,7 +9534,6 @@ def funnel_dashboard_view(request):
         ]
         for stage_data in default_stages:
             FunnelStage.objects.create(**stage_data)
-        logger.info(f"[펀넬 관리] {len(default_stages)}개 기본 단계 생성 완료")
     
     # 매니저용 실무자 필터
     selected_user_id = request.GET.get('user_id')
@@ -9586,29 +9576,7 @@ def funnel_dashboard_view(request):
     # 단계별 분석
     stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
     
-    # OpportunityTracking 데이터 확인
-    if filter_user:
-        opp_count = OpportunityTracking.objects.filter(followup__user=filter_user).count()
-        logger.info(f"[펀넬 관리 DB] 사용자 {filter_user.username}의 OpportunityTracking: {opp_count}건")
-        
-        # 수주 상태의 OpportunityTracking 상세 확인
-        won_opps = OpportunityTracking.objects.filter(
-            followup__user=filter_user,
-            current_stage='won'
-        ).select_related('followup')
-        
-        logger.info(f"[펀넬 관리 DB] 수주 상태 OpportunityTracking 상세:")
-        for opp in won_opps:
-            customer_name = opp.followup.customer_name if opp.followup else '고객정보없음'
-            company_name = opp.followup.company.name if (opp.followup and opp.followup.company) else '회사정보없음'
-            logger.info(f"  - {customer_name} ({company_name}) - 예상매출: {opp.expected_revenue:,}원")
-    else:
-        opp_count = OpportunityTracking.objects.count()
-        logger.info(f"[펀넬 관리 DB] 전체 OpportunityTracking: {opp_count}건")
-    
-    logger.info(f"[펀넬 관리 DB] stage_breakdown 결과: {len(stage_breakdown)}개 단계")
-    for stage in stage_breakdown:
-        logger.info(f"  - {stage['stage']}: {stage['count']}건 (가중매출: {stage['weighted_value']:,}원)")
+    # OpportunityTracking 데이터 확인 (로그 제거)
     
     # 상위 영업 기회
     top_opportunities = analytics.get_top_opportunities(limit=10, user=filter_user)
@@ -9668,59 +9636,6 @@ def funnel_dashboard_view(request):
     # 사용자 목록 (Admin/Manager용)
     accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
-    
-    # ===== 디버깅: 올해 완료된 납품 데이터 로그 출력 =====
-    from django.utils import timezone
-    current_year = timezone.now().year
-    
-    # Schedule 기반 완료된 납품
-    if filter_user:
-        schedule_deliveries = Schedule.objects.filter(
-            user=filter_user,
-            visit_date__year=current_year,
-            activity_type='delivery',
-            status='completed'
-        ).select_related('followup', 'followup__company').order_by('visit_date')
-        
-        history_deliveries = History.objects.filter(
-            user=filter_user,
-            delivery_date__year=current_year,
-            action_type='delivery_schedule'
-        ).select_related('followup', 'followup__company').order_by('delivery_date')
-    else:
-        schedule_deliveries = Schedule.objects.filter(
-            visit_date__year=current_year,
-            activity_type='delivery',
-            status='completed'
-        ).select_related('followup', 'followup__company').order_by('visit_date')
-        
-        history_deliveries = History.objects.filter(
-            delivery_date__year=current_year,
-            action_type='delivery_schedule'
-        ).select_related('followup', 'followup__company').order_by('delivery_date')
-    
-    logger.info("=" * 80)
-    logger.info(f"[펀넬 대시보드] 올해({current_year}년) 완료된 납품 데이터 분석")
-    logger.info(f"[펀넬 대시보드] 필터 사용자: {filter_user.username if filter_user else '전체'}")
-    logger.info("=" * 80)
-    
-    logger.info(f"\n📦 Schedule 테이블 - 완료된 납품: {schedule_deliveries.count()}건")
-    for idx, schedule in enumerate(schedule_deliveries, 1):
-        customer_name = schedule.followup.customer_name if schedule.followup else '고객정보없음'
-        company_name = schedule.followup.company.name if (schedule.followup and schedule.followup.company) else '회사정보없음'
-        logger.info(f"  {idx}. [{schedule.visit_date}] {customer_name} ({company_name}) - {schedule.user.username}")
-    
-    logger.info(f"\n📋 History 테이블 - 납품 기록: {history_deliveries.count()}건 (참고용, Schedule 완료 후 자동 생성)")
-    for idx, history in enumerate(history_deliveries, 1):
-        customer_name = history.followup.customer_name if history.followup else '고객정보없음'
-        company_name = history.followup.company.name if (history.followup and history.followup.company) else '회사정보없음'
-        delivery_date = history.delivery_date or '날짜정보없음'
-        logger.info(f"  {idx}. [{delivery_date}] {customer_name} ({company_name}) - {history.user.username}")
-    
-    logger.info(f"\n✅ 펀넬 차트 '납품 완료' 집계: {schedule_deliveries.count()}건 (Schedule 완료 기준)")
-    logger.info(f"💡 History는 Schedule 완료 후 자동 생성되는 이력이므로 중복 카운트하지 않음")
-    logger.info("=" * 80)
-    # ===== 디버깅 로그 끝 =====
     
     context = {
         'page_title': '펀넬 대시보드',
