@@ -51,3 +51,19 @@ def sum_total_price(delivery_items):
             total += (item.unit_price * item.quantity)
     
     return total
+
+@register.filter
+def multiply(value, arg):
+    """값을 곱하기"""
+    try:
+        return float(value) * float(arg)
+    except (ValueError, TypeError):
+        return 0
+
+@register.filter
+def divide(value, arg):
+    """값을 나누기"""
+    try:
+        return float(value) / float(arg) if float(arg) != 0 else 0
+    except (ValueError, TypeError, ZeroDivisionError):
+        return 0

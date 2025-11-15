@@ -119,7 +119,17 @@ div.modal-backdrop {
       <!-- 폼 카드 -->
       <div class="card">
         <div class="card-body">
-          <form method="post" onsubmit="saveAllItems(); return true;">
+          <form method="post" onsubmit="saveAllItems(); 
+            // DEBUG: 폼 제출 전 status 필드 확인
+            const statusField = document.querySelector('[name=status]');
+            console.log('[FORM_SUBMIT] status field:', statusField);
+            console.log('[FORM_SUBMIT] status value:', statusField ? statusField.value : 'NO FIELD');
+            console.log('[FORM_SUBMIT] status in FormData:', new FormData(this).get('status'));
+            if (!statusField || !statusField.value) {
+              console.error('[FORM_SUBMIT] ERROR: status field is missing or empty!');
+              alert('오류: status 필드가 없거나 비어있습니다. 콘솔을 확인하세요.');
+            }
+            return true;">
             {% csrf_token %}
 
             <!-- 에러 메시지 -->
@@ -129,7 +139,7 @@ div.modal-backdrop {
               <ul class="mb-0 mt-2">
                 {% for field, errors in form.errors.items %}
                   {% for error in errors %}
-                    <li>{{ error }}</li>
+                    <li><strong>{{ field }}:</strong> {{ error }}</li>
                   {% endfor %}
                 {% endfor %}
               </ul>
@@ -199,22 +209,26 @@ div.modal-backdrop {
                         }
                     }
                     
-                    // 모든 옵션 저장
-                    let allOptions = [];
-                    if (hiddenSelect) {
-                        for (let i = 0; i < hiddenSelect.options.length; i++) {
-                            const opt = hiddenSelect.options[i];
-                            if (opt.value) {
-                                allOptions.push({
-                                    id: opt.value,
-                                    text: opt.textContent.trim()
-                                });
+                    // 모든 옵션 저장 (함수로 변경하여 동적으로 로드)
+                    function loadAllOptions() {
+                        const options = [];
+                        if (hiddenSelect) {
+                            for (let i = 0; i < hiddenSelect.options.length; i++) {
+                                const opt = hiddenSelect.options[i];
+                                if (opt.value) {
+                                    options.push({
+                                        id: opt.value,
+                                        text: opt.textContent.trim()
+                                    });
+                                }
                             }
                         }
+                        return options;
                     }
                     
                     // 전역 함수로 등록
                     window.searchFollowup = function(query) {
+                        const allOptions = loadAllOptions(); // 매번 최신 옵션 로드
                         query = query.trim().toLowerCase();
                         
                         if (!query) {
@@ -270,9 +284,17 @@ div.modal-backdrop {
                   <small class="form-text text-muted">활동 유형을 선택하세요</small>
                 </div>
 
-                <div class="mb-3">
-                  {{ form.status.label_tag }} {{ form.status }}
-                </div>
+                <!-- status 필드 (숨김) -->
+                {{ form.status }}
+                <script>
+                // DEBUG: status 필드 확인
+                (function() {
+                    const statusField = document.querySelector('[name="status"]');
+                    console.log('[STATUS_FIELD_DEBUG] status field:', statusField);
+                    console.log('[STATUS_FIELD_DEBUG] status value:', statusField ? statusField.value : 'null');
+                    console.log('[STATUS_FIELD_DEBUG] status type:', statusField ? statusField.type : 'null');
+                })();
+                </script>
               </div>
 
               <!-- 추가 정보 섹션 -->
@@ -1379,11 +1401,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     followupInput.value = data.followup_text;
                 }
                 
+                // 팔로우업 폼 초기화 (다음 추가를 위해)
+                resetModal();
+                
                 // 모달 닫기
                 bootstrap.Modal.getInstance(followupModal).hide();
                 
                 // 성공 알림
-                showAlert('success', '팔로우업이 성공적으로 추가되어 선택되었습니다.');
+                showAlert('success', '팔로우업이 성공적으로 추가되어 선택되었습니다. 검색에서도 즉시 사용 가능합니다.');
             } else {
                 showModalAlert('danger', data.error || '팔로우업 추가에 실패했습니다.');
             }
@@ -2660,10 +2685,10 @@ function selectMeeting(index) {
 
 // 선택된 미팅 데이터 불러오기
 function loadMeetingData(meeting) {
-    console.log('loadMeetingData called with meeting:', meeting);
+    console.log('[LOAD_MEETING] called with meeting:', meeting);
     
     if (!meeting) {
-        console.error('잘못된 미팅 데이터:', meeting);
+        console.error('[LOAD_MEETING] 잘못된 미팅 데이터:', meeting);
         alert('미팅 데이터가 올바르지 않습니다.');
         return;
     }
@@ -2671,7 +2696,7 @@ function loadMeetingData(meeting) {
     // 선택한 미팅의 opportunity를 폼의 opportunity 필드에 설정
     const opportunityField = document.querySelector('[name="opportunity"]');
     if (opportunityField && meeting.opportunity_id) {
-        console.log('Setting opportunity field to:', meeting.opportunity_id);
+        console.log('[LOAD_MEETING] Setting opportunity field to:', meeting.opportunity_id);
         opportunityField.value = meeting.opportunity_id;
         
         // 펀넬 정보도 자동으로 로드
@@ -2679,33 +2704,104 @@ function loadMeetingData(meeting) {
             loadOpportunityData(meeting.opportunity_id);
         }
     } else {
-        console.warn('Opportunity field not found or opportunity_id is missing');
+        console.warn('[LOAD_MEETING] Opportunity field not found or opportunity_id is missing');
     }
     
     // 예상 매출액 설정
     const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
+    console.log('[LOAD_MEETING] expectedRevenueField:', expectedRevenueField);
+    console.log('[LOAD_MEETING] meeting.expected_revenue:', meeting.expected_revenue);
+    
     if (expectedRevenueField && meeting.expected_revenue) {
         expectedRevenueField.value = meeting.expected_revenue;
+        console.log('[LOAD_MEETING] 예상 매출액 설정 후 값:', expectedRevenueField.value);
+        
+        // 입력 이벤트 트리거하여 화면 업데이트
+        expectedRevenueField.dispatchEvent(new Event('input', { bubbles: true }));
+        expectedRevenueField.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log('[LOAD_MEETING] 예상 매출액 이벤트 트리거 완료');
+    } else {
+        console.warn('[LOAD_MEETING] expectedRevenueField 또는 meeting.expected_revenue 없음');
     }
     
     // 확률 설정
     const probabilityField = document.querySelector('[name="probability"]');
+    console.log('[LOAD_MEETING] probabilityField:', probabilityField);
+    console.log('[LOAD_MEETING] meeting.probability:', meeting.probability);
+    
     if (probabilityField && meeting.probability) {
         probabilityField.value = meeting.probability;
+        console.log('[LOAD_MEETING] 확률 설정 후 값:', probabilityField.value);
+        
+        // 입력 이벤트 트리거하여 화면 업데이트
+        probabilityField.dispatchEvent(new Event('input', { bubbles: true }));
+        probabilityField.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log('[LOAD_MEETING] 확률 이벤트 트리거 완료');
+    } else {
+        console.warn('[LOAD_MEETING] probabilityField 또는 meeting.probability 없음');
     }
     
     // 예상 계약일 설정
     const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+    console.log('[LOAD_MEETING] expectedCloseDateField:', expectedCloseDateField);
+    console.log('[LOAD_MEETING] meeting.expected_close_date:', meeting.expected_close_date);
+    
     if (expectedCloseDateField && meeting.expected_close_date) {
         expectedCloseDateField.value = meeting.expected_close_date;
+        console.log('[LOAD_MEETING] 예상 계약일 설정 후 값:', expectedCloseDateField.value);
+        
+        // 입력 이벤트 트리거하여 화면 업데이트
+        expectedCloseDateField.dispatchEvent(new Event('input', { bubbles: true }));
+        expectedCloseDateField.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log('[LOAD_MEETING] 예상 계약일 이벤트 트리거 완료');
+    } else {
+        console.warn('[LOAD_MEETING] expectedCloseDateField 또는 meeting.expected_close_date 없음');
     }
     
     // 가중 매출액 업데이트
+    console.log('[LOAD_MEETING] updateWeightedRevenue 함수 존재 여부:', typeof updateWeightedRevenue);
     if (typeof updateWeightedRevenue === 'function') {
         updateWeightedRevenue();
+        console.log('[LOAD_MEETING] updateWeightedRevenue 호출 완료');
     }
     
-    alert(`미팅과 연결되었습니다.\n미팅일: ${meeting.visit_date}\n펀넬 정보가 자동으로 입력됩니다.`);
+    // 화면 강제 새로고침 (값이 화면에 즉시 반영되도록)
+    setTimeout(() => {
+        console.log('[LOAD_MEETING] setTimeout 실행 - 100ms 후');
+        if (typeof updateWeightedRevenue === 'function') {
+            updateWeightedRevenue();
+            console.log('[LOAD_MEETING] updateWeightedRevenue 재호출 완료');
+        }
+        
+        // 필드 값 최종 확인
+        console.log('[LOAD_MEETING] 최종 필드 값 확인:');
+        console.log('  - expected_revenue:', expectedRevenueField ? expectedRevenueField.value : 'null');
+        console.log('  - probability:', probabilityField ? probabilityField.value : 'null');
+        console.log('  - expected_close_date:', expectedCloseDateField ? expectedCloseDateField.value : 'null');
+        
+        // 필드에 시각적 효과 추가
+        [expectedRevenueField, probabilityField, expectedCloseDateField].forEach(field => {
+            if (field && field.value) {
+                field.style.backgroundColor = '#d4edda';
+                field.style.transition = 'background-color 0.5s';
+                setTimeout(() => {
+                    field.style.backgroundColor = '';
+                }, 2000);
+            }
+        });
+    }, 100);
+    
+    // 화면 스크롤을 펀넬 섹션으로 이동
+    const funnelSection = document.getElementById('funnel-section');
+    if (funnelSection) {
+        funnelSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    
+    // 성공 메시지 표시 (모달 닫힌 후)
+    setTimeout(() => {
+        const message = `미팅과 연결되었습니다!\n\n✓ 미팅일: ${meeting.visit_date}\n✓ 예상 매출액: ${meeting.expected_revenue ? meeting.expected_revenue.toLocaleString() + '원' : '없음'}\n✓ 확률: ${meeting.probability || 0}%\n✓ 예상 계약일: ${meeting.expected_close_date || '미설정'}\n\n아래 펀넬 섹션에서 값을 확인하세요.`;
+        alert(message);
+    }, 300);
 }
 
 function loadFromQuote() {
@@ -4599,19 +4695,26 @@ document.addEventListener('DOMContentLoaded', function() {
           // 성공 메시지
           alert('제품이 성공적으로 추가되었습니다.');
           
+          // 제품 폼 초기화 (다음 추가를 위해)
+          productAddForm.reset();
+          
           // 모달 닫기
           const modal = bootstrap.Modal.getInstance(productAddModal);
           modal.hide();
           
-          // 제품 목록 새로고침
+          // 제품 목록 새로고침 - 모든 품목 행의 데이터 업데이트
           if (currentDeliveryItemRow) {
-            const selectElement = currentDeliveryItemRow.querySelector('.product-select');
-            loadProductList(selectElement);
+            // 납품 품목 목록 새로고침
+            document.querySelectorAll('.delivery-item-row').forEach(row => {
+              loadProductList(row);
+            });
             currentDeliveryItemRow = null;
           }
           if (currentQuoteItemRow) {
-            const selectElement = currentQuoteItemRow.querySelector('.quote-product-select');
-            loadQuoteProductList(selectElement);
+            // 견적 품목 목록 새로고침
+            document.querySelectorAll('.item-row').forEach(row => {
+              loadQuoteProductList(row);
+            });
             currentQuoteItemRow = null;
           }
         } else {

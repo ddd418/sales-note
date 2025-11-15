@@ -69,6 +69,9 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
     일정의 상태나 금액이 변경될 때 OpportunityTracking 업데이트
     서비스 일정은 제외 (영업 기회와 무관)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # 서비스 일정은 영업 기회와 무관하므로 처리 안함
     if instance.activity_type == 'service':
         return
@@ -83,8 +86,11 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
     except Schedule.DoesNotExist:
         return
     
+    logger.info(f"[SIGNAL_PRE_SAVE] Schedule ID: {instance.pk}, activity_type: {instance.activity_type}, status: {old_schedule.status} → {instance.status}")
+    
     # OpportunityTracking이 연결되어 있으면 업데이트
     if instance.opportunity:
+        logger.info(f"[SIGNAL_PRE_SAVE] OpportunityTracking ID: {instance.opportunity.id}, current_stage: {instance.opportunity.current_stage}")
         opportunity = instance.opportunity
         
         # 예상 매출액 변경 시
@@ -112,6 +118,8 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
         if (instance.status == 'completed' and 
             old_schedule.status != 'completed' and 
             instance.activity_type == 'delivery'):
+            
+            logger.info(f"[SIGNAL_PRE_SAVE] 납품 완료 감지 - OpportunityTracking을 'won'으로 전환")
             
             # 납품 품목의 제품 판매횟수 증가
             for delivery_item in instance.delivery_items_set.all():
@@ -153,6 +161,65 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
                 'note': f'납품 완료로 자동 전환 (일정 ID: {instance.id})'
             })
         
+        # 견적 일정이 취소된 경우 OpportunityTracking을 '견적실패'로 변경
+        elif (instance.status == 'cancelled' and 
+              old_schedule.status != 'cancelled' and 
+              instance.activity_type == 'quote'):
+            
+            logger.info(f"[SIGNAL_PRE_SAVE] 견적 취소 감지 - OpportunityTracking을 'quote_lost'로 전환")
+            
+            old_stage = opportunity.current_stage
+            opportunity.current_stage = 'quote_lost'
+            opportunity.stage_entry_date = date.today()
+            opportunity.lost_date = date.today()
+            
+            # stage_history 업데이트
+            if opportunity.stage_history is None:
+                opportunity.stage_history = []
+            
+            # 이전 단계 종료
+            for stage_entry in opportunity.stage_history:
+                if stage_entry.get('stage') == old_stage and not stage_entry.get('exited'):
+                    stage_entry['exited'] = date.today().isoformat()
+            
+            # quote_lost 단계 추가
+            opportunity.stage_history.append({
+                'stage': 'quote_lost',
+                'entered': date.today().isoformat(),
+                'exited': None,
+                'note': f'견적 취소로 자동 전환 (일정 ID: {instance.id})'
+            })
+        
+        # 견적 일정이 취소 → 예정으로 복원된 경우 quote 단계로 복원
+        elif (instance.status == 'scheduled' and 
+              old_schedule.status == 'cancelled' and 
+              instance.activity_type == 'quote' and
+              opportunity.current_stage == 'quote_lost'):
+            
+            logger.info(f"[SIGNAL_PRE_SAVE] 견적 복원 감지 - OpportunityTracking을 'quote'로 복원")
+            
+            old_stage = opportunity.current_stage
+            opportunity.current_stage = 'quote'
+            opportunity.stage_entry_date = date.today()
+            opportunity.lost_date = None  # 취소 날짜 제거
+            
+            # stage_history 업데이트
+            if opportunity.stage_history is None:
+                opportunity.stage_history = []
+            
+            # 이전 단계 종료
+            for stage_entry in opportunity.stage_history:
+                if stage_entry.get('stage') == old_stage and not stage_entry.get('exited'):
+                    stage_entry['exited'] = date.today().isoformat()
+            
+            # quote 단계 추가
+            opportunity.stage_history.append({
+                'stage': 'quote',
+                'entered': date.today().isoformat(),
+                'exited': None,
+                'note': f'견적 복원로 자동 전환 (일정 ID: {instance.id})'
+            })
+        
         # 일정 상태가 완료 → 예정으로 변경되고 납품 일정인 경우 (판매횟수 감소)
         elif (instance.status != 'completed' and 
               old_schedule.status == 'completed' and 
@@ -172,6 +239,8 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
               old_schedule.status == 'scheduled' and 
               instance.activity_type == 'customer_meeting' and
               opportunity.current_stage == 'lead'):
+            
+            logger.info(f"[SIGNAL_PRE_SAVE] 미팅 완료 감지 (lead → contact) - OpportunityTracking ID: {opportunity.id}")
             
             # lead → contact 단계로 변경 (미팅 완료)
             old_stage = opportunity.current_stage
@@ -194,7 +263,10 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
                 'exited': None,
                 'note': f'고객 미팅 완료로 자동 전환 (일정 ID: {instance.id})'
             })
+        else:
+            logger.info(f"[SIGNAL_PRE_SAVE] 단계 전환 조건 미충족 - 현재 단계 유지: {opportunity.current_stage}")
         
+        logger.info(f"[SIGNAL_PRE_SAVE] OpportunityTracking 저장 - 최종 단계: {opportunity.current_stage}")
         opportunity.save()
 
 

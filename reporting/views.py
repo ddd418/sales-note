@@ -334,6 +334,15 @@ class ScheduleForm(forms.ModelForm):
         help_text='고객의 선결제 잔액에서 차감할 선결제를 선택하세요.'
     )
     
+    # status 필드를 명시적으로 선언 (required=False)
+    status = forms.ChoiceField(
+        choices=Schedule.STATUS_CHOICES,
+        required=False,
+        initial='scheduled',
+        widget=forms.HiddenInput(attrs={'value': 'scheduled'}),
+        label='상태'
+    )
+    
     class Meta:
         model = Schedule
         fields = ['followup', 'opportunity', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
@@ -344,7 +353,7 @@ class ScheduleForm(forms.ModelForm):
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
             'activity_type': forms.Select(attrs={'class': 'form-control'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'status': forms.Select(attrs={'class': 'form-control'}),
+            # status는 위에서 명시적으로 선언했으므로 여기서 제거
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             'expected_revenue': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '예상 매출액 (원)', 'min': '0'}),
             'probability': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '성공 확률 (%)', 'min': '0', 'max': '100'}),
@@ -372,6 +381,24 @@ class ScheduleForm(forms.ModelForm):
         user = kwargs.pop('user', None)
         request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
+        
+        # DEBUG: status 필드 초기값 설정 확인
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[SCHEDULE_FORM_INIT] instance.pk: {self.instance.pk}")
+        logger.info(f"[SCHEDULE_FORM_INIT] data: {kwargs.get('data') if 'data' in kwargs else self.data}")
+        
+        # 새 일정 생성 시 기본값 설정
+        if not self.instance.pk:
+            self.initial['status'] = 'scheduled'
+            self.fields['status'].initial = 'scheduled'
+            logger.info(f"[SCHEDULE_FORM_INIT] Set initial status to 'scheduled'")
+        
+        logger.info(f"[SCHEDULE_FORM_INIT] self.initial: {self.initial}")
+        logger.info(f"[SCHEDULE_FORM_INIT] status field required: {self.fields['status'].required}")
+        logger.info(f"[SCHEDULE_FORM_INIT] status field initial: {self.fields['status'].initial}")
+        logger.info(f"[SCHEDULE_FORM_INIT] status field widget: {self.fields['status'].widget}")
+        
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
             if user.is_staff or user.is_superuser:
@@ -1182,18 +1209,18 @@ def dashboard_view(request):
     schedules_current_year = schedules.filter(visit_date__year=current_year)
     
     meeting_count = schedules_current_year.filter(activity_type='customer_meeting').count()
-    quote_count = schedules_current_year.filter(activity_type='quote').count()
+    quote_count_funnel = schedules_current_year.filter(activity_type='quote').count()
     scheduled_delivery_count = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
     completed_delivery_count = schedules_current_year.filter(activity_type='delivery', status='completed').count()
     
     logger.info(f"[실무자 대시보드 펀넬] 사용자: {target_user.username}")
-    logger.info(f"[실무자 대시보드 펀넬] 미팅: {meeting_count}, 견적: {quote_count}, 발주예정: {scheduled_delivery_count}, 납품완료: {completed_delivery_count}")
+    logger.info(f"[실무자 대시보드 펀넬] 미팅: {meeting_count}, 견적: {quote_count_funnel}, 발주예정: {scheduled_delivery_count}, 납품완료: {completed_delivery_count}")
     
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
         'values': [
             meeting_count,
-            quote_count,
+            quote_count_funnel,
             scheduled_delivery_count,
             completed_delivery_count
         ]
@@ -1850,23 +1877,24 @@ def schedule_create_view(request):
             
             # Opportunity 생성/업데이트 조건 판단
             if schedule.activity_type != 'service':
-                # 견적 일정은 항상 새로운 영업 기회 생성
-                if schedule.activity_type == 'quote':
-                    should_create_or_update_opportunity = True
-                    has_existing_opportunity = False  # 강제로 새로 생성
-                # 납품 완료 일정은 항상 새로운 영업 기회 생성 (납품마다 별도 추적)
-                elif schedule.activity_type == 'delivery' and schedule.status == 'completed':
-                    should_create_or_update_opportunity = True
-                    has_existing_opportunity = False  # 강제로 새로 생성
-                # 사용자가 특정 opportunity를 선택한 경우
-                elif selected_opportunity:
+                # 사용자가 특정 opportunity를 선택한 경우 (기존 OpportunityTracking 업데이트)
+                if selected_opportunity:
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = True
+                # 견적 일정이고 기존 opportunity가 없으면 새로 생성
+                elif schedule.activity_type == 'quote' and not has_existing_opportunity:
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False
+                # 납품 일정이고 기존 opportunity가 있으면 업데이트
+                elif schedule.activity_type == 'delivery' and has_existing_opportunity:
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = True
+                # 납품 일정이고 기존 opportunity가 없으면 새로 생성
+                elif schedule.activity_type == 'delivery' and not has_existing_opportunity:
+                    should_create_or_update_opportunity = True
+                    has_existing_opportunity = False
                 elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트 (예상 매출액 없어도 가능)
-                    should_create_or_update_opportunity = True
-                elif schedule.activity_type == 'delivery':
-                    # 납품 예정 일정은 펀넬 생성 (납품 품목에서 금액 계산 가능)
                     should_create_or_update_opportunity = True
                 elif schedule.expected_revenue and schedule.expected_revenue > 0:
                     # 기존 Opportunity가 없으면 예상 매출액이 있을 때만 생성
@@ -1962,23 +1990,30 @@ def schedule_create_view(request):
                         # 예정 단계
                         if schedule.activity_type == 'quote':
                             initial_stage = 'quote'  # 견적 제출 예정
+                            logger.info(f"[OPPORTUNITY_CREATE] 견적 예정 - initial_stage: quote")
                         elif schedule.activity_type == 'delivery':
                             initial_stage = 'closing'  # 납품 예정 = 클로징
+                            logger.info(f"[OPPORTUNITY_CREATE] 납품 예정 - initial_stage: closing")
                         else:
                             initial_stage = 'lead'
                     elif schedule.status == 'completed':
                         # 완료 단계
                         if schedule.activity_type == 'customer_meeting':
                             initial_stage = 'contact'  # 미팅 완료
+                            logger.info(f"[OPPORTUNITY_CREATE] 미팅 완료 - initial_stage: contact")
                         elif schedule.activity_type == 'quote':
                             initial_stage = 'quote'  # 견적 제출 완료
+                            logger.info(f"[OPPORTUNITY_CREATE] 견적 완료 - initial_stage: quote")
                         elif schedule.activity_type == 'delivery':
                             initial_stage = 'won'  # 납품 완료 = 수주
+                            logger.info(f"[OPPORTUNITY_CREATE] 납품 완료 - initial_stage: won")
                         else:
                             initial_stage = 'lead'  # 기본값
                     else:
                         # 취소됨 등 기타 상태
                         initial_stage = 'lead'  # 기본값
+                    
+                    logger.info(f"[OPPORTUNITY_CREATE] activity_type: {schedule.activity_type}, status: {schedule.status}, initial_stage: {initial_stage}")
                     
                     # 영업 기회 제목 생성 (일정 유형 기반)
                     activity_type_names = {
@@ -2169,13 +2204,15 @@ def schedule_edit_view(request, pk):
             # 기존 Opportunity가 있는지 먼저 확인
             existing_opportunity = None
             has_existing_opportunity = False
-            # 우선 schedule에 직접 연결된 opportunity가 있는지 확인
-            if getattr(updated_schedule, 'opportunity', None):
-                existing_opportunity = updated_schedule.opportunity
+            # 우선 원본 schedule에 직접 연결된 opportunity가 있는지 확인 (updated_schedule이 아닌 schedule 사용)
+            if getattr(schedule, 'opportunity', None):
+                existing_opportunity = schedule.opportunity
                 has_existing_opportunity = True
             else:
-                # FollowUp에 연결된 OpportunityTracking 중 첫 번째 항목을 조회
-                existing_opportunity = OpportunityTracking.objects.filter(followup=updated_schedule.followup).first()
+                # FollowUp에 연결된 OpportunityTracking 중 진행 중인 항목 조회 (lost 제외)
+                existing_opportunity = OpportunityTracking.objects.filter(
+                    followup=updated_schedule.followup
+                ).exclude(current_stage='lost').order_by('-created_at').first()
                 has_existing_opportunity = existing_opportunity is not None
             
             # Opportunity 생성/업데이트 조건 판단
@@ -5305,6 +5342,13 @@ def schedule_status_update_api(request, schedule_id):
         
         if new_status not in ['scheduled', 'completed', 'cancelled']:
             return JsonResponse({'error': '잘못된 상태값입니다.'}, status=400)
+        
+        # 견적 일정은 완료로 변경 불가 (취소만 가능)
+        if schedule.activity_type == 'quote' and new_status == 'completed':
+            logger.warning(f"❌ 견적 일정은 완료로 변경할 수 없습니다: Schedule ID {schedule_id}")
+            return JsonResponse({
+                'error': '견적 일정은 완료 상태로 변경할 수 없습니다. 견적은 취소만 가능합니다.'
+            }, status=400)
         
         old_status = schedule.status
         logger.info(f"🔄 상태 변경: {old_status} → {new_status}")
@@ -9454,14 +9498,45 @@ def funnel_dashboard_view(request):
     for stage in stage_breakdown:
         logger.info(f"  - {stage['stage']}: {stage['count']}건 (가중매출: {stage['weighted_value']:,}원)")
     
-    # 월별 예측
-    monthly_forecast = analytics.get_monthly_forecast(months=3, user=filter_user)
-    
     # 상위 영업 기회
     top_opportunities = analytics.get_top_opportunities(limit=10, user=filter_user)
     
     # 수주/실주 요약
     won_lost_summary = analytics.get_won_lost_summary(user=filter_user)
+    
+    # 견적 승패 분석 (올해 기준)
+    from django.utils import timezone
+    current_year = timezone.now().year
+    
+    quotes = Schedule.objects.filter(
+        activity_type='quote',
+        visit_date__year=current_year
+    )
+    
+    if filter_user:
+        quotes = quotes.filter(user=filter_user)
+    
+    quote_total = quotes.count()
+    quote_won = quotes.filter(status='completed').count()
+    quote_lost = quotes.filter(status='cancelled').count()
+    quote_pending = quotes.filter(status='scheduled').count()
+    
+    # 월별 견적 승패 (최근 12개월)
+    monthly_quote_stats = []
+    for i in range(11, -1, -1):
+        target_date = timezone.now() - timezone.timedelta(days=30*i)
+        month_quotes = quotes.filter(
+            visit_date__year=target_date.year,
+            visit_date__month=target_date.month
+        )
+        
+        monthly_quote_stats.append({
+            'month_name': f'{target_date.month}월',
+            'total': month_quotes.count(),
+            'won': month_quotes.filter(status='completed').count(),
+            'lost': month_quotes.filter(status='cancelled').count(),
+            'pending': month_quotes.filter(status='scheduled').count(),
+        })
     
     # 차트 데이터 (JSON)
     stage_chart_data = {
@@ -9471,10 +9546,11 @@ def funnel_dashboard_view(request):
         'colors': [s['color'] for s in stage_breakdown],
     }
     
-    forecast_chart_data = {
-        'labels': [f['month_name'] for f in monthly_forecast],
-        'expected': [float(f['expected']) for f in monthly_forecast],
-        'weighted': [float(f['weighted']) for f in monthly_forecast],
+    quote_chart_data = {
+        'labels': [s['month_name'] for s in monthly_quote_stats],
+        'won': [s['won'] for s in monthly_quote_stats],
+        'lost': [s['lost'] for s in monthly_quote_stats],
+        'pending': [s['pending'] for s in monthly_quote_stats],
     }
     
     # 사용자 목록 (Admin/Manager용)
@@ -9538,11 +9614,15 @@ def funnel_dashboard_view(request):
         'page_title': '펀넬 대시보드',
         'pipeline_summary': pipeline_summary,
         'stage_breakdown': stage_breakdown,
-        'monthly_forecast': monthly_forecast,
         'top_opportunities': top_opportunities,
         'won_lost_summary': won_lost_summary,
+        'quote_total': quote_total,
+        'quote_won': quote_won,
+        'quote_lost': quote_lost,
+        'quote_pending': quote_pending,
+        'current_year': current_year,
         'stage_chart_data': json.dumps(stage_chart_data, cls=DjangoJSONEncoder),
-        'forecast_chart_data': json.dumps(forecast_chart_data, cls=DjangoJSONEncoder),
+        'quote_chart_data': json.dumps(quote_chart_data, cls=DjangoJSONEncoder),
         'filter_user': filter_user,
         'users': accessible_users,
         'salesman_users': salesman_users,
@@ -9777,9 +9857,9 @@ def funnel_forecast_view(request):
     
     # 단계별 기여도 차트
     contribution_chart_data = {
-        'labels': [s['stage'] for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
-        'values': [float(s['weighted_value']) for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
-        'colors': [s['color'] for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+        'labels': [s['stage'] for s in stage_breakdown if s['stage_code'] not in ['won', 'quote_lost']],
+        'values': [float(s['weighted_value']) for s in stage_breakdown if s['stage_code'] not in ['won', 'quote_lost']],
+        'colors': [s['color'] for s in stage_breakdown if s['stage_code'] not in ['won', 'quote_lost']],
     }
     
     # 사용자 목록 (Admin/Manager용)
@@ -9789,7 +9869,7 @@ def funnel_forecast_view(request):
     context = {
         'page_title': '매출 예측',
         'monthly_forecast': monthly_forecast,
-        'stage_breakdown': [s for s in stage_breakdown if s['stage_code'] not in ['won', 'lost']],
+        'stage_breakdown': [s for s in stage_breakdown if s['stage_code'] not in ['won', 'quote_lost']],
         'forecast_chart_data': json.dumps(forecast_chart_data, cls=DjangoJSONEncoder),
         'contribution_chart_data': json.dumps(contribution_chart_data, cls=DjangoJSONEncoder),
         'filter_user': filter_user,
@@ -9957,10 +10037,21 @@ def followup_meetings_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 모든 미팅 일정 조회 (완료/예정 모두 포함)
+        # 해당 팔로우업의 미팅 일정 조회
+        # 조건: OpportunityTracking이 있고, current_stage가 'contact'인 미팅만 (아직 견적과 연결되지 않은 미팅)
+        from reporting.models import OpportunityTracking
+        
+        # contact 단계의 OpportunityTracking 찾기
+        contact_opportunities = OpportunityTracking.objects.filter(
+            followup=followup,
+            current_stage='contact'
+        ).values_list('id', flat=True)
+        
+        # 해당 OpportunityTracking과 연결된 미팅 일정 조회
         meeting_schedules = Schedule.objects.filter(
             followup=followup,
-            activity_type='customer_meeting'  # 'contact'가 아닌 'customer_meeting'
+            activity_type='customer_meeting',
+            opportunity_id__in=contact_opportunities
         ).select_related('opportunity').order_by('-visit_date', '-visit_time')
         
         if not meeting_schedules.exists():

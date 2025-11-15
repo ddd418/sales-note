@@ -284,10 +284,32 @@
             <div class="card funnel-card border-0">
                 <div class="card-body">
                     <h5 class="card-title">
-                        <i class="fas fa-chart-line"></i> 3개월 예측
+                        <i class="fas fa-file-invoice"></i> 견적 승패 현황 ({{ current_year }}년)
                     </h5>
-                    <div class="chart-container" style="height: 150px;">
-                        <canvas id="forecastMiniChart"></canvas>
+                    <div class="row text-center mt-4">
+                        <div class="col-4">
+                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                                {{ quote_total }}
+                            </h3>
+                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">전체</small>
+                        </div>
+                        <div class="col-4">
+                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #10b981 0%, #059669 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                                {{ quote_won }}
+                            </h3>
+                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">승</small>
+                        </div>
+                        <div class="col-4">
+                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                                {{ quote_lost }}
+                            </h3>
+                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">패</small>
+                        </div>
+                    </div>
+                    <div class="mt-4 p-3" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(251, 146, 60, 0.1) 100%); border-radius: 12px; border-left: 4px solid #f59e0b; cursor: pointer; transition: all 0.3s;" onclick="location.href='{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled'">
+                        <strong style="color: #2d3748;">처리 대기 중:</strong> 
+                        <span style="font-size: 1.3rem; font-weight: 700; color: #f59e0b;">{{ quote_pending }}건</span>
+                        <i class="fas fa-arrow-right" style="float: right; color: #f59e0b; margin-top: 0.5rem;"></i>
                     </div>
                 </div>
             </div>
@@ -451,43 +473,6 @@ new Chart(stageCtx, {
                 ticks: {
                     callback: function(value) {
                         return value.toLocaleString() + '원';
-                    }
-                }
-            }
-        }
-    }
-});
-
-// 3개월 예측 미니 차트
-const forecastData = {{ forecast_chart_data|safe }};
-const forecastCtx = document.getElementById('forecastMiniChart').getContext('2d');
-new Chart(forecastCtx, {
-    type: 'line',
-    data: {
-        labels: forecastData.labels,
-        datasets: [{
-            label: '가중 매출',
-            data: forecastData.weighted,
-            borderColor: '#667eea',
-            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-            tension: 0.4,
-            fill: true
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                display: false
-            }
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return (value / 1000000).toFixed(1) + 'M';
                     }
                 }
             }

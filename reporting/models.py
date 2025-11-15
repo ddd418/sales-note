@@ -541,10 +541,9 @@ class FunnelStage(models.Model):
         ('lead', '리드'),
         ('contact', '컨택'),
         ('quote', '견적'),
-        ('negotiation', '협상'),
         ('closing', '클로징'),
         ('won', '수주'),
-        ('lost', '실주'),
+        ('quote_lost', '견적실패'),
     ]
     
     name = models.CharField(max_length=20, choices=STAGE_CHOICES, unique=True, verbose_name="단계 코드")
@@ -614,8 +613,8 @@ class OpportunityTracking(models.Model):
         """단계 업데이트 및 이력 기록 (중간 단계 자동 채움)"""
         from datetime import date
         
-        # 단계 순서 정의
-        stage_order = ['lead', 'contact', 'quote', 'negotiation', 'closing', 'won', 'lost']
+        # 단계 순서 정의 (협상 단계 제거)
+        stage_order = ['lead', 'contact', 'quote', 'closing', 'won', 'quote_lost']
         
         try:
             current_index = stage_order.index(self.current_stage)
