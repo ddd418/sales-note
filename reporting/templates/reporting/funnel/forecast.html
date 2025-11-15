@@ -226,7 +226,7 @@
                     </div>
                 </div>
                 {% endif %}
-                <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% elif selected_user %}?user_id={{ selected_user.id }}{% endif %}" class="btn" 
+                <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% elif selected_user %}?user={{ selected_user.id }}{% endif %}" class="btn" 
                    style="background: white; color: #28a745; border: 2px solid white; border-radius: 12px; padding: 0.6rem 1.5rem; font-weight: 700;">
                     <i class="fas fa-chart-line"></i> 대시보드로
                 </a>

@@ -260,27 +260,9 @@
                     <h2 class="mb-0">
                         <i class="fas fa-columns text-primary"></i> 파이프라인 보드
                     </h2>
-                    <div class="d-flex gap-2">
-                        {% if salesman_users %}
-                        <div class="btn-group">
-                            <a href="?view_all=true" class="btn {% if view_all %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                                <i class="fas fa-users"></i> 전체보기
-                            </a>
-                            <button type="button" class="btn {% if selected_user %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" data-bs-toggle="dropdown">
-                                <i class="fas fa-user"></i> 
-                                {% if selected_user %}{{ selected_user.username }}{% else %}실무자 선택{% endif %}
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                {% for user in salesman_users %}
-                                <li><a class="dropdown-item {% if selected_user.id == user.id %}active{% endif %}" href="?user_id={{ user.id }}">{{ user.username }}</a></li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                        {% endif %}
-                        <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% elif selected_user %}?user_id={{ selected_user.id }}{% endif %}" class="btn btn-outline-secondary">
-                            <i class="fas fa-chart-line"></i> 대시보드
-                        </a>
-                    </div>
+                    <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% elif selected_user %}?user={{ selected_user.id }}{% endif %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-chart-line"></i> 대시보드
+                    </a>
                 </div>
             </div>
         </div>

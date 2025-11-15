@@ -800,51 +800,6 @@ html, body {
 {% endblock %}
 
 {% block content %}
-<!-- 매니저용 필터 헤더 -->
-{% if salesman_users %}
-<div class="container-fluid mb-4">
-  <div class="row align-items-center">
-    <div class="col-md-6">
-      <h2 class="page-title mb-0">
-        <i class="fas fa-chart-line"></i> 
-        {% if view_all %}
-          전체 팀 대시보드
-        {% elif selected_user %}
-          {{ selected_user.username }}님의 대시보드
-        {% else %}
-          대시보드
-        {% endif %}
-      </h2>
-    </div>
-    <div class="col-md-6 text-end">
-      <div class="btn-group shadow-sm">
-        <a href="?view_all=true" class="btn {% if view_all %}btn-primary{% else %}btn-outline-primary{% endif %}">
-          <i class="fas fa-users"></i> 전체보기
-        </a>
-        <button type="button" class="btn {% if not view_all and selected_user %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" data-bs-toggle="dropdown">
-          <i class="fas fa-user"></i> 
-          {% if selected_user and not view_all %}{{ selected_user.username }}{% else %}직원 선택{% endif %}
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          {% for user in salesman_users %}
-          <li>
-            <a class="dropdown-item {% if selected_user.id == user.id and not view_all %}active{% endif %}" 
-               href="?user_id={{ user.id }}">
-              <i class="fas fa-user-circle"></i> {{ user.username }}
-              {% if user.first_name or user.last_name %}
-                <small class="text-muted">({{ user.last_name }}{{ user.first_name }})</small>
-              {% endif %}
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-  </div>
-  <hr class="my-3">
-</div>
-{% endif %}
-
 <!-- 🎯 NEW: 인포그래픽 대시보드 -->
 <div class="infographic-dashboard">
   <!-- Hero Section: 오늘의 핵심 지표 -->
@@ -875,7 +830,7 @@ html, body {
 
     <!-- Quick Stats Grid -->
     <div class="quick-stats">
-      <a href="{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
+      <a href="{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
         <div class="quick-stat-icon bg-gradient-blue">
           <i class="fas fa-file-invoice"></i>
         </div>
@@ -885,7 +840,7 @@ html, body {
         </div>
       </a>
 
-      <a href="{% url 'reporting:schedule_list' %}?status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user_id={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
+      <a href="{% url 'reporting:schedule_list' %}?status=scheduled{% if view_all %}&view_all=true{% elif selected_user %}&user={{ selected_user.id }}{% endif %}" class="quick-stat" style="text-decoration: none; color: inherit;">
         <div class="quick-stat-icon bg-gradient-green">
           <i class="fas fa-calendar-check"></i>
         </div>
@@ -1540,6 +1495,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // 제품별 매출 차트
+{% if product_chart_data %}
 const productData = {{ product_chart_data|safe }};
 if (productData.labels && productData.labels.length > 0) {
   const productCtx = document.getElementById('productSalesChart');
@@ -1606,5 +1562,6 @@ if (productData.labels && productData.labels.length > 0) {
     });
   }
 }
+{% endif %}
 </script>
 {% endblock %}

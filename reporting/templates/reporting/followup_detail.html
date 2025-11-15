@@ -11,7 +11,7 @@
           {{ followup.customer_name|default:"고객명 미정" }} 고객 정보
         </h1>
         <div>
-          {% if user.userprofile.role != 'manager' %}
+          {% if user.is_authenticated and user.userprofile and user.userprofile.role != 'manager' %}
           <a
             href="{% url 'reporting:followup_edit' followup.pk %}"
             class="btn btn-primary me-2"
@@ -168,7 +168,8 @@
         <div class="card-header bg-white">
           <div class="d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">
-              <i class="fas fa-history me-2"></i>관련 활동 히스토리
+              <i class="fas fa-history me-2"></i>같은 부서 활동 히스토리
+              <small class="text-muted">({{ followup.company }} - {{ followup.department }})</small>
             </h5>
             <div>
               <a
@@ -196,7 +197,12 @@
                 <div
                   class="d-flex justify-content-between align-items-start mb-2"
                 >
-                  <h6 class="mb-0">{{ history.get_action_type_display }}</h6>
+                  <div>
+                    <h6 class="mb-0">
+                      {{ history.get_action_type_display }}
+                      <small class="text-muted">- {{ history.followup.customer_name }}</small>
+                    </h6>
+                  </div>
                   <small class="text-muted"
                     >{{ history.created_at|date:"m-d H:i" }}</small
                   >

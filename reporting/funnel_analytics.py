@@ -105,7 +105,7 @@ class FunnelAnalytics:
     @staticmethod
     def get_conversion_rates(user=None):
         """단계별 전환율 (SQLite 호환)"""
-        stages = ['lead', 'contact', 'quote', 'negotiation', 'closing', 'won']
+        stages = ['lead', 'contact', 'quote', 'closing', 'won']
         rates = []
         
         for i in range(len(stages) - 1):

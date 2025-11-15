@@ -106,52 +106,7 @@
         class="page-header d-flex justify-content-between align-items-center mb-4"
       >        <h1 class="page-title mb-0">
           <i class="fas fa-calendar-alt me-2"></i>{{ page_title }}
-        </h1>        {% if user.is_authenticated %}
-        {% if user.userprofile.role == 'manager' %}
-        <!-- 매니저용 데이터 보기 드롭다운 -->
-        <div class="btn-group">
-          <button
-            type="button"
-            class="btn btn-outline-primary dropdown-toggle"
-            data-bs-toggle="dropdown"
-          >
-            <i class="fas fa-eye me-1"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-          </button>
-          <ul class="dropdown-menu">
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-user me-2"></i>고객 관리
-              </a>
-            </li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-calendar me-2"></i>일정 관리
-              </a>
-            </li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-history me-2"></i>활동 기록
-              </a>
-            </li>
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-              </a>
-            </li>            {% if selected_user %}
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-              <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
-                <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
-              </a>
-            </li>
-            {% endif %}
-          </ul>
-        </div>
-        {% else %}
-        <!-- 캘린더에서만 일정 추가 가능 -->
-        {% endif %}
-        {% endif %}
+        </h1>
       </div>      <!-- 필터링 버튼 섹션 -->
       
       <!-- 메인 컨텐츠 영역 -->

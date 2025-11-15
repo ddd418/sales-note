@@ -443,7 +443,7 @@
       <div class="row mb-4 d-none d-md-flex">
         <!-- 펀넬 분석 카드 -->
         <div class="col-lg-3 col-md-6 mb-3">
-          <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% else %}?user_id={{ selected_user.id }}{% endif %}" class="text-decoration-none">
+          <a href="{% url 'reporting:funnel_dashboard' %}{% if view_all %}?view_all=true{% else %}?user={{ selected_user.id }}{% endif %}" class="text-decoration-none">
             <div class="card text-white card-hover" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
               <div class="card-body">
                 <div class="d-flex align-items-center">

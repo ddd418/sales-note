@@ -11,6 +11,9 @@
     padding: 1.5rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     transition: transform 0.3s, box-shadow 0.3s;
+    height: 100%;
+    display: flex;
+    align-items: center;
   }
 
   .stats-card:hover {
@@ -26,6 +29,12 @@
     align-items: center;
     justify-content: center;
     font-size: 1.75rem;
+    flex-shrink: 0;
+  }
+
+  .stats-card h3 {
+    font-size: clamp(1rem, 2vw, 1.5rem);
+    word-break: keep-all;
   }
 
   .filter-card {
@@ -199,9 +208,11 @@
             <a href="{% url 'reporting:prepayment_list_excel' %}" class="btn btn-success">
                 <i class="fas fa-file-excel"></i> 엑셀 다운로드
             </a>
+            {% if user.userprofile.role != 'manager' %}
             <a href="{% url 'reporting:prepayment_create' %}" class="btn-create">
                 <i class="fas fa-plus"></i> 선결제 등록
             </a>
+            {% endif %}
         </div>
         </a>
     </div>

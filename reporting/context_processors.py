@@ -17,6 +17,11 @@ def manager_filter_context(request):
                 from django.contrib.auth.models import User
                 from reporting.models import UserProfile
                 
+                # URL 파라미터로 사용자 선택 시 세션에 저장
+                user_filter = request.GET.get('user')
+                if user_filter:
+                    request.session['manager_selected_user'] = user_filter
+                
                 # 같은 회사의 실무자(salesman) 목록
                 accessible_salesmen = User.objects.filter(
                     userprofile__company=user_profile.company,
@@ -24,6 +29,10 @@ def manager_filter_context(request):
                 ).select_related('userprofile').order_by('username')
                 
                 context['accessible_salesmen'] = accessible_salesmen
+                
+                # 세션에 저장된 선택 사용자가 있으면 컨텍스트에 추가
+                if 'manager_selected_user' in request.session:
+                    context['manager_selected_user_id'] = request.session['manager_selected_user']
         except:
             pass
     

@@ -146,26 +146,6 @@
                 </h1>
                 <p class="mb-0 opacity-90">영업 파이프라인 전체 현황을 한눈에 확인하세요</p>
             </div>
-            {% if salesman_users %}
-            <div class="filter-btn-group">
-                <div class="btn-group">
-                    <a href="?view_all=true" class="btn {% if view_all %}btn-primary{% else %}btn-light{% endif %}" style="font-weight: 600;">
-                        <i class="fas fa-users"></i> 전체보기
-                    </a>
-                    <button type="button" class="btn {% if selected_user %}btn-primary{% else %}btn-light{% endif %} dropdown-toggle" data-bs-toggle="dropdown" style="font-weight: 600;">
-                        <i class="fas fa-user"></i> 
-                        {% if selected_user %}{{ selected_user.username }}{% else %}실무자 선택{% endif %}
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        {% for user in salesman_users %}
-                        <li><a class="dropdown-item {% if selected_user.id == user.id %}active{% endif %}" href="?user_id={{ user.id }}">
-                            <i class="fas fa-user me-2"></i>{{ user.username }}
-                        </a></li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
 

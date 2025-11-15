@@ -700,14 +700,22 @@ def followup_detail_view(request, pk):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:followup_list')
     
-    # 관련 히스토리 조회 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
+    # 같은 업체-부서의 모든 팔로우업 찾기
+    same_department_followups = FollowUp.objects.filter(
+        company=followup.company,
+        department=followup.department
+    ).values_list('id', flat=True)
+    
+    # 같은 부서의 모든 히스토리 조회 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
     from django.db.models import Case, When, F
-    related_histories = History.objects.filter(followup=followup).annotate(
+    related_histories = History.objects.filter(
+        followup_id__in=same_department_followups
+    ).select_related('followup', 'schedule').annotate(
         sort_date=Case(
             When(schedule__isnull=False, then=F('schedule__visit_date')),
             default=F('created_at__date')
         )
-    ).order_by('-sort_date', '-created_at')[:10]
+    ).order_by('-sort_date', '-created_at')[:20]
     
     context = {
         'followup': followup,
@@ -810,18 +818,31 @@ def dashboard_view(request):
     user_filter = request.GET.get('user')
     selected_user = None
     
-    if user_filter and user_profile.can_view_all_users():
-        try:
-            selected_user = User.objects.get(id=user_filter)
-            target_user = selected_user
-        except (User.DoesNotExist, ValueError):
+    if user_profile.can_view_all_users():
+        # user_filter가 없으면 세션에서 가져오기
+        if not user_filter:
+            user_filter = request.session.get('selected_user_id')
+        
+        if user_filter:
+            try:
+                selected_user = User.objects.get(id=user_filter)
+                target_user = selected_user
+                # 세션에 저장
+                request.session['selected_user_id'] = str(user_filter)
+            except (User.DoesNotExist, ValueError):
+                target_user = request.user
+                # 잘못된 세션 값 제거
+                if 'selected_user_id' in request.session:
+                    del request.session['selected_user_id']
+        else:
             target_user = request.user
     else:
         target_user = request.user
     
-    # Manager인 경우 특정 사용자가 지정되지 않았다면 Manager 대시보드로 리디렉션
-    if user_profile.is_manager() and not selected_user:
-        return redirect('reporting:manager_dashboard')
+    # 매니저용 팀원 목록
+    salesman_users = []
+    if user_profile.can_view_all_users():
+        salesman_users = get_accessible_users(request.user)
     
     # 현재 연도와 월 가져오기
     now = timezone.now()
@@ -1060,18 +1081,12 @@ def dashboard_view(request):
     # Prepayment 모델 명시적 import
     from .models import Prepayment
     
-    # 이번 달 선결제 건수 (새로 등록된 선결제)
-    if user_profile.is_admin():
-        monthly_prepayment_count = Prepayment.objects.filter(
-            created_at__gte=month_start,
-            created_at__lt=month_end
-        ).count()
-    else:
-        monthly_prepayment_count = Prepayment.objects.filter(
-            created_by=target_user,
-            created_at__gte=month_start,
-            created_at__lt=month_end
-        ).count()
+    # 이번 달 선결제 건수 (새로 등록된 선결제) - 등록자 본인만
+    monthly_prepayment_count = Prepayment.objects.filter(
+        created_by=target_user,
+        created_at__gte=month_start,
+        created_at__lt=month_end
+    ).count()
     
     # 이번 달 서비스 수 (완료된 것만)
     monthly_services = histories.filter(
@@ -1386,6 +1401,8 @@ def dashboard_view(request):
         'current_year': current_year,  # 현재 연도 정보 추가
         'selected_user': selected_user,  # 선택된 사용자 정보
         'target_user': target_user,  # 실제 대상 사용자
+        'salesman_users': salesman_users,  # 매니저용 실무자 목록
+        'view_all': False,  # 현재 전체보기 기능은 미사용
         'followup_count': followup_count,
         'schedule_count': schedule_count,
         'sales_record_count': sales_record_count,
@@ -1428,14 +1445,8 @@ def dashboard_view(request):
     from reporting.models import Prepayment
     from decimal import Decimal
     
-    if user_profile.is_admin() and not selected_user:
-        # Admin은 모든 선결제 조회
-        prepayments = Prepayment.objects.all()
-    else:
-        # 특정 사용자의 선결제만 조회
-        prepayments = Prepayment.objects.filter(
-            customer__user=target_user
-        )
+    # 선결제 조회 - 등록자 본인만 (Manager도 자신이 등록한 것만)
+    prepayments = Prepayment.objects.filter(created_by=target_user)
     
     # 선결제 통계 계산
     prepayment_total = prepayments.aggregate(
@@ -4099,32 +4110,48 @@ def manager_user_create(request):
     
     if request.method == 'POST':
         form = ManagerUserCreationForm(request.POST)
+        
         if form.is_valid():
             # 사용자명 중복 체크
             username = form.cleaned_data['username']
             if User.objects.filter(username=username).exists():
+                form.add_error('username', f'사용자명 "{username}"은(는) 이미 사용 중입니다.')
                 messages.error(request, f'사용자명 "{username}"은(는) 이미 사용 중입니다.')
-                return render(request, 'reporting/manager_user_create.html', {'form': form, 'page_title': f'실무자 계정 생성 - {manager_company.name}', 'company_name': manager_company.name})
+                context = {
+                    'form': form,
+                    'page_title': f'실무자 계정 생성 - {manager_company.name}',
+                    'company_name': manager_company.name
+                }
+                return render(request, 'reporting/manager_user_create.html', context)
             
-            # 사용자 생성
-            user = User.objects.create_user(
-                username=username,
-                password=form.cleaned_data['password1'],
-                first_name=form.cleaned_data['first_name'],
-                last_name=form.cleaned_data['last_name']
-            )
-            
-            # 사용자 프로필 생성 (매니저와 같은 회사로 자동 설정)
-            UserProfile.objects.create(
-                user=user,
-                company=manager_company,  # 매니저와 같은 회사
-                role='salesman',  # 매니저는 실무자만 생성 가능
-                can_download_excel=form.cleaned_data['can_download_excel'],
-                created_by=request.user  # 생성자 기록
-            )
-            
-            messages.success(request, f'실무자 계정 "{user.username}"이(가) {manager_company.name}에 성공적으로 생성되었습니다.')
-            return redirect('reporting:manager_user_list')
+            try:
+                # 사용자 생성
+                user = User.objects.create_user(
+                    username=username,
+                    password=form.cleaned_data['password1'],
+                    first_name=form.cleaned_data['first_name'],
+                    last_name=form.cleaned_data['last_name']
+                )
+                
+                # 사용자 프로필 생성 (매니저와 같은 회사로 자동 설정)
+                UserProfile.objects.create(
+                    user=user,
+                    company=manager_company,  # 매니저와 같은 회사
+                    role='salesman',  # 매니저는 실무자만 생성 가능
+                    can_download_excel=form.cleaned_data['can_download_excel'],
+                    created_by=request.user  # 생성자 기록
+                )
+                
+                messages.success(request, f'실무자 계정 "{user.username}"이(가) {manager_company.name}에 성공적으로 생성되었습니다.')
+                return redirect('reporting:manager_user_list')
+            except Exception as e:
+                messages.error(request, f'사용자 생성 중 오류가 발생했습니다: {str(e)}')
+                context = {
+                    'form': form,
+                    'page_title': f'실무자 계정 생성 - {manager_company.name}',
+                    'company_name': manager_company.name
+                }
+                return render(request, 'reporting/manager_user_create.html', context)
     else:
         form = ManagerUserCreationForm()
     
@@ -4207,52 +4234,15 @@ def manager_user_edit(request, user_id):
 @role_required(['manager'])
 @never_cache
 def manager_dashboard(request):
-    """Manager 전용 대시보드 - 실무자 대시보드와 동일한 UI 사용"""
-    from django.db.models import Count, Sum, Avg
-    from django.utils import timezone
-    from datetime import datetime, timedelta
-    import calendar
+    """Manager 전용 대시보드 - dashboard_view로 리다이렉트"""
+    from django.shortcuts import redirect
     
-    # URL 파라미터 처리
-    selected_user_id = request.GET.get('user_id')
-    view_all = request.GET.get('view_all') == 'true'
-    
-    # 접근 가능한 Salesman 목록
-    accessible_users = get_accessible_users(request.user)
-    salesman_users = accessible_users.filter(userprofile__role='salesman')
-    
-    # 보안 체크
-    if not hasattr(request.user, 'userprofile') or not request.user.userprofile.company:
-        context = {
-            'error_message': '회사 정보가 없어 접근할 수 없습니다.',
-            'page_title': 'Manager 대시보드'
-        }
-        return render(request, 'reporting/dashboard.html', context)
-    
-    if not salesman_users.exists():
-        context = {
-            'no_salesmen': True,
-            'page_title': 'Manager 대시보드'
-        }
-        return render(request, 'reporting/dashboard.html', context)
-    
-    # 대상 사용자 결정
-    if view_all:
-        # 전체보기: 같은 회사 모든 Salesman의 데이터
-        target_users = salesman_users
-        target_user = None  # 개별 사용자 없음
-    elif selected_user_id:
-        # 특정 사용자 선택
-        try:
-            target_user = salesman_users.get(id=selected_user_id)
-            target_users = None
-        except User.DoesNotExist:
-            target_user = salesman_users.first()
-            target_users = None
+    # user_id 파라미터가 있으면 그대로 전달, 없으면 기본 대시보드로
+    user_id = request.GET.get('user_id')
+    if user_id:
+        return redirect(f"{reverse('reporting:dashboard')}?user={user_id}")
     else:
-        # 기본값: 첫 번째 salesman
-        target_user = salesman_users.first()
-        target_users = None
+        return redirect('reporting:dashboard')
     
     # 현재 시간
     now = timezone.now()
@@ -4531,8 +4521,12 @@ def manager_dashboard(request):
     scheduled_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
     completed_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='completed').count()
     
-    logger.info(f"[매니저 대시보드 펀넬] 선택된 사용자: {selected_user.username if selected_user else '전체'}")
+    logger.info(f"[매니저 대시보드 펀넬] 선택된 사용자: {target_user.username if target_user else '전체'}")
     logger.info(f"[매니저 대시보드 펀넬] 미팅: {meeting_count_mgr}, 견적: {quote_count_mgr}, 발주예정: {scheduled_delivery_count_mgr}, 납품완료: {completed_delivery_count_mgr}")
+    
+    # 전환율 계산
+    meeting_to_delivery_rate = (completed_delivery_count_mgr / meeting_count_mgr * 100) if meeting_count_mgr > 0 else 0
+    quote_to_delivery_rate = (completed_delivery_count_mgr / quote_count_mgr * 100) if quote_count_mgr > 0 else 0
     
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
@@ -4756,13 +4750,10 @@ def manager_dashboard(request):
         
         current_date += timedelta(days=1)
     
-    # 선결제 통계
+    # 선결제 통계 - 등록자 본인만 (Manager도 자신이 등록한 것만)
     from decimal import Decimal
     
-    if view_all:
-        prepayments = Prepayment.objects.filter(customer__user__in=target_users)
-    else:
-        prepayments = Prepayment.objects.filter(customer__user=target_user)
+    prepayments = Prepayment.objects.filter(created_by=target_user)
     
     prepayment_aggregate = prepayments.aggregate(
         total_amount=Sum('amount'),
@@ -4801,6 +4792,8 @@ def manager_dashboard(request):
         'monthly_meetings': monthly_meetings,
         'monthly_services': monthly_services,
         'conversion_rate': conversion_rate,
+        'meeting_to_delivery_rate': meeting_to_delivery_rate,
+        'quote_to_delivery_rate': quote_to_delivery_rate,
         'avg_deal_size': avg_deal_size,
         'monthly_revenue_data': json.dumps(monthly_revenue_data, cls=DjangoJSONEncoder),
         'monthly_revenue_labels': json.dumps(monthly_revenue_labels, cls=DjangoJSONEncoder),
@@ -7462,22 +7455,47 @@ def customer_report_view(request):
     
     user_profile = get_user_profile(request.user)
     
-    # 권한에 따른 데이터 필터링
+    # 담당자 필터링 (Manager만)
+    user_filter = request.GET.get('user')
+    users = []
+    selected_user = None
+    target_user = request.user  # 기본은 본인
+    
     if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user)
+        # user_filter가 없으면 세션에서 가져오기
+        if not user_filter:
+            user_filter = request.session.get('selected_user_id')
         
-        # Admin이 아니고 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
-        if not getattr(request, 'is_admin', False) and not getattr(request, 'is_hanagwahak', False):
+        if user_filter:
+            # Manager가 특정 팀원을 선택한 경우
+            accessible_users = get_accessible_users(request.user)
+            try:
+                selected_user = accessible_users.get(id=user_filter)
+                target_user = selected_user
+                # 세션에 저장
+                request.session['selected_user_id'] = str(user_filter)
+            except User.DoesNotExist:
+                target_user = request.user
+                # 잘못된 세션 값 제거
+                if 'selected_user_id' in request.session:
+                    del request.session['selected_user_id']
+        else:
+            # user_filter가 명시적으로 없으면(초기화) 세션도 제거
+            if 'selected_user_id' in request.session:
+                del request.session['selected_user_id']
+    
+    # 모든 고객 조회 (담당자 무관)
+    followups = FollowUp.objects.all()
+    
+    # Manager용 팀원 목록
+    if user_profile.can_view_all_users():
+        accessible_users_list = get_accessible_users(request.user)
+        if not getattr(request, 'is_hanagwahak', False):
             user_profile_obj = getattr(request.user, 'userprofile', None)
             if user_profile_obj and user_profile_obj.company:
                 same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
-                accessible_users = accessible_users.filter(id__in=same_company_users.values_list('id', flat=True))
-        
-        followups = FollowUp.objects.filter(user__in=accessible_users)
-    else:
-        # Salesman은 자신의 데이터만 조회
-        followups = FollowUp.objects.filter(user=request.user)
+                accessible_users_list = accessible_users_list.filter(id__in=same_company_users.values_list('id', flat=True))
+        users = accessible_users_list.filter(followup__isnull=False).distinct()
     
     # 검색 기능
     search_query = request.GET.get('search')
@@ -7488,57 +7506,34 @@ def customer_report_view(request):
             Q(manager__icontains=search_query)
         )
     
-    # 담당자 필터링 (매니저/어드민만)
-    user_filter = request.GET.get('user')
-    users = []
-    selected_user = None
-    
-    if user_profile.can_view_all_users():
-        accessible_users_list = get_accessible_users(request.user)
-        
-        # 하나과학이 아닌 경우 같은 회사의 사용자만 필터링
-        if not getattr(request, 'is_hanagwahak', False):
-            user_profile_obj = getattr(request.user, 'userprofile', None)
-            if user_profile_obj and user_profile_obj.company:
-                same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
-                accessible_users_list = accessible_users_list.filter(id__in=same_company_users.values_list('id', flat=True))
-        
-        users = accessible_users_list.filter(followup__isnull=False).distinct()
-        
-        if user_filter:
-            try:
-                candidate_user = User.objects.get(id=user_filter)
-                if candidate_user in accessible_users_list:
-                    selected_user = candidate_user
-                    followups = followups.filter(user=candidate_user)
-            except (User.DoesNotExist, ValueError):
-                pass
-    
-    # 각 고객별 통계 수동 계산
+    # 각 고객별 통계 수동 계산 - target_user가 등록한 활동만
     followups_with_stats = []
     total_amount_sum = Decimal('0')
     total_meetings_sum = 0
     total_deliveries_sum = 0
     total_unpaid_sum = 0
+    prepayment_customers = set()  # 선결제가 있는 고객 ID 집합
     
     for followup in followups.select_related('user', 'company', 'department'):
-        # History 기반 통계
-        histories = History.objects.filter(followup=followup)
+        # History 기반 통계 - target_user가 등록한 것만
+        histories = History.objects.filter(followup=followup, user=target_user)
         meetings = histories.filter(action_type='customer_meeting').count()
         delivery_histories = histories.filter(action_type='delivery_schedule')
         deliveries = delivery_histories.count()
         history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or Decimal('0')
         unpaid = delivery_histories.filter(tax_invoice_issued=False).count()
         
-        # Schedule DeliveryItem 기반 통계
+        # Schedule DeliveryItem 기반 통계 - target_user가 등록한 것만
         schedule_deliveries = Schedule.objects.filter(
             followup=followup,
+            user=target_user,
             activity_type='delivery',
             delivery_items_set__isnull=False
         ).distinct()
         schedule_delivery_count = schedule_deliveries.count()
         schedule_amount = DeliveryItem.objects.filter(
             schedule__followup=followup,
+            schedule__user=target_user,
             schedule__activity_type='delivery'
         ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
         
@@ -7566,6 +7561,7 @@ def customer_report_view(request):
         # 3. Schedule DeliveryItem 세금계산서 현황 (History 연결 여부로 구분)
         schedule_deliveries_all = Schedule.objects.filter(
             followup=followup,
+            user=target_user,
             activity_type='delivery'
         )
         
@@ -7612,11 +7608,18 @@ def customer_report_view(request):
         total_amount = history_amount + schedule_amount
         last_contact = histories.aggregate(last=Max('created_at'))['last']
         
-        # 선결제 통계 계산
-        prepayments = Prepayment.objects.filter(customer=followup)
+        # 선결제 통계 계산 - target_user가 등록한 선결제만
+        prepayments = Prepayment.objects.filter(
+            customer=followup,
+            created_by=target_user
+        ).select_related('created_by')
+        
         prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or Decimal('0')
         prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or Decimal('0')
         prepayment_count = prepayments.count()
+        
+        # 선결제 등록자 정보 (중복 제거)
+        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in prepayments])) if prepayment_count > 0 else []
         
         # 객체에 통계 추가
         followup.total_meetings = total_meetings_count
@@ -7629,18 +7632,46 @@ def customer_report_view(request):
         followup.prepayment_total = prepayment_total  # 선결제 총액
         followup.prepayment_balance = prepayment_balance  # 선결제 잔액
         followup.prepayment_count = prepayment_count  # 선결제 건수
+        followup.prepayment_creators = ', '.join(prepayment_creators) if prepayment_creators else ''  # 선결제 등록자
         
-        followups_with_stats.append(followup)
-        
-        # 전체 통계 누적
-        total_amount_sum += total_amount
-        total_meetings_sum += total_meetings_count
-        total_deliveries_sum += total_deliveries_count
-        total_unpaid_sum += total_tax_pending  # 세금계산서 미발행 건수로 변경
+        # target_user의 활동이 하나라도 있는 경우만 추가 (미팅, 납품, 선결제)
+        if total_meetings_count > 0 or total_deliveries_count > 0 or prepayment_count > 0:
+            followups_with_stats.append(followup)
+            
+            # 전체 통계 누적
+            total_amount_sum += total_amount
+            total_meetings_sum += total_meetings_count
+            total_deliveries_sum += total_deliveries_count
+            total_unpaid_sum += total_tax_pending  # 세금계산서 미발행 건수로 변경
+            if prepayment_count > 0:
+                prepayment_customers.add(followup.id)  # 선결제가 있는 고객 추가
     
-    # 최근 접촉일 기준으로 정렬
+    # 정렬 처리 - 기본값: 총 납품 금액 내림차순
+    sort_by = request.GET.get('sort', 'amount')
+    sort_order = request.GET.get('order', 'desc')
+    
     from django.utils import timezone
-    followups_with_stats.sort(key=lambda x: x.last_contact or timezone.now().replace(year=1900), reverse=True)
+    
+    # 정렬 키 매핑
+    sort_key_map = {
+        'customer_name': lambda x: (x.customer_name or '').lower(),
+        'company': lambda x: (x.company.name if x.company else '').lower(),
+        'meetings': lambda x: x.total_meetings,
+        'deliveries': lambda x: x.total_deliveries,
+        'amount': lambda x: x.total_amount,
+        'unpaid': lambda x: x.unpaid_count,
+        'last_contact': lambda x: x.last_contact or timezone.now().replace(year=1900),
+    }
+    
+    # 정렬 키가 유효한지 확인
+    if sort_by in sort_key_map:
+        followups_with_stats.sort(
+            key=sort_key_map[sort_by],
+            reverse=(sort_order == 'desc')
+        )
+    else:
+        # 기본 정렬: 총 납품 금액 기준
+        followups_with_stats.sort(key=lambda x: x.total_amount, reverse=True)
     
     # 페이지네이션 추가
     from django.core.paginator import Paginator
@@ -7656,6 +7687,9 @@ def customer_report_view(request):
         'total_meetings_sum': total_meetings_sum,
         'total_deliveries_sum': total_deliveries_sum,
         'total_unpaid_sum': total_unpaid_sum,
+        'total_prepayment_customers': len(prepayment_customers),  # 선결제 고객 수
+        'sort_by': sort_by,
+        'sort_order': sort_order,
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,
@@ -8601,8 +8635,11 @@ def customer_detail_report_view_simple(request, followup_id):
         elif delivery_has_pending_items:
             integrated_tax_pending += 1
 
-    # 선결제 통계 계산
-    prepayments = Prepayment.objects.filter(customer=followup)
+    # 선결제 통계 계산 - 해당 고객에 등록된 모든 선결제
+    prepayments = Prepayment.objects.filter(
+        customer=followup
+    )
+    
     prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or 0
     prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or 0
     prepayment_count = prepayments.count()
@@ -10414,9 +10451,24 @@ def prepayment_customer_view(request, customer_id):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:prepayment_list')
     
-    # 해당 고객의 모든 선결제 조회 (결제일 오래된 순)
+    # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
+    user_profile = get_user_profile(request.user)
+    target_user = request.user
+    
+    if user_profile.can_view_all_users():
+        user_filter = request.session.get('selected_user_id')
+        if user_filter:
+            from django.contrib.auth.models import User
+            accessible_users = get_accessible_users(request.user)
+            try:
+                target_user = accessible_users.get(id=user_filter)
+            except User.DoesNotExist:
+                target_user = request.user
+    
+    # 해당 고객의 선결제 조회 - target_user가 등록한 것만
     prepayments = Prepayment.objects.filter(
-        customer=customer
+        customer=customer,
+        created_by=target_user
     ).select_related('company', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     
     # 각 선결제의 사용금액 계산
@@ -10470,9 +10522,24 @@ def prepayment_customer_excel(request, customer_id):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:prepayment_list')
     
-    # 해당 고객의 모든 선결제 조회 (결제일 오래된 순)
+    # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
+    user_profile = get_user_profile(request.user)
+    target_user = request.user
+    
+    if user_profile.can_view_all_users():
+        user_filter = request.session.get('selected_user_id')
+        if user_filter:
+            from django.contrib.auth.models import User
+            accessible_users = get_accessible_users(request.user)
+            try:
+                target_user = accessible_users.get(id=user_filter)
+            except User.DoesNotExist:
+                target_user = request.user
+    
+    # 해당 고객의 선결제 조회 - target_user가 등록한 것만
     prepayments = Prepayment.objects.filter(
-        customer=customer
+        customer=customer,
+        created_by=target_user
     ).select_related('company', 'created_by').prefetch_related(
         'usages__schedule__delivery_items_set'
     ).order_by('payment_date', 'id')
@@ -10776,22 +10843,10 @@ def prepayment_list_excel(request):
     from django.http import HttpResponse
     from datetime import datetime
     
-    # 권한 체크 및 데이터 필터링
-    user_profile = get_user_profile(request.user)
-    
-    if user_profile and user_profile.role == 'admin':
-        # Admin은 모든 선결제 조회
-        prepayments = Prepayment.objects.all()
-    else:
-        # 같은 회사의 선결제만 조회
-        from reporting.models import UserProfile
-        same_company_users = UserProfile.objects.filter(
-            company=user_profile.company
-        ).values_list('user_id', flat=True)
-        
-        prepayments = Prepayment.objects.filter(
-            customer__user_id__in=same_company_users
-        )
+    # 권한 체크 및 데이터 필터링 - 등록자 본인만 (Manager도 자신이 등록한 것만)
+    prepayments = Prepayment.objects.filter(
+        created_by=request.user
+    )
     
     prepayments = prepayments.select_related(
         'customer', 'company', 'created_by'
@@ -10955,11 +11010,13 @@ def prepayment_api_list(request):
         return JsonResponse({'prepayments': []})
     
     try:
+        # 해당 고객의 선결제 중 담당자가 등록한 것만
         prepayments = Prepayment.objects.filter(
             customer_id=customer_id,
+            created_by__id=FollowUp.objects.get(id=customer_id).user_id,
             status='active',
             balance__gt=0
-        ).order_by('id')  # 등록 순서대로 (먼저 등록한 것이 위로)
+        ).order_by('id')
         
         prepayments_data = [{
             'id': p.id,

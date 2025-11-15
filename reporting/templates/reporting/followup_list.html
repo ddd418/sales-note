@@ -726,44 +726,8 @@
             <div class="followup-header-actions">
                 {% if user.is_authenticated %}
                 {% if user.userprofile.role == 'manager' %}
-                <!-- 매니저용 데이터 보기 드롭다운 및 엑셀 다운로드 -->
+                <!-- 매니저용 엑셀 다운로드 -->
                 <div class="btn-group" role="group">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-premium-white dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-eye me-2"></i>{% if selected_user %}{{ selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-                        </button>
-            <ul class="dropdown-menu">
-              <li>
-                <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                  <i class="fas fa-user me-2"></i>고객 관리
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                  <i class="fas fa-calendar me-2"></i>일정 관리
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                  <i class="fas fa-history me-2"></i>활동 기록
-                </a>
-              </li>
-              <li><hr class="dropdown-divider" /></li>
-              <li>
-                <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                  <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-                </a>
-              </li>            {% if selected_user %}
-              <li><hr class="dropdown-divider" /></li>
-              <li>
-                <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
-                  <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
-                </a>
-              </li>
-              {% endif %}
-            </ul>
-          </div>
-          
           <!-- 매니저용 엑셀 다운로드 드롭다운 -->
           {% if user_profile.can_excel_download %}
           <div class="btn-group">
@@ -1010,6 +974,7 @@
                 >
                   <i class="fas fa-eye me-1"></i>상세
                 </a>
+                {% if user.userprofile.role != 'manager' %}
                 <a
                   href="{% url 'reporting:followup_edit' followup.pk %}"
                   class="btn btn-outline-secondary btn-sm"
@@ -1022,6 +987,7 @@
                 >
                   <i class="fas fa-trash me-1"></i>삭제
                 </a>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -1095,8 +1061,9 @@
               {% endif %}
               
               <!-- 페이지 번호들 -->
-              {% for num in followups.paginator.page_range %}
-                {% if followups.number|add:'-5' <= num <= followups.number|add:'5' %}
+              {% if followups.paginator.num_pages <= 5 %}
+                <!-- 전체 페이지가 5개 이하면 모두 표시 -->
+                {% for num in followups.paginator.page_range %}
                   {% if num == followups.number %}
                   <li class="page-item active">
                     <span class="page-link">{{ num }}</span>
@@ -1106,8 +1073,31 @@
                     <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if company_filter %}company={{ company_filter }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ num }}">{{ num }}</a>
                   </li>
                   {% endif %}
+                {% endfor %}
+              {% else %}
+                <!-- 전체 페이지가 5개 초과면 1~5만 표시 -->
+                {% for num in followups.paginator.page_range %}
+                  {% if num <= 5 %}
+                    {% if num == followups.number %}
+                    <li class="page-item active">
+                      <span class="page-link">{{ num }}</span>
+                    </li>
+                    {% else %}
+                    <li class="page-item">
+                      <a class="page-link" href="?{% if search_query %}search={{ search_query }}&{% endif %}{% if company_filter %}company={{ company_filter }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if user_filter %}user={{ user_filter }}&{% endif %}page={{ num }}">{{ num }}</a>
+                    </li>
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+                {% if followups.number > 5 %}
+                  <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                  </li>
+                  <li class="page-item active">
+                    <span class="page-link">{{ followups.number }}</span>
+                  </li>
                 {% endif %}
-              {% endfor %}
+              {% endif %}
               
               <!-- 다음 페이지 -->
               {% if followups.has_next %}

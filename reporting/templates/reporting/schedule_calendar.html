@@ -933,47 +933,6 @@
       </div>
       <div>
         {% if user.is_authenticated %}
-          {% if user.userprofile.role == 'manager' %}
-            <!-- 매니저용 데이터 보기 드롭다운 -->
-            <div class="btn-group">
-              <button type="button" class="btn btn-premium-white dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="fas fa-eye me-2"></i>{% if selected_user %}{{selected_user.username }} 데이터 보기{% else %}데이터 보기{% endif %}
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:followup_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-user me-2"></i>고객 관리
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:schedule_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-calendar me-2"></i>일정 관리
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-history me-2"></i>활동 기록
-                  </a>
-                </li>
-                <li><hr class="dropdown-divider" /></li>
-                <li>
-                  <a class="dropdown-item" href="{% url 'reporting:schedule_calendar' %}{% if user_filter %}?user={{ user_filter }}{% endif %}">
-                    <i class="fas fa-calendar-alt me-2"></i>일정 캘린더
-                  </a>
-                </li>
-                {% if selected_user %}
-                  <li><hr class="dropdown-divider" /></li>
-                  <li>
-                    <a class="dropdown-item" href="{% url 'reporting:manager_dashboard' %}?user_id={{ user_filter }}">
-                      <i class="fas fa-arrow-left me-2"></i>대시보드로 돌아가기
-                    </a>
-                  </li>
-                {% endif %}
-              </ul>
-            </div>
-          {% else %}
-            <!-- 캘린더에서만 일정 추가 가능 -->
-          {% endif %}
         {% endif %}
       </div>
     </div>
@@ -1080,9 +1039,11 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        {% if user.userprofile.role != 'manager' %}
         <button type="button" class="btn btn-primary" id="addScheduleFromModal">
           <i class="fas fa-plus me-1"></i>일정 추가
         </button>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -5003,9 +4964,10 @@
             }
           };
 
-          // 더블클릭 이벤트 (데스크톱 전용)
+          // 더블클릭 이벤트 (데스크톱 전용, Manager는 비활성화)
           cell.ondblclick = (e) => {
             e.preventDefault();
+            {% if user.userprofile.role != 'manager' %}
             if (window.innerWidth > 768) { // 데스크톱에서만
               const dateString = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
 
@@ -5017,6 +4979,7 @@
                 window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
               }
             }
+            {% endif %}
           }; // 호버 효과 개선
           cell.addEventListener("mouseenter", () => {
             if (!cell.classList.contains("selected")) {
@@ -5154,14 +5117,16 @@
         });
       }
       
-      // 일정 추가 버튼 URL 설정
+      // 일정 추가 버튼 URL 설정 (Manager는 버튼 자체가 없음)
       const addScheduleBtn = document.getElementById('addScheduleFromModal');
-      addScheduleBtn.onclick = () => {
-        if (typeof GlobalLoader !== "undefined") {
-          GlobalLoader.show();
-        }
-        window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
-      };
+      if (addScheduleBtn) {
+        addScheduleBtn.onclick = () => {
+          if (typeof GlobalLoader !== "undefined") {
+            GlobalLoader.show();
+          }
+          window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
+        };
+      }
       
       // 모달 표시
       const modal = new bootstrap.Modal(document.getElementById('dateSchedulesModal'));
@@ -5660,17 +5625,17 @@
                   `}
                 </div>
               </div>              <div class="modal-footer">
+                ${currentUser.role !== 'manager' ? `
                 <div class="d-flex gap-2 w-100">
                   <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
                   </a>
-                  ${currentUser.role !== 'manager' ? `
                   <button type="button" class="btn btn-danger flex-fill" onclick="deleteScheduleFromModal(${schedule.id}, '${schedule.customer}', '${schedule.visit_date}')">
                     <i class="fas fa-trash-alt me-1"></i>일정 삭제
                   </button>
-                  ` : ''}
                 </div>
-                <button type="button" class="btn btn-secondary mt-2 w-100" data-bs-dismiss="modal">닫기</button>
+                ` : ''}
+                <button type="button" class="btn btn-secondary ${currentUser.role !== 'manager' ? 'mt-2' : ''} w-100" data-bs-dismiss="modal">닫기</button>
               </div>
             </div>
           </div>
