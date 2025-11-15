@@ -567,9 +567,21 @@ def followup_list_view(request):
     """팔로우업 목록 보기 (권한 기반 필터링 적용)"""
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터
-    selected_user_id = request.GET.get('user_id')
+    # 매니저용 실무자 필터 (세션 기반)
     view_all = request.GET.get('view_all') == 'true'
+    
+    # 전체 팀원 선택 시 세션 초기화
+    if view_all and user_profile.can_view_all_users():
+        if 'selected_user_id' in request.session:
+            del request.session['selected_user_id']
+        user_filter = None
+    else:
+        user_filter = request.GET.get('user')
+        if not user_filter:
+            user_filter = request.session.get('selected_user_id')
+        
+        if user_filter and user_profile.can_view_all_users():
+            request.session['selected_user_id'] = str(user_filter)
     
     # 권한에 따른 데이터 필터링
     if user_profile.can_view_all_users():
@@ -577,11 +589,11 @@ def followup_list_view(request):
         accessible_users = get_accessible_users(request.user)
         
         # 매니저가 특정 실무자를 선택한 경우
-        if selected_user_id and not view_all:
+        if user_filter and not view_all:
             try:
-                selected_user = accessible_users.get(id=selected_user_id)
+                selected_user = accessible_users.get(id=user_filter)
                 followups = FollowUp.objects.filter(user=selected_user).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
-            except User.DoesNotExist:
+            except (User.DoesNotExist, ValueError):
                 followups = FollowUp.objects.filter(user__in=accessible_users).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
         else:
             # 전체보기 또는 선택 안 함
@@ -816,28 +828,44 @@ def dashboard_view(request):
     
     # URL 파라미터로 특정 사용자 필터링
     user_filter = request.GET.get('user')
+    view_all = request.GET.get('view_all') == 'true'
     selected_user = None
     
+    logger.info(f"[DASHBOARD FILTER] user_filter={user_filter}, view_all={view_all}, session_user_id={request.session.get('selected_user_id')}")
+    
     if user_profile.can_view_all_users():
-        # user_filter가 없으면 세션에서 가져오기
-        if not user_filter:
-            user_filter = request.session.get('selected_user_id')
-        
-        if user_filter:
-            try:
-                selected_user = User.objects.get(id=user_filter)
-                target_user = selected_user
-                # 세션에 저장
-                request.session['selected_user_id'] = str(user_filter)
-            except (User.DoesNotExist, ValueError):
-                target_user = request.user
-                # 잘못된 세션 값 제거
-                if 'selected_user_id' in request.session:
-                    del request.session['selected_user_id']
+        # 전체 팀원 선택 시 세션 초기화
+        if view_all:
+            logger.info(f"[DASHBOARD FILTER] view_all=True, 세션 초기화")
+            if 'selected_user_id' in request.session:
+                del request.session['selected_user_id']
+            target_user = None  # 전체 팀원 데이터 표시
         else:
-            target_user = request.user
+            # user_filter가 없으면 세션에서 가져오기
+            if not user_filter:
+                user_filter = request.session.get('selected_user_id')
+                logger.info(f"[DASHBOARD FILTER] 세션에서 user_filter 가져옴: {user_filter}")
+            
+            if user_filter:
+                try:
+                    selected_user = User.objects.get(id=user_filter)
+                    target_user = selected_user
+                    logger.info(f"[DASHBOARD FILTER] 특정 사용자 선택: {selected_user.username}")
+                    # 세션에 저장
+                    request.session['selected_user_id'] = str(user_filter)
+                except (User.DoesNotExist, ValueError):
+                    logger.warning(f"[DASHBOARD FILTER] 사용자 찾기 실패: {user_filter}")
+                    target_user = None  # 전체 팀원 데이터 표시
+                    # 잘못된 세션 값 제거
+                    if 'selected_user_id' in request.session:
+                        del request.session['selected_user_id']
+            else:
+                logger.info(f"[DASHBOARD FILTER] user_filter 없음, 전체 팀원")
+                target_user = None  # 전체 팀원 데이터 표시
     else:
         target_user = request.user
+    
+    logger.info(f"[DASHBOARD FILTER] 최종 target_user: {target_user.username if target_user else 'None(전체)'}")
     
     # 매니저용 팀원 목록
     salesman_users = []
@@ -863,6 +891,20 @@ def dashboard_view(request):
         histories_current_year = History.objects.filter(created_at__year=current_year)
         schedules = Schedule.objects.all()
         followups = FollowUp.objects.all()
+    elif user_profile.can_view_all_users() and target_user is None:
+        # Manager가 전체 팀원을 선택한 경우 - 접근 가능한 모든 사용자의 데이터
+        accessible_users = get_accessible_users(request.user)
+        followup_count = FollowUp.objects.filter(user__in=accessible_users).count()
+        schedule_count = Schedule.objects.filter(user__in=accessible_users, status='scheduled').count()
+        sales_record_count = History.objects.filter(
+            user__in=accessible_users,
+            created_at__year=current_year, 
+            action_type__in=['customer_meeting', 'delivery_schedule']
+        ).count()
+        histories = History.objects.filter(user__in=accessible_users)
+        histories_current_year = History.objects.filter(user__in=accessible_users, created_at__year=current_year)
+        schedules = Schedule.objects.filter(user__in=accessible_users)
+        followups = FollowUp.objects.filter(user__in=accessible_users)
     else:
         # 특정 사용자 또는 본인의 데이터만 접근
         followup_count = FollowUp.objects.filter(user=target_user).count()
@@ -1488,9 +1530,21 @@ def schedule_list_view(request):
     
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터
-    selected_user_id = request.GET.get('user_id')
+    # 매니저용 실무자 필터 (세션 기반)
     view_all = request.GET.get('view_all') == 'true'
+    
+    # 전체 팀원 선택 시 세션 초기화
+    if view_all and user_profile.can_view_all_users():
+        if 'selected_user_id' in request.session:
+            del request.session['selected_user_id']
+        user_filter = None
+    else:
+        user_filter = request.GET.get('user')
+        if not user_filter:
+            user_filter = request.session.get('selected_user_id')
+        
+        if user_filter and user_profile.can_view_all_users():
+            request.session['selected_user_id'] = str(user_filter)
     
     # 권한에 따른 데이터 필터링
     if user_profile.can_view_all_users():
@@ -1498,11 +1552,11 @@ def schedule_list_view(request):
         accessible_users = get_accessible_users(request.user)
         
         # 매니저가 특정 실무자를 선택한 경우
-        if selected_user_id and not view_all:
+        if user_filter and not view_all:
             try:
-                selected_user = accessible_users.get(id=selected_user_id)
+                selected_user = accessible_users.get(id=user_filter)
                 schedules = Schedule.objects.filter(user=selected_user)
-            except User.DoesNotExist:
+            except (User.DoesNotExist, ValueError):
                 schedules = Schedule.objects.filter(user__in=accessible_users)
         else:
             # 전체보기 또는 선택 안 함
@@ -2866,9 +2920,21 @@ def schedule_api_view(request):
     try:
         user_profile = get_user_profile(request.user)
         
-        # 매니저용 실무자 필터
-        selected_user_id = request.GET.get('user_id')
+        # 매니저용 실무자 필터 (세션 기반)
         view_all = request.GET.get('view_all') == 'true'
+        
+        # 전체 팀원 선택 시 세션 초기화
+        if view_all and user_profile.can_view_all_users():
+            if 'selected_user_id' in request.session:
+                del request.session['selected_user_id']
+            user_filter = None
+        else:
+            user_filter = request.GET.get('user')
+            if not user_filter:
+                user_filter = request.session.get('selected_user_id')
+            
+            if user_filter and user_profile.can_view_all_users():
+                request.session['selected_user_id'] = str(user_filter)
         
         # 권한에 따른 데이터 필터링
         if user_profile.can_view_all_users():
@@ -2876,23 +2942,14 @@ def schedule_api_view(request):
             accessible_users = get_accessible_users(request.user)
             
             # 매니저가 특정 실무자를 선택한 경우
-            if selected_user_id and not view_all:
+            if user_filter and not view_all:
                 try:
-                    selected_user = accessible_users.get(id=selected_user_id)
+                    selected_user = accessible_users.get(id=user_filter)
                     schedules = Schedule.objects.filter(user=selected_user)
                 except User.DoesNotExist:
                     schedules = Schedule.objects.filter(user__in=accessible_users)
             else:
                 schedules = Schedule.objects.filter(user__in=accessible_users)
-            
-            # URL 파라미터로 특정 사용자 필터링 (기존 호환성)
-            user_filter = request.GET.get('user')
-            if user_filter and not selected_user_id:
-                try:
-                    user_filter_int = int(user_filter)
-                    schedules = schedules.filter(user_id=user_filter_int)
-                except (ValueError, TypeError):
-                    pass
         else:
             # Salesman은 자신의 데이터만 조회
             schedules = Schedule.objects.filter(user=request.user)
@@ -2979,9 +3036,21 @@ def history_list_view(request):
     
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터
-    selected_user_id = request.GET.get('user_id')
+    # 매니저용 실무자 필터 (세션 기반)
     view_all = request.GET.get('view_all') == 'true'
+    
+    # 전체 팀원 선택 시 세션 초기화
+    if view_all and user_profile.can_view_all_users():
+        if 'selected_user_id' in request.session:
+            del request.session['selected_user_id']
+        user_filter = None
+    else:
+        user_filter = request.GET.get('user')
+        if not user_filter:
+            user_filter = request.session.get('selected_user_id')
+        
+        if user_filter and user_profile.can_view_all_users():
+            request.session['selected_user_id'] = str(user_filter)
     
     # 권한에 따른 데이터 필터링 (매니저 메모 제외)
     if user_profile.can_view_all_users():
@@ -2989,11 +3058,11 @@ def history_list_view(request):
         accessible_users = get_accessible_users(request.user)
         
         # 매니저가 특정 실무자를 선택한 경우
-        if selected_user_id and not view_all:
+        if user_filter and not view_all:
             try:
-                selected_user = accessible_users.get(id=selected_user_id)
+                selected_user = accessible_users.get(id=user_filter)
                 histories = History.objects.filter(user=selected_user, parent_history__isnull=True)  # 매니저 메모 제외
-            except User.DoesNotExist:
+            except (User.DoesNotExist, ValueError):
                 histories = History.objects.filter(user__in=accessible_users, parent_history__isnull=True)  # 매니저 메모 제외
         else:
             # 전체보기 또는 선택 안 함
@@ -7425,33 +7494,42 @@ def customer_report_view(request):
     user_profile = get_user_profile(request.user)
     
     # 담당자 필터링 (Manager만)
-    user_filter = request.GET.get('user')
+    view_all = request.GET.get('view_all') == 'true'
     users = []
     selected_user = None
     target_user = request.user  # 기본은 본인
     
     if user_profile.can_view_all_users():
-        # user_filter가 없으면 세션에서 가져오기
-        if not user_filter:
-            user_filter = request.session.get('selected_user_id')
-        
-        if user_filter:
-            # Manager가 특정 팀원을 선택한 경우
-            accessible_users = get_accessible_users(request.user)
-            try:
-                selected_user = accessible_users.get(id=user_filter)
-                target_user = selected_user
-                # 세션에 저장
-                request.session['selected_user_id'] = str(user_filter)
-            except User.DoesNotExist:
-                target_user = request.user
-                # 잘못된 세션 값 제거
-                if 'selected_user_id' in request.session:
-                    del request.session['selected_user_id']
-        else:
-            # user_filter가 명시적으로 없으면(초기화) 세션도 제거
+        accessible_users = get_accessible_users(request.user)
+        # 전체 팀원 선택 시 세션 초기화
+        if view_all:
             if 'selected_user_id' in request.session:
                 del request.session['selected_user_id']
+            target_user = None  # 전체 팀원 데이터
+            user_filter = None
+        else:
+            user_filter = request.GET.get('user')
+            # user_filter가 없으면 세션에서 가져오기
+            if not user_filter:
+                user_filter = request.session.get('selected_user_id')
+        
+            if user_filter:
+                # Manager가 특정 팀원을 선택한 경우
+                try:
+                    selected_user = accessible_users.get(id=user_filter)
+                    target_user = selected_user
+                    # 세션에 저장
+                    request.session['selected_user_id'] = str(user_filter)
+                except User.DoesNotExist:
+                    target_user = None  # 전체 팀원 데이터
+                    # 잘못된 세션 값 제거
+                    if 'selected_user_id' in request.session:
+                        del request.session['selected_user_id']
+            else:
+                target_user = None  # 전체 팀원 데이터
+                # user_filter가 명시적으로 없으면(초기화) 세션도 제거
+                if 'selected_user_id' in request.session:
+                    del request.session['selected_user_id']
     
     # 모든 고객 조회 (담당자 무관)
     followups = FollowUp.objects.all()
@@ -7484,27 +7562,46 @@ def customer_report_view(request):
     prepayment_customers = set()  # 선결제가 있는 고객 ID 집합
     
     for followup in followups.select_related('user', 'company', 'department'):
-        # History 기반 통계 - target_user가 등록한 것만
-        histories = History.objects.filter(followup=followup, user=target_user)
+        # History 기반 통계 - target_user 또는 accessible_users가 등록한 것만
+        if target_user is None and user_profile.can_view_all_users():
+            # 전체 팀원: accessible_users의 데이터 모두 포함
+            histories = History.objects.filter(followup=followup, user__in=accessible_users)
+        else:
+            histories = History.objects.filter(followup=followup, user=target_user)
+        
         meetings = histories.filter(action_type='customer_meeting').count()
         delivery_histories = histories.filter(action_type='delivery_schedule')
         deliveries = delivery_histories.count()
         history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or Decimal('0')
         unpaid = delivery_histories.filter(tax_invoice_issued=False).count()
         
-        # Schedule DeliveryItem 기반 통계 - target_user가 등록한 것만
-        schedule_deliveries = Schedule.objects.filter(
-            followup=followup,
-            user=target_user,
-            activity_type='delivery',
-            delivery_items_set__isnull=False
-        ).distinct()
+        # Schedule DeliveryItem 기반 통계 - target_user 또는 accessible_users가 등록한 것만
+        if target_user is None and user_profile.can_view_all_users():
+            schedule_deliveries = Schedule.objects.filter(
+                followup=followup,
+                user__in=accessible_users,
+                activity_type='delivery',
+                delivery_items_set__isnull=False
+            ).distinct()
+            schedule_amount = DeliveryItem.objects.filter(
+                schedule__followup=followup,
+                schedule__user__in=accessible_users,
+                schedule__activity_type='delivery'
+            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
+        else:
+            schedule_deliveries = Schedule.objects.filter(
+                followup=followup,
+                user=target_user,
+                activity_type='delivery',
+                delivery_items_set__isnull=False
+            ).distinct()
+            schedule_amount = DeliveryItem.objects.filter(
+                schedule__followup=followup,
+                schedule__user=target_user,
+                schedule__activity_type='delivery'
+            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
+        
         schedule_delivery_count = schedule_deliveries.count()
-        schedule_amount = DeliveryItem.objects.filter(
-            schedule__followup=followup,
-            schedule__user=target_user,
-            schedule__activity_type='delivery'
-        ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
         
         # 세금계산서 현황 계산 (History + Schedule DeliveryItem 통합 - 중복 제거)
         # 1. History와 Schedule 연결 관계 분석
@@ -7528,11 +7625,18 @@ def customer_report_view(request):
         ).count()
         
         # 3. Schedule DeliveryItem 세금계산서 현황 (History 연결 여부로 구분)
-        schedule_deliveries_all = Schedule.objects.filter(
-            followup=followup,
-            user=target_user,
-            activity_type='delivery'
-        )
+        if target_user is None and user_profile.can_view_all_users():
+            schedule_deliveries_all = Schedule.objects.filter(
+                followup=followup,
+                user__in=accessible_users,
+                activity_type='delivery'
+            )
+        else:
+            schedule_deliveries_all = Schedule.objects.filter(
+                followup=followup,
+                user=target_user,
+                activity_type='delivery'
+            )
         
         # Schedule만 있는 경우 (History에 연결되지 않은 Schedule) - 항목 단위로 카운팅
         schedule_only_deliveries = schedule_deliveries_all.exclude(
@@ -9451,25 +9555,27 @@ def funnel_dashboard_view(request):
     
     if user_profile.can_view_all_users():
         # Admin이나 Manager
+        # 전체 팀원 선택 시 세션 초기화
         if view_all:
-            # 전체보기 모드
+            if 'selected_user_id' in request.session:
+                del request.session['selected_user_id']
             filter_user = None
-        elif selected_user_id:
-            # 특정 실무자 선택
-            try:
-                accessible_users = get_accessible_users(request.user)
-                selected_user = accessible_users.get(id=selected_user_id)
-                filter_user = selected_user
-            except User.DoesNotExist:
+        else:
+            user_filter = request.GET.get('user')
+            if not user_filter:
+                user_filter = request.session.get('selected_user_id')
+            
+            if user_filter:
+                request.session['selected_user_id'] = str(user_filter)
+                # 특정 실무자 선택
+                try:
+                    accessible_users = get_accessible_users(request.user)
+                    selected_user = accessible_users.get(id=user_filter)
+                    filter_user = selected_user
+                except (User.DoesNotExist, ValueError):
+                    filter_user = None
+            else:
                 filter_user = None
-        elif request.GET.get('user'):
-            # 기존 호환성
-            try:
-                accessible_users = get_accessible_users(request.user)
-                selected_user = accessible_users.get(id=request.GET.get('user'))
-                filter_user = selected_user
-            except User.DoesNotExist:
-                pass
     else:
         # Salesman은 본인 데이터만
         filter_user = request.user
@@ -10108,19 +10214,54 @@ def prepayment_list_view(request):
     """선결제 목록 뷰"""
     from reporting.models import Prepayment
     from django.db.models import Q, Sum
+    from django.contrib.auth.models import User
     
-    # 회사 필터 적용 - created_by로 필터링 (UserProfile의 company는 UserCompany이고, Prepayment의 company는 고객사 Company)
     user_profile = get_user_profile(request.user)
     base_queryset = Prepayment.objects.select_related('customer', 'company', 'created_by')
     
-    # Admin이 아닌 경우 자신의 회사 사용자들이 등록한 선결제만 조회
-    if user_profile and user_profile.role != 'admin':
-        # 같은 UserCompany 소속 사용자들의 ID 목록
-        from reporting.models import UserProfile
-        same_company_users = UserProfile.objects.filter(
-            company=user_profile.company
-        ).values_list('user_id', flat=True)
-        base_queryset = base_queryset.filter(created_by_id__in=same_company_users)
+    # 매니저 세션 기반 필터 적용
+    view_all = request.GET.get('view_all') == 'true'
+    selected_user = None
+    
+    if user_profile.can_view_all_users():
+        # 전체 팀원 선택 시 세션 초기화
+        if view_all:
+            if 'selected_user_id' in request.session:
+                del request.session['selected_user_id']
+            # 접근 가능한 모든 사용자의 선결제 조회
+            accessible_users = get_accessible_users(request.user)
+            base_queryset = base_queryset.filter(created_by__in=accessible_users)
+        else:
+            user_filter = request.GET.get('user')
+            # user_filter가 없으면 세션에서 가져오기
+            if not user_filter:
+                user_filter = request.session.get('selected_user_id')
+            
+            if user_filter:
+                try:
+                    accessible_users = get_accessible_users(request.user)
+                    selected_user = accessible_users.get(id=user_filter)
+                    # 세션에 저장
+                    request.session['selected_user_id'] = str(user_filter)
+                    # 선택된 사용자의 선결제만 조회
+                    base_queryset = base_queryset.filter(created_by=selected_user)
+                except User.DoesNotExist:
+                    # 잘못된 세션 값 제거
+                    if 'selected_user_id' in request.session:
+                        del request.session['selected_user_id']
+                    # 접근 가능한 모든 사용자의 선결제 조회
+                    accessible_users = get_accessible_users(request.user)
+                    base_queryset = base_queryset.filter(created_by__in=accessible_users)
+            else:
+                # 접근 가능한 모든 사용자의 선결제 조회
+                accessible_users = get_accessible_users(request.user)
+                base_queryset = base_queryset.filter(created_by__in=accessible_users)
+    elif user_profile.role == 'admin':
+        # Admin은 모든 선결제 조회 가능
+        pass
+    else:
+        # 일반 사용자는 본인이 등록한 선결제만 조회
+        base_queryset = base_queryset.filter(created_by=request.user)
     
     # 검색 필터
     search_query = request.GET.get('search', '')

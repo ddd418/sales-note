@@ -2028,9 +2028,32 @@
   }  // 전역 함수 정의
   function loadSchedules() {
     let apiUrl = "{% url 'reporting:schedule_api' %}";
-    {% if user_filter %}
-    apiUrl += "?user={{ user_filter }}";
-    {% endif %}
+    
+    // URL 파라미터 처리
+    const urlParams = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams();
+    
+    // view_all 파라미터 확인
+    if (urlParams.get('view_all') === 'true') {
+      params.append('view_all', 'true');
+    }
+    // user 파라미터 확인 (view_all이 없을 때만)
+    else {
+      {% if user_filter %}
+      params.append('user', '{{ user_filter }}');
+      {% else %}
+      const userParam = urlParams.get('user');
+      if (userParam) {
+        params.append('user', userParam);
+      }
+      {% endif %}
+    }
+    
+    // 파라미터가 있으면 URL에 추가
+    if (params.toString()) {
+      apiUrl += '?' + params.toString();
+    }
+    
     fetch(apiUrl)
       .then((response) => {
         if (!response.ok) {
