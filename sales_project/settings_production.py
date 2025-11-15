@@ -92,6 +92,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'reporting.context_processors.manager_filter_context',
             ],
             # 프로덕션에서도 템플릿 캐시 비활성화 (템플릿 오류 디버깅용)
             'debug': True,
