@@ -13,7 +13,7 @@ def manager_filter_context(request):
             user_profile = request.user.userprofile
             
             # 매니저인 경우에만 실무자 목록 제공
-            if user_profile.role == 'manager' and user_profile.company:
+            if user_profile.role == 'manager':
                 from django.contrib.auth.models import User
                 from reporting.models import UserProfile
                 
@@ -23,10 +23,14 @@ def manager_filter_context(request):
                     request.session['manager_selected_user'] = user_filter
                 
                 # 같은 회사의 실무자(salesman) 목록
-                accessible_salesmen = User.objects.filter(
-                    userprofile__company=user_profile.company,
-                    userprofile__role='salesman'
-                ).select_related('userprofile').order_by('username')
+                if user_profile.company:
+                    accessible_salesmen = User.objects.filter(
+                        userprofile__company=user_profile.company,
+                        userprofile__role='salesman'
+                    ).select_related('userprofile').order_by('username')
+                else:
+                    # 회사가 없는 경우 빈 쿼리셋
+                    accessible_salesmen = User.objects.none()
                 
                 context['accessible_salesmen'] = accessible_salesmen
                 
