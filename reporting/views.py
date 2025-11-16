@@ -2008,30 +2008,23 @@ def schedule_create_view(request):
                         # 예정 단계
                         if schedule.activity_type == 'quote':
                             initial_stage = 'quote'  # 견적 제출 예정
-                            logger.info(f"[OPPORTUNITY_CREATE] 견적 예정 - initial_stage: quote")
                         elif schedule.activity_type == 'delivery':
                             initial_stage = 'closing'  # 납품 예정 = 클로징
-                            logger.info(f"[OPPORTUNITY_CREATE] 납품 예정 - initial_stage: closing")
                         else:
                             initial_stage = 'lead'
                     elif schedule.status == 'completed':
                         # 완료 단계
                         if schedule.activity_type == 'customer_meeting':
                             initial_stage = 'contact'  # 미팅 완료
-                            logger.info(f"[OPPORTUNITY_CREATE] 미팅 완료 - initial_stage: contact")
                         elif schedule.activity_type == 'quote':
                             initial_stage = 'quote'  # 견적 제출 완료
-                            logger.info(f"[OPPORTUNITY_CREATE] 견적 완료 - initial_stage: quote")
                         elif schedule.activity_type == 'delivery':
                             initial_stage = 'won'  # 납품 완료 = 수주
-                            logger.info(f"[OPPORTUNITY_CREATE] 납품 완료 - initial_stage: won")
                         else:
                             initial_stage = 'lead'  # 기본값
                     else:
                         # 취소됨 등 기타 상태
                         initial_stage = 'lead'  # 기본값
-                    
-                    logger.info(f"[OPPORTUNITY_CREATE] activity_type: {schedule.activity_type}, status: {schedule.status}, initial_stage: {initial_stage}")
                     
                     # 영업 기회 제목 생성 (일정 유형 기반)
                     activity_type_names = {
