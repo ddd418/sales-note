@@ -5276,7 +5276,6 @@ def schedule_status_update_api(request, schedule_id):
     
     try:
         schedule = get_object_or_404(Schedule, id=schedule_id)
-        logger.info(f"🔍 일정 상태 업데이트 요청: ID {schedule_id}, 현재 상태: {schedule.status}")
         
         # 권한 체크: 수정 권한이 있는 경우만 상태 변경 가능 (Manager는 읽기 전용)
         if not can_modify_user_data(request.user, schedule.user):
@@ -5327,7 +5326,6 @@ def schedule_status_update_api(request, schedule_id):
                     for history in reversed(opportunity.stage_history):
                         if not history.get('exited'):
                             history['exited'] = date.today().isoformat()
-                            logger.info(f"이전 단계 {history.get('stage')} 종료 처리")
                             break
                     
                     # 실주 단계 추가
@@ -5338,30 +5336,20 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'납품일정 취소로 인한 실주 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(lost_entry)
-                    logger.info("🎯 실주 단계 이력 추가")
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
-                    logger.info("✅ 펀넬 실주 처리 완료")
-                else:
-                    logger.info(f"⚠️ 펀넬이 이미 {opportunity.current_stage} 상태라서 실주 처리 안함")
-            else:
-                logger.warning("❌ 연결된 펀넬이 없음 - 실주 처리 불가")
         
         # 예정 처리 시 추가 작업 (펀넬을 클로징으로 변경)
         if new_status == 'scheduled' and schedule.activity_type == 'delivery':
-            logger.info("🔄 예정으로 변경 - 펀넬 클로징 처리 시작!")
             from datetime import date
             
             # 펀넬을 클로징으로 변경
             if schedule.opportunity:
-                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
                 opportunity = schedule.opportunity
-                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
                 
                 # lost나 won 상태에서 클로징으로 변경
                 if opportunity.current_stage == 'lost':
-                    logger.info("🎯 실주에서 펀넬 클로징으로 되돌리기...")
                     opportunity.current_stage = 'closing'
                     opportunity.lost_date = None  # 실주 날짜 제거
                     opportunity.lost_reason = None  # 실주 사유 제거
@@ -5375,7 +5363,6 @@ def schedule_status_update_api(request, schedule_id):
                         if history.get('stage') == 'lost' and not history.get('exited'):
                             history['exited'] = date.today().isoformat()
                             history['note'] = f"{history.get('note', '')} → 취소 철회로 복구"
-                            logger.info("이전 실주 단계 종료 처리")
                             break
                     
                     # 클로징 단계 추가
@@ -5386,14 +5373,11 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'취소 철회 후 납품 예정으로 클로징 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(closing_entry)
-                    logger.info("🎯 클로징 단계 이력 추가")
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
-                    logger.info("✅ 펀넬 클로징 처리 완료")
                     
                 elif opportunity.current_stage == 'won':
-                    logger.info("🎯 수주에서 펀넬 클로징으로 되돌리기...")
                     opportunity.current_stage = 'closing'
                     opportunity.won_date = None  # 수주 날짜 제거
                     
@@ -5406,7 +5390,6 @@ def schedule_status_update_api(request, schedule_id):
                         if history.get('stage') == 'won' and not history.get('exited'):
                             history['exited'] = date.today().isoformat()
                             history['note'] = f"{history.get('note', '')} → 완료 철회로 예정 복귀"
-                            logger.info("이전 수주 단계 종료 처리")
                             break
                     
                     # 클로징 단계 추가
@@ -5417,29 +5400,19 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'완료 철회 후 납품 예정으로 클로징 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(closing_entry)
-                    logger.info("🎯 클로징 단계 이력 추가")
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
-                    logger.info("✅ 펀넬 클로징 처리 완료")
-                else:
-                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 클로징 처리 안함")
-            else:
-                logger.warning("❌ 연결된 펀넬이 없음 - 클로징 처리 불가")
         
         # 완료 처리 시 추가 작업 (실주였던 펀넬을 수주로 되돌리기)
         if new_status == 'completed' and old_status == 'cancelled':
-            logger.info("🎉 취소에서 완료로 변경 - 펀넬 수주 처리 시작!")
             from datetime import date
             
             # 펀넬을 수주로 되돌리기
             if schedule.opportunity:
-                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
                 opportunity = schedule.opportunity
-                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
                 
                 if opportunity.current_stage == 'lost':  # 실주 상태인 경우만 수주로 변경
-                    logger.info("🎯 펀넬 수주로 되돌리기...")
                     opportunity.current_stage = 'won'
                     opportunity.won_date = date.today()
                     opportunity.lost_date = None  # 실주 날짜 제거
@@ -5499,7 +5472,6 @@ def schedule_status_update_api(request, schedule_id):
                     for history in reversed(opportunity.stage_history):
                         if not history.get('exited'):
                             history['exited'] = date.today().isoformat()
-                            logger.info(f"이전 단계 {history.get('stage')} 종료 처리")
                             break
                     
                     # 수주 단계 추가
@@ -5510,21 +5482,12 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'납품 완료로 자동 수주 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(won_entry)
-                    logger.info("🎯 수주 단계 이력 추가")
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
-                    logger.info("✅ 펀넬 수주 처리 완료")
-                elif opportunity.current_stage == 'won':
-                    logger.info("⚠️ 펀넬이 이미 수주 상태")
-                else:
-                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 수주 처리 안함")
-            else:
-                logger.warning("❌ 연결된 펀넬이 없음 - 수주 처리 불가")
         
         schedule.status = new_status
         schedule.save()
-        logger.info(f"✅ 일정 상태 저장 완료: {new_status}")
         
         # 상태 변경 시 수주 금액 업데이트
         backlog_amount = 0
@@ -5533,7 +5496,6 @@ def schedule_status_update_api(request, schedule_id):
                 opportunity = schedule.opportunity
                 opportunity.update_revenue_amounts()
                 backlog_amount = float(opportunity.backlog_amount)
-                logger.info(f"💰 수주 금액 업데이트: {backlog_amount:,}원")
             except Exception as e:
                 # 오류 발생 시 무시
                 logger.error(f"수주 업데이트 중 오류: {e}")
@@ -5564,9 +5526,7 @@ def schedule_status_update_api(request, schedule_id):
             
             if additional_messages:
                 response_data['additional_message'] = ' '.join(additional_messages)
-                logger.info(f"📋 추가 메시지: {response_data['additional_message']}")
         
-        logger.info("🎉 일정 상태 업데이트 완료")
         return JsonResponse(response_data)
         
     except Exception as e:
