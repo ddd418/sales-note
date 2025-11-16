@@ -9757,16 +9757,36 @@ def followup_quote_items_api(request, followup_id):
             logger.info(f"[QUOTE_ITEMS_API] Schedule ID: {quote_schedule.id}, visit_date: {quote_schedule.visit_date}")
             
             # 이미 납품된 견적인지 확인
-            # 같은 opportunity에 납품 일정이 있으면 제외
-            if quote_schedule.opportunity:
-                has_delivery = Schedule.objects.filter(
-                    opportunity=quote_schedule.opportunity,
-                    activity_type='delivery'
-                ).exists()
-                
-                if has_delivery:
-                    logger.info(f"[QUOTE_ITEMS_API] Quote {quote_schedule.id} already delivered, skipping")
-                    continue
+            # 이 견적(Schedule)에서 직접 복사된 납품 일정이 있는지 확인
+            has_delivery = Schedule.objects.filter(
+                followup=followup,
+                activity_type='delivery',
+                notes__icontains=f'견적 ID {quote_schedule.id}'  # 납품 메모에 견적 ID가 포함되어 있는지
+            ).exists()
+            
+            # 또는 DeliveryItem이 완전히 동일한 납품이 있는지 확인
+            if not has_delivery:
+                # 견적 품목 가져오기
+                quote_items = DeliveryItem.objects.filter(schedule=quote_schedule)
+                if quote_items.exists():
+                    # 같은 품목 구성의 완료된 납품이 있는지 확인
+                    for delivery_schedule in Schedule.objects.filter(
+                        followup=followup,
+                        activity_type='delivery',
+                        status='completed'
+                    ):
+                        delivery_items = DeliveryItem.objects.filter(schedule=delivery_schedule)
+                        # 품목 개수와 품목명이 모두 일치하면 이미 납품된 것으로 간주
+                        if (delivery_items.count() == quote_items.count() and
+                            set(delivery_items.values_list('item_name', flat=True)) == 
+                            set(quote_items.values_list('item_name', flat=True))):
+                            has_delivery = True
+                            logger.info(f"[QUOTE_ITEMS_API] Quote {quote_schedule.id} matches delivery {delivery_schedule.id}, skipping")
+                            break
+            
+            if has_delivery:
+                logger.info(f"[QUOTE_ITEMS_API] Quote {quote_schedule.id} already delivered, skipping")
+                continue
             
             items = DeliveryItem.objects.filter(schedule=quote_schedule)
             
