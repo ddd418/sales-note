@@ -2264,32 +2264,23 @@ def schedule_edit_view(request, pk):
                     
                     # 취소된 일정인 경우 실주 단계로 전환
                     elif updated_schedule.status == 'cancelled' and opportunity.current_stage != 'lost':
-                        logger.info(f"[STAGE_UPDATE] 취소됨 → lost")
                         opportunity.update_stage('lost')
                     
                     # 납품 예정인 경우 closing 단계로 전환 (won/lost 에서도 전환)
                     elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'scheduled' and opportunity.current_stage != 'closing':
-                        logger.info(f"[STAGE_UPDATE] 납품 예정 (현재: {opportunity.current_stage}) → closing")
                         opportunity.update_stage('closing')
                     
                     # 납품 완료인 경우 won 단계로 전환
                     elif updated_schedule.activity_type == 'delivery' and updated_schedule.status == 'completed' and opportunity.current_stage != 'won':
-                        logger.info(f"[STAGE_UPDATE] 납품 완료 (현재: {opportunity.current_stage}) → won")
                         opportunity.update_stage('won')
                     
                     # 견적 후 미팅 일정인 경우 협상 단계로 전환
                     elif updated_schedule.activity_type == 'customer_meeting' and opportunity.current_stage == 'quote':
-                        logger.info(f"[STAGE_UPDATE] 견적 후 미팅 → negotiation")
                         opportunity.update_stage('negotiation')
                     
                     # 견적 일정인 경우 quote 단계로 전환 필요
                     elif updated_schedule.activity_type == 'quote' and opportunity.current_stage != 'quote':
-                        logger.info(f"[STAGE_UPDATE] 견적 일정 → quote")
                         opportunity.update_stage('quote')
-                    else:
-                        logger.info(f"[STAGE_UPDATE] 단계 전환 조건 미충족 - 단계 유지: {opportunity.current_stage}")
-                    
-                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 업데이트 후 opportunity.current_stage: {opportunity.current_stage}")
                     
                     # 기존 것이 있으면 업데이트 (값이 있을 때만)
                     # 값이 없으면 기존 opportunity 값 유지
