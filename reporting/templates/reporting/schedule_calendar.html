@@ -5,6 +5,56 @@
      프리미엄 캘린더 스타일
      ============================================ */
 
+  /* ============================================
+     모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+     ============================================ */
+  
+  /* backdrop을 완전히 투명하게 (배경 없음) */
+  .modal-backdrop {
+    display: none !important; /* backdrop 자체를 숨김 */
+  }
+  
+  /* 또는 투명하게만 하려면 아래 사용 */
+  /* .modal-backdrop {
+    z-index: 1040 !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    background-color: transparent !important;
+  } */
+  
+  /* 모달 자체는 backdrop보다 높게 */
+  .modal {
+    z-index: 1055 !important;
+    pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+  }
+  
+  /* 모달 다이얼로그만 클릭 가능하게 */
+  .modal-dialog {
+    z-index: 1056 !important;
+    pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+  }
+  
+  /* 모달 컨텐츠를 확실히 클릭 가능하게 */
+  .modal-content {
+    position: relative;
+    z-index: 1057 !important;
+    pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
+    background-color: #fff;
+    border: 1px solid rgba(0,0,0,.2);
+    border-radius: 0.3rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+  }
+  
+  /* 모달 내부의 모든 요소가 클릭 가능하도록 */
+  .modal-header,
+  .modal-body,
+  .modal-footer,
+  .modal-header *,
+  .modal-body *,
+  .modal-footer * {
+    pointer-events: auto !important;
+  }
+
   /* 제품 검색 드롭다운 z-index 설정 */
   .calendar-search-results,
   .calendar-main-search-results {
@@ -1002,15 +1052,16 @@
 </div>
 
 <!-- 일정 상세 모달 -->
-<div class="modal fade" id="scheduleModal" tabindex="-1">
+<div class="modal fade" id="scheduleModal" tabindex="-1" aria-labelledby="scheduleModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">일정 상세</h5>
+        <h5 class="modal-title" id="scheduleModalLabel">일정 상세</h5>
         <button
           type="button"
           class="btn-close"
           data-bs-dismiss="modal"
+          aria-label="닫기"
         ></button>
       </div>
       <div class="modal-body" id="scheduleModalBody">
@@ -1021,7 +1072,7 @@
 </div>
 
 <!-- 날짜별 일정 목록 모달 (모바일 전용) -->
-<div class="modal fade" id="dateSchedulesModal" tabindex="-1">
+<div class="modal fade" id="dateSchedulesModal" tabindex="-1" aria-labelledby="dateSchedulesModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
@@ -1030,6 +1081,7 @@
           type="button"
           class="btn-close"
           data-bs-dismiss="modal"
+          aria-label="닫기"
         ></button>
       </div>
       <div class="modal-body">

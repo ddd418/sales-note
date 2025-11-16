@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage
 from django.contrib.auth.views import LoginView, LogoutView
@@ -2841,7 +2841,7 @@ def schedule_api_view(request):
             if user_filter and user_profile.can_view_all_users():
                 request.session['selected_user_id'] = str(user_filter)
         
-        # 권한에 따른 데이터 필터링
+        # 권한에 따른 데이터 필터링 (최적화: select_related, prefetch_related 추가)
         if user_profile.can_view_all_users():
             # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
             accessible_users = get_accessible_users(request.user)
@@ -2858,6 +2858,33 @@ def schedule_api_view(request):
         else:
             # Salesman은 자신의 데이터만 조회
             schedules = Schedule.objects.filter(user=request.user)
+        
+        # 🔥 최적화: 관련 데이터를 한 번에 가져오기
+        schedules = schedules.select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+            'user'
+        ).prefetch_related(
+            'delivery_items_set',  # DeliveryItem 미리 로드
+            Prefetch(
+                'histories',
+                queryset=History.objects.filter(action_type='delivery_schedule').only(
+                    'id', 'action_type', 'delivery_items', 'delivery_amount'
+                ),
+                to_attr='delivery_histories'
+            )
+        ).only(
+            # 필요한 필드만 SELECT (메모리 절약)
+            'id', 'visit_date', 'visit_time', 'location', 'status', 
+            'activity_type', 'notes', 'expected_revenue', 'probability', 
+            'expected_close_date',
+            'followup__id', 'followup__customer_name', 'followup__company__id',
+            'followup__company__name', 'followup__department__id', 
+            'followup__department__name', 'followup__manager', 
+            'followup__address', 'followup__priority',
+            'user__id', 'user__username'
+        )
         
         schedule_data = []
         for schedule in schedules:
@@ -2891,9 +2918,9 @@ def schedule_api_view(request):
                 delivery_amount = 0
                 has_schedule_items = False  # 스케줄에 직접 등록된 품목이 있는지 여부
                 
-                # Schedule에 직접 연결된 DeliveryItem이 있는지 먼저 확인
-                schedule_delivery_items = schedule.delivery_items_set.all().order_by('id')
-                if schedule_delivery_items.exists():
+                # 🔥 최적화: prefetch된 데이터 사용 (추가 쿼리 없음)
+                schedule_delivery_items = list(schedule.delivery_items_set.all())
+                if schedule_delivery_items:
                     has_schedule_items = True
                     delivery_text_parts = []
                     total_amount = 0
@@ -2907,11 +2934,12 @@ def schedule_api_view(request):
                     delivery_items_text = '\n'.join(delivery_text_parts)
                     delivery_amount = int(total_amount)
                 else:
-                    # Schedule에 직접 연결된 DeliveryItem이 없으면 History에서 찾기
-                    delivery_history = schedule.histories.filter(action_type='delivery_schedule').first()
-                    if delivery_history and delivery_history.delivery_items:
-                        delivery_items_text = delivery_history.delivery_items.strip()
-                        delivery_amount = delivery_history.delivery_amount or 0
+                    # 🔥 최적화: prefetch된 delivery_histories 사용
+                    if hasattr(schedule, 'delivery_histories') and schedule.delivery_histories:
+                        delivery_history = schedule.delivery_histories[0]
+                        if delivery_history.delivery_items:
+                            delivery_items_text = delivery_history.delivery_items.strip()
+                            delivery_amount = delivery_history.delivery_amount or 0
                 
                 schedule_item.update({
                     'delivery_items': delivery_items_text,
