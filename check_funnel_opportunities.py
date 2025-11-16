@@ -139,10 +139,16 @@ def check_specific_customer(customer_name_part="hana"):
         print(f"     - 담당자: {followup.user.username}")
         
         # OpportunityTracking 확인
-        try:
-            opp = OpportunityTracking.objects.get(followup=followup)
-            print(f"     - OpportunityTracking: {opp.current_stage} 단계 (ID: {opp.id})")
-        except OpportunityTracking.DoesNotExist:
+        opps = OpportunityTracking.objects.filter(followup=followup)
+        if opps.exists():
+            if opps.count() == 1:
+                opp = opps.first()
+                print(f"     - OpportunityTracking: {opp.current_stage} 단계 (ID: {opp.id})")
+            else:
+                print(f"     - OpportunityTracking: {opps.count()}개 존재")
+                for idx, opp in enumerate(opps, 1):
+                    print(f"       {idx}. {opp.current_stage} 단계 (ID: {opp.id})")
+        else:
             print(f"     - OpportunityTracking: 없음")
         
         # Schedule 확인
