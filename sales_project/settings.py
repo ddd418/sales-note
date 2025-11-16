@@ -42,6 +42,9 @@ else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
     AUTH_PASSWORD_VALIDATORS = [{"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"}, {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"}, {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"}, {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"}]
     
+    # 최적화된 인증 백엔드 (UserProfile select_related)
+    AUTHENTICATION_BACKENDS = ['reporting.auth_backends.OptimizedAuthBackend']
+    
     LANGUAGE_CODE = "ko-kr"
     TIME_ZONE = "Asia/Seoul"
     USE_I18N = True

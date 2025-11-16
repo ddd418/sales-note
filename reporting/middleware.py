@@ -17,87 +17,84 @@ class CompanyFilterMiddleware(MiddlewareMixin):
         super().__init__(get_response)
     
     def process_request(self, request):
-        """요청 처리 시 사용자의 회사 정보를 request에 추가"""
+        """요청 처리 시 사용자의 회사 정보를 request에 추가 (세션 캐싱 적용)"""
         
         # 사용자 인증 확인
-            
         if hasattr(request, 'user') and not isinstance(request.user, AnonymousUser):
+            # 세션 캐시 체크 (DB 조회 최소화)
+            cache_key = f'user_profile_{request.user.id}'
+            if cache_key in request.session:
+                cached_data = request.session[cache_key]
+                request.user_company = cached_data.get('company_id')
+                request.user_company_name = cached_data.get('company_name')
+                request.is_admin = cached_data.get('is_admin', False)
+                request.is_hanagwahak = cached_data.get('is_hanagwahak', False)
+                return None
+            
             try:
-                # Admin 사용자는 모든 데이터에 접근 가능하도록 특별 처리
-                if hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin':
-                    request.user_company = None  # Admin은 회사 제한 없음
-                    request.user_company_name = 'Admin (전체 접근)'
-                    request.is_hanagwahak = True  # Admin은 모든 기능 사용 가능
-                    request.is_admin = True
+                # select_related로 한 번에 조회 (N+1 방지)
+                if hasattr(request.user, 'userprofile'):
+                    profile = request.user.userprofile
+                    # Admin 사용자는 모든 데이터에 접근 가능
+                    if profile.role == 'admin':
+                        request.user_company = None
+                        request.user_company_name = 'Admin (전체 접근)'
+                        request.is_hanagwahak = True
+                        request.is_admin = True
+                        
+                        # 세션 캐시 저장
+                        request.session[cache_key] = {
+                            'company_id': None,
+                            'company_name': 'Admin (전체 접근)',
+                            'is_admin': True,
+                            'is_hanagwahak': True
+                        }
                     
-                # UserProfile을 통해 사용자의 회사 정보 가져오기
-                elif hasattr(request.user, 'userprofile') and request.user.userprofile.company:
-                    try:
-                        request.user_company = request.user.userprofile.company  # UserCompany 객체
-                        request.user_company_name = request.user.userprofile.company.name  # 회사명
+                    # 일반 사용자 - 회사 정보 조회
+                    elif profile.company:
+                        company = profile.company
+                        request.user_company = company
+                        request.user_company_name = company.name
                         request.is_admin = False
                         
-                        # 하나과학인지 확인 (더욱 강화된 매칭)
-                        company_name_clean = request.user_company_name.strip().replace(' ', '').lower()
+                        # 하나과학 체크 간소화 (성능 개선)
+                        company_name_lower = company.name.lower().replace(' ', '')
+                        request.is_hanagwahak = (
+                            '하나과학' in company_name_lower or 
+                            'hanagwahak' in company_name_lower or
+                            (os.environ.get('HANAGWAHAK_COMPANY_IDS', '').find(str(company.id)) != -1)
+                        )
                         
-                        # 더 많은 variation 패턴 추가
-                        hanagwahak_variations = [
-                            '하나과학', 'hanagwahak', 'hana', '하나',
-                            'hanagwahac', 'hana gwahak', '하나 과학',
-                            'hanascience', 'hana science'
-                        ]
-                        
-                        # 기본 매칭
-                        request.is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
-                        
-                        # 만약 기본 매칭이 실패하면 더 정교한 매칭 시도
-                        if not request.is_hanagwahak:
-                            try:
-                                # 유니코드 정규화
-                                import unicodedata
-                                normalized_name = unicodedata.normalize('NFKC', company_name_clean)
-                                request.is_hanagwahak = any(variation.lower() in normalized_name for variation in hanagwahak_variations)
-                                
-                                # 여전히 실패하면 부분 매칭 시도
-                                if not request.is_hanagwahak:
-                                    # '하나'와 '과학'이 모두 포함되어 있는지 확인
-                                    has_hana = any(hana in company_name_clean for hana in ['하나', 'hana'])
-                                    has_science = any(science in company_name_clean for science in ['과학', 'gwahak', 'science'])
-                                    request.is_hanagwahak = has_hana and has_science
-                            except Exception as unicode_error:
-                                logger.error(f"[MIDDLEWARE] 유니코드 처리 에러: {unicode_error}")
-                                # 기본적으로 False로 설정하되, 예외적으로 하나과학 문자열이 포함되어 있으면 True
-                                request.is_hanagwahak = '하나과학' in request.user_company_name or 'hanagwahak' in request.user_company_name.lower()
-                        
-                        # Railway 서버에서의 임시 해결책: 환경변수나 특정 조건으로 강제 인식
-                        if not request.is_hanagwahak:
-                            # RAILWAY_ENVIRONMENT가 설정되어 있고, 회사 ID가 특정 값이면 하나과학으로 인식
-                            railway_env = os.environ.get('RAILWAY_ENVIRONMENT')
-                            if railway_env:
-                                # Railway 환경에서는 회사명에 '하나' 또는 'hana'가 포함되면 하나과학으로 처리
-                                if any(keyword in request.user_company_name.lower() for keyword in ['하나', 'hana']):
-                                    request.is_hanagwahak = True
-                            
-                            # 또는 특정 회사 ID들을 하나과학으로 처리 (관리자가 수동으로 설정할 수 있는 방법)
-                            hanagwahak_company_ids = os.environ.get('HANAGWAHAK_COMPANY_IDS', '').split(',')
-                            if str(request.user_company.id) in hanagwahak_company_ids:
-                                request.is_hanagwahak = True
-                        
-                    except Exception as company_error:
-                        logger.error(f"[MIDDLEWARE] 회사 정보 처리 에러: {company_error}")
-                        request.user_company = request.user.userprofile.company
-                        request.user_company_name = str(request.user.userprofile.company.name) if request.user.userprofile.company else None
+                        # 세션 캐시 저장
+                        request.session[cache_key] = {
+                            'company_id': company.id,
+                            'company_name': company.name,
+                            'is_admin': False,
+                            'is_hanagwahak': request.is_hanagwahak
+                        }
+                    else:
+                        # 회사 정보 없음
+                        request.user_company = None
+                        request.user_company_name = None
                         request.is_hanagwahak = False
                         request.is_admin = False
                         
+                        request.session[cache_key] = {
+                            'company_id': None,
+                            'company_name': None,
+                            'is_admin': False,
+                            'is_hanagwahak': False
+                        }
+                        
                 else:
+                    # UserProfile 없음
                     request.user_company = None
                     request.user_company_name = None
                     request.is_hanagwahak = False
                     request.is_admin = False
                     
             except Exception as e:
-                logger.error(f"Error getting user company info: {e}")
+                logger.error(f"[MIDDLEWARE] 사용자 프로필 조회 오류: {e}")
                 request.user_company = None
                 request.user_company_name = None
                 request.is_hanagwahak = False
