@@ -36,11 +36,14 @@ class FunnelAnalytics:
     
     @staticmethod
     def get_stage_breakdown(user=None):
-        """단계별 분석"""
+        """단계별 분석 - Schedule 기준 카운트"""
+        from .models import Schedule
+        
         stages = FunnelStage.objects.all().order_by('stage_order')
         breakdown = []
         
         for stage in stages:
+            # OpportunityTracking으로 영업기회 필터링
             opps = OpportunityTracking.objects.filter(
                 current_stage=stage.name
             )
@@ -48,11 +51,24 @@ class FunnelAnalytics:
             if user:
                 opps = opps.filter(followup__user=user)
             
+            # Schedule 기준 카운트 (실제 견적/활동 수)
+            # quote 단계는 견적 일정 개수로 카운트
+            if stage.name == 'quote':
+                followup_ids = opps.values_list('followup_id', flat=True)
+                schedule_count = Schedule.objects.filter(
+                    followup_id__in=followup_ids,
+                    activity_type='quote',
+                    status='scheduled'  # 예정된 견적만
+                ).count()
+                actual_count = schedule_count if schedule_count > 0 else opps.count()
+            else:
+                actual_count = opps.count()
+            
             # won/lost는 별도 처리 (제외하지 않음)
             stage_data = {
                 'stage': stage.display_name,
                 'stage_code': stage.name,
-                'count': opps.count(),
+                'count': actual_count,
                 'total_value': opps.aggregate(Sum('expected_revenue'))['expected_revenue__sum'] or 0,
                 'weighted_value': opps.aggregate(Sum('weighted_revenue'))['weighted_revenue__sum'] or 0,
                 'avg_probability': opps.aggregate(Avg('probability'))['probability__avg'] or 0,
