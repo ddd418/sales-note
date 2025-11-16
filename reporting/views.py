@@ -2610,13 +2610,10 @@ def schedule_update_funnel(request, pk):
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"펀넬 정보 업데이트 요청 - 사용자: {request.user.username}, 일정 ID: {pk}")
-        
         schedule = get_object_or_404(Schedule, pk=pk)
         
         # 권한 체크
         if not can_modify_user_data(request.user, schedule.user):
-            logger.warning(f"권한 없음 - 요청자: {request.user.username}, 일정 소유자: {schedule.user.username}")
             return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'}, status=403)
         
         if request.method == 'POST':
@@ -2656,9 +2653,7 @@ def schedule_update_funnel(request, pk):
             else:
                 schedule.expected_close_date = None
             
-            logger.info(f"변환된 값 - 예상매출: {schedule.expected_revenue}, 확률: {schedule.probability}, 마감일: {schedule.expected_close_date}")
             schedule.save()
-            logger.info(f"일정 {pk} 펀넬 정보 업데이트 완료")
             
             # OpportunityTracking 생성 또는 업데이트
             if schedule.activity_type != 'service':  # 서비스 일정은 제외
@@ -2667,7 +2662,6 @@ def schedule_update_funnel(request, pk):
                 
                 # OpportunityTracking이 없으면 생성
                 if not schedule.opportunity:
-                    logger.info(f"OpportunityTracking 없음 - 새로 생성")
                     
                     # 일정 타입에 따른 초기 단계 결정
                     if schedule.activity_type == 'customer_meeting':
@@ -2698,11 +2692,9 @@ def schedule_update_funnel(request, pk):
                     # Schedule과 연결
                     schedule.opportunity = opportunity
                     schedule.save(update_fields=['opportunity'])
-                    logger.info(f"OpportunityTracking {opportunity.id} 생성 및 연결 완료")
                     
                 else:
                     # OpportunityTracking이 있으면 업데이트
-                    logger.info(f"OpportunityTracking {schedule.opportunity.id} 업데이트")
                     opportunity = schedule.opportunity
                     
                     # 예상 매출액 업데이트
@@ -2724,7 +2716,6 @@ def schedule_update_funnel(request, pk):
                         opportunity.expected_close_date = schedule.expected_close_date
                     
                     opportunity.save()
-                    logger.info(f"OpportunityTracking {opportunity.id} 업데이트 완료")
             
             return JsonResponse({
                 'success': True,
