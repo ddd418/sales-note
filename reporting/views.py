@@ -2447,15 +2447,9 @@ def schedule_delete_view(request, pk):
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"일정 삭제 요청 - 사용자: {request.user.username}, 일정 ID: {pk}")
-        logger.info(f"요청 메서드: {request.method}")
-        logger.info(f"AJAX 요청 여부: {request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'}")
-        
         schedule = get_object_or_404(Schedule, pk=pk)
-        logger.info(f"일정 정보 - 고객: {schedule.followup.customer_name}, 날짜: {schedule.visit_date}")
           # 권한 체크: 삭제 권한이 있는 경우만 허용 (Manager는 읽기 전용)
         if not can_modify_user_data(request.user, schedule.user):
-            logger.warning(f"권한 없음 - 요청자: {request.user.username}, 일정 소유자: {schedule.user.username}")
             # AJAX 요청 감지 - X-Requested-With 헤더 확인
             is_ajax = request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
             if is_ajax:
