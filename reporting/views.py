@@ -2741,17 +2741,10 @@ def schedule_update_funnel(request, pk):
 @login_required
 def schedule_update_delivery_items(request, pk):
     """일정의 납품 품목 업데이트"""
-    logger.info(f"=== Schedule 납품 품목 업데이트 시작 (ID: {pk}) ===")
-    logger.info(f"요청 메소드: {request.method}")
-    logger.info(f"사용자: {request.user.username}")
-    logger.info(f"Content-Type: {request.content_type}")
-    
     schedule = get_object_or_404(Schedule, pk=pk)
-    logger.info(f"Schedule 정보: {schedule} (ID: {schedule.pk})")
     
     # 권한 체크: 수정 권한이 있는 경우만 수정 가능
     if not can_modify_user_data(request.user, schedule.user):
-        logger.warning(f"권한 없음: {request.user.username}이 {schedule.user.username}의 스케줄을 수정하려고 시도")
         messages.error(request, '수정 권한이 없습니다.')
         return redirect('reporting:schedule_detail', pk=pk)
     
