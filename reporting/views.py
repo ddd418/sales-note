@@ -7490,6 +7490,7 @@ def customer_report_view(request):
     users = []
     selected_user = None
     target_user = request.user  # 기본은 본인
+    user_filter = None  # 초기화
     
     if user_profile.can_view_all_users():
         accessible_users = get_accessible_users(request.user)
@@ -7545,104 +7546,90 @@ def customer_report_view(request):
             Q(manager__icontains=search_query)
         )
     
-    # 각 고객별 통계 수동 계산 - target_user가 등록한 활동만
+    # ✅ Prefetch로 N+1 쿼리 방지 (성능 최적화)
+    from django.db.models import Prefetch
+    
+    # 사용자 필터 설정
+    if target_user is None and user_profile.can_view_all_users():
+        user_filter_q = Q(user__in=accessible_users)
+    else:
+        user_filter_q = Q(user=target_user)
+    
+    # 모든 관련 데이터를 한 번에 가져오기
+    followups = followups.prefetch_related(
+        Prefetch('histories', queryset=History.objects.filter(user_filter_q).select_related('user')),
+        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q).select_related('user').prefetch_related('delivery_items_set'))
+    )
+    
+    # 각 고객별 통계 계산
     followups_with_stats = []
     total_amount_sum = Decimal('0')
     total_meetings_sum = 0
     total_deliveries_sum = 0
     total_unpaid_sum = 0
-    prepayment_customers = set()  # 선결제가 있는 고객 ID 집합
+    prepayment_customers = set()
     
-    for followup in followups.select_related('user', 'company', 'department'):
-        # History 기반 통계 - target_user 또는 accessible_users가 등록한 것만
-        if target_user is None and user_profile.can_view_all_users():
-            # 전체 팀원: accessible_users의 데이터 모두 포함
-            histories = History.objects.filter(followup=followup, user__in=accessible_users)
-        else:
-            histories = History.objects.filter(followup=followup, user=target_user)
+    for followup in followups:
+        # ✅ Prefetch된 데이터 사용 (추가 쿼리 없음!)
+        all_histories = list(followup.histories.all())
+        all_schedules = list(followup.schedules.all())
         
-        meetings = histories.filter(action_type='customer_meeting').count()
-        delivery_histories = histories.filter(action_type='delivery_schedule')
-        deliveries = delivery_histories.count()
-        history_amount = delivery_histories.aggregate(total=Sum('delivery_amount'))['total'] or Decimal('0')
-        unpaid = delivery_histories.filter(tax_invoice_issued=False).count()
+        # History 통계
+        meetings = sum(1 for h in all_histories if h.action_type == 'customer_meeting')
+        delivery_histories = [h for h in all_histories if h.action_type == 'delivery_schedule']
+        deliveries = len(delivery_histories)
+        history_amount = sum(h.delivery_amount or Decimal('0') for h in delivery_histories)
+        unpaid = sum(1 for h in delivery_histories if not h.tax_invoice_issued)
         
-        # Schedule DeliveryItem 기반 통계 - target_user 또는 accessible_users가 등록한 것만
-        if target_user is None and user_profile.can_view_all_users():
-            schedule_deliveries = Schedule.objects.filter(
-                followup=followup,
-                user__in=accessible_users,
-                activity_type='delivery',
-                delivery_items_set__isnull=False
-            ).distinct()
-            schedule_amount = DeliveryItem.objects.filter(
-                schedule__followup=followup,
-                schedule__user__in=accessible_users,
-                schedule__activity_type='delivery'
-            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
-        else:
-            schedule_deliveries = Schedule.objects.filter(
-                followup=followup,
-                user=target_user,
-                activity_type='delivery',
-                delivery_items_set__isnull=False
-            ).distinct()
-            schedule_amount = DeliveryItem.objects.filter(
-                schedule__followup=followup,
-                schedule__user=target_user,
-                schedule__activity_type='delivery'
-            ).aggregate(total=Sum('total_price'))['total'] or Decimal('0')
-        
-        schedule_delivery_count = schedule_deliveries.count()
+        # Schedule 통계
+        schedule_deliveries = [s for s in all_schedules if s.activity_type == 'delivery']
+        schedule_delivery_count = len(schedule_deliveries)
+        schedule_amount = sum(
+            item.total_price or Decimal('0')
+            for schedule in schedule_deliveries
+            for item in schedule.delivery_items_set.all()
+        )
         
         # 세금계산서 현황 계산 (History + Schedule DeliveryItem 통합 - 중복 제거)
         # 1. History와 Schedule 연결 관계 분석
         history_with_schedule_ids = set(
-            delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True)
+            h.schedule_id for h in delivery_histories if h.schedule_id is not None
         )
         
         # 2. History 기반 세금계산서 현황 (Schedule 연결 여부로 구분)
-        history_with_schedule_issued = delivery_histories.filter(
-            schedule__isnull=False, tax_invoice_issued=True
-        ).values_list('schedule_id', flat=True)
-        history_with_schedule_pending = delivery_histories.filter(
-            schedule__isnull=False, tax_invoice_issued=False
-        ).values_list('schedule_id', flat=True)
+        history_with_schedule_issued = [
+            h.schedule_id for h in delivery_histories 
+            if h.schedule_id is not None and h.tax_invoice_issued
+        ]
+        history_with_schedule_pending = [
+            h.schedule_id for h in delivery_histories 
+            if h.schedule_id is not None and not h.tax_invoice_issued
+        ]
         
-        history_without_schedule_issued = delivery_histories.filter(
-            schedule__isnull=True, tax_invoice_issued=True
-        ).count()
-        history_without_schedule_pending = delivery_histories.filter(
-            schedule__isnull=True, tax_invoice_issued=False
-        ).count()
-        
-        # 3. Schedule DeliveryItem 세금계산서 현황 (History 연결 여부로 구분)
-        if target_user is None and user_profile.can_view_all_users():
-            schedule_deliveries_all = Schedule.objects.filter(
-                followup=followup,
-                user__in=accessible_users,
-                activity_type='delivery'
-            )
-        else:
-            schedule_deliveries_all = Schedule.objects.filter(
-                followup=followup,
-                user=target_user,
-                activity_type='delivery'
-            )
-        
-        # Schedule만 있는 경우 (History에 연결되지 않은 Schedule) - 항목 단위로 카운팅
-        schedule_only_deliveries = schedule_deliveries_all.exclude(
-            id__in=history_with_schedule_ids
+        history_without_schedule_issued = sum(
+            1 for h in delivery_histories 
+            if h.schedule_id is None and h.tax_invoice_issued
         )
+        history_without_schedule_pending = sum(
+            1 for h in delivery_histories 
+            if h.schedule_id is None and not h.tax_invoice_issued
+        )
+        
+        # 3. Schedule DeliveryItem 세금계산서 현황 (Prefetch된 데이터 사용)
+        # Schedule만 있는 경우 (History에 연결되지 않은 Schedule)
+        schedule_only_deliveries = [
+            s for s in schedule_deliveries 
+            if s.id not in history_with_schedule_ids
+        ]
         
         schedule_only_issued = 0
         schedule_only_pending = 0
         
         for schedule in schedule_only_deliveries:
-            items = schedule.delivery_items_set.all()
-            if items.exists():
+            items = list(schedule.delivery_items_set.all())
+            if items:
                 # 해당 Schedule에 하나라도 발행된 품목이 있으면 발행으로 카운팅
-                if items.filter(tax_invoice_issued=True).exists():
+                if any(item.tax_invoice_issued for item in items):
                     schedule_only_issued += 1
                 else:
                     schedule_only_pending += 1
@@ -7655,23 +7642,23 @@ def customer_report_view(request):
         total_tax_issued = len(history_schedule_issued_set) + history_without_schedule_issued + schedule_only_issued
         total_tax_pending = len(history_schedule_pending_set) + history_without_schedule_pending + schedule_only_pending
         
-        # 중복 제거된 납품 횟수 계산
+        # 중복 제거된 납품 횟수 계산 (Prefetch된 데이터 사용)
         # History에 기록된 일정 ID들
         history_schedule_ids = set(
-            delivery_histories.filter(schedule__isnull=False).values_list('schedule_id', flat=True)
+            h.schedule_id for h in delivery_histories if h.schedule_id is not None
         )
         # Schedule에 DeliveryItem이 있는 일정 ID들  
-        schedule_ids = set(schedule_deliveries.values_list('id', flat=True))
+        schedule_ids = set(s.id for s in schedule_deliveries)
         
         # History만 있는 납품 + Schedule만 있는 납품 + 둘 다 있는 경우는 1개로 카운팅
-        history_only_deliveries = delivery_histories.filter(schedule__isnull=True).count()
+        history_only_deliveries = sum(1 for h in delivery_histories if h.schedule_id is None)
         unique_deliveries_count = len(history_schedule_ids | schedule_ids) + history_only_deliveries
         
         # 통합 통계
         total_meetings_count = meetings
         total_deliveries_count = unique_deliveries_count
         total_amount = history_amount + schedule_amount
-        last_contact = histories.aggregate(last=Max('created_at'))['last']
+        last_contact = max((h.created_at for h in all_histories), default=None)  # Prefetch된 데이터 사용
         
         # 선결제 통계 계산 - target_user가 등록한 선결제만
         prepayments = Prepayment.objects.filter(
