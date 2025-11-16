@@ -119,15 +119,16 @@ def check_customer_details(quote_opps, scheduled_quotes):
 
 def check_specific_customer(customer_name_part="hana"):
     """특정 고객 검색 및 상세 정보"""
-    print_separator(f"3. 특정 고객 검색 ('{customer_name_part}' 포함)")
+    print_separator(f"3. 특정 담당자/고객 검색 ('{customer_name_part}' 포함)")
     
     followups = FollowUp.objects.filter(
         Q(customer_name__icontains=customer_name_part) |
-        Q(company__name__icontains=customer_name_part)
+        Q(company__name__icontains=customer_name_part) |
+        Q(user__username__icontains=customer_name_part)
     ).select_related('company', 'user')
     
     if not followups.exists():
-        print(f"⚠️  '{customer_name_part}'을(를) 포함하는 고객을 찾을 수 없습니다.")
+        print(f"⚠️  '{customer_name_part}'을(를) 포함하는 담당자/고객을 찾을 수 없습니다.")
         return
     
     print(f"🔍 검색 결과: {followups.count()}명\n")
