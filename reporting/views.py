@@ -2492,20 +2492,11 @@ def schedule_delete_view(request, pk):
             related_histories = schedule.histories.all()
             history_count = related_histories.count()
             
-            logger.info(f"일정 삭제 실행 - {customer_name} ({schedule_date})")
-            logger.info(f"연결된 히스토리 개수: {history_count}")
-            
-            # 관련 히스토리들의 정보를 로깅
-            for history in related_histories:
-                logger.info(f"삭제될 히스토리: {history.get_action_type_display()} - {history.created_at}")
-            
             # 일정과 관련 히스토리 삭제
             if history_count > 0:
                 related_histories.delete()
-                logger.info(f"관련 히스토리 {history_count}개 삭제 완료")
             
             schedule.delete()
-            logger.info(f"일정 삭제 완료 - ID: {pk}")
             
             # OpportunityTracking 처리
             if opportunity:
