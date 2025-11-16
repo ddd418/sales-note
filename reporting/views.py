@@ -5796,8 +5796,6 @@ def department_create_api(request):
 @role_required(['admin', 'salesman'])
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
-    import logging
-    logger = logging.getLogger(__name__)
     
     # Admin 사용자는 모든 업체를 볼 수 있음
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
@@ -5823,22 +5821,7 @@ def company_list_view(request):
     # 검색 기능
     search_query = request.GET.get('search', '')
     if search_query:
-        companies_before_search = companies.count()
         companies = companies.filter(name__icontains=search_query)
-        companies_after_search = companies.count()
-        
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[COMPANY_LIST] 검색어: '{search_query}' - 검색 전: {companies_before_search}개, 검색 후: {companies_after_search}개")
-        
-        # 디버깅을 위해 검색된 업체들의 정보를 로그에 출력
-        if companies_after_search > 0:
-            company_names = list(companies.values_list('name', flat=True)[:10])  # 최대 10개만
-            logger.info(f"[COMPANY_LIST] 검색 결과 업체명: {company_names}")
-        
-        # "고려대"로 검색하는 경우 특별 디버깅
-        if '고려대' in search_query:
-            pass
     
     # 페이지네이션
     paginator = Paginator(companies, 10)
@@ -5866,9 +5849,6 @@ def company_create_view(request):
             if is_admin:
                 # Admin은 전체 업체 중 중복 확인
                 existing_company = Company.objects.filter(name=name).exists()
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"[COMPANY_CREATE] Admin 사용자 {request.user.username}: '{name}' 전체 중복 확인 결과 = {existing_company}")
             else:
                 # 같은 회사 사용자들이 만든 업체 중에서 중복 확인
                 user_company = getattr(request.user, 'userprofile', None)
@@ -5878,19 +5858,11 @@ def company_create_view(request):
                 else:
                     existing_company = Company.objects.filter(name=name, created_by=request.user).exists()
                 
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"[COMPANY_CREATE] 일반 사용자 {request.user.username}: '{name}' 회사 내 중복 확인 결과 = {existing_company}")
-                
             if existing_company:
                 messages.error(request, '이미 존재하는 업체/학교명입니다.')
             else:
                 Company.objects.create(name=name, created_by=request.user)
                 messages.success(request, f'"{name}" 업체/학교가 추가되었습니다.')
-                
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"[COMPANY_CREATE] 사용자 {request.user.username}: '{name}' 업체 생성 완료")
                 
                 return redirect('reporting:company_list')
     
@@ -5907,9 +5879,6 @@ def company_edit_view(request, pk):
     # 권한 체크: 관리자이거나 생성자만 수정 가능
     user_profile = get_user_profile(request.user)
     is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
-    
-    import logging
-    logger = logging.getLogger(__name__)
     
     if not (is_admin or company.created_by == request.user):
         # Admin이 아닌 경우 같은 회사 사용자가 생성한 업체인지 확인
@@ -5937,8 +5906,6 @@ def company_edit_view(request, pk):
             company.name = name
             company.save()
             messages.success(request, f'"{name}" 업체/학교 정보가 수정되었습니다.')
-            
-            logger.info(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} '{name}' 수정 완료")
             
             return redirect('reporting:company_list')
     
