@@ -2521,7 +2521,6 @@ def schedule_delete_view(request, pk):
                         # 수주 금액 업데이트
                         old_backlog = opportunity.backlog_amount
                         opportunity.update_revenue_amounts()
-                        opportunity.backlog_amount = old_backlog - schedule_revenue
                         opportunity.save()
                 except Exception as e:
                     logger.error(f"OpportunityTracking 처리 중 오류: {e}")
@@ -5480,10 +5479,6 @@ def schedule_status_update_api(request, schedule_id):
         # 취소 시 추가 정보 제공
         if new_status == 'cancelled' and old_status != 'cancelled':
             additional_messages = []
-            if 'deleted_items_count' in locals() and deleted_items_count > 0:
-                additional_messages.append(f'{deleted_items_count}개 납품 품목이 삭제되었습니다.')
-            if 'delivery_histories_count' in locals() and delivery_histories_count > 0:
-                additional_messages.append(f'{delivery_histories_count}개 납품 기록이 삭제되었습니다.')
             if schedule.opportunity and schedule.opportunity.current_stage == 'lost':
                 additional_messages.append('펀넬 상태가 실주로 변경되었습니다.')
             
