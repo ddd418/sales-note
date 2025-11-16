@@ -190,6 +190,7 @@ class Schedule(models.Model):
 class History(models.Model):
     ACTION_CHOICES = [
         ('customer_meeting', '고객 미팅'),
+        ('quote', '견적'),
         ('delivery_schedule', '납품 일정'),
         ('service', '서비스'),
         ('memo', '메모'),

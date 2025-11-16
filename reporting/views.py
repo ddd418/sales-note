@@ -518,6 +518,7 @@ class HistoryForm(forms.ModelForm):
                     # 일정의 activity_type을 히스토리의 action_type으로 매핑
                     activity_mapping = {
                         'customer_meeting': 'customer_meeting',
+                        'quote': 'quote',
                         'delivery': 'delivery_schedule',
                         'service': 'service',
                     }
