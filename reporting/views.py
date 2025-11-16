@@ -90,7 +90,7 @@ def save_delivery_items(request, instance_obj):
                         from .models import Product
                         delivery_item.product = Product.objects.get(id=int(product_id))
                     except (Product.DoesNotExist, ValueError):
-                        logger.warning(f"제품 ID {product_id}를 찾을 수 없습니다.")
+                        pass
                 
                 # 스케줄 또는 히스토리 연결
                 if is_schedule:
@@ -107,8 +107,6 @@ def save_delivery_items(request, instance_obj):
             except (ValueError, TypeError) as e:
                 logger.error(f"납품 품목 저장 실패: {e}")
                 continue  # 잘못된 데이터는 무시
-        else:
-            logger.warning(f"필수 데이터 누락: name={item_name}, quantity={quantity}")
     
     return created_count
 
@@ -835,7 +833,6 @@ def dashboard_view(request):
                     # 세션에 저장
                     request.session['selected_user_id'] = str(user_filter)
                 except (User.DoesNotExist, ValueError):
-                    logger.warning(f"[DASHBOARD FILTER] 사용자 찾기 실패: {user_filter}")
                     target_user = None  # 전체 팀원 데이터 표시
                     # 잘못된 세션 값 제거
                     if 'selected_user_id' in request.session:
@@ -1848,13 +1845,11 @@ def schedule_create_view(request):
                                 opportunity.expected_revenue = delivery_total
                                 opportunity.save()
                                 opportunity.update_revenue_amounts()
-                                logger.info(f"[DELIVERY_FUNNEL] 펀넬 ID {opportunity.id}의 예상 수주액을 납품 품목 총액 {delivery_total:,}원으로 업데이트")
                             
                             # 일정의 예상 수주액도 업데이트
                             if not schedule.expected_revenue or schedule.expected_revenue == 0:
                                 schedule.expected_revenue = delivery_total
                                 schedule.save()
-                                logger.info(f"[DELIVERY_FUNNEL] 일정 ID {schedule.id}의 예상 수주액을 납품 품목 총액 {delivery_total:,}원으로 업데이트")
                 
                 # 선결제 사용 시 PrepaymentUsage에 품목 정보 업데이트
                 if schedule.use_prepayment:
@@ -1881,7 +1876,6 @@ def schedule_create_view(request):
                 )
                 completed_quotes = related_quotes.update(status='completed')
                 if completed_quotes > 0:
-                    logger.info(f"[QUOTE_AUTO_COMPLETE] 납품 생성으로 인해 {completed_quotes}개의 견적이 자동 완료 처리됨")
                     messages.info(request, f'{completed_quotes}개의 관련 견적이 자동으로 완료 처리되었습니다.')
             
             # 펀넬 관련: 서비스는 제외, 고객 미팅/납품/견적만 영업 기회 생성
@@ -2254,12 +2248,9 @@ def schedule_edit_view(request, pk):
                     
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 일정 ID: {updated_schedule.id}, activity_type: {updated_schedule.activity_type}, status: {updated_schedule.status}")
-                    logger.info(f"[SCHEDULE_UPDATE_DEBUG] 현재 opportunity ID: {opportunity.id}, current_stage: {opportunity.current_stage}")
                     
                     # 구매 확정 시 클로징 단계로 전환
                     if updated_schedule.purchase_confirmed and opportunity.current_stage != 'closing':
-                        logger.info(f"[STAGE_UPDATE] 구매 확정 → closing")
                         opportunity.update_stage('closing')
                     
                     # 취소된 일정인 경우 실주 단계로 전환
@@ -3584,9 +3575,6 @@ def followup_histories_api(request, followup_id):
                 
             except Exception as history_error:
                 # 개별 히스토리 처리 중 에러가 발생해도 계속 진행
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"History {history.id} processing error: {str(history_error)}")
                 continue
         
         return JsonResponse({
@@ -3921,14 +3909,11 @@ def user_delete(request, user_id):
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"사용자 삭제 요청 - 요청자: {request.user.username}, 대상 사용자 ID: {user_id}")
-        
         # 삭제할 사용자 가져오기
         user_to_delete = get_object_or_404(User, id=user_id)
         
         # 자기 자신은 삭제할 수 없음
         if user_to_delete.id == request.user.id:
-            logger.warning(f"자신의 계정 삭제 시도 - {request.user.username}")
             if request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
                 return JsonResponse({
                     'success': False, 
@@ -3942,20 +3927,14 @@ def user_delete(request, user_id):
             user_profile = getattr(user_to_delete, 'userprofile', None)
             role_display = user_profile.get_role_display() if user_profile else '알 수 없음'
             
-            logger.info(f"사용자 삭제 실행 - {username} ({role_display})")
-            
             # 관련 데이터 개수 확인
             followups_count = FollowUp.objects.filter(user=user_to_delete).count()
             schedules_count = Schedule.objects.filter(user=user_to_delete).count()
             histories_count = History.objects.filter(user=user_to_delete).count()
             
-            logger.info(f"삭제될 데이터 - 고객정보: {followups_count}개, 일정: {schedules_count}개, 히스토리: {histories_count}개")
-            
             # 사용자와 관련된 모든 데이터가 CASCADE로 삭제됨
             # (models.py에서 ForeignKey의 on_delete=models.CASCADE 설정에 의해)
             user_to_delete.delete()
-            
-            logger.info(f"사용자 삭제 완료 - {username}")
             
             # AJAX 요청인 경우 JSON 응답
             if request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
@@ -4474,9 +4453,6 @@ def manager_dashboard(request):
     scheduled_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
     completed_delivery_count_mgr = schedules_current_year.filter(activity_type='delivery', status='completed').count()
     
-    logger.info(f"[매니저 대시보드 펀넬] 선택된 사용자: {target_user.username if target_user else '전체'}")
-    logger.info(f"[매니저 대시보드 펀넬] 미팅: {meeting_count_mgr}, 견적: {quote_count_mgr}, 발주예정: {scheduled_delivery_count_mgr}, 납품완료: {completed_delivery_count_mgr}")
-    
     # 전환율 계산
     meeting_to_delivery_rate = (completed_delivery_count_mgr / meeting_count_mgr * 100) if meeting_count_mgr > 0 else 0
     quote_to_delivery_rate = (completed_delivery_count_mgr / quote_count_mgr * 100) if quote_count_mgr > 0 else 0
@@ -4822,9 +4798,6 @@ def salesman_detail(request, user_id):
         try:
             total_followups = followups.count()
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"팔로우업 개수 계산 중 오류: {str(e)}")
             total_followups = 0
         
         # 페이지네이션 처리 (단순화)
@@ -4849,9 +4822,6 @@ def salesman_detail(request, user_id):
             total_schedules = schedules.count()
             total_histories = histories.count()
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"집계 계산 중 오류: {str(e)}")
             total_schedules = 0
             total_histories = 0
         
@@ -5442,25 +5412,18 @@ def schedule_status_update_api(request, schedule_id):
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
-                    logger.info("✅ 펀넬 수주 처리 완료")
-                else:
-                    logger.info(f"⚠️ 펀넬이 {opportunity.current_stage} 상태라서 수주 처리 안함")
             else:
-                logger.warning("❌ 연결된 펀넬이 없음 - 수주 처리 불가")
+                pass
         
         # 일반적인 납품 완료 시 펀넬을 수주로 업데이트 (scheduled → completed)
         if new_status == 'completed' and old_status == 'scheduled' and schedule.activity_type == 'delivery':
-            logger.info("🎉 납품 일정 완료 - 펀넬 수주 처리 시작!")
             from datetime import date
             
             # 펀넬을 수주로 업데이트
             if schedule.opportunity:
-                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
                 opportunity = schedule.opportunity
-                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
                 
                 if opportunity.current_stage != 'won' and opportunity.current_stage != 'lost':  # 아직 수주/실주가 아닌 경우
-                    logger.info("🎯 펀넬 수주 처리 중...")
                     opportunity.current_stage = 'won'
                     opportunity.won_date = date.today()
                     
@@ -5761,15 +5724,10 @@ def schedule_activity_type(request):
 @require_POST
 def company_create_api(request):
     """새 업체/학교 생성 API"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
         name = request.POST.get('name', '').strip()
-        logger.info(f"업체 생성 요청: user={request.user.username}, name='{name}'")
         
         if not name:
-            logger.warning(f"업체 생성 실패: 빈 이름 (user={request.user.username})")
             return JsonResponse({'error': '업체/학교명을 입력해주세요.'}, status=400)
         
         # 중복 체크 - 같은 회사 내에서만
@@ -5777,11 +5735,9 @@ def company_create_api(request):
         if user_profile_obj and user_profile_obj.company:
             same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
             if Company.objects.filter(name=name, created_by__in=same_company_users).exists():
-                logger.warning(f"업체 생성 실패: 중복 이름 '{name}' (user={request.user.username})")
                 return JsonResponse({'error': '이미 존재하는 업체/학교명입니다.'}, status=400)
         
         company = Company.objects.create(name=name, created_by=request.user)
-        logger.info(f"업체 생성 성공: id={company.id}, name='{company.name}' (user={request.user.username})")
         
         return JsonResponse({
             'success': True,
@@ -5850,8 +5806,6 @@ def company_list_view(request):
             department_count=Count('departments', distinct=True),
             followup_count=Count('followup_companies', distinct=True)
         ).order_by('name')
-        
-        logger.info(f"[COMPANY_LIST] Admin 사용자 {request.user.username}: 전체 {companies.count()}개 업체 조회")
     else:
         # 일반 사용자: 같은 회사 소속 사용자들이 생성한 업체만 조회
         user_company = getattr(request.user, 'userprofile', None)
@@ -5862,15 +5816,9 @@ def company_list_view(request):
                 department_count=Count('departments', distinct=True),
                 followup_count=Count('followup_companies', distinct=True)
             ).order_by('name')
-            
-            logger.info(f"[COMPANY_LIST] 일반 사용자 {request.user.username}: {companies.count()}개 업체 조회 (회사: {user_company.company.name})")
-            logger.info(f"[COMPANY_LIST] 같은 회사 사용자 수: {same_company_users.count()}명")
-            logger.info(f"[COMPANY_LIST] 같은 회사 사용자 목록: {list(same_company_users.values_list('username', flat=True))}")
         else:
             # 회사 정보가 없는 경우 빈 쿼리셋
             companies = Company.objects.none()
-            
-            logger.warning(f"[COMPANY_LIST] 사용자 {request.user.username}: 회사 정보 없음, 빈 목록 반환")
     
     # 검색 기능
     search_query = request.GET.get('search', '')
@@ -5890,16 +5838,7 @@ def company_list_view(request):
         
         # "고려대"로 검색하는 경우 특별 디버깅
         if '고려대' in search_query:
-            # 전체 Company에서 고려대 관련 업체 찾기
-            all_korea_companies = Company.objects.filter(name__icontains='고려대')
-            logger.info(f"[COMPANY_LIST] 전체 DB에서 '고려대' 포함 업체: {all_korea_companies.count()}개")
-            
-            if all_korea_companies.exists():
-                for company in all_korea_companies[:5]:  # 최대 5개만 로그
-                    created_by_company = 'Unknown'
-                    if company.created_by and hasattr(company.created_by, 'userprofile') and company.created_by.userprofile.company:
-                        created_by_company = company.created_by.userprofile.company.name
-                    logger.info(f"[COMPANY_LIST] 고려대 업체: '{company.name}' (생성자: {company.created_by.username if company.created_by else 'Unknown'}, 생성자 회사: {created_by_company})")
+            pass
     
     # 페이지네이션
     paginator = Paginator(companies, 10)
