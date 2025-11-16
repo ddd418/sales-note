@@ -63,8 +63,6 @@ def save_delivery_items(request, instance_obj):
                 if index not in delivery_items_data:
                     delivery_items_data[index] = {}
                 delivery_items_data[index][field] = value
-                
-                logger.info(f"파싱됨: {key} -> index={index}, field={field}, value={value}")
             except (ValueError, IndexError) as e:
                 logger.error(f"POST 데이터 파싱 실패: {key} = {value}, 오류: {e}")
                 continue
@@ -382,22 +380,10 @@ class ScheduleForm(forms.ModelForm):
         request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         
-        # DEBUG: status 필드 초기값 설정 확인
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[SCHEDULE_FORM_INIT] instance.pk: {self.instance.pk}")
-        logger.info(f"[SCHEDULE_FORM_INIT] data: {kwargs.get('data') if 'data' in kwargs else self.data}")
-        
         # 새 일정 생성 시 기본값 설정
         if not self.instance.pk:
             self.initial['status'] = 'scheduled'
             self.fields['status'].initial = 'scheduled'
-            logger.info(f"[SCHEDULE_FORM_INIT] Set initial status to 'scheduled'")
-        
-        logger.info(f"[SCHEDULE_FORM_INIT] self.initial: {self.initial}")
-        logger.info(f"[SCHEDULE_FORM_INIT] status field required: {self.fields['status'].required}")
-        logger.info(f"[SCHEDULE_FORM_INIT] status field initial: {self.fields['status'].initial}")
-        logger.info(f"[SCHEDULE_FORM_INIT] status field widget: {self.fields['status'].widget}")
         
         if user:
             # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
@@ -2664,8 +2650,6 @@ def schedule_update_funnel(request, pk):
             probability = request.POST.get('probability', '').strip()
             expected_close_date = request.POST.get('expected_close_date', '').strip()
             
-            logger.info(f"업데이트할 값 - 예상매출: {expected_revenue}, 확률: {probability}, 마감일: {expected_close_date}")
-            
             # Schedule 업데이트
             from decimal import Decimal
             
@@ -2807,24 +2791,17 @@ def schedule_update_delivery_items(request, pk):
     
     if request.method == 'POST':
         try:
-            logger.info(f"Schedule {pk}의 납품 품목 업데이트 시작")
-            logger.info(f"POST 데이터 전체: {dict(request.POST)}")
-            
             # 납품 품목 저장
             created_count = save_delivery_items(request, schedule)
-            logger.info(f"Schedule {pk}에 {created_count}개 납품 품목 저장됨")
             
             if created_count == 0:
-                logger.warning(f"경고: 저장된 품목이 없습니다. POST 데이터를 확인하세요.")
                 messages.warning(request, '저장된 품목이 없습니다. 품목명과 수량을 모두 입력했는지 확인해주세요.')
             
             # 관련된 History들의 delivery_items 텍스트도 업데이트
             related_histories = schedule.histories.filter(action_type='delivery_schedule')
-            logger.info(f"연관된 History 개수: {related_histories.count()}")
             
             # 새로 저장된 DeliveryItem들을 텍스트로 변환
             delivery_items = schedule.delivery_items_set.all()
-            logger.info(f"Schedule에 저장된 DeliveryItem 개수: {delivery_items.count()}")
             
             if delivery_items.exists():
                 delivery_lines = []
@@ -2840,8 +2817,6 @@ def schedule_update_delivery_items(request, pk):
                         delivery_lines.append(f"{item.item_name}: {item.quantity}개")
                 
                 delivery_text = '\n'.join(delivery_lines)
-                logger.info(f"생성된 delivery_text: {delivery_text}")
-                logger.info(f"계산된 total_delivery_amount: {total_delivery_amount}")
                 
                 # 관련 History가 있으면 업데이트, 없으면 새로 생성
                 if related_histories.exists():
@@ -2851,7 +2826,6 @@ def schedule_update_delivery_items(request, pk):
                         if total_delivery_amount > 0:
                             history.delivery_amount = total_delivery_amount
                         history.save(update_fields=['delivery_items', 'delivery_amount'])
-                        logger.info(f"History {history.pk}의 delivery_items 및 delivery_amount 업데이트 완료")
                 else:
                     # 새로운 History 생성
                     from .models import History
@@ -2863,9 +2837,6 @@ def schedule_update_delivery_items(request, pk):
                         delivery_amount=total_delivery_amount if total_delivery_amount > 0 else None,
                         memo=f'납품 품목 {created_count}개 추가'
                     )
-                    logger.info(f"새로운 History {history.pk} 생성 완료")
-            else:
-                logger.warning(f"Schedule {pk}에 DeliveryItem이 없습니다.")
             
             messages.success(request, '납품 품목이 성공적으로 업데이트되었습니다.')
         except Exception as e:
@@ -2875,7 +2846,6 @@ def schedule_update_delivery_items(request, pk):
         return redirect('reporting:schedule_detail', pk=pk)
     
     # GET 요청은 허용하지 않음
-    logger.warning(f"GET 요청으로 schedule_update_delivery_items 호출됨 (Schedule ID: {pk})")
     return redirect('reporting:schedule_detail', pk=pk)
 
 @login_required
@@ -5357,56 +5327,41 @@ def schedule_status_update_api(request, schedule_id):
         
         # 권한 체크: 수정 권한이 있는 경우만 상태 변경 가능 (Manager는 읽기 전용)
         if not can_modify_user_data(request.user, schedule.user):
-            logger.warning(f"❌ 권한 없음: 사용자 {request.user.username}가 일정 {schedule_id} 수정 시도")
             return JsonResponse({'error': '수정 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
         
         new_status = request.POST.get('status')
-        logger.info(f"📝 새로운 상태: {new_status}")
         
         if new_status not in ['scheduled', 'completed', 'cancelled']:
             return JsonResponse({'error': '잘못된 상태값입니다.'}, status=400)
         
         # 견적 일정은 완료로 변경 불가 (취소만 가능)
         if schedule.activity_type == 'quote' and new_status == 'completed':
-            logger.warning(f"❌ 견적 일정은 완료로 변경할 수 없습니다: Schedule ID {schedule_id}")
             return JsonResponse({
                 'error': '견적 일정은 완료 상태로 변경할 수 없습니다. 견적은 취소만 가능합니다.'
             }, status=400)
         
         old_status = schedule.status
-        logger.info(f"🔄 상태 변경: {old_status} → {new_status}")
         
         # 취소 처리 시 추가 작업
         if new_status == 'cancelled' and old_status != 'cancelled':
-            logger.info("🚨 취소 처리 시작!")
             from datetime import date
             from reporting.models import DeliveryItem, History
             
             # 1. 납품 품목 기록은 유지 (삭제하지 않음 - 카운팅에서만 제외)
             delivery_items = DeliveryItem.objects.filter(schedule=schedule)
-            logger.info(f"📦 찾은 납품 품목: {delivery_items.count()}개")
-            
-            if delivery_items.exists():
-                logger.info(f"� {delivery_items.count()}개 납품 품목은 유지됨 (취소 시에도 삭제하지 않음)")
-                logger.info("💡 납품 품목은 카운팅에서만 제외되고 데이터는 보존됩니다")
             
             # 2. 관련 납품 히스토리 삭제 (납품 활동 기록)
             delivery_histories = History.objects.filter(schedule=schedule, action_type='delivery')
             delivery_histories_count = delivery_histories.count()
-            logger.info(f"📝 찾은 납품 기록: {delivery_histories_count}개")
             
             if delivery_histories_count > 0:
                 delivery_histories.delete()
-                logger.info(f"🗑️ {delivery_histories_count}개 납품 기록 삭제 완료")
             
             # 3. 펀넬을 실주로 처리
             if schedule.opportunity:
-                logger.info(f"🎯 연결된 펀넬 ID: {schedule.opportunity.id}")
                 opportunity = schedule.opportunity
-                logger.info(f"현재 펀넬 상태: {opportunity.current_stage}")
                 
                 if opportunity.current_stage != 'lost':  # 이미 실주가 아닌 경우만
-                    logger.info("🎯 펀넬 실주 처리 중...")
                     opportunity.current_stage = 'lost'
                     opportunity.lost_date = date.today()
                     opportunity.lost_reason = f"납품일정 취소 (일정 ID: {schedule.id})"
