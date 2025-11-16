@@ -226,16 +226,33 @@ class FunnelAnalytics:
         return sorted(bottlenecks, key=lambda x: x['count'], reverse=True)
     
     @staticmethod
-    def get_top_opportunities(limit=10, user=None):
-        """예측 매출 상위 영업 기회 (진행 중인 것만, won/lost/quote_lost 제외)"""
+    def get_top_opportunities(limit=None, user=None):
+        """
+        예측 매출 상위 영업 기회
+        
+        포함 단계:
+        - lead (리드)
+        - contact (컨택 - 가중치 있는 미팅)
+        - quote (견적)
+        - closing (클로징)
+        
+        제외 단계:
+        - won (수주)
+        - quote_lost (견적실패)
+        """
+        # 진행 중인 영업기회만 조회 (수주, 견적실패 제외)
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'lost', 'quote_lost']
+            current_stage__in=['won', 'quote_lost']
         ).select_related('followup', 'followup__company', 'followup__user')
         
         if user:
             qs = qs.filter(followup__user=user)
         
-        top_opps = qs.order_by('-weighted_revenue')[:limit]
+        # limit이 지정되지 않으면 전체 조회
+        if limit:
+            top_opps = qs.order_by('-weighted_revenue')[:limit]
+        else:
+            top_opps = qs.order_by('-weighted_revenue')
         
         result = []
         for opp in top_opps:

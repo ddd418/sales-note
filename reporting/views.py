@@ -9337,8 +9337,8 @@ def funnel_dashboard_view(request):
     
     # OpportunityTracking 데이터 확인 (로그 제거)
     
-    # 상위 영업 기회
-    top_opportunities = analytics.get_top_opportunities(limit=10, user=filter_user)
+    # 상위 영업 기회 (전체 조회 - limit 제거)
+    top_opportunities = analytics.get_top_opportunities(user=filter_user)
     
     # 수주/실주 요약
     won_lost_summary = analytics.get_won_lost_summary(user=filter_user)
