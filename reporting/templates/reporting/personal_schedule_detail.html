@@ -1,0 +1,288 @@
+{% extends "reporting/base.html" %}
+{% load static %}
+
+{% block title %}{{ schedule.title }} - 개인 일정 - Sales Note{% endblock %}
+
+{% block extra_css %}
+<style>
+    .schedule-detail-card {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    .schedule-header {
+        background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 0.5rem 0.5rem 0 0;
+        margin: -1rem -1rem 1rem -1rem;
+    }
+    .schedule-info-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+    .schedule-info-item i {
+        width: 24px;
+        margin-right: 0.5rem;
+        color: #6c757d;
+    }
+    .comment-section {
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 2px solid #e9ecef;
+    }
+    .comment-item {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        border-left: 3px solid #6c757d;
+    }
+    .comment-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .comment-author {
+        font-weight: 600;
+        color: #495057;
+    }
+    .comment-date {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    .comment-content {
+        color: #212529;
+        line-height: 1.6;
+    }
+    .no-comments {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d;
+    }
+    .comment-form {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card schedule-detail-card">
+                <div class="card-body">
+                    <!-- 일정 헤더 -->
+                    <div class="schedule-header">
+                        <h3 class="mb-3">
+                            <i class="fas fa-calendar-day"></i> {{ schedule.title }}
+                        </h3>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge bg-light text-dark">개인 일정</span>
+                            <div>
+                                {% if request.user == schedule.user or request.user.is_manager %}
+                                    <a href="{% url 'reporting:personal_schedule_edit' schedule.pk %}" 
+                                       class="btn btn-sm btn-light">
+                                        <i class="fas fa-edit"></i> 수정
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-light" 
+                                            onclick="deleteSchedule()">
+                                        <i class="fas fa-trash"></i> 삭제
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 일정 정보 -->
+                    <div class="schedule-info">
+                        <div class="schedule-info-item">
+                            <i class="fas fa-user"></i>
+                            <span><strong>담당자:</strong> {{ schedule.user.username }}</span>
+                        </div>
+                        
+                        {% if schedule.company %}
+                        <div class="schedule-info-item">
+                            <i class="fas fa-building"></i>
+                            <span><strong>회사:</strong> {{ schedule.company.company_name }}</span>
+                        </div>
+                        {% endif %}
+
+                        <div class="schedule-info-item">
+                            <i class="fas fa-calendar"></i>
+                            <span><strong>날짜:</strong> {{ schedule.schedule_date|date:"Y년 m월 d일 (D)" }}</span>
+                        </div>
+
+                        <div class="schedule-info-item">
+                            <i class="fas fa-clock"></i>
+                            <span><strong>시간:</strong> {{ schedule.schedule_time|date:"H:i" }}</span>
+                        </div>
+
+                        {% if schedule.content %}
+                        <div class="schedule-info-item mt-3">
+                            <i class="fas fa-align-left"></i>
+                            <div>
+                                <strong>내용:</strong>
+                                <div class="mt-2">{{ schedule.content|linebreaks }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 댓글 섹션 -->
+                    <div class="comment-section">
+                        <h5 class="mb-3">
+                            <i class="fas fa-comments"></i> 
+                            댓글 <span class="badge bg-secondary">{{ comments.count }}</span>
+                        </h5>
+
+                        <!-- 댓글 목록 -->
+                        <div class="comments-list">
+                            {% if comments %}
+                                {% for comment in comments %}
+                                <div class="comment-item">
+                                    <div class="comment-header">
+                                        <span class="comment-author">
+                                            <i class="fas fa-user-circle"></i> {{ comment.user.username }}
+                                        </span>
+                                        <span class="comment-date">
+                                            {{ comment.created_at|date:"Y-m-d H:i" }}
+                                        </span>
+                                    </div>
+                                    <div class="comment-content">
+                                        {{ comment.memo|linebreaks }}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-comments">
+                                    <i class="fas fa-comment-slash fa-3x mb-3"></i>
+                                    <p>아직 댓글이 없습니다. 첫 번째 댓글을 작성해보세요!</p>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- 댓글 작성 폼 -->
+                        <div class="comment-form">
+                            <h6 class="mb-3">
+                                <i class="fas fa-pen"></i> 댓글 작성
+                            </h6>
+                            <form id="commentForm" onsubmit="submitComment(event)">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <textarea class="form-control" 
+                                              id="commentContent" 
+                                              name="memo" 
+                                              rows="3" 
+                                              placeholder="댓글을 입력하세요..."
+                                              required></textarea>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-paper-plane"></i> 댓글 등록
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 하단 버튼 -->
+                    <div class="text-center mt-4">
+                        <a href="javascript:history.back()" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 돌아가기
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">일정 삭제 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>정말로 이 일정을 삭제하시겠습니까?</p>
+                <p class="text-danger"><strong>이 작업은 되돌릴 수 없습니다.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">삭제</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 댓글 작성
+function submitComment(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('commentForm');
+    const formData = new FormData(form);
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    fetch("{% url 'reporting:personal_schedule_add_comment' schedule.pk %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('댓글 등록에 실패했습니다: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('댓글 등록 중 오류가 발생했습니다.');
+    });
+}
+
+// 삭제 모달 표시
+function deleteSchedule() {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+// 삭제 확인
+function confirmDelete() {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    fetch("{% url 'reporting:personal_schedule_delete' schedule.pk %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('일정이 삭제되었습니다.');
+            window.location.href = '/reporting/';
+        } else {
+            alert('일정 삭제에 실패했습니다: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('일정 삭제 중 오류가 발생했습니다.');
+    });
+}
+</script>
+{% endblock %}

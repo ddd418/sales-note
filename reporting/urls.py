@@ -2,6 +2,7 @@
 from django.urls import path
 from . import views
 from . import backup_api
+from . import personal_schedule_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
@@ -171,4 +172,11 @@ urlpatterns = [
     
     # 제품 API
     path('api/products/', views.product_api_list, name='product_api_list'),
+    
+    # 개인 일정 URL들
+    path('personal-schedules/create/', personal_schedule_views.personal_schedule_create_view, name='personal_schedule_create'),
+    path('personal-schedules/<int:pk>/', personal_schedule_views.personal_schedule_detail_view, name='personal_schedule_detail'),
+    path('personal-schedules/<int:pk>/edit/', personal_schedule_views.personal_schedule_edit_view, name='personal_schedule_edit'),
+    path('personal-schedules/<int:pk>/delete/', personal_schedule_views.personal_schedule_delete_view, name='personal_schedule_delete'),
+    path('personal-schedules/<int:pk>/add-comment/', personal_schedule_views.personal_schedule_add_comment, name='personal_schedule_add_comment'),
 ]

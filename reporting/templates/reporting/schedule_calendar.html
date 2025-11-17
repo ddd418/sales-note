@@ -1051,6 +1051,45 @@
   </div>
 </div>
 
+<!-- 일정 유형 선택 모달 -->
+<div class="modal fade" id="scheduleTypeModal" tabindex="-1" aria-labelledby="scheduleTypeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="scheduleTypeModalLabel">
+          <i class="fas fa-calendar-plus me-2"></i>일정 유형 선택
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="닫기"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-center mb-4">
+          <strong id="selectedDateForSchedule"></strong>에 추가할 일정 유형을 선택하세요.
+        </p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <button type="button" class="btn btn-outline-primary w-100 py-4" id="selectFollowupSchedule">
+              <div class="d-flex flex-column align-items-center">
+                <i class="fas fa-user-tie fa-3x mb-3"></i>
+                <h6 class="mb-2">고객 미팅 일정</h6>
+                <small class="text-muted">팔로우업 고객과 연결된 일정</small>
+              </div>
+            </button>
+          </div>
+          <div class="col-md-6">
+            <button type="button" class="btn btn-outline-secondary w-100 py-4" id="selectPersonalSchedule">
+              <div class="d-flex flex-column align-items-center">
+                <i class="fas fa-calendar-check fa-3x mb-3"></i>
+                <h6 class="mb-2">개인 일정</h6>
+                <small class="text-muted">고객과 무관한 개인 업무 일정</small>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 일정 상세 모달 -->
 <div class="modal fade" id="scheduleModal" tabindex="-1" aria-labelledby="scheduleModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -1627,7 +1666,56 @@
     window.allHistoryData = [];
     currentSchedulesData = window.currentSchedulesData;
     allHistoryData = window.allHistoryData;
+    
+    // 일정 유형 선택 모달 이벤트 리스너
+    const selectFollowupBtn = document.getElementById('selectFollowupSchedule');
+    const selectPersonalBtn = document.getElementById('selectPersonalSchedule');
+    
+    if (selectFollowupBtn) {
+      selectFollowupBtn.addEventListener('click', function() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleTypeModal'));
+        if (modal) modal.hide();
+        
+        const dateString = this.closest('.modal-content').dataset.selectedDate;
+        if (typeof GlobalLoader !== "undefined") {
+          GlobalLoader.show();
+        }
+        window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
+      });
+    }
+    
+    if (selectPersonalBtn) {
+      selectPersonalBtn.addEventListener('click', function() {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleTypeModal'));
+        if (modal) modal.hide();
+        
+        const dateString = this.closest('.modal-content').dataset.selectedDate;
+        if (typeof GlobalLoader !== "undefined") {
+          GlobalLoader.show();
+        }
+        window.location.href = `{% url 'reporting:personal_schedule_create' %}?date=${dateString}`;
+      });
+    }
   });
+  
+  // 일정 유형 선택 모달 표시 함수
+  function showScheduleTypeModal(dateString, dateDisplay) {
+    const modal = document.getElementById('scheduleTypeModal');
+    const modalContent = modal.querySelector('.modal-content');
+    const dateLabel = document.getElementById('selectedDateForSchedule');
+    
+    // 선택된 날짜 저장
+    modalContent.dataset.selectedDate = dateString;
+    
+    // 날짜 표시
+    if (dateLabel) {
+      dateLabel.textContent = dateDisplay;
+    }
+    
+    // 모달 표시
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+  }
 
   // 일정 상태 업데이트 함수 - 전역 스코프로 이동
   function updateScheduleStatus(scheduleId, newStatus) {
@@ -4945,6 +5033,9 @@
               const scheduleElement = document.createElement("div");
               const isMobile = window.innerWidth <= 768;
               
+              // 🔥 개인 일정 구분
+              const isPersonalSchedule = schedule.type === 'personal';
+              
               if (isMobile) {
                 scheduleElement.className = `schedule-event ${schedule.status}`;
               } else {
@@ -4954,6 +5045,13 @@
                 scheduleElement.dataset.originalDate = `${cellYear}-${String(
                   cellMonth + 1
                 ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
+              }
+              
+              // 🔥 개인 일정은 회색 배경 적용
+              if (isPersonalSchedule) {
+                scheduleElement.style.backgroundColor = '#6c757d';
+                scheduleElement.style.color = 'white';
+                scheduleElement.style.borderLeft = '3px solid #5a6268';
               }
               
               const displayName = schedule.company && schedule.department ?
@@ -4968,7 +5066,12 @@
               // 클릭 이벤트 (상세 모달)
               scheduleElement.onclick = (e) => {
                 e.stopPropagation();
-                showScheduleModal(schedule);
+                // 🔥 개인 일정은 별도 페이지로 이동
+                if (isPersonalSchedule) {
+                  window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                } else {
+                  showScheduleModal(schedule);
+                }
               };
 
               if (!isMobile) {
@@ -5045,14 +5148,10 @@
             {% if user.userprofile.role != 'manager' %}
             if (window.innerWidth > 768) { // 데스크톱에서만
               const dateString = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
-
-              const confirmMessage = `📅 ${cellYear}년 ${cellMonth + 1}월 ${cellDate}일에 새 일정을 추가하시겠습니까?`;
-              if (confirm(confirmMessage)) {
-                if (typeof GlobalLoader !== "undefined") {
-                  GlobalLoader.show();
-                }
-                window.location.href = `{% url 'reporting:schedule_create' %}?date=${dateString}`;
-              }
+              const dateDisplay = `${cellYear}년 ${cellMonth + 1}월 ${cellDate}일`;
+              
+              // 일정 유형 선택 모달 표시
+              showScheduleTypeModal(dateString, dateDisplay);
             }
             {% endif %}
           }; // 호버 효과 개선

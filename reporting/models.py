@@ -207,6 +207,7 @@ class History(models.Model):
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
     schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
+    personal_schedule = models.ForeignKey('PersonalSchedule', on_delete=models.CASCADE, blank=True, null=True, related_name='histories', verbose_name="관련 개인 일정", help_text="개인 일정에 대한 댓글")
     parent_history = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, 
                                      related_name='reply_memos', verbose_name="부모 히스토리",
                                      help_text="댓글 메모의 경우 원본 히스토리를 참조합니다")
@@ -794,3 +795,29 @@ class PrepaymentUsage(models.Model):
         verbose_name = "선결제 사용 내역"
         verbose_name_plural = "선결제 사용 내역 목록"
         ordering = ['-used_at']
+
+
+# 개인 일정 (PersonalSchedule) 모델 - 팔로우업 없는 일반 일정
+class PersonalSchedule(models.Model):
+    """
+    팔로우업과 연결되지 않은 개인 일정
+    - 일정 제목과 내용만 기록
+    - History를 통해 댓글(메모) 작성 가능
+    - 캘린더에 회색으로 표시
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자", related_name='personal_schedules')
+    company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
+    title = models.CharField(max_length=200, verbose_name="일정 제목")
+    content = models.TextField(blank=True, null=True, verbose_name="일정 내용")
+    schedule_date = models.DateField(verbose_name="일정 날짜")
+    schedule_time = models.TimeField(verbose_name="일정 시간")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def __str__(self):
+        return f"{self.title} ({self.schedule_date} {self.schedule_time.strftime('%H:%M')})"
+    
+    class Meta:
+        verbose_name = "개인 일정"
+        verbose_name_plural = "개인 일정 목록"
+        ordering = ['-schedule_date', '-schedule_time']

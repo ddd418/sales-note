@@ -1,0 +1,138 @@
+{% extends "reporting/base.html" %}
+{% load static %}
+
+{% block title %}{% if form.instance.pk %}개인 일정 수정{% else %}새 일정 추가{% endif %} - Sales Note{% endblock %}
+
+{% block extra_css %}
+<style>
+    .personal-schedule-form {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    .form-header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e9ecef;
+    }
+    .btn-group-custom {
+        gap: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card personal-schedule-form">
+                <div class="card-header pb-0 form-header">
+                    <h4 class="mb-0">
+                        {% if form.instance.pk %}
+                            <i class="fas fa-edit"></i> 개인 일정 수정
+                        {% else %}
+                            <i class="fas fa-plus-circle"></i> 새 일정 추가
+                        {% endif %}
+                    </h4>
+                </div>
+                
+                <div class="card-body">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label for="{{ form.title.id_for_label }}" class="form-label">
+                                    일정 제목 <span class="text-danger">*</span>
+                                </label>
+                                {{ form.title }}
+                                {% if form.title.errors %}
+                                    <div class="text-danger small mt-1">{{ form.title.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.schedule_date.id_for_label }}" class="form-label">
+                                    일정 날짜 <span class="text-danger">*</span>
+                                </label>
+                                {{ form.schedule_date }}
+                                {% if form.schedule_date.errors %}
+                                    <div class="text-danger small mt-1">{{ form.schedule_date.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.schedule_time.id_for_label }}" class="form-label">
+                                    일정 시간 <span class="text-danger">*</span>
+                                </label>
+                                {{ form.schedule_time }}
+                                {% if form.schedule_time.errors %}
+                                    <div class="text-danger small mt-1">{{ form.schedule_time.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label for="{{ form.content.id_for_label }}" class="form-label">
+                                    일정 내용
+                                </label>
+                                {{ form.content }}
+                                {% if form.content.errors %}
+                                    <div class="text-danger small mt-1">{{ form.content.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">일정에 대한 추가 정보를 입력하세요.</div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <a href="javascript:history.back()" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> 취소
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> 
+                                {% if form.instance.pk %}수정하기{% else %}추가하기{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 날짜 입력 필드에 datepicker 속성 추가
+    const dateInput = document.querySelector('#{{ form.schedule_date.id_for_label }}');
+    if (dateInput) {
+        dateInput.setAttribute('type', 'date');
+    }
+
+    // 시간 입력 필드에 timepicker 속성 추가
+    const timeInput = document.querySelector('#{{ form.schedule_time.id_for_label }}');
+    if (timeInput) {
+        timeInput.setAttribute('type', 'time');
+    }
+
+    // URL에서 date 파라미터 가져오기 (캘린더에서 더블클릭시)
+    const urlParams = new URLSearchParams(window.location.search);
+    const dateParam = urlParams.get('date');
+    if (dateParam && dateInput) {
+        dateInput.value = dateParam;
+    }
+});
+</script>
+{% endblock %}

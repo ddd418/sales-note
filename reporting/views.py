@@ -2822,8 +2822,10 @@ def schedule_calendar_view(request):
 
 @login_required
 def schedule_api_view(request):
-    """일정 데이터 API (JSON 응답) - 권한 기반 필터링 적용"""
+    """일정 데이터 API (JSON 응답) - 권한 기반 필터링 적용 + PersonalSchedule 포함"""
     try:
+        from .models import PersonalSchedule
+        
         user_profile = get_user_profile(request.user)
         
         # 매니저용 실무자 필터 (세션 기반)
@@ -2949,6 +2951,49 @@ def schedule_api_view(request):
                 })
             
             schedule_data.append(schedule_item)
+        
+        # ====== PersonalSchedule 데이터 추가 ======
+        # 권한에 따른 개인 일정 필터링
+        if user_profile.can_view_all_users():
+            accessible_users = get_accessible_users(request.user)
+            if user_filter and not view_all:
+                try:
+                    selected_user = accessible_users.get(id=user_filter)
+                    personal_schedules = PersonalSchedule.objects.filter(user=selected_user)
+                except User.DoesNotExist:
+                    personal_schedules = PersonalSchedule.objects.filter(user__in=accessible_users)
+            else:
+                personal_schedules = PersonalSchedule.objects.filter(user__in=accessible_users)
+        else:
+            personal_schedules = PersonalSchedule.objects.filter(user=request.user)
+        
+        personal_schedules = personal_schedules.select_related('user', 'company').only(
+            'id', 'title', 'content', 'schedule_date', 'schedule_time',
+            'user__id', 'user__username', 'company__id', 'company__name'
+        )
+        
+        # PersonalSchedule을 schedule_data에 추가 (type='personal' 구분자 추가)
+        for ps in personal_schedules:
+            personal_item = {
+                'id': ps.id,
+                'type': 'personal',  # 개인 일정 구분자
+                'visit_date': ps.schedule_date.strftime('%Y-%m-%d'),
+                'time': ps.schedule_time.strftime('%H:%M'),
+                'title': ps.title,
+                'content': ps.content or '',
+                'user_name': ps.user.username,
+                'company': str(ps.company) if ps.company else '',
+                # 캘린더 표시용 기본값
+                'customer': ps.title,  # 제목을 customer로 사용
+                'status': 'personal',
+                'status_display': '개인 일정',
+                'activity_type': 'personal',
+                'activity_type_display': '개인 일정',
+                'location': '',
+                'notes': ps.content or '',
+                'priority': 'medium',
+            }
+            schedule_data.append(personal_item)
         
         return JsonResponse(schedule_data, safe=False)
     

@@ -4816,6 +4816,54 @@ body.modal-open .alert:not(#modalAlertContainer .alert):not(#toastContainer .ale
 </div>
 
 <script>
+// 날짜 및 시간 입력 필드 타입 설정
+document.addEventListener('DOMContentLoaded', function() {
+    // 방문 날짜 필드에 date 타입 적용
+    const visitDateField = document.querySelector('[name="visit_date"]');
+    if (visitDateField) {
+        visitDateField.setAttribute('type', 'date');
+        // 마우스 클릭으로 날짜 선택기 열리지 않도록 방지 (키보드는 가능)
+        visitDateField.addEventListener('mousedown', function(e) {
+            // 아이콘 영역이 아닌 경우에만 차단
+            const rect = this.getBoundingClientRect();
+            const iconWidth = 30; // 아이콘 영역 너비
+            if (e.clientX < rect.right - iconWidth) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    // 방문 시간 필드에 time 타입 적용
+    const visitTimeField = document.querySelector('[name="visit_time"]');
+    if (visitTimeField) {
+        visitTimeField.setAttribute('type', 'time');
+        // 마우스 클릭으로 시간 선택기 열리지 않도록 방지 (키보드는 가능)
+        visitTimeField.addEventListener('mousedown', function(e) {
+            // 아이콘 영역이 아닌 경우에만 차단
+            const rect = this.getBoundingClientRect();
+            const iconWidth = 30; // 아이콘 영역 너비
+            if (e.clientX < rect.right - iconWidth) {
+                e.preventDefault();
+            }
+        });
+    }
+    
+    // 예상 계약일 필드에 date 타입 적용
+    const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
+    if (expectedCloseDateField) {
+        expectedCloseDateField.setAttribute('type', 'date');
+        // 마우스 클릭으로 날짜 선택기 열리지 않도록 방지 (키보드는 가능)
+        expectedCloseDateField.addEventListener('mousedown', function(e) {
+            // 아이콘 영역이 아닌 경우에만 차단
+            const rect = this.getBoundingClientRect();
+            const iconWidth = 30; // 아이콘 영역 너비
+            if (e.clientX < rect.right - iconWidth) {
+                e.preventDefault();
+            }
+        });
+    }
+});
+
 // 드롭다운 외부 클릭 시 닫기
 document.addEventListener('click', function(e) {
   // 제품 검색 결과 드롭다운들을 모두 찾아서 닫기
