@@ -1105,27 +1105,27 @@ def dashboard_view(request):
     # Prepayment 모델 명시적 import
     from .models import Prepayment
     
-    # 이번 달 선결제 건수 (새로 등록된 선결제) - 권한에 따라 필터링
+    # 이번 달 선결제 건수 (결제일 기준) - 권한에 따라 필터링
     if user_profile.is_admin() and not selected_user:
         # Admin은 모든 선결제
         monthly_prepayment_count = Prepayment.objects.filter(
-            created_at__year=current_year,
-            created_at__month=current_month
+            payment_date__year=current_year,
+            payment_date__month=current_month
         ).count()
     elif user_profile.can_view_all_users() and target_user is None:
         # Manager가 전체 팀원을 선택한 경우
         accessible_users = get_accessible_users(request.user)
         monthly_prepayment_count = Prepayment.objects.filter(
             created_by__in=accessible_users,
-            created_at__year=current_year,
-            created_at__month=current_month
+            payment_date__year=current_year,
+            payment_date__month=current_month
         ).count()
     else:
         # 특정 사용자 또는 본인
         monthly_prepayment_count = Prepayment.objects.filter(
             created_by=target_user,
-            created_at__year=current_year,
-            created_at__month=current_month
+            payment_date__year=current_year,
+            payment_date__month=current_month
         ).count()
     
     # 이번 달 서비스 수 (완료된 것만)
