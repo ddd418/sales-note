@@ -3,6 +3,95 @@
 
 {% block title %}제품 관리{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* 모바일 및 태블릿 반응형 (1200px 이하) */
+    @media (max-width: 1200px) {
+        .container-fluid {
+            padding-top: 1.5rem;
+        }
+        
+        .d-flex.justify-content-between {
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .d-flex.justify-content-between h2 {
+            font-size: 1.5rem;
+        }
+        
+        .card {
+            margin-bottom: 1rem;
+        }
+        
+        .card-body {
+            padding: 1rem;
+        }
+        
+        .table-responsive {
+            font-size: 0.875rem;
+        }
+        
+        .table th,
+        .table td {
+            padding: 0.5rem;
+            white-space: nowrap;
+        }
+        
+        .table th a {
+            font-size: 0.875rem;
+        }
+        
+        .btn-group-sm .btn {
+            padding: 0.25rem 0.4rem;
+            font-size: 0.75rem;
+        }
+        
+        .pagination {
+            font-size: 0.875rem;
+        }
+        
+        .badge {
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        code {
+            font-size: 0.8rem;
+        }
+    }
+    
+    /* 소형 모바일 (480px 이하) */
+    @media (max-width: 480px) {
+        .container-fluid {
+            padding: 1rem 0.5rem;
+        }
+        
+        .d-flex.justify-content-between h2 {
+            font-size: 1.25rem;
+        }
+        
+        .btn {
+            font-size: 0.875rem;
+            padding: 0.5rem 0.75rem;
+        }
+        
+        .table-responsive {
+            font-size: 0.75rem;
+        }
+        
+        .table th,
+        .table td {
+            padding: 0.4rem;
+        }
+        
+        .pagination .page-link {
+            padding: 0.4rem 0.6rem;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <!-- 헤더 -->

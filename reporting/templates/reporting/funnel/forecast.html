@@ -191,6 +191,150 @@
         font-weight: 600;
         margin-top: 8px;
     }
+    
+    /* 모바일 및 태블릿 반응형 (1200px 이하) */
+    @media (max-width: 1200px) {
+        .page-header-gradient {
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .page-header-gradient h1 {
+            font-size: 1.5rem !important;
+        }
+        
+        .page-header-gradient p {
+            font-size: 0.875rem;
+        }
+        
+        .page-header-gradient .d-flex {
+            flex-direction: column;
+            align-items: flex-start !important;
+        }
+        
+        .page-header-gradient .btn-group {
+            margin-top: 1rem;
+            width: 100%;
+        }
+        
+        .summary-box {
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .summary-title {
+            font-size: 1rem;
+        }
+        
+        .summary-value {
+            font-size: 2rem;
+            margin: 10px 0;
+        }
+        
+        .summary-subtitle {
+            font-size: 0.875rem;
+        }
+        
+        .forecast-card {
+            margin-bottom: 1rem;
+        }
+        
+        .forecast-card .card-body {
+            padding: 1rem;
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-container {
+            height: 250px;
+            margin: 10px 0;
+        }
+        
+        .month-card {
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        
+        .month-title {
+            font-size: 1.2rem;
+        }
+        
+        .metric-value {
+            font-size: 1.1rem;
+        }
+        
+        .stage-contribution {
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .contribution-bar {
+            height: 28px;
+            font-size: 0.875rem;
+        }
+        
+        .btn-lg {
+            padding: 0.75rem 1.5rem !important;
+            font-size: 0.9rem !important;
+            margin-bottom: 0.5rem;
+        }
+        
+        .alert {
+            padding: 1rem;
+        }
+        
+        .alert strong {
+            font-size: 0.95rem;
+        }
+    }
+    
+    /* 소형 모바일 (480px 이하) */
+    @media (max-width: 480px) {
+        .page-header-gradient {
+            padding: 1rem;
+        }
+        
+        .page-header-gradient h1 {
+            font-size: 1.25rem !important;
+        }
+        
+        .summary-box {
+            padding: 1rem;
+        }
+        
+        .summary-value {
+            font-size: 1.75rem;
+        }
+        
+        .chart-container {
+            height: 200px;
+        }
+        
+        .month-card {
+            padding: 1rem;
+        }
+        
+        .month-title {
+            font-size: 1.1rem;
+        }
+        
+        .metric-value {
+            font-size: 1rem;
+        }
+        
+        .btn-lg {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        
+        .contribution-bar {
+            font-size: 0.8rem;
+            padding: 0 10px;
+        }
+    }
 </style>
 {% endblock %}
 

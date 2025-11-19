@@ -4,6 +4,93 @@
 
 {% block title %}{% if product %}제품 수정{% else %}제품 등록{% endif %}{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* 모바일 및 태블릿 반응형 (1200px 이하) */
+    @media (max-width: 1200px) {
+        .container {
+            padding-top: 1.5rem;
+        }
+        
+        .col-md-8 {
+            max-width: 100%;
+            flex: 0 0 100%;
+        }
+        
+        .card-header h4 {
+            font-size: 1.25rem;
+        }
+        
+        .card-body {
+            padding: 1rem;
+        }
+        
+        h5 {
+            font-size: 1.1rem;
+        }
+        
+        .form-label {
+            font-size: 0.9rem;
+        }
+        
+        .form-control,
+        .form-select {
+            font-size: 0.9rem;
+        }
+        
+        .row.mb-3 .col-md-4 {
+            margin-bottom: 0.75rem;
+        }
+        
+        .d-flex.justify-content-between {
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .d-flex.justify-content-between .btn {
+            width: 100%;
+        }
+        
+        .text-center .col-md-6 {
+            margin-bottom: 1rem;
+        }
+    }
+    
+    /* 소형 모바일 (480px 이하) */
+    @media (max-width: 480px) {
+        .container {
+            padding: 1rem 0.5rem;
+        }
+        
+        .card-header h4 {
+            font-size: 1.1rem;
+        }
+        
+        .card-body {
+            padding: 0.75rem;
+        }
+        
+        h5 {
+            font-size: 1rem;
+        }
+        
+        .form-label {
+            font-size: 0.85rem;
+        }
+        
+        .btn {
+            font-size: 0.875rem;
+            padding: 0.5rem 0.75rem;
+        }
+        
+        small,
+        .text-muted {
+            font-size: 0.75rem;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container">
     <div class="row justify-content-center">

@@ -221,16 +221,20 @@
       position: fixed;
       top: 1rem;
       left: 1rem;
-      z-index: 1001;
+      z-index: 9999;
       background: linear-gradient(135deg, #1e3a8a, #1e40af);
       color: white;
       border: none;
-      padding: 0.75rem;
-      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.75rem;
       cursor: pointer;
-      font-size: 1.25rem;
+      font-size: 1.5rem;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       transition: all 0.3s ease;
+      width: 50px;
+      height: 50px;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     .mobile-toggle:hover {
@@ -240,6 +244,11 @@
 
     .mobile-toggle:active {
       transform: scale(0.95);
+      background: linear-gradient(135deg, #1e40af, #1e3a8a);
+    }
+
+    .mobile-toggle i {
+      display: block;
     }
 
     /* 사이드바 오버레이 */
@@ -261,7 +270,7 @@
       opacity: 1;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 1200px) {
       /* 🔥 전체 페이지 너비 제한 해제 */
       html, body {
         width: 100% !important;
@@ -543,6 +552,16 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+    // 모바일/태블릿 기기 감지 (화면 크기 기준)
+    function isMobileLike() {
+      // 가로/세로 중 짧은 쪽이 1200px 이하면 모바일로 취급
+      // 갤럭시 탭 (2000x1200) → 짧은 쪽 1200px → 모바일 ✅
+      // 노트북 (1920x1080) → 짧은 쪽 1080px → 모바일 (작은 노트북도 모바일 UX)
+      // 데스크톱 모니터만 데스크톱 UX
+      const shortSide = Math.min(window.innerWidth, window.innerHeight);
+      return shortSide <= 1200;  // 1200 포함
+    }
+
     // 사이드바 토글 함수
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar');
@@ -581,7 +600,7 @@
       // 3️⃣ 모바일에서 링크 클릭 시 사이드바 닫기
       navLinks.forEach(link => {
         link.addEventListener('click', function() {
-          if (window.innerWidth <= 768) {
+          if (isMobileLike()) {
             closeSidebar();
           }
         });
@@ -599,32 +618,57 @@
       window.addEventListener('resize', function() {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function() {
-          if (window.innerWidth > 768) {
+          if (!isMobileLike()) {
             sidebar.classList.remove('active');
             overlay.classList.remove('active');
           }
         }, 250);
       });
 
-      // 6️⃣ 터치 스와이프로 사이드바 닫기 (선택적)
-      let touchStartX = 0;
-      let touchEndX = 0;
+      // 6️⃣ 전역 터치 스와이프로 사이드바 열기/닫기 (단순 버전)
+      let touchStartX = null;
+      let touchCurrentX = null;
 
-      sidebar.addEventListener('touchstart', function(e) {
-        touchStartX = e.changedTouches[0].screenX;
-      }, { passive: true });
+      document.addEventListener('touchstart', function (e) {
+        if (!isMobileLike()) return;  // 터치 기반 모바일이 아니면 무시
 
-      sidebar.addEventListener('touchend', function(e) {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-      }, { passive: true });
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchCurrentX = touch.clientX;
+      });
 
-      function handleSwipe() {
-        // 왼쪽으로 스와이프 (사이드바 닫기)
-        if (touchStartX - touchEndX > 50) {
-          closeSidebar();
+      document.addEventListener('touchmove', function (e) {
+        if (!isMobileLike()) return;
+        if (touchStartX === null) return;
+
+        const touch = e.touches[0];
+        touchCurrentX = touch.clientX;
+      });
+
+      document.addEventListener('touchend', function (e) {
+        if (!isMobileLike()) return;
+        if (touchStartX === null) return;
+
+        const dx = touchCurrentX - touchStartX;
+        const sidebarOpen = sidebar.classList.contains('active');
+
+        // 사이드바 닫힌 상태 → 왼쪽에서 오른쪽으로 스와이프하면 열기
+        if (!sidebarOpen) {
+          // 시작 지점이 화면 왼쪽 80px 안쪽이고, 오른쪽으로 50px 이상 이동했을 때
+          if (touchStartX <= 80 && dx > 50) {
+            toggleSidebar();
+          }
+        } 
+        // 사이드바 열린 상태 → 아무 데서나 왼쪽으로 스와이프하면 닫기
+        else {
+          if (dx < -50) {
+            closeSidebar();
+          }
         }
-      }
+
+        touchStartX = null;
+        touchCurrentX = null;
+      });
     });
   </script>
 

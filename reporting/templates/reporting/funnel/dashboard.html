@@ -132,6 +132,117 @@
         border-radius: 10px;
         box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
     }
+    
+    /* 모바일 및 태블릿 반응형 (1200px 이하) */
+    @media (max-width: 1200px) {
+        .page-header-gradient {
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .page-header-gradient h1 {
+            font-size: 1.5rem !important;
+        }
+        
+        .page-header-gradient p {
+            font-size: 0.875rem;
+        }
+        
+        .funnel-card {
+            margin-bottom: 1rem;
+        }
+        
+        .funnel-card .card-body {
+            padding: 1rem;
+        }
+        
+        .metric-value,
+        .funnel-card h3 {
+            font-size: 1.5rem !important;
+        }
+        
+        .funnel-card [style*="width: 60px"] {
+            width: 50px !important;
+            height: 50px !important;
+        }
+        
+        .funnel-card [style*="width: 60px"] i {
+            font-size: 1.4rem !important;
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .opportunity-item {
+            padding: 1rem;
+        }
+        
+        .opportunity-item .row > div {
+            margin-bottom: 0.5rem;
+        }
+        
+        .opportunity-item strong {
+            font-size: 1rem !important;
+        }
+        
+        .stage-badge {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.75rem;
+        }
+        
+        .chart-container {
+            height: 250px;
+        }
+        
+        .table-responsive {
+            font-size: 0.875rem;
+        }
+        
+        .btn-lg {
+            padding: 0.75rem 1.5rem !important;
+            font-size: 0.9rem !important;
+            margin-bottom: 0.5rem;
+        }
+    }
+    
+    /* 소형 모바일 (480px 이하) */
+    @media (max-width: 480px) {
+        .page-header-gradient {
+            padding: 1rem;
+        }
+        
+        .page-header-gradient h1 {
+            font-size: 1.25rem !important;
+        }
+        
+        .funnel-card h3 {
+            font-size: 1.25rem !important;
+        }
+        
+        .funnel-card [style*="width: 60px"] {
+            width: 40px !important;
+            height: 40px !important;
+        }
+        
+        .funnel-card [style*="width: 60px"] i {
+            font-size: 1.2rem !important;
+        }
+        
+        .opportunity-item {
+            padding: 0.75rem;
+        }
+        
+        .chart-container {
+            height: 200px;
+        }
+        
+        .btn-lg {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+    }
 </style>
 {% endblock %}
 
