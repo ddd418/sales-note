@@ -319,17 +319,11 @@ div.modal-backdrop {
                   <small class="form-text text-muted">활동 유형을 선택하세요</small>
                 </div>
 
-                <!-- status 필드 (숨김) -->
-                {{ form.status }}
-                <script>
-                // DEBUG: status 필드 확인
-                (function() {
-                    const statusField = document.querySelector('[name="status"]');
-                    console.log('[STATUS_FIELD_DEBUG] status field:', statusField);
-                    console.log('[STATUS_FIELD_DEBUG] status value:', statusField ? statusField.value : 'null');
-                    console.log('[STATUS_FIELD_DEBUG] status type:', statusField ? statusField.type : 'null');
-                })();
-                </script>
+                <!-- status 필드 -->
+                <div class="mb-3">
+                  {{ form.status.label_tag }} {{ form.status }}
+                  <small class="form-text text-muted">일정의 진행 상태를 선택하세요</small>
+                </div>
               </div>
 
               <!-- 추가 정보 섹션 -->

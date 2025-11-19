@@ -342,8 +342,8 @@ class ScheduleForm(forms.ModelForm):
         choices=Schedule.STATUS_CHOICES,
         required=False,
         initial='scheduled',
-        widget=forms.HiddenInput(attrs={'value': 'scheduled'}),
-        label='상태'
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='일정 상태'
     )
     
     class Meta:

@@ -476,31 +476,31 @@
                     <div class="mt-3">
                         {% for opp in top_opportunities %}
                         <div class="opportunity-item" style="border-left-color: {{ opp.stage_color }}; border-left-width: 5px;">
-                            <div class="row align-items-center">
-                                <div class="col-md-3">
+                            <div class="row align-items-center g-2">
+                                <div class="col-md-3 col-12 mb-2 mb-md-0">
                                     <strong style="font-size: 1.1rem; color: #2d3748;">{{ opp.customer_name }}</strong><br>
                                     <small class="text-muted fw-semibold">{{ opp.company_name }}</small>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-2 col-6 mb-2 mb-md-0">
                                     <span class="stage-badge" style="background-color: {{ opp.stage_color }}20; color: {{ opp.stage_color }}; border: 2px solid {{ opp.stage_color }}40;">
                                         {{ opp.current_stage }}
                                     </span>
                                 </div>
-                                <div class="col-md-2 text-end">
-                                    <strong style="font-size: 1.15rem; color: #28a745;">{{ opp.expected_revenue|currency_format }}</strong>원<br>
+                                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
+                                    <strong style="font-size: 1.15rem; color: #28a745; white-space: nowrap;">{{ opp.expected_revenue|currency_format }}원</strong><br>
                                     <small class="text-muted fw-semibold">예상 매출</small>
                                 </div>
-                                <div class="col-md-2 text-end">
-                                    <strong style="font-size: 1.15rem; color: #007bff;">{{ opp.backlog_amount|currency_format }}</strong>원<br>
+                                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
+                                    <strong style="font-size: 1.15rem; color: #007bff; white-space: nowrap;">{{ opp.backlog_amount|currency_format }}원</strong><br>
                                     <small class="text-muted fw-semibold">수주</small>
                                 </div>
-                                <div class="col-md-2 text-end">
-                                    <strong style="font-size: 1.15rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                        {{ opp.weighted_revenue|currency_format }}
-                                    </strong>원<br>
+                                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
+                                    <strong style="font-size: 1.15rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; white-space: nowrap;">
+                                        {{ opp.weighted_revenue|currency_format }}원
+                                    </strong><br>
                                     <small class="text-muted fw-semibold">가중 매출</small>
                                 </div>
-                                <div class="col-md-1 text-center">
+                                <div class="col-md-1 col-6 text-center mb-2 mb-md-0">
                                     <div class="progress" style="height: 22px; border-radius: 11px;">
                                         <div class="progress-bar" role="progressbar" 
                                              style="width: {{ opp.probability }}%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-weight: 700;"
@@ -509,7 +509,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-1 text-end">
+                                <div class="col-md-1 col-6 text-end">
                                     <small class="text-muted">{{ opp.expected_close_date|date:"m/d" }}</small>
                                 </div>
                             </div>
