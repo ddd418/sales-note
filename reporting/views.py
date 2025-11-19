@@ -1240,19 +1240,21 @@ def dashboard_view(request):
         month_schedules = schedules.filter(
             visit_date__gte=month_start.date(),
             visit_date__lt=month_end.date(),
-            activity_type='delivery'
+            activity_type='delivery',
+            status__in=['scheduled', 'completed']  # 취소된 일정 제외
         )
         
-        month_data = DeliveryItem.objects.filter(
+        # 납품 금액 합산
+        month_amount = DeliveryItem.objects.filter(
             schedule__in=month_schedules
-        ).aggregate(
-            total=Sum('total_price'),
-            count=Count('id')
-        )
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+        
+        # 납품 건수 (일정 개수)
+        month_count = month_schedules.count()
         
         monthly_delivery_stats['labels'].append(f"{target_date.month}월")
-        monthly_delivery_stats['amounts'].append(float(month_data['total'] or 0))
-        monthly_delivery_stats['counts'].append(month_data['count'] or 0)
+        monthly_delivery_stats['amounts'].append(float(month_amount))
+        monthly_delivery_stats['counts'].append(month_count)
     
     # 2️⃣ 영업 퍼널 (미팅 → 견적 제출 → 발주 예정 → 납품 완료)
     # 기준: 모두 일정(Schedule) 기반으로 집계
@@ -4616,19 +4618,21 @@ def manager_dashboard(request):
         month_schedules = schedules.filter(
             visit_date__gte=month_start.date(),
             visit_date__lt=month_end.date(),
-            activity_type='delivery'
+            activity_type='delivery',
+            status__in=['scheduled', 'completed']  # 취소된 일정 제외
         )
         
-        month_data = DeliveryItem.objects.filter(
+        # 납품 금액 합산
+        month_amount = DeliveryItem.objects.filter(
             schedule__in=month_schedules
-        ).aggregate(
-            total=Sum('total_price'),
-            count=Count('id')
-        )
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+        
+        # 납품 건수 (일정 개수)
+        month_count = month_schedules.count()
         
         monthly_delivery_stats['labels'].append(f"{target_date.month}월")
-        monthly_delivery_stats['amounts'].append(float(month_data['total'] or 0))
-        monthly_delivery_stats['counts'].append(month_data['count'] or 0)
+        monthly_delivery_stats['amounts'].append(float(month_amount))
+        monthly_delivery_stats['counts'].append(month_count)
     
     # 2️⃣ 영업 퍼널 (미팅 → 견적 제출 → 발주 예정 → 납품 완료)
     # 기준: 모두 일정(Schedule) 기반으로 집계
