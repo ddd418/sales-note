@@ -1239,6 +1239,18 @@
   #calendar {
     min-width: 700px; /* 최소 너비 설정으로 레이아웃 안정성 확보 */
   }
+  
+  /* 페이드인 애니메이션 */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
   /* 캘린더 테이블 기본 스타일 */
   .calendar-table {
     table-layout: fixed;
@@ -2649,12 +2661,6 @@
 
   // 일정 이동 함수 - 전역 스코프로 이동
   function moveSchedule(scheduleId, targetDate, scheduleData) {
-    // 이동 확인
-    const confirmMessage = `"${scheduleData.customer}" 일정을 ${targetDate}로 이동하시겠습니까?`;
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
     // 로딩 표시
     if (typeof GlobalLoader !== "undefined") {
       GlobalLoader.show();
@@ -5363,6 +5369,11 @@
               
               if (isMobile) {
                 scheduleElement.className = `schedule-event ${schedule.status}`;
+                // 모바일에서도 드래그 가능하도록 설정
+                scheduleElement.dataset.scheduleId = schedule.id;
+                scheduleElement.dataset.originalDate = `${cellYear}-${String(
+                  cellMonth + 1
+                ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
               } else {
                 scheduleElement.className = `schedule-item ${schedule.status}`;
                 scheduleElement.draggable = true;
@@ -5390,47 +5401,44 @@
               scheduleElement.textContent = fullScheduleText;
               scheduleElement.title = fullScheduleText;
 
-              // 클릭 카운터 및 타이머 (더블클릭 방지)
-              let clickCount = 0;
-              let clickTimer = null;
+              // 모바일과 데스크톱 구분
+              if (!isMobile) {
+                // 데스크톱: 클릭 이벤트 (상세 모달) - 더블클릭 방지 로직 추가
+                let clickCount = 0;
+                let clickTimer = null;
 
-              // 클릭 이벤트 (상세 모달) - 더블클릭 방지 로직 추가
-              scheduleElement.onclick = (e) => {
-                e.stopPropagation();
-                e.preventDefault(); // 기본 동작 방지
-                
-                clickCount++;
-                
-                if (clickCount === 1) {
-                  // 첫 번째 클릭 - 타이머 시작
-                  clickTimer = setTimeout(() => {
-                    // 단일 클릭 처리
-                    // 🔥 개인 일정은 별도 페이지로 이동
+                scheduleElement.onclick = (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  
+                  clickCount++;
+                  
+                  if (clickCount === 1) {
+                    clickTimer = setTimeout(() => {
+                      if (isPersonalSchedule) {
+                        window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                      } else {
+                        showScheduleModal(schedule);
+                      }
+                      clickCount = 0;
+                    }, 250);
+                  } else {
+                    clearTimeout(clickTimer);
                     if (isPersonalSchedule) {
                       window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
                     } else {
                       showScheduleModal(schedule);
                     }
                     clickCount = 0;
-                  }, 250); // 250ms 대기
-                } else {
-                  // 더블클릭 - 타이머 취소하고 단일 클릭으로 처리 (모달 하나만)
-                  clearTimeout(clickTimer);
-                  if (isPersonalSchedule) {
-                    window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
-                  } else {
-                    showScheduleModal(schedule);
                   }
-                  clickCount = 0;
-                }
-              };
+                };
 
-              // 더블클릭 이벤트 명시적으로 방지
-              scheduleElement.ondblclick = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                return false;
-              };
+                scheduleElement.ondblclick = (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  return false;
+                };
+              }
 
               if (!isMobile) {
                 // 드래그 시작 이벤트 (데스크톱만)
@@ -5455,6 +5463,29 @@
                     day.classList.remove("drag-over", "drag-target");
                   });
                 };
+              } else {
+                // 모바일: 간단한 터치 이벤트만 (드래그 제거)
+                let touchStartTime;
+                
+                scheduleElement.addEventListener('touchstart', (e) => {
+                  touchStartTime = Date.now();
+                }, { passive: true });
+                
+                scheduleElement.addEventListener('touchend', (e) => {
+                  const touchDuration = Date.now() - touchStartTime;
+                  
+                  // 짧은 탭만 처리 (300ms 이하)
+                  if (touchDuration < 300) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (isPersonalSchedule) {
+                      window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                    } else {
+                      showScheduleModal(schedule);
+                    }
+                  }
+                }, { passive: false });
               }
 
               cell.appendChild(scheduleElement);
@@ -5794,25 +5825,54 @@
       const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
 
       if (isMobile) {
-        // 모바일에서는 액션 선택
-        const action = confirm(
-          `📅 ${schedule.customer} (${schedule.department || '부서명 없음'})\n` +
-          `📍 ${schedule.location || '장소 없음'}\n` +
-          `⏰ ${schedule.visit_date} ${schedule.time}\n\n` +
-          `❓ 어떤 작업을 하시겠습니까?\n\n` +
-          `확인: 활동 히스토리 작성\n` +
-          `취소: 일정 상세 보기`
-        );
-
-        if (action) {
-          // 활동 히스토리 작성으로 이동
-          const historyUrl = historyCreateUrl.replace("{id}", schedule.id);
-          window.location.href = historyUrl;
-        } else {
-          // 일정 상세 보기로 이동
-          const detailUrl = scheduleDetailUrl.replace("{id}", schedule.id);
-          window.location.href = detailUrl + "?from=calendar";
+        // 전역 변수에 스케줄 데이터 저장
+        window.currentScheduleData = schedule;
+        
+        // 모바일용 액션 시트 모달 생성
+        const actionSheetHtml = `
+          <div class="modal fade" id="scheduleActionSheet" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-bottom">
+              <div class="modal-content">
+                <div class="modal-header border-bottom-0 pb-2">
+                  <h6 class="modal-title">
+                    ${schedule.customer} - ${schedule.visit_date}
+                  </h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-2">
+                  <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-outline-primary text-start" onclick="navigateToHistory(${schedule.id})">
+                      <i class="fas fa-clipboard-list me-2"></i>활동 히스토리 작성
+                    </button>
+                    <button type="button" class="btn btn-outline-info text-start" onclick="navigateToDetail(${schedule.id})">
+                      <i class="fas fa-info-circle me-2"></i>일정 상세 보기
+                    </button>
+                    <button type="button" class="btn btn-outline-warning text-start" onclick="showMobileDatePicker(${schedule.id}, '${schedule.visit_date}', '${schedule.customer.replace(/'/g, "\\'")}')">
+                      <i class="fas fa-calendar-alt me-2"></i>일정 변경
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary text-start" data-bs-dismiss="modal">
+                      <i class="fas fa-times me-2"></i>취소
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // 기존 액션 시트 제거
+        const existingSheet = document.getElementById('scheduleActionSheet');
+        if (existingSheet) {
+          existingSheet.remove();
         }
+        
+        // 새 액션 시트 추가
+        document.body.insertAdjacentHTML('beforeend', actionSheetHtml);
+        
+        // 모달 표시
+        const actionSheet = new bootstrap.Modal(document.getElementById('scheduleActionSheet'));
+        actionSheet.show();
+        
         return;
       }
 
@@ -6598,8 +6658,147 @@
         }
     });
 
+    // 모바일 네비게이션 함수들 (전역 스코프)
+    window.navigateToHistory = function(scheduleId) {
+      const historyUrl = historyCreateUrl.replace("{id}", scheduleId);
+      window.location.href = historyUrl;
+    };
+
+    window.navigateToDetail = function(scheduleId) {
+      const detailUrl = scheduleDetailUrl.replace("{id}", scheduleId);
+      window.location.href = detailUrl + "?from=calendar";
+    };
+
+    // 모바일 날짜 선택기 표시 (전역 스코프)
+    window.showMobileDatePicker = function(scheduleId, currentDate, customerName) {
+      const scheduleData = window.currentScheduleData || {};
+      
+      // 액션 시트 닫기
+      const actionSheet = bootstrap.Modal.getInstance(document.getElementById('scheduleActionSheet'));
+      if (actionSheet) {
+        actionSheet.hide();
+      }
+
+      // 현재 날짜 파싱
+      const [year, month, day] = currentDate.split('-').map(Number);
+      
+      // 날짜 선택 모달 생성
+      const datePickerHtml = `
+        <div class="modal fade" id="mobileDatePicker" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h6 class="modal-title">
+                  <i class="fas fa-calendar-alt me-2"></i>일정 변경
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <p class="text-muted mb-3">
+                  <strong>${customerName || scheduleData.customer || '고객'}</strong>님의 일정을 변경합니다.
+                </p>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">현재 일정</label>
+                  <input type="text" class="form-control" value="${currentDate}" readonly>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">변경할 날짜</label>
+                  <input type="date" class="form-control" id="newScheduleDate" value="${currentDate}">
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="confirmDateChange(${scheduleId}, '${currentDate}', '${customerName ? customerName.replace(/'/g, "\\'") : ''}')">
+                  <i class="fas fa-check me-1"></i>변경
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 기존 날짜 선택기 제거
+      const existingPicker = document.getElementById('mobileDatePicker');
+      if (existingPicker) {
+        existingPicker.remove();
+      }
+      
+      // 새 날짜 선택기 추가
+      document.body.insertAdjacentHTML('beforeend', datePickerHtml);
+      
+      // 모달 표시
+      const datePicker = new bootstrap.Modal(document.getElementById('mobileDatePicker'));
+      datePicker.show();
+    };
+
+    // 날짜 변경 확인 (전역 스코프)
+    window.confirmDateChange = function(scheduleId, originalDate, customerName) {
+      const scheduleData = window.currentScheduleData || {};
+      const newDate = document.getElementById('newScheduleDate').value;
+      
+      if (!newDate) {
+        alert('날짜를 선택해주세요.');
+        return;
+      }
+      
+      if (newDate === originalDate) {
+        alert('같은 날짜입니다. 다른 날짜를 선택해주세요.');
+        return;
+      }
+      
+      // 확인 메시지
+      const confirmMsg = `${customerName || scheduleData.customer || '고객'}님의 일정을 ${newDate}로 변경하시겠습니까?`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+      
+      // 날짜 선택기 모달 닫기
+      const datePicker = bootstrap.Modal.getInstance(document.getElementById('mobileDatePicker'));
+      if (datePicker) {
+        datePicker.hide();
+      }
+      
+      // 일정 이동 함수 호출
+      moveSchedule(scheduleId, newDate, originalDate, scheduleData);
+    };
+
   });
 </script>
+
+<style>
+  /* 모바일 액션 시트 스타일 */
+  .modal-dialog-bottom {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    max-width: 100%;
+  }
+  
+  .modal-dialog-bottom .modal-content {
+    border-radius: 16px 16px 0 0;
+    border: none;
+  }
+  
+  @media (max-width: 768px) {
+    #scheduleActionSheet .modal-body button {
+      padding: 12px 16px;
+      font-size: 15px;
+      border-radius: 8px;
+    }
+    
+    #scheduleActionSheet .modal-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 16px 16px 0 0;
+    }
+    
+    #scheduleActionSheet .btn-close {
+      filter: brightness(0) invert(1);
+    }
+  }
+</style>
 
 <!-- 납품 품목 관리 모달은 JavaScript에서 동적으로 생성됩니다 -->
 
