@@ -22,22 +22,34 @@ input[type="time"] {
   -moz-appearance: textfield;
 }
 
-/* 영업 기회 정보 섹션 레이블 반응형 - 모바일에서 한 줄 표시 */
-#funnel-section label.form-label {
+/* 영업 기회 정보 섹션 레이블 반응형 - 항상 한 줄 표시 */
+#funnel-section label,
+#funnel-section label.form-label,
+#funnel-section .form-label {
   white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
 }
 
-/* 모바일 전용: 작은 화면에서 레이블 크기 조정 */
+/* 모바일 전용: 작은 화면에서도 한 줄 유지 */
 @media (max-width: 768px) {
-  #funnel-section label.form-label {
-    font-size: 0.9rem;
-    white-space: nowrap !important;
-    display: block;
-    width: 100%;
-  }
-  
+  #funnel-section label,
+  #funnel-section label.form-label,
   #funnel-section .form-label {
+    font-size: 0.85rem;
     white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    display: inline-block;
+  }
+}
+
+/* 초소형 화면 (360px 이하) */
+@media (max-width: 360px) {
+  #funnel-section label,
+  #funnel-section label.form-label,
+  #funnel-section .form-label {
+    font-size: 0.8rem;
   }
 }
 
