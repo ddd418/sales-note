@@ -17,6 +17,25 @@
     .btn-group-custom {
         gap: 10px;
     }
+    
+    /* 날짜/시간 input의 기본 캘린더/시계 아이콘 숨기기 */
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="time"]::-webkit-calendar-picker-indicator {
+        display: none;
+        -webkit-appearance: none;
+    }
+    
+    input[type="date"]::-webkit-inner-spin-button,
+    input[type="time"]::-webkit-inner-spin-button {
+        display: none;
+        -webkit-appearance: none;
+    }
+    
+    /* Firefox */
+    input[type="date"],
+    input[type="time"] {
+        -moz-appearance: textfield;
+    }
 </style>
 {% endblock %}
 
@@ -65,7 +84,12 @@
                                 <label for="{{ form.schedule_date.id_for_label }}" class="form-label">
                                     일정 날짜 <span class="text-danger">*</span>
                                 </label>
-                                {{ form.schedule_date }}
+                                <div class="input-group">
+                                    {{ form.schedule_date }}
+                                    <button type="button" class="btn btn-outline-secondary" id="schedule-date-picker-btn">
+                                        <i class="fas fa-calendar-alt"></i>
+                                    </button>
+                                </div>
                                 {% if form.schedule_date.errors %}
                                     <div class="text-danger small mt-1">{{ form.schedule_date.errors.0 }}</div>
                                 {% endif %}
@@ -75,7 +99,12 @@
                                 <label for="{{ form.schedule_time.id_for_label }}" class="form-label">
                                     일정 시간 <span class="text-danger">*</span>
                                 </label>
-                                {{ form.schedule_time }}
+                                <div class="input-group">
+                                    {{ form.schedule_time }}
+                                    <button type="button" class="btn btn-outline-secondary" id="schedule-time-picker-btn">
+                                        <i class="fas fa-clock"></i>
+                                    </button>
+                                </div>
                                 {% if form.schedule_time.errors %}
                                     <div class="text-danger small mt-1">{{ form.schedule_time.errors.0 }}</div>
                                 {% endif %}
@@ -114,24 +143,67 @@
 
 {% block extra_js %}
 <script>
+// showPicker를 안전하게 호출하는 함수
+function safeShowPicker(inputElement) {
+    if (!inputElement) return;
+    
+    // showPicker() API 지원 확인 (Chrome 99+, Edge 99+, Safari 16+)
+    if (typeof inputElement.showPicker === 'function') {
+        try {
+            inputElement.showPicker();
+        } catch (err) {
+            console.warn('showPicker() 실패:', err);
+            // Fallback: input 클릭하여 브라우저 기본 동작 트리거
+            inputElement.focus();
+        }
+    } else {
+        // showPicker() 미지원 브라우저에서는 포커스만
+        inputElement.focus();
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    // 날짜 입력 필드에 datepicker 속성 추가
-    const dateInput = document.querySelector('#{{ form.schedule_date.id_for_label }}');
-    if (dateInput) {
-        dateInput.setAttribute('type', 'date');
+    const scheduleDateField = document.querySelector('#{{ form.schedule_date.id_for_label }}');
+    const scheduleTimeField = document.querySelector('#{{ form.schedule_time.id_for_label }}');
+    
+    const scheduleDateBtn = document.getElementById('schedule-date-picker-btn');
+    const scheduleTimeBtn = document.getElementById('schedule-time-picker-btn');
+
+    // 1) 날짜/시간 입력 필드 타입 설정
+    if (scheduleDateField) {
+        scheduleDateField.setAttribute('type', 'date');
+        scheduleDateField.removeAttribute('readonly');
+        scheduleDateField.style.cursor = 'text';
     }
 
-    // 시간 입력 필드에 timepicker 속성 추가
-    const timeInput = document.querySelector('#{{ form.schedule_time.id_for_label }}');
-    if (timeInput) {
-        timeInput.setAttribute('type', 'time');
+    if (scheduleTimeField) {
+        scheduleTimeField.setAttribute('type', 'time');
+        scheduleTimeField.removeAttribute('readonly');
+        scheduleTimeField.style.cursor = 'text';
     }
 
-    // URL에서 date 파라미터 가져오기 (캘린더에서 더블클릭시)
+    // 2) 아이콘 버튼 클릭 시에만 picker 열기
+    if (scheduleDateField && scheduleDateBtn) {
+        scheduleDateBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            safeShowPicker(scheduleDateField);
+        });
+    }
+
+    if (scheduleTimeField && scheduleTimeBtn) {
+        scheduleTimeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            safeShowPicker(scheduleTimeField);
+        });
+    }
+
+    // 3) URL에서 date 파라미터 가져오기 (캘린더에서 더블클릭시)
     const urlParams = new URLSearchParams(window.location.search);
     const dateParam = urlParams.get('date');
-    if (dateParam && dateInput) {
-        dateInput.value = dateParam;
+    if (dateParam && scheduleDateField) {
+        scheduleDateField.value = dateParam;
     }
 });
 </script>

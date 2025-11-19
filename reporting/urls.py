@@ -179,4 +179,6 @@ urlpatterns = [
     path('personal-schedules/<int:pk>/edit/', personal_schedule_views.personal_schedule_edit_view, name='personal_schedule_edit'),
     path('personal-schedules/<int:pk>/delete/', personal_schedule_views.personal_schedule_delete_view, name='personal_schedule_delete'),
     path('personal-schedules/<int:pk>/add-comment/', personal_schedule_views.personal_schedule_add_comment, name='personal_schedule_add_comment'),
+    path('personal-schedules/comments/<int:comment_id>/edit/', personal_schedule_views.personal_schedule_edit_comment, name='personal_schedule_edit_comment'),
+    path('personal-schedules/comments/<int:comment_id>/delete/', personal_schedule_views.personal_schedule_delete_comment, name='personal_schedule_delete_comment'),
 ]

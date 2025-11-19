@@ -1,10 +1,52 @@
 {% extends "reporting/base.html" %}
 {% load static %}
 
-{% block title %}{{ schedule.title }} - 개인 일정 - Sales Note{% endblock %}
+{% block title %}{{ personal_schedule.title }} - 개인 일정 - Sales Note{% endblock %}
 
 {% block extra_css %}
 <style>
+    /* ============================================
+       모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+       ============================================ */
+    
+    /* backdrop을 완전히 투명하게 (배경 없음) */
+    .modal-backdrop {
+        display: none !important; /* backdrop 자체를 숨김 */
+    }
+    
+    /* 모달 자체는 backdrop보다 높게 */
+    .modal {
+        z-index: 1055 !important;
+        pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+    }
+    
+    /* 모달 다이얼로그만 클릭 가능하게 */
+    .modal-dialog {
+        z-index: 1056 !important;
+        pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+    }
+    
+    /* 모달 컨텐츠를 확실히 클릭 가능하게 */
+    .modal-content {
+        position: relative;
+        z-index: 1057 !important;
+        pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
+        background-color: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 0.3rem;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+    }
+    
+    /* 모달 내부의 모든 요소가 클릭 가능하도록 */
+    .modal-header,
+    .modal-body,
+    .modal-footer,
+    .modal-header *,
+    .modal-body *,
+    .modal-footer * {
+        pointer-events: auto !important;
+    }
+
     .schedule-detail-card {
         max-width: 900px;
         margin: 0 auto;
@@ -52,9 +94,23 @@
         font-size: 0.875rem;
         color: #6c757d;
     }
+    .comment-actions {
+        margin-left: auto;
+    }
+    .comment-actions .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+        margin-left: 0.25rem;
+    }
     .comment-content {
         color: #212529;
         line-height: 1.6;
+    }
+    .comment-edit-form {
+        margin-top: 0.5rem;
+    }
+    .comment-edit-form .form-control {
+        margin-bottom: 0.5rem;
     }
     .no-comments {
         text-align: center;
@@ -79,13 +135,13 @@
                     <!-- 일정 헤더 -->
                     <div class="schedule-header">
                         <h3 class="mb-3">
-                            <i class="fas fa-calendar-day"></i> {{ schedule.title }}
+                            <i class="fas fa-calendar-day"></i> {{ personal_schedule.title }}
                         </h3>
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="badge bg-light text-dark">개인 일정</span>
                             <div>
-                                {% if request.user == schedule.user or request.user.is_manager %}
-                                    <a href="{% url 'reporting:personal_schedule_edit' schedule.pk %}" 
+                                {% if request.user == personal_schedule.user or request.user.is_manager %}
+                                    <a href="{% url 'reporting:personal_schedule_edit' personal_schedule.pk %}" 
                                        class="btn btn-sm btn-light">
                                         <i class="fas fa-edit"></i> 수정
                                     </a>
@@ -102,32 +158,32 @@
                     <div class="schedule-info">
                         <div class="schedule-info-item">
                             <i class="fas fa-user"></i>
-                            <span><strong>담당자:</strong> {{ schedule.user.username }}</span>
+                            <span><strong>담당자:</strong> {{ personal_schedule.user.username }}</span>
                         </div>
                         
-                        {% if schedule.company %}
+                        {% if personal_schedule.company %}
                         <div class="schedule-info-item">
                             <i class="fas fa-building"></i>
-                            <span><strong>회사:</strong> {{ schedule.company.company_name }}</span>
+                            <span><strong>회사:</strong> {{ personal_schedule.company.company_name }}</span>
                         </div>
                         {% endif %}
 
                         <div class="schedule-info-item">
                             <i class="fas fa-calendar"></i>
-                            <span><strong>날짜:</strong> {{ schedule.schedule_date|date:"Y년 m월 d일 (D)" }}</span>
+                            <span><strong>날짜:</strong> {{ personal_schedule.schedule_date|date:"Y년 m월 d일 (D)" }}</span>
                         </div>
 
                         <div class="schedule-info-item">
                             <i class="fas fa-clock"></i>
-                            <span><strong>시간:</strong> {{ schedule.schedule_time|date:"H:i" }}</span>
+                            <span><strong>시간:</strong> {{ personal_schedule.schedule_time|date:"H:i" }}</span>
                         </div>
 
-                        {% if schedule.content %}
+                        {% if personal_schedule.content %}
                         <div class="schedule-info-item mt-3">
                             <i class="fas fa-align-left"></i>
                             <div>
                                 <strong>내용:</strong>
-                                <div class="mt-2">{{ schedule.content|linebreaks }}</div>
+                                <div class="mt-2">{{ personal_schedule.content|linebreaks }}</div>
                             </div>
                         </div>
                         {% endif %}
@@ -144,7 +200,7 @@
                         <div class="comments-list">
                             {% if comments %}
                                 {% for comment in comments %}
-                                <div class="comment-item">
+                                <div class="comment-item" id="comment-{{ comment.id }}">
                                     <div class="comment-header">
                                         <span class="comment-author">
                                             <i class="fas fa-user-circle"></i> {{ comment.user.username }}
@@ -152,9 +208,28 @@
                                         <span class="comment-date">
                                             {{ comment.created_at|date:"Y-m-d H:i" }}
                                         </span>
+                                        {% if comment.created_by == request.user %}
+                                        <span class="comment-actions">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editComment({{ comment.id }}, '{{ comment.content|escapejs }}')">
+                                                <i class="fas fa-edit"></i> 수정
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteComment({{ comment.id }})">
+                                                <i class="fas fa-trash"></i> 삭제
+                                            </button>
+                                        </span>
+                                        {% endif %}
                                     </div>
-                                    <div class="comment-content">
-                                        {{ comment.memo|linebreaks }}
+                                    <div class="comment-content" id="comment-content-{{ comment.id }}">
+                                        {{ comment.content|linebreaks }}
+                                    </div>
+                                    <div class="comment-edit-form" id="comment-edit-form-{{ comment.id }}" style="display: none;">
+                                        <textarea class="form-control mb-2" id="comment-edit-textarea-{{ comment.id }}" rows="3">{{ comment.content }}</textarea>
+                                        <button class="btn btn-sm btn-primary" onclick="saveComment({{ comment.id }})">
+                                            <i class="fas fa-save"></i> 저장
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" onclick="cancelEdit({{ comment.id }})">
+                                            <i class="fas fa-times"></i> 취소
+                                        </button>
                                     </div>
                                 </div>
                                 {% endfor %}
@@ -176,7 +251,7 @@
                                 <div class="mb-3">
                                     <textarea class="form-control" 
                                               id="commentContent" 
-                                              name="memo" 
+                                              name="content" 
                                               rows="3" 
                                               placeholder="댓글을 입력하세요..."
                                               required></textarea>
@@ -233,7 +308,7 @@ function submitComment(event) {
     const formData = new FormData(form);
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     
-    fetch("{% url 'reporting:personal_schedule_add_comment' schedule.pk %}", {
+    fetch("{% url 'reporting:personal_schedule_add_comment' personal_schedule.pk %}", {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken,
@@ -260,11 +335,11 @@ function deleteSchedule() {
     modal.show();
 }
 
-// 삭제 확인
+// 일정 삭제 확인
 function confirmDelete() {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     
-    fetch("{% url 'reporting:personal_schedule_delete' schedule.pk %}", {
+    fetch("{% url 'reporting:personal_schedule_delete' personal_schedule.pk %}", {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken,
@@ -274,14 +349,88 @@ function confirmDelete() {
     .then(data => {
         if (data.status === 'success') {
             alert('일정이 삭제되었습니다.');
-            window.location.href = '/reporting/';
+            window.location.href = '{% url "reporting:schedule_calendar" %}';
         } else {
-            alert('일정 삭제에 실패했습니다: ' + data.message);
+            alert('삭제 실패: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('일정 삭제 중 오류가 발생했습니다.');
+        alert('삭제 중 오류가 발생했습니다.');
+    });
+}
+
+// 댓글 수정 모드로 전환
+function editComment(commentId, content) {
+    document.getElementById('comment-content-' + commentId).style.display = 'none';
+    document.getElementById('comment-edit-form-' + commentId).style.display = 'block';
+}
+
+// 댓글 수정 취소
+function cancelEdit(commentId) {
+    document.getElementById('comment-content-' + commentId).style.display = 'block';
+    document.getElementById('comment-edit-form-' + commentId).style.display = 'none';
+}
+
+// 댓글 수정 저장
+function saveComment(commentId) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const content = document.getElementById('comment-edit-textarea-' + commentId).value.trim();
+    
+    if (!content) {
+        alert('댓글 내용을 입력하세요.');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('content', content);
+    
+    fetch(`/reporting/personal-schedules/comments/${commentId}/edit/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('댓글 수정에 실패했습니다: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('댓글 수정 중 오류가 발생했습니다.');
+    });
+}
+
+// 댓글 삭제
+function deleteComment(commentId) {
+    if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) {
+        return;
+    }
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    fetch(`/reporting/personal-schedules/comments/${commentId}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('댓글 삭제에 실패했습니다: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('댓글 삭제 중 오류가 발생했습니다.');
     });
 }
 </script>

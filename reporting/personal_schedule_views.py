@@ -60,6 +60,16 @@ def personal_schedule_create_view(request):
             personal_schedule.company = user_profile.company
             personal_schedule.save()
             
+            # 개인 일정 생성 시 History 레코드 생성
+            History.objects.create(
+                user=request.user,
+                company=user_profile.company,
+                personal_schedule=personal_schedule,
+                action_type='memo',  # 개인 일정은 memo 타입으로
+                content=f"개인 일정: {personal_schedule.title}",
+                created_by=request.user
+            )
+            
             messages.success(request, '개인 일정이 생성되었습니다.')
             return redirect('reporting:schedule_calendar')
     else:
@@ -116,11 +126,16 @@ def personal_schedule_detail_view(request, pk):
         messages.error(request, '이 일정을 볼 권한이 없습니다.')
         return redirect('reporting:schedule_calendar')
     
-    # 댓글(메모) 조회
-    comments = History.objects.filter(
+    # 개인 일정의 메인 History 찾기
+    main_history = History.objects.filter(
         personal_schedule=personal_schedule,
-        action_type='memo'
-    ).select_related('user', 'created_by').order_by('created_at')
+        parent_history__isnull=True
+    ).first()
+    
+    # 댓글(답글 메모) 조회 - 메인 History의 답글들
+    comments = []
+    if main_history:
+        comments = main_history.reply_memos.select_related('user', 'created_by').order_by('created_at')
     
     return render(request, 'reporting/personal_schedule_detail.html', {
         'personal_schedule': personal_schedule,
@@ -138,25 +153,44 @@ def personal_schedule_add_comment(request, pk):
     
     content = request.POST.get('content', '').strip()
     if not content:
-        return JsonResponse({'success': False, 'error': '내용을 입력하세요.'}, status=400)
+        return JsonResponse({'status': 'error', 'message': '내용을 입력하세요.'}, status=400)
     
-    # History 생성 (댓글)
-    history = History.objects.create(
+    # 개인 일정의 메인 History 찾기 (parent_history가 None인 것)
+    main_history = History.objects.filter(
+        personal_schedule=personal_schedule,
+        parent_history__isnull=True
+    ).first()
+    
+    if not main_history:
+        # 메인 History가 없으면 생성 (기존 개인 일정의 경우)
+        main_history = History.objects.create(
+            user=personal_schedule.user,
+            company=personal_schedule.company,
+            personal_schedule=personal_schedule,
+            action_type='memo',
+            content=f"개인 일정: {personal_schedule.title}",
+            created_by=personal_schedule.user
+        )
+    
+    # 댓글을 답글(reply_memo)로 생성
+    comment = History.objects.create(
         user=request.user,
         company=user_profile.company,
         personal_schedule=personal_schedule,
+        parent_history=main_history,  # 메인 History에 연결
         action_type='memo',
         content=content,
         created_by=request.user
     )
     
     return JsonResponse({
-        'success': True,
+        'status': 'success',
+        'message': '댓글이 등록되었습니다.',
         'comment': {
-            'id': history.id,
-            'content': history.content,
-            'created_at': history.created_at.strftime('%Y-%m-%d %H:%M'),
-            'user_name': history.user.username,
+            'id': comment.id,
+            'content': comment.content,
+            'created_at': comment.created_at.strftime('%Y-%m-%d %H:%M'),
+            'user_name': comment.user.username,
         }
     })
 
@@ -170,9 +204,55 @@ def personal_schedule_delete_view(request, pk):
     
     # 권한 확인
     if personal_schedule.user != request.user and not user_profile.can_view_all_users():
-        return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'}, status=403)
+        return JsonResponse({'status': 'error', 'message': '삭제 권한이 없습니다.'}, status=403)
     
     personal_schedule.delete()
     messages.success(request, '개인 일정이 삭제되었습니다.')
     
-    return JsonResponse({'success': True})
+    return JsonResponse({'status': 'success', 'message': '일정이 삭제되었습니다.'})
+
+
+@login_required
+@require_http_methods(["POST"])
+def personal_schedule_edit_comment(request, comment_id):
+    """개인 일정 댓글 수정"""
+    comment = get_object_or_404(History, pk=comment_id, action_type='memo')
+    
+    # 권한 확인: 댓글 작성자만 수정 가능
+    if comment.created_by != request.user:
+        return JsonResponse({'status': 'error', 'message': '수정 권한이 없습니다.'}, status=403)
+    
+    content = request.POST.get('content', '').strip()
+    if not content:
+        return JsonResponse({'status': 'error', 'message': '내용을 입력하세요.'}, status=400)
+    
+    comment.content = content
+    comment.save()
+    
+    return JsonResponse({
+        'status': 'success',
+        'message': '댓글이 수정되었습니다.',
+        'comment': {
+            'id': comment.id,
+            'content': comment.content,
+            'created_at': comment.created_at.strftime('%Y-%m-%d %H:%M'),
+        }
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def personal_schedule_delete_comment(request, comment_id):
+    """개인 일정 댓글 삭제"""
+    comment = get_object_or_404(History, pk=comment_id, action_type='memo')
+    
+    # 권한 확인: 댓글 작성자만 삭제 가능
+    if comment.created_by != request.user:
+        return JsonResponse({'status': 'error', 'message': '삭제 권한이 없습니다.'}, status=403)
+    
+    comment.delete()
+    
+    return JsonResponse({
+        'status': 'success',
+        'message': '댓글이 삭제되었습니다.'
+    })

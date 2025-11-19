@@ -94,6 +94,12 @@
                 >
                   <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
                 </a>
+                <a
+                  href="{% url 'reporting:history_list' %}?action_type=personal_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  class="btn {% if action_type_filter == 'personal_schedule' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
+                >
+                  <i class="fas fa-calendar-day me-1"></i>개인 일정 ({{ personal_schedule_count|default:0 }})
+                </a>
               </div>
             </div>
           </div>
@@ -185,28 +191,37 @@
           <!-- 타임라인 스타일 히스토리 -->
           <div class="timeline">
             {% for history in histories %}
-            <div class="timeline-item" data-action-type="{{ history.action_type }}" data-history-id="{{ history.id }}"{% if history.schedule %} data-schedule-id="{{ history.schedule.id }}"{% endif %}>
+            <div class="timeline-item" data-action-type="{{ history.action_type }}" data-history-id="{{ history.id }}"{% if history.schedule %} data-schedule-id="{{ history.schedule.id }}"{% endif %}{% if history.personal_schedule %} data-personal-schedule-id="{{ history.personal_schedule.id }}"{% endif %}>
               <div
-                class="timeline-marker {% if history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'quote' %}bg-info {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
+                class="timeline-marker {% if history.personal_schedule %}bg-secondary {% elif history.action_type == 'customer_meeting' %}bg-primary {% elif history.action_type == 'quote' %}bg-info {% elif history.action_type == 'delivery_schedule' %}bg-success {% elif history.action_type == 'memo' %}bg-info {% else %}bg-light {% endif %}"
               >
                 <i
-                  class="fas {% if history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'quote' %}fa-file-invoice-dollar {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
+                  class="fas {% if history.personal_schedule %}fa-calendar-day {% elif history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'quote' %}fa-file-invoice-dollar {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'memo' %}fa-sticky-note {% else %}fa-circle {% endif %} text-white"
                 ></i>
               </div>
 
               <div class="timeline-content">
-                <div class="card" data-visit-month="{% if history.schedule %}{{ history.schedule.visit_date.month }}{% else %}{{ history.created_at.month }}{% endif %}">
+                <div class="card" data-visit-month="{% if history.personal_schedule %}{{ history.personal_schedule.schedule_date.month }}{% elif history.schedule %}{{ history.schedule.visit_date.month }}{% else %}{{ history.created_at.month }}{% endif %}">
                   <div class="card-body">
                     <div
                       class="d-flex justify-content-between align-items-start mb-2"
                     >
                       <h6 class="card-title mb-0">
+                        {% if history.personal_schedule %}
+                        <a
+                          href="{% url 'reporting:personal_schedule_detail' history.personal_schedule.pk %}"
+                          class="text-decoration-none"
+                        >
+                          개인 일정
+                        </a>
+                        {% else %}
                         <a
                           href="{% url 'reporting:history_detail' history.pk %}"
                           class="text-decoration-none"
                         >
                           {{ history.get_action_type_display }}
                         </a>
+                        {% endif %}
                       </h6>
                       <small class="text-muted">
                         <i class="fas fa-clock me-1"></i>
@@ -214,7 +229,17 @@
                       </small>
                     </div>
                     <p class="card-text">
-                      {% if history.followup %}
+                      {% if history.personal_schedule %}
+                      <strong>일정 제목:</strong> {{ history.personal_schedule.title }}<br />
+                      <strong>일정 날짜:</strong>
+                      <a
+                        href="{% url 'reporting:personal_schedule_detail' history.personal_schedule.pk %}"
+                        class="text-decoration-none"
+                      >
+                        {{ history.personal_schedule.schedule_date|date:"m월 d일" }}
+                        {{ history.personal_schedule.schedule_time|date:"H:i" }}
+                      </a><br />
+                      {% elif history.followup %}
                       <strong>고객:</strong>
                       <a
                         href="{% url 'reporting:followup_detail' history.followup.pk %}"
@@ -281,6 +306,14 @@
                     <div class="alert alert-light mb-3">
                       <i class="fas fa-quote-left me-1"></i>
                       {{ history.content|linebreaks }}
+                    </div>
+                    {% endif %}
+
+                    <!-- 개인 일정 내용 표시 -->
+                    {% if history.personal_schedule and history.personal_schedule.content %}
+                    <div class="alert alert-light mb-3">
+                      <i class="fas fa-align-left me-1"></i>
+                      {{ history.personal_schedule.content|linebreaks }}
                     </div>
                     {% endif %}
 
@@ -376,12 +409,21 @@
                         </button>
                         {% endif %}
                         
+                        {% if history.personal_schedule %}
+                        <a
+                          href="{% url 'reporting:personal_schedule_detail' history.personal_schedule.pk %}"
+                          class="btn btn-sm btn-outline-secondary me-1"
+                        >
+                          <i class="fas fa-eye me-1"></i>상세보기
+                        </a>
+                        {% else %}
                         <a
                           href="{% url 'reporting:history_detail' history.pk %}"
                           class="btn btn-sm btn-outline-secondary me-1"
                         >
                           <i class="fas fa-eye me-1"></i>상세보기
                         </a>
+                        {% endif %}
                       </div>
                     </div>
                   </div>

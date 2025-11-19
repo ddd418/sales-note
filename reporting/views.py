@@ -98,9 +98,16 @@ def save_delivery_items(request, instance_obj):
                 else:
                     delivery_item.history = instance_obj
                 
-                if unit_price:
+                # unit_price 저장 (빈 문자열, None이 아니면 0 포함 모든 숫자 허용)
+                if unit_price != '' and unit_price is not None:
                     from decimal import Decimal
-                    delivery_item.unit_price = Decimal(str(unit_price))
+                    try:
+                        # "0", "0.0", 0 모두 Decimal로 변환
+                        delivery_item.unit_price = Decimal(str(unit_price))
+                    except (ValueError, decimal.InvalidOperation):
+                        # 변환 실패 시 None으로 유지
+                        pass
+                # unit_price가 '' 또는 None이면 unit_price 필드는 None으로 유지
                 
                 delivery_item.save()
                 created_count += 1
@@ -2075,7 +2082,6 @@ def schedule_create_view(request):
                 from datetime import datetime
                 parsed_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
                 initial_data['visit_date'] = parsed_date
-                messages.info(request, f'{parsed_date.strftime("%Y년 %m월 %d일")}에 일정을 생성합니다.')
             except ValueError:
                 messages.warning(request, '잘못된 날짜 형식입니다.')
         
@@ -2090,7 +2096,6 @@ def schedule_create_view(request):
                     initial_data['probability'] = latest_opportunity.probability
                     initial_data['expected_close_date'] = latest_opportunity.expected_close_date
                     initial_data['followup'] = followup
-                    messages.info(request, f'기존 펀넬 정보를 불러왔습니다. (예상 매출: {latest_opportunity.expected_revenue:,}원)')
             except FollowUp.DoesNotExist:
                 pass
         
@@ -2730,6 +2735,8 @@ def schedule_update_delivery_items(request, pk):
     
     # 권한 체크: 수정 권한이 있는 경우만 수정 가능
     if not can_modify_user_data(request.user, schedule.user):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'}, status=403)
         messages.error(request, '수정 권한이 없습니다.')
         return redirect('reporting:schedule_detail', pk=pk)
     
@@ -2739,7 +2746,10 @@ def schedule_update_delivery_items(request, pk):
             created_count = save_delivery_items(request, schedule)
             
             if created_count == 0:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': '저장된 품목이 없습니다.'}, status=400)
                 messages.warning(request, '저장된 품목이 없습니다. 품목명과 수량을 모두 입력했는지 확인해주세요.')
+                return redirect('reporting:schedule_detail', pk=pk)
             
             # 관련된 History들의 delivery_items 텍스트도 업데이트
             related_histories = schedule.histories.filter(action_type='delivery_schedule')
@@ -2747,17 +2757,39 @@ def schedule_update_delivery_items(request, pk):
             # 새로 저장된 DeliveryItem들을 텍스트로 변환
             delivery_items = schedule.delivery_items_set.all()
             
+            delivery_text = ''
+            total_delivery_amount = 0
+            delivery_items_list = []
+            
             if delivery_items.exists():
                 delivery_lines = []
-                total_delivery_amount = 0  # 총 납품 금액 계산
                 
                 for item in delivery_items:
-                    if item.unit_price:
+                    # delivery_items_list에 JSON 직렬화 가능한 형태로 추가
+                    # unit_price가 None이 아니면 실제 값 사용 (0 포함)
+                    item_unit_price = None
+                    if item.unit_price is not None:
+                        item_unit_price = float(item.unit_price)
+                    
+                    delivery_items_list.append({
+                        'id': item.id,
+                        'item_name': item.item_name,
+                        'quantity': float(item.quantity),
+                        'unit_price': item_unit_price,
+                        'product_id': item.product_id
+                    })
+                    
+                    # unit_price가 None이 아니고 0보다 클 때만 금액 표시
+                    if item.unit_price is not None and item.unit_price > 0:
                         # 부가세 포함 총액 계산 (단가 * 수량 * 1.1)
                         total_amount = int(float(item.unit_price) * item.quantity * 1.1)
                         total_delivery_amount += total_amount
                         delivery_lines.append(f"{item.item_name}: {item.quantity}개 ({total_amount:,}원)")
+                    elif item.unit_price is not None and item.unit_price == 0:
+                        # 0원인 경우
+                        delivery_lines.append(f"{item.item_name}: {item.quantity}개 (0원)")
                     else:
+                        # unit_price가 None인 경우
                         delivery_lines.append(f"{item.item_name}: {item.quantity}개")
                 
                 delivery_text = '\n'.join(delivery_lines)
@@ -2779,12 +2811,27 @@ def schedule_update_delivery_items(request, pk):
                         action_type='delivery_schedule',
                         delivery_items=delivery_text,
                         delivery_amount=total_delivery_amount if total_delivery_amount > 0 else None,
-                        memo=f'납품 품목 {created_count}개 추가'
+                        content=f'납품 품목 {created_count}개 추가'
                     )
+            
+            # AJAX 요청인 경우 JSON 응답 반환
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': True,
+                    'message': '납품 품목이 성공적으로 업데이트되었습니다.',
+                    'schedule': {
+                        'id': schedule.id,
+                        'delivery_items': delivery_text,
+                        'delivery_items_list': delivery_items_list,
+                        'delivery_amount': total_delivery_amount
+                    }
+                })
             
             messages.success(request, '납품 품목이 성공적으로 업데이트되었습니다.')
         except Exception as e:
             logger.error(f'납품 품목 업데이트 중 오류: {str(e)}', exc_info=True)
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': str(e)}, status=500)
             messages.error(request, f'납품 품목 업데이트 중 오류가 발생했습니다: {str(e)}')
         
         return redirect('reporting:schedule_detail', pk=pk)
@@ -2825,6 +2872,8 @@ def schedule_api_view(request):
     """일정 데이터 API (JSON 응답) - 권한 기반 필터링 적용 + PersonalSchedule 포함"""
     try:
         from .models import PersonalSchedule
+        from django.db.models import Prefetch
+        from decimal import Decimal
         
         user_profile = get_user_profile(request.user)
         
@@ -2920,6 +2969,7 @@ def schedule_api_view(request):
                 delivery_items_text = ''
                 delivery_amount = 0
                 has_schedule_items = False  # 스케줄에 직접 등록된 품목이 있는지 여부
+                delivery_items_list = []  # 실제 품목 데이터 배열
                 
                 # 🔥 최적화: prefetch된 데이터 사용 (추가 쿼리 없음)
                 schedule_delivery_items = list(schedule.delivery_items_set.all())
@@ -2929,9 +2979,25 @@ def schedule_api_view(request):
                     total_amount = 0
                     
                     for item in schedule_delivery_items:
-                        item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                        # unit_price가 None이면 0으로 처리 (Decimal 타입 유지)
+                        unit_price = item.unit_price if item.unit_price is not None else Decimal('0')
+                        item_total = item.total_price or (item.quantity * unit_price * Decimal('1.1'))
                         total_amount += item_total
-                        text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                        
+                        # 실제 품목 데이터 추가
+                        delivery_items_list.append({
+                            'id': item.id,
+                            'item_name': item.item_name,
+                            'quantity': float(item.quantity),
+                            'unit_price': float(unit_price),
+                            'product_id': item.product.id if item.product else None,
+                        })
+                        
+                        # 단가가 0이면 금액 표시 생략
+                        if unit_price > 0:
+                            text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
+                        else:
+                            text_part = f"{item.item_name}: {item.quantity}개"
                         delivery_text_parts.append(text_part)
                     
                     delivery_items_text = '\n'.join(delivery_text_parts)
@@ -2942,12 +3008,13 @@ def schedule_api_view(request):
                         delivery_history = schedule.delivery_histories[0]
                         if delivery_history.delivery_items:
                             delivery_items_text = delivery_history.delivery_items.strip()
-                            delivery_amount = delivery_history.delivery_amount or 0
+                            delivery_amount = int(delivery_history.delivery_amount) if delivery_history.delivery_amount else 0
                 
                 schedule_item.update({
                     'delivery_items': delivery_items_text,
                     'delivery_amount': delivery_amount,
                     'has_schedule_items': has_schedule_items,  # 품목 관리 제한용
+                    'delivery_items_list': delivery_items_list,  # 실제 품목 데이터
                 })
             
             schedule_data.append(schedule_item)
@@ -3052,7 +3119,7 @@ def history_list_view(request):
     
     # 관련 객체들을 미리 로드하여 성능 최적화 (답글 메모도 포함)
     histories = histories.select_related(
-        'user', 'followup', 'followup__company', 'followup__department', 'schedule'
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule'
     ).prefetch_related('reply_memos__created_by')  # 답글 메모들을 미리 로드
     
     # 검색 기능 (책임자 검색 추가)
@@ -3101,12 +3168,20 @@ def history_list_view(request):
     quote_count = base_queryset_for_counts.filter(action_type='quote').count()  # 견적 카운트 추가
     delivery_count = base_queryset_for_counts.filter(action_type='delivery_schedule').count()
     service_count = base_queryset_for_counts.filter(action_type='service', service_status='completed').count()
-    memo_count = base_queryset_for_counts.filter(action_type='memo').count()
+    memo_count = base_queryset_for_counts.filter(action_type='memo', personal_schedule__isnull=True).count()  # 개인 일정 제외
+    personal_schedule_count = base_queryset_for_counts.filter(personal_schedule__isnull=False).count()  # 개인 일정 카운트
     
     # 활동 유형 필터링
     action_type_filter = request.GET.get('action_type')
     if action_type_filter:
-        histories = histories.filter(action_type=action_type_filter)
+        if action_type_filter == 'personal_schedule':
+            # 개인 일정만 필터링
+            histories = histories.filter(personal_schedule__isnull=False)
+        elif action_type_filter == 'memo':
+            # 메모 필터링 (개인 일정 제외)
+            histories = histories.filter(action_type='memo', personal_schedule__isnull=True)
+        else:
+            histories = histories.filter(action_type=action_type_filter)
     
     # 월별 필터링 추가
     months_filter = request.GET.get('months')
@@ -3131,11 +3206,12 @@ def history_list_view(request):
         except (ValueError, TypeError):
             pass
     
-    # 정렬 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
+    # 정렬 (일정이 있는 경우 일정 날짜 기준, 개인 일정이 있는 경우 개인 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
     from django.db.models import Case, When, F
     histories = histories.annotate(
         sort_date=Case(
             When(schedule__isnull=False, then=F('schedule__visit_date')),
+            When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
             default=F('created_at__date')
         )
     ).order_by('-sort_date', '-created_at')
@@ -3194,6 +3270,7 @@ def history_list_view(request):
         'delivery_count': delivery_count,
         'service_count': service_count,
         'memo_count': memo_count,
+        'personal_schedule_count': personal_schedule_count,  # 개인 일정 카운트 추가
         'search_query': search_query,
         'user_filter': user_filter,
         'selected_user': selected_user,
@@ -3243,6 +3320,13 @@ def history_detail_view(request, pk):
     related_histories = History.objects.filter(
         followup=history.followup
     ).select_related('user', 'created_by', 'schedule').order_by('-created_at')[:10]
+    
+    # 답글 메모(댓글) 조회
+    history = History.objects.select_related(
+        'user', 'created_by', 'schedule', 'followup', 'personal_schedule'
+    ).prefetch_related(
+        'reply_memos__user'
+    ).get(pk=pk)
     
     context = {
         'history': history,
@@ -3497,8 +3581,10 @@ def schedule_histories_api(request, schedule_id):
         if not can_access_user_data(request.user, schedule.user):
             return JsonResponse({'error': '권한이 없습니다.'}, status=403)
         
-        # 해당 일정에 직접 연결된 활동 기록만 조회 (최신순)
-        histories = History.objects.filter(schedule=schedule).order_by('-created_at')
+        # 해당 일정에 직접 연결된 활동 기록만 조회 (최신순) - 답글 메모 포함
+        histories = History.objects.filter(schedule=schedule).prefetch_related(
+            'reply_memos__user'
+        ).order_by('-created_at')
         
         histories_data = []
         for history in histories:
@@ -3512,6 +3598,17 @@ def schedule_histories_api(request, schedule_id):
                 'user': history.user.username,
                 'created_by': history.created_by.username if history.created_by else history.user.username,
             }
+            
+            # 답글 메모(댓글) 정보 추가
+            reply_memos_data = []
+            for reply_memo in history.reply_memos.all():
+                reply_memos_data.append({
+                    'id': reply_memo.id,
+                    'content': reply_memo.content,
+                    'created_at': reply_memo.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'user': reply_memo.user.username,
+                })
+            history_data['reply_memos'] = reply_memos_data
             
             # 첨부파일 정보 추가
             files_data = []

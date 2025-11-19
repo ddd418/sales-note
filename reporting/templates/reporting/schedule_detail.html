@@ -1216,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const numericValue = rawValue ? parseInt(rawValue) : 0;
         
         itemRow.querySelector('.unit-price-input').value = numericValue;
-        displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : '';
+        displayInput.value = numericValue.toLocaleString(); // 0원도 표시
         
         const quantityInput = itemRow.querySelector('.quantity-input');
         calculateItemTotal({ target: quantityInput });

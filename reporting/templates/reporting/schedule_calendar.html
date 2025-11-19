@@ -9,50 +9,32 @@
      모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
      ============================================ */
   
-  /* backdrop을 완전히 투명하게 (배경 없음) */
+  /* backdrop을 반투명하게 유지하면서 클릭만 불가능하게 */
   .modal-backdrop {
-    display: none !important; /* backdrop 자체를 숨김 */
-  }
-  
-  /* 또는 투명하게만 하려면 아래 사용 */
-  /* .modal-backdrop {
     z-index: 1040 !important;
     pointer-events: none !important;
-    opacity: 0 !important;
-    background-color: transparent !important;
-  } */
+    opacity: 0.5 !important; /* 원하는 투명도 */
+    background-color: rgba(0, 0, 0, 0.5) !important;
+  }
   
-  /* 모달 자체는 backdrop보다 높게 */
+  /* 모달은 backdrop보다 높게 */
   .modal {
     z-index: 1055 !important;
-    pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
   }
   
-  /* 모달 다이얼로그만 클릭 가능하게 */
+  /* 모달 다이얼로그 */
   .modal-dialog {
     z-index: 1056 !important;
-    pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
   }
   
-  /* 모달 컨텐츠를 확실히 클릭 가능하게 */
+  /* 모달 컨텐츠 */
   .modal-content {
     position: relative;
     z-index: 1057 !important;
-    pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
     background-color: #fff;
-    border: 1px solid rgba(0,0,0,.2);
+    border: 1px solid rgba(0, 0, 0, 0.2);
     border-radius: 0.3rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
-  }
-  
-  /* 모달 내부의 모든 요소가 클릭 가능하도록 */
-  .modal-header,
-  .modal-body,
-  .modal-footer,
-  .modal-header *,
-  .modal-body *,
-  .modal-footer * {
-    pointer-events: auto !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
   }
 
   /* 제품 검색 드롭다운 z-index 설정 */
@@ -1712,8 +1694,11 @@
       dateLabel.textContent = dateDisplay;
     }
     
-    // 모달 표시
-    const bsModal = new bootstrap.Modal(modal);
+    // 모달 표시 - ESC 키와 외부 클릭으로 닫기 가능
+    const bsModal = new bootstrap.Modal(modal, {
+      backdrop: true,  // 외부 클릭 시 모달 닫기
+      keyboard: true   // ESC 키로 모달 닫기
+    });
     bsModal.show();
   }
 
@@ -1911,7 +1896,7 @@
     }
 
     // 납품 품목 전용 포맷팅 함수
-    function formatDeliveryItems(text) {
+    window.formatDeliveryItems = function(text) {
       if (!text) {
         return '';
       }
@@ -1942,6 +1927,9 @@
       const result = formattedLines.join('<br>');
       return result;
     }
+    
+    // 하위 호환성을 위한 별칭
+    const formatDeliveryItems = window.formatDeliveryItems;
 
     fetch(`{% url 'reporting:schedule_histories_api' 999 %}`.replace('999', scheduleId))
       .then(response => response.json())
@@ -2142,6 +2130,32 @@
                 </div>`;
             }
             
+            // 답글 메모(댓글) 정보
+            if (history.reply_memos && history.reply_memos.length > 0) {
+              historyHtml += `
+                <div class="mb-2">
+                  <label class="form-label fw-bold">
+                    <i class="fas fa-comment me-1"></i>댓글:
+                  </label>
+                  <div class="reply-memos-list">`;
+              
+              history.reply_memos.forEach(memo => {
+                historyHtml += `
+                  <div class="p-2 border rounded mb-2 bg-light">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                      <small class="text-muted">
+                        <strong>${escapeHtml(memo.user)}</strong> - ${memo.created_at}
+                      </small>
+                    </div>
+                    <div class="content-display">${formatText(memo.content)}</div>
+                  </div>`;
+              });
+              
+              historyHtml += `
+                  </div>
+                </div>`;
+            }
+            
             historyHtml += `
                 </div>
               </div>`;
@@ -2209,7 +2223,8 @@
         renderCalendar();
       })
       .catch((error) => {
-        schedules = []; // 빈 배열로 초기화
+        console.error('일정 로드 실패:', error);
+        schedules = [];
         renderCalendar();
       });
   }
@@ -2917,7 +2932,7 @@
                     <span class="text-muted ms-2">${scheduleItem.quantity}개</span>
                   </div>
                   <div class="small text-muted">
-                    단가: ${parseInt(scheduleItem.unit_price || 0).toLocaleString()}원
+                    단가: ${parseInt(scheduleItem.unit_price ?? 0).toLocaleString()}원
                     | 총액: <strong class="text-success">${itemTotal.toLocaleString()}원</strong>
                   </div>
                 </div>
@@ -3076,7 +3091,10 @@
       // 스케줄 모달이 닫힐 때 히스토리 모달 새로고침 이벤트 리스너 추가
       const scheduleModal = document.querySelector('#deliveryItemsModal');
       if (scheduleModal && currentHistoryId) {
-        const modalInstance = bootstrap.Modal.getInstance(scheduleModal) || new bootstrap.Modal(scheduleModal);
+        const modalInstance = bootstrap.Modal.getInstance(scheduleModal) || new bootstrap.Modal(scheduleModal, {
+          backdrop: true,  // 외부 클릭 시 모달 닫기
+          keyboard: true   // ESC 키로 모달 닫기
+        });
         
         // 기존 이벤트 리스너 제거 (중복 방지)
         scheduleModal.removeEventListener('hidden.bs.modal', refreshHistoryModalAfterScheduleUpdate);
@@ -3125,7 +3143,10 @@
         // 히스토리 모달 다시 열기
         const historyModal = document.querySelector('#history-modal');
         if (historyModal) {
-          const modalInstance = bootstrap.Modal.getInstance(historyModal) || new bootstrap.Modal(historyModal);
+          const modalInstance = bootstrap.Modal.getInstance(historyModal) || new bootstrap.Modal(historyModal, {
+            backdrop: true,  // 외부 클릭 시 모달 닫기
+            keyboard: true   // ESC 키로 모달 닫기
+          });
           modalInstance.show();
         }
         
@@ -3280,9 +3301,11 @@
     
     // 모든 활동 필드 숨김
     const deliveryFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .delivery-fields`);
+    const quoteFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .quote-fields`);
     const serviceFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .service-fields`);
     
     deliveryFields.forEach(field => field.style.display = 'none');
+    quoteFields.forEach(field => field.style.display = 'none');
     serviceFields.forEach(field => field.style.display = 'none');
     
     // 활동 유형에 따라 제목과 필드 업데이트
@@ -3292,6 +3315,10 @@
       case 'customer_meeting':
         titleElement.innerHTML = '<i class="fas fa-users me-2"></i>고객 미팅 기록 작성';
         // 고객 미팅은 활동 내용만 필요 (이미 표시됨)
+        break;
+      case 'quote':
+        titleElement.innerHTML = '<i class="fas fa-file-invoice me-2"></i>견적 기록 작성';
+        quoteFields.forEach(field => field.style.display = 'block');
         break;
       case 'delivery_schedule':
         titleElement.innerHTML = '<i class="fas fa-truck me-2"></i>납품 일정 기록 작성';
@@ -3601,6 +3628,35 @@
   let deliveryItemIndex = 0;
   let deliveryItemsData = [];
 
+  // 캘린더 일정의 납품 품목 요약 렌더링 (모달 밖 화면 업데이트)
+  window.renderCalendarDeliveryItemsSummary = function(scheduleId) {
+    if (!scheduleId) scheduleId = currentScheduleId;
+    if (!scheduleId) return;
+
+    // schedules 배열에서 최신 데이터 찾기
+    const schedule = schedules.find(s => s.id == scheduleId);
+    if (!schedule) return;
+
+    // 상세 모달의 품목 텍스트 업데이트
+    const deliveryItemsElement = document.getElementById(`delivery-items-${scheduleId}`);
+    if (deliveryItemsElement && schedule.delivery_items) {
+      let processedText = schedule.delivery_items
+        .replace(/\\n/g, '\n')
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\r\n/g, '\n')
+        .trim();
+      deliveryItemsElement.textContent = processedText;
+    }
+
+    // 캘린더에 표시되는 이벤트 업데이트 (FullCalendar 사용 시)
+    if (typeof calendar !== 'undefined' && calendar.getEventById) {
+      const event = calendar.getEventById(scheduleId);
+      if (event && schedule.delivery_items) {
+        event.setExtendedProp('delivery_items', schedule.delivery_items);
+      }
+    }
+  };
+
   function openDeliveryItemsModal(scheduleId) {
     currentScheduleId = scheduleId;
     deliveryItemsData = []; // 초기화
@@ -3684,7 +3740,21 @@
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 
     // 모달 표시
-    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    const modalElement = document.getElementById('deliveryItemsModal');
+    const modal = new bootstrap.Modal(modalElement, {
+      backdrop: true,  // 외부 클릭 시 모달 닫기
+      keyboard: true   // ESC 키로 모달 닫기
+    });
+    
+    // 모달 닫힐 때 요약부 업데이트
+    modalElement.addEventListener('hidden.bs.modal', function onModalHidden() {
+      if (typeof window.renderCalendarDeliveryItemsSummary === 'function') {
+        window.renderCalendarDeliveryItemsSummary(currentScheduleId);
+      }
+      // 이벤트 리스너 제거 (중복 방지)
+      modalElement.removeEventListener('hidden.bs.modal', onModalHidden);
+    });
+    
     modal.show();
 
     // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
@@ -3697,7 +3767,20 @@
     if (typeof schedules !== 'undefined' && currentScheduleId) {
       const schedule = schedules.find(s => s.id == currentScheduleId);
       
-      if (schedule && schedule.delivery_items && schedule.delivery_items.trim()) {
+      // 우선순위: delivery_items_list (실제 DB 데이터) > delivery_items (텍스트)
+      if (schedule && schedule.delivery_items_list && schedule.delivery_items_list.length > 0) {
+        // DB에서 가져온 실제 품목 데이터 사용
+        schedule.delivery_items_list.forEach(item => {
+          addCalendarDeliveryItem({
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            product_id: item.product_id
+          });
+        });
+        return true;
+      } else if (schedule && schedule.delivery_items && schedule.delivery_items.trim()) {
+        // 텍스트 데이터 파싱 (fallback)
         let deliveryItemsText = schedule.delivery_items.trim();
         
         // 모든 종류의 줄바꿈 패턴을 처리
@@ -3708,26 +3791,26 @@
           .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
           .replace(/\r/g, '\n');     // 실제 \r을 \n으로
         
-        
         const lines = deliveryItemsText.split('\n').filter(line => line.trim());
         let hasData = false;
-        
         
         lines.forEach((line, index) => {
           const trimmedLine = line.trim();
           
           if (trimmedLine) {
-            // 더 관대한 정규식으로 매칭 ("품목명: 수량개 (금액원)" 형태)
-            const match = trimmedLine.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
-            if (match) {
-              const itemName = match[1].trim();
-              const quantity = parseFloat(match[2]);
-              const totalPriceStr = match[3].replace(/[,\s]/g, '');
+            // 금액 있는 경우: "품목명: 수량개 (금액원)"
+            const matchWithPrice = trimmedLine.match(/^(.+?):\s*(\d+(?:\.\d+)?)개\s*\((.+?)원\)$/);
+            // 금액 없는 경우 (0원): "품목명: 수량개"
+            const matchWithoutPrice = trimmedLine.match(/^(.+?):\s*(\d+(?:\.\d+)?)개$/);
+            
+            if (matchWithPrice) {
+              const itemName = matchWithPrice[1].trim();
+              const quantity = parseFloat(matchWithPrice[2]);
+              const totalPriceStr = matchWithPrice[3].replace(/[,\s]/g, '');
               const totalPrice = parseInt(totalPriceStr);
               
               // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
               const unitPrice = Math.round(totalPrice / 1.1 / quantity);
-              
               
               addCalendarDeliveryItem({
                 item_name: itemName,
@@ -3735,7 +3818,17 @@
                 unit_price: unitPrice
               });
               hasData = true;
-            } else {
+            } else if (matchWithoutPrice) {
+              // 단가 0원인 경우
+              const itemName = matchWithoutPrice[1].trim();
+              const quantity = parseFloat(matchWithoutPrice[2]);
+              
+              addCalendarDeliveryItem({
+                item_name: itemName,
+                quantity: quantity,
+                unit_price: 0
+              });
+              hasData = true;
             }
           }
         });
@@ -3771,7 +3864,7 @@
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">단가 (부가세 별도)</label>
-        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price ?? ''}" placeholder="0">
       </div>
       <div class="col-md-3">
         <label class="form-label fw-bold">금액 (부가세 포함)</label>
@@ -3797,7 +3890,7 @@
     unitPriceInput.addEventListener('input', calculateCalendarItemTotal);
     
     // 초기 계산
-    if (itemData.quantity && itemData.unit_price) {
+    if (itemData.quantity && (itemData.unit_price !== null && itemData.unit_price !== undefined)) {
       calculateCalendarItemTotal({ target: quantityInput });
     }
     
@@ -3830,8 +3923,12 @@
 
   function calculateCalendarItemTotal(event) {
     const item = event.target.closest('.delivery-item');
-    const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
-    const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+    const quantityRaw = item.querySelector('.quantity-input').value;
+    const unitPriceRaw = item.querySelector('.unit-price-input').value;
+    
+    // 빈 값은 0으로, 그 외에는 숫자로 파싱 (0도 유효한 값)
+    const quantity = quantityRaw === '' ? 0 : (parseFloat(quantityRaw) || 0);
+    const unitPrice = unitPriceRaw === '' ? 0 : (parseFloat(unitPriceRaw) || 0);
     
     // 부가세 포함 계산: (단가 * 수량) * 1.1
     const subtotal = quantity * unitPrice;
@@ -3846,8 +3943,12 @@
     let subtotal = 0;
     
     items.forEach(item => {
-      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
-      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      const quantityRaw = item.querySelector('.quantity-input').value;
+      const unitPriceRaw = item.querySelector('.unit-price-input').value;
+      
+      // 빈 값은 0으로, 그 외에는 숫자로 파싱 (0도 유효한 값)
+      const quantity = quantityRaw === '' ? 0 : (parseFloat(quantityRaw) || 0);
+      const unitPrice = unitPriceRaw === '' ? 0 : (parseFloat(unitPriceRaw) || 0);
       subtotal += quantity * unitPrice;
     });
     
@@ -3891,7 +3992,10 @@
     if (existing) existing.remove();
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     const modalElement = document.getElementById('calendarProductSearchModal');
-    const modal = new bootstrap.Modal(modalElement);
+    const modal = new bootstrap.Modal(modalElement, {
+      backdrop: true,  // 외부 클릭 시 모달 닫기
+      keyboard: true   // ESC 키로 모달 닫기
+    });
     const searchInput = document.getElementById('calendarModalSearchInput');
     const resultsList = document.getElementById('calendarModalResults');
 
@@ -3949,7 +4053,10 @@
   function openDeliveryProductModal(button) {
     const productModalElem = document.getElementById('productAddModal');
     if (productModalElem) {
-      const productModal = new bootstrap.Modal(productModalElem);
+      const productModal = new bootstrap.Modal(productModalElem, {
+        backdrop: true,  // 외부 클릭 시 모달 닫기
+        keyboard: true   // ESC 키로 모달 닫기
+      });
       productModal.show();
     } else {
       alert('제품 추가 모달을 찾을 수 없습니다.');
@@ -3957,6 +4064,30 @@
   }
 
   // 저장 버튼: 서버에 실제 저장하고 전체 동기화
+  // 상세 모달이 열려있으면 품목 정보 업데이트
+  function updateScheduleDetailModalIfOpen(scheduleId) {
+    const modalElement = document.getElementById('scheduleDetailModal');
+    if (!modalElement) return;
+    
+    const modalInstance = bootstrap.Modal.getInstance(modalElement);
+    if (!modalInstance || !modalElement.classList.contains('show')) return;
+    
+    // schedules 배열에서 해당 일정 찾기
+    const schedule = schedules.find(s => s.id == scheduleId);
+    if (!schedule) return;
+    
+    // 품목 정보 업데이트
+    const deliveryItemsElement = document.getElementById(`delivery-items-${scheduleId}`);
+    if (deliveryItemsElement && schedule.delivery_items) {
+      let processedText = schedule.delivery_items
+        .replace(/\\n/g, '\n')
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\r\n/g, '\n')
+        .trim();
+      deliveryItemsElement.textContent = processedText;
+    }
+  }
+
   function saveCalendarDeliveryItems() {
     const items = document.querySelectorAll('#calendar-delivery-items-container .delivery-item');
     deliveryItemsData = [];
@@ -3992,23 +4123,43 @@
     items.forEach((item) => {
       const productId = item.querySelector('.calendar-main-product-id')?.value || '';
       const itemName = item.querySelector('.calendar-main-item-name').value.trim();
-      const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
-      const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
+      const quantityRaw = item.querySelector('.quantity-input').value;
+      const unitPriceRaw = item.querySelector('.unit-price-input').value;
       
+      // 수량: 양수만 허용
+      const quantity = quantityRaw === '' ? 0 : parseFloat(quantityRaw);
+      
+      // 단가: ''(빈값)과 '0'을 구분 - 0도 유효한 값으로 처리
+      let unitPrice;
+      if (unitPriceRaw === '' || unitPriceRaw === null || unitPriceRaw === undefined) {
+        unitPrice = '';  // 빈 값
+      } else {
+        const parsed = parseFloat(unitPriceRaw);
+        unitPrice = isNaN(parsed) ? '' : parsed;  // 0 포함 모든 숫자 허용
+      }
+      
+      // 품목명과 수량만 있으면 저장 (단가 0원 허용)
       if (itemName && quantity > 0) {
-        const subtotal = quantity * unitPrice;
+        const actualUnitPrice = unitPrice === '' ? 0 : unitPrice;
+        const subtotal = quantity * actualUnitPrice;
         const total = subtotal * 1.1;
         
         deliveryItemsData.push({
           product_id: productId,
           item_name: itemName,
           quantity: quantity,
-          unit_price: unitPrice,
+          unit_price: actualUnitPrice,
           total_price: total
         });
         
         totalAmount += total;
-        itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        
+        // 단가가 0이면 금액 표시 생략
+        if (actualUnitPrice > 0) {
+          itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        } else {
+          itemsText.push(`${itemName}: ${quantity}개`);
+        }
         
         // 서버 전송용 FormData에 추가
         if (productId) {
@@ -4016,7 +4167,13 @@
         }
         formData.append(`delivery_items[${validIndex}][name]`, itemName);
         formData.append(`delivery_items[${validIndex}][quantity]`, quantity);
-        formData.append(`delivery_items[${validIndex}][unit_price]`, unitPrice);
+        // 단가: ''인 경우 빈 문자열, 0 포함 모든 숫자는 문자열로 변환하여 전송
+        if (unitPrice === '') {
+          formData.append(`delivery_items[${validIndex}][unit_price]`, '');
+        } else {
+          // 0 포함 모든 숫자를 문자열로 명시적 변환
+          formData.append(`delivery_items[${validIndex}][unit_price]`, String(unitPrice));
+        }
         
         validIndex++;
       }
@@ -4032,14 +4189,17 @@
     // 서버에 저장
     fetch(`{% url 'reporting:schedule_update_delivery_items' 0 %}`.replace('0', currentScheduleId), {
       method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': '{{ csrf_token }}'
+      },
       body: formData
     })
     .then(response => {
-      if (response.ok) {
-        return response.text();
-      } else {
+      if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      return response.json();
     })
     .then(data => {
       // 성공 시 전체 데이터 새로고침
@@ -4051,14 +4211,40 @@
         modal.hide();
       }
       
-      // 전체 데이터 새로고침
-      setTimeout(async () => {
-        await refreshScheduleData();
-        if (typeof renderCalendar === 'function') {
-          renderCalendar();
+      // 1) schedules 배열 업데이트 (서버에서 최신 데이터 반환)
+      if (data.schedule) {
+        const index = schedules.findIndex(s => s.id == currentScheduleId);
+        if (index !== -1) {
+          // 기존 schedule 객체의 delivery_items 관련 필드 업데이트
+          schedules[index].delivery_items = data.schedule.delivery_items;
+          schedules[index].delivery_items_list = data.schedule.delivery_items_list;
+          schedules[index].delivery_amount = data.schedule.delivery_amount;
         }
-        loadScheduleHistories(currentScheduleId);
-      }, 500);
+      }
+      
+      // 2) 일정 상세 모달이 열려있다면 즉시 DOM 업데이트
+      const detailModal = document.getElementById('scheduleDetailModal');
+      if (detailModal && detailModal.classList.contains('show')) {
+        // 납품 품목 텍스트 업데이트
+        const deliveryItemsDisplay = document.getElementById(`delivery-items-display-${currentScheduleId}`);
+        if (deliveryItemsDisplay && data.schedule && data.schedule.delivery_items) {
+          deliveryItemsDisplay.innerHTML = formatDeliveryItems(data.schedule.delivery_items);
+        }
+        
+        // 총 납품 금액 업데이트
+        const deliveryAmount = document.getElementById(`delivery-amount-${currentScheduleId}`);
+        if (deliveryAmount && data.schedule && data.schedule.delivery_amount) {
+          deliveryAmount.textContent = parseInt(data.schedule.delivery_amount).toLocaleString() + '원';
+        }
+      }
+      
+      // 3) 캘린더 렌더링
+      if (typeof renderCalendar === 'function') {
+        renderCalendar();
+      }
+      
+      // 4) 히스토리 새로고침
+      loadScheduleHistories(currentScheduleId);
     })
     .catch(error => {
       showErrorMessage('납품 품목 저장 중 오류가 발생했습니다: ' + error.message);
@@ -4192,11 +4378,15 @@
             
             // 납품 금액 업데이트
             const deliveryAmountElements = modalElement.querySelectorAll('.text-primary.fw-bold');
-            deliveryAmountElements.forEach((element, index) => {
-              if (element.textContent.includes('원') && updatedSchedule.delivery_amount) {
-                const formattedAmount = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
-                element.textContent = formattedAmount;
-              }
+            deliveryAmountElements.forEach((element) => {
+              // 금액이 아닌 다른 bold 텍스트는 패스
+              if (!element.textContent.includes('원')) return;
+              
+              // 최신 금액 (undefined/null → 0으로 처리)
+              const rawAmount = parseInt(updatedSchedule.delivery_amount ?? 0) || 0;
+              
+              // 0원 포함해서 항상 갱신
+              element.textContent = `${rawAmount.toLocaleString()}원`;
             });
             
           } else {
@@ -4233,15 +4423,20 @@
           
           // 현재 열린 모달의 납품 품목 정보 업데이트
           const scheduleModal = document.getElementById(`scheduleModal-${scheduleId}`);
-          if (scheduleModal && updatedSchedule.delivery_items) {
-            const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
-            if (deliveryItemsDiv) {
-              deliveryItemsDiv.innerHTML = formatDeliveryItems(updatedSchedule.delivery_items);
+          if (scheduleModal) {
+            // 납품 품목 텍스트 업데이트
+            if (updatedSchedule.delivery_items) {
+              const deliveryItemsDiv = scheduleModal.querySelector('.delivery-items-display');
+              if (deliveryItemsDiv) {
+                deliveryItemsDiv.innerHTML = formatDeliveryItems(updatedSchedule.delivery_items);
+              }
             }
             
+            // 납품 금액 업데이트 (0원도 포함)
             const deliveryAmountP = scheduleModal.querySelector('.text-primary.fw-bold');
-            if (deliveryAmountP && updatedSchedule.delivery_amount) {
-              deliveryAmountP.textContent = `${parseInt(updatedSchedule.delivery_amount).toLocaleString()}원`;
+            if (deliveryAmountP) {
+              const rawAmount = parseInt(updatedSchedule.delivery_amount ?? 0) || 0;
+              deliveryAmountP.textContent = `${rawAmount.toLocaleString()}원`;
             }
           }
         }
@@ -4373,7 +4568,10 @@
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 
     // 모달 표시
-    const modal = new bootstrap.Modal(document.getElementById('editDeliveryItemsModal'));
+    const modal = new bootstrap.Modal(document.getElementById('editDeliveryItemsModal'), {
+      backdrop: true,  // 외부 클릭 시 모달 닫기
+      keyboard: true   // ESC 키로 모달 닫기
+    });
     modal.show();
 
     // 기존 데이터가 있다면 로드, 없다면 기본 품목 하나 추가
@@ -4397,22 +4595,35 @@
       
       lines.forEach(line => {
         if (line.trim()) {
-          // "품목명: 수량개 (금액원)" 형태 파싱
-          const match = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
-          if (match) {
-            const itemName = match[1].trim();
-            const quantity = parseInt(match[2]);
-            const totalPriceStr = match[3].replace(/,/g, '');
+          // 금액 있는 경우: "품목명: 수량개 (금액원)"
+          const matchWithPrice = line.match(/^(.+?):\s*(\d+)개\s*\((.+?)원\)/);
+          // 금액 없는 경우 (0원): "품목명: 수량개"
+          const matchWithoutPrice = line.match(/^(.+?):\s*(\d+)개$/);
+          
+          if (matchWithPrice) {
+            const itemName = matchWithPrice[1].trim();
+            const quantity = parseInt(matchWithPrice[2]);
+            const totalPriceStr = matchWithPrice[3].replace(/,/g, '');
             const totalPrice = parseInt(totalPriceStr);
             
             // 부가세 포함 금액에서 단가 역산 (총액 / 1.1 / 수량)
             const unitPrice = Math.round(totalPrice / 1.1 / quantity);
             
-            
             addEditDeliveryItem({
               item_name: itemName,
               quantity: quantity,
               unit_price: unitPrice
+            });
+            hasData = true;
+          } else if (matchWithoutPrice) {
+            // 단가 0원인 경우
+            const itemName = matchWithoutPrice[1].trim();
+            const quantity = parseInt(matchWithoutPrice[2]);
+            
+            addEditDeliveryItem({
+              item_name: itemName,
+              quantity: quantity,
+              unit_price: 0
             });
             hasData = true;
           }
@@ -4453,7 +4664,7 @@
       </div>
       <div class="col-md-2">
         <label class="form-label fw-bold">단가 (부가세 별도)</label>
-        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price || ''}" placeholder="0">
+        <input type="number" class="form-control unit-price-input" step="0.01" min="0" value="${itemData.unit_price ?? ''}" placeholder="0">
       </div>
       <div class="col-md-3">
         <label class="form-label fw-bold">금액 (부가세 포함)</label>
@@ -4560,6 +4771,7 @@
       const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
       const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
       
+      // 품목명과 수량만 있으면 저장 (단가 0원 허용)
       if (itemName && quantity > 0) {
         const subtotal = quantity * unitPrice;
         const total = subtotal * 1.1;
@@ -4572,7 +4784,13 @@
         });
         
         totalAmount += total;
-        itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        
+        // 단가가 0이면 금액 표시 생략
+        if (unitPrice > 0) {
+          itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+        } else {
+          itemsText.push(`${itemName}: ${quantity}개`);
+        }
         
         // 서버로 전송될 숨겨진 필드들 생성 (기존 뷰와 호환)
         if (form) {
@@ -4590,7 +4808,7 @@
           quantityInput.value = quantity;
           form.appendChild(quantityInput);
           
-          // 단가
+          // 단가 (0원도 저장)
           const unitPriceInput = document.createElement('input');
           unitPriceInput.type = 'hidden';
           unitPriceInput.name = `delivery_items[${index}][unit_price]`;
@@ -5054,24 +5272,57 @@
                 scheduleElement.style.borderLeft = '3px solid #5a6268';
               }
               
-              const displayName = schedule.company && schedule.department ?
+              // 개인 일정은 회사명 제외, 일반 일정은 회사명 포함
+              const displayName = isPersonalSchedule ? schedule.customer :
+                (schedule.company && schedule.department ?
                 `${schedule.company} ${schedule.department} ${schedule.customer}` :
                 schedule.company ? `${schedule.company} ${schedule.customer}` :
                 schedule.department ? `${schedule.department} ${schedule.customer}` :
-                schedule.customer;
+                schedule.customer);
               const fullScheduleText = `${schedule.time} ${displayName}`;
               scheduleElement.textContent = fullScheduleText;
               scheduleElement.title = fullScheduleText;
 
-              // 클릭 이벤트 (상세 모달)
+              // 클릭 카운터 및 타이머 (더블클릭 방지)
+              let clickCount = 0;
+              let clickTimer = null;
+
+              // 클릭 이벤트 (상세 모달) - 더블클릭 방지 로직 추가
               scheduleElement.onclick = (e) => {
                 e.stopPropagation();
-                // 🔥 개인 일정은 별도 페이지로 이동
-                if (isPersonalSchedule) {
-                  window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                e.preventDefault(); // 기본 동작 방지
+                
+                clickCount++;
+                
+                if (clickCount === 1) {
+                  // 첫 번째 클릭 - 타이머 시작
+                  clickTimer = setTimeout(() => {
+                    // 단일 클릭 처리
+                    // 🔥 개인 일정은 별도 페이지로 이동
+                    if (isPersonalSchedule) {
+                      window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                    } else {
+                      showScheduleModal(schedule);
+                    }
+                    clickCount = 0;
+                  }, 250); // 250ms 대기
                 } else {
-                  showScheduleModal(schedule);
+                  // 더블클릭 - 타이머 취소하고 단일 클릭으로 처리 (모달 하나만)
+                  clearTimeout(clickTimer);
+                  if (isPersonalSchedule) {
+                    window.location.href = `/reporting/personal-schedules/${schedule.id}/`;
+                  } else {
+                    showScheduleModal(schedule);
+                  }
+                  clickCount = 0;
                 }
+              };
+
+              // 더블클릭 이벤트 명시적으로 방지
+              scheduleElement.ondblclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                return false;
               };
 
               if (!isMobile) {
@@ -5144,7 +5395,17 @@
 
           // 더블클릭 이벤트 (데스크톱 전용, Manager는 비활성화)
           cell.ondblclick = (e) => {
+            // 일정 요소를 클릭한 경우 더블클릭 무시
+            if (e.target.classList.contains('schedule-item') || 
+                e.target.classList.contains('schedule-event') ||
+                e.target.classList.contains('more-schedules')) {
+              e.preventDefault();
+              e.stopPropagation();
+              return false;
+            }
+            
             e.preventDefault();
+            e.stopPropagation();
             {% if user.userprofile.role != 'manager' %}
             if (window.innerWidth > 768) { // 데스크톱에서만
               const dateString = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
@@ -5256,11 +5517,14 @@
           const scheduleCard = document.createElement('div');
           scheduleCard.className = 'card mb-2';
           
-          const displayName = schedule.company && schedule.department ? 
+          // 개인 일정은 회사명 제외, 일반 일정은 회사명 포함
+          const isPersonalSchedule = schedule.type === 'personal';
+          const displayName = isPersonalSchedule ? schedule.customer :
+            (schedule.company && schedule.department ? 
             `${schedule.company} ${schedule.department} ${schedule.customer}` :
             schedule.company ? `${schedule.company} ${schedule.customer}` :
             schedule.department ? `${schedule.department} ${schedule.customer}` :
-            schedule.customer;
+            schedule.customer);
           
           scheduleCard.innerHTML = `
             <div class="card-body py-2">
@@ -5303,7 +5567,10 @@
       }
       
       // 모달 표시
-      const modal = new bootstrap.Modal(document.getElementById('dateSchedulesModal'));
+      const modal = new bootstrap.Modal(document.getElementById('dateSchedulesModal'), {
+        backdrop: true,  // 외부 클릭 시 모달 닫기
+        keyboard: true   // ESC 키로 모달 닫기
+      });
       modal.show();
     }
 
@@ -5548,7 +5815,7 @@
                   </div>
                   ` : ''}
                   ${(schedule.activity_type === 'delivery' || schedule.activity_type === 'quote') && (schedule.delivery_items || schedule.delivery_amount) ? `
-                  <div class="col-12">
+                  <div class="col-12" id="delivery-info-section-${schedule.id}">
                     <div class="card border-warning">
                       <div class="card-header bg-warning text-dark">
                         <h6 class="mb-0">
@@ -5559,13 +5826,13 @@
                         ${schedule.delivery_items ? `
 <div class="mb-3">
 <label class="form-label fw-bold">${schedule.activity_type === 'quote' ? '견적 품목' : '납품 품목'}</label>
-<div class="form-control-plaintext border rounded p-2 bg-light delivery-items-display">${formatDeliveryItems(schedule.delivery_items)}</div>
+<div id="delivery-items-display-${schedule.id}" class="form-control-plaintext border rounded p-2 bg-light delivery-items-display"></div>
 </div>
 ` : ''}
-                        ${schedule.delivery_amount ? `
+                        ${schedule.delivery_amount !== null && schedule.delivery_amount !== undefined ? `
                         <div class="mb-0">
                           <label class="form-label fw-bold">총 ${schedule.activity_type === 'quote' ? '견적' : '납품'} 금액</label>
-                          <p class="mb-0 text-primary fw-bold">${parseInt(schedule.delivery_amount).toLocaleString()}원</p>
+                          <p id="delivery-amount-${schedule.id}" class="mb-0 text-primary fw-bold">${parseInt(schedule.delivery_amount || 0).toLocaleString()}원</p>
                         </div>
                         ` : ''}
                       </div>
@@ -5737,6 +6004,14 @@
                               <textarea class="form-control" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
                             </div>
                             
+                            <!-- 견적용 필드들 -->
+                            <div class="col-12 activity-field quote-fields" style="display: none;">
+                              <label class="form-label">견적 품목</label>
+                              <button type="button" class="btn btn-primary w-100" onclick="openDeliveryItemsModal(${schedule.id})">
+                                <i class="fas fa-boxes me-2"></i>견적 품목 관리
+                              </button>
+                            </div>
+                            
                             <!-- 납품 일정용 필드들 -->
                             <div class="col-12 activity-field delivery-fields" style="display: none;">
                               <label class="form-label">납품 품목</label>
@@ -5825,13 +6100,26 @@
       // 새 모달 추가
       document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-      // 모달 표시
-      const modal = new bootstrap.Modal(document.getElementById('scheduleDetailModal'));
+      // 모달 표시 - ESC 키와 외부 클릭으로 닫기 가능
+      const modal = new bootstrap.Modal(document.getElementById('scheduleDetailModal'), {
+        backdrop: true,   // 외부 클릭 시 모달 닫기
+        keyboard: true    // ESC 키로 모달 닫기
+      });
       modal.show();
 
       // 모달이 표시된 후 인라인 히스토리 폼 초기화
       modal._element.addEventListener('shown.bs.modal', function() {
-        // 납품 품목 텍스트 처리
+        // 납품 품목 표시 영역 업데이트
+        const deliveryItemsDisplay = document.getElementById(`delivery-items-display-${schedule.id}`);
+        if (deliveryItemsDisplay && schedule.delivery_items) {
+          if (typeof window.formatDeliveryItems === 'function') {
+            deliveryItemsDisplay.innerHTML = window.formatDeliveryItems(schedule.delivery_items);
+          } else {
+            deliveryItemsDisplay.textContent = schedule.delivery_items;
+          }
+        }
+        
+        // 납품 품목 텍스트 처리 (다른 영역)
         if (schedule.delivery_items) {
           const deliveryItemsElement = document.getElementById(`delivery-items-${schedule.id}`);
           if (deliveryItemsElement) {
@@ -5857,6 +6145,7 @@
           // 일정 유형을 히스토리 활동 유형으로 매핑
           const activityMapping = {
             'customer_meeting': 'customer_meeting',
+            'quote': 'quote',
             'delivery': 'delivery_schedule',
             'service': 'service'
           };
@@ -5923,7 +6212,10 @@
       customerDetailLink.href = `{% url 'reporting:followup_detail' 0 %}`.replace('0', followupId);
 
       // 모달 표시
-      const modal = new bootstrap.Modal(document.getElementById('customerHistoriesModal'));
+      const modal = new bootstrap.Modal(document.getElementById('customerHistoriesModal'), {
+        backdrop: true,  // 외부 클릭 시 모달 닫기
+        keyboard: true   // ESC 키로 모달 닫기
+      });
       modal.show();
 
       // 모달이 닫힐 때 DOM에서 제거
@@ -6111,34 +6403,8 @@
       return escapedText;
     }
 
-    // 납품 품목 전용 포맷팅 함수 (히스토리 모달용)
-    function formatDeliveryItems(text) {
-      if (!text) return '';
-      
-      
-      // 모든 종류의 줄바꿈 패턴을 처리
-      let processedText = text
-        .replace(/\\n/g, '\n')     // \\n을 실제 줄바꿈으로
-        .replace(/\\r\\n/g, '\n')  // \\r\\n을 실제 줄바꿈으로
-        .replace(/\\r/g, '\n')     // \\r을 실제 줄바꿈으로
-        .replace(/\r\n/g, '\n')    // 실제 \r\n을 \n으로
-        .replace(/\r/g, '\n');     // 실제 \r을 \n으로
-      
-      // 텍스트를 줄 단위로 분할
-      const lines = processedText.split('\n').filter(line => line.trim());
-      
-      if (lines.length === 0) return '';
-      
-      // 각 줄을 개별적으로 HTML 이스케이프 후 br 태그로 연결
-      const formattedLines = lines.map(line => {
-        const div = document.createElement('div');
-        div.textContent = line.trim();
-        return div.innerHTML; // HTML 이스케이프된 텍스트
-      });
-      
-      return formattedLines.join('<br>');
-    }
-
+    // 납품 품목 전용 포맷팅 함수는 window.formatDeliveryItems로 이미 정의됨 (중복 제거)
+    
     // 히스토리 파일 삭제 (모달용) - 전역 함수로 설정
     window.deleteHistoryFile = function(fileId, historyId, scheduleId) {
       if (!confirm('이 파일을 삭제하시겠습니까?')) {

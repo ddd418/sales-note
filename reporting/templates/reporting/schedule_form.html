@@ -3,6 +3,25 @@
 
 {% block extra_css %}
 <style>
+/* 날짜/시간 input의 기본 캘린더/시계 아이콘 숨기기 */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="time"]::-webkit-inner-spin-button {
+  display: none;
+  -webkit-appearance: none;
+}
+
+/* Firefox */
+input[type="date"],
+input[type="time"] {
+  -moz-appearance: textfield;
+}
+
 /* 팔로우업 모달 z-index 조정 */
 #followupModal {
   z-index: 100050 !important;
@@ -272,11 +291,27 @@ div.modal-backdrop {
                 {{ form.opportunity }}
 
                 <div class="mb-3">
-                  {{ form.visit_date.label_tag }} {{ form.visit_date }}
+                  {{ form.visit_date.label_tag }}
+                  <div class="input-group">
+                    {{ form.visit_date }}
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            id="visit-date-picker-btn">
+                      <i class="fas fa-calendar-alt"></i>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="mb-3">
-                  {{ form.visit_time.label_tag }} {{ form.visit_time }}
+                  {{ form.visit_time.label_tag }}
+                  <div class="input-group">
+                    {{ form.visit_time }}
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            id="visit-time-picker-btn">
+                      <i class="fas fa-clock"></i>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="mb-3">
@@ -541,46 +576,38 @@ div.modal-backdrop {
                 <!-- 견적 품목 UI -->
                 <div class="card" id="quote-items-card">
                   <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                      <i class="fas fa-file-invoice me-2"></i>견적 품목
-                    </h5>
+                    <div>
+                      <h5 class="mb-0">
+                        <i class="fas fa-file-invoice me-2"></i>견적 품목
+                      </h5>
+                      <small class="text-muted">품목을 추가하고 견적 금액이 자동 계산됩니다.</small>
+                    </div>
                     <div>
                       <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromMeeting()" id="load-meeting-btn" style="display: none;">
                         <i class="fas fa-user-tie me-1"></i>미팅에서 불러오기
                       </button>
-                      <button type="button" class="btn btn-light btn-sm" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
+                      <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
                         <i class="fas fa-file-import me-1"></i>견적에서 불러오기
+                      </button>
+                      <button type="button" class="btn btn-primary btn-sm" onclick="openScheduleDeliveryModal('quote')">
+                        <i class="fas fa-edit me-1"></i>품목 관리
                       </button>
                     </div>
                   </div>
                   <div class="card-body">
-                    <!-- 품목 입력 컨테이너 -->
-                    <div id="items-container" class="mb-3"></div>
-                    
-                    <!-- 품목 추가 버튼 -->
-                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addItem()">
-                      <i class="fas fa-plus me-1"></i>품목 추가
-                    </button>
-                    
-                    <!-- 합계 표시 -->
-                    <div class="row mt-3 pt-3 border-top">
-                      <div class="col-md-4">
-                        <div class="d-flex justify-content-between">
-                          <span>소계:</span>
-                          <span id="subtotal-amount" class="fw-bold">0원</span>
-                        </div>
+                    <div class="row">
+                      <div class="col-md-8">
+                        <label class="form-label fw-bold">품목 내역</label>
+                        <textarea id="quote-items-display" class="form-control" rows="3" readonly 
+                                  placeholder="'품목 관리' 버튼을 클릭하여 견적 품목을 추가하세요."></textarea>
                       </div>
                       <div class="col-md-4">
-                        <div class="d-flex justify-content-between">
-                          <span>부가세 (10%):</span>
-                          <span id="tax-amount" class="fw-bold">0원</span>
+                        <label class="form-label fw-bold">총 금액 (부가세 포함)</label>
+                        <div class="input-group">
+                          <input type="number" id="quote-total-amount" class="form-control" readonly value="0">
+                          <span class="input-group-text">원</span>
                         </div>
-                      </div>
-                      <div class="col-md-4">
-                        <div class="d-flex justify-content-between">
-                          <span class="fs-5">총액:</span>
-                          <span id="total-amount" class="fw-bold text-primary fs-5">0원</span>
-                        </div>
+                        <small class="text-muted quote-items-summary"></small>
                       </div>
                     </div>
                   </div>
@@ -599,7 +626,7 @@ div.modal-backdrop {
                       <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromQuote()" id="delivery-load-quote-btn" style="display: none;">
                         <i class="fas fa-file-import me-1"></i>견적에서 불러오기
                       </button>
-                      <button type="button" class="btn btn-primary btn-sm" onclick="openScheduleDeliveryModal()">
+                      <button type="button" class="btn btn-primary btn-sm" onclick="openScheduleDeliveryModal('delivery')">
                         <i class="fas fa-edit me-1"></i>품목 관리
                       </button>
                     </div>
@@ -628,7 +655,7 @@ div.modal-backdrop {
             <!-- 버튼 섹션 -->
             <div class="d-flex justify-content-end mt-3 mb-0" style="position: relative; z-index: 10;">
               <a
-                href="{% if schedule %}{% url 'reporting:schedule_detail' schedule.pk %}{% else %}{% url 'reporting:schedule_list' %}{% endif %}"
+                href="{% if schedule %}{% url 'reporting:schedule_detail' schedule.pk %}{% else %}{% url 'reporting:schedule_calendar' %}{% endif %}"
                 class="btn btn-secondary me-2"
                 >취소</a
               >
@@ -1996,89 +2023,55 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 날짜 입력 필드 개선
-    const dateField = document.querySelector('input[type="date"]');
-    if (dateField) {
-        // 입력 필드 전체를 클릭 가능하게 만들기
-        dateField.style.cursor = 'pointer';
-        dateField.setAttribute('title', '클릭하여 날짜를 선택하세요');
-        
-        // 입력 필드 클릭 시 날짜 선택기 열기
-        dateField.addEventListener('click', function(e) {
-            e.preventDefault();
-            safeShowPicker(this);
-        });
-        
-        // 입력 필드에 포커스가 갈 때도 날짜 선택기 열기
-        dateField.addEventListener('focus', function(e) {
-            // 약간의 지연을 두어 자연스럽게 열기
-            setTimeout(() => {
-                safeShowPicker(this);
-            }, 150);
-        });
-        
-        // 키보드 접근성 개선
-        dateField.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                safeShowPicker(this);
-            }
-        });
+    // 방문 날짜/시간 필드만 타깃 - 아이콘 버튼 클릭 시에만 picker 열기
+    const visitDateField = document.querySelector('input[name="visit_date"]');
+    const visitTimeField = document.querySelector('input[name="visit_time"]');
+
+    const visitDateBtn = document.getElementById('visit-date-picker-btn');
+    const visitTimeBtn = document.getElementById('visit-time-picker-btn');
+
+    // 1) input은 키보드 입력 가능하게 (readonly 제거)
+    if (visitDateField) {
+        visitDateField.removeAttribute('readonly');
+        visitDateField.style.cursor = 'text';
     }
-    
-    // 시간 입력 필드 개선
-    const timeField = document.querySelector('input[type="time"]');
-    if (timeField) {
-        // 입력 필드 전체를 클릭 가능하게 만들기
-        timeField.style.cursor = 'pointer';
-        timeField.setAttribute('title', '클릭하여 시간을 선택하세요');
-        
-        // 입력 필드 클릭 시 시간 선택기 열기
-        timeField.addEventListener('click', function(e) {
-            e.preventDefault();
-            safeShowPicker(this);
-        });
-        
-        // 입력 필드에 포커스가 갈 때도 시간 선택기 열기
-        timeField.addEventListener('focus', function(e) {
-            // 약간의 지연을 두어 자연스럽게 열기
-            setTimeout(() => {
-                safeShowPicker(this);
-            }, 150);
-        });
-        
-        // 키보드 접근성 개선
-        timeField.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                safeShowPicker(this);
-            }
-        });
+    if (visitTimeField) {
+        visitTimeField.removeAttribute('readonly');
+        visitTimeField.style.cursor = 'text';
     }
-    
-    // 날짜/시간 필드의 스타일 개선
-    [dateField, timeField].forEach(field => {
-        if (field) {
-            // 호버 효과 추가
-            field.addEventListener('mouseenter', function() {
-                this.style.borderColor = '#0d6efd';
-                this.style.boxShadow = '0 0 0 0.2rem rgba(13, 110, 253, 0.25)';
-            });
-            
-            field.addEventListener('mouseleave', function() {
-                if (this !== document.activeElement) {
-                    this.style.borderColor = '#ced4da';
-                    this.style.boxShadow = 'none';
+
+    // 2) 오른쪽 아이콘 클릭했을 때만 picker 열기
+    if (visitDateField && visitDateBtn) {
+        visitDateBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof safeShowPicker === 'function') {
+                safeShowPicker(visitDateField);
+            } else if (visitDateField.showPicker) {
+                try {
+                    visitDateField.showPicker();
+                } catch (err) {
+                    console.warn('showPicker failed:', err);
                 }
-            });
-            
-            // 포커스 아웃 시 스타일 정리
-            field.addEventListener('blur', function() {
-                this.style.borderColor = '#ced4da';
-                this.style.boxShadow = 'none';
-            });
-        }
-    });
+            }
+        });
+    }
+
+    if (visitTimeField && visitTimeBtn) {
+        visitTimeBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof safeShowPicker === 'function') {
+                safeShowPicker(visitTimeField);
+            } else if (visitTimeField.showPicker) {
+                try {
+                    visitTimeField.showPicker();
+                } catch (err) {
+                    console.warn('showPicker failed:', err);
+                }
+            }
+        });
+    }
 });
 
 // ==========================================
@@ -3100,32 +3093,47 @@ function loadQuoteItems(quote) {
     alert(`견적 품목 ${quote.items.length}개를 불러왔습니다.\n견적일: ${quote.quote_date}\n확률: 100%, 예상 계약일: ${visitDateField.value || '방문 날짜'}`);
 }
 
-// 납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)
+// 견적/납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)
 let scheduleDeliveryItemIndex = 0;
 let scheduleDeliveryItemsData = [];
+let currentItemsContext = null;  // 'delivery' 또는 'quote' - 현재 모달이 어떤 컨텍스트에서 열렸는지
 
-function openScheduleDeliveryModal() {
+function openScheduleDeliveryModal(context) {
+  // context 인자가 없으면 현재 activity_type 보고 fallback
+  if (!context) {
+    const activityTypeField = document.querySelector('[name="activity_type"]');
+    context = activityTypeField ? activityTypeField.value : 'delivery';
+  }
+  currentItemsContext = context;  // 'delivery' 또는 'quote'
+  
   // 수정 모드인지 확인
   {% if schedule %}
-  alert('수정 모드에서는 납품 품목을 변경할 수 없습니다.\n\n납품 품목을 수정하려면:\n• 캘린더에서 일정 상세 모달을 이용하거나\n• 활동 기록(히스토리) 페이지에서 수정하세요.');
+  alert('수정 모드에서는 품목을 변경할 수 없습니다.\n\n품목을 수정하려면:\n• 캘린더에서 일정 상세 모달을 이용하거나\n• 활동 기록(히스토리) 페이지에서 수정하세요.');
   return;
   {% endif %}
   
-  // 기존 데이터가 없을 때만 초기화 (견적에서 불러온 데이터 보존)
+  // 기존 데이터가 없을 때만 초기화
   if (!scheduleDeliveryItemsData || scheduleDeliveryItemsData.length === 0) {
     scheduleDeliveryItemsData = [];
   }
+  
+  // 컨텍스트에 따라 헤더 색상 및 텍스트 변경
+  const isQuote = (context === 'quote');
+  const headerClass = isQuote ? 'bg-info text-white' : 'bg-warning text-dark';
+  const headerIcon = isQuote ? 'fa-file-invoice' : 'fa-boxes';
+  const headerText = isQuote ? '견적 품목 관리' : '납품 품목 관리';
+  const buttonCloseClass = isQuote ? 'btn-close-white' : '';
   
   // 모달 HTML 생성
   const modalHtml = `
     <div class="modal fade" id="scheduleDeliveryItemsModal" tabindex="-1" aria-labelledby="scheduleDeliveryModalLabel" aria-hidden="true" style="z-index: 100000;" data-bs-backdrop="static" data-bs-keyboard="false">
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
-          <div class="modal-header bg-warning text-dark">
+          <div class="modal-header ${headerClass}">
             <h5 class="modal-title" id="scheduleDeliveryModalLabel">
-              <i class="fas fa-boxes me-2"></i>납품 품목 관리
+              <i class="fas ${headerIcon} me-2"></i>${headerText}
             </h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <button type="button" class="btn-close ${buttonCloseClass}" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -3523,7 +3531,7 @@ function saveScheduleDeliveryItems() {
   
   // 컨테이너가 없으면 (모달을 열지 않은 경우) 아무것도 하지 않음
   if (!container) {
-    console.log('납품 품목 컨테이너가 없습니다. 건너뜁니다.');
+    console.log('품목 컨테이너가 없습니다. 건너뜁니다.');
     return;
   }
   
@@ -3532,7 +3540,7 @@ function saveScheduleDeliveryItems() {
   let itemsText = [];
   let totalAmount = 0;
   
-  console.log('=== saveDeliveryItems 디버깅 ===');
+  console.log('=== saveItems 디버깅 (context: ' + currentItemsContext + ') ===');
   console.log('품목 개수:', items.length);
   
   items.forEach((item, index) => {
@@ -3543,65 +3551,59 @@ function saveScheduleDeliveryItems() {
     const unitPriceElem = item.querySelector('.unit-price-input');
     const productIdElem = item.querySelector('.product-id');
     
-    console.log(`  품목명 요소:`, itemNameElem);
-    console.log(`  수량 요소:`, quantityElem);
-    console.log(`  단가 요소:`, unitPriceElem);
-    console.log(`  제품 ID 요소:`, productIdElem);
-    
     const itemName = itemNameElem ? itemNameElem.value.trim() : '';
     const quantity = quantityElem ? parseFloat(quantityElem.value) || 0 : 0;
     const unitPrice = unitPriceElem ? parseFloat(unitPriceElem.value) || 0 : 0;
     const productId = productIdElem ? productIdElem.value.trim() : '';
     
-    console.log(`  품목명: "${itemName}"`);
-    console.log(`  수량: ${quantity}`);
-    console.log(`  단가: ${unitPrice}`);
-    console.log(`  제품 ID: ${productId}`);
+    console.log(`  품목명: "${itemName}", 수량: ${quantity}, 단가: ${unitPrice}`);
     
     if (itemName && quantity > 0) {
       const subtotal = quantity * unitPrice;
       const total = subtotal * 1.1;
       
       scheduleDeliveryItemsData.push({
-        name: itemName,           // 추가: loadQuoteItems와 동일한 속성명
-        item_name: itemName,      // 기존 호환성 유지
+        name: itemName,
+        item_name: itemName,
         quantity: quantity,
         unit_price: unitPrice,
         total_price: total,
-        product_id: productId     // 제품 ID 추가
+        product_id: productId
       });
       
       totalAmount += total;
       itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
-      
-      // 주의: 숨겨진 필드는 saveAllItems()에서 생성됩니다 (폼 제출 시)
     }
   });
   
-  // 폼에 데이터 적용
-  const deliveryItemsField = document.querySelector('[name="delivery_items"]');
-  const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
-  const deliveryDisplayField = document.getElementById('schedule-delivery-items-display');
-  const deliveryTotalField = document.getElementById('schedule-delivery-total-amount');
-  const deliverySummary = document.querySelector('.schedule-delivery-items-summary');
+  // 컨텍스트에 따라 적용할 필드 선택
+  const context = currentItemsContext || 'delivery';
   
-  if (deliveryItemsField) {
-    deliveryItemsField.value = itemsText.join('\n');
+  if (context === 'delivery') {
+    // 납품 모드: 기존 동작 유지
+    const deliveryItemsField = document.querySelector('[name="delivery_items"]');
+    const deliveryAmountField = document.querySelector('[name="delivery_amount"]');
+    const deliveryDisplayField = document.getElementById('schedule-delivery-items-display');
+    const deliveryTotalField = document.getElementById('schedule-delivery-total-amount');
+    
+    if (deliveryItemsField) deliveryItemsField.value = itemsText.join('\n');
+    if (deliveryAmountField) deliveryAmountField.value = Math.round(totalAmount);
+    if (deliveryDisplayField) deliveryDisplayField.value = itemsText.join('\n');
+    if (deliveryTotalField) deliveryTotalField.value = Math.round(totalAmount);
+    
+    console.log('납품 품목 저장 완료:', scheduleDeliveryItemsData);
+  } else if (context === 'quote') {
+    // 견적 모드: 견적용 필드에 저장
+    const quoteDisplayField = document.getElementById('quote-items-display');
+    const quoteTotalField = document.getElementById('quote-total-amount');
+    const quoteSummary = document.querySelector('.quote-items-summary');
+    
+    if (quoteDisplayField) quoteDisplayField.value = itemsText.join('\n');
+    if (quoteTotalField) quoteTotalField.value = Math.round(totalAmount);
+    if (quoteSummary) quoteSummary.textContent = `${scheduleDeliveryItemsData.length}개 품목`;
+    
+    console.log('견적 품목 저장 완료:', scheduleDeliveryItemsData);
   }
-  
-  if (deliveryAmountField) {
-    deliveryAmountField.value = Math.round(totalAmount);
-  }
-  
-  if (deliveryDisplayField) {
-    deliveryDisplayField.value = itemsText.join('\n');
-  }
-  
-  if (deliveryTotalField) {
-    deliveryTotalField.value = Math.round(totalAmount);
-  }
-  
-  console.log('납품 품목 저장 완료:', scheduleDeliveryItemsData);
   
   // 모달 닫기
   const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleDeliveryItemsModal'));
@@ -3609,9 +3611,10 @@ function saveScheduleDeliveryItems() {
     modal.hide();
   }
   
-  // 성공 메시지 (선택사항)
+  // 성공 메시지
   if (scheduleDeliveryItemsData.length > 0) {
-    console.log(`${scheduleDeliveryItemsData.length}개 품목이 적용되었습니다.`);
+    const itemType = context === 'quote' ? '견적' : '납품';
+    console.log(`${scheduleDeliveryItemsData.length}개 ${itemType} 품목이 적용되었습니다.`);
   }
 }
 
@@ -3760,7 +3763,47 @@ function saveAllItems() {
     }
   }
   
-  // 3. 견적 품목 저장 시도 (items-container에서 입력한 경우, 납품 품목이 없을 때만)
+  // 3. 품목 저장 (scheduleDeliveryItemsData 배열 사용 - 견적/납품 공용)
+  // 이미 납품 품목이 있으면 견적 품목은 저장하지 않음 (savedCount > 0)
+  if (scheduleDeliveryItemsData && scheduleDeliveryItemsData.length > 0 && savedCount === 0) {
+    console.log(`scheduleDeliveryItemsData에서 ${scheduleDeliveryItemsData.length}개 품목 저장`);
+    
+    scheduleDeliveryItemsData.forEach((itemData, index) => {
+      // 품목명
+      const nameInput = document.createElement('input');
+      nameInput.type = 'hidden';
+      nameInput.name = `delivery_items[${index}][name]`;
+      nameInput.value = itemData.name || itemData.item_name;
+      form.appendChild(nameInput);
+      
+      // 수량
+      const quantityInput = document.createElement('input');
+      quantityInput.type = 'hidden';
+      quantityInput.name = `delivery_items[${index}][quantity]`;
+      quantityInput.value = itemData.quantity;
+      form.appendChild(quantityInput);
+      
+      // 단가
+      const unitPriceInput = document.createElement('input');
+      unitPriceInput.type = 'hidden';
+      unitPriceInput.name = `delivery_items[${index}][unit_price]`;
+      unitPriceInput.value = itemData.unit_price;
+      form.appendChild(unitPriceInput);
+      
+      // 제품 ID
+      if (itemData.product_id) {
+        const productIdInput = document.createElement('input');
+        productIdInput.type = 'hidden';
+        productIdInput.name = `delivery_items[${index}][product_id]`;
+        productIdInput.value = itemData.product_id;
+        form.appendChild(productIdInput);
+      }
+      
+      savedCount++;
+    });
+  }
+  
+  // 4. 기존 견적 품목 저장 시도 (items-container에서 입력한 경우, 폴백 - 하위 호환성)
   const quoteContainer = document.getElementById('items-container');
   if (quoteContainer && savedCount === 0) {
     const quoteItems = document.querySelectorAll('#items-container .item-row');
@@ -4248,8 +4291,8 @@ function openProductSearchModal(button) {
             quantityInput.value = 1;
           }
           
-          // 금액 계산
-          calculateScheduleDeliveryTotal({ target: quantityInput });
+          // 금액 계산 (개별 항목 + 전체 합계)
+          calculateScheduleItemTotal({ target: quantityInput });
           
           // 모달 닫기
           const modalInstance = bootstrap.Modal.getInstance(modalElement);
@@ -4328,8 +4371,8 @@ function updateDeliveryUnitPrice(displayInput) {
   // hidden input에 실제 값 저장
   deliveryItem.querySelector('.unit-price-input').value = numericValue;
   
-  // 표시용 input에 천단위 콤마 적용
-  displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : '';
+  // 표시용 input에 천단위 콤마 적용 (0원도 표시)
+  displayInput.value = numericValue.toLocaleString();
   
   // 금액 재계산
   const quantityInput = deliveryItem.querySelector('.quantity-input');
@@ -4587,8 +4630,8 @@ function updateQuoteUnitPrice(displayInput) {
   // hidden input에 실제 값 저장
   itemRow.querySelector('.unit-price-input').value = numericValue;
   
-  // 표시용 input에 천단위 콤마 적용
-  displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : '';
+  // 표시용 input에 천단위 콤마 적용 (0원도 표시)
+  displayInput.value = numericValue.toLocaleString();
   
   // 금액 재계산
   const quantityInput = itemRow.querySelector('.quantity-input');
@@ -4822,45 +4865,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const visitDateField = document.querySelector('[name="visit_date"]');
     if (visitDateField) {
         visitDateField.setAttribute('type', 'date');
-        // 마우스 클릭으로 날짜 선택기 열리지 않도록 방지 (키보드는 가능)
-        visitDateField.addEventListener('mousedown', function(e) {
-            // 아이콘 영역이 아닌 경우에만 차단
-            const rect = this.getBoundingClientRect();
-            const iconWidth = 30; // 아이콘 영역 너비
-            if (e.clientX < rect.right - iconWidth) {
-                e.preventDefault();
-            }
-        });
     }
 
     // 방문 시간 필드에 time 타입 적용
     const visitTimeField = document.querySelector('[name="visit_time"]');
     if (visitTimeField) {
         visitTimeField.setAttribute('type', 'time');
-        // 마우스 클릭으로 시간 선택기 열리지 않도록 방지 (키보드는 가능)
-        visitTimeField.addEventListener('mousedown', function(e) {
-            // 아이콘 영역이 아닌 경우에만 차단
-            const rect = this.getBoundingClientRect();
-            const iconWidth = 30; // 아이콘 영역 너비
-            if (e.clientX < rect.right - iconWidth) {
-                e.preventDefault();
-            }
-        });
     }
     
     // 예상 계약일 필드에 date 타입 적용
     const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
     if (expectedCloseDateField) {
         expectedCloseDateField.setAttribute('type', 'date');
-        // 마우스 클릭으로 날짜 선택기 열리지 않도록 방지 (키보드는 가능)
-        expectedCloseDateField.addEventListener('mousedown', function(e) {
-            // 아이콘 영역이 아닌 경우에만 차단
-            const rect = this.getBoundingClientRect();
-            const iconWidth = 30; // 아이콘 영역 너비
-            if (e.clientX < rect.right - iconWidth) {
-                e.preventDefault();
-            }
-        });
     }
 });
 

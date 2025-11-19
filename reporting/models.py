@@ -343,11 +343,13 @@ class DeliveryItem(models.Model):
         if self.product:
             self.item_name = self.product.product_code
             
-            if not self.unit_price:  # 단가가 입력되지 않은 경우에만
+            # 단가가 명시적으로 None인 경우에만 제품 가격 사용 (0 포함 모든 숫자는 유지)
+            if self.unit_price is None:
                 self.unit_price = self.product.get_current_price()
         
         # 총액 자동 계산 (부가세 10% 포함)
-        if self.unit_price and self.quantity:
+        # unit_price가 None이 아니고 quantity가 있을 때만 계산 (0도 유효)
+        if self.unit_price is not None and self.quantity:
             from decimal import Decimal
             subtotal = self.unit_price * self.quantity
             self.total_price = subtotal * Decimal('1.1')  # 부가세 10% 추가
