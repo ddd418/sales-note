@@ -53,6 +53,89 @@ input[type="time"] {
   }
 }
 
+/* 견적/납품 품목 관리 모달 반응형 */
+@media (max-width: 768px) {
+  #scheduleDeliveryItemsModal .modal-dialog {
+    max-width: 95%;
+    margin: 0.5rem auto;
+  }
+  
+  #scheduleDeliveryItemsModal .modal-body {
+    padding: 1rem;
+  }
+  
+  /* 총액 표시 카드 반응형 */
+  #scheduleDeliveryItemsModal .card-body .row > div {
+    margin-bottom: 0.5rem;
+  }
+  
+  #scheduleDeliveryItemsModal .card-body .row > div:last-child {
+    margin-bottom: 0;
+  }
+  
+  /* 품목 추가 버튼 */
+  #scheduleDeliveryItemsModal .d-flex.justify-content-between {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  #scheduleDeliveryItemsModal .d-flex.justify-content-between .alert {
+    margin-right: 0 !important;
+  }
+  
+  /* 품목 행 반응형 */
+  #scheduleDeliveryItemsModal .delivery-item,
+  #scheduleDeliveryItemsModal .item-row {
+    padding: 0.75rem !important;
+  }
+  
+  #scheduleDeliveryItemsModal .delivery-item .col-md-4,
+  #scheduleDeliveryItemsModal .delivery-item .col-md-2,
+  #scheduleDeliveryItemsModal .delivery-item .col-md-3,
+  #scheduleDeliveryItemsModal .item-row .col-md-4,
+  #scheduleDeliveryItemsModal .item-row .col-md-2,
+  #scheduleDeliveryItemsModal .item-row .col-md-3 {
+    margin-bottom: 0.75rem;
+  }
+  
+  /* 레이블 크기 조정 */
+  #scheduleDeliveryItemsModal .form-label {
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  /* 입력 필드 크기 조정 */
+  #scheduleDeliveryItemsModal .form-control,
+  #scheduleDeliveryItemsModal .form-select {
+    font-size: 0.9rem;
+    padding: 0.5rem;
+  }
+  
+  /* 버튼 크기 조정 */
+  #scheduleDeliveryItemsModal .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  /* 총액 카드 텍스트 */
+  #scheduleDeliveryItemsModal .fs-5 {
+    font-size: 1rem !important;
+  }
+}
+
+/* 견적/납품 품목의 col-md 클래스 모바일 반응형 */
+@media (max-width: 768px) {
+  .item-row .col-md-4,
+  .item-row .col-md-2,
+  .item-row .col-md-3,
+  .delivery-item .col-md-4,
+  .delivery-item .col-md-2,
+  .delivery-item .col-md-3 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
 /* 팔로우업 모달 z-index 조정 */
 #followupModal {
   z-index: 100050 !important;
