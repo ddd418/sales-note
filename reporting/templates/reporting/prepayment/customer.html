@@ -54,6 +54,9 @@
         font-size: 1.8rem;
         font-weight: 700;
         margin-bottom: 0.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     .stats-label {
@@ -119,6 +122,7 @@
     .prepayment-table td {
         vertical-align: middle;
         padding: 1rem;
+        white-space: nowrap;
     }
     
     .btn-excel {
@@ -171,6 +175,123 @@
         font-size: 4rem;
         margin-bottom: 1rem;
         opacity: 0.3;
+    }
+    
+    /* 모바일 및 태블릿 반응형 (1200px 이하) */
+    @media (max-width: 1200px) {
+        .customer-header {
+            padding: 1.5rem;
+        }
+        
+        .customer-header .d-flex {
+            flex-direction: column;
+            align-items: flex-start !important;
+        }
+        
+        .customer-name {
+            font-size: 1.5rem;
+        }
+        
+        .customer-company {
+            font-size: 1rem;
+        }
+        
+        .customer-header .no-print {
+            margin-top: 1rem;
+            width: 100%;
+        }
+        
+        .customer-header .no-print .btn {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stats-card {
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stats-icon {
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+        }
+        
+        .stats-value {
+            font-size: 1.5rem;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        
+        .stats-label {
+            font-size: 0.85rem;
+        }
+        
+        .table-card .card-header {
+            padding: 1rem;
+            font-size: 1rem;
+        }
+        
+        .prepayment-table thead th,
+        .prepayment-table td {
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            white-space: nowrap !important;
+        }
+        
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.4rem 0.8rem;
+        }
+        
+        .btn-group .btn {
+            padding: 0.25rem 0.4rem;
+            font-size: 0.75rem;
+        }
+    }
+    
+    /* 소형 모바일 (480px 이하) */
+    @media (max-width: 480px) {
+        .customer-header {
+            padding: 1rem;
+        }
+        
+        .customer-name {
+            font-size: 1.25rem;
+        }
+        
+        .customer-company {
+            font-size: 0.9rem;
+        }
+        
+        .stats-icon {
+            width: 40px;
+            height: 40px;
+            font-size: 18px;
+        }
+        
+        .stats-value {
+            font-size: 1.25rem;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        
+        .stats-label {
+            font-size: 0.8rem;
+        }
+        
+        .table-card .card-header {
+            font-size: 0.9rem;
+        }
+        
+        .prepayment-table thead th,
+        .prepayment-table td {
+            padding: 0.5rem;
+            font-size: 0.8rem;
+            white-space: nowrap !important;
+        }
     }
     
     @media print {

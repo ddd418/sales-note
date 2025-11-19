@@ -10393,13 +10393,25 @@ def prepayment_customer_view(request, customer_id):
     # 고객 정보 가져오기
     customer = get_object_or_404(FollowUp, pk=customer_id)
     
-    # 권한 체크 - 고객의 담당자 데이터에 접근 가능한지 확인
-    if not can_access_user_data(request.user, customer.user):
-        messages.error(request, '접근 권한이 없습니다.')
-        return redirect('reporting:prepayment_list')
+    # 권한 체크 - 고객의 담당자 또는 해당 고객에게 선결제를 등록한 사용자가 접근 가능
+    user_profile = get_user_profile(request.user)
+    
+    # Admin과 Manager는 모든 고객에 접근 가능
+    if not (user_profile.is_admin() or user_profile.is_manager()):
+        # Salesman인 경우
+        # 1. 고객의 담당자이거나
+        # 2. 해당 고객에게 선결제를 등록한 적이 있는 경우 접근 가능
+        is_customer_owner = (customer.user == request.user)
+        has_prepayment = Prepayment.objects.filter(
+            customer=customer,
+            created_by=request.user
+        ).exists()
+        
+        if not (is_customer_owner or has_prepayment):
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
     
     # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
-    user_profile = get_user_profile(request.user)
     target_user = request.user
     
     if user_profile.can_view_all_users():
@@ -10464,13 +10476,23 @@ def prepayment_customer_excel(request, customer_id):
     # 고객 정보 가져오기
     customer = get_object_or_404(FollowUp, pk=customer_id)
     
-    # 권한 체크 - 고객의 담당자 데이터에 접근 가능한지 확인
-    if not can_access_user_data(request.user, customer.user):
-        messages.error(request, '접근 권한이 없습니다.')
-        return redirect('reporting:prepayment_list')
+    # 권한 체크 - 고객의 담당자 또는 해당 고객에게 선결제를 등록한 사용자가 접근 가능
+    user_profile = get_user_profile(request.user)
+    
+    # Admin과 Manager는 모든 고객에 접근 가능
+    if not (user_profile.is_admin() or user_profile.is_manager()):
+        # Salesman인 경우
+        is_customer_owner = (customer.user == request.user)
+        has_prepayment = Prepayment.objects.filter(
+            customer=customer,
+            created_by=request.user
+        ).exists()
+        
+        if not (is_customer_owner or has_prepayment):
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
     
     # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
-    user_profile = get_user_profile(request.user)
     target_user = request.user
     
     if user_profile.can_view_all_users():
@@ -10789,11 +10811,19 @@ def prepayment_list_excel(request):
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from django.http import HttpResponse
     from datetime import datetime
+    from django.db.models import Q
     
-    # 권한 체크 및 데이터 필터링 - 등록자 본인만 (Manager도 자신이 등록한 것만)
-    prepayments = Prepayment.objects.filter(
-        created_by=request.user
-    )
+    # 권한 체크 및 데이터 필터링
+    user_profile = get_user_profile(request.user)
+    
+    if user_profile.is_admin() or user_profile.is_manager():
+        # Admin과 Manager는 모든 선결제 접근 가능
+        prepayments = Prepayment.objects.all()
+    else:
+        # Salesman은 본인이 등록한 선결제 또는 본인이 등록한 고객의 선결제
+        prepayments = Prepayment.objects.filter(
+            Q(created_by=request.user) | Q(customer__user=request.user)
+        )
     
     prepayments = prepayments.select_related(
         'customer', 'company', 'created_by'

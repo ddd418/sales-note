@@ -624,10 +624,128 @@
     max-width: 20%;
   }
 
+  /* 모바일 및 태블릿 반응형 (1200px 이하) */
+  @media (max-width: 1200px) {
+    .container {
+      padding-top: 1.5rem;
+    }
+    
+    .page-header {
+      flex-direction: column;
+      align-items: flex-start !important;
+      gap: 1rem;
+    }
+    
+    .page-title {
+      font-size: 1.5rem;
+    }
+    
+    .header-actions {
+      width: 100%;
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .header-actions .btn {
+      flex: 1;
+      font-size: 0.875rem;
+      padding: 0.5rem 0.75rem;
+    }
+    
+    .col-md-2-4 {
+      flex: 0 0 100%;
+      max-width: 100%;
+      margin-bottom: 1rem;
+    }
+    
+    .card-body h5,
+    .card-title {
+      font-size: 1rem;
+    }
+    
+    .card-body h3 {
+      font-size: 1.5rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .card-body h6 {
+      font-size: 0.875rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .nav-tabs .nav-link {
+      font-size: 0.875rem;
+      padding: 0.5rem 0.75rem;
+    }
+    
+    .table-responsive {
+      font-size: 0.875rem;
+    }
+    
+    .table th,
+    .table td {
+      padding: 0.5rem;
+      white-space: nowrap;
+    }
+    
+    .btn-sm {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.4rem;
+    }
+    
+    canvas {
+      max-height: 250px !important;
+    }
+  }
+
   @media (max-width: 768px) {
     .col-md-2-4 {
       flex: 0 0 100%;
       max-width: 100%;
+    }
+    
+    .page-title {
+      font-size: 1.25rem;
+    }
+    
+    .card-body h3 {
+      font-size: 1.25rem;
+    }
+    
+    .card-body h6 {
+      font-size: 0.8rem;
+    }
+    
+    canvas {
+      max-height: 200px !important;
+    }
+  }
+  
+  /* 소형 모바일 (480px 이하) */
+  @media (max-width: 480px) {
+    .page-title {
+      font-size: 1.1rem;
+    }
+    
+    .header-actions .btn {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem;
+    }
+    
+    .card-body h3 {
+      font-size: 1.1rem;
+    }
+    
+    .card-body h5 {
+      font-size: 0.9rem;
+    }
+    
+    .card-body h6 {
+      font-size: 0.75rem;
     }
   }
 
