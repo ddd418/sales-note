@@ -122,6 +122,23 @@ html, body {
   .stat-value {
     font-size: 2rem;
   }
+  
+  .quick-stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+/* 소형 모바일 추가 대응 */
+@media (max-width: 768px) {
+  .quick-stat-value {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .quick-stat-value {
+    font-size: 1.1rem;
+  }
 }
 
 .stat-card {
@@ -402,7 +419,9 @@ html, body {
   font-weight: 800;
   line-height: 1;
   margin-bottom: 0.25rem;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quick-stat-label {
