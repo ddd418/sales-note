@@ -1358,7 +1358,7 @@ def dashboard_view(request):
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
         total_revenue=Sum('total_price'),
-        count=Count('id')
+        count=Count('schedule', distinct=True)  # 일정 개수로 카운팅
     )
     
     # 간단한 키워드 기반 분류 (연구소 제외)
@@ -4800,7 +4800,7 @@ def manager_dashboard(request):
         schedule__followup__company__isnull=False
     ).values('schedule__followup__company__name').annotate(
         total_revenue=Sum('total_price'),
-        count=Count('id')
+        count=Count('schedule', distinct=True)  # 일정 개수로 카운팅
     )
     
     for item in schedule_company_stats:
@@ -4825,7 +4825,7 @@ def manager_dashboard(request):
         history__followup__company__isnull=False
     ).values('history__followup__company__name').annotate(
         total_revenue=Sum('total_price'),
-        count=Count('id')
+        count=Count('history', distinct=True)  # 히스토리 개수로 카운팅
     )
     
     for item in history_company_stats:
