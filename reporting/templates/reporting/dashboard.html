@@ -1459,8 +1459,17 @@ document.addEventListener('DOMContentLoaded', function() {
           tooltip: {
             callbacks: {
               label: function(context) {
-                const percentage = funnelValues[0] > 0 ? ((context.parsed.x / funnelValues[0]) * 100).toFixed(1) : 0;
-                return context.parsed.x + '건 (' + percentage + '%)';
+                const index = context.dataIndex;
+                
+                if (index === 0) {
+                  // 첫 번째 단계(미팅)는 퍼센트 없이 건수만 표시
+                  return context.parsed.x + '건';
+                } else {
+                  // 이전 단계 대비 전환율 계산
+                  const prevValue = funnelValues[index - 1];
+                  const percentage = prevValue > 0 ? ((context.parsed.x / prevValue) * 100).toFixed(1) : '0.0';
+                  return context.parsed.x + '건 (' + percentage + '%)';
+                }
               }
             }
           }
