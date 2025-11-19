@@ -252,24 +252,10 @@
                       </td>
                       <td class="text-center">
                         {% if followup.prepayment_count > 0 %}
-                          <div style="font-size: 0.85rem;">
-                            <div>
-                              <span class="badge bg-info">{{ followup.prepayment_count }}건</span>
-                            </div>
-                            {% if followup.prepayment_creators %}
-                            <div class="mt-1">
-                              <small class="text-muted">등록자:</small>
-                              <strong class="text-primary">{{ followup.prepayment_creators }}</strong>
-                            </div>
-                            {% endif %}
-                            <div class="mt-1">
-                              <small class="text-muted">잔액:</small>
-                              <strong class="text-info">
-                                {% load currency_filters %}
-                                {{ followup.prepayment_balance|currency_format }}원
-                              </strong>
-                            </div>
-                          </div>
+                          <strong class="text-info">
+                            {% load currency_filters %}
+                            {{ followup.prepayment_balance|currency_format }}원
+                          </strong>
                         {% else %}
                           <span class="text-muted">-</span>
                         {% endif %}
