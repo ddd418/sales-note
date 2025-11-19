@@ -2,6 +2,15 @@
 보고 시스템{% endblock %} {% block content %}
 {% csrf_token %}
 <style>
+/* 페이지 상단 여백 */
+.container {
+  padding-top: 1.5rem;
+}
+
+.page-header {
+  margin-top: 0;
+}
+
 /* 일정 목록 모바일 최적화 */
 @media (max-width: 768px) {
   /* 헤더 모바일 최적화 */

@@ -24,12 +24,28 @@ html, body {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  word-break: break-word;
 }
 
 .page-title i {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+/* 컨테이너 최대 너비 제한 */
+.container-fluid {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* 모든 카드와 요소에 overflow 방지 */
+.card,
+.stat-card,
+.performance-card,
+.chart-container {
+  overflow: hidden;
+  max-width: 100%;
 }
 
 /* 통계 카드 그리드 */
@@ -56,10 +72,55 @@ html, body {
   grid-template-columns: 1fr 1fr;
 }
 
+/* 태블릿 (769px ~ 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+  
+  .dashboard-chart-row-2-1,
+  .dashboard-chart-row-1-1 {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-card {
+    padding: 1.5rem;
+  }
+  
+  .stat-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 1.5rem;
+  }
+  
+  .stat-value {
+    font-size: 2.25rem;
+  }
+  
+  .page-title {
+    font-size: 1.5rem;
+  }
+}
+
+/* 모바일 (768px 이하) */
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
+  }
+  
+  .dashboard-chart-row-2-1,
+  .dashboard-chart-row-1-1 {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-card {
+    padding: 1.25rem;
+  }
+  
+  .stat-value {
+    font-size: 2rem;
   }
 }
 
@@ -75,6 +136,8 @@ html, body {
   display: block;
   text-decoration: none;
   color: inherit;
+  min-width: 0;
+  width: 100%;
 }
 
 .stat-card::before {
@@ -146,6 +209,7 @@ html, body {
   -webkit-text-fill-color: transparent;
   line-height: 1;
   margin-bottom: 0.5rem;
+  word-break: break-word;
 }
 
 .stat-subtitle {
@@ -234,11 +298,13 @@ html, body {
   font-size: 3rem;
   color: white;
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
 }
 
 .hero-content {
   flex: 1;
   color: white;
+  min-width: 0;
 }
 
 .hero-label {
@@ -254,12 +320,14 @@ html, body {
   line-height: 1;
   margin-bottom: 1rem;
   text-shadow: 0 2px 20px rgba(0,0,0,0.1);
+  word-break: break-word;
 }
 
 .hero-meta {
   display: flex;
   gap: 2rem;
   font-size: 1rem;
+  flex-wrap: wrap;
 }
 
 .meta-item {
@@ -326,6 +394,7 @@ html, body {
 .quick-stat-body {
   flex: 1;
   color: white;
+  min-width: 0;
 }
 
 .quick-stat-value {
@@ -333,11 +402,13 @@ html, body {
   font-weight: 800;
   line-height: 1;
   margin-bottom: 0.25rem;
+  word-break: break-word;
 }
 
 .quick-stat-label {
   font-size: 0.875rem;
   opacity: 0.9;
+  word-break: break-word;
 }
 
 /* Activity Timeline */
@@ -539,7 +610,7 @@ html, body {
 }
 
 /* Responsive */
-@media (max-width: 1200px) {
+@media (min-width: 1025px) and (max-width: 1200px) {
   .quick-stats {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -548,24 +619,59 @@ html, body {
   }
 }
 
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hero-metrics {
+    padding: 2rem;
+  }
+  
+  .hero-primary {
+    flex-direction: column;
+    text-align: center;
+    gap: 1.5rem;
+  }
+  
+  .hero-value {
+    font-size: 3.5rem;
+  }
+  
+  .quick-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+  
+  .nav-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
+  .hero-metrics {
+    padding: 1.5rem;
+    border-radius: 1.5rem;
+  }
+  
   .hero-primary {
     flex-direction: column;
     text-align: center;
   }
+  
   .hero-value {
-    font-size: 3rem;
+    font-size: 2.5rem;
   }
+  
   .quick-stats {
     grid-template-columns: 1fr;
   }
+  
   .timeline-stats {
     flex-direction: column;
     gap: 2rem;
   }
+  
   .timeline-connector {
     display: none;
   }
+  
   .nav-grid {
     grid-template-columns: 1fr;
   }
@@ -596,10 +702,29 @@ html, body {
   gap: 1rem;
 }
 
+@media (min-width: 769px) and (max-width: 1024px) {
+  .actions-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  
+  .action-btn {
+    padding: 1.5rem 1rem;
+  }
+  
+  .action-icon {
+    font-size: 2rem;
+  }
+}
+
 @media (max-width: 768px) {
   .actions-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
+  }
+  
+  .action-btn {
+    padding: 1.25rem 1rem;
   }
 }
 
@@ -643,10 +768,33 @@ html, body {
   margin-bottom: 2rem;
 }
 
+@media (min-width: 769px) and (max-width: 1024px) {
+  .performance-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+  
+  .performance-card {
+    padding: 2rem;
+  }
+  
+  .performance-value {
+    font-size: 2.25rem;
+  }
+}
+
 @media (max-width: 768px) {
   .performance-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
+  }
+  
+  .performance-card {
+    padding: 1.5rem;
+  }
+  
+  .performance-value {
+    font-size: 2rem;
   }
 }
 
@@ -683,11 +831,31 @@ html, body {
 .bg-warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
 .bg-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); }
 
+/* 차트 컨테이너 반응형 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .chart-container {
+    padding: 1.5rem;
+  }
+  
+  canvas {
+    max-height: 350px !important;
+  }
+}
+
 @media (max-width: 768px) {
   .stats-grid,
   .performance-grid {
     grid-template-columns: 1fr;
   }
+  
+  .chart-container {
+    padding: 1rem;
+  }
+  
+  canvas {
+    max-height: 300px !important;
+  }
+}
   
   .actions-grid {
     grid-template-columns: repeat(2, 1fr);
