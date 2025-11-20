@@ -6,6 +6,29 @@
 
 {% block extra_css %}
 <style>
+    /* 엑셀 붙여넣기 영역 스타일 */
+    #excelPasteArea {
+        min-height: 200px;
+        font-family: 'Courier New', monospace;
+        resize: vertical;
+    }
+    
+    .paste-section {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .preview-table {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .preview-table table {
+        font-size: 0.9rem;
+    }
+    
     /* 모바일 및 태블릿 반응형 (1200px 이하) */
     @media (max-width: 1200px) {
         .container {
@@ -103,7 +126,68 @@
                     </h4>
                 </div>
                 <div class="card-body">
-                    <form method="post">
+                    <!-- 엑셀 붙여넣기 섹션 (신규 등록 시에만 표시) -->
+                    {% if not product %}
+                    <div class="paste-section">
+                        <h5 class="mb-3">
+                            <i class="fas fa-file-excel text-success"></i>
+                            엑셀에서 일괄 등록
+                        </h5>
+                        <p class="text-muted mb-3">
+                            엑셀에서 <strong>품번 : 설명 : 가격</strong> 형식으로 복사하여 붙여넣으세요. (탭 또는 공백으로 구분)
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">엑셀 데이터 붙여넣기</label>
+                            <textarea id="excelPasteArea" class="form-control" rows="8" 
+                                      placeholder="예:
+PROD-001    설명1    10000
+PROD-002    설명2    20000
+PROD-003    설명3    30000
+
+또는
+
+PROD-001 : 설명1 : 10000
+PROD-002 : 설명2 : 20000"></textarea>
+                            <small class="text-muted">
+                                각 행은 엔터로 구분하고, 품번/설명/가격은 탭 또는 콜론(:)으로 구분합니다.
+                            </small>
+                        </div>
+                        <button type="button" class="btn btn-success" onclick="parseExcelData()">
+                            <i class="fas fa-magic"></i> 데이터 미리보기
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary ms-2" onclick="clearExcelData()">
+                            <i class="fas fa-eraser"></i> 초기화
+                        </button>
+                        
+                        <!-- 미리보기 영역 -->
+                        <div id="previewSection" class="mt-4" style="display: none;">
+                            <h6>미리보기 <span id="previewCount" class="badge bg-info"></span></h6>
+                            <div class="preview-table">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th width="30%">품번</th>
+                                            <th width="40%">설명</th>
+                                            <th width="30%">가격</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="previewTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="submitBulkProducts()">
+                                <i class="fas fa-check-circle"></i> 일괄 등록하기
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mb-4">
+                        <hr>
+                        <p class="text-muted">또는 개별 제품 등록</p>
+                    </div>
+                    {% endif %}
+                    
+                    <form method="post" id="singleProductForm">
                         {% csrf_token %}
                         
                         <!-- 기본 정보 -->
@@ -219,6 +303,147 @@
 </div>
 
 <script>
+let parsedProducts = [];
+
+function parseExcelData() {
+    const textarea = document.getElementById('excelPasteArea');
+    const data = textarea.value.trim();
+    
+    if (!data) {
+        alert('데이터를 입력해주세요.');
+        return;
+    }
+    
+    const lines = data.split('\n');
+    parsedProducts = [];
+    
+    lines.forEach((line, index) => {
+        line = line.trim();
+        if (!line) return;
+        
+        let parts;
+        
+        // 콜론(:) 구분 우선 체크
+        if (line.includes(':')) {
+            parts = line.split(':').map(p => p.trim());
+        } else {
+            // 탭 또는 연속된 공백으로 구분
+            parts = line.split(/\t+|\s{2,}/).map(p => p.trim());
+        }
+        
+        if (parts.length >= 3) {
+            const productCode = parts[0];
+            const description = parts[1];
+            const price = parts[2].replace(/[,원]/g, ''); // 쉼표와 '원' 제거
+            
+            if (productCode && price && !isNaN(price)) {
+                parsedProducts.push({
+                    product_code: productCode,
+                    description: description || '',
+                    standard_price: parseInt(price)
+                });
+            }
+        } else if (parts.length === 2) {
+            // 품번:가격 형식 (설명 없음)
+            const productCode = parts[0];
+            const price = parts[1].replace(/[,원]/g, '');
+            
+            if (productCode && price && !isNaN(price)) {
+                parsedProducts.push({
+                    product_code: productCode,
+                    description: '',
+                    standard_price: parseInt(price)
+                });
+            }
+        }
+    });
+    
+    if (parsedProducts.length === 0) {
+        alert('올바른 형식의 데이터가 없습니다.\n\n형식: 품번 : 설명 : 가격\n또는: 품번[탭]설명[탭]가격');
+        return;
+    }
+    
+    displayPreview();
+}
+
+function displayPreview() {
+    const previewSection = document.getElementById('previewSection');
+    const previewCount = document.getElementById('previewCount');
+    const tbody = document.getElementById('previewTableBody');
+    
+    tbody.innerHTML = '';
+    
+    parsedProducts.forEach(product => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${product.product_code}</td>
+            <td>${product.description}</td>
+            <td class="text-end">${product.standard_price.toLocaleString()}원</td>
+        `;
+        tbody.appendChild(row);
+    });
+    
+    previewCount.textContent = `${parsedProducts.length}개 제품`;
+    previewSection.style.display = 'block';
+}
+
+function clearExcelData() {
+    document.getElementById('excelPasteArea').value = '';
+    document.getElementById('previewSection').style.display = 'none';
+    parsedProducts = [];
+}
+
+async function submitBulkProducts() {
+    if (parsedProducts.length === 0) {
+        alert('등록할 제품이 없습니다.');
+        return;
+    }
+    
+    const confirmMsg = `${parsedProducts.length}개의 제품을 등록하시겠습니까?`;
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+    
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 등록 중...';
+    
+    try {
+        const response = await fetch('{% url "reporting:product_bulk_create" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                products: parsedProducts
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`성공: ${result.created_count}개 등록됨\n${result.skipped_count > 0 ? '중복: ' + result.skipped_count + '개 건너뜀' : ''}`);
+            
+            if (result.errors && result.errors.length > 0) {
+                console.log('오류:', result.errors);
+            }
+            
+            window.location.href = '{% url "reporting:product_list" %}';
+        } else {
+            alert('등록 실패: ' + (result.error || '알 수 없는 오류'));
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('등록 중 오류가 발생했습니다.');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
 function togglePromoFields() {
     const isChecked = document.getElementById('is_promo').checked;
     document.getElementById('promoFields').style.display = isChecked ? 'block' : 'none';

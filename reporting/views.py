@@ -11320,6 +11320,77 @@ def product_create(request):
 
 
 @login_required
+@require_POST
+def product_bulk_create(request):
+    """엑셀 데이터 일괄 제품 등록 (AJAX)"""
+    from reporting.models import Product
+    from decimal import Decimal
+    from django.db import IntegrityError
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        products_data = data.get('products', [])
+        
+        if not products_data:
+            return JsonResponse({
+                'success': False,
+                'error': '등록할 제품 데이터가 없습니다.'
+            }, status=400)
+        
+        created_count = 0
+        skipped_count = 0
+        errors = []
+        
+        for item in products_data:
+            try:
+                product_code = item.get('product_code', '').strip()
+                
+                # 품번 중복 체크
+                if Product.objects.filter(product_code=product_code).exists():
+                    skipped_count += 1
+                    errors.append(f'{product_code}: 이미 존재하는 품번')
+                    continue
+                
+                product = Product(
+                    product_code=product_code,
+                    description=item.get('description', '').strip(),
+                    standard_price=Decimal(str(item.get('standard_price', 0))),
+                    is_active=True,
+                    created_by=request.user
+                )
+                
+                product.save()
+                created_count += 1
+                
+            except IntegrityError:
+                skipped_count += 1
+                errors.append(f'{product_code}: 중복된 품번')
+            except Exception as e:
+                errors.append(f'{product_code}: {str(e)}')
+                logger.error(f"제품 등록 실패 ({product_code}): {e}")
+        
+        return JsonResponse({
+            'success': True,
+            'created_count': created_count,
+            'skipped_count': skipped_count,
+            'errors': errors
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': '잘못된 JSON 형식입니다.'
+        }, status=400)
+    except Exception as e:
+        logger.error(f"일괄 제품 등록 실패: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
 def product_edit(request, product_id):
     """제품 수정"""
     from reporting.models import Product
