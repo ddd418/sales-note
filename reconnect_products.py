@@ -146,7 +146,22 @@ def delete_all_products():
     """모든 제품 삭제 (1단계) - 특정 제품 제외 가능"""
     
     # 제외할 제품 코드 리스트
-    exclude_products = ['Countess 3']
+    exclude_products = [
+        'Countess 3',
+        '3123000225',
+        '3123000233',
+        '3123000241',
+        '3123000250',
+        'GYGAS-c15(c50)',
+        'GYGFR-M-c50-8',
+        'GYGREB-M-m2.0-24',
+        'GYLZ-1848R',
+        'NiMH Rechargeable batteries, AAA, 1.2V',
+        'Spare battery, NiMH, 1.2V, rechargeable',
+        'PIPETMAN P10',
+        'PIPETMAN P1000',
+        'PIPETMAN P200',
+    ]
     
     # 삭제할 제품 필터링
     products_to_delete = Product.objects.exclude(product_code__in=exclude_products)
