@@ -10310,8 +10310,9 @@ def prepayment_detail_view(request, pk):
     total_used = prepayment.amount - prepayment.balance
     usage_percent = 0
     if prepayment.amount > 0:
-        usage_percent = round((total_used / prepayment.amount) * 100, 1)
-        balance_percent = round((prepayment.balance / prepayment.amount) * 100, 1)
+        from decimal import Decimal
+        usage_percent = round(float(total_used / prepayment.amount) * 100, 1)
+        balance_percent = round(float(prepayment.balance / prepayment.amount) * 100, 1)
     else:
         balance_percent = 0
     
@@ -11304,7 +11305,7 @@ def product_create(request):
             
             product.save()
             messages.success(request, f'제품 "{product.product_code}"이(가) 등록되었습니다.')
-            return redirect('product_list')
+            return redirect('reporting:product_list')
             
         except IntegrityError as e:
             logger.error(f"제품 등록 실패 (중복): {e}")
@@ -11423,7 +11424,7 @@ def product_edit(request, product_id):
             
             product.save()
             messages.success(request, f'제품 "{product.product_code}"이(가) 수정되었습니다.')
-            return redirect('product_list')
+            return redirect('reporting:product_list')
             
         except Exception as e:
             logger.error(f"제품 수정 실패: {e}")
