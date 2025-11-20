@@ -22,8 +22,11 @@ from reporting.models import Product, DeliveryItem
 def normalize_code(text):
     """제품 코드 정규화 - 영문자와 숫자만 추출"""
     import re
-    # 영문자, 숫자, 점(.)만 남김
-    return re.sub(r'[^a-zA-Z0-9.]', '', text).upper()
+    # 1. 괄호와 그 내용 제거
+    text = re.sub(r'\([^)]*\)', '', text)
+    # 2. 영문자, 숫자, 점(.)만 남김
+    text = re.sub(r'[^a-zA-Z0-9.]', '', text)
+    return text.upper().strip()
 
 def similarity(a, b):
     """두 문자열의 유사도 계산 (0.0 ~ 1.0)"""
