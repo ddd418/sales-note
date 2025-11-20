@@ -32,21 +32,25 @@ def reconnect_products(similarity_threshold=0.8):
         similarity_threshold: 유사도 임계값 (0.0 ~ 1.0, 기본값 0.8)
     """
     
-    # product가 NULL인 DeliveryItem 조회
+    # product가 NULL인 DeliveryItem만 조회 (이미 연결된 항목 제외)
     unlinked_items = DeliveryItem.objects.filter(product__isnull=True)
     total_unlinked = unlinked_items.count()
+    
+    # 이미 연결된 항목 개수
+    already_linked = DeliveryItem.objects.filter(product__isnull=False).count()
     
     # 활성 제품 목록
     products = Product.objects.filter(is_active=True)
     total_products = products.count()
     
+    print(f"이미 연결된 납품 품목: {already_linked}개 (건너뜀)")
     print(f"연결되지 않은 납품 품목: {total_unlinked}개")
     print(f"활성 제품: {total_products}개")
     print(f"유사도 임계값: {similarity_threshold}")
     print()
     
     if total_unlinked == 0:
-        print("재연결할 항목이 없습니다.")
+        print("재연결할 항목이 없습니다. 모든 항목이 이미 연결되어 있습니다.")
         return
     
     if total_products == 0:
