@@ -393,6 +393,9 @@ class Product(models.Model):
     total_quoted = models.IntegerField(default=0, verbose_name="총 견적 횟수")
     total_sold = models.IntegerField(default=0, verbose_name="총 판매 횟수")
     
+    # 생성자 정보 (회사별 제품 구분용)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="생성자")
+    
     # 타임스탬프
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")

@@ -11,7 +11,7 @@ class FunnelAnalytics:
     """펀넬 분석 클래스"""
     
     @staticmethod
-    def get_pipeline_summary(user=None):
+    def get_pipeline_summary(user=None, accessible_users=None):
         """파이프라인 전체 요약"""
         qs = OpportunityTracking.objects.exclude(
             current_stage__in=['won', 'lost']
@@ -19,6 +19,8 @@ class FunnelAnalytics:
         
         if user:
             qs = qs.filter(followup__user=user)
+        elif accessible_users is not None:
+            qs = qs.filter(followup__user__in=accessible_users)
         
         summary = qs.aggregate(
             total_opportunities=Count('id'),
@@ -35,7 +37,7 @@ class FunnelAnalytics:
         return summary
     
     @staticmethod
-    def get_stage_breakdown(user=None):
+    def get_stage_breakdown(user=None, accessible_users=None):
         """단계별 분석 - Schedule 기준 카운트"""
         from .models import Schedule
         
@@ -50,6 +52,8 @@ class FunnelAnalytics:
             
             if user:
                 opps = opps.filter(followup__user=user)
+            elif accessible_users is not None:
+                opps = opps.filter(followup__user__in=accessible_users)
             
             # Schedule 기준 카운트 (실제 견적/활동 수)
             # quote 단계는 견적 일정 개수로 카운트
@@ -82,7 +86,7 @@ class FunnelAnalytics:
         return breakdown
     
     @staticmethod
-    def get_monthly_forecast(months=3, user=None):
+    def get_monthly_forecast(months=3, user=None, accessible_users=None):
         """월별 매출 예측"""
         today = date.today()
         forecasts = []
@@ -107,6 +111,8 @@ class FunnelAnalytics:
             
             if user:
                 opps = opps.filter(followup__user=user)
+            elif accessible_users is not None:
+                opps = opps.filter(followup__user__in=accessible_users)
             
             forecasts.append({
                 'month': month_start.strftime('%Y-%m'),
@@ -119,7 +125,7 @@ class FunnelAnalytics:
         return forecasts
     
     @staticmethod
-    def get_conversion_rates(user=None):
+    def get_conversion_rates(user=None, accessible_users=None):
         """단계별 전환율 (SQLite 호환)"""
         stages = ['lead', 'contact', 'quote', 'closing', 'won']
         rates = []
@@ -132,6 +138,8 @@ class FunnelAnalytics:
             all_opps = OpportunityTracking.objects.all()
             if user:
                 all_opps = all_opps.filter(followup__user=user)
+            elif accessible_users is not None:
+                all_opps = all_opps.filter(followup__user__in=accessible_users)
             
             # Python에서 stage_history 검사
             total = 0
@@ -174,7 +182,7 @@ class FunnelAnalytics:
         return rates
     
     @staticmethod
-    def get_bottleneck_analysis(user=None):
+    def get_bottleneck_analysis(user=None, accessible_users=None):
         """병목 단계 분석"""
         stages = FunnelStage.objects.exclude(
             name__in=['won', 'lost']
@@ -189,6 +197,8 @@ class FunnelAnalytics:
             
             if user:
                 opps = opps.filter(followup__user=user)
+            elif accessible_users is not None:
+                opps = opps.filter(followup__user__in=accessible_users)
             
             # 평균 체류 시간 계산
             total_duration = 0
@@ -242,7 +252,7 @@ class FunnelAnalytics:
         return sorted(bottlenecks, key=lambda x: x['count'], reverse=True)
     
     @staticmethod
-    def get_top_opportunities(limit=None, user=None):
+    def get_top_opportunities(limit=None, user=None, accessible_users=None):
         """
         예측 매출 상위 영업 기회
         
@@ -263,6 +273,8 @@ class FunnelAnalytics:
         
         if user:
             qs = qs.filter(followup__user=user)
+        elif accessible_users is not None:
+            qs = qs.filter(followup__user__in=accessible_users)
         
         # limit이 지정되지 않으면 전체 조회
         if limit:
@@ -297,7 +309,7 @@ class FunnelAnalytics:
         return result
     
     @staticmethod
-    def get_won_lost_summary(user=None):
+    def get_won_lost_summary(user=None, accessible_users=None):
         """수주/실주 요약"""
         won_qs = OpportunityTracking.objects.filter(current_stage='won')
         lost_qs = OpportunityTracking.objects.filter(current_stage='lost')
@@ -305,6 +317,9 @@ class FunnelAnalytics:
         if user:
             won_qs = won_qs.filter(followup__user=user)
             lost_qs = lost_qs.filter(followup__user=user)
+        elif accessible_users is not None:
+            won_qs = won_qs.filter(followup__user__in=accessible_users)
+            lost_qs = lost_qs.filter(followup__user__in=accessible_users)
         
         # actual_revenue가 없으면 expected_revenue 사용
         won_summary = won_qs.aggregate(
@@ -331,7 +346,7 @@ class FunnelAnalytics:
         }
     
     @staticmethod
-    def get_average_lead_time(user=None):
+    def get_average_lead_time(user=None, accessible_users=None):
         """평균 리드 타임 분석 (견적~납품 소요일)"""
         from .models import Schedule
         
@@ -341,6 +356,8 @@ class FunnelAnalytics:
         followups_with_schedules = FollowUp.objects.prefetch_related('schedules').all()
         if user:
             followups_with_schedules = followups_with_schedules.filter(user=user)
+        elif accessible_users is not None:
+            followups_with_schedules = followups_with_schedules.filter(user__in=accessible_users)
         
         for followup in followups_with_schedules:
             # 해당 팔로우업의 견적 일정들
@@ -387,7 +404,7 @@ class FunnelAnalytics:
         }
     
     @staticmethod
-    def get_product_sales_distribution(user=None):
+    def get_product_sales_distribution(user=None, accessible_users=None):
         """제품군별 매출 비중"""
         from .models import DeliveryItem, Product
         
@@ -399,6 +416,8 @@ class FunnelAnalytics:
         
         if user:
             delivery_items = delivery_items.filter(schedule__user=user)
+        elif accessible_users is not None:
+            delivery_items = delivery_items.filter(schedule__user__in=accessible_users)
         
         # 제품별로 그룹화하여 매출 집계
         product_sales = {}

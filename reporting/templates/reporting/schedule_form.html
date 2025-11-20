@@ -54,6 +54,38 @@ input[type="time"] {
 }
 
 /* 견적/납품 품목 관리 모달 반응형 */
+/* 모달 내 레이블 한 줄 표시 */
+#scheduleDeliveryItemsModal .form-label,
+#scheduleDeliveryItemsModal label {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+}
+
+/* 태블릿 (768px ~ 1024px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+  #scheduleDeliveryItemsModal .modal-dialog {
+    max-width: 90%;
+    margin: 1rem auto;
+  }
+  
+  #scheduleDeliveryItemsModal .modal-body {
+    padding: 1.5rem;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  
+  #scheduleDeliveryItemsModal .form-label {
+    font-size: 0.85rem;
+  }
+  
+  #scheduleDeliveryItemsModal .form-control,
+  #scheduleDeliveryItemsModal .form-select {
+    font-size: 0.95rem;
+  }
+}
+
+/* 모바일 (768px 이하) */
 @media (max-width: 768px) {
   #scheduleDeliveryItemsModal .modal-dialog {
     max-width: 95%;
@@ -62,6 +94,8 @@ input[type="time"] {
   
   #scheduleDeliveryItemsModal .modal-body {
     padding: 1rem;
+    max-height: 75vh;
+    overflow-y: auto;
   }
   
   /* 총액 표시 카드 반응형 */
@@ -1785,7 +1819,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 초기 로드 시 체크
         const initialType = activityTypeField.value;
-        console.log('초기 활동 유형:', initialType);
         if (initialType === 'delivery') {
             prepaymentSection.style.display = 'block';
             console.log('초기 로드 - 선결제 섹션 표시');
@@ -2187,22 +2220,18 @@ document.addEventListener('DOMContentLoaded', function() {
 // DOMContentLoaded 밖에서 전역 함수로 정의
 // ==========================================
 window.toggleSections = function() {
-    console.log('=== toggleSections 실행 (전역) ===');
     const activityTypeField = document.querySelector('[name="activity_type"]');
     if (!activityTypeField) {
-        console.log('활동 유형 필드를 찾을 수 없습니다!');
         return;
     }
     
     const selectedValue = activityTypeField.value;
-    console.log('선택된 활동 유형:', selectedValue);
     
     // 품목 섹션: 견적 또는 납품일 때만 표시
     const deliverySection = document.getElementById('delivery-section');
     if (deliverySection) {
         const shouldShowDelivery = (selectedValue === 'delivery' || selectedValue === 'quote');
         deliverySection.style.display = shouldShowDelivery ? 'block' : 'none';
-        console.log('delivery-section 표시:', shouldShowDelivery);
         
         // 섹션 제목 변경
         const sectionTitle = deliverySection.closest('.card')?.querySelector('.card-header h5');
@@ -2217,17 +2246,11 @@ window.toggleSections = function() {
     
     // 품목 입력 안내 섹션 (생성 모드)
     const itemsSection = document.getElementById('quote-delivery-items-section');
-    console.log('quote-delivery-items-section 요소:', itemsSection);
     if (itemsSection) {
         const shouldShow = (selectedValue === 'delivery' || selectedValue === 'quote');
-        console.log('quote-delivery-items-section 표시:', shouldShow);
         
-        // 강제로 block 설정하고 로그 출력
         if (shouldShow) {
             itemsSection.style.display = 'block';
-            console.log('>>> 강제로 display: block 설정함');
-            console.log('>>> 현재 itemsSection.style.display:', itemsSection.style.display);
-            console.log('>>> itemsSection의 computed style:', window.getComputedStyle(itemsSection).display);
         } else {
             itemsSection.style.display = 'none';
         }
@@ -2299,17 +2322,13 @@ window.toggleSections = function() {
         
         // 품목 컨테이너 확인 (견적 모드)
         const itemsContainer = document.getElementById('items-container');
-        console.log('items-container 요소:', itemsContainer);
         if (itemsContainer) {
             const existingItems = itemsContainer.querySelectorAll('.item-row');
-            console.log('기존 품목 개수:', existingItems.length);
             
             // 견적 모드일 때만 required 추가, 그 외에는 제거
             if (selectedValue === 'quote') {
-                console.log('견적 모드: 품목 체크 시작');
                 // 품목이 없으면 하나 추가
                 if (existingItems.length === 0) {
-                    console.log('기존 품목 없음, addItem 호출');
                     // addItem 함수가 정의되어 있으면 호출
                     if (typeof window.addItem === 'function') {
                         console.log('window.addItem 함수 호출');
@@ -2397,7 +2416,6 @@ window.toggleDeliverySection = function() {
 document.addEventListener('DOMContentLoaded', function() {
     const activityTypeField = document.querySelector('[name="activity_type"]');
     if (activityTypeField) {
-        console.log('### 페이지 로드 - 초기 toggleSections 실행 ###');
         window.toggleSections();
         
         // 변경 이벤트 리스너 추가
@@ -3331,7 +3349,6 @@ function openScheduleDeliveryModal(context) {
   });
   
   modalElement.addEventListener('shown.bs.modal', function () {
-    console.log('납품 품목 모달 완전히 열림');
     
     // 다른 모든 모달 닫기
     const otherModals = document.querySelectorAll('.modal:not(#scheduleDeliveryItemsModal)');
@@ -3386,13 +3403,10 @@ function openScheduleDeliveryModal(context) {
     }
     
     modalElement.style.pointerEvents = 'auto';
-    
-    console.log('납품 품목 모달 설정 완료');
   });
   
   // 모달 닫힐 때 원래대로 복원
   modalElement.addEventListener('hidden.bs.modal', function() {
-    console.log('납품 품목 모달 닫힘');
     
     const pageElements = document.querySelectorAll('.container, .card, form:not(#schedule-delivery-form)');
     pageElements.forEach(el => {
@@ -3498,8 +3512,6 @@ function loadExistingScheduleDeliveryItems() {
     }
     return hasData;
   }
-  
-  console.log('기존 납품 품목 데이터 없음');
   return false;
 }
 
@@ -4022,9 +4034,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     {% endif %}
-    {% else %}
-    // 생성 모드에서는 납품 품목 관련 처리 안 함
-    console.log('일정 생성 모드: 납품 품목은 일정 생성 후 히스토리에서 관리합니다.');
     {% endif %}
 });
 
@@ -4034,8 +4043,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 제품 목록 로드 (드롭다운 방식)
 function loadProductList(deliveryItem) {
-  console.log('loadProductList 호출됨, deliveryItem:', deliveryItem);
-  
   if (!deliveryItem) {
     console.error('deliveryItem이 null입니다');
     return Promise.reject('deliveryItem이 null입니다');
@@ -4045,11 +4052,9 @@ function loadProductList(deliveryItem) {
     .then(response => response.json())
     .then(data => {
       const products = data.products || [];
-      console.log('제품 목록 로드됨, 제품 수:', products.length);
       
       // 전체 제품 데이터를 deliveryItem에 저장
       deliveryItem.dataset.allProducts = JSON.stringify(products);
-      console.log('제품 데이터가 deliveryItem에 저장됨');
       
       // 제품 데이터가 저장되었음을 알리는 이벤트 발생
       deliveryItem.dispatchEvent(new CustomEvent('productsLoaded', { 
@@ -4768,7 +4773,6 @@ document.addEventListener('DOMContentLoaded', function() {
   if (productAddModal && productAddForm) {
     // 모달 열릴 때
     productAddModal.addEventListener('show.bs.modal', function(e) {
-      console.log('제품 추가 모달 열기');
       
       if (productAddModal.parentElement !== document.body) {
         document.body.appendChild(productAddModal);
@@ -4853,18 +4857,55 @@ document.addEventListener('DOMContentLoaded', function() {
           const modal = bootstrap.Modal.getInstance(productAddModal);
           modal.hide();
           
-          // 제품 목록 새로고침 - 모든 품목 행의 데이터 업데이트
+          // 새로 추가된 제품 정보
+          const newProduct = data.product;
+          
+          // 제품 목록 새로고침 및 자동 선택
           if (currentDeliveryItemRow) {
-            // 납품 품목 목록 새로고침
-            document.querySelectorAll('.delivery-item-row').forEach(row => {
-              loadProductList(row);
+            // 납품 품목에 새 제품 자동 입력
+            const productIdInput = currentDeliveryItemRow.querySelector('.product-id');
+            const productNameInput = currentDeliveryItemRow.querySelector('.item-name');
+            const unitPriceDisplay = currentDeliveryItemRow.querySelector('.unit-price-display');
+            const unitPriceInput = currentDeliveryItemRow.querySelector('.unit-price-input');
+            
+            if (productIdInput) productIdInput.value = newProduct.id;
+            if (productNameInput) productNameInput.value = newProduct.name;
+            if (unitPriceDisplay) unitPriceDisplay.value = newProduct.unit_price ? Number(newProduct.unit_price).toLocaleString() : '';
+            if (unitPriceInput) unitPriceInput.value = newProduct.unit_price || '';
+            
+            // 제품 검색창 초기화
+            const searchInput = currentDeliveryItemRow.querySelector('.delivery-product-search');
+            if (searchInput) searchInput.value = '';
+            
+            // 모든 납품 품목 행의 목록 새로고침 (다른 행들을 위해)
+            document.querySelectorAll('.delivery-item').forEach(row => {
+              if (row !== currentDeliveryItemRow) {
+                loadProductList(row);
+              }
             });
             currentDeliveryItemRow = null;
           }
           if (currentQuoteItemRow) {
-            // 견적 품목 목록 새로고침
+            // 견적 품목에 새 제품 자동 입력
+            const productIdInput = currentQuoteItemRow.querySelector('.quote-product-id');
+            const productNameInput = currentQuoteItemRow.querySelector('.quote-item-name');
+            const unitPriceDisplay = currentQuoteItemRow.querySelector('.quote-unit-price-display');
+            const unitPriceInput = currentQuoteItemRow.querySelector('.quote-unit-price');
+            
+            if (productIdInput) productIdInput.value = newProduct.id;
+            if (productNameInput) productNameInput.value = newProduct.name;
+            if (unitPriceDisplay) unitPriceDisplay.value = newProduct.unit_price ? Number(newProduct.unit_price).toLocaleString() : '';
+            if (unitPriceInput) unitPriceInput.value = newProduct.unit_price || '';
+            
+            // 제품 검색창 초기화
+            const searchInput = currentQuoteItemRow.querySelector('.quote-product-search');
+            if (searchInput) searchInput.value = '';
+            
+            // 모든 견적 품목 행의 목록 새로고침 (다른 행들을 위해)
             document.querySelectorAll('.item-row').forEach(row => {
-              loadQuoteProductList(row);
+              if (row !== currentQuoteItemRow) {
+                loadQuoteProductList(row);
+              }
             });
             currentQuoteItemRow = null;
           }

@@ -155,10 +155,14 @@ def can_access_user_data(request_user, target_user):
     if user_profile.is_admin():
         return True
     
-    # Manager는 모든 Salesman과 다른 Manager의 데이터 접근 가능 (읽기 권한)
+    # Manager는 같은 회사의 Salesman과 Manager의 데이터만 접근 가능 (읽기 권한)
     if user_profile.is_manager():
         target_profile = get_user_profile(target_user)
-        # Manager는 Salesman과 다른 Manager의 데이터 모두 볼 수 있음
+        # 같은 회사인지 확인
+        if user_profile.company and target_profile.company:
+            if user_profile.company != target_profile.company:
+                return False
+        # 같은 회사의 Salesman과 Manager의 데이터만 볼 수 있음
         return target_profile.is_salesman() or target_profile.is_manager()
     
     # Salesman은 자신의 데이터만 접근 가능
@@ -915,6 +919,19 @@ def dashboard_view(request):
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
         )
+    elif user_profile.can_view_all_users() and target_user is None:
+        # Manager가 전체 팀원을 선택한 경우 - 접근 가능한 모든 사용자의 데이터
+        accessible_users = get_accessible_users(request.user)
+        schedule_delivery_stats = DeliveryItem.objects.filter(
+            schedule__user__in=accessible_users,
+            schedule__visit_date__year=current_year,
+            schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
+        ).aggregate(
+            total_amount=Sum('total_price'),
+            delivery_count=Count('schedule', distinct=True)
+        )
     else:
         # 특정 사용자 데이터만
         schedule_delivery_stats = DeliveryItem.objects.filter(
@@ -1036,11 +1053,16 @@ def dashboard_view(request):
     from reporting.funnel_analytics import FunnelAnalytics
     analytics = FunnelAnalytics()
     
+    # accessible_users_list 계산
+    accessible_users_list = None
+    if user_profile.can_view_all_users() and target_user is None:
+        accessible_users_list = get_accessible_users(request.user)
+    
     # 평균 리드 타임 분석
-    lead_time_analysis = analytics.get_average_lead_time(user=target_user)
+    lead_time_analysis = analytics.get_average_lead_time(user=target_user, accessible_users=accessible_users_list)
     
     # 제품군별 매출 비중
-    product_sales_distribution = analytics.get_product_sales_distribution(user=target_user)
+    product_sales_distribution = analytics.get_product_sales_distribution(user=target_user, accessible_users=accessible_users_list)
 
     # 새로운 성과 지표 계산
     from django.db.models import Avg
@@ -9492,19 +9514,24 @@ def funnel_dashboard_view(request):
         # Salesman은 본인 데이터만
         filter_user = request.user
     
+    # accessible_users 계산 (매니저가 전체 팀원 선택 시 사용)
+    accessible_users_list = None
+    if user_profile.can_view_all_users() and filter_user is None:
+        accessible_users_list = get_accessible_users(request.user)
+    
     # 파이프라인 요약
-    pipeline_summary = analytics.get_pipeline_summary(user=filter_user)
+    pipeline_summary = analytics.get_pipeline_summary(user=filter_user, accessible_users=accessible_users_list)
     
     # 단계별 분석
-    stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
+    stage_breakdown = analytics.get_stage_breakdown(user=filter_user, accessible_users=accessible_users_list)
     
     # OpportunityTracking 데이터 확인 (로그 제거)
     
     # 상위 영업 기회 (전체 조회 - limit 제거)
-    top_opportunities = analytics.get_top_opportunities(user=filter_user)
+    top_opportunities = analytics.get_top_opportunities(user=filter_user, accessible_users=accessible_users_list)
     
     # 수주/실주 요약
-    won_lost_summary = analytics.get_won_lost_summary(user=filter_user)
+    won_lost_summary = analytics.get_won_lost_summary(user=filter_user, accessible_users=accessible_users_list)
     
     # 견적 승패 분석 (올해 기준)
     from django.utils import timezone
@@ -9517,6 +9544,8 @@ def funnel_dashboard_view(request):
     
     if filter_user:
         quotes = quotes.filter(user=filter_user)
+    elif accessible_users_list is not None:
+        quotes = quotes.filter(user__in=accessible_users_list)
     
     quote_total = quotes.count()
     quote_won = quotes.filter(status='completed').count()
@@ -9620,6 +9649,11 @@ def funnel_pipeline_view(request):
         # Salesman은 본인 데이터만
         filter_user = request.user
     
+    # accessible_users 계산
+    accessible_users_list = None
+    if user_profile.can_view_all_users() and filter_user is None:
+        accessible_users_list = get_accessible_users(request.user)
+    
     # 단계 목록
     stages = FunnelStage.objects.all().order_by('stage_order')
     
@@ -9632,6 +9666,8 @@ def funnel_pipeline_view(request):
         
         if filter_user:
             opps = opps.filter(followup__user=filter_user)
+        elif accessible_users_list is not None:
+            opps = opps.filter(followup__user__in=accessible_users_list)
         
         opportunities = []
         for opp in opps.order_by('-weighted_revenue'):
@@ -9711,11 +9747,16 @@ def funnel_analytics_view(request):
         # Salesman은 본인 데이터만
         filter_user = request.user
     
+    # accessible_users 계산
+    accessible_users_list = None
+    if user_profile.can_view_all_users() and filter_user is None:
+        accessible_users_list = get_accessible_users(request.user)
+    
     # 전환율 분석
-    conversion_rates = analytics.get_conversion_rates(user=filter_user)
+    conversion_rates = analytics.get_conversion_rates(user=filter_user, accessible_users=accessible_users_list)
     
     # 병목 분석
-    bottleneck_analysis = analytics.get_bottleneck_analysis(user=filter_user)
+    bottleneck_analysis = analytics.get_bottleneck_analysis(user=filter_user, accessible_users=accessible_users_list)
     
     # 단계별 평균 체류 시간 차트
     duration_chart_data = {
@@ -9790,11 +9831,16 @@ def funnel_forecast_view(request):
         # Salesman은 본인 데이터만
         filter_user = request.user
     
+    # accessible_users 계산
+    accessible_users_list = None
+    if user_profile.can_view_all_users() and filter_user is None:
+        accessible_users_list = get_accessible_users(request.user)
+    
     # 월별 예측 (6개월)
-    monthly_forecast = analytics.get_monthly_forecast(months=6, user=filter_user)
+    monthly_forecast = analytics.get_monthly_forecast(months=6, user=filter_user, accessible_users=accessible_users_list)
     
     # 단계별 분석 (예측에 포함될 기회들)
-    stage_breakdown = analytics.get_stage_breakdown(user=filter_user)
+    stage_breakdown = analytics.get_stage_breakdown(user=filter_user, accessible_users=accessible_users_list)
     
     # 예측 차트 데이터
     forecast_chart_data = {
@@ -11038,11 +11084,26 @@ def product_list(request):
     from reporting.models import Product, DeliveryItem, QuoteItem
     from django.db.models import Q, Count
     
+    user_profile = get_user_profile(request.user)
+    
     # 검색 기능
     search_query = request.GET.get('search', '')
     is_active = request.GET.get('is_active', '')
     
-    products = Product.objects.all()
+    # 회사별 필터링
+    if user_profile.is_admin():
+        products = Product.objects.all()
+    elif user_profile.company:
+        # 같은 회사의 사용자가 생성한 제품만
+        accessible_users = get_accessible_users(request.user)
+        products = Product.objects.filter(
+            Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
+        )
+    else:
+        # 본인이 생성한 제품 + 생성자가 없는 제품
+        products = Product.objects.filter(
+            Q(created_by=request.user) | Q(created_by__isnull=True)
+        )
     
     if search_query:
         products = products.filter(
@@ -11166,6 +11227,7 @@ def product_create(request):
                     product_code=product_code,
                     standard_price=Decimal(request.POST.get('standard_price', 0)),
                     is_active=True,  # 기본값
+                    created_by=request.user,  # 생성자 저장
                 )
                 
                 # 선택 필드들
@@ -11185,8 +11247,13 @@ def product_create(request):
                 product.save()
                 return JsonResponse({
                     'success': True,
-                    'product_id': product.id,
-                    'product_code': product.product_code
+                    'product': {
+                        'id': product.id,
+                        'product_code': product.product_code,
+                        'name': product.product_code,  # 품번을 이름으로 사용
+                        'unit_price': str(product.standard_price),
+                        'description': product.description or '',
+                    }
                 })
                 
             except IntegrityError as e:
@@ -11218,6 +11285,7 @@ def product_create(request):
                 product_code=product_code,
                 standard_price=Decimal(request.POST.get('standard_price', 0)),
                 is_active=request.POST.get('is_active') == 'on',
+                created_by=request.user,  # 생성자 저장
             )
             
             # 선택 필드들
@@ -11321,9 +11389,27 @@ def product_api_list(request):
     """제품 목록 API (AJAX용) - 견적/납품 작성 시 제품 선택"""
     from reporting.models import Product
     
+    user_profile = get_user_profile(request.user)
     search = request.GET.get('search', '')
     
-    products = Product.objects.filter(is_active=True)
+    # 회사별 필터링
+    if user_profile.is_admin():
+        products = Product.objects.filter(is_active=True)
+    elif user_profile.company:
+        # 같은 회사의 사용자가 생성한 제품만
+        accessible_users = get_accessible_users(request.user)
+        products = Product.objects.filter(
+            is_active=True
+        ).filter(
+            Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
+        )
+    else:
+        # 본인이 생성한 제품 + 생성자가 없는 제품
+        products = Product.objects.filter(
+            is_active=True
+        ).filter(
+            Q(created_by=request.user) | Q(created_by__isnull=True)
+        )
     
     if search:
         products = products.filter(
