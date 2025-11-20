@@ -77,6 +77,7 @@ def reconnect_products(similarity_threshold=0.8):
     for item in unlinked_items:
         best_match = None
         best_score = 0
+        best_match_length = 0  # 매칭된 길이 추적
         
         # 1. 정규화된 item_name
         item_norm = normalize_code(item.item_name)
@@ -91,16 +92,26 @@ def reconnect_products(similarity_threshold=0.8):
                 best_match = product
                 break
             
-            # 4. 포함 관계 체크 (높은 우선순위)
-            if code_norm in item_norm or item_norm in code_norm:
+            # 4. 포함 관계 체크 (정확한 포함만)
+            # item_norm이 code_norm에 완전히 포함되는 경우
+            if item_norm in code_norm and len(item_norm) >= 5:
                 score = 0.95  # 포함 관계는 95% 유사도
+                match_length = len(item_norm)
+                
+                # 점수가 같으면 더 긴 매칭을 우선
+                if score > best_score or (score == best_score and match_length > best_match_length):
+                    best_score = score
+                    best_match = product
+                    best_match_length = match_length
             else:
                 # 5. 일반 유사도 계산
                 score = similarity(item.item_name, product_code)
-            
-            if score > best_score:
-                best_score = score
-                best_match = product
+                
+                # 포함 관계(95%)보다 낮은 점수만 고려
+                if score > best_score and score < 0.95:
+                    best_score = score
+                    best_match = product
+                    best_match_length = 0
         
         if best_score >= similarity_threshold:
             matches.append({
