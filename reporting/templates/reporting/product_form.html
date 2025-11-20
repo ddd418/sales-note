@@ -323,12 +323,15 @@ function parseExcelData() {
         
         let parts;
         
-        // 콜론(:) 구분 우선 체크
-        if (line.includes(':')) {
+        // 탭 구분 우선 체크 (엑셀 복사-붙여넣기)
+        if (line.includes('\t')) {
+            parts = line.split('\t').map(p => p.trim());
+        } else if (line.includes(':')) {
+            // 콜론(:) 구분
             parts = line.split(':').map(p => p.trim());
         } else {
-            // 탭 또는 연속된 공백으로 구분
-            parts = line.split(/\t+|\s{2,}/).map(p => p.trim());
+            // 연속된 공백으로 구분
+            parts = line.split(/\s{2,}/).map(p => p.trim());
         }
         
         if (parts.length >= 3) {
