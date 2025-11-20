@@ -19,9 +19,18 @@ django.setup()
 
 from reporting.models import Product, DeliveryItem
 
+def normalize_code(text):
+    """제품 코드 정규화 - 영문자와 숫자만 추출"""
+    import re
+    # 영문자, 숫자, 점(.)만 남김
+    return re.sub(r'[^a-zA-Z0-9.]', '', text).upper()
+
 def similarity(a, b):
     """두 문자열의 유사도 계산 (0.0 ~ 1.0)"""
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+    # 정규화된 문자열로 비교
+    a_norm = normalize_code(a)
+    b_norm = normalize_code(b)
+    return SequenceMatcher(None, a_norm, b_norm).ratio()
 
 def reconnect_products(similarity_threshold=0.8):
     """
@@ -69,8 +78,25 @@ def reconnect_products(similarity_threshold=0.8):
         best_match = None
         best_score = 0
         
+        # 1. 정규화된 item_name
+        item_norm = normalize_code(item.item_name)
+        
         for product_code, product in product_dict.items():
-            score = similarity(item.item_name, product_code)
+            # 2. 정규화된 product_code
+            code_norm = normalize_code(product_code)
+            
+            # 3. 완전 일치 체크 (우선순위 최상위)
+            if item_norm == code_norm:
+                best_score = 1.0
+                best_match = product
+                break
+            
+            # 4. 포함 관계 체크 (높은 우선순위)
+            if code_norm in item_norm or item_norm in code_norm:
+                score = 0.95  # 포함 관계는 95% 유사도
+            else:
+                # 5. 일반 유사도 계산
+                score = similarity(item.item_name, product_code)
             
             if score > best_score:
                 best_score = score
