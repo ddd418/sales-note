@@ -74,6 +74,8 @@ def reconnect_products(similarity_threshold=0.8):
     matches = []
     
     print("매칭 중...")
+    debug_items = ['825.0100 (1/21)', '825.1000 (1/21)', '447.100E (2/17)']  # 디버그 대상
+    
     for item in unlinked_items:
         best_match = None
         best_score = 0
@@ -81,6 +83,12 @@ def reconnect_products(similarity_threshold=0.8):
         
         # 1. 정규화된 item_name
         item_norm = normalize_code(item.item_name)
+        
+        # 디버그 출력
+        is_debug = item.item_name in debug_items
+        if is_debug:
+            print(f"\n[DEBUG] item_name: {item.item_name}")
+            print(f"[DEBUG] item_norm: {item_norm}")
         
         for product_code, product in product_dict.items():
             # 2. 정규화된 product_code
@@ -90,6 +98,8 @@ def reconnect_products(similarity_threshold=0.8):
             if item_norm == code_norm:
                 best_score = 1.0
                 best_match = product
+                if is_debug:
+                    print(f"[DEBUG] 완전 일치: {product_code} (100%)")
                 break
             
             # 4. 포함 관계 체크 (정확한 포함만)
@@ -98,20 +108,33 @@ def reconnect_products(similarity_threshold=0.8):
                 score = 0.95  # 포함 관계는 95% 유사도
                 match_length = len(item_norm)
                 
+                if is_debug:
+                    print(f"[DEBUG] 포함 관계: {item_norm} in {code_norm} ({product_code}) = 95%")
+                
                 # 점수가 같으면 더 긴 매칭을 우선
                 if score > best_score or (score == best_score and match_length > best_match_length):
                     best_score = score
                     best_match = product
                     best_match_length = match_length
+                    if is_debug:
+                        print(f"[DEBUG] → 최고 점수 갱신: {product_code} (95%)")
             else:
                 # 5. 일반 유사도 계산
                 score = similarity(item.item_name, product_code)
+                
+                if is_debug and score > 0.7:
+                    print(f"[DEBUG] 일반 유사도: {product_code} = {score:.2%}")
                 
                 # 포함 관계(95%)보다 낮은 점수만 고려
                 if score > best_score and score < 0.95:
                     best_score = score
                     best_match = product
                     best_match_length = 0
+                    if is_debug:
+                        print(f"[DEBUG] → 최고 점수 갱신: {product_code} ({score:.2%})")
+        
+        if is_debug:
+            print(f"[DEBUG] 최종 매칭: {best_match.product_code if best_match else 'N/A'} ({best_score:.2%})")
         
         if best_score >= similarity_threshold:
             matches.append({
