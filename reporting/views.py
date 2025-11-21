@@ -5627,7 +5627,6 @@ def schedule_status_update_api(request, schedule_id):
                         if history.get('stage') == 'lost' and not history.get('exited'):
                             history['exited'] = date.today().isoformat()
                             history['note'] = f"{history.get('note', '')} → 취소 철회로 복구"
-                            logger.info("이전 실주 단계 종료 처리")
                             break
                     
                     # 수주 단계 추가
@@ -5638,7 +5637,6 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'취소 철회 후 납품 완료로 자동 수주 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(won_entry)
-                    logger.info("🎯 수주 단계 이력 추가")
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
@@ -6112,15 +6110,11 @@ def company_edit_view(request, pk):
         if user_company and user_company.company:
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
-                logger.warning(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 없음 (다른 회사)")
                 messages.error(request, '이 업체/학교를 수정할 권한이 없습니다.')
                 return redirect('reporting:company_list')
         else:
-            logger.warning(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 없음 (생성자 아님)")
             messages.error(request, '이 업체/학교를 수정할 권한이 없습니다. (생성자 또는 관리자만 가능)')
             return redirect('reporting:company_list')
-    
-    logger.info(f"[COMPANY_EDIT] 사용자 {request.user.username}: 업체 {pk} 수정 권한 확인됨")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -6176,10 +6170,6 @@ def company_delete_view(request, pk):
         company.delete()
         messages.success(request, f'"{company_name}" 업체/학교가 삭제되었습니다.')
         
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[COMPANY_DELETE] 사용자 {request.user.username}: 업체 '{company_name}' 삭제 완료")
-        
         return redirect('reporting:company_list')
     
     context = {
@@ -6195,9 +6185,6 @@ def company_detail_view(request, pk):
     """업체/학교 상세 (부서 목록 포함) (Admin, Salesman 전용)"""
     company = get_object_or_404(Company, pk=pk)
     
-    import logging
-    logger = logging.getLogger(__name__)
-    
     # Admin이 아닌 경우 권한 확인
     if not (getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')):
         # 자신의 회사 소속 사용자들이 생성한 업체인지 확인
@@ -6205,18 +6192,11 @@ def company_detail_view(request, pk):
         if user_company and user_company.company:
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if not Company.objects.filter(pk=pk, created_by__in=same_company_users).exists():
-                logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 없음")
                 messages.error(request, '해당 업체/학교에 접근할 권한이 없습니다.')
                 return redirect('reporting:company_list')
-            logger.info(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 업체 {pk} 접근 권한 있음 (같은 회사)")
         else:
-            logger.warning(f"[COMPANY_DETAIL] 사용자 {request.user.username}: 회사 정보 없어 접근 불가")
             messages.error(request, '회사 정보가 없어 접근할 수 없습니다.')
             return redirect('reporting:company_list')
-    else:
-        logger.info(f"[COMPANY_DETAIL] Admin 사용자 {request.user.username}: 업체 {pk} 접근")
-    
-    logger.info(f"[COMPANY_DETAIL] 업체 '{company.name}' 상세보기 접근 (생성자: {company.created_by.username if company.created_by else 'Unknown'})")
     
     # 수정/삭제 권한 확인
     is_admin = getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin')
@@ -6258,16 +6238,11 @@ def department_create_view(request, company_pk):
         if user_company and user_company.company:
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if not Company.objects.filter(pk=company_pk, created_by__in=same_company_users).exists():
-                logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} 부서 추가 권한 없음")
                 messages.error(request, '해당 업체/학교에 부서를 추가할 권한이 없습니다.')
                 return redirect('reporting:company_detail', pk=company_pk)
-            logger.info(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음 (같은 회사)")
         else:
-            logger.warning(f"[DEPT_CREATE] 사용자 {request.user.username}: 회사 정보 없어 부서 추가 불가")
             messages.error(request, '회사 정보가 없어 부서를 추가할 수 없습니다.')
             return redirect('reporting:company_detail', pk=company_pk)
-    else:
-        logger.info(f"[DEPT_CREATE] Admin 사용자 {request.user.username}: 업체 {company_pk} '{company.name}'에 부서 추가 권한 있음")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -6278,8 +6253,6 @@ def department_create_view(request, company_pk):
         else:
             Department.objects.create(company=company, name=name, created_by=request.user)
             messages.success(request, f'"{company.name} - {name}" 부서/연구실이 추가되었습니다.')
-            
-            logger.info(f"[DEPT_CREATE] 사용자 {request.user.username}: 업체 '{company.name}'에 부서 '{name}' 추가 완료")
             
             return redirect('reporting:company_detail', pk=company.pk)
     
@@ -6298,9 +6271,6 @@ def department_edit_view(request, pk):
     user_profile = get_user_profile(request.user)
     is_admin = getattr(request, 'is_admin', False) or user_profile.role == 'admin'
     
-    import logging
-    logger = logging.getLogger(__name__)
-    
     if not is_admin:
         # Admin이 아닌 경우 같은 회사 사용자인지 확인
         user_company = getattr(request.user, 'userprofile', None)
@@ -6311,15 +6281,10 @@ def department_edit_view(request, pk):
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if Company.objects.filter(pk=department.company.pk, created_by__in=same_company_users).exists():
                 has_edit_permission = True
-                logger.info(f"[DEPT_EDIT] 사용자 {request.user.username}: 부서 {pk} 수정 권한 있음 (같은 회사)")
-            else:
-                logger.warning(f"[DEPT_EDIT] 사용자 {request.user.username}: 부서 {pk} 수정 권한 없음 (다른 회사)")
         
         if not has_edit_permission:
             messages.error(request, '이 부서/연구실을 수정할 권한이 없습니다.')
             return redirect('reporting:company_detail', pk=department.company.pk)
-    else:
-        logger.info(f"[DEPT_EDIT] Admin 사용자 {request.user.username}: 부서 {pk} 수정 권한 있음")
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -6362,15 +6327,10 @@ def department_delete_view(request, pk):
             same_company_users = User.objects.filter(userprofile__company=user_company.company)
             if Company.objects.filter(pk=department.company.pk, created_by__in=same_company_users).exists():
                 has_delete_permission = True
-                logger.info(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 {pk} 삭제 권한 있음 (같은 회사)")
-            else:
-                logger.warning(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 {pk} 삭제 권한 없음 (다른 회사)")
         
         if not has_delete_permission:
             messages.error(request, '이 부서/연구실을 삭제할 권한이 없습니다.')
             return redirect('reporting:company_detail', pk=department.company.pk)
-    else:
-        logger.info(f"[DEPT_DELETE] Admin 사용자 {request.user.username}: 부서 {pk} 삭제 권한 있음")
     
     # 관련 데이터 개수 확인
     followup_count = department.followup_departments.count()
@@ -6386,8 +6346,6 @@ def department_delete_view(request, pk):
         
         department.delete()
         messages.success(request, f'"{company_name} - {department_name}" 부서/연구실이 삭제되었습니다.')
-        
-        logger.info(f"[DEPT_DELETE] 사용자 {request.user.username}: 부서 '{company_name} - {department_name}' 삭제 완료")
         
         return redirect('reporting:company_detail', pk=company_pk)
     
@@ -8347,8 +8305,6 @@ def history_delivery_items_api(request, history_id):
                     quantity = float(match.group(2))
                     amount_str = match.group(3).replace(',', '').replace(' ', '')
                     
-                    logger.info(f"[HISTORY_DELIVERY_API] 파싱 성공 - 품목: '{item_name}', 수량: {quantity}, 금액문자열: '{amount_str}'")
-                    
                     try:
                         total_amount = float(amount_str)
                         # 부가세 포함 금액에서 단가 역산 (부가세 포함 / 수량)
@@ -8368,7 +8324,6 @@ def history_delivery_items_api(request, history_id):
                         'source': 'history_text'  # 출처 표시
                     })
                 else:
-                    logger.warning(f"[HISTORY_DELIVERY_API] 패턴 매칭 실패 - 라인: '{line}'")
                     # 패턴에 맞지 않는 경우, 전체를 품목명으로 처리
                     items_data.append({
                         'id': f'text_{len(items_data)}',  # 임시 ID
@@ -8757,20 +8712,15 @@ def followup_create_ajax(request):
             if user_profile_obj and user_profile_obj.company:
                 same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
                 if company.created_by not in same_company_users:
-                    logger.warning(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 업체 {company.name} 접근 권한 없음")
                     return JsonResponse({
                         'success': False,
                         'error': '접근 권한이 없는 업체입니다.'
                     })
-                logger.info(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음 (같은 회사)")
             else:
-                logger.warning(f"[FOLLOWUP_CREATE_AJAX] 사용자 {request.user.username}: 회사 정보 없어 팔로우업 생성 불가")
                 return JsonResponse({
                     'success': False,
                     'error': '회사 정보가 없어 팔로우업을 생성할 수 없습니다.'
                 })
-        else:
-            logger.info(f"[FOLLOWUP_CREATE_AJAX] Admin 사용자 {request.user.username}: 업체 {company.name}에 팔로우업 생성 권한 있음")
         
         # 중복 체크 (같은 고객명, 회사, 부서)
         existing_followup = FollowUp.objects.filter(
@@ -8800,8 +8750,6 @@ def followup_create_ajax(request):
             notes=request.POST.get('notes', '').strip(),
             status='active'
         )
-        
-        logger.info(f"[FOLLOWUP_CREATE_AJAX] 팔로우업 생성 완료 - ID: {followup.id}, 고객: {customer_name}, 업체: {company.name}, 부서: {department.name}")
         
         # 사용자 회사 정보 설정
         if user_profile_obj and user_profile_obj.company:
@@ -9230,13 +9178,9 @@ def api_change_company_creator(request):
             new_creator_company = new_creator.userprofile.company.name
         new_creator_info = f"{new_creator.username} ({new_creator_company})"
         
-        logger.info(f"[ADMIN] 업체 생성자 변경 시작 - 업체: {company.name}, 기존: {old_creator_info}, 신규: {new_creator_info}")
-        
         # 업체 생성자 변경
         company.created_by = new_creator
         company.save()
-        
-        logger.info(f"[ADMIN] 업체 생성자 변경 완료 - 업체: {company.name}, 신규 생성자: {new_creator_info}")
         
         # 응답 데이터
         response_data = {
@@ -10007,11 +9951,9 @@ def followup_quote_items_api(request, followup_id):
                             set(delivery_items.values_list('item_name', flat=True)) == 
                             set(quote_items.values_list('item_name', flat=True))):
                             has_delivery = True
-                            logger.info(f"[QUOTE_ITEMS_API] Quote {quote_schedule.id} matches delivery {delivery_schedule.id}, skipping")
                             break
             
             if has_delivery:
-                logger.info(f"[QUOTE_ITEMS_API] Quote {quote_schedule.id} already delivered, skipping")
                 continue
             
             items = DeliveryItem.objects.filter(schedule=quote_schedule)
@@ -10032,14 +9974,12 @@ def followup_quote_items_api(request, followup_id):
                     'opportunity_id': quote_schedule.opportunity.id if quote_schedule.opportunity else None,  # opportunity ID 추가
                 }
                 quotes_data.append(quote_data)
-                logger.info(f"[QUOTE_ITEMS_API] Added quote: {quote_data['quote_date']}, opp_id: {quote_data['opportunity_id']}")
         
         if not quotes_data:
             return JsonResponse({
                 'error': '견적 품목이 없습니다.'
             })
         
-        logger.info(f"[QUOTE_ITEMS_API] Returning {len(quotes_data)} quotes")
         return JsonResponse({
             'success': True,
             'quotes': quotes_data,  # 모든 견적 반환
@@ -10096,8 +10036,6 @@ def followup_meetings_api(request, followup_id):
         meetings_data = []
         
         for meeting_schedule in meeting_schedules:
-            logger.info(f"[MEETINGS_API] Schedule ID: {meeting_schedule.id}, visit_date: {meeting_schedule.visit_date}")
-            
             meeting_data = {
                 'schedule_id': meeting_schedule.id,
                 'visit_date': meeting_schedule.visit_date.strftime('%Y-%m-%d'),
@@ -10109,9 +10047,7 @@ def followup_meetings_api(request, followup_id):
                 'opportunity_id': meeting_schedule.opportunity.id if meeting_schedule.opportunity else None,
             }
             meetings_data.append(meeting_data)
-            logger.info(f"[MEETINGS_API] Added meeting: {meeting_data['visit_date']}, opp_id: {meeting_data['opportunity_id']}")
         
-        logger.info(f"[MEETINGS_API] Returning {len(meetings_data)} meetings")
         return JsonResponse({
             'success': True,
             'meetings': meetings_data,
@@ -12064,7 +12000,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                         pattern = f'{{{{유효일+{days_str}}}}}'
                                         new_value = new_value.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
                                         replaced_count += 1
-                                        logger.info(f"변수 치환: {pattern} -> {valid_date.strftime('%Y년 %m월 %d일')} in {cell.address}")
                                 
                                 # 일반 변수 치환
                                 for key, value in data_map.items():
@@ -12072,12 +12007,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     if pattern in new_value:
                                         new_value = new_value.replace(pattern, str(value))
                                         replaced_count += 1
-                                        logger.info(f"변수 치환: {pattern} -> {value} in {cell.address}")
                                 
                                 if new_value != original_value:
                                     cell.value = new_value
-                
-                logger.info(f"총 {replaced_count}개 변수 치환 완료")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
@@ -12119,8 +12051,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     file_name = f"[{company_name}] {customer_company}_{doc_name}({today_str}).pdf"
                     content_type = 'application/pdf'
                     
-                    logger.info(f"생성된 파일명 (PDF): {file_name}")
-                    
                 else:
                     # Excel 파일로 저장
                     wb.save(temp_path)
@@ -12148,7 +12078,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     # 파일명 설정
                     file_name = f"[{company_name}] {customer_company}_{doc_name}({today_str}).xlsx"
                 
-                logger.info(f"생성된 파일명: {file_name}")
                 encoded_filename = quote(file_name)
                 
                 # 서류 생성 로그 저장
@@ -12171,7 +12100,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 response['X-Filename'] = encoded_filename
                 response['Access-Control-Expose-Headers'] = 'X-Filename'
                 
-                logger.info(f"서류 생성 완료 ({output_format.upper()}): {document_template.name} - {schedule.followup.customer_name}")
                 return response
                 
             except Exception as excel_error:
@@ -12213,7 +12141,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             encoded_filename = quote(file_name)
             response['Content-Disposition'] = f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_filename}'
             
-            logger.info(f"서류 다운로드: {document_template.name} - {schedule.followup.customer_name}")
             return response
         
     except Exception as e:

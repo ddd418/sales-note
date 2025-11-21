@@ -86,11 +86,8 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
     except Schedule.DoesNotExist:
         return
     
-    logger.info(f"[SIGNAL_PRE_SAVE] Schedule ID: {instance.pk}, activity_type: {instance.activity_type}, status: {old_schedule.status} → {instance.status}")
-    
     # OpportunityTracking이 연결되어 있으면 업데이트
     if instance.opportunity:
-        logger.info(f"[SIGNAL_PRE_SAVE] OpportunityTracking ID: {instance.opportunity.id}, current_stage: {instance.opportunity.current_stage}")
         opportunity = instance.opportunity
         
         # 예상 매출액 변경 시
@@ -118,8 +115,6 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
         if (instance.status == 'completed' and 
             old_schedule.status != 'completed' and 
             instance.activity_type == 'delivery'):
-            
-            logger.info(f"[SIGNAL_PRE_SAVE] 납품 완료 감지 - OpportunityTracking을 'won'으로 전환")
             
             # 납품 품목의 제품 판매횟수 증가
             for delivery_item in instance.delivery_items_set.all():
@@ -166,8 +161,6 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
               old_schedule.status != 'cancelled' and 
               instance.activity_type == 'quote'):
             
-            logger.info(f"[SIGNAL_PRE_SAVE] 견적 취소 감지 - OpportunityTracking을 'quote_lost'로 전환")
-            
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'quote_lost'
             opportunity.stage_entry_date = date.today()
@@ -195,8 +188,6 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
               old_schedule.status == 'cancelled' and 
               instance.activity_type == 'quote' and
               opportunity.current_stage == 'quote_lost'):
-            
-            logger.info(f"[SIGNAL_PRE_SAVE] 견적 복원 감지 - OpportunityTracking을 'quote'로 복원")
             
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'quote'
@@ -240,8 +231,6 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
               instance.activity_type == 'customer_meeting' and
               opportunity.current_stage == 'lead'):
             
-            logger.info(f"[SIGNAL_PRE_SAVE] 미팅 완료 감지 (lead → contact) - OpportunityTracking ID: {opportunity.id}")
-            
             # lead → contact 단계로 변경 (미팅 완료)
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'contact'
@@ -263,10 +252,7 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
                 'exited': None,
                 'note': f'고객 미팅 완료로 자동 전환 (일정 ID: {instance.id})'
             })
-        else:
-            logger.info(f"[SIGNAL_PRE_SAVE] 단계 전환 조건 미충족 - 현재 단계 유지: {opportunity.current_stage}")
         
-        logger.info(f"[SIGNAL_PRE_SAVE] OpportunityTracking 저장 - 최종 단계: {opportunity.current_stage}")
         opportunity.save()
 
 
