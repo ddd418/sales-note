@@ -11524,8 +11524,9 @@ def document_template_list(request):
 
 
 @login_required
+@role_required(['admin', 'manager'])
 def document_template_create(request):
-    """서류 템플릿 생성"""
+    """서류 템플릿 생성 (Admin, Manager 전용)"""
     from reporting.models import DocumentTemplate
     import os
     
@@ -11580,8 +11581,9 @@ def document_template_create(request):
 
 
 @login_required
+@role_required(['admin', 'manager'])
 def document_template_edit(request, pk):
-    """서류 템플릿 수정"""
+    """서류 템플릿 수정 (Admin, Manager 전용)"""
     from reporting.models import DocumentTemplate
     import os
     
@@ -11631,9 +11633,10 @@ def document_template_edit(request, pk):
 
 
 @login_required
+@role_required(['admin', 'manager'])
 @require_POST
 def document_template_delete(request, pk):
-    """서류 템플릿 삭제"""
+    """서류 템플릿 삭제 (Admin, Manager 전용)"""
     from reporting.models import DocumentTemplate
     
     template = get_object_or_404(DocumentTemplate, pk=pk)
