@@ -299,6 +299,63 @@ body.modal-open .col-md-10 {
             </div>
           </div>
 
+          <!-- 서류 다운로드 섹션 -->
+          <div class="row mt-4">
+            <div class="col-12">
+              <h3 class="mb-3 text-success">
+                <i class="fas fa-file-download me-2"></i>서류 다운로드
+              </h3>
+              <div class="card">
+                <div class="card-body">
+                  <div class="row">
+                    {% if schedule.activity_type == 'quote' %}
+                    <div class="col-md-12 mb-3">
+                      <h6 class="text-muted mb-3">
+                        <i class="fas fa-file-invoice"></i> 견적서
+                      </h6>
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100 mb-2" onclick="generateDocument('quotation', '{{ schedule.pk }}', 'pdf')">
+                        <i class="fas fa-file-pdf me-1"></i> PDF 다운로드
+                      </button>
+                      <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('quotation', '{{ schedule.pk }}', 'xlsx')">
+                        <i class="fas fa-file-excel me-1"></i> Excel 다운로드
+                      </button>
+                      <small class="text-muted d-block">
+                        등록된 납품 품목을 포함한 견적서를 생성합니다.
+                      </small>
+                    </div>
+                    {% endif %}
+                    
+                    {% if schedule.activity_type == 'delivery' %}
+                    <div class="col-md-12 mb-3">
+                      <h6 class="text-muted mb-3">
+                        <i class="fas fa-file-alt"></i> 거래명세서
+                      </h6>
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100 mb-2" onclick="generateDocument('transaction_statement', '{{ schedule.pk }}', 'pdf')">
+                        <i class="fas fa-file-pdf me-1"></i> PDF 다운로드
+                      </button>
+                      <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('transaction_statement', '{{ schedule.pk }}', 'xlsx')">
+                        <i class="fas fa-file-excel me-1"></i> Excel 다운로드
+                      </button>
+                      <small class="text-muted d-block">
+                        납품 완료된 품목의 거래명세서를 생성합니다.
+                      </small>
+                    </div>
+                    {% endif %}
+                  </div>
+                  
+                  <div class="alert alert-info mb-0 mt-2">
+                    <i class="fas fa-info-circle"></i>
+                    <small>
+                      <strong>서류 생성:</strong> 
+                      등록된 품목 정보를 기반으로 PDF 서류가 자동 생성됩니다. 
+                      서류 템플릿은 <a href="{% url 'reporting:document_template_list' %}" target="_blank">서류 관리</a>에서 등록/수정할 수 있습니다.
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 납품 품목 편집 모달 -->
           <div class="modal fade" id="deliveryItemsModal" tabindex="-1" aria-labelledby="deliveryItemsModalLabel" aria-hidden="true" style="z-index: 100000;" data-bs-backdrop="static" data-bs-keyboard="false">
             <div class="modal-dialog modal-xl">
@@ -1343,6 +1400,84 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+// 서류 생성 함수
+async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx') {
+  try {
+    // 로딩 표시
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> 생성 중...';
+    
+    const response = await fetch(`/reporting/documents/generate/${documentType}/${scheduleId}/${outputFormat}/`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': '{{ csrf_token }}'
+      }
+    });
+    
+    if (response.ok) {
+      // Content-Type 확인
+      const contentType = response.headers.get('Content-Type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        // JSON 오류 응답
+        const data = await response.json();
+        throw new Error(data.error || '서류 생성에 실패했습니다.');
+      }
+      
+      // 파일 다운로드
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // 파일명 설정 - X-Filename 커스텀 헤더에서 가져오기
+      let filename = documentType === 'quotation' ? '견적서' : '거래명세서';
+      filename += outputFormat === 'pdf' ? '.pdf' : '.xlsx';
+      
+      const customFilename = response.headers.get('X-Filename');
+      if (customFilename) {
+        filename = decodeURIComponent(customFilename);
+        console.log('파일명 (X-Filename):', filename);
+      } else {
+        console.log('X-Filename 헤더 없음, 기본 파일명 사용:', filename);
+      }
+      
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      alert('서류가 다운로드되었습니다.');
+    } else {
+      // 에러 응답 처리
+      const contentType = response.headers.get('Content-Type');
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json();
+        throw new Error(error.error || '서류 생성에 실패했습니다.');
+      } else {
+        throw new Error('서류 생성에 실패했습니다.');
+      }
+    }
+    
+    // 버튼 복구
+    button.disabled = false;
+    button.innerHTML = originalHTML;
+    
+  } catch (error) {
+    console.error('서류 생성 오류:', error);
+    alert('서류 생성 실패: ' + error.message);
+    console.error('Error:', error);
+    alert('서류 생성 중 오류가 발생했습니다.');
+    
+    // 버튼 복구
+    const button = event.target.closest('button');
+    button.disabled = false;
+  }
+}
 </script>
 
 {% endblock %}

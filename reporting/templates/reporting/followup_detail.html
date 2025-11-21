@@ -143,6 +143,71 @@
           </div>
           {% endif %}
 
+          <!-- 서류 다운로드 섹션 -->
+          {% if quotation_templates or transaction_templates %}
+          <div class="row mt-4">
+            <div class="col-12">
+              <h3 class="mb-3 text-success">
+                <i class="fas fa-file-download me-2"></i>서류 다운로드
+              </h3>
+              <div class="p-3 bg-light rounded border">
+                <div class="row">
+                  {% if quotation_templates %}
+                  <div class="col-md-6 mb-3">
+                    <h6 class="text-muted mb-2">
+                      <i class="fas fa-file-invoice"></i> 견적서
+                    </h6>
+                    <div class="list-group">
+                      {% for template in quotation_templates %}
+                      <a href="{% url 'reporting:document_template_download' template.pk %}" 
+                         class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <span>
+                          <i class="fas fa-file-{% if template.file_type == 'pdf' %}pdf text-danger{% else %}excel text-success{% endif %} me-2"></i>
+                          {{ template.name }}
+                        </span>
+                        {% if template.is_default %}
+                        <span class="badge bg-primary">기본</span>
+                        {% endif %}
+                      </a>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  {% endif %}
+                  
+                  {% if transaction_templates %}
+                  <div class="col-md-6 mb-3">
+                    <h6 class="text-muted mb-2">
+                      <i class="fas fa-file-alt"></i> 거래명세서
+                    </h6>
+                    <div class="list-group">
+                      {% for template in transaction_templates %}
+                      <a href="{% url 'reporting:document_template_download' template.pk %}" 
+                         class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <span>
+                          <i class="fas fa-file-{% if template.file_type == 'pdf' %}pdf text-danger{% else %}excel text-success{% endif %} me-2"></i>
+                          {{ template.name }}
+                        </span>
+                        {% if template.is_default %}
+                        <span class="badge bg-primary">기본</span>
+                        {% endif %}
+                      </a>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  {% endif %}
+                </div>
+                <div class="alert alert-info mb-0 mt-2">
+                  <i class="fas fa-info-circle"></i>
+                  <small>
+                    <strong>향후 이메일 발송 기능:</strong> 
+                    서류를 다운로드하여 직접 전송하거나, 향후 추가될 이메일 발송 기능을 통해 고객에게 직접 전송할 수 있습니다.
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
           <!-- 메타 정보 -->
           <div class="row mt-4">
             <div class="col-12">

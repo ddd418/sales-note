@@ -459,6 +459,12 @@
             <span>제품 관리</span>
           </a>
         </li>
+        <li class="nav-item">
+          <a href="{% url 'reporting:document_template_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':17' == 'document_template' %}active{% endif %}">
+            <i class="fas fa-file-alt"></i>
+            <span>서류 관리</span>
+          </a>
+        </li>
         {% if user.userprofile.role == 'manager' %}
         <li class="nav-item">
           <a href="{% url 'reporting:manager_company_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}">

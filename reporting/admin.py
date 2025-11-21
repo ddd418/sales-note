@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
-    Company, Department
+    Company, Department, DocumentTemplate, EmailLog
 )
 
 # UserProfile 인라인 관리자
@@ -380,4 +380,74 @@ class PrepaymentUsageAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         # 삭제 불가 (잔액 계산 무결성)
+        return False
+
+
+# DocumentTemplate 모델 관리자 설정
+@admin.register(DocumentTemplate)
+class DocumentTemplateAdmin(admin.ModelAdmin):
+    list_display = ('name', 'company', 'document_type', 'file_type', 'is_default', 'is_active', 'created_by', 'created_at')
+    list_filter = ('company', 'document_type', 'file_type', 'is_default', 'is_active', 'created_at')
+    search_fields = ('name', 'description', 'company__name')
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+    
+    readonly_fields = ('created_at', 'updated_at')
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('company', 'document_type', 'name', 'description')
+        }),
+        ('파일', {
+            'fields': ('file', 'file_type')
+        }),
+        ('설정', {
+            'fields': ('is_active', 'is_default')
+        }),
+        ('이메일 템플릿 (향후 사용)', {
+            'fields': ('email_subject_template', 'email_body_template'),
+            'classes': ('collapse',)
+        }),
+        ('메타 정보', {
+            'fields': ('created_by', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+# EmailLog 모델 관리자 설정
+@admin.register(EmailLog)
+class EmailLogAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'recipient_email', 'recipient_name', 'sender', 'status', 'sent_at', 'created_at')
+    list_filter = ('status', 'sent_at', 'created_at')
+    search_fields = ('subject', 'recipient_email', 'recipient_name', 'body')
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+    
+    readonly_fields = ('created_at', 'sent_at')
+    
+    fieldsets = (
+        ('발신/수신 정보', {
+            'fields': ('sender', 'recipient_email', 'recipient_name')
+        }),
+        ('메일 내용', {
+            'fields': ('subject', 'body')
+        }),
+        ('첨부 파일', {
+            'fields': ('document_template', 'attachment')
+        }),
+        ('연결 정보', {
+            'fields': ('followup', 'schedule')
+        }),
+        ('발송 상태', {
+            'fields': ('status', 'sent_at', 'error_message')
+        }),
+        ('메타 정보', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def has_add_permission(self, request):
+        # Admin에서 직접 추가 불가 (뷰에서만 생성)
         return False

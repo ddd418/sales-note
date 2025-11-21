@@ -1,0 +1,215 @@
+{% load currency_filters %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ document_title }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #333;
+            padding-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 28pt;
+            margin: 0;
+            color: #2c3e50;
+        }
+        .company-info {
+            text-align: right;
+            margin-bottom: 20px;
+            font-size: 10pt;
+        }
+        .customer-info {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .customer-info h2 {
+            font-size: 14pt;
+            margin-top: 0;
+            color: #007bff;
+        }
+        .info-row {
+            margin: 8px 0;
+        }
+        .info-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 120px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+        }
+        td.number {
+            text-align: right;
+        }
+        td.center {
+            text-align: center;
+        }
+        .total-section {
+            margin-top: 30px;
+            float: right;
+            width: 400px;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .total-row.grand-total {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            font-size: 14pt;
+            border: none;
+        }
+        .footer {
+            clear: both;
+            margin-top: 80px;
+            padding-top: 20px;
+            border-top: 2px solid #333;
+            text-align: center;
+            font-size: 10pt;
+            color: #6c757d;
+        }
+        .note {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            font-size: 10pt;
+        }
+    </style>
+</head>
+<body>
+    <!-- 회사 정보 -->
+    <div class="company-info">
+        <strong>{{ company.name }}</strong><br>
+        발행일: {{ generated_date|date:"Y년 m월 d일" }}
+    </div>
+
+    <!-- 헤더 -->
+    <div class="header">
+        <h1>{{ document_title }}</h1>
+    </div>
+
+    <!-- 고객 정보 -->
+    <div class="customer-info">
+        <h2>받는 분</h2>
+        <div class="info-row">
+            <span class="info-label">고객명:</span>
+            <span>{{ schedule.followup.customer_name }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">업체/학교:</span>
+            <span>{{ schedule.followup.company }}</span>
+        </div>
+        {% if schedule.followup.department %}
+        <div class="info-row">
+            <span class="info-label">부서/연구실:</span>
+            <span>{{ schedule.followup.department }}</span>
+        </div>
+        {% endif %}
+        {% if schedule.followup.email %}
+        <div class="info-row">
+            <span class="info-label">이메일:</span>
+            <span>{{ schedule.followup.email }}</span>
+        </div>
+        {% endif %}
+        {% if schedule.followup.phone_number %}
+        <div class="info-row">
+            <span class="info-label">연락처:</span>
+            <span>{{ schedule.followup.phone_number }}</span>
+        </div>
+        {% endif %}
+        <div class="info-row">
+            <span class="info-label">일정 날짜:</span>
+            <span>{{ schedule.visit_date|date:"Y년 m월 d일" }}</span>
+        </div>
+    </div>
+
+    <!-- 품목 테이블 -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 50px;">번호</th>
+                <th>품목명</th>
+                <th style="width: 80px;">수량</th>
+                <th style="width: 120px;">단가</th>
+                <th style="width: 140px;">금액</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in delivery_items %}
+            <tr>
+                <td class="center">{{ forloop.counter }}</td>
+                <td>{{ item.item_name }}</td>
+                <td class="center">{{ item.quantity }}</td>
+                <td class="number">{{ item.unit_price|floatformat:0 }}원</td>
+                <td class="number">{{ item.unit_price|multiply:item.quantity|floatformat:0 }}원</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- 합계 -->
+    <div class="total-section">
+        <div class="total-row">
+            <span>소계:</span>
+            <span>{{ subtotal|floatformat:0 }}원</span>
+        </div>
+        <div class="total-row">
+            <span>부가세 (10%):</span>
+            <span>{{ tax|floatformat:0 }}원</span>
+        </div>
+        <div class="total-row grand-total">
+            <span>총액:</span>
+            <span>{{ total|floatformat:0 }}원</span>
+        </div>
+    </div>
+
+    <!-- 참고사항 -->
+    {% if document_type == 'quotation' %}
+    <div class="note">
+        <strong>참고사항:</strong><br>
+        - 상기 금액은 부가세가 포함된 금액입니다.<br>
+        - 견적 유효기간은 발행일로부터 30일입니다.<br>
+        - 제품 재고 상황에 따라 납기가 변동될 수 있습니다.
+    </div>
+    {% endif %}
+
+    <!-- 푸터 -->
+    <div class="footer">
+        <p>본 문서는 {{ company.name }}에서 발행한 공식 {{ document_title }}입니다.</p>
+        <p style="color: #999; font-size: 9pt;">향후 이메일 발송 기능이 추가될 예정입니다.</p>
+    </div>
+</body>
+</html>

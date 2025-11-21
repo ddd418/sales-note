@@ -74,6 +74,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',  # CSRF 미들웨어 재활성화
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'reporting.middleware.TimezoneMiddleware',  # 한국 시간대 미들웨어
     'reporting.middleware.CompanyFilterMiddleware',  # 회사 필터링 미들웨어 추가
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

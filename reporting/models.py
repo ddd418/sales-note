@@ -330,7 +330,7 @@ class DeliveryItem(models.Model):
     # 기존 필드들 (product가 없을 때 직접 입력)
     item_name = models.CharField(max_length=200, verbose_name="품목명")
     quantity = models.PositiveIntegerField(verbose_name="수량")
-    unit = models.CharField(max_length=50, default="개", verbose_name="단위")
+    unit = models.CharField(max_length=50, default="EA", verbose_name="단위")
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="단가")
     total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행여부")
@@ -342,6 +342,10 @@ class DeliveryItem(models.Model):
         # product가 선택된 경우 제품 정보로 자동 채우기
         if self.product:
             self.item_name = self.product.product_code
+            
+            # 단위 자동 설정
+            if hasattr(self.product, 'unit') and self.product.unit:
+                self.unit = self.product.unit
             
             # 단가가 명시적으로 None인 경우에만 제품 가격 사용 (0 포함 모든 숫자는 유지)
             if self.unit_price is None:
@@ -372,6 +376,10 @@ class DeliveryItem(models.Model):
 class Product(models.Model):
     # 기본 정보
     product_code = models.CharField(max_length=50, unique=True, verbose_name="제품 코드 (품번)")
+    
+    # 규격 및 단위
+    unit = models.CharField(max_length=50, default="EA", verbose_name="단위")
+    specification = models.CharField(max_length=200, blank=True, verbose_name="규격")
     
     # 가격
     standard_price = models.DecimalField(max_digits=15, decimal_places=0, verbose_name="정상가 (단가)")
@@ -826,3 +834,213 @@ class PersonalSchedule(models.Model):
         verbose_name = "개인 일정"
         verbose_name_plural = "개인 일정 목록"
         ordering = ['-schedule_date', '-schedule_time']
+
+
+# 서류 템플릿 (DocumentTemplate) 모델 - 회사별 견적서/거래명세서 등
+class DocumentTemplate(models.Model):
+    """
+    회사별 서류 템플릿 관리
+    - 견적서, 거래명세서 등의 양식을 엑셀/PDF로 업로드
+    - 견적/수주 단계에서 다운로드 가능
+    - 향후 이메일 발송 기능에도 사용
+    """
+    DOCUMENT_TYPE_CHOICES = [
+        ('quotation', '견적서'),
+        ('transaction_statement', '거래명세서'),
+        ('delivery_note', '납품서'),
+    ]
+    
+    company = models.ForeignKey(
+        UserCompany, 
+        on_delete=models.CASCADE, 
+        related_name='document_templates',
+        verbose_name="소속 회사"
+    )
+    document_type = models.CharField(
+        max_length=50, 
+        choices=DOCUMENT_TYPE_CHOICES,
+        verbose_name="서류 종류"
+    )
+    name = models.CharField(max_length=200, verbose_name="서류명")
+    file = models.FileField(
+        upload_to='document_templates/%Y/%m/',
+        verbose_name="파일"
+    )
+    file_type = models.CharField(
+        max_length=10,
+        choices=[('xlsx', 'Excel'), ('pdf', 'PDF')],
+        verbose_name="파일 형식"
+    )
+    description = models.TextField(blank=True, verbose_name="설명")
+    is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+    is_default = models.BooleanField(default=False, verbose_name="기본 템플릿 여부")
+    
+    # 이메일 발송용 필드 (향후 사용)
+    email_subject_template = models.CharField(
+        max_length=200, 
+        blank=True,
+        verbose_name="이메일 제목 템플릿",
+        help_text="예: {customer_name}님께 {document_type} 발송"
+    )
+    email_body_template = models.TextField(
+        blank=True,
+        verbose_name="이메일 본문 템플릿",
+        help_text="향후 이메일 발송 시 사용될 본문 템플릿"
+    )
+    
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        verbose_name="생성자"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def __str__(self):
+        return f"{self.company.name} - {self.get_document_type_display()} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        # 같은 회사의 같은 document_type에서 기본 템플릿은 하나만
+        if self.is_default:
+            DocumentTemplate.objects.filter(
+                company=self.company,
+                document_type=self.document_type,
+                is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        verbose_name = "서류 템플릿"
+        verbose_name_plural = "서류 템플릿 목록"
+        ordering = ['-is_default', '-created_at']
+        # unique_together 제거 - 같은 이름으로 여러 버전 등록 가능
+
+
+# 이메일 발송 로그 (EmailLog) 모델 - 향후 이메일 연동용
+class EmailLog(models.Model):
+    """
+    이메일 발송 기록 (향후 구현)
+    - 서류 템플릿을 이메일로 발송한 기록
+    - 견적서, 거래명세서 등 발송 이력 추적
+    """
+    STATUS_CHOICES = [
+        ('pending', '발송 대기'),
+        ('sent', '발송 완료'),
+        ('failed', '발송 실패'),
+    ]
+    
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='sent_emails',
+        verbose_name="발신자"
+    )
+    recipient_email = models.EmailField(verbose_name="수신자 이메일")
+    recipient_name = models.CharField(max_length=100, blank=True, verbose_name="수신자명")
+    
+    subject = models.CharField(max_length=200, verbose_name="제목")
+    body = models.TextField(verbose_name="본문")
+    
+    # 첨부 서류
+    document_template = models.ForeignKey(
+        DocumentTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="첨부 서류 템플릿"
+    )
+    attachment = models.FileField(
+        upload_to='email_attachments/%Y/%m/',
+        blank=True,
+        null=True,
+        verbose_name="첨부 파일"
+    )
+    
+    # 연결 정보
+    followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="관련 팔로우업"
+    )
+    schedule = models.ForeignKey(
+        'Schedule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="관련 일정"
+    )
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="발송 상태"
+    )
+    sent_at = models.DateTimeField(null=True, blank=True, verbose_name="발송 일시")
+    error_message = models.TextField(blank=True, verbose_name="오류 메시지")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    
+    def __str__(self):
+        return f"{self.subject} → {self.recipient_email} ({self.get_status_display()})"
+    
+    class Meta:
+        verbose_name = "이메일 발송 로그"
+        verbose_name_plural = "이메일 발송 로그"
+        ordering = ['-created_at']
+
+
+# 서류 생성 로그 (DocumentGenerationLog) 모델
+class DocumentGenerationLog(models.Model):
+    """
+    서류 생성(다운로드) 기록
+    - 견적서, 거래명세서 등 서류 생성 시마다 로그 저장
+    - 날짜별 거래번호 순서를 추적하기 위해 사용
+    """
+    company = models.ForeignKey(
+        UserCompany,
+        on_delete=models.CASCADE,
+        related_name='document_logs',
+        verbose_name="소속 회사"
+    )
+    document_type = models.CharField(
+        max_length=50,
+        choices=DocumentTemplate.DOCUMENT_TYPE_CHOICES,
+        verbose_name="서류 종류"
+    )
+    schedule = models.ForeignKey(
+        'Schedule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="관련 일정"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name="생성자"
+    )
+    transaction_number = models.CharField(max_length=50, verbose_name="거래번호")
+    output_format = models.CharField(
+        max_length=10,
+        choices=[('pdf', 'PDF'), ('xlsx', 'Excel')],
+        verbose_name="출력 형식"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일", db_index=True)
+    
+    def __str__(self):
+        return f"{self.transaction_number} - {self.get_document_type_display()}"
+    
+    class Meta:
+        verbose_name = "서류 생성 로그"
+        verbose_name_plural = "서류 생성 로그"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'created_at']),
+            models.Index(fields=['document_type', 'created_at']),
+        ]

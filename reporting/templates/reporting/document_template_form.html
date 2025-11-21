@@ -1,0 +1,112 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-file-alt"></i> {{ page_title }}</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label for="document_type" class="form-label">서류 종류 <span class="text-danger">*</span></label>
+                            <select name="document_type" id="document_type" class="form-select" required>
+                                <option value="">선택하세요</option>
+                                {% for type_code, type_name in document_types %}
+                                <option value="{{ type_code }}" {% if template and template.document_type == type_code %}selected{% endif %}>
+                                    {{ type_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="name" class="form-label">서류명 <span class="text-danger">*</span></label>
+                            <input type="text" 
+                                   name="name" 
+                                   id="name" 
+                                   class="form-control" 
+                                   value="{{ template.name|default:'' }}"
+                                   placeholder="예: 2024년 표준 견적서"
+                                   required>
+                            <small class="form-text text-muted">서류를 구분할 수 있는 이름을 입력하세요.</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="file" class="form-label">
+                                파일 {% if not template %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <input type="file" 
+                                   name="file" 
+                                   id="file" 
+                                   class="form-control"
+                                   accept=".xlsx,.xls,.pdf"
+                                   {% if not template %}required{% endif %}>
+                            <small class="form-text text-muted">
+                                엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.
+                            </small>
+                            {% if template and template.file %}
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    현재 파일: 
+                                    <a href="{% url 'reporting:document_template_download' template.pk %}" target="_blank">
+                                        <i class="fas fa-file-{% if template.file_type == 'pdf' %}pdf{% else %}excel{% endif %}"></i>
+                                        {{ template.file.name|slice:"20:" }}
+                                    </a>
+                                </small>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">설명</label>
+                            <textarea name="description" 
+                                      id="description" 
+                                      class="form-control" 
+                                      rows="3"
+                                      placeholder="이 서류에 대한 간단한 설명을 입력하세요.">{{ template.description|default:'' }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" 
+                                   name="is_default" 
+                                   id="is_default" 
+                                   class="form-check-input"
+                                   {% if template and template.is_default %}checked{% endif %}>
+                            <label for="is_default" class="form-check-label">
+                                기본 템플릿으로 설정
+                            </label>
+                            <small class="form-text text-muted d-block">
+                                기본 템플릿으로 설정하면 견적/수주 단계에서 이 서류가 우선적으로 표시됩니다.
+                            </small>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>향후 이메일 연동 기능</strong><br>
+                            등록한 서류는 향후 이메일 발송 기능이 추가되면 고객에게 직접 이메일로 전송할 수 있습니다.
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'reporting:document_template_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> 목록으로
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> 
+                                {% if template %}수정{% else %}등록{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
+from django.utils import timezone
 from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
 import os
 import mimetypes
@@ -725,9 +726,26 @@ def followup_detail_view(request, pk):
         )
     ).order_by('-sort_date', '-created_at')[:20]
     
+    # 서류 템플릿 조회 (견적서, 거래명세서 등)
+    from reporting.models import DocumentTemplate
+    user_company = request.user.userprofile.company
+    quotation_templates = DocumentTemplate.objects.filter(
+        company=user_company,
+        document_type='quotation',
+        is_active=True
+    ).order_by('-is_default', '-created_at')
+    
+    transaction_templates = DocumentTemplate.objects.filter(
+        company=user_company,
+        document_type='transaction_statement',
+        is_active=True
+    ).order_by('-is_default', '-created_at')
+    
     context = {
         'followup': followup,
         'related_histories': related_histories,
+        'quotation_templates': quotation_templates,
+        'transaction_templates': transaction_templates,
         'page_title': f'팔로우업 상세 - {followup.customer_name}'
     }
     return render(request, 'reporting/followup_detail.html', context)
@@ -11234,6 +11252,10 @@ def product_create(request):
                 # 선택 필드들
                 if request.POST.get('description'):
                     product.description = request.POST.get('description')
+                if request.POST.get('specification'):
+                    product.specification = request.POST.get('specification')
+                if request.POST.get('unit'):
+                    product.unit = request.POST.get('unit')
                 
                 # 프로모션 설정
                 if request.POST.get('is_promo') == 'on':
@@ -11323,7 +11345,7 @@ def product_create(request):
 @login_required
 @require_POST
 def product_bulk_create(request):
-    """엑셀 데이터 일괄 제품 등록 (AJAX)"""
+    """엑셀 데이터 일괄 제품 등록 (AJAX) - 중복 시 업데이트"""
     from reporting.models import Product
     from decimal import Decimal
     from django.db import IntegrityError
@@ -11340,33 +11362,61 @@ def product_bulk_create(request):
             }, status=400)
         
         created_count = 0
+        updated_count = 0
         skipped_count = 0
         errors = []
         
         for item in products_data:
             try:
                 product_code = item.get('product_code', '').strip()
+                product_name = item.get('product_name', '').strip()
+                specification = item.get('specification', '').strip()
+                unit = item.get('unit', 'EA').strip()
+                standard_price = Decimal(str(item.get('standard_price', 0)))
                 
-                # 품번 중복 체크
-                if Product.objects.filter(product_code=product_code).exists():
-                    skipped_count += 1
-                    errors.append(f'{product_code}: 이미 존재하는 품번')
-                    continue
+                # 기존 제품 체크
+                existing = Product.objects.filter(product_code=product_code).first()
                 
-                product = Product(
-                    product_code=product_code,
-                    description=item.get('description', '').strip(),
-                    standard_price=Decimal(str(item.get('standard_price', 0))),
-                    is_active=True,
-                    created_by=request.user
-                )
+                if existing:
+                    # 데이터가 다르면 업데이트
+                    needs_update = False
+                    if product_name and existing.description != product_name:
+                        existing.description = product_name
+                        needs_update = True
+                    if specification and existing.specification != specification:
+                        existing.specification = specification
+                        needs_update = True
+                    if unit and existing.unit != unit:
+                        existing.unit = unit
+                        needs_update = True
+                    if standard_price and existing.standard_price != standard_price:
+                        existing.standard_price = standard_price
+                        needs_update = True
+                    
+                    if needs_update:
+                        existing.save()
+                        updated_count += 1
+                    else:
+                        skipped_count += 1
+                        errors.append(f'{product_code}: 동일한 데이터 (변경 없음)')
+                else:
+                    # 신규 등록
+                    product = Product(
+                        product_code=product_code,
+                        description=product_name or product_code,
+                        specification=specification,
+                        unit=unit,
+                        standard_price=standard_price,
+                        is_active=True,
+                        created_by=request.user
+                    )
+                    product.save()
+                    created_count += 1
                 
-                product.save()
-                created_count += 1
-                
-            except IntegrityError:
+            except IntegrityError as e:
                 skipped_count += 1
-                errors.append(f'{product_code}: 중복된 품번')
+                errors.append(f'{product_code}: 데이터베이스 오류')
+                logger.error(f"제품 등록 실패 ({product_code}): {e}")
             except Exception as e:
                 errors.append(f'{product_code}: {str(e)}')
                 logger.error(f"제품 등록 실패 ({product_code}): {e}")
@@ -11374,6 +11424,7 @@ def product_bulk_create(request):
         return JsonResponse({
             'success': True,
             'created_count': created_count,
+            'updated_count': updated_count,
             'skipped_count': skipped_count,
             'errors': errors
         })
@@ -11504,3 +11555,672 @@ def product_api_list(request):
     } for p in products]
     
     return JsonResponse({'products': products_data})
+
+
+# ============================================================
+# 서류 템플릿 관리 뷰
+# ============================================================
+
+@login_required
+def document_template_list(request):
+    """서류 템플릿 목록"""
+    from reporting.models import DocumentTemplate
+    
+    # 자신의 회사 서류만 조회
+    user_company = request.user.userprofile.company
+    templates = DocumentTemplate.objects.filter(
+        company=user_company,
+        is_active=True
+    ).select_related('created_by')
+    
+    # 서류 종류별 필터
+    document_type = request.GET.get('type')
+    if document_type:
+        templates = templates.filter(document_type=document_type)
+    
+    context = {
+        'templates': templates,
+        'selected_type': document_type,
+        'document_types': DocumentTemplate.DOCUMENT_TYPE_CHOICES,
+        'page_title': '서류 관리'
+    }
+    return render(request, 'reporting/document_template_list.html', context)
+
+
+@login_required
+def document_template_create(request):
+    """서류 템플릿 생성"""
+    from reporting.models import DocumentTemplate
+    import os
+    
+    if request.method == 'POST':
+        try:
+            user_company = request.user.userprofile.company
+            
+            document_type = request.POST.get('document_type')
+            name = request.POST.get('name')
+            description = request.POST.get('description', '')
+            is_default = request.POST.get('is_default') == 'on'
+            file = request.FILES.get('file')
+            
+            if not file:
+                messages.error(request, '파일을 선택해주세요.')
+                return redirect('reporting:document_template_create')
+            
+            # 파일 확장자 확인
+            file_ext = os.path.splitext(file.name)[1].lower()
+            if file_ext == '.xlsx' or file_ext == '.xls':
+                file_type = 'xlsx'
+            elif file_ext == '.pdf':
+                file_type = 'pdf'
+            else:
+                messages.error(request, '엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.')
+                return redirect('reporting:document_template_create')
+            
+            template = DocumentTemplate.objects.create(
+                company=user_company,
+                document_type=document_type,
+                name=name,
+                file=file,
+                file_type=file_type,
+                description=description,
+                is_default=is_default,
+                created_by=request.user
+            )
+            
+            messages.success(request, f'서류 "{name}"이(가) 등록되었습니다.')
+            return redirect('reporting:document_template_list')
+            
+        except Exception as e:
+            logger.error(f"서류 템플릿 등록 실패: {e}")
+            messages.error(request, f'서류 등록에 실패했습니다: {str(e)}')
+    
+    from reporting.models import DocumentTemplate
+    context = {
+        'document_types': DocumentTemplate.DOCUMENT_TYPE_CHOICES,
+        'page_title': '서류 등록'
+    }
+    return render(request, 'reporting/document_template_form.html', context)
+
+
+@login_required
+def document_template_edit(request, pk):
+    """서류 템플릿 수정"""
+    from reporting.models import DocumentTemplate
+    import os
+    
+    template = get_object_or_404(DocumentTemplate, pk=pk)
+    
+    # 권한 체크: 자신의 회사 서류만 수정 가능
+    if template.company != request.user.userprofile.company:
+        messages.error(request, '다른 회사의 서류는 수정할 수 없습니다.')
+        return redirect('reporting:document_template_list')
+    
+    if request.method == 'POST':
+        try:
+            template.document_type = request.POST.get('document_type')
+            template.name = request.POST.get('name')
+            template.description = request.POST.get('description', '')
+            template.is_default = request.POST.get('is_default') == 'on'
+            
+            # 파일 변경 시
+            if 'file' in request.FILES:
+                file = request.FILES['file']
+                file_ext = os.path.splitext(file.name)[1].lower()
+                
+                if file_ext == '.xlsx' or file_ext == '.xls':
+                    template.file_type = 'xlsx'
+                elif file_ext == '.pdf':
+                    template.file_type = 'pdf'
+                else:
+                    messages.error(request, '엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.')
+                    return redirect('reporting:document_template_edit', pk=pk)
+                
+                template.file = file
+            
+            template.save()
+            messages.success(request, f'서류 "{template.name}"이(가) 수정되었습니다.')
+            return redirect('reporting:document_template_list')
+            
+        except Exception as e:
+            logger.error(f"서류 템플릿 수정 실패: {e}")
+            messages.error(request, f'서류 수정에 실패했습니다: {str(e)}')
+    
+    context = {
+        'template': template,
+        'document_types': DocumentTemplate.DOCUMENT_TYPE_CHOICES,
+        'page_title': '서류 수정'
+    }
+    return render(request, 'reporting/document_template_form.html', context)
+
+
+@login_required
+@require_POST
+def document_template_delete(request, pk):
+    """서류 템플릿 삭제"""
+    from reporting.models import DocumentTemplate
+    
+    template = get_object_or_404(DocumentTemplate, pk=pk)
+    
+    # 권한 체크
+    if template.company != request.user.userprofile.company:
+        messages.error(request, '다른 회사의 서류는 삭제할 수 없습니다.')
+        return redirect('reporting:document_template_list')
+    
+    template_name = template.name
+    template.is_active = False
+    template.save()
+    
+    messages.success(request, f'서류 "{template_name}"이(가) 삭제되었습니다.')
+    return redirect('reporting:document_template_list')
+
+
+@login_required
+def document_template_download(request, pk):
+    """서류 템플릿 다운로드"""
+    from reporting.models import DocumentTemplate
+    from django.http import FileResponse
+    import os
+    
+    template = get_object_or_404(DocumentTemplate, pk=pk)
+    
+    # 권한 체크
+    if template.company != request.user.userprofile.company:
+        messages.error(request, '다른 회사의 서류는 다운로드할 수 없습니다.')
+        return redirect('reporting:document_template_list')
+    
+    if not template.file:
+        messages.error(request, '파일이 존재하지 않습니다.')
+        return redirect('reporting:document_template_list')
+    
+    try:
+        file_path = template.file.path
+        file_name = os.path.basename(file_path)
+        
+        response = FileResponse(
+            open(file_path, 'rb'),
+            as_attachment=True,
+            filename=file_name
+        )
+        return response
+    except Exception as e:
+        logger.error(f"파일 다운로드 실패: {e}")
+        messages.error(request, '파일 다운로드에 실패했습니다.')
+        return redirect('reporting:document_template_list')
+
+
+@login_required
+@require_POST
+def document_template_toggle_default(request, pk):
+    """기본 템플릿 설정/해제 (AJAX)"""
+    from reporting.models import DocumentTemplate
+    
+    template = get_object_or_404(DocumentTemplate, pk=pk)
+    
+    # 권한 체크
+    if template.company != request.user.userprofile.company:
+        return JsonResponse({'success': False, 'error': '권한이 없습니다.'}, status=403)
+    
+    template.is_default = not template.is_default
+    template.save()  # save() 메서드에서 자동으로 다른 기본 템플릿 해제
+    
+    return JsonResponse({
+        'success': True,
+        'is_default': template.is_default
+    })
+
+
+@login_required
+@require_POST
+def generate_document_pdf(request, document_type, schedule_id, output_format='xlsx'):
+    """
+    일정 기반 서류 생성 및 다운로드
+    - 업로드된 서류 템플릿에 실제 데이터를 채워서 다운로드
+    - 견적서 (quotation)
+    - 거래명세서 (transaction_statement)
+    
+    output_format:
+    - 'xlsx': 엑셀 파일로 다운로드 (기본값)
+    - 'pdf': PDF 파일로 다운로드
+    
+    템플릿 파일 형식:
+    - 엑셀: {{고객명}}, {{업체명}}, {{품목1_이름}}, {{품목1_수량}}, {{품목1_단가}}, {{품목1_금액}} 등의 변수 사용
+    """
+    from reporting.models import Schedule, DeliveryItem, DocumentTemplate
+    from django.http import HttpResponse, FileResponse
+    from urllib.parse import quote
+    from openpyxl import load_workbook
+    from io import BytesIO
+    from decimal import Decimal
+    import os
+    import re
+    
+    try:
+        schedule = get_object_or_404(Schedule, pk=schedule_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+        
+        # 해당 회사의 기본 서류 템플릿 찾기
+        company = request.user.userprofile.company
+        document_template = DocumentTemplate.objects.filter(
+            company=company,
+            document_type=document_type,
+            is_active=True,
+            is_default=True
+        ).first()
+        
+        if not document_template:
+            # 기본이 없으면 활성화된 첫 번째 템플릿
+            document_template = DocumentTemplate.objects.filter(
+                company=company,
+                document_type=document_type,
+                is_active=True
+            ).first()
+        
+        if not document_template:
+            # 서류 종류 이름 매핑
+            doc_type_names = {
+                'quotation': '견적서',
+                'transaction_statement': '거래명세서',
+                'delivery_note': '납품서',
+            }
+            doc_type_name = doc_type_names.get(document_type, '서류')
+            
+            return JsonResponse({
+                'success': False,
+                'error': f'{doc_type_name} 템플릿이 등록되어 있지 않습니다. 서류 관리 메뉴에서 먼저 템플릿을 등록해주세요.'
+            }, status=404)
+        
+        # 파일이 존재하는지 확인
+        if not document_template.file or not os.path.exists(document_template.file.path):
+            return JsonResponse({
+                'success': False,
+                'error': '서류 템플릿 파일을 찾을 수 없습니다.'
+            }, status=404)
+        
+        # 납품 품목 조회
+        delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
+        
+        # 원본 파일 확장자 확인
+        original_ext = os.path.splitext(document_template.file.name)[1].lower()
+        
+        # 엑셀 파일인 경우 데이터 채우기
+        if original_ext in ['.xlsx', '.xls', '.xlsm']:
+            try:
+                # xlwings를 사용하여 이미지 완벽 보존
+                import xlwings as xw
+                import shutil
+                import tempfile
+                
+                # 원본 파일을 임시 위치에 복사
+                with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
+                    shutil.copy2(document_template.file.path, tmp_file.name)
+                    temp_path = tmp_file.name
+                
+                # xlwings로 파일 열기 (백그라운드, 보이지 않게)
+                app = xw.App(visible=False, add_book=False)
+                app.display_alerts = False
+                app.screen_updating = False
+                
+                wb = app.books.open(temp_path)
+                
+                # 총액 계산
+                subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
+                tax = subtotal * Decimal('0.1')
+                total = subtotal + tax
+                
+                # 총액을 한글로 변환
+                def number_to_korean(number):
+                    """숫자를 한글로 변환 (예: 11633600 -> 일천백육십삼만삼천육백)"""
+                    num = int(number)
+                    if num == 0:
+                        return '영'
+                    
+                    units = ['', '만', '억', '조']
+                    digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
+                    sub_units = ['', '십', '백', '천']
+                    
+                    result = []
+                    unit_idx = 0
+                    
+                    while num > 0:
+                        segment = num % 10000  # 4자리씩 끊기
+                        if segment > 0:
+                            segment_str = []
+                            
+                            # 천의 자리
+                            if segment >= 1000:
+                                d = segment // 1000
+                                if d > 1:
+                                    segment_str.append(digits[d])
+                                segment_str.append('천')
+                                segment %= 1000
+                            
+                            # 백의 자리
+                            if segment >= 100:
+                                d = segment // 100
+                                if d > 1:
+                                    segment_str.append(digits[d])
+                                segment_str.append('백')
+                                segment %= 100
+                            
+                            # 십의 자리
+                            if segment >= 10:
+                                d = segment // 10
+                                if d > 1:
+                                    segment_str.append(digits[d])
+                                segment_str.append('십')
+                                segment %= 10
+                            
+                            # 일의 자리
+                            if segment > 0:
+                                segment_str.append(digits[segment])
+                            
+                            # 만/억/조 단위 추가
+                            if unit_idx > 0:
+                                segment_str.append(units[unit_idx])
+                            
+                            result.insert(0, ''.join(segment_str))
+                        
+                        num //= 10000
+                        unit_idx += 1
+                    
+                    return ''.join(result)
+                
+                total_korean = number_to_korean(total)
+                
+                # 거래번호 생성 (년-월-일-순번) - 한국 시간대 사용
+                import pytz
+                korea_tz = pytz.timezone('Asia/Seoul')
+                today = timezone.now().astimezone(korea_tz)
+                today_str = today.strftime('%Y%m%d')
+                
+                # 오늘 생성된 모든 서류(견적서 + 거래명세서) 개수 + 1
+                from reporting.models import DocumentGenerationLog
+                from django.db.models import Count
+                
+                # 오늘 자정 시각 계산
+                today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+                today_end = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+                
+                # 같은 날짜에 생성된 서류 개수 (견적서 + 거래명세서 모두 포함)
+                today_count = DocumentGenerationLog.objects.filter(
+                    company=company,
+                    created_at__gte=today_start,
+                    created_at__lte=today_end
+                ).count() + 1
+                
+                transaction_number = f"{today.strftime('%Y')}-{today.strftime('%m')}-{today.strftime('%d')}-{today_count:03d}"
+                
+                # 데이터 매핑
+                from datetime import timedelta
+                
+                # 담당자(실무자) 정보
+                salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
+                
+                data_map = {
+                    # 기본 정보
+                    '년': today.strftime('%Y'),
+                    '월': today.strftime('%m'),
+                    '일': today.strftime('%d'),
+                    '거래번호': transaction_number,
+                    
+                    # 고객 정보
+                    '고객명': schedule.followup.customer_name,
+                    '업체명': str(schedule.followup.company) if schedule.followup.company else '',
+                    '학교명': str(schedule.followup.company) if schedule.followup.company else '',
+                    '부서명': str(schedule.followup.department) if schedule.followup.department else '',
+                    '연구실': str(schedule.followup.department) if schedule.followup.department else '',
+                    '담당자': schedule.followup.customer_name,
+                    '이메일': schedule.followup.email or '',
+                    '연락처': schedule.followup.phone_number or '',
+                    '전화번호': schedule.followup.phone_number or '',
+                    
+                    # 실무자(영업담당자) 정보
+                    '실무자': salesman_name,
+                    '영업담당자': salesman_name,
+                    '담당영업': salesman_name,
+                    # 날짜 정보
+                    '일정날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
+                    '날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
+                    '발행일': today.strftime('%Y년 %m월 %d일'),
+                    
+                    # 회사 정보
+                    '회사명': company.name,
+                    
+                    # 금액 정보
+                    '공급가액': f"{int(subtotal):,}",
+                    '소계': f"{int(subtotal):,}",
+                    '부가세액': f"{int(tax):,}",
+                    '부가세': f"{int(tax):,}",
+                    '총액': f"{int(total):,}",
+                    '합계': f"{int(total):,}",
+                    '총액한글': f"금 {total_korean}원정",
+                    '한글금액': f"금 {total_korean}원정",
+                }
+                
+                # 품목 데이터 추가
+                for idx, item in enumerate(delivery_items, 1):
+                    item_subtotal = item.unit_price * item.quantity
+                    # 단위 결정: DeliveryItem에 있으면 사용, 없으면 Product에서, 그것도 없으면 'EA'
+                    item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
+                    
+                    data_map[f'품목{idx}_이름'] = item.item_name
+                    data_map[f'품목{idx}_품목명'] = item.item_name
+                    data_map[f'품목{idx}_수량'] = str(item.quantity)
+                    data_map[f'품목{idx}_단위'] = item_unit
+                    data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
+                    data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
+                    data_map[f'품목{idx}_공급가액'] = f"{int(item.unit_price):,}"
+                    data_map[f'품목{idx}_단가'] = f"{int(item.unit_price):,}"
+                    data_map[f'품목{idx}_부가세액'] = f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}"
+                    data_map[f'품목{idx}_금액'] = f"{int(item_subtotal):,}"
+                    data_map[f'품목{idx}_총액'] = f"{int(item_subtotal * Decimal('1.1')):,}"
+                
+                logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
+                
+                # xlwings로 변수 치환
+                replaced_count = 0
+                
+                for sheet in wb.sheets:
+                    # 시트의 사용된 범위 전체 검색
+                    used_range = sheet.used_range
+                    
+                    if used_range is None:
+                        continue
+                    
+                    # 각 셀 순회
+                    for row_idx in range(1, used_range.last_cell.row + 1):
+                        for col_idx in range(1, used_range.last_cell.column + 1):
+                            cell = sheet.range((row_idx, col_idx))
+                            
+                            if cell.value and isinstance(cell.value, str):
+                                original_value = cell.value
+                                
+                                # {{품목N_xxx}} 패턴 찾기
+                                import re
+                                item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', original_value)
+                                
+                                if item_patterns:
+                                    # 품목 번호 확인
+                                    item_num = int(item_patterns[0])
+                                    # 해당 품목 데이터가 없으면 셀 값을 빈 문자열로
+                                    if item_num > len(delivery_items):
+                                        cell.value = ''
+                                        continue
+                                
+                                # 변수 치환
+                                new_value = original_value
+                                
+                                # {{유효일+숫자}} 패턴 처리 (예: {{유효일+30}}, {{유효일+60}})
+                                valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
+                                valid_matches = re.findall(valid_date_pattern, new_value)
+                                if valid_matches:
+                                    for days_str in valid_matches:
+                                        days = int(days_str)
+                                        valid_date = schedule.visit_date + timedelta(days=days)
+                                        pattern = f'{{{{유효일+{days_str}}}}}'
+                                        new_value = new_value.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
+                                        replaced_count += 1
+                                        logger.info(f"변수 치환: {pattern} -> {valid_date.strftime('%Y년 %m월 %d일')} in {cell.address}")
+                                
+                                # 일반 변수 치환
+                                for key, value in data_map.items():
+                                    pattern = f'{{{{{key}}}}}'
+                                    if pattern in new_value:
+                                        new_value = new_value.replace(pattern, str(value))
+                                        replaced_count += 1
+                                        logger.info(f"변수 치환: {pattern} -> {value} in {cell.address}")
+                                
+                                if new_value != original_value:
+                                    cell.value = new_value
+                
+                logger.info(f"총 {replaced_count}개 변수 치환 완료")
+                
+                # 파일명에 사용할 정보 준비
+                import pytz
+                korea_tz = pytz.timezone('Asia/Seoul')
+                today_for_filename = timezone.now().astimezone(korea_tz)
+                today_str = today_for_filename.strftime('%Y%m%d')
+                company_name = company.name
+                customer_company = schedule.followup.company.name if schedule.followup.company else schedule.followup.customer_name
+                # 서류 종류 한글명
+                doc_type_names = {
+                    'quotation': '견적서',
+                    'transaction_statement': '거래명세서',
+                    'delivery_note': '납품서',
+                }
+                doc_name = doc_type_names.get(document_type, document_template.name)
+                
+                # 출력 형식에 따라 저장
+                if output_format.lower() == 'pdf':
+                    # PDF로 변환하여 저장
+                    pdf_path = temp_path.replace('.xlsx', '.pdf')
+                    
+                    # Excel에서 PDF로 내보내기
+                    wb.api.ExportAsFixedFormat(0, pdf_path)  # 0 = xlTypePDF
+                    wb.close()
+                    app.quit()
+                    
+                    # PDF 파일 읽기
+                    with open(pdf_path, 'rb') as f:
+                        output_data = f.read()
+                    
+                    # 임시 파일 삭제
+                    try:
+                        os.unlink(temp_path)
+                        os.unlink(pdf_path)
+                    except:
+                        pass
+                    
+                    # 파일명 및 Content-Type
+                    file_name = f"[{company_name}] {customer_company}_{doc_name}({today_str}).pdf"
+                    content_type = 'application/pdf'
+                    
+                    logger.info(f"생성된 파일명 (PDF): {file_name}")
+                    
+                else:
+                    # Excel 파일로 저장
+                    wb.save(temp_path)
+                    wb.close()
+                    app.quit()
+                    
+                    # 저장된 파일을 읽어서 반환
+                    with open(temp_path, 'rb') as f:
+                        output_data = f.read()
+                    
+                    # 임시 파일 삭제
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+                    
+                    # Content-Type 결정
+                    if original_ext == '.xlsm':
+                        content_type = 'application/vnd.ms-excel.sheet.macroEnabled.12'
+                    elif original_ext == '.xls':
+                        content_type = 'application/vnd.ms-excel'
+                    else:  # .xlsx
+                        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    
+                    # 파일명 설정
+                    file_name = f"[{company_name}] {customer_company}_{doc_name}({today_str}).xlsx"
+                
+                logger.info(f"생성된 파일명: {file_name}")
+                encoded_filename = quote(file_name)
+                
+                # 서류 생성 로그 저장
+                from reporting.models import DocumentGenerationLog
+                DocumentGenerationLog.objects.create(
+                    company=company,
+                    document_type=document_type,
+                    schedule=schedule,
+                    user=request.user,
+                    transaction_number=transaction_number,
+                    output_format=output_format
+                )
+                
+                # 응답
+                response = HttpResponse(
+                    output_data,
+                    content_type=content_type
+                )
+                response['Content-Disposition'] = 'attachment'
+                response['X-Filename'] = encoded_filename
+                response['Access-Control-Expose-Headers'] = 'X-Filename'
+                
+                logger.info(f"서류 생성 완료 ({output_format.upper()}): {document_template.name} - {schedule.followup.customer_name}")
+                return response
+                
+            except Exception as excel_error:
+                logger.error(f"엑셀 처리 오류: {excel_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                # xlwings 정리
+                try:
+                    if 'wb' in locals():
+                        wb.close()
+                    if 'app' in locals():
+                        app.quit()
+                    if 'temp_path' in locals() and os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                except Exception as cleanup_error:
+                    logger.error(f"정리 오류: {cleanup_error}")
+                
+                return JsonResponse({
+                    'success': False,
+                    'error': f'엑셀 파일 처리 중 오류가 발생했습니다: {str(excel_error)}'
+                }, status=500)
+            
+        else:
+            # PDF 등 다른 형식은 그대로 다운로드 (향후 PDF 편집 기능 추가 예정)
+            file_path = document_template.file.path
+            file_name = f"{document_template.name}_{schedule.followup.customer_name}_{timezone.now().strftime('%Y%m%d')}{original_ext}"
+            
+            content_type_map = {
+                '.pdf': 'application/pdf',
+            }
+            content_type = content_type_map.get(original_ext, 'application/octet-stream')
+            
+            response = FileResponse(
+                open(file_path, 'rb'),
+                content_type=content_type
+            )
+            
+            encoded_filename = quote(file_name)
+            response['Content-Disposition'] = f'attachment; filename="{file_name}"; filename*=UTF-8\'\'{encoded_filename}'
+            
+            logger.info(f"서류 다운로드: {document_template.name} - {schedule.followup.customer_name}")
+            return response
+        
+    except Exception as e:
+        logger.error(f"서류 생성 실패: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

@@ -182,4 +182,16 @@ urlpatterns = [
     path('personal-schedules/<int:pk>/add-comment/', personal_schedule_views.personal_schedule_add_comment, name='personal_schedule_add_comment'),
     path('personal-schedules/comments/<int:comment_id>/edit/', personal_schedule_views.personal_schedule_edit_comment, name='personal_schedule_edit_comment'),
     path('personal-schedules/comments/<int:comment_id>/delete/', personal_schedule_views.personal_schedule_delete_comment, name='personal_schedule_delete_comment'),
+    
+    # 서류 템플릿 관리 URL들
+    path('documents/', views.document_template_list, name='document_template_list'),
+    path('documents/create/', views.document_template_create, name='document_template_create'),
+    path('documents/<int:pk>/edit/', views.document_template_edit, name='document_template_edit'),
+    path('documents/<int:pk>/delete/', views.document_template_delete, name='document_template_delete'),
+    path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
+    path('documents/<int:pk>/toggle-default/', views.document_template_toggle_default, name='document_template_toggle_default'),
+    
+    # 서류 생성 API (일정 기반)
+    path('documents/generate/<str:document_type>/<int:schedule_id>/', views.generate_document_pdf, name='generate_document_pdf'),
+    path('documents/generate/<str:document_type>/<int:schedule_id>/<str:output_format>/', views.generate_document_pdf, name='generate_document_pdf_format'),
 ]

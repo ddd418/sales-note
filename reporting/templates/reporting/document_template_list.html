@@ -1,0 +1,140 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-file-alt"></i> {{ page_title }}</h2>
+        <a href="{% url 'reporting:document_template_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> 서류 등록
+        </a>
+    </div>
+
+    <!-- 서류 종류 필터 -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="btn-group" role="group">
+                <a href="{% url 'reporting:document_template_list' %}" 
+                   class="btn btn-sm {% if not selected_type %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    전체
+                </a>
+                {% for type_code, type_name in document_types %}
+                <a href="?type={{ type_code }}" 
+                   class="btn btn-sm {% if selected_type == type_code %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    {{ type_name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 서류 목록 -->
+    {% if templates %}
+    <div class="row">
+        {% for template in templates %}
+        <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card h-100 {% if template.is_default %}border-primary{% endif %}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-file-{% if template.file_type == 'pdf' %}pdf text-danger{% else %}excel text-success{% endif %}"></i>
+                            {{ template.name }}
+                        </h5>
+                        {% if template.is_default %}
+                        <span class="badge bg-primary">기본</span>
+                        {% endif %}
+                    </div>
+                    
+                    <h6 class="card-subtitle mb-2 text-muted">
+                        <span class="badge bg-secondary">{{ template.get_document_type_display }}</span>
+                    </h6>
+                    
+                    {% if template.description %}
+                    <p class="card-text small text-muted">{{ template.description|truncatewords:15 }}</p>
+                    {% endif %}
+                    
+                    <div class="small text-muted mb-3">
+                        <i class="fas fa-user"></i> {{ template.created_by.get_full_name|default:template.created_by.username }}
+                        <br>
+                        <i class="fas fa-clock"></i> {{ template.created_at|date:"Y-m-d H:i" }}
+                    </div>
+                    
+                    <div class="btn-group w-100" role="group">
+                        <a href="{% url 'reporting:document_template_download' template.pk %}" 
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-download"></i> 다운로드
+                        </a>
+                        <button type="button" 
+                                class="btn btn-sm btn-outline-secondary toggle-default-btn"
+                                data-id="{{ template.pk }}"
+                                data-is-default="{{ template.is_default|yesno:'true,false' }}">
+                            <i class="fas fa-star{% if not template.is_default %}-o{% endif %}"></i>
+                            {% if template.is_default %}기본 해제{% else %}기본 설정{% endif %}
+                        </button>
+                    </div>
+                    
+                    <div class="btn-group w-100 mt-2" role="group">
+                        <a href="{% url 'reporting:document_template_edit' template.pk %}" 
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-edit"></i> 수정
+                        </a>
+                        <form method="post" 
+                              action="{% url 'reporting:document_template_delete' template.pk %}" 
+                              style="display:inline;"
+                              onsubmit="return confirm('정말로 이 서류를 삭제하시겠습니까?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i> 삭제
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> 
+        {% if selected_type %}
+        해당 종류의 서류가 없습니다.
+        {% else %}
+        등록된 서류가 없습니다. 서류를 등록해주세요.
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// 기본 템플릿 설정/해제
+document.querySelectorAll('.toggle-default-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const templateId = this.dataset.id;
+        const isDefault = this.dataset.isDefault === 'true';
+        
+        try {
+            const response = await fetch(`/reporting/documents/${templateId}/toggle-default/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('오류가 발생했습니다: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('오류가 발생했습니다.');
+        }
+    });
+});
+</script>
+{% endblock %}

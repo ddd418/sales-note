@@ -1,10 +1,23 @@
 import time
 import logging
 import os
+import pytz
 from django.utils.deprecation import MiddlewareMixin
 from django.contrib.auth.models import AnonymousUser
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+class TimezoneMiddleware(MiddlewareMixin):
+    """
+    한국 시간대(Asia/Seoul)를 모든 요청에 적용하는 미들웨어
+    """
+    def process_request(self, request):
+        timezone.activate(pytz.timezone('Asia/Seoul'))
+    
+    def process_response(self, request, response):
+        timezone.deactivate()
+        return response
 
 class CompanyFilterMiddleware(MiddlewareMixin):
     """
