@@ -1,0 +1,162 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}답장 - {{ original_email.subject }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .email-compose-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .original-email {
+        background-color: #f8f9fa;
+        border-left: 4px solid #0d6efd;
+        padding: 15px;
+        margin-top: 20px;
+    }
+    
+    .original-email-header {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-bottom: 10px;
+    }
+    
+    .original-email-body {
+        white-space: pre-wrap;
+        font-size: 0.95rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 email-compose-container">
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="bi bi-reply"></i> 답장
+            </h4>
+        </div>
+        
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                
+                <!-- 받는 사람 (원본 발신자) -->
+                <div class="mb-3">
+                    <label class="form-label">받는 사람</label>
+                    <input type="email" class="form-control" name="to_email" 
+                           value="{{ original_email.sender_email }}" readonly>
+                </div>
+                
+                <!-- CC -->
+                <div class="mb-3">
+                    <label for="cc_emails" class="form-label">참조 (CC)</label>
+                    <input type="text" class="form-control" id="cc_emails" name="cc_emails" 
+                           placeholder="여러 이메일은 쉼표로 구분">
+                </div>
+                
+                <!-- 제목 -->
+                <div class="mb-3">
+                    <label class="form-label">제목</label>
+                    <input type="text" class="form-control" name="subject" 
+                           value="Re: {{ original_email.subject }}" required>
+                </div>
+                
+                <!-- 본문 -->
+                <div class="mb-3">
+                    <label for="body_text" class="form-label required">본문</label>
+                    <textarea class="form-control" id="body_text" name="body_text" rows="8" required></textarea>
+                </div>
+                
+                <!-- HTML 본문 -->
+                <div class="mb-3">
+                    <label for="body_html" class="form-label">HTML 본문 (선택)</label>
+                    <textarea class="form-control" id="body_html" name="body_html" rows="5"></textarea>
+                </div>
+                
+                <!-- 첨부파일 -->
+                <div class="mb-3">
+                    <label for="attachments" class="form-label">첨부파일</label>
+                    <input type="file" class="form-control" id="attachments" name="attachments" multiple>
+                </div>
+                
+                <!-- 명함 선택 -->
+                <div class="mb-3">
+                    <label for="business_card_id" class="form-label">명함 (이메일 서명)</label>
+                    <select class="form-select" id="business_card_id" name="business_card_id">
+                        <option value="">서명 없음</option>
+                        {% for card in business_cards %}
+                        <option value="{{ card.id }}" 
+                                {% if default_card and card.id == default_card.id %}selected{% endif %}
+                                data-signature="{{ card.signature_html|escapejs }}">
+                            {{ card.name }} - {{ card.full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- 서명 미리보기 -->
+                <div id="signature-preview-container" class="mb-3" style="display: none;">
+                    <label class="form-label">서명 미리보기</label>
+                    <div class="signature-preview" id="signature-preview"></div>
+                </div>
+                
+                <!-- 원본 이메일 -->
+                <div class="original-email">
+                    <div class="original-email-header">
+                        <strong>원본 메시지:</strong><br>
+                        보낸 사람: {{ original_email.sender_email }}<br>
+                        날짜: {{ original_email.sent_at|date:"Y-m-d H:i" }}<br>
+                        제목: {{ original_email.subject }}
+                    </div>
+                    <div class="original-email-body">
+                        {% if original_email.body_html %}
+                            {{ original_email.body_html|safe }}
+                        {% else %}
+                            {{ original_email.body_text }}
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- 버튼 -->
+                <div class="d-flex justify-content-between mt-3">
+                    <a href="{% url 'reporting:mailbox_thread' original_email.gmail_thread_id %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> 취소
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i> 답장 발송
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const businessCardSelect = document.getElementById('business_card_id');
+    const signaturePreviewContainer = document.getElementById('signature-preview-container');
+    const signaturePreview = document.getElementById('signature-preview');
+    
+    businessCardSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const signatureHtml = selectedOption.getAttribute('data-signature');
+        
+        if (signatureHtml && signatureHtml !== 'None') {
+            signaturePreview.innerHTML = signatureHtml;
+            signaturePreviewContainer.style.display = 'block';
+        } else {
+            signaturePreviewContainer.style.display = 'none';
+        }
+    });
+    
+    if (businessCardSelect.value) {
+        businessCardSelect.dispatchEvent(new Event('change'));
+    }
+});
+</script>
+{% endblock %}

@@ -38,6 +38,16 @@ urllib3==2.4.0
 whitenoise==6.9.0
 xhtml2pdf==0.2.16  # PDF 생성용 (서류 다운로드 기능) - Windows 호환
 
+# Gmail API 연동
+google-auth==2.34.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.147.0
+
+# Celery (비동기 작업 및 주기적 작업)
+celery==5.4.0
+redis==5.2.0
+
 # 백업 관련 선택적 패키지
 # boto3==1.35.63  # AWS S3 업로드용 (필요시 주석 해제)
 # google-cloud-storage==2.18.0  # Google Cloud Storage 업로드용 (필요시 주석 해제)

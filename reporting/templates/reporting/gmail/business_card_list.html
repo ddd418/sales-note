@@ -1,0 +1,188 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}명함 관리{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header {
+        background-color: #f8f9fa;
+    }
+    
+    .business-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+        transition: box-shadow 0.2s;
+    }
+    
+    .business-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .business-card.default {
+        border: 2px solid #0d6efd;
+        background-color: #e7f3ff;
+    }
+    
+    .business-card.inactive {
+        opacity: 0.6;
+        background-color: #f8f9fa;
+    }
+    
+    .card-name {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .card-info {
+        font-size: 0.95rem;
+        color: #495057;
+    }
+    
+    .card-info i {
+        width: 20px;
+        text-align: center;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="bi bi-person-badge"></i> 명함 관리
+                </h4>
+                <a href="{% url 'reporting:business_card_create' %}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> 새 명함 추가
+                </a>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            {% if cards %}
+                {% for card in cards %}
+                <div class="business-card {% if card.is_default %}default{% endif %} {% if not card.is_active %}inactive{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="card-name">
+                                {{ card.name }}
+                                {% if card.is_default %}
+                                <span class="badge bg-primary ms-2">기본 명함</span>
+                                {% endif %}
+                                {% if not card.is_active %}
+                                <span class="badge bg-secondary ms-2">비활성</span>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="card-info">
+                                <div class="mb-1">
+                                    <i class="bi bi-person"></i>
+                                    <strong>{{ card.full_name }}</strong>
+                                    {% if card.title %}/ {{ card.title }}{% endif %}
+                                </div>
+                                
+                                {% if card.company_name %}
+                                <div class="mb-1">
+                                    <i class="bi bi-building"></i>
+                                    {{ card.company_name }}
+                                </div>
+                                {% endif %}
+                                
+                                {% if card.email %}
+                                <div class="mb-1">
+                                    <i class="bi bi-envelope"></i>
+                                    <a href="mailto:{{ card.email }}">{{ card.email }}</a>
+                                </div>
+                                {% endif %}
+                                
+                                {% if card.mobile %}
+                                <div class="mb-1">
+                                    <i class="bi bi-phone"></i>
+                                    {{ card.mobile }}
+                                </div>
+                                {% endif %}
+                                
+                                {% if card.phone %}
+                                <div class="mb-1">
+                                    <i class="bi bi-telephone"></i>
+                                    {{ card.phone }}
+                                </div>
+                                {% endif %}
+                                
+                                {% if card.website %}
+                                <div class="mb-1">
+                                    <i class="bi bi-globe"></i>
+                                    <a href="{{ card.website }}" target="_blank">{{ card.website }}</a>
+                                </div>
+                                {% endif %}
+                                
+                                {% if card.address %}
+                                <div class="mb-1">
+                                    <i class="bi bi-geo-alt"></i>
+                                    {{ card.address }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="ms-3">
+                            {% if card.is_active %}
+                                <a href="{% url 'reporting:business_card_edit' card.id %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-pencil"></i> 수정
+                                </a>
+                                
+                                {% if not card.is_default %}
+                                <form method="post" action="{% url 'reporting:business_card_set_default' card.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-success">
+                                        <i class="bi bi-star"></i> 기본 설정
+                                    </button>
+                                </form>
+                                {% endif %}
+                                
+                                <form method="post" action="{% url 'reporting:business_card_delete' card.id %}" class="d-inline" 
+                                      onsubmit="return confirm('이 명함을 삭제하시겠습니까?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i> 삭제
+                                    </button>
+                                </form>
+                            {% else %}
+                                <span class="text-muted">삭제됨</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- 서명 미리보기 -->
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#signature-{{ card.id }}">
+                            <i class="bi bi-eye"></i> 서명 미리보기
+                        </button>
+                        <div class="collapse mt-2" id="signature-{{ card.id }}">
+                            <div class="border p-3 bg-white">
+                                {{ card.signature_html|safe }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center p-5">
+                    <i class="bi bi-person-badge" style="font-size: 3rem; color: #dee2e6;"></i>
+                    <p class="mt-3 text-muted">등록된 명함이 없습니다.</p>
+                    <a href="{% url 'reporting:business_card_create' %}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 첫 명함 만들기
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

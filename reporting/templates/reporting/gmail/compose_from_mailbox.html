@@ -1,0 +1,217 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}새 이메일 작성{% endblock %}
+
+{% block extra_css %}
+<style>
+    .email-compose-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .form-label {
+        font-weight: 600;
+        color: #495057;
+    }
+    
+    .required:after {
+        content: " *";
+        color: #dc3545;
+    }
+    
+    .signature-preview {
+        border: 1px solid #dee2e6;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 email-compose-container">
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="bi bi-envelope"></i> 새 이메일 작성
+            </h4>
+            {% if followup %}
+            <small class="text-muted">
+                팔로우업: {{ followup.customer_name }}
+            </small>
+            {% endif %}
+        </div>
+        
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                
+                <!-- 팔로우업 선택 (없는 경우) -->
+                {% if not followup %}
+                <div class="mb-3">
+                    <label for="followup_search" class="form-label">팔로우업 검색 (선택)</label>
+                    <input type="text" class="form-control" id="followup_search" 
+                           placeholder="고객명 또는 회사명 입력">
+                    <select class="form-select mt-2" id="followup_select" size="5" style="display: none;">
+                        {% for fu in all_followups %}
+                        <option value="{{ fu.id }}" data-email="{{ fu.email }}">
+                            {{ fu.customer_name }} - {{ fu.company }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                
+                <!-- 받는 사람 -->
+                <div class="mb-3">
+                    <label for="to_email" class="form-label required">받는 사람</label>
+                    <input type="email" class="form-control" id="to_email" name="to_email" 
+                           {% if followup %}value="{{ followup.email }}"{% endif %} required>
+                    {% if followup %}
+                    <small class="text-muted">{{ followup.customer_name }}</small>
+                    {% endif %}
+                </div>
+                
+                <!-- CC -->
+                <div class="mb-3">
+                    <label for="cc_emails" class="form-label">참조 (CC)</label>
+                    <input type="text" class="form-control" id="cc_emails" name="cc_emails" 
+                           placeholder="여러 이메일은 쉼표로 구분">
+                </div>
+                
+                <!-- BCC -->
+                <div class="mb-3">
+                    <label for="bcc_emails" class="form-label">숨은 참조 (BCC)</label>
+                    <input type="text" class="form-control" id="bcc_emails" name="bcc_emails" 
+                           placeholder="여러 이메일은 쉼표로 구분">
+                </div>
+                
+                <!-- 제목 -->
+                <div class="mb-3">
+                    <label for="subject" class="form-label required">제목</label>
+                    <input type="text" class="form-control" id="subject" name="subject" required>
+                </div>
+                
+                <!-- 본문 -->
+                <div class="mb-3">
+                    <label for="body_text" class="form-label required">본문</label>
+                    <textarea class="form-control" id="body_text" name="body_text" rows="12" required></textarea>
+                </div>
+                
+                <!-- HTML 본문 -->
+                <div class="mb-3">
+                    <label for="body_html" class="form-label">HTML 본문 (선택)</label>
+                    <textarea class="form-control" id="body_html" name="body_html" rows="5" 
+                              placeholder="HTML 형식이 필요한 경우 입력"></textarea>
+                </div>
+                
+                <!-- 첨부파일 -->
+                <div class="mb-3">
+                    <label for="attachments" class="form-label">첨부파일</label>
+                    <input type="file" class="form-control" id="attachments" name="attachments" multiple>
+                </div>
+                
+                <!-- 명함 선택 -->
+                <div class="mb-3">
+                    <label for="business_card_id" class="form-label">명함 (이메일 서명)</label>
+                    <select class="form-select" id="business_card_id" name="business_card_id">
+                        <option value="">서명 없음</option>
+                        {% for card in business_cards %}
+                        <option value="{{ card.id }}" 
+                                {% if default_card and card.id == default_card.id %}selected{% endif %}
+                                data-signature="{{ card.signature_html|escapejs }}">
+                            {{ card.name }} - {{ card.full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- 서명 미리보기 -->
+                <div id="signature-preview-container" class="mb-3" style="display: none;">
+                    <label class="form-label">서명 미리보기</label>
+                    <div class="signature-preview" id="signature-preview"></div>
+                </div>
+                
+                <!-- 버튼 -->
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> 취소
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i> 발송
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const businessCardSelect = document.getElementById('business_card_id');
+    const signaturePreviewContainer = document.getElementById('signature-preview-container');
+    const signaturePreview = document.getElementById('signature-preview');
+    
+    // 명함 선택 시 서명 미리보기
+    businessCardSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const signatureHtml = selectedOption.getAttribute('data-signature');
+        
+        if (signatureHtml && signatureHtml !== 'None') {
+            signaturePreview.innerHTML = signatureHtml;
+            signaturePreviewContainer.style.display = 'block';
+        } else {
+            signaturePreviewContainer.style.display = 'none';
+        }
+    });
+    
+    // 초기 로드 시 기본 명함 서명 표시
+    if (businessCardSelect.value) {
+        businessCardSelect.dispatchEvent(new Event('change'));
+    }
+    
+    // 팔로우업 검색 (메일함에서 작성 시)
+    {% if not followup %}
+    const followupSearch = document.getElementById('followup_search');
+    const followupSelect = document.getElementById('followup_select');
+    const toEmailInput = document.getElementById('to_email');
+    
+    if (followupSearch && followupSelect) {
+        followupSearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            let hasResults = false;
+            
+            Array.from(followupSelect.options).forEach(option => {
+                const text = option.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    option.style.display = '';
+                    hasResults = true;
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+            
+            followupSelect.style.display = hasResults && searchTerm ? 'block' : 'none';
+        });
+        
+        followupSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const email = selectedOption.getAttribute('data-email');
+            if (email) {
+                toEmailInput.value = email;
+            }
+        });
+    }
+    {% endif %}
+});
+</script>
+{% endblock %}

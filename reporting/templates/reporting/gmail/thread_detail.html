@@ -1,0 +1,256 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{{ emails.first.subject }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .thread-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .thread-header {
+        background-color: #f8f9fa;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+    }
+    
+    .email-message {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    
+    .email-message-header {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .email-message-header.sent {
+        background-color: #e7f3ff;
+    }
+    
+    .email-message-body {
+        padding: 20px;
+        line-height: 1.8;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        font-size: 14px;
+        color: #202124;
+        max-width: 100%;
+    }
+    
+    .email-message-body p {
+        margin-bottom: 1em;
+        white-space: pre-wrap;
+    }
+    
+    .email-body-content {
+        font-family: Arial, sans-serif;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
+    }
+    
+    /* Gmail HTML 본문 스타일 초기화 */
+    .email-body-content * {
+        max-width: 100%;
+    }
+    
+    .email-body-content p,
+    .email-body-content div {
+        white-space: pre-wrap;
+        margin-bottom: 0.5em;
+    }
+    
+    .email-body-content br {
+        display: block;
+        content: "";
+        margin: 0.5em 0;
+    }
+    
+    .email-message-body img {
+        max-width: 100%;
+        height: auto;
+    }
+    
+    .email-message-body table {
+        max-width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .email-message-body a {
+        color: #1a73e8;
+        text-decoration: none;
+    }
+    
+    .email-message-body a:hover {
+        text-decoration: underline;
+    }
+    
+    /* 이메일 시그니처 스타일 정리 */
+    .email-message-body #txc-signature {
+        margin-top: 20px;
+        border-top: 1px solid #dee2e6;
+        padding-top: 20px;
+    }
+    
+    /* Gmail 스타일 메일 본문 */
+    .email-body-content {
+        font-family: Arial, sans-serif;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .email-meta {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    
+    .reply-btn {
+        position: sticky;
+        bottom: 20px;
+        z-index: 100;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 thread-container">
+    <!-- 스레드 헤더 -->
+    <div class="thread-header">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h3 class="mb-2">{{ emails.first.subject }}</h3>
+                {% if followup %}
+                <div>
+                    <span class="badge bg-primary">
+                        <i class="bi bi-person"></i> {{ followup.customer_name }}
+                    </span>
+                    <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-sm btn-outline-primary ms-2">
+                        팔로우업 상세보기
+                    </a>
+                </div>
+                {% endif %}
+                <small class="text-muted d-block mt-2">{{ emails.count }}개의 메시지</small>
+            </div>
+            <div>
+                <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> 목록
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 이메일 메시지들 -->
+    {% for email in emails %}
+    <div class="email-message">
+        <div class="email-message-header {% if email.email_type == 'sent' %}sent{% endif %}">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>
+                        {% if email.email_type == 'sent' %}
+                            <i class="bi bi-send"></i> 보낸 메일
+                        {% else %}
+                            <i class="bi bi-envelope"></i> 받은 메일
+                        {% endif %}
+                    </strong>
+                    <div class="email-meta mt-1">
+                        <strong>보낸 사람:</strong> {{ email.sender_email }}<br>
+                        <strong>받는 사람:</strong> {{ email.recipient_email }}<br>
+                        {% if email.cc_emails %}
+                        <strong>참조:</strong> {{ email.cc_emails }}<br>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <small class="text-muted">
+                        {{ email.sent_at|date:"Y년 m월 d일 H:i" }}
+                    </small>
+                    {% if email.business_card %}
+                    <div class="mt-2">
+                        <span class="badge bg-info">
+                            <i class="bi bi-person-badge"></i> {{ email.business_card.name }}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-sm btn-outline-danger delete-email-btn" 
+                            data-email-id="{{ email.id }}"
+                            onclick="event.stopPropagation();">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="email-message-body">
+            {% if email.body_html %}
+                <div class="email-body-content">
+                    {{ email.body_html|safe }}
+                </div>
+            {% elif email.body %}
+                {% if '<html' in email.body or '<div' in email.body or '<p' in email.body %}
+                    <div class="email-body-content">
+                        {{ email.body|safe }}
+                    </div>
+                {% else %}
+                    <div class="email-body-content">{{ email.body }}</div>
+                {% endif %}
+            {% else %}
+                <p class="text-muted">(내용 없음)</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    
+    <!-- 답장 버튼 (고정) -->
+    <div class="text-center reply-btn">
+        <a href="{% url 'reporting:reply_email' emails.last.id %}" class="btn btn-primary btn-lg">
+            <i class="bi bi-reply"></i> 답장하기
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 이메일 삭제 버튼
+    document.querySelectorAll('.delete-email-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (!confirm('이 메일을 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            const emailId = this.dataset.emailId;
+            
+            fetch(`/reporting/mailbox/delete/${emailId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('삭제 실패: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('삭제 중 오류 발생: ' + error);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
-    Company, Department, DocumentTemplate, EmailLog
+    Company, Department, DocumentTemplate, EmailLog, BusinessCard
 )
 
 # UserProfile 인라인 관리자
@@ -418,23 +418,35 @@ class DocumentTemplateAdmin(admin.ModelAdmin):
 # EmailLog 모델 관리자 설정
 @admin.register(EmailLog)
 class EmailLogAdmin(admin.ModelAdmin):
-    list_display = ('subject', 'recipient_email', 'recipient_name', 'sender', 'status', 'sent_at', 'created_at')
-    list_filter = ('status', 'sent_at', 'created_at')
-    search_fields = ('subject', 'recipient_email', 'recipient_name', 'body')
-    date_hierarchy = 'created_at'
+    list_display = ('subject', 'email_type', 'sender_email', 'recipient_email', 'status', 'is_read', 'sent_at', 'created_at')
+    list_filter = ('email_type', 'status', 'is_read', 'sent_at', 'created_at')
+    search_fields = ('subject', 'sender_email', 'recipient_email', 'body_text', 'gmail_message_id')
+    date_hierarchy = 'sent_at'
+    autocomplete_fields = ['followup', 'schedule', 'business_card', 'in_reply_to']
     list_per_page = 20
     
-    readonly_fields = ('created_at', 'sent_at')
+    readonly_fields = ('created_at', 'sent_at', 'gmail_message_id', 'gmail_thread_id')
     
     fieldsets = (
+        ('이메일 유형', {
+            'fields': ('email_type', 'is_read')
+        }),
         ('발신/수신 정보', {
-            'fields': ('sender', 'recipient_email', 'recipient_name')
+            'fields': ('sender', 'sender_email', 'recipient_email', 'recipient_name', 'cc_emails', 'bcc_emails')
         }),
         ('메일 내용', {
-            'fields': ('subject', 'body')
+            'fields': ('subject', 'body_text', 'body_html')
         }),
         ('첨부 파일', {
             'fields': ('document_template', 'attachment')
+        }),
+        ('Gmail 정보', {
+            'fields': ('gmail_message_id', 'gmail_thread_id', 'in_reply_to'),
+            'classes': ('collapse',)
+        }),
+        ('명함', {
+            'fields': ('business_card',),
+            'classes': ('collapse',)
         }),
         ('연결 정보', {
             'fields': ('followup', 'schedule')
@@ -451,3 +463,40 @@ class EmailLogAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Admin에서 직접 추가 불가 (뷰에서만 생성)
         return False
+
+
+# BusinessCard 모델 관리자 설정
+@admin.register(BusinessCard)
+class BusinessCardAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'full_name', 'title', 'company_name', 'email', 'is_default', 'is_active', 'created_at')
+    list_filter = ('is_default', 'is_active', 'created_at')
+    search_fields = ('name', 'full_name', 'email', 'company_name', 'user__username')
+    autocomplete_fields = ['user']
+    list_per_page = 20
+    
+    readonly_fields = ('created_at', 'updated_at', 'signature_html')
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('user', 'name', 'is_default', 'is_active')
+        }),
+        ('개인 정보', {
+            'fields': ('full_name', 'title', 'company_name')
+        }),
+        ('연락처', {
+            'fields': ('phone', 'mobile', 'email', 'website')
+        }),
+        ('주소', {
+            'fields': ('address',),
+            'classes': ('collapse',)
+        }),
+        ('이메일 서명', {
+            'fields': ('signature_html',),
+            'classes': ('collapse',),
+            'description': '이메일 발송 시 자동으로 추가되는 서명 HTML (자동 생성됨)'
+        }),
+        ('메타 정보', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )

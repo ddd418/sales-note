@@ -203,3 +203,8 @@ LOGGING = {
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Gmail API 설정
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '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')
+GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'https://your-domain.com/reporting/gmail/callback/')

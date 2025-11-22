@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 from . import backup_api
 from . import personal_schedule_views
+from . import gmail_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
@@ -194,4 +195,33 @@ urlpatterns = [
     # 서류 생성 API (일정 기반)
     path('documents/generate/<str:document_type>/<int:schedule_id>/', views.generate_document_pdf, name='generate_document_pdf'),
     path('documents/generate/<str:document_type>/<int:schedule_id>/<str:output_format>/', views.generate_document_pdf, name='generate_document_pdf_format'),
+    
+    # ============================================
+    # Gmail 연동 URL들
+    # ============================================
+    
+    # Gmail OAuth2 인증
+    path('gmail/connect/', gmail_views.gmail_connect, name='gmail_connect'),
+    path('gmail/callback/', gmail_views.gmail_callback, name='gmail_callback'),
+    path('gmail/disconnect/', gmail_views.gmail_disconnect, name='gmail_disconnect'),
+    
+    # 이메일 발송
+    path('gmail/send/schedule/<int:schedule_id>/', gmail_views.send_email_from_schedule, name='send_email_from_schedule'),
+    path('gmail/send/mailbox/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox'),
+    path('gmail/send/mailbox/<int:followup_id>/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox_with_followup'),
+    path('gmail/reply/<int:email_log_id>/', gmail_views.reply_email, name='reply_email'),
+    
+    # 메일함
+    path('mailbox/inbox/', gmail_views.mailbox_inbox, name='mailbox_inbox'),
+    path('mailbox/sent/', gmail_views.mailbox_sent, name='mailbox_sent'),
+    path('mailbox/thread/<str:thread_id>/', gmail_views.mailbox_thread, name='mailbox_thread'),
+    path('mailbox/sync/', gmail_views.sync_received_emails, name='sync_received_emails'),
+    path('mailbox/delete/<int:email_id>/', gmail_views.delete_email, name='delete_email'),
+    
+    # 명함 관리
+    path('business-cards/', gmail_views.business_card_list, name='business_card_list'),
+    path('business-cards/create/', gmail_views.business_card_create, name='business_card_create'),
+    path('business-cards/<int:card_id>/edit/', gmail_views.business_card_edit, name='business_card_edit'),
+    path('business-cards/<int:card_id>/delete/', gmail_views.business_card_delete, name='business_card_delete'),
+    path('business-cards/<int:card_id>/set-default/', gmail_views.business_card_set_default, name='business_card_set_default'),
 ]

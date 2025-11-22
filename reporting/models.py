@@ -60,6 +60,13 @@ class UserProfile(models.Model):
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='salesman', verbose_name="권한")
     can_download_excel = models.BooleanField(default=False, verbose_name="엑셀 다운로드 권한")
+    
+    # Gmail 연동 정보
+    gmail_token = models.JSONField(null=True, blank=True, verbose_name="Gmail OAuth 토큰", help_text="암호화된 토큰 저장")
+    gmail_email = models.EmailField(blank=True, verbose_name="연결된 Gmail 주소")
+    gmail_connected_at = models.DateTimeField(null=True, blank=True, verbose_name="Gmail 연결 일시")
+    gmail_last_sync_at = models.DateTimeField(null=True, blank=True, verbose_name="마지막 동기화 일시")
+    
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                    related_name='created_users', verbose_name="계정 생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
@@ -917,31 +924,51 @@ class DocumentTemplate(models.Model):
         # unique_together 제거 - 같은 이름으로 여러 버전 등록 가능
 
 
-# 이메일 발송 로그 (EmailLog) 모델 - 향후 이메일 연동용
+# 이메일 발송 로그 (EmailLog) 모델 - Gmail 연동
 class EmailLog(models.Model):
     """
-    이메일 발송 기록 (향후 구현)
-    - 서류 템플릿을 이메일로 발송한 기록
-    - 견적서, 거래명세서 등 발송 이력 추적
+    이메일 발송/수신 기록
+    - Gmail API를 통한 이메일 발송/수신 기록
+    - 일정 또는 팔로우업과 연결
+    - 스레드 추적 기능
     """
     STATUS_CHOICES = [
         ('pending', '발송 대기'),
         ('sent', '발송 완료'),
+        ('received', '수신'),
         ('failed', '발송 실패'),
     ]
+    
+    TYPE_CHOICES = [
+        ('sent', '발신'),
+        ('received', '수신'),
+    ]
+    
+    # Gmail 정보
+    gmail_message_id = models.CharField(max_length=255, blank=True, verbose_name="Gmail 메시지 ID", db_index=True)
+    gmail_thread_id = models.CharField(max_length=255, blank=True, verbose_name="Gmail 스레드 ID", db_index=True)
+    
+    email_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='sent', verbose_name="메일 타입")
     
     sender = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         related_name='sent_emails',
-        verbose_name="발신자"
+        verbose_name="발신자 (CRM 사용자)"
     )
+    sender_email = models.EmailField(blank=True, verbose_name="발신자 이메일 주소")
+    
     recipient_email = models.EmailField(verbose_name="수신자 이메일")
     recipient_name = models.CharField(max_length=100, blank=True, verbose_name="수신자명")
     
-    subject = models.CharField(max_length=200, verbose_name="제목")
+    # CC, BCC
+    cc_emails = models.TextField(blank=True, verbose_name="참조 (CC)", help_text="쉼표로 구분")
+    bcc_emails = models.TextField(blank=True, verbose_name="숨은 참조 (BCC)", help_text="쉼표로 구분")
+    
+    subject = models.CharField(max_length=500, verbose_name="제목")
     body = models.TextField(verbose_name="본문")
+    body_html = models.TextField(blank=True, verbose_name="HTML 본문")
     
     # 첨부 서류
     document_template = models.ForeignKey(
@@ -964,6 +991,7 @@ class EmailLog(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name='emails',
         verbose_name="관련 팔로우업"
     )
     schedule = models.ForeignKey(
@@ -971,7 +999,27 @@ class EmailLog(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name='emails',
         verbose_name="관련 일정"
+    )
+    
+    # 답장 관계
+    in_reply_to = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='replies',
+        verbose_name="답장 대상 메일"
+    )
+    
+    # 명함
+    business_card = models.ForeignKey(
+        'BusinessCard',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="사용된 명함"
     )
     
     status = models.CharField(
@@ -980,18 +1028,118 @@ class EmailLog(models.Model):
         default='pending',
         verbose_name="발송 상태"
     )
-    sent_at = models.DateTimeField(null=True, blank=True, verbose_name="발송 일시")
+    sent_at = models.DateTimeField(null=True, blank=True, verbose_name="발송 일시", db_index=True)
+    received_at = models.DateTimeField(null=True, blank=True, verbose_name="수신 일시", db_index=True)
     error_message = models.TextField(blank=True, verbose_name="오류 메시지")
     
+    # 읽음 여부 (수신 메일의 경우)
+    is_read = models.BooleanField(default=False, verbose_name="읽음 여부")
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def __str__(self):
-        return f"{self.subject} → {self.recipient_email} ({self.get_status_display()})"
+        type_str = "발신" if self.email_type == 'sent' else "수신"
+        return f"[{type_str}] {self.subject} → {self.recipient_email}"
     
     class Meta:
-        verbose_name = "이메일 발송 로그"
-        verbose_name_plural = "이메일 발송 로그"
-        ordering = ['-created_at']
+        verbose_name = "이메일"
+        verbose_name_plural = "이메일 목록"
+        ordering = ['-sent_at', '-received_at', '-created_at']
+        indexes = [
+            models.Index(fields=['-sent_at', '-received_at']),
+            models.Index(fields=['gmail_thread_id']),
+        ]
+
+
+# 명함 관리 (BusinessCard) 모델
+class BusinessCard(models.Model):
+    """
+    이메일 서명용 명함 관리
+    - 사용자별로 여러 명함 생성 가능
+    - 기본 명함 설정 기능
+    - 이메일 발송 시 하단에 자동 삽입
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='business_cards',
+        verbose_name="소유자"
+    )
+    
+    name = models.CharField(max_length=100, verbose_name="명함 이름", help_text="예: 기본 명함, 영문 명함")
+    
+    # 명함 정보
+    full_name = models.CharField(max_length=100, verbose_name="이름")
+    title = models.CharField(max_length=100, blank=True, verbose_name="직책")
+    company_name = models.CharField(max_length=200, verbose_name="회사명")
+    department = models.CharField(max_length=100, blank=True, verbose_name="부서")
+    
+    # 연락처
+    phone = models.CharField(max_length=50, blank=True, verbose_name="전화번호")
+    mobile = models.CharField(max_length=50, blank=True, verbose_name="휴대폰")
+    email = models.EmailField(verbose_name="이메일")
+    
+    # 주소 및 웹사이트
+    address = models.CharField(max_length=300, blank=True, verbose_name="주소")
+    website = models.URLField(blank=True, verbose_name="웹사이트")
+    
+    # 추가 정보
+    fax = models.CharField(max_length=50, blank=True, verbose_name="팩스")
+    logo_url = models.URLField(blank=True, verbose_name="로고 URL")
+    
+    # HTML 서명
+    signature_html = models.TextField(blank=True, verbose_name="HTML 서명", help_text="커스텀 HTML 서명")
+    
+    # 기본 명함 설정
+    is_default = models.BooleanField(default=False, verbose_name="기본 명함")
+    is_active = models.BooleanField(default=True, verbose_name="활성 여부")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        # 같은 사용자의 기본 명함은 하나만
+        if self.is_default:
+            BusinessCard.objects.filter(
+                user=self.user,
+                is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+    
+    def generate_signature(self):
+        """HTML 서명 자동 생성"""
+        if self.signature_html:
+            return self.signature_html
+        
+        signature = f"""
+        <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <p style="margin: 0; padding: 0;">
+                <strong style="font-size: 14px;">{self.full_name}</strong>
+                {f' | {self.title}' if self.title else ''}
+            </p>
+            <p style="margin: 5px 0; padding: 0; color: #666;">
+                {self.company_name}
+                {f' | {self.department}' if self.department else ''}
+            </p>
+            <p style="margin: 5px 0; padding: 0; color: #666;">
+                {f'전화: {self.phone} | ' if self.phone else ''}
+                {f'휴대폰: {self.mobile} | ' if self.mobile else ''}
+                이메일: <a href="mailto:{self.email}" style="color: #0066cc;">{self.email}</a>
+            </p>
+            {f'<p style="margin: 5px 0; padding: 0; color: #666;">{self.address}</p>' if self.address else ''}
+            {f'<p style="margin: 5px 0; padding: 0;"><a href="{self.website}" style="color: #0066cc;">{self.website}</a></p>' if self.website else ''}
+        </div>
+        """
+        return signature
+    
+    class Meta:
+        verbose_name = "명함"
+        verbose_name_plural = "명함 목록"
+        ordering = ['-is_default', '-created_at']
 
 
 # 서류 생성 로그 (DocumentGenerationLog) 모델

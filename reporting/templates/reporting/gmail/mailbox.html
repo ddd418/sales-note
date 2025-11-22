@@ -1,0 +1,338 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}
+    {% if mailbox_type == 'inbox' %}받은편지함{% else %}보낸편지함{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .mailbox-container {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .mailbox-sidebar {
+        background: #f8f9fa;
+        border-right: 1px solid #dee2e6;
+        min-height: calc(100vh - 100px);
+    }
+    
+    .mailbox-tabs {
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .mailbox-tab {
+        padding: 12px 24px;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        color: #5f6368;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    
+    .mailbox-tab:hover {
+        background: #f1f3f4;
+    }
+    
+    .mailbox-tab.active {
+        color: #1a73e8;
+        border-bottom-color: #1a73e8;
+    }
+    
+    .email-list {
+        background: white;
+    }
+    
+    .email-item {
+        border-bottom: 1px solid #e8eaed;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        transition: box-shadow 0.2s;
+    }
+    
+    .email-item:hover {
+        box-shadow: inset 1px 0 0 #dadce0, inset -1px 0 0 #dadce0, 0 1px 2px 0 rgb(60 64 67 / 30%), 0 1px 3px 1px rgb(60 64 67 / 15%);
+        z-index: 1;
+    }
+    
+    .email-item.unread {
+        background: #f1f3f4;
+        font-weight: 600;
+    }
+    
+    .email-checkbox {
+        margin-right: 16px;
+        width: 20px;
+        height: 20px;
+    }
+    
+    .email-sender {
+        min-width: 200px;
+        max-width: 200px;
+        font-size: 14px;
+        color: #202124;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .email-content {
+        flex: 1;
+        min-width: 0;
+        margin: 0 16px;
+    }
+    
+    .email-subject {
+        font-size: 14px;
+        color: #202124;
+        display: inline;
+    }
+    
+    .email-snippet {
+        font-size: 13px;
+        color: #5f6368;
+        display: inline;
+        margin-left: 8px;
+    }
+    
+    .email-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-left: 8px;
+        background: #e8f0fe;
+        color: #1a73e8;
+    }
+    
+    .email-date {
+        min-width: 80px;
+        text-align: right;
+        font-size: 12px;
+        color: #5f6368;
+    }
+    
+    .compose-btn {
+        background: #1a73e8;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 24px;
+        font-weight: 500;
+        box-shadow: 0 1px 2px 0 rgb(60 64 67 / 30%), 0 1px 3px 1px rgb(60 64 67 / 15%);
+        margin: 16px;
+    }
+    
+    .compose-btn:hover {
+        background: #1765cc;
+        box-shadow: 0 1px 3px 0 rgb(60 64 67 / 30%), 0 4px 8px 3px rgb(60 64 67 / 15%);
+    }
+    
+    .sync-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        color: #5f6368;
+        border: 1px solid #dadce0;
+        background: white;
+        border-radius: 4px;
+    }
+    
+    .sync-btn:hover {
+        background: #f8f9fa;
+        border-color: #c6c6c6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mailbox-container">
+    <div class="row g-0">
+        <!-- 사이드바 -->
+        <div class="col-md-2 mailbox-sidebar">
+            <div class="list-group list-group-flush">
+                <a href="{% url 'reporting:mailbox_inbox' %}" 
+                   class="list-group-item list-group-item-action {% if mailbox_type == 'inbox' %}active{% endif %}">
+                    <i class="bi bi-inbox me-2"></i> 받은편지함
+                    {% if unread_count %}
+                    <span class="badge bg-primary rounded-pill float-end">{{ unread_count }}</span>
+                    {% endif %}
+                </a>
+                <a href="{% url 'reporting:mailbox_sent' %}" 
+                   class="list-group-item list-group-item-action {% if mailbox_type == 'sent' %}active{% endif %}">
+                    <i class="bi bi-send me-2"></i> 보낸편지함
+                </a>
+            </div>
+        </div>
+        
+        <!-- 메일 목록 -->
+        <div class="col-md-10">
+            <!-- 상단 툴바 -->
+            <div class="d-flex align-items-center p-3 border-bottom">
+                <div class="flex-grow-1">
+                    <small class="text-muted">총 {{ emails.paginator.count }}개</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'reporting:send_email_from_mailbox' %}" class="sync-btn">
+                        <i class="bi bi-pencil-square"></i> 작성
+                    </a>
+                    {% if mailbox_type == 'inbox' %}
+                    <button class="sync-btn" id="syncBtn">
+                        <i class="bi bi-arrow-clockwise"></i> 동기화
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- 이메일 리스트 -->
+            <div class="email-list">
+                {% if emails %}
+                    {% for email in emails %}
+                    <div class="email-item {% if mailbox_type == 'inbox' and not email.is_read %}unread{% endif %}"
+                         onclick="location.href='{% url 'reporting:mailbox_thread' email.gmail_thread_id %}'">
+                        <div class="email-sender">
+                            {% if mailbox_type == 'inbox' %}
+                                {% if email.followup %}
+                                    {{ email.followup.customer_name }}
+                                {% else %}
+                                    {{ email.sender_email }}
+                                {% endif %}
+                            {% else %}
+                                {{ email.recipient_email }}
+                            {% endif %}
+                        </div>
+                        <div class="email-content">
+                            <span class="email-subject">{{ email.subject }}</span>
+                            <span class="email-snippet">
+                                {% if email.body %}
+                                    - {{ email.body|truncatewords:15 }}
+                                {% elif email.body_html %}
+                                    - {{ email.body_html|striptags|truncatewords:15 }}
+                                {% endif %}
+                            </span>
+                            {% if email.schedule %}
+                            <span class="email-badge">
+                                <i class="bi bi-calendar"></i> 일정
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="email-date">
+                            {{ email.sent_at|date:"n월 j일" }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center p-5">
+                        <i class="bi bi-inbox" style="font-size: 4rem; color: #dadce0;"></i>
+                        <p class="mt-3 text-muted">
+                            {% if mailbox_type == 'inbox' %}
+                            받은 메일이 없습니다.
+                            {% else %}
+                            보낸 메일이 없습니다.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- 페이지네이션 -->
+            {% if emails.has_other_pages %}
+            <nav class="p-3">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if emails.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ emails.previous_page_number }}">이전</a>
+                    </li>
+                    {% endif %}
+                    
+                    {% for num in emails.paginator.page_range %}
+                        {% if emails.number == num %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                        {% elif num > emails.number|add:'-3' and num < emails.number|add:'3' %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if emails.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ emails.next_page_number }}">다음</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const syncBtn = document.getElementById('syncBtn');
+    
+    if (syncBtn) {
+        syncBtn.addEventListener('click', function() {
+            const originalHtml = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>동기화 중...';
+            
+            // CSRF 토큰 가져오기
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                             getCookie('csrftoken');
+            
+            fetch('{% url "reporting:sync_received_emails" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('동기화 실패: ' + data.error);
+                    this.disabled = false;
+                    this.innerHTML = originalHtml;
+                }
+            })
+            .catch(error => {
+                alert('동기화 중 오류 발생: ' + error.message);
+                this.disabled = false;
+                this.innerHTML = originalHtml;
+            });
+        });
+    }
+    
+    // CSRF 토큰 쿠키에서 가져오기
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+});
+</script>
+{% endblock %}

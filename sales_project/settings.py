@@ -73,3 +73,16 @@ else:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_AGE = 86400
     SESSION_SAVE_EVERY_REQUEST = True
+    
+    # Gmail API 설정
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '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')
+GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'http://127.0.0.1:8000/reporting/gmail/callback/')
+# Celery 설정
+CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Seoul'
+CELERY_ENABLE_UTC = False

@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage, EmailLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -1766,6 +1766,14 @@ def schedule_detail_view(request, pk):
     # 납품 품목 조회 (DeliveryItem 모델)
     delivery_items = DeliveryItem.objects.filter(schedule=schedule)
     
+    # 관련 이메일 스레드 조회
+    from collections import defaultdict
+    email_logs = EmailLog.objects.filter(schedule=schedule).order_by('gmail_thread_id', 'sent_at')
+    email_threads = defaultdict(list)
+    for email in email_logs:
+        if email.gmail_thread_id:
+            email_threads[email.gmail_thread_id].append(email)
+    
     # 관련 히스토리에서 납품 품목 텍스트 찾기 (대체 방법)
     delivery_text = None
     delivery_amount = 0
@@ -1798,6 +1806,7 @@ def schedule_detail_view(request, pk):
         'delivery_items': delivery_items,
         'delivery_text': delivery_text,  # 히스토리에서 가져온 납품 품목 텍스트
         'delivery_amount': delivery_amount,  # 납품 금액
+        'email_threads': dict(email_threads),  # 이메일 스레드
         'from_page': from_page,
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }

@@ -1,0 +1,114 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{% if card %}명함 수정{% else %}명함 추가{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card" style="max-width: 800px; margin: 0 auto;">
+        <div class="card-header">
+            <h4 class="mb-0">
+                <i class="bi bi-person-badge"></i> 
+                {% if card %}명함 수정{% else %}명함 추가{% endif %}
+            </h4>
+        </div>
+        
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="name" class="form-label">명함 이름 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ card.name }}" required>
+                        <small class="text-muted">예: 회사 명함, 개인 명함</small>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="full_name" class="form-label">이름 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="full_name" name="full_name" 
+                               value="{{ card.full_name }}" required>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="title" class="form-label">직함</label>
+                        <input type="text" class="form-control" id="title" name="title" 
+                               value="{{ card.title }}">
+                        <small class="text-muted">예: 영업부장, 대리</small>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="company_name" class="form-label">회사명</label>
+                        <input type="text" class="form-control" id="company_name" name="company_name" 
+                               value="{{ card.company_name }}">
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="email" class="form-label">이메일 <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="email" name="email" 
+                               value="{{ card.email }}" required>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="mobile" class="form-label">휴대폰</label>
+                        <input type="tel" class="form-control" id="mobile" name="mobile" 
+                               value="{{ card.mobile }}">
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="phone" class="form-label">전화번호</label>
+                        <input type="tel" class="form-control" id="phone" name="phone" 
+                               value="{{ card.phone }}">
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="website" class="form-label">웹사이트</label>
+                        <input type="url" class="form-control" id="website" name="website" 
+                               value="{{ card.website }}" placeholder="https://">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="address" class="form-label">주소</label>
+                    <textarea class="form-control" id="address" name="address" rows="2">{{ card.address }}</textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="is_default" name="is_default"
+                               {% if card.is_default or not card %}checked{% endif %}>
+                        <label class="form-check-label" for="is_default">
+                            기본 명함으로 설정
+                        </label>
+                        <small class="text-muted d-block">이메일 발송 시 자동으로 선택됩니다.</small>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>서명 자동 생성</strong><br>
+                    입력한 정보를 바탕으로 이메일 서명이 자동으로 생성됩니다.
+                </div>
+                
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'reporting:business_card_list' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> 취소
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 저장
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
