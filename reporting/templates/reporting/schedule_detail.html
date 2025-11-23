@@ -976,13 +976,6 @@ function calculateTotal() {
 function openDetailProductSearchModal(button) {
     const deliveryItem = button.closest('.delivery-item');
     let allProducts = [];
-    // try to use dataset if available
-    try {
-        const s = deliveryItem.dataset.allProducts || '[]';
-        allProducts = JSON.parse(s);
-    } catch (e) {
-        console.warn('제품 데이터 파싱 실패, 서버에서 로드 시도');
-    }
 
     const modalHtml = `
       <div class="modal fade" id="detailProductSearchModal" tabindex="-1" style="z-index: 100200;">
@@ -993,14 +986,21 @@ function openDetailProductSearchModal(button) {
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-              <div class="mb-3"><input type="text" class="form-control" id="detailModalSearchInput" placeholder="품번을 입력하세요..."></div>
-              <div id="detailModalResults" style="max-height:400px; overflow-y:auto;"></div>
+              <div class="mb-3">
+                <input type="text" class="form-control" id="detailModalSearchInput" placeholder="품번을 입력하고 Enter를 눌러주세요...">
+                <small class="text-muted">※ Enter 키를 눌러야 검색됩니다</small>
+              </div>
+              <div id="detailModalResults" style="max-height:400px; overflow-y:auto;">
+                <div class="text-muted p-3 text-center">품번을 입력하고 Enter를 눌러주세요</div>
+              </div>
             </div>
           </div>
         </div>
       </div>`;
 
-    const existing = document.getElementById('detailProductSearchModal'); if (existing) existing.remove();
+    const existing = document.getElementById('detailProductSearchModal'); 
+    if (existing) existing.remove();
+    
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     const modalElement = document.getElementById('detailProductSearchModal');
     const modal = new bootstrap.Modal(modalElement);
@@ -1008,28 +1008,87 @@ function openDetailProductSearchModal(button) {
     const resultsList = document.getElementById('detailModalResults');
 
     function renderResults(items) {
-        if (!items || items.length === 0) { resultsList.innerHTML = '<div class="text-muted p-3 text-center">검색 결과가 없습니다</div>'; return; }
+        if (!items || items.length === 0) { 
+            resultsList.innerHTML = '<div class="text-muted p-3 text-center">검색 결과가 없습니다</div>'; 
+            return; 
+        }
+        
         resultsList.innerHTML = items.map(p=>`<div class="border-bottom p-3 detail-product-item" data-id="${p.id}" data-code="${p.product_code}" data-price="${p.current_price}" style="cursor:pointer;"><div class="d-flex justify-content-between"><div><div class="fw-bold">${p.product_code}</div><small class="text-muted">${p.description||''}</small></div><div class="text-end fw-bold text-primary">${parseInt(p.current_price).toLocaleString()}원</div></div></div>`).join('');
+        
         resultsList.querySelectorAll('.detail-product-item').forEach(el=>{
             el.onclick = function(){
-                const pid = this.dataset.id; const pcode = this.dataset.code; const pprice = this.dataset.price;
+                const pid = this.dataset.id; 
+                const pcode = this.dataset.code; 
+                const pprice = this.dataset.price;
                 const pidInput = deliveryItem.querySelector('.detail-product-id');
                 const nameInput = deliveryItem.querySelector('.detail-item-name');
                 const hiddenPrice = deliveryItem.querySelector('.unit-price-input');
-                if (pidInput) pidInput.value = pid; if (nameInput) nameInput.value = pcode; if (hiddenPrice) hiddenPrice.value = pprice;
-                const displayPrice = deliveryItem.querySelector('.detail-unit-price-display'); if (displayPrice) displayPrice.value = parseInt(pprice).toLocaleString();
-                const qty = deliveryItem.querySelector('.quantity-input'); if (qty && !qty.value) qty.value = 1; if (qty) calculateItemTotal({target: qty});
-                const inst = bootstrap.Modal.getInstance(modalElement); if (inst) inst.hide();
+                
+                if (pidInput) pidInput.value = pid; 
+                if (nameInput) nameInput.value = pcode; 
+                if (hiddenPrice) hiddenPrice.value = pprice;
+                
+                const displayPrice = deliveryItem.querySelector('.detail-unit-price-display'); 
+                if (displayPrice) displayPrice.value = parseInt(pprice).toLocaleString();
+                
+                const qty = deliveryItem.querySelector('.quantity-input'); 
+                if (qty && !qty.value) qty.value = 1; 
+                if (qty) calculateItemTotal({target: qty});
+                
+                const inst = bootstrap.Modal.getInstance(modalElement); 
+                if (inst) inst.hide();
             };
         });
     }
 
-    function performSearch(){ const q = searchInput.value.toLowerCase().trim(); if (!allProducts || allProducts.length===0) { fetch('/reporting/api/products/').then(r=>r.json()).then(data=>{ allProducts = data.products || []; renderResults(allProducts.filter(p=>!q||p.product_code.toLowerCase().includes(q)||(p.name && p.name.toLowerCase().includes(q))));}).catch(()=>{ resultsList.innerHTML = '<div class="text-danger p-3">제품을 불러올 수 없습니다.</div>'}); return;} renderResults(allProducts.filter(p=>!q||p.product_code.toLowerCase().includes(q)||(p.name && p.name.toLowerCase().includes(q)))); }
+    function performSearch() { 
+        const q = searchInput.value.toLowerCase().trim();
+        
+        if (!q) {
+            resultsList.innerHTML = '<div class="text-muted p-3 text-center">품번을 입력하고 Enter를 눌러주세요</div>';
+            return;
+        }
+        
+        resultsList.innerHTML = '<div class="text-muted p-3 text-center"><i class="fas fa-spinner fa-spin"></i> 검색 중...</div>';
+        
+        fetch('/reporting/api/products/')
+            .then(r=>r.json())
+            .then(data=>{ 
+                allProducts = data.products || [];
+                
+                // 제품이 없는 경우
+                if (allProducts.length === 0) {
+                    resultsList.innerHTML = '<div class="text-warning p-3 text-center"><i class="fas fa-exclamation-triangle me-2"></i>등록된 제품이 없습니다.<br><small class="text-muted">제품 관리 메뉴에서 먼저 제품을 등록해주세요.</small></div>';
+                    setTimeout(() => {
+                        const inst = bootstrap.Modal.getInstance(modalElement);
+                        if (inst) inst.hide();
+                    }, 2000);
+                    return;
+                }
+                
+                const filtered = allProducts.filter(p=>p.product_code.toLowerCase().includes(q)||(p.name && p.name.toLowerCase().includes(q)));
+                renderResults(filtered);
+            })
+            .catch(()=>{ 
+                resultsList.innerHTML = '<div class="text-danger p-3">제품을 불러올 수 없습니다.</div>';
+            }); 
+    }
 
-    searchInput.addEventListener('input', performSearch);
+    // Enter 키 이벤트만 처리
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            performSearch();
+        }
+    });
+    
     modal.show();
-    modalElement.addEventListener('shown.bs.modal', function(){ performSearch(); searchInput.focus(); }, {once:true});
-    modalElement.addEventListener('hidden.bs.modal', function(){ modalElement.remove(); }, {once:true});
+    modalElement.addEventListener('shown.bs.modal', function(){ 
+        searchInput.focus(); 
+    }, {once:true});
+    modalElement.addEventListener('hidden.bs.modal', function(){ 
+        modalElement.remove(); 
+    }, {once:true});
 }
 
 // History에서 가져온 delivery_text를 테이블로 표시하는 함수

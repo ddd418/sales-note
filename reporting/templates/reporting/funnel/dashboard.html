@@ -5,6 +5,48 @@
 {% block extra_css %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
+    /* ============================================
+       모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+       ============================================ */
+    
+    /* backdrop을 완전히 투명하게 (배경 없음) */
+    .modal-backdrop {
+        display: none !important; /* backdrop 자체를 숨김 */
+    }
+    
+    /* 모달 자체는 backdrop보다 높게 */
+    .modal {
+        z-index: 1055 !important;
+        pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+    }
+    
+    /* 모달 다이얼로그만 클릭 가능하게 */
+    .modal-dialog {
+        z-index: 1056 !important;
+        pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+    }
+    
+    /* 모달 컨텐츠를 확실히 클릭 가능하게 */
+    .modal-content {
+        position: relative;
+        z-index: 1057 !important;
+        pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
+        background-color: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 0.3rem;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+    }
+    
+    /* 모달 내부의 모든 요소가 클릭 가능하도록 */
+    .modal-header,
+    .modal-body,
+    .modal-footer,
+    .modal-header *,
+    .modal-body *,
+    .modal-footer * {
+        pointer-events: auto !important;
+    }
+
     /* 프리미엄 그라디언트 헤더 */
     .page-header-gradient {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -475,7 +517,8 @@
                     </h5>
                     <div class="mt-3">
                         {% for opp in top_opportunities %}
-                        <div class="opportunity-item" style="border-left-color: {{ opp.stage_color }}; border-left-width: 5px;">
+                        <div class="opportunity-item" style="border-left-color: {{ opp.stage_color }}; border-left-width: 5px; cursor: pointer;" 
+                             onclick="showOpportunityHistory({{ opp.id }})">
                             <div class="row align-items-center g-2">
                                 <div class="col-md-3 col-12 mb-2 mb-md-0">
                                     <strong style="font-size: 1.1rem; color: #2d3748;">{{ opp.customer_name }}</strong><br>
@@ -542,6 +585,64 @@
     </div>
 </div>
 
+<!-- 영업 기회 히스토리 모달 -->
+<div class="modal fade" id="opportunityHistoryModal" tabindex="-1" aria-labelledby="opportunityHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title" id="opportunityHistoryModalLabel">
+                    <i class="fas fa-history"></i> 영업 기회 히스토리
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="opportunityHistoryLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-muted">히스토리를 불러오는 중...</p>
+                </div>
+                <div id="opportunityHistoryContent" style="display: none;">
+                    <!-- 영업 기회 정보 -->
+                    <div class="card mb-4" style="border-left: 4px solid #667eea;">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3" id="oppTitle"></h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <small class="text-muted d-block">고객명</small>
+                                    <strong id="oppCustomerName"></strong>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted d-block">회사명</small>
+                                    <strong id="oppCompanyName"></strong>
+                                </div>
+                                <div class="col-md-2">
+                                    <small class="text-muted d-block">현재 단계</small>
+                                    <strong id="oppCurrentStage"></strong>
+                                </div>
+                                <div class="col-md-2">
+                                    <small class="text-muted d-block">예상 매출</small>
+                                    <strong id="oppExpectedRevenue"></strong>
+                                </div>
+                                <div class="col-md-2">
+                                    <small class="text-muted d-block">성공 확률</small>
+                                    <strong id="oppProbability"></strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 일정 및 히스토리 -->
+                    <div id="schedulesContainer"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // 단계별 차트
 const stageData = {{ stage_chart_data|safe }};
@@ -579,5 +680,119 @@ new Chart(stageCtx, {
         }
     }
 });
+
+// 영업 기회 히스토리 모달 표시
+function showOpportunityHistory(opportunityId) {
+    const modal = new bootstrap.Modal(document.getElementById('opportunityHistoryModal'));
+    modal.show();
+    
+    // 로딩 표시
+    document.getElementById('opportunityHistoryLoading').style.display = 'block';
+    document.getElementById('opportunityHistoryContent').style.display = 'none';
+    
+    // API 호출
+    fetch(`/reporting/api/funnel/opportunity/${opportunityId}/history/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayOpportunityHistory(data);
+            } else {
+                alert('히스토리를 불러오는데 실패했습니다: ' + data.error);
+                modal.hide();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('히스토리를 불러오는데 실패했습니다.');
+            modal.hide();
+        });
+}
+
+// 히스토리 데이터 표시
+function displayOpportunityHistory(data) {
+    const opp = data.opportunity;
+    
+    // 영업 기회 정보 표시
+    document.getElementById('oppTitle').textContent = opp.title || '영업 기회';
+    document.getElementById('oppCustomerName').textContent = opp.customer_name;
+    document.getElementById('oppCompanyName').textContent = opp.company_name;
+    document.getElementById('oppCurrentStage').textContent = opp.current_stage;
+    document.getElementById('oppExpectedRevenue').textContent = formatCurrency(opp.expected_revenue) + '원';
+    document.getElementById('oppProbability').textContent = opp.probability + '%';
+    
+    // 일정 및 히스토리 표시
+    const schedulesContainer = document.getElementById('schedulesContainer');
+    schedulesContainer.innerHTML = '';
+    
+    if (data.schedules.length === 0) {
+        schedulesContainer.innerHTML = '<p class="text-center text-muted py-4">관련 일정이 없습니다.</p>';
+    } else {
+        data.schedules.forEach(schedule => {
+            const scheduleCard = createScheduleCard(schedule);
+            schedulesContainer.appendChild(scheduleCard);
+        });
+    }
+    
+    // 로딩 숨기고 콘텐츠 표시
+    document.getElementById('opportunityHistoryLoading').style.display = 'none';
+    document.getElementById('opportunityHistoryContent').style.display = 'block';
+}
+
+// 일정 카드 생성
+function createScheduleCard(schedule) {
+    const card = document.createElement('div');
+    card.className = 'card mb-3';
+    card.style.borderLeft = '4px solid #8b5cf6';
+    
+    let historiesHTML = '';
+    if (schedule.histories.length > 0) {
+        historiesHTML = '<div class="mt-3"><h6 class="text-muted mb-2"><i class="fas fa-comment-dots"></i> 히스토리</h6>';
+        schedule.histories.forEach(history => {
+            historiesHTML += `
+                <div class="border-start border-3 border-secondary ps-3 mb-2">
+                    <div class="d-flex justify-content-between">
+                        <strong>${history.action_type}</strong>
+                        <small class="text-muted">${history.created_at} - ${history.created_by}</small>
+                    </div>
+                    ${history.content ? `<p class="mb-1">${history.content}</p>` : ''}
+                    ${history.delivery_amount ? `<p class="mb-1"><strong>납품 금액:</strong> ${formatCurrency(history.delivery_amount)}원</p>` : ''}
+                    ${history.delivery_items ? `<p class="mb-1"><strong>납품 품목:</strong> ${history.delivery_items}</p>` : ''}
+                    ${history.delivery_date ? `<p class="mb-1"><strong>납품 날짜:</strong> ${history.delivery_date}</p>` : ''}
+                    ${history.meeting_date ? `<p class="mb-1"><strong>미팅 날짜:</strong> ${history.meeting_date}</p>` : ''}
+                </div>
+            `;
+        });
+        historiesHTML += '</div>';
+    }
+    
+    card.innerHTML = `
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h5 class="card-title mb-0">
+                    <span class="badge" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+                        ${schedule.activity_type}
+                    </span>
+                    ${schedule.visit_date} ${schedule.visit_time}
+                </h5>
+                <span class="badge ${schedule.status === '완료됨' ? 'bg-success' : schedule.status === '취소됨' ? 'bg-danger' : 'bg-warning'}">
+                    ${schedule.status}
+                </span>
+            </div>
+            ${schedule.location ? `<p class="mb-1"><i class="fas fa-map-marker-alt"></i> ${schedule.location}</p>` : ''}
+            ${schedule.notes ? `<p class="mb-1"><strong>메모:</strong> ${schedule.notes}</p>` : ''}
+            ${schedule.expected_revenue ? `<p class="mb-1"><strong>예상 매출:</strong> ${formatCurrency(schedule.expected_revenue)}원</p>` : ''}
+            ${historiesHTML}
+        </div>
+    `;
+    
+    return card;
+}
+
+// 통화 형식 변환
+function formatCurrency(value) {
+    if (!value) return '0';
+    return parseFloat(value).toLocaleString('ko-KR');
+}
+
 </script>
 {% endblock %}

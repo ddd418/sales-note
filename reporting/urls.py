@@ -151,6 +151,7 @@ urlpatterns = [
     
     # 펀넬 API
     path('api/funnel/update-stage/<int:opportunity_id>/', views.update_opportunity_stage_api, name='update_opportunity_stage_api'),
+    path('api/funnel/opportunity/<int:opportunity_id>/history/', views.opportunity_history_api, name='opportunity_history_api'),
     
     # 선결제 URL들
     path('prepayment/', views.prepayment_list_view, name='prepayment_list'),

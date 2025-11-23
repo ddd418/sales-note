@@ -593,28 +593,6 @@ div.modal-backdrop {
                       </div>
                     </div>
                     
-                    <!-- 구매 확정 체크박스 -->
-                    <div class="row mt-2">
-                      <div class="col-12">
-                        <div class="form-check">
-                          {{ form.purchase_confirmed }}
-                          <label class="form-check-label" for="{{ form.purchase_confirmed.id_for_label }}">
-                            <strong>{{ form.purchase_confirmed.label }}</strong>
-                            <i class="fas fa-check-circle text-success ms-1"></i>
-                          </label>
-                          <div class="form-text">
-                            <i class="fas fa-info-circle me-1"></i>
-                            구매가 확정되면 체크하세요. 펀넬 단계가 자동으로 <strong>클로징(Closing)</strong>으로 전환됩니다.
-                          </div>
-                          {% if form.purchase_confirmed.errors %}
-                          <div class="invalid-feedback d-block">
-                            {% for error in form.purchase_confirmed.errors %}{{ error }}{% endfor %}
-                          </div>
-                          {% endif %}
-                        </div>
-                      </div>
-                    </div>
-                    
                     <!-- 선결제 사용 섹션 (납품만 표시) -->
                     <div id="prepayment-section" style="display: none;" class="mt-4">
                       <div class="card border-info">
@@ -4210,6 +4188,13 @@ function openProductSearchModal(button) {
         // 로딩 모달 닫기
         loadingModalInstance.hide();
         loadingModalElement.remove();
+        
+        // 제품이 없는 경우
+        if (!products || products.length === 0) {
+          alert('등록된 제품이 없습니다.\n제품 관리 메뉴에서 먼저 제품을 등록해주세요.');
+          return;
+        }
+        
         // 제품 검색 모달 다시 열기
         setTimeout(() => openProductSearchModal(button), 300);
       })
