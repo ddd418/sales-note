@@ -676,12 +676,16 @@ def mailbox_thread(request, thread_id):
 
 @login_required
 @login_required
+@login_required
 def sync_received_emails(request):
     """
     수동 메일 동기화
     - 마지막 동기화 시점 이후의 메일만 가져옴
     - 첫 동기화인 경우 최근 1일치
     """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
+    
     profile = request.user.userprofile
     
     # Gmail 연결 확인

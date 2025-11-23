@@ -44,7 +44,7 @@ elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
 
 # CSRF 쿠키 설정
 CSRF_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # JavaScript에서 CSRF 토큰을 읽을 수 있도록 False로 설정
 SESSION_COOKIE_SECURE = not DEBUG
 
 # Railway 환경에서 CSRF 더 관대하게 설정 (임시 디버깅용)
