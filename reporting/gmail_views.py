@@ -197,11 +197,20 @@ def _sync_emails_by_days(user, days=1):
 @login_required
 def gmail_connect(request):
     """Gmail 계정 연결 시작"""
-    redirect_uri = settings.GMAIL_REDIRECT_URI
-    auth_url, state = get_authorization_url(redirect_uri)
-    # state를 세션에 저장 (보안을 위해)
-    request.session['gmail_oauth_state'] = state
-    return redirect(auth_url)
+    # 환경 변수 체크
+    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_CLIENT_SECRET or not settings.GMAIL_REDIRECT_URI:
+        messages.error(request, 'Gmail API 설정이 올바르지 않습니다. 관리자에게 문의하세요.')
+        return redirect('reporting:profile')
+    
+    try:
+        redirect_uri = settings.GMAIL_REDIRECT_URI
+        auth_url, state = get_authorization_url(redirect_uri)
+        # state를 세션에 저장 (보안을 위해)
+        request.session['gmail_oauth_state'] = state
+        return redirect(auth_url)
+    except Exception as e:
+        messages.error(request, f'Gmail 연결 시작 중 오류: {str(e)}')
+        return redirect('reporting:profile')
 
 
 @login_required
@@ -252,6 +261,7 @@ def gmail_callback(request):
 
 
 @login_required
+@login_required
 def gmail_disconnect(request):
     """Gmail 계정 연결 해제"""
     if request.method == 'POST':
@@ -260,6 +270,7 @@ def gmail_disconnect(request):
             profile.gmail_token = None
             profile.gmail_email = None
             profile.gmail_connected_at = None
+            profile.gmail_last_sync_at = None
             profile.save()
             
             messages.success(request, 'Gmail 계정 연결이 해제되었습니다.')

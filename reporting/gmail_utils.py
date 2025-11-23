@@ -433,6 +433,9 @@ class GmailService:
 
 def get_authorization_url(redirect_uri):
     """OAuth2 인증 URL 생성"""
+    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_CLIENT_SECRET:
+        raise ValueError('Gmail API 설정(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET)이 설정되지 않았습니다.')
+    
     flow = Flow.from_client_config(
         {
             "web": {
@@ -458,6 +461,9 @@ def get_authorization_url(redirect_uri):
 
 def exchange_code_for_token(code, redirect_uri):
     """인증 코드를 토큰으로 교환"""
+    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_CLIENT_SECRET:
+        raise ValueError('Gmail API 설정(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET)이 설정되지 않았습니다.')
+    
     flow = Flow.from_client_config(
         {
             "web": {
