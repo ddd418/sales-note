@@ -197,7 +197,7 @@ def _sync_emails_by_days(user, days=1):
 @login_required
 def gmail_connect(request):
     """Gmail 계정 연결 시작"""
-    redirect_uri = request.build_absolute_uri(reverse('reporting:gmail_callback'))
+    redirect_uri = settings.GMAIL_REDIRECT_URI
     auth_url, state = get_authorization_url(redirect_uri)
     # state를 세션에 저장 (보안을 위해)
     request.session['gmail_oauth_state'] = state
@@ -220,7 +220,7 @@ def gmail_callback(request):
     
     try:
         # 인증 코드를 토큰으로 교환
-        redirect_uri = request.build_absolute_uri(reverse('reporting:gmail_callback'))
+        redirect_uri = settings.GMAIL_REDIRECT_URI
         creds, gmail_email = exchange_code_for_token(code, redirect_uri)
         
         # UserProfile에 토큰 저장
