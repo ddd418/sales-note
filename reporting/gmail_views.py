@@ -268,7 +268,7 @@ def gmail_disconnect(request):
         try:
             profile = request.user.userprofile
             profile.gmail_token = None
-            profile.gmail_email = None
+            profile.gmail_email = ''
             profile.gmail_connected_at = None
             profile.gmail_last_sync_at = None
             profile.save()
