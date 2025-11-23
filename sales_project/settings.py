@@ -56,6 +56,10 @@ else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
     DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+    
+    # 절대 URL 생성을 위한 도메인 설정
+    SITE_DOMAIN = "http://127.0.0.1:8000"
+    
     LOGIN_URL = "reporting:login"
     LOGIN_REDIRECT_URL = "reporting:dashboard"
     LOGOUT_REDIRECT_URL = "reporting:login"
@@ -73,6 +77,10 @@ else:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_AGE = 86400
     SESSION_SAVE_EVERY_REQUEST = True
+    
+    # 파일 업로드 설정 (최대 25MB)
+    DATA_UPLOAD_MAX_MEMORY_SIZE = 26214400  # 25MB
+    FILE_UPLOAD_MAX_MEMORY_SIZE = 26214400  # 25MB
     
     # Gmail API 설정
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')

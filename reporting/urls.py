@@ -224,4 +224,7 @@ urlpatterns = [
     path('business-cards/<int:card_id>/edit/', gmail_views.business_card_edit, name='business_card_edit'),
     path('business-cards/<int:card_id>/delete/', gmail_views.business_card_delete, name='business_card_delete'),
     path('business-cards/<int:card_id>/set-default/', gmail_views.business_card_set_default, name='business_card_set_default'),
+    
+    # 이미지 업로드
+    path('upload-image/', gmail_views.upload_editor_image, name='upload_editor_image'),
 ]

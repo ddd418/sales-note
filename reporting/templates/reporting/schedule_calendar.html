@@ -5672,21 +5672,33 @@
                   <span class="text-primary">${displayName}</span>
                 </div>
                 <span class="badge ${schedule.status === 'completed' ? 'bg-success' : 
-                  schedule.status === 'pending' ? 'bg-warning' : 'bg-secondary'}">${
+                  schedule.status === 'pending' ? 'bg-warning' : 
+                  schedule.status === 'cancelled' ? 'bg-danger' : 'bg-secondary'}">${
                   schedule.status === 'completed' ? '완료' : 
-                  schedule.status === 'pending' ? '예정' : '기타'
+                  schedule.status === 'pending' ? '예정' : 
+                  schedule.status === 'cancelled' ? '취소' : '예정'
                 }</span>
               </div>
-              ${schedule.notes ? `<small class="text-muted">${schedule.notes}</small>` : ''}
+              ${!isPersonalSchedule && schedule.notes ? `<small class="text-muted">${schedule.notes}</small>` : ''}
             </div>
           `;
           
-          // 클릭시 상세 모달 표시
+          // 클릭시 개인 일정은 상세 페이지로, 일반 일정은 모달 표시
           scheduleCard.style.cursor = 'pointer';
           scheduleCard.onclick = () => {
             const modal = bootstrap.Modal.getInstance(document.getElementById('dateSchedulesModal'));
             modal.hide();
-            setTimeout(() => showScheduleModal(schedule), 300);
+            
+            // 개인 일정인 경우 바로 상세 페이지로 이동
+            if (schedule.type === 'personal') {
+              if (typeof GlobalLoader !== "undefined") {
+                GlobalLoader.show();
+              }
+              window.location.href = `{% url 'reporting:personal_schedule_detail' 0 %}`.replace('0', schedule.id);
+            } else {
+              // 일반 일정은 모달 표시
+              setTimeout(() => showScheduleModal(schedule), 300);
+            }
           };
           
           schedulesList.appendChild(scheduleCard);

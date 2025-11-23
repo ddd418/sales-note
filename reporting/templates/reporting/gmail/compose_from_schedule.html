@@ -56,14 +56,14 @@
         </div>
         
         <div class="card-body">
-            <form method="post" enctype="multipart/form-data">
+            <form method="post" enctype="multipart/form-data" id="email-compose-form">
                 {% csrf_token %}
                 
                 <!-- 받는 사람 -->
                 <div class="mb-3">
                     <label for="to_email" class="form-label required">받는 사람</label>
                     <input type="email" class="form-control" id="to_email" name="to_email" 
-                           value="{{ followup.email }}" required>
+                           value="{% if form_data %}{{ form_data.to_email }}{% else %}{{ followup.email }}{% endif %}" required>
                     <small class="text-muted">{{ followup.customer_name }}</small>
                 </div>
                 
@@ -71,6 +71,7 @@
                 <div class="mb-3">
                     <label for="cc_emails" class="form-label">참조 (CC)</label>
                     <input type="text" class="form-control" id="cc_emails" name="cc_emails" 
+                           value="{% if form_data %}{{ form_data.cc_emails }}{% endif %}"
                            placeholder="여러 이메일은 쉼표로 구분">
                     <small class="text-muted">예: email1@example.com, email2@example.com</small>
                 </div>
@@ -79,6 +80,7 @@
                 <div class="mb-3">
                     <label for="bcc_emails" class="form-label">숨은 참조 (BCC)</label>
                     <input type="text" class="form-control" id="bcc_emails" name="bcc_emails" 
+                           value="{% if form_data %}{{ form_data.bcc_emails }}{% endif %}"
                            placeholder="여러 이메일은 쉼표로 구분">
                 </div>
                 
@@ -86,26 +88,24 @@
                 <div class="mb-3">
                     <label for="subject" class="form-label required">제목</label>
                     <input type="text" class="form-control" id="subject" name="subject" 
-                           value="[{{ schedule.get_activity_type_display }}] {{ schedule.followup.customer_name }}" required>
+                           value="{% if form_data %}{{ form_data.subject }}{% else %}[{{ schedule.get_activity_type_display }}] {{ schedule.followup.customer_name }}{% endif %}" required>
                 </div>
                 
                 <!-- 본문 (텍스트) -->
                 <div class="mb-3">
                     <label for="body_text" class="form-label required">본문</label>
-                    <textarea class="form-control" id="body_text" name="body_text" rows="10" required>
-안녕하세요, {{ schedule.followup.customer_name }} 담당자님
+                    <textarea class="form-control" id="body_text" name="body_text" rows="10" required>{% if form_data %}{{ form_data.body_text }}{% else %}안녕하세요, {{ schedule.followup.customer_name }} 담당자님
 
 {{ schedule.visit_date }}에 예정된 {{ schedule.get_activity_type_display }} 관련하여 연락드립니다.
 
-감사합니다.
-                    </textarea>
+감사합니다.{% endif %}</textarea>
                 </div>
                 
                 <!-- 본문 (HTML) - 선택사항 -->
                 <div class="mb-3">
                     <label for="body_html" class="form-label">HTML 본문 (선택)</label>
                     <textarea class="form-control" id="body_html" name="body_html" rows="5" 
-                              placeholder="HTML 형식이 필요한 경우 입력"></textarea>
+                              placeholder="HTML 형식이 필요한 경우 입력">{% if form_data %}{{ form_data.body_html }}{% endif %}</textarea>
                     <small class="text-muted">비어있으면 텍스트 본문이 사용됩니다.</small>
                 </div>
                 
@@ -142,7 +142,7 @@
                     <a href="{% url 'reporting:schedule_detail' schedule.id %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> 취소
                     </a>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
                         <i class="bi bi-send"></i> 발송
                     </button>
                 </div>
@@ -155,6 +155,24 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('email-compose-form');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // 폼 제출 시 중복 방지
+    form.addEventListener('submit', function(e) {
+        // 이미 제출 중이면 중단
+        if (submitBtn.disabled) {
+            e.preventDefault();
+            return false;
+        }
+        
+        // 검증 통과 시 버튼 비활성화
+        if (form.checkValidity()) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 전송 중...';
+        }
+    });
+    
     const businessCardSelect = document.getElementById('business_card_id');
     const signaturePreviewContainer = document.getElementById('signature-preview-container');
     const signaturePreview = document.getElementById('signature-preview');

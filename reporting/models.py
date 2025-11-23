@@ -985,6 +985,13 @@ class EmailLog(models.Model):
         verbose_name="첨부 파일"
     )
     
+    # 첨부파일 정보 (JSON 형식: [{'filename': str, 'size': int, 'mimetype': str}, ...])
+    attachments_info = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="첨부파일 목록"
+    )
+    
     # 연결 정보
     followup = models.ForeignKey(
         'FollowUp',
@@ -1086,7 +1093,9 @@ class BusinessCard(models.Model):
     
     # 추가 정보
     fax = models.CharField(max_length=50, blank=True, verbose_name="팩스")
-    logo_url = models.URLField(blank=True, verbose_name="로고 URL")
+    logo = models.ImageField(upload_to='business_card_logos/', blank=True, null=True, verbose_name="로고 이미지")
+    logo_url = models.URLField(blank=True, verbose_name="로고 이미지 URL", help_text="로고를 클릭했을 때 이동할 URL")
+    logo_link_url = models.URLField(blank=True, verbose_name="로고 링크 URL", help_text="로고를 클릭했을 때 이동할 URL")
     
     # HTML 서명
     signature_html = models.TextField(blank=True, verbose_name="HTML 서명", help_text="커스텀 HTML 서명")
@@ -1110,28 +1119,53 @@ class BusinessCard(models.Model):
             ).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
     
-    def generate_signature(self):
+    def generate_signature(self, request=None):
         """HTML 서명 자동 생성"""
         if self.signature_html:
             return self.signature_html
         
+        # 로고 HTML 생성
+        logo_html = ''
+        if self.logo or self.logo_url:
+            # 로고 URL 생성 (절대 URL로 변환)
+            if self.logo:
+                logo_src = self.logo.url
+                # request가 있으면 절대 URL로 변환
+                if request:
+                    logo_src = request.build_absolute_uri(logo_src)
+                else:
+                    # request가 없으면 settings에서 도메인 가져오기
+                    from django.conf import settings
+                    base_url = getattr(settings, 'SITE_DOMAIN', 'http://127.0.0.1:8000')
+                    logo_src = base_url + logo_src
+            else:
+                logo_src = self.logo_url
+            
+            logo_img = f'<img src="{logo_src}" alt="{self.company_name} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 10px;">'
+            
+            if self.logo_link_url:
+                logo_html = f'<a href="{self.logo_link_url}" target="_blank" style="display: inline-block;">{logo_img}</a>'
+            else:
+                logo_html = logo_img
+        
         signature = f"""
-        <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;">
-            <p style="margin: 0; padding: 0;">
+        <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.4;">
+            {f'<div style="margin-bottom: 8px;">{logo_html}</div>' if logo_html else ''}
+            <p style="margin: 0 0 3px 0; padding: 0;">
                 <strong style="font-size: 14px;">{self.full_name}</strong>
                 {f' | {self.title}' if self.title else ''}
             </p>
-            <p style="margin: 5px 0; padding: 0; color: #666;">
+            <p style="margin: 0 0 3px 0; padding: 0; color: #666;">
                 {self.company_name}
                 {f' | {self.department}' if self.department else ''}
             </p>
-            <p style="margin: 5px 0; padding: 0; color: #666;">
+            <p style="margin: 0 0 3px 0; padding: 0; color: #666;">
                 {f'전화: {self.phone} | ' if self.phone else ''}
                 {f'휴대폰: {self.mobile} | ' if self.mobile else ''}
                 이메일: <a href="mailto:{self.email}" style="color: #0066cc;">{self.email}</a>
             </p>
-            {f'<p style="margin: 5px 0; padding: 0; color: #666;">{self.address}</p>' if self.address else ''}
-            {f'<p style="margin: 5px 0; padding: 0;"><a href="{self.website}" style="color: #0066cc;">{self.website}</a></p>' if self.website else ''}
+            {f'<p style="margin: 0 0 3px 0; padding: 0; color: #666;">{self.address}</p>' if self.address else ''}
+            {f'<p style="margin: 0; padding: 0;"><a href="{self.website}" style="color: #0066cc;">{self.website}</a></p>' if self.website else ''}
         </div>
         """
         return signature

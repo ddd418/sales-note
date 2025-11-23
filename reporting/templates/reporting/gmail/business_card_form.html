@@ -14,7 +14,7 @@
         </div>
         
         <div class="card-body">
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 
                 <div class="row">
@@ -80,6 +80,40 @@
                     <textarea class="form-control" id="address" name="address" rows="2">{{ card.address }}</textarea>
                 </div>
                 
+                <!-- 로고 설정 -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="bi bi-image"></i> 로고 설정</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="logo" class="form-label">로고 이미지 업로드</label>
+                            <input type="file" class="form-control" id="logo" name="logo" accept="image/*">
+                            <small class="text-muted">PNG, JPG 파일 권장 (최대 크기: 150x60px로 자동 조정)</small>
+                            {% if card.logo %}
+                            <div class="mt-2">
+                                <img src="{{ card.logo.url }}" alt="현재 로고" style="max-width: 150px; max-height: 60px; border: 1px solid #ddd; padding: 5px;">
+                                <small class="d-block text-muted">현재 로고</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="logo_url" class="form-label">또는 로고 이미지 URL</label>
+                            <input type="url" class="form-control" id="logo_url" name="logo_url" 
+                                   value="{{ card.logo_url }}" placeholder="https://example.com/logo.png">
+                            <small class="text-muted">이미지 직접 업로드 대신 URL을 사용할 수 있습니다</small>
+                        </div>
+                        
+                        <div class="mb-0">
+                            <label for="logo_link_url" class="form-label">로고 클릭 시 이동할 URL</label>
+                            <input type="url" class="form-control" id="logo_link_url" name="logo_link_url" 
+                                   value="{{ card.logo_link_url }}" placeholder="https://yourcompany.com">
+                            <small class="text-muted">로고를 클릭했을 때 이동할 웹사이트 주소 (선택사항)</small>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="is_default" name="is_default"
@@ -99,6 +133,21 @@
                     입력한 정보를 바탕으로 이메일 서명이 자동으로 생성됩니다.
                 </div>
                 
+                <!-- 서명 미리보기 -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-eye"></i> 서명 미리보기</h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="preview-btn">
+                            <i class="bi bi-arrow-clockwise"></i> 새로고침
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="signature-preview" style="border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; min-height: 100px;">
+                            <p class="text-muted text-center">미리보기 버튼을 클릭하세요</p>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="d-flex justify-content-between">
                     <a href="{% url 'reporting:business_card_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> 취소
@@ -111,4 +160,108 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const previewBtn = document.getElementById('preview-btn');
+    const previewArea = document.getElementById('signature-preview');
+    
+    // 로고 이미지 미리보기 처리
+    const logoFileInput = document.getElementById('logo');
+    let logoPreviewUrl = null;
+    
+    if (logoFileInput) {
+        logoFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    logoPreviewUrl = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                logoPreviewUrl = null;
+            }
+        });
+    }
+    
+    previewBtn.addEventListener('click', function() {
+        // 폼 데이터 수집
+        const formData = {
+            full_name: document.getElementById('full_name').value.trim(),
+            title: document.getElementById('title').value.trim(),
+            company_name: document.getElementById('company_name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            mobile: document.getElementById('mobile').value.trim(),
+            phone: document.getElementById('phone').value.trim(),
+            website: document.getElementById('website').value.trim(),
+            address: document.getElementById('address').value.trim(),
+            logo_url: document.getElementById('logo_url').value.trim(),
+            logo_link_url: document.getElementById('logo_link_url').value.trim()
+        };
+        
+        // 서명 HTML 생성 (models.py의 generate_signature와 동일한 스타일)
+        let signatureHTML = '<div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.4;">';
+        
+        // 로고 추가
+        const existingLogoUrl = '{% if card.logo %}{{ request.scheme }}://{{ request.get_host }}{{ card.logo.url }}{% endif %}';
+        let logoSrc = logoPreviewUrl || formData.logo_url || existingLogoUrl;
+        
+        if (logoSrc) {
+            let logoImg = `<img src="${logoSrc}" alt="${formData.company_name || 'Company'} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 10px;">`;
+            
+            if (formData.logo_link_url) {
+                signatureHTML += `<div style="margin-bottom: 8px;"><a href="${formData.logo_link_url}" target="_blank" style="display: inline-block;">${logoImg}</a></div>`;
+            } else {
+                signatureHTML += `<div style="margin-bottom: 8px;">${logoImg}</div>`;
+            }
+        }
+        
+        // 이름과 직함
+        if (formData.full_name) {
+            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0;"><strong style="font-size: 14px;">${formData.full_name}</strong>`;
+            if (formData.title) {
+                signatureHTML += ` | ${formData.title}`;
+            }
+            signatureHTML += '</p>';
+        }
+        
+        // 회사명
+        if (formData.company_name) {
+            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${formData.company_name}</p>`;
+        }
+        
+        // 연락처 정보
+        let contactInfo = '';
+        if (formData.phone) contactInfo += `전화: ${formData.phone} | `;
+        if (formData.mobile) contactInfo += `휴대폰: ${formData.mobile} | `;
+        if (formData.email) contactInfo += `이메일: <a href="mailto:${formData.email}" style="color: #0066cc;">${formData.email}</a>`;
+        
+        if (contactInfo) {
+            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${contactInfo}</p>`;
+        }
+        
+        // 주소
+        if (formData.address) {
+            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${formData.address}</p>`;
+        }
+        
+        // 웹사이트
+        if (formData.website) {
+            signatureHTML += `<p style="margin: 0; padding: 0;"><a href="${formData.website}" style="color: #0066cc;">${formData.website}</a></p>`;
+        }
+        
+        signatureHTML += '</div>';
+        
+        // 미리보기 업데이트
+        previewArea.innerHTML = signatureHTML;
+    });
+    
+    // 페이지 로드 시 자동 미리보기 (수정 모드일 때)
+    {% if card %}
+    previewBtn.click();
+    {% endif %}
+});
+</script>
+
 {% endblock %}

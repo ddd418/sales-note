@@ -3,6 +3,51 @@
 
 {% block extra_css %}
 <style>
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 숨김 */
+.modal-backdrop {
+  display: none !important;
+}
+
+/* 모달 자체 - 인라인 z-index 존중 */
+.modal {
+  pointer-events: none !important; /* 모달 컨테이너는 투명하게 */
+}
+
+/* 모달 다이얼로그만 클릭 가능하게 */
+.modal-dialog {
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* 모달 컨텐츠를 확실히 클릭 가능하게 */
+.modal-content {
+  position: relative;
+  pointer-events: auto !important;
+  background-color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.3rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* 모달 내부의 모든 요소가 클릭 가능하도록 */
+.modal-header,
+.modal-body,
+.modal-footer,
+.modal-header *,
+.modal-body *,
+.modal-footer * {
+  pointer-events: auto !important;
+}
+
+/* ============================================
+   기존 스타일
+   ============================================ */
+
 /* 날짜/시간 input의 기본 캘린더/시계 아이콘 숨기기 */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
@@ -2396,8 +2441,8 @@ window.addItem = function(itemData = {}) {
         <div class="col-12 mb-3" style="position: relative;">
             <label class="form-label fw-bold">제품 검색 및 선택 <span class="text-danger">*</span></label>
             <div class="input-group">
-                <input type="text" class="form-control quote-product-search" placeholder="품번으로 검색..." 
-                       onkeyup="searchQuoteProducts(this)" onfocus="searchQuoteProducts(this)">
+                <input type="text" class="form-control quote-product-search" placeholder="품번으로 검색... (Enter로 검색)" 
+                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); searchQuoteProducts(this); }">
                 <button class="btn btn-outline-secondary" type="button" onclick="clearQuoteProductSearch(this)">
                     <i class="fas fa-times"></i>
                 </button>
@@ -3449,9 +3494,6 @@ function addScheduleDeliveryItem(itemData = {}) {
   container.appendChild(newItem);
   scheduleDeliveryItemIndex++;
   
-  // 제품 목록 로드 (드롭다운 방식)
-  loadProductList(newItem);
-  
   // 이벤트 리스너 추가
   const quantityInput = newItem.querySelector('.quantity-input');
   const unitPriceInput = newItem.querySelector('.unit-price-input');
@@ -3911,10 +3953,20 @@ function loadProductList(deliveryItem) {
     return Promise.reject('deliveryItem이 null입니다');
   }
   
+  console.log('제품 목록 로드 시작...');
+  
   return fetch('/reporting/api/products/')
-    .then(response => response.json())
+    .then(response => {
+      console.log('API 응답:', response.status);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    })
     .then(data => {
+      console.log('받은 데이터:', data);
       const products = data.products || [];
+      console.log('제품 개수:', products.length);
       
       // 전체 제품 데이터를 deliveryItem에 저장
       deliveryItem.dataset.allProducts = JSON.stringify(products);
@@ -3934,12 +3986,13 @@ function loadProductList(deliveryItem) {
 
 // 제품 검색 함수
 function searchProducts(searchInput) {
+  console.log('🔍 searchProducts 함수 호출됨');
   const deliveryItem = searchInput.closest('.delivery-item');
   const resultsDiv = deliveryItem.querySelector('.product-search-results');
   const searchQuery = searchInput.value.toLowerCase().trim();
+  console.log('배송 검색어:', searchQuery);
   const productIdInput = deliveryItem.querySelector('.product-id');
   const itemNameInput = deliveryItem.querySelector('.item-name');
-  
   
   // 전체 제품 데이터 가져오기
   const allProductsStr = deliveryItem.dataset.allProducts || '[]';
@@ -3947,54 +4000,48 @@ function searchProducts(searchInput) {
   try {
     const allProducts = JSON.parse(allProductsStr);
     
-    // 제품 데이터가 없는 경우
+    // 제품 데이터가 없는 경우 - 처음 검색할 때만 로드
     if (allProducts.length === 0) {
-      // 제품 데이터가 로드 중일 수 있으므로 잠시 기다려보기
+      console.log('제품 데이터 없음, 로드 시작');
+      // 로딩 메시지 표시
+      resultsDiv.innerHTML = '<div style="padding: 8px; color: #666;"><i class="fas fa-spinner fa-spin"></i> 제품 목록을 불러오는 중...</div>';
+      resultsDiv.style.display = 'block';
       
-      // productsLoaded 이벤트를 기다림
-      const waitForProducts = () => {
-        deliveryItem.addEventListener('productsLoaded', function handler(event) {
-          deliveryItem.removeEventListener('productsLoaded', handler);
-          searchProducts(searchInput); // 재귀 호출
-        }, { once: true });
-      };
-      
-      // 3초 후에도 데이터가 없으면 에러 메시지 표시
-      setTimeout(() => {
-        const currentData = deliveryItem.dataset.allProducts || '[]';
-        const currentProducts = JSON.parse(currentData);
-        if (currentProducts.length === 0) {
-          resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
-            <i class="fas fa-exclamation-triangle"></i> 등록된 제품이 없습니다. 
-            <a href="/reporting/products/" target="_blank" style="color: #2563eb; text-decoration: underline;">제품 관리</a>에서 제품을 등록하세요.
-          </div>`;
-          resultsDiv.style.display = 'block';
-        }
-      }, 3000);
-      
-      waitForProducts();
+      // 제품 데이터 로드
+      loadProductList(deliveryItem).then((products) => {
+        console.log('로드 완료, 제품 개수:', products.length);
+        // 로드 완료 후 다시 검색
+        searchProducts(searchInput);
+      }).catch(error => {
+        console.error('제품 로드 에러:', error);
+        resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
+          <i class="fas fa-exclamation-triangle"></i> 제품 목록을 불러오는데 실패했습니다: ${error.message || error}
+        </div>`;
+        resultsDiv.style.display = 'block';
+      });
       return;
     }
     
-    // 검색어가 없으면 결과를 표시하지 않음
-    if (!searchQuery) {
-      resultsDiv.style.display = 'none';
-      resultsDiv.innerHTML = '';
-      return;
-    }
+    console.log('검색 시작, 전체 제품:', allProducts.length, '검색어:', searchQuery);
     
-    const filteredProducts = allProducts.filter(product => 
-      product.product_code.toLowerCase().includes(searchQuery) ||
-      (product.name && product.name.toLowerCase().includes(searchQuery))
-    );
+    const filteredProducts = allProducts.filter(product => {
+      const codeMatch = product.product_code.toLowerCase().includes(searchQuery);
+      const nameMatch = product.name && product.name.toLowerCase().includes(searchQuery);
+      console.log('제품:', product.product_code, 'code match:', codeMatch, 'name match:', nameMatch);
+      return codeMatch || nameMatch;
+    });
+    
+    console.log('필터링 결과:', filteredProducts.length, '개');
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
     
     if (filteredProducts.length === 0) {
+      console.log('검색 결과 없음');
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
       resultsDiv.style.display = 'block';
     } else {
+      console.log('검색 결과 표시:', filteredProducts.length, '개');
       
       // 최대 50개까지 표시 (스크롤 가능)
       const maxDisplay = 50;
@@ -4124,7 +4171,54 @@ function openProductSearchModal(button) {
     allProducts = JSON.parse(allProductsStr);
   } catch (e) {
     console.error('제품 데이터 파싱 실패:', e);
-    alert('제품 데이터를 불러올 수 없습니다.');
+  }
+  
+  console.log('모달 열기: 현재 제품 개수:', allProducts.length);
+  
+  // 제품 데이터가 없으면 먼저 로드
+  if (allProducts.length === 0) {
+    console.log('제품 데이터 없음, API 호출 시작');
+    // 로딩 모달 표시
+    const loadingModal = `
+      <div class="modal fade" id="productSearchModal" tabindex="-1" style="z-index: 100200;">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">
+                <i class="fas fa-search me-2"></i>품번으로 제품 검색
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-5">
+              <i class="fas fa-spinner fa-spin fa-3x mb-3"></i>
+              <p>제품 목록을 불러오는 중...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', loadingModal);
+    const loadingModalElement = document.getElementById('productSearchModal');
+    const loadingModalInstance = new bootstrap.Modal(loadingModalElement);
+    loadingModalInstance.show();
+    
+    // API 호출하여 제품 데이터 로드
+    loadProductList(deliveryItem)
+      .then((products) => {
+        console.log('제품 로드 완료:', products.length, '개');
+        // 로딩 모달 닫기
+        loadingModalInstance.hide();
+        loadingModalElement.remove();
+        // 제품 검색 모달 다시 열기
+        setTimeout(() => openProductSearchModal(button), 300);
+      })
+      .catch(error => {
+        console.error('제품 로드 실패:', error);
+        loadingModalInstance.hide();
+        loadingModalElement.remove();
+        alert('제품 목록을 불러오는데 실패했습니다: ' + error.message);
+      });
     return;
   }
   
@@ -4141,7 +4235,8 @@ function openProductSearchModal(button) {
           </div>
           <div class="modal-body">
             <div class="mb-3">
-              <input type="text" class="form-control form-control-lg" id="productSearchInput" placeholder="품번을 입력하세요..." autofocus>
+              <input type="text" class="form-control form-control-lg" id="productSearchInput" placeholder="품번을 입력하고 Enter를 누르세요..." autofocus>
+              <small class="text-muted">품번을 입력 후 Enter를 누르면 검색됩니다.</small>
             </div>
             <div id="productSearchResultsList" style="max-height: 400px; overflow-y: auto;">
               <!-- 검색 결과가 여기에 표시됩니다 -->
@@ -4167,21 +4262,39 @@ function openProductSearchModal(button) {
   
   // 검색 함수
   function performSearch() {
+    console.log('🔍 performSearch 함수 호출됨');
     const searchQuery = searchInput.value.toLowerCase().trim();
+    console.log('모달 검색어:', searchQuery);
+    console.log('전체 제품 개수:', allProducts.length);
+    
+    // 검색어가 없으면 안내 메시지만 표시
+    if (!searchQuery) {
+      resultsList.innerHTML = '<div class="text-center text-muted p-4">품번을 입력하고 Enter를 누르세요</div>';
+      return;
+    }
+    
+    // 로딩 표시
+    resultsList.innerHTML = '<div class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> 검색 중...</div>';
     
     let filteredProducts = allProducts;
     if (searchQuery) {
-      filteredProducts = allProducts.filter(p => 
-        p.product_code.toLowerCase().includes(searchQuery) ||
-        (p.name && p.name.toLowerCase().includes(searchQuery)) ||
-        (p.description && p.description.toLowerCase().includes(searchQuery))
-      );
+      filteredProducts = allProducts.filter(p => {
+        const codeMatch = p.product_code.toLowerCase().includes(searchQuery);
+        const nameMatch = p.name && p.name.toLowerCase().includes(searchQuery);
+        const descMatch = p.description && p.description.toLowerCase().includes(searchQuery);
+        console.log('모달 제품:', p.product_code, 'code:', codeMatch, 'name:', nameMatch, 'desc:', descMatch);
+        return codeMatch || nameMatch || descMatch;
+      });
     }
+    
+    console.log('모달 필터링 결과:', filteredProducts.length, '개');
     
     // 결과 표시
     if (filteredProducts.length === 0) {
+      console.log('모달 검색 결과 없음');
       resultsList.innerHTML = '<div class="text-center text-muted p-4">검색 결과가 없습니다</div>';
     } else {
+      console.log('모달 검색 결과 표시');
       resultsList.innerHTML = filteredProducts.map(product => `
         <div class="border-bottom p-3 product-search-item" style="cursor: pointer;" 
              data-product-id="${product.id}"
@@ -4234,16 +4347,20 @@ function openProductSearchModal(button) {
     }
   }
   
-  // 검색 이벤트
-  searchInput.addEventListener('input', performSearch);
+  // Enter 키로만 검색
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      performSearch();
+    }
+  });
   
   // 모달 표시
   const modal = new bootstrap.Modal(modalElement);
   modal.show();
   
-  // 모달이 완전히 열린 후 초기 검색 (전체 목록 표시)
+  // 모달이 완전히 열린 후 포커스만 설정
   modalElement.addEventListener('shown.bs.modal', function() {
-    performSearch();
     searchInput.focus();
   }, { once: true });
   
@@ -4325,7 +4442,7 @@ function openDeliveryProductModal(button) {
 // ============================================
 
 function loadQuoteProductList(itemRow) {
-  fetch('/reporting/api/products/')
+  return fetch('/reporting/api/products/')
     .then(response => {
       if (!response.ok) {
         if (response.status === 403 || response.status === 401) {
@@ -4346,7 +4463,7 @@ function loadQuoteProductList(itemRow) {
           searchInput.placeholder = '등록된 제품이 없습니다. 먼저 제품을 등록하세요.';
           searchInput.disabled = true;
         }
-        return;
+        throw new Error('등록된 제품이 없습니다');
       }
       
       // 전체 제품 데이터를 itemRow에 저장
@@ -4358,6 +4475,8 @@ function loadQuoteProductList(itemRow) {
         searchInput.disabled = false;
         searchInput.placeholder = '품번으로 검색...';
       }
+      
+      return products;
     })
     .catch(error => {
       console.error('제품 목록 로드 실패:', error);
@@ -4376,17 +4495,20 @@ function loadQuoteProductList(itemRow) {
         </div>`;
         resultsDiv.style.display = 'block';
       }
+      
+      throw error;
     });
 }
 
 // 제품 검색 함수 (견적용)
 function searchQuoteProducts(searchInput) {
+  console.log('🔍 searchQuoteProducts 함수 호출됨');
   const itemRow = searchInput.closest('.item-row');
   const resultsDiv = itemRow.querySelector('.quote-search-results');
   const searchQuery = searchInput.value.toLowerCase().trim();
+  console.log('견적 검색어:', searchQuery);
   const productIdInput = itemRow.querySelector('.quote-product-id');
   const itemNameInput = itemRow.querySelector('.quote-item-name');
-  
   
   // 전체 제품 데이터 가져오기
   const allProductsStr = itemRow.dataset.allProducts || '[]';
@@ -4394,36 +4516,49 @@ function searchQuoteProducts(searchInput) {
   try {
     const allProducts = JSON.parse(allProductsStr);
     
-    // 제품 데이터가 없는 경우
+    // 제품 데이터가 없는 경우 - 처음 검색할 때만 로드
     if (allProducts.length === 0) {
-      resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
-        <i class="fas fa-exclamation-triangle"></i> 등록된 제품이 없습니다. 
-        <a href="/reporting/products/" target="_blank" style="color: #2563eb; text-decoration: underline;">제품 관리</a>에서 제품을 등록하세요.
-      </div>`;
+      console.log('견적 제품 데이터 없음, 로드 시작');
+      // 로딩 메시지 표시
+      resultsDiv.innerHTML = '<div style="padding: 8px; color: #666;"><i class="fas fa-spinner fa-spin"></i> 제품 목록을 불러오는 중...</div>';
       resultsDiv.style.display = 'block';
+      
+      // 제품 데이터 로드
+      loadQuoteProductList(itemRow).then((products) => {
+        console.log('견적 제품 로드 완료, 제품 개수:', products ? products.length : 0);
+        // 로드 완료 후 다시 검색
+        searchQuoteProducts(searchInput);
+      }).catch(error => {
+        console.error('견적 제품 로드 에러:', error);
+        resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
+          <i class="fas fa-exclamation-triangle"></i> 제품 목록을 불러오는데 실패했습니다: ${error.message || error}
+        </div>`;
+        resultsDiv.style.display = 'block';
+      });
       return;
     }
     
-    // 검색어가 없으면 결과를 표시하지 않음 (검색어가 있을 때만 필터링)
-    if (!searchQuery) {
-      resultsDiv.style.display = 'none';
-      resultsDiv.innerHTML = '';
-      return;
-    }
+    console.log('견적 검색 시작, 전체 제품:', allProducts.length, '검색어:', searchQuery);
     
-    const filteredProducts = allProducts.filter(product => 
-      product.product_code.toLowerCase().includes(searchQuery) ||
-      (product.name && product.name.toLowerCase().includes(searchQuery))
-    );
+    const filteredProducts = allProducts.filter(product => {
+      const codeMatch = product.product_code.toLowerCase().includes(searchQuery);
+      const nameMatch = product.name && product.name.toLowerCase().includes(searchQuery);
+      console.log('견적 제품:', product.product_code, 'code match:', codeMatch, 'name match:', nameMatch);
+      return codeMatch || nameMatch;
+    });
+    
+    console.log('견적 필터링 결과:', filteredProducts.length, '개');
     
     // 검색 결과 표시
     resultsDiv.innerHTML = '';
 
     
     if (filteredProducts.length === 0) {
+      console.log('견적 검색 결과 없음');
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
       resultsDiv.style.display = 'block';
     } else {
+      console.log('견적 검색 결과 표시:', filteredProducts.length, '개');
       
       // 최대 50개까지 표시 (스크롤 가능)
       const maxDisplay = 50;
@@ -4675,12 +4810,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const searchInput = currentDeliveryItemRow.querySelector('.delivery-product-search');
             if (searchInput) searchInput.value = '';
             
-            // 모든 납품 품목 행의 목록 새로고침 (다른 행들을 위해)
-            document.querySelectorAll('.delivery-item').forEach(row => {
-              if (row !== currentDeliveryItemRow) {
-                loadProductList(row);
-              }
-            });
             currentDeliveryItemRow = null;
           }
           if (currentQuoteItemRow) {

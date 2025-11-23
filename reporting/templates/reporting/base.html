@@ -466,7 +466,7 @@
           </a>
         </li>
         <li class="nav-item">
-          <a href="{% url 'reporting:mailbox_inbox' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'mailbox' or request.resolver_match.url_name|slice:':5' == 'gmail' or request.resolver_match.url_name|slice:':13' == 'business_card' %}active{% endif %}">
+          <a href="{% url 'reporting:mailbox_inbox' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'mailbox' or request.resolver_match.url_name|slice:':5' == 'gmail' %}active{% endif %}">
             <i class="fas fa-envelope"></i>
             <span>메일함</span>
           </a>

@@ -50,7 +50,10 @@
     }
     
     .email-body-content {
-        font-family: Arial, sans-serif;
+        /* 메일 본문은 시스템 기본 폰트 사용 (특수문자 지원) */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                     "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR",
+                     Arial, sans-serif;
         white-space: pre-wrap;
         word-wrap: break-word;
         overflow-wrap: break-word;
@@ -62,16 +65,23 @@
         max-width: 100%;
     }
     
-    .email-body-content p,
-    .email-body-content div {
-        white-space: pre-wrap;
-        margin-bottom: 0.5em;
+    /* Gmail 서명 과도한 줄바꿈 제거 */
+    .email-body-content div,
+    .email-body-content p {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.2 !important;
+        white-space: normal !important;
     }
     
     .email-body-content br {
-        display: block;
-        content: "";
-        margin: 0.5em 0;
+        line-height: 0 !important;
+    }
+    
+    /* Gmail의 white-space:pre-wrap 무시 */
+    .email-body-content div[style*="white-space:pre-wrap"],
+    .email-body-content div[style*="white-space: pre-wrap"] {
+        white-space: normal !important;
     }
     
     .email-message-body img {
@@ -181,10 +191,10 @@
                     {% endif %}
                 </div>
                 <div class="text-end">
-                    <button class="btn btn-sm btn-outline-danger delete-email-btn" 
+                    <button class="btn btn-outline-danger delete-email-btn" 
                             data-email-id="{{ email.id }}"
                             onclick="event.stopPropagation();">
-                        <i class="bi bi-trash"></i>
+                        <i class="bi bi-trash"></i> 삭제
                     </button>
                 </div>
             </div>
@@ -204,6 +214,22 @@
                 {% endif %}
             {% else %}
                 <p class="text-muted">(내용 없음)</p>
+            {% endif %}
+            
+            <!-- 첨부파일 표시 -->
+            {% if email.attachments_info %}
+            <div class="attachments-section mt-3 pt-3" style="border-top: 1px solid #dee2e6;">
+                <strong><i class="bi bi-paperclip"></i> 첨부파일 ({{ email.attachments_info|length }})</strong>
+                <ul class="list-unstyled mt-2">
+                    {% for attachment in email.attachments_info %}
+                    <li class="mb-2">
+                        <i class="bi bi-file-earmark"></i>
+                        <span class="text-primary">{{ attachment.filename }}</span>
+                        <small class="text-muted">({{ attachment.size|filesizeformat }})</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
             {% endif %}
         </div>
     </div>

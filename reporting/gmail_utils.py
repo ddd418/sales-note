@@ -12,6 +12,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from email.header import Header, make_header, decode_header
+from email import policy
+from email import utils as email_utils
+from email.generator import Generator
+from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 import json
 
@@ -39,6 +44,31 @@ class GmailService:
         """
         self.user_profile = user_profile
         self.service = None
+    
+    def _get_sender_display_name(self):
+        """발신자 표시명 생성: 회사명_성명"""
+        try:
+            user = self.user_profile.user
+            company_name = self.user_profile.company.name if self.user_profile.company else ''
+            
+            # 성명 추출 (first_name + last_name)
+            full_name = ''
+            if user.first_name and user.last_name:
+                full_name = f"{user.first_name}{user.last_name}"
+            elif user.first_name:
+                full_name = user.first_name
+            elif user.last_name:
+                full_name = user.last_name
+            else:
+                full_name = user.username
+            
+            # 회사명_성명 형식
+            if company_name:
+                return f"{company_name}_{full_name}"
+            else:
+                return full_name
+        except:
+            return None
         
     def get_credentials(self):
         """저장된 토큰으로 Credentials 객체 생성"""
@@ -116,19 +146,37 @@ class GmailService:
         
         try:
             # MIME 메시지 생성
-            if body_html:
-                message = MIMEMultipart('alternative')
-                part1 = MIMEText(body_text, 'plain', 'utf-8')
-                part2 = MIMEText(body_html, 'html', 'utf-8')
-                message.attach(part1)
-                message.attach(part2)
+            if body_html or attachments:
+                # HTML 본문이 있거나 첨부파일이 있으면 multipart 사용
+                message = MIMEMultipart('mixed')
+                
+                if body_html:
+                    # HTML과 텍스트 둘 다 있으면 alternative로 묶음
+                    msg_alternative = MIMEMultipart('alternative')
+                    part1 = MIMEText(body_text, 'plain', 'utf-8')
+                    part2 = MIMEText(body_html, 'html', 'utf-8')
+                    msg_alternative.attach(part1)
+                    msg_alternative.attach(part2)
+                    message.attach(msg_alternative)
+                else:
+                    # 텍스트만 있으면 그냥 추가
+                    part1 = MIMEText(body_text, 'plain', 'utf-8')
+                    message.attach(part1)
             else:
                 message = MIMEText(body_text, 'plain', 'utf-8')
             
             # 헤더 설정
             message['To'] = to_email
-            message['From'] = self.user_profile.gmail_email
-            message['Subject'] = subject
+            
+            # 발신자 표시명: "회사명_성명" <이메일>
+            from_name = self._get_sender_display_name()
+            if from_name:
+                message['From'] = f"{from_name} <{self.user_profile.gmail_email}>"
+            else:
+                message['From'] = self.user_profile.gmail_email
+            
+            # 한글 제목 - RFC2047 방식으로 인코딩 (Gmail 호환성)
+            message['Subject'] = str(Header(subject, 'utf-8'))
             
             if cc:
                 message['Cc'] = ', '.join(cc) if isinstance(cc, list) else cc
@@ -142,31 +190,39 @@ class GmailService:
             
             # 첨부파일 처리
             if attachments:
-                if not isinstance(message, MIMEMultipart):
-                    # 텍스트만 있는 경우 Multipart로 변환
-                    text_part = message
-                    message = MIMEMultipart()
-                    message['To'] = to_email
-                    message['From'] = self.user_profile.gmail_email
-                    message['Subject'] = subject
-                    if cc:
-                        message['Cc'] = ', '.join(cc) if isinstance(cc, list) else cc
-                    if in_reply_to:
-                        message['In-Reply-To'] = in_reply_to
-                        message['References'] = in_reply_to
-                    message.attach(text_part)
-                
-                for filename, filepath in attachments:
-                    with open(filepath, 'rb') as f:
-                        part = MIMEBase('application', 'octet-stream')
-                        part.set_payload(f.read())
+                for attachment in attachments:
+                    # 딕셔너리 형태: {'filename': str, 'content': bytes, 'mimetype': str}
+                    if isinstance(attachment, dict):
+                        filename = attachment['filename']
+                        content = attachment['content']
+                        mimetype = attachment.get('mimetype', 'application/octet-stream')
+                        
+                        if '/' in mimetype:
+                            maintype, subtype = mimetype.split('/', 1)
+                        else:
+                            maintype, subtype = 'application', 'octet-stream'
+                        
+                        part = MIMEBase(maintype, subtype)
+                        part.set_payload(content)
                         encoders.encode_base64(part)
                         part.add_header('Content-Disposition', 
-                                      f'attachment; filename={filename}')
+                                      'attachment', filename=filename)
                         message.attach(part)
+                    # 튜플 형태: (filename, filepath)
+                    else:
+                        filename, filepath = attachment
+                        with open(filepath, 'rb') as f:
+                            part = MIMEBase('application', 'octet-stream')
+                            part.set_payload(f.read())
+                            encoders.encode_base64(part)
+                            part.add_header('Content-Disposition', 
+                                          'attachment', filename=filename)
+                            message.attach(part)
             
-            # Base64 인코딩
-            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            # Base64 인코딩 - SMTP 정책 사용 (ASCII 헤더, Gmail 호환성)
+            from email import policy
+            msg_bytes = message.as_bytes(policy=policy.SMTP)
+            raw_message = base64.urlsafe_b64encode(msg_bytes).decode('ascii')
             
             # 발송
             send_params = {'raw': raw_message}
@@ -243,6 +299,8 @@ class GmailService:
             return None
         
         try:
+            from email.header import decode_header, make_header
+            
             message = service.users().messages().get(
                 userId='me',
                 id=message_id,
@@ -300,10 +358,17 @@ class GmailService:
                 except Exception as e:
                     print(f'본문 디코딩 실패: {e}')
             
+            # Subject RFC2047 디코딩
+            raw_subject = headers.get('subject', '(제목 없음)')
+            try:
+                decoded_subject = str(make_header(decode_header(raw_subject)))
+            except Exception as e:
+                decoded_subject = raw_subject
+            
             return {
                 'id': message['id'],
                 'thread_id': message['threadId'],
-                'subject': headers.get('subject', '(제목 없음)'),
+                'subject': decoded_subject,
                 'from': headers.get('from', ''),
                 'to': headers.get('to', ''),
                 'cc': headers.get('cc', ''),

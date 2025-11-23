@@ -51,11 +51,16 @@
         align-items: center;
         cursor: pointer;
         transition: box-shadow 0.2s;
+        position: relative;
     }
     
     .email-item:hover {
         box-shadow: inset 1px 0 0 #dadce0, inset -1px 0 0 #dadce0, 0 1px 2px 0 rgb(60 64 67 / 30%), 0 1px 3px 1px rgb(60 64 67 / 15%);
         z-index: 1;
+    }
+    
+    .email-item:hover .email-delete-btn {
+        opacity: 1;
     }
     
     .email-item.unread {
@@ -64,14 +69,49 @@
     }
     
     .email-checkbox {
-        margin-right: 16px;
-        width: 20px;
-        height: 20px;
+        margin-right: 12px;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    
+    .select-all-checkbox {
+        margin-right: 12px;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    
+    .bulk-actions {
+        padding: 8px 16px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e8eaed;
+        display: none;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .bulk-actions.active {
+        display: flex;
+    }
+    
+    .bulk-delete-btn {
+        padding: 6px 16px;
+        font-size: 13px;
+        color: #d93025;
+        border: 1px solid #d93025;
+        background: white;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .bulk-delete-btn:hover {
+        background: #fce8e6;
     }
     
     .email-sender {
-        min-width: 200px;
-        max-width: 200px;
+        min-width: 180px;
+        max-width: 180px;
         font-size: 14px;
         color: #202124;
         overflow: hidden;
@@ -88,14 +128,10 @@
     .email-subject {
         font-size: 14px;
         color: #202124;
-        display: inline;
-    }
-    
-    .email-snippet {
-        font-size: 13px;
-        color: #5f6368;
-        display: inline;
-        margin-left: 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
     }
     
     .email-badge {
@@ -109,10 +145,27 @@
     }
     
     .email-date {
-        min-width: 80px;
+        min-width: 140px;
         text-align: right;
         font-size: 12px;
         color: #5f6368;
+    }
+    
+    .email-delete-btn {
+        opacity: 0;
+        transition: opacity 0.2s;
+        background: none;
+        border: none;
+        color: #5f6368;
+        padding: 4px 8px;
+        cursor: pointer;
+        margin-left: 8px;
+    }
+    
+    .email-delete-btn:hover {
+        color: #d93025;
+        background: #fce8e6;
+        border-radius: 4px;
     }
     
     .compose-btn {
@@ -171,10 +224,14 @@
         <div class="col-md-10">
             <!-- 상단 툴바 -->
             <div class="d-flex align-items-center p-3 border-bottom">
+                <input type="checkbox" class="select-all-checkbox" id="selectAllCheckbox" title="전체 선택">
                 <div class="flex-grow-1">
                     <small class="text-muted">총 {{ emails.paginator.count }}개</small>
                 </div>
                 <div class="d-flex gap-2">
+                    <button class="bulk-delete-btn" id="bulkDeleteBtn" style="display: none;">
+                        <i class="bi bi-trash"></i> 삭제
+                    </button>
                     <a href="{% url 'reporting:send_email_from_mailbox' %}" class="sync-btn">
                         <i class="bi bi-pencil-square"></i> 작성
                     </a>
@@ -190,9 +247,9 @@
             <div class="email-list">
                 {% if emails %}
                     {% for email in emails %}
-                    <div class="email-item {% if mailbox_type == 'inbox' and not email.is_read %}unread{% endif %}"
-                         onclick="location.href='{% url 'reporting:mailbox_thread' email.gmail_thread_id %}'">
-                        <div class="email-sender">
+                    <div class="email-item {% if mailbox_type == 'inbox' and not email.is_read %}unread{% endif %}">
+                        <input type="checkbox" class="email-checkbox" value="{{ email.id }}" onclick="event.stopPropagation();">
+                        <div class="email-sender" onclick="location.href='{% url 'reporting:mailbox_thread' email.gmail_thread_id %}'">
                             {% if mailbox_type == 'inbox' %}
                                 {% if email.followup %}
                                     {{ email.followup.customer_name }}
@@ -203,24 +260,15 @@
                                 {{ email.recipient_email }}
                             {% endif %}
                         </div>
-                        <div class="email-content">
+                        <div class="email-content" onclick="location.href='{% url 'reporting:mailbox_thread' email.gmail_thread_id %}'">
                             <span class="email-subject">{{ email.subject }}</span>
-                            <span class="email-snippet">
-                                {% if email.body %}
-                                    - {{ email.body|truncatewords:15 }}
-                                {% elif email.body_html %}
-                                    - {{ email.body_html|striptags|truncatewords:15 }}
-                                {% endif %}
-                            </span>
-                            {% if email.schedule %}
-                            <span class="email-badge">
-                                <i class="bi bi-calendar"></i> 일정
-                            </span>
-                            {% endif %}
                         </div>
                         <div class="email-date">
-                            {{ email.sent_at|date:"n월 j일" }}
+                            {{ email.sent_at|date:"n월 j일 H:i" }}
                         </div>
+                        <button class="email-delete-btn" onclick="deleteEmail(event, {{ email.id }})">
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </div>
                     {% endfor %}
                 {% else %}
@@ -274,7 +322,147 @@
 
 {% block extra_js %}
 <script>
+// CSRF 토큰 쿠키에서 가져오기
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 메일 삭제 함수
+function deleteEmail(event, emailId) {
+    event.stopPropagation();
+    
+    if (!confirm('이 메일을 삭제하시겠습니까?')) {
+        return;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
+    fetch(`/reporting/mailbox/delete/${emailId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('삭제 실패: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('삭제 중 오류 발생: ' + error.message);
+    });
+}
+
+// 체크박스 관련 기능
+function updateBulkDeleteButton() {
+    const checkboxes = document.querySelectorAll('.email-checkbox:checked');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    
+    if (checkboxes.length > 0) {
+        bulkDeleteBtn.style.display = 'block';
+        bulkDeleteBtn.textContent = `${checkboxes.length}개 삭제`;
+        bulkDeleteBtn.innerHTML = `<i class="bi bi-trash"></i> ${checkboxes.length}개 삭제`;
+    } else {
+        bulkDeleteBtn.style.display = 'none';
+    }
+}
+
+// 선택된 메일 일괄 삭제
+function bulkDeleteEmails() {
+    const checkboxes = document.querySelectorAll('.email-checkbox:checked');
+    const emailIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (emailIds.length === 0) {
+        alert('삭제할 메일을 선택해주세요.');
+        return;
+    }
+    
+    if (!confirm(`${emailIds.length}개의 메일을 삭제하시겠습니까?`)) {
+        return;
+    }
+    
+    const csrftoken = getCookie('csrftoken');
+    
+    // 각 메일을 순차적으로 삭제
+    let deletedCount = 0;
+    let failedCount = 0;
+    
+    Promise.all(emailIds.map(emailId => 
+        fetch(`/reporting/mailbox/delete/${emailId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                deletedCount++;
+            } else {
+                failedCount++;
+            }
+        })
+        .catch(() => {
+            failedCount++;
+        })
+    ))
+    .then(() => {
+        if (failedCount > 0) {
+            alert(`${deletedCount}개 삭제 완료, ${failedCount}개 실패`);
+        }
+        location.reload();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // 전체 선택 체크박스
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.email-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+            });
+            updateBulkDeleteButton();
+        });
+    }
+    
+    // 개별 체크박스
+    document.querySelectorAll('.email-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateBulkDeleteButton();
+            
+            // 전체 선택 체크박스 상태 업데이트
+            const allCheckboxes = document.querySelectorAll('.email-checkbox');
+            const checkedCheckboxes = document.querySelectorAll('.email-checkbox:checked');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = allCheckboxes.length === checkedCheckboxes.length && allCheckboxes.length > 0;
+            }
+        });
+    });
+    
+    // 일괄 삭제 버튼
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', bulkDeleteEmails);
+    }
+    
     const syncBtn = document.getElementById('syncBtn');
     
     if (syncBtn) {
@@ -283,9 +471,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.disabled = true;
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>동기화 중...';
             
-            // CSRF 토큰 가져오기
-            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                             getCookie('csrftoken');
+            const csrftoken = getCookie('csrftoken');
             
             fetch('{% url "reporting:sync_received_emails" %}', {
                 method: 'POST',
@@ -316,22 +502,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.innerHTML = originalHtml;
             });
         });
-    }
-    
-    // CSRF 토큰 쿠키에서 가져오기
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
     }
 });
 </script>

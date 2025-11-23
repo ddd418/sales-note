@@ -258,22 +258,38 @@ def send_email_from_schedule(request, schedule_id):
         messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
         return redirect('reporting:gmail_connect')
     
-    if request.method == 'POST':
-        return _handle_email_send(request, schedule=schedule)
-    
-    # GET: 이메일 작성 폼
+    # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'schedule': schedule,
         'followup': schedule.followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
     }
+    
+    if request.method == 'POST':
+        result = _handle_email_send(request, schedule=schedule)
+        # 검증 실패 시 (템플릿 반환)
+        if isinstance(result, dict):
+            # 디버그: 오류 정보 로깅
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Email send validation failed: {result}")
+            context.update(result)
+            return render(request, 'reporting/gmail/compose_from_schedule.html', context)
+        # 성공 시 (리다이렉트 반환)
+        return result
+    
+    # GET: 이메일 작성 폼
     return render(request, 'reporting/gmail/compose_from_schedule.html', context)
 
 
 @login_required
 def send_email_from_mailbox(request, followup_id=None):
     """메일함에서 이메일 발송 (팔로우업 연결)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"send_email_from_mailbox called: method={request.method}, user={request.user}, followup_id={followup_id}")
+    
     followup = None
     if followup_id:
         followup = get_object_or_404(FollowUp, id=followup_id)
@@ -289,16 +305,29 @@ def send_email_from_mailbox(request, followup_id=None):
         messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
         return redirect('reporting:gmail_connect')
     
-    if request.method == 'POST':
-        return _handle_email_send(request, followup=followup)
-    
-    # GET: 이메일 작성 폼
+    # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'followup': followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
         'all_followups': FollowUp.objects.filter(user=request.user).order_by('-created_at')[:100],
     }
+    
+    if request.method == 'POST':
+        logger.info(f"POST request received, calling _handle_email_send")
+        result = _handle_email_send(request, followup=followup)
+        logger.info(f"_handle_email_send result type: {type(result)}, is_dict: {isinstance(result, dict)}")
+        
+        # 검증 실패 시 (템플릿 반환)
+        if isinstance(result, dict):
+            logger.warning(f"Email validation failed, re-rendering template with errors: {result}")
+            context.update(result)
+            return render(request, 'reporting/gmail/compose_from_mailbox.html', context)
+        # 성공 시 (리다이렉트 반환)
+        logger.info(f"Email sent successfully, redirecting")
+        return result
+    
+    # GET: 이메일 작성 폼
     return render(request, 'reporting/gmail/compose_from_mailbox.html', context)
 
 
@@ -318,59 +347,117 @@ def reply_email(request, email_log_id):
         messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
         return redirect('reporting:gmail_connect')
     
-    if request.method == 'POST':
-        return _handle_email_send(request, reply_to=email_log)
-    
-    # GET: 답장 폼
+    # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'original_email': email_log,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
     }
+    
+    if request.method == 'POST':
+        result = _handle_email_send(request, reply_to=email_log)
+        # 검증 실패 시 (템플릿 반환)
+        if isinstance(result, dict):
+            context.update(result)
+            return render(request, 'reporting/gmail/reply_email.html', context)
+        # 성공 시 (리다이렉트 반환)
+        return result
+    
+    # GET: 답장 폼
     return render(request, 'reporting/gmail/reply_email.html', context)
 
 
 def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
     """이메일 발송 공통 처리"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info(f"_handle_email_send called: user={request.user}, schedule={schedule}, followup={followup}")
+        
         # POST 데이터 추출
-        to_email = request.POST.get('to_email')
+        to_email = request.POST.get('to_email', '')
         cc_emails = request.POST.get('cc_emails', '')
         bcc_emails = request.POST.get('bcc_emails', '')
-        subject = request.POST.get('subject')
+        subject = request.POST.get('subject', '')
         body_text = request.POST.get('body_text', '')
         body_html = request.POST.get('body_html', '')
-        business_card_id = request.POST.get('business_card_id')
+        business_card_id = request.POST.get('business_card_id', '')
         
-        # 유효성 검사
+        logger.info(f"Form data: to_email={to_email}, subject={subject}, body_text_len={len(body_text)}, body_html_len={len(body_html)}")
+        
+        # 유효성 검사 - 검증 실패 시 딕셔너리 반환 (템플릿 재렌더링용)
         if not to_email or not subject:
+            logger.warning(f"Validation failed: missing to_email or subject")
             messages.error(request, '받는 사람과 제목은 필수입니다.')
-            return redirect(request.path)
+            return {
+                'error': True,
+                'form_data': {
+                    'to_email': to_email,
+                    'cc_emails': cc_emails,
+                    'bcc_emails': bcc_emails,
+                    'subject': subject,
+                    'body_text': body_text,
+                    'body_html': body_html,
+                    'business_card_id': business_card_id,
+                }
+            }
+        
+        if not body_text and not body_html:
+            logger.warning(f"Validation failed: missing body")
+            messages.error(request, '본문을 입력해주세요.')
+            return {
+                'error': True,
+                'form_data': {
+                    'to_email': to_email,
+                    'cc_emails': cc_emails,
+                    'bcc_emails': bcc_emails,
+                    'subject': subject,
+                    'body_text': body_text,
+                    'body_html': body_html,
+                    'business_card_id': business_card_id,
+                }
+            }
         
         # 명함 서명 추가
         signature_html = ''
         business_card = None
         if business_card_id:
             business_card = BusinessCard.objects.get(id=business_card_id, user=request.user)
-            signature_html = business_card.generate_signature()
+            signature_html = business_card.generate_signature(request=request)
+        
+        # 본문과 서명 사이 구분선
+        separator = '<div style="margin: 20px 0; padding-top: 20px; border-top: 1px solid #ddd;"></div>' if signature_html else ''
         
         # HTML 본문에 서명 추가
-        if body_html:
-            full_body_html = body_html + signature_html
+        if body_html and body_html.strip():
+            full_body_html = body_html + separator + signature_html
         else:
-            # 텍스트만 있는 경우 HTML로 변환 후 서명 추가
-            full_body_html = f'<pre>{body_text}</pre>' + signature_html
+            # HTML이 비어있으면 body_text를 사용
+            if body_text and body_text.strip():
+                # 텍스트를 HTML로 변환 (줄바꿈 보존)
+                text_as_html = body_text.replace('\n', '<br>')
+                full_body_html = f'<div style="font-family: Arial, sans-serif; white-space: pre-wrap;">{text_as_html}</div>' + separator + signature_html
+            else:
+                full_body_html = signature_html
         
         # Gmail 서비스 생성
         gmail_service = GmailService(request.user.userprofile)
         
         # 첨부파일 처리
         attachments = []
+        attachments_info = []  # 첨부파일 정보 저장용
         files = request.FILES.getlist('attachments')
         for uploaded_file in files:
             attachments.append({
                 'filename': uploaded_file.name,
                 'content': uploaded_file.read(),
+                'mimetype': uploaded_file.content_type
+            })
+            # 첨부파일 정보 저장
+            attachments_info.append({
+                'filename': uploaded_file.name,
+                'size': uploaded_file.size,
                 'mimetype': uploaded_file.content_type
             })
         
@@ -391,14 +478,18 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             subject=subject,
             body_text=body_text,
             body_html=full_body_html,
-            cc_emails=[email.strip() for email in cc_emails.split(',') if email.strip()],
-            bcc_emails=[email.strip() for email in bcc_emails.split(',') if email.strip()],
+            cc=[email.strip() for email in cc_emails.split(',') if email.strip()],
+            bcc=[email.strip() for email in bcc_emails.split(',') if email.strip()],
             attachments=attachments,
             in_reply_to=in_reply_to,
             thread_id=thread_id
         )
         
+        if not message_info:
+            raise Exception("이메일 발송에 실패했습니다.")
+        
         # EmailLog 생성
+        from django.utils import timezone
         with transaction.atomic():
             email_log = EmailLog.objects.create(
                 email_type='sent',
@@ -408,15 +499,17 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
                 cc_emails=cc_emails,
                 bcc_emails=bcc_emails,
                 subject=subject,
-                body_text=body_text,
+                body=body_html if body_html else body_text,
                 body_html=full_body_html,
-                gmail_message_id=message_info['id'],
-                gmail_thread_id=message_info['threadId'],
+                gmail_message_id=message_info['message_id'],
+                gmail_thread_id=message_info['thread_id'],
                 followup=followup,
                 schedule=schedule,
                 business_card=business_card,
                 in_reply_to=reply_to,
-                status='sent'
+                status='sent',
+                sent_at=timezone.now(),
+                attachments_info=attachments_info  # 첨부파일 정보 저장
             )
         
         messages.success(request, '이메일이 발송되었습니다.')
@@ -430,8 +523,27 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             return redirect('reporting:mailbox_sent')
         
     except Exception as e:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"Exception in _handle_email_send: {str(e)}")
+        logger.error(traceback.format_exc())
+        
         messages.error(request, f'이메일 발송 실패: {str(e)}')
-        return redirect(request.path)
+        # POST 데이터 다시 가져오기
+        return {
+            'error': True,
+            'exception': str(e),
+            'form_data': {
+                'to_email': request.POST.get('to_email', ''),
+                'cc_emails': request.POST.get('cc_emails', ''),
+                'bcc_emails': request.POST.get('bcc_emails', ''),
+                'subject': request.POST.get('subject', ''),
+                'body_text': request.POST.get('body_text', ''),
+                'body_html': request.POST.get('body_html', ''),
+                'business_card_id': request.POST.get('business_card_id', ''),
+            }
+        }
 
 
 # ============================================
@@ -591,6 +703,10 @@ def business_card_list(request):
     """명함 목록"""
     cards = BusinessCard.objects.filter(user=request.user).order_by('-is_default', '-created_at')
     
+    # 각 카드의 서명을 미리 생성 (절대 URL 포함)
+    for card in cards:
+        card.signature_preview = card.generate_signature(request=request)
+    
     context = {
         'cards': cards
     }
@@ -613,8 +729,15 @@ def business_card_create(request):
                 email=request.POST.get('email'),
                 address=request.POST.get('address', ''),
                 website=request.POST.get('website', ''),
+                logo_url=request.POST.get('logo_url', ''),
+                logo_link_url=request.POST.get('logo_link_url', ''),
                 is_default=request.POST.get('is_default') == 'on'
             )
+            
+            # 로고 이미지 파일 업로드
+            if 'logo' in request.FILES:
+                card.logo = request.FILES['logo']
+                card.save()
             
             messages.success(request, '명함이 생성되었습니다.')
             return redirect('reporting:business_card_list')
@@ -640,7 +763,14 @@ def business_card_edit(request, card_id):
             card.email = request.POST.get('email')
             card.address = request.POST.get('address', '')
             card.website = request.POST.get('website', '')
+            card.logo_url = request.POST.get('logo_url', '')
+            card.logo_link_url = request.POST.get('logo_link_url', '')
             card.is_default = request.POST.get('is_default') == 'on'
+            
+            # 로고 이미지 파일 업로드
+            if 'logo' in request.FILES:
+                card.logo = request.FILES['logo']
+            
             card.save()
             
             messages.success(request, '명함이 수정되었습니다.')
@@ -680,3 +810,68 @@ def business_card_set_default(request, card_id):
         messages.success(request, f'{card.name} 명함이 기본 명함으로 설정되었습니다.')
     
     return redirect('reporting:business_card_list')
+
+
+# ============================================
+# 이미지 업로드 (Quill 에디터용)
+# ============================================
+
+@login_required
+def upload_editor_image(request):
+    """Quill 에디터에서 이미지 업로드"""
+    if request.method == 'POST' and request.FILES.get('image'):
+        try:
+            import os
+            from django.core.files.storage import default_storage
+            from django.conf import settings
+            
+            uploaded_file = request.FILES['image']
+            
+            # 파일 크기 제한 (2MB)
+            max_size = 2 * 1024 * 1024  # 2MB
+            if uploaded_file.size > max_size:
+                return JsonResponse({
+                    'success': False,
+                    'error': '이미지 크기는 2MB 이하여야 합니다.'
+                }, status=400)
+            
+            # 이미지 파일 타입 검증
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            if uploaded_file.content_type not in allowed_types:
+                return JsonResponse({
+                    'success': False,
+                    'error': '지원하지 않는 이미지 형식입니다. (JPG, PNG, GIF, WebP만 가능)'
+                }, status=400)
+            
+            # 파일명 생성 (중복 방지)
+            import uuid
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            ext = os.path.splitext(uploaded_file.name)[1]
+            filename = f'email_images/{timestamp}_{uuid.uuid4().hex[:8]}{ext}'
+            
+            # 파일 저장
+            file_path = default_storage.save(filename, uploaded_file)
+            
+            # 절대 URL 생성
+            file_url = default_storage.url(file_path)
+            absolute_url = request.build_absolute_uri(file_url)
+            
+            return JsonResponse({
+                'success': True,
+                'url': absolute_url
+            })
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Image upload failed: {str(e)}")
+            
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Invalid request'
+    }, status=400)

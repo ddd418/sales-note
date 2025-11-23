@@ -4,6 +4,7 @@
 {% block title %}답장 - {{ original_email.subject }}{% endblock %}
 
 {% block extra_css %}
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <style>
     .email-compose-container {
         max-width: 900px;
@@ -26,6 +27,38 @@
     .original-email-body {
         white-space: pre-wrap;
         font-size: 0.95rem;
+    }
+    
+    /* Quill 에디터 스타일 */
+    #editor-container {
+        height: 300px;
+        background: white;
+    }
+    
+    .ql-toolbar {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 4px 4px 0 0;
+    }
+    
+    .ql-container {
+        border: 1px solid #dee2e6 !important;
+        border-top: none !important;
+        border-radius: 0 0 4px 4px;
+        font-size: 14px;
+        font-family: Arial, sans-serif;
+    }
+    
+    #html-editor {
+        display: none;
+        height: 300px;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+    }
+    
+    .editor-mode-toggle {
+        margin-bottom: 8px;
+        font-size: 13px;
     }
 </style>
 {% endblock %}
@@ -66,14 +99,18 @@
                 
                 <!-- 본문 -->
                 <div class="mb-3">
-                    <label for="body_text" class="form-label required">본문</label>
-                    <textarea class="form-control" id="body_text" name="body_text" rows="8" required></textarea>
-                </div>
-                
-                <!-- HTML 본문 -->
-                <div class="mb-3">
-                    <label for="body_html" class="form-label">HTML 본문 (선택)</label>
-                    <textarea class="form-control" id="body_html" name="body_html" rows="5"></textarea>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="body_text" class="form-label required mb-0">본문</label>
+                        <div class="editor-mode-toggle">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleHtmlMode">
+                                <i class="bi bi-code-square"></i> HTML 편집
+                            </button>
+                        </div>
+                    </div>
+                    <div id="editor-container"></div>
+                    <textarea class="form-control" id="html-editor"></textarea>
+                    <input type="hidden" id="body_text" name="body_text" required>
+                    <input type="hidden" id="body_html" name="body_html">
                 </div>
                 
                 <!-- 첨부파일 -->
@@ -125,7 +162,8 @@
                     <a href="{% url 'reporting:mailbox_thread' original_email.gmail_thread_id %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> 취소
                     </a>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" id="realSubmitBtn" style="display: none;">Submit</button>
+                    <button type="button" class="btn btn-primary" onclick="submitEmailForm()">
                         <i class="bi bi-send"></i> 답장 발송
                     </button>
                 </div>
@@ -136,8 +174,88 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <script>
+let quill;
+let isHtmlMode = false;
+
+function submitEmailForm() {
+    const bodyText = document.getElementById('body_text');
+    const bodyHtml = document.getElementById('body_html');
+    const htmlEditor = document.getElementById('html-editor');
+    
+    // HTML 모드인 경우 에디터에 반영
+    if (isHtmlMode) {
+        quill.root.innerHTML = htmlEditor.value;
+    }
+    
+    // HTML 내용
+    const htmlContent = quill.root.innerHTML;
+    bodyHtml.value = htmlContent;
+    
+    // 텍스트 내용 (HTML 태그 제거)
+    const textContent = quill.getText();
+    bodyText.value = textContent;
+    
+    console.log('body_text:', textContent);
+    console.log('body_html:', htmlContent);
+    
+    // 빈 내용 체크 (텍스트 또는 이미지가 있는지 확인)
+    const hasText = textContent.trim().length > 0;
+    const hasImage = htmlContent.includes('<img');
+    
+    if (!hasText && !hasImage) {
+        alert('본문을 입력해주세요.');
+        return false;
+    }
+    
+    // hidden submit 버튼 클릭
+    document.getElementById('realSubmitBtn').click();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Quill 에디터 초기화
+    quill = new Quill('#editor-container', {
+        theme: 'snow',
+        modules: {
+            toolbar: [
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'font': [] }],
+                [{ 'size': ['small', false, 'large', 'huge'] }],
+                [{ 'align': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                ['link', 'image'],
+                ['clean']
+            ]
+        },
+        placeholder: '답장 내용을 작성하세요...'
+    });
+    
+    // HTML 편집 모드 토글
+    const toggleHtmlBtn = document.getElementById('toggleHtmlMode');
+    const editorContainer = document.getElementById('editor-container');
+    const htmlEditor = document.getElementById('html-editor');
+    
+    toggleHtmlBtn.addEventListener('click', function() {
+        isHtmlMode = !isHtmlMode;
+        
+        if (isHtmlMode) {
+            // HTML 편집 모드로 전환
+            htmlEditor.value = quill.root.innerHTML;
+            editorContainer.style.display = 'none';
+            htmlEditor.style.display = 'block';
+            this.innerHTML = '<i class="bi bi-eye"></i> 미리보기';
+        } else {
+            // 미리보기 모드로 전환
+            quill.root.innerHTML = htmlEditor.value;
+            htmlEditor.style.display = 'none';
+            editorContainer.style.display = 'block';
+            this.innerHTML = '<i class="bi bi-code-square"></i> HTML 편집';
+        }
+    });
+    
     const businessCardSelect = document.getElementById('business_card_id');
     const signaturePreviewContainer = document.getElementById('signature-preview-container');
     const signaturePreview = document.getElementById('signature-preview');
