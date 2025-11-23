@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# .env 파일 로드 (로컬 개발 환경용)
+load_dotenv()
 
 if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("DATABASE_URL"):
     from sales_project.settings_production import *
@@ -83,9 +87,9 @@ else:
     FILE_UPLOAD_MAX_MEMORY_SIZE = 26214400  # 25MB
     
     # Gmail API 설정
-GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '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')
-GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'http://127.0.0.1:8000/reporting/gmail/callback/')
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
+GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
 # Celery 설정
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')

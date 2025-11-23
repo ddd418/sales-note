@@ -465,6 +465,7 @@
             <span>서류 관리</span>
           </a>
         </li>
+        {% if user.userprofile.role != 'manager' %}
         <li class="nav-item">
           <a href="{% url 'reporting:mailbox_inbox' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'mailbox' or request.resolver_match.url_name|slice:':5' == 'gmail' %}active{% endif %}">
             <i class="fas fa-envelope"></i>
@@ -477,6 +478,7 @@
             <span>명함 관리</span>
           </a>
         </li>
+        {% endif %}
         {% if user.userprofile.role == 'manager' %}
         <li class="nav-item">
           <a href="{% url 'reporting:manager_company_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':15' == 'manager_company' %}active{% endif %}">

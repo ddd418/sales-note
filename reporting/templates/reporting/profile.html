@@ -95,7 +95,8 @@
         </div>
         {% endif %}
 
-        <!-- Gmail 연결 상태 -->
+        <!-- Gmail 연결 상태 (매니저 제외) -->
+        {% if user.userprofile.role != 'manager' %}
         <div class="row mt-4">
           <div class="col-12">
             <div class="card border-info">
@@ -151,6 +152,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
         <div class="row">
           <div class="col-md-6">
