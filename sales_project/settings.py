@@ -1,8 +1,9 @@
 import os
-from dotenv import load_dotenv
 
-# .env 파일 로드 (로컬 개발 환경용)
-load_dotenv()
+# .env 파일 로드 (로컬 개발 환경용만)
+if not os.environ.get("RAILWAY_ENVIRONMENT") and not os.environ.get("DATABASE_URL"):
+    from dotenv import load_dotenv
+    load_dotenv()
 
 if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("DATABASE_URL"):
     from sales_project.settings_production import *
