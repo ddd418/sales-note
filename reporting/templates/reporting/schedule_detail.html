@@ -525,8 +525,17 @@ body.modal-open .col-md-10 {
           </div>
         </div>
         <div class="card-body">
+          {% if not email_threads %}
+          <div class="text-center text-muted py-4">
+            <i class="fas fa-inbox fa-3x mb-3"></i>
+            <p>아직 발송된 이메일이 없습니다.</p>
+            <a href="{% url 'reporting:send_email_from_schedule' schedule.pk %}" class="btn btn-success">
+              <i class="fas fa-paper-plane me-1"></i>첫 이메일 발송하기
+            </a>
+          </div>
+          {% else %}
           {% for thread_id, emails in email_threads.items %}
-          <div class="email-thread mb-4 pb-3 border-bottom">
+          <div class="email-thread mb-4 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
             <div class="d-flex justify-content-between align-items-start mb-3">
               <h6 class="mb-0">
                 <i class="fas fa-comments me-2"></i>{{ emails.0.subject }}
@@ -537,15 +546,20 @@ body.modal-open .col-md-10 {
               </a>
             </div>
             
-            {% for email in emails|slice:":3" %}
-            <div class="email-message-preview mb-2 p-3 {% if email.email_type == 'sent' %}bg-light{% else %}bg-white border{% endif %} rounded">
+            {% for email in emails %}
+            <div class="email-message-preview mb-2 p-3 {% if email.email_type == 'sent' %}bg-light{% else %}bg-white border border-success{% endif %} rounded" 
+                 style="cursor: pointer;" 
+                 onclick="window.location.href='{% url 'reporting:mailbox_thread' thread_id %}'">
               <div class="d-flex justify-content-between align-items-start mb-2">
-                <div>
+                <div class="flex-grow-1">
                   <strong>
                     {% if email.email_type == 'sent' %}
                       <i class="fas fa-paper-plane text-primary me-1"></i>발신
                     {% else %}
-                      <i class="fas fa-inbox text-success me-1"></i>수신
+                      <i class="fas fa-inbox text-success me-1"></i>수신 (답장)
+                      {% if not email.is_read %}
+                        <span class="badge bg-danger ms-1">NEW</span>
+                      {% endif %}
                     {% endif %}
                   </strong>
                   <span class="text-muted ms-2">
@@ -556,19 +570,16 @@ body.modal-open .col-md-10 {
                     {% endif %}
                   </span>
                 </div>
-                <small class="text-muted">{{ email.sent_at|date:"Y-m-d H:i" }}</small>
+                <small class="text-muted text-nowrap ms-2">{{ email.sent_at|default:email.received_at|date:"Y-m-d H:i" }}</small>
               </div>
-              <p class="mb-0 text-muted small">{{ email.body_text|truncatewords:20 }}</p>
+              <p class="mb-0 text-muted small" style="overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                {{ email.body|striptags|truncatewords:30 }}
+              </p>
             </div>
             {% endfor %}
-            
-            {% if emails|length > 3 %}
-            <div class="text-center">
-              <small class="text-muted">외 {{ emails|length|add:"-3" }}개 메시지</small>
-            </div>
-            {% endif %}
           </div>
           {% endfor %}
+          {% endif %}
         </div>
       </div>
     </div>

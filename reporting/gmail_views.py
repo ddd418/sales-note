@@ -44,14 +44,20 @@ def _sync_emails_by_days(user, days=1):
     
     gmail_service = GmailService(profile)
     
-    # 팔로우업 이메일 주소 목록
-    followup_emails = set()
+    # 팔로우업 및 일정 관련 이메일 주소 목록
+    target_emails = set()
     followups = FollowUp.objects.filter(user=user)
     for followup in followups:
         if followup.email:
-            followup_emails.add(followup.email.lower())
+            target_emails.add(followup.email.lower())
     
-    if not followup_emails:
+    # 일정 관련 이메일도 추가
+    schedules = Schedule.objects.filter(user=user).select_related('followup')
+    for schedule in schedules:
+        if schedule.followup and schedule.followup.email:
+            target_emails.add(schedule.followup.email.lower())
+    
+    if not target_emails:
         return 0
     
     # 마지막 동기화 시점 이후의 메일만 가져오기
@@ -112,16 +118,29 @@ def _sync_emails_by_days(user, days=1):
             # 수신 메일인지 발신 메일인지 확인
             is_sent = from_email == profile.gmail_email.lower()
             
-            # 팔로우업 이메일과 매칭
+            # 팔로우업 또는 일정 이메일과 매칭
             matched_followup = None
+            matched_schedule = None
             target_email = to_email if is_sent else from_email
             
-            for followup in followups:
-                if followup.email and followup.email.lower() == target_email:
-                    matched_followup = followup
-                    break
+            # 먼저 일정 확인 (스레드 ID로 매칭)
+            if msg_detail.get('thread_id'):
+                existing_email = EmailLog.objects.filter(
+                    gmail_thread_id=msg_detail['thread_id']
+                ).select_related('schedule', 'followup').first()
+                
+                if existing_email:
+                    matched_schedule = existing_email.schedule
+                    matched_followup = existing_email.followup or matched_followup
             
+            # 일정이 없으면 팔로우업으로 매칭
             if not matched_followup:
+                for followup in followups:
+                    if followup.email and followup.email.lower() == target_email:
+                        matched_followup = followup
+                        break
+            
+            if not matched_followup and not matched_schedule:
                 continue
             
             # 본문 내용 처리 (HTML 우선, 없으면 텍스트)
@@ -135,6 +154,15 @@ def _sync_emails_by_days(user, days=1):
             if not body_content:
                 body_content = msg_detail.get('snippet', '')
             
+            # 날짜 파싱
+            from email.utils import parsedate_to_datetime
+            email_date = None
+            if msg_detail.get('date'):
+                try:
+                    email_date = parsedate_to_datetime(msg_detail['date'])
+                except:
+                    pass
+            
             EmailLog.objects.create(
                 email_type='sent' if is_sent else 'received',
                 sender=user if is_sent else None,
@@ -146,8 +174,11 @@ def _sync_emails_by_days(user, days=1):
                 gmail_message_id=msg_detail['id'],
                 gmail_thread_id=msg_detail['thread_id'],
                 followup=matched_followup,
+                schedule=matched_schedule,
                 is_read=True if is_sent else False,
-                status='sent' if is_sent else 'received'
+                status='sent' if is_sent else 'received',
+                sent_at=email_date if is_sent else None,
+                received_at=email_date if not is_sent else None
             )
             synced_count += 1
     
@@ -250,7 +281,7 @@ def send_email_from_schedule(request, schedule_id):
     # 권한 확인: 자신의 일정 또는 매니저
     if schedule.user != request.user and request.user.userprofile.role != 'manager':
         messages.error(request, '권한이 없습니다.')
-        return redirect('reporting:schedule_detail', schedule_id=schedule_id)
+        return redirect('reporting:schedule_detail', pk=schedule_id)
     
     # Gmail 연결 확인
     profile = request.user.userprofile
@@ -516,7 +547,7 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
         
         # 리다이렉트 경로 결정
         if schedule:
-            return redirect('reporting:schedule_detail', schedule_id=schedule.id)
+            return redirect('reporting:schedule_detail', pk=schedule.id)
         elif followup:
             return redirect('reporting:mailbox_thread', thread_id=email_log.gmail_thread_id)
         else:

@@ -261,7 +261,19 @@
                             {% endif %}
                         </div>
                         <div class="email-content" onclick="location.href='{% url 'reporting:mailbox_thread' email.gmail_thread_id %}'">
-                            <span class="email-subject">{{ email.subject }}</span>
+                            <span class="email-subject">
+                                {{ email.subject }}
+                                {% if email.schedule %}
+                                    <span class="email-badge" style="background: #e8f5e9; color: #2e7d32;" title="일정과 연결됨">
+                                        <i class="fas fa-calendar-check"></i> 일정
+                                    </span>
+                                {% endif %}
+                                {% if email.followup %}
+                                    <span class="email-badge" style="background: #fff3e0; color: #e65100;" title="팔로우업과 연결됨">
+                                        <i class="fas fa-link"></i> 팔로우업
+                                    </span>
+                                {% endif %}
+                            </span>
                         </div>
                         <div class="email-date">
                             {{ email.sent_at|date:"n월 j일 H:i" }}

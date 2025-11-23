@@ -137,16 +137,24 @@
         <div class="d-flex justify-content-between align-items-start">
             <div>
                 <h3 class="mb-2">{{ emails.first.subject }}</h3>
-                {% if followup %}
-                <div>
+                <div class="d-flex gap-2 flex-wrap">
+                    {% if emails.first.schedule %}
+                    <span class="badge bg-success">
+                        <i class="fas fa-calendar-check"></i> 일정과 연결됨
+                    </span>
+                    <a href="{% url 'reporting:schedule_detail' emails.first.schedule.id %}" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-calendar-alt"></i> 일정 상세보기
+                    </a>
+                    {% endif %}
+                    {% if followup %}
                     <span class="badge bg-primary">
                         <i class="bi bi-person"></i> {{ followup.customer_name }}
                     </span>
-                    <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-sm btn-outline-primary ms-2">
-                        팔로우업 상세보기
+                    <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-link"></i> 팔로우업 상세보기
                     </a>
+                    {% endif %}
                 </div>
-                {% endif %}
                 <small class="text-muted d-block mt-2">{{ emails.count }}개의 메시지</small>
             </div>
             <div>
