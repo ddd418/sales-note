@@ -63,8 +63,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'reporting',
-    'tailwind',
-    'theme',
 ]
 
 MIDDLEWARE = [
