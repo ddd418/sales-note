@@ -245,13 +245,8 @@ def gmail_callback(request):
         profile.gmail_email = gmail_email
         profile.save()
         
-        # 첫 연동 시 자동으로 30일치 메일 동기화
-        try:
-            synced = _sync_emails_by_days(request.user, days=30)
-            messages.success(request, f'Gmail 계정({gmail_email})이 연결되었습니다. 최근 30일치 메일 {synced}개를 동기화했습니다.')
-        except Exception as sync_error:
-            messages.success(request, f'Gmail 계정({gmail_email})이 연결되었습니다.')
-            messages.warning(request, f'메일 동기화 중 오류: {str(sync_error)}')
+        # 첫 연동 시 메시지만 표시 (동기화는 사용자가 수동으로 또는 나중에)
+        messages.success(request, f'Gmail 계정({gmail_email})이 연결되었습니다. 메일함에서 "메일 동기화" 버튼을 눌러 이메일을 가져올 수 있습니다.')
         
         return redirect('reporting:profile')
         
@@ -260,7 +255,6 @@ def gmail_callback(request):
         return redirect('reporting:profile')
 
 
-@login_required
 @login_required
 def gmail_disconnect(request):
     """Gmail 계정 연결 해제"""
