@@ -263,7 +263,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                 ['link', 'image'],
                 ['clean']
-            ]
+            ],
+            clipboard: {
+                matchVisual: false  // 서식이 있는 HTML 붙여넣기 허용
+            }
         },
         placeholder: '이메일 본문을 작성하세요...'
     });
