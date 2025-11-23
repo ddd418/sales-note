@@ -24,6 +24,8 @@ else:
         "django.contrib.messages",
         "django.contrib.staticfiles",
         "django.contrib.humanize",
+        "cloudinary_storage",
+        "cloudinary",
         "reporting",
         "tailwind",
         "theme",
@@ -58,8 +60,22 @@ else:
     STATIC_URL = "static/"
     STATIC_ROOT = BASE_DIR / "staticfiles"
     STATICFILES_DIRS = [BASE_DIR / "theme" / "static"]
-    MEDIA_URL = "/media/"
-    MEDIA_ROOT = BASE_DIR / "media"
+    
+    # Cloudinary 설정 (로컬에서는 사용하지 않고 Railway에서만 사용)
+    USE_CLOUDINARY = os.environ.get('USE_CLOUDINARY', 'false').lower() == 'true'
+    
+    if USE_CLOUDINARY:
+        CLOUDINARY_STORAGE = {
+            'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+            'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET')
+        }
+        DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        MEDIA_URL = '/media/'
+    else:
+        MEDIA_URL = "/media/"
+        MEDIA_ROOT = BASE_DIR / "media"
+    
     DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
     
     # 절대 URL 생성을 위한 도메인 설정

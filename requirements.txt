@@ -32,3 +32,7 @@ google-api-python-client==2.147.0
 # Celery (비동기 작업 및 주기적 작업)
 celery==5.4.0
 redis==5.2.0
+
+# Cloudinary (미디어 파일 스토리지)
+cloudinary==1.41.0
+django-cloudinary-storage==0.3.0

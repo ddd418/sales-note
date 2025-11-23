@@ -6,7 +6,11 @@ __pycache__/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-media/
+
+# Media files (except business card logos for now)
+media/*
+!media/business_card_logos/
+media/business_card_logos/*.tmp
 
 # Environment
 .env
