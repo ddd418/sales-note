@@ -845,7 +845,7 @@
                   
                   <!-- 고객 우선순위 필터 -->
                   <div class="col-md-2">
-                    <label for="priority" class="form-label">고객 우선순위</label>
+                    <label for="priority" class="form-label">우선순위</label>
                     <select class="form-control" id="priority" name="priority">
                       <option value="">전체</option>
                       {% for priority_value, priority_display in priority_choices %}
@@ -856,8 +856,34 @@
                     </select>
                   </div>
                   
+                  <!-- 고객 등급 필터 -->
+                  <div class="col-md-2">
+                    <label for="grade" class="form-label">고객 등급</label>
+                    <select class="form-control" id="grade" name="grade">
+                      <option value="">전체</option>
+                      {% for grade_value, grade_display in grade_choices %}
+                      <option value="{{ grade_value }}" {% if grade_filter == grade_value %}selected{% endif %}>
+                        {{ grade_display }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
+                  <!-- 종합 점수 레벨 필터 -->
+                  <div class="col-md-3">
+                    <label for="level" class="form-label">종합 우선순위</label>
+                    <select class="form-control" id="level" name="level">
+                      <option value="">전체</option>
+                      {% for level_value, level_display in level_choices %}
+                      <option value="{{ level_value }}" {% if level_filter == level_value %}selected{% endif %}>
+                        {{ level_display }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
                   <!-- 버튼들 -->
-                  <div class="col-md-4 d-flex align-items-end">
+                  <div class="col-md-3 d-flex align-items-end">
                     <div class="btn-group">
                       <button type="submit" class="btn btn-primary">
                         <i class="fas fa-search me-1"></i>검색
@@ -870,13 +896,15 @@
                 </div>
                 
                 <!-- 검색 결과 정보 -->
-                {% if search_query or company_filter or priority_filter %}
+                {% if search_query or company_filter or priority_filter or grade_filter or level_filter %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_count }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
                     {% if selected_company %} | 업체/학교: <strong>{{ selected_company.name }}</strong>{% endif %}
                     {% if selected_priority_display %} | 우선순위: <strong>{{ selected_priority_display }}</strong>{% endif %}
+                    {% if grade_filter %} | 고객등급: <strong>{{ grade_filter }}</strong>{% endif %}
+                    {% if level_filter %} | 종합우선순위: <strong>{% for lv, ld in level_choices %}{% if lv == level_filter %}{{ ld }}{% endif %}{% endfor %}</strong>{% endif %}
                   </small>
                 </div>
                 {% endif %}
@@ -931,11 +959,30 @@
                   {{ followup.customer_name|default:"고객명 미정" }}
                 </a>
               </h6>
-              <span
-                class="badge bg-{% if followup.priority == 'one_month' %}danger{% elif followup.priority == 'three_months' %}warning{% else %}info{% endif %}"
-              >
-                {{ followup.get_priority_display }}
-              </span>
+              <div class="d-flex gap-1">
+                <!-- 종합 우선순위 배지 -->
+                <span class="badge" style="background-color: {{ followup.get_priority_level.color }}; color: white;">
+                  {{ followup.get_priority_level.icon }} {{ followup.get_priority_level.label }}
+                </span>
+                <!-- 고객 등급 배지 -->
+                {% if followup.customer_grade %}
+                <span class="badge" style="
+                  {% if followup.customer_grade == 'VIP' %}background: linear-gradient(135deg, #ffd700, #ffed4e);{% endif %}
+                  {% if followup.customer_grade == 'A' %}background: linear-gradient(135deg, #667eea, #764ba2);{% endif %}
+                  {% if followup.customer_grade == 'B' %}background: linear-gradient(135deg, #10b981, #059669);{% endif %}
+                  {% if followup.customer_grade == 'C' %}background: linear-gradient(135deg, #64748b, #475569);{% endif %}
+                  {% if followup.customer_grade == 'D' %}background: linear-gradient(135deg, #94a3b8, #64748b);{% endif %}
+                  color: white;">
+                  {{ followup.customer_grade }}
+                </span>
+                {% endif %}
+                <!-- 우선순위 배지 -->
+                <span
+                  class="badge bg-{% if followup.priority == 'urgent' %}danger{% elif followup.priority == 'followup' %}warning{% elif followup.priority == 'scheduled' %}info{% else %}secondary{% endif %}"
+                >
+                  {{ followup.get_priority_display }}
+                </span>
+              </div>
             </div>
 
             <div class="card-body">
@@ -945,6 +992,7 @@
                 <strong>부서:</strong> {{ followup.department.name }}<br />
                 {% endif %}
                 <strong>담당자:</strong> {{ followup.user.username }}<br />
+                <strong>종합점수:</strong> <span class="badge bg-secondary">{{ followup.get_combined_score }}점</span><br />
                 {% if followup.manager %}
                 <strong>책임자:</strong> {{ followup.manager }}<br />
                 {% endif %}

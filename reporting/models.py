@@ -116,9 +116,17 @@ class FollowUp(models.Model):
         ('paused', '일시중지'),
     ]
     PRIORITY_CHOICES = [
-        ('one_month', '한달'),
-        ('three_months', '세달'),
-        ('long_term', '장기'),
+        ('urgent', '긴급'),
+        ('followup', '팔로업'),
+        ('scheduled', '예정'),
+    ]
+    
+    CUSTOMER_GRADE_CHOICES = [
+        ('VIP', 'VIP (최우수 고객)'),
+        ('A', 'A (우수 고객)'),
+        ('B', 'B (일반 고객)'),
+        ('C', 'C (잠재 고객)'),
+        ('D', 'D (저관심 고객)'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
@@ -132,7 +140,33 @@ class FollowUp(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name="상세주소")
     notes = models.TextField(blank=True, null=True, verbose_name="상세 내용")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='long_term', verbose_name="우선순위")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='scheduled', verbose_name="우선순위")
+    
+    # AI 기반 고객 등급 시스템
+    customer_grade = models.CharField(
+        max_length=10, 
+        choices=CUSTOMER_GRADE_CHOICES, 
+        default='C', 
+        verbose_name="고객 등급",
+        help_text="AI가 자동 산정하는 고객 등급 (VIP/A/B/C/D)"
+    )
+    ai_score = models.IntegerField(
+        default=50,
+        verbose_name="AI 점수",
+        help_text="0-100점, 거래 실적/수주율/응답성 등 종합 평가"
+    )
+    grade_metrics = models.JSONField(
+        default=dict,
+        verbose_name="등급 산정 기준",
+        help_text="등급이 어떻게 계산되었는지 저장 (투명성)"
+    )
+    last_grade_updated = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="등급 갱신일",
+        help_text="마지막으로 AI 등급이 계산된 시점"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -140,6 +174,255 @@ class FollowUp(models.Model):
         display_name = self.customer_name or "고객명 미정"
         company_name = self.company.name if self.company else "업체명 미정"
         return f"{display_name} ({company_name}) - {self.user.username}"
+    
+    def calculate_customer_grade(self):
+        """
+        AI 기반 고객 등급 자동 산정
+        펀넬 데이터, 거래 실적, 활동 이력을 종합하여 계산
+        """
+        from datetime import datetime, timedelta
+        from django.db.models import Sum, Count, Avg, Q
+        from decimal import Decimal
+        
+        metrics = {
+            'total_revenue': 0,  # 총 매출액
+            'won_count': 0,  # 수주 건수
+            'lost_count': 0,  # 실주 건수
+            'win_rate': 0,  # 수주율 (%)
+            'avg_deal_size': 0,  # 평균 거래액
+            'total_quotes': 0,  # 총 견적 수
+            'total_meetings': 0,  # 총 미팅 수
+            'avg_response_time': 0,  # 평균 응답 시간
+            'recent_activity': 0,  # 최근 활동 점수
+            'growth_rate': 0,  # 성장률
+        }
+        
+        score = 0
+        
+        # 1. 펀넬 데이터 분석 (OpportunityTracking)
+        opportunities = self.opportunities.all()
+        won_opps = opportunities.filter(current_stage='won')
+        lost_opps = opportunities.filter(current_stage__in=['lost', 'quote_lost'])
+        
+        if opportunities.exists():
+            metrics['won_count'] = won_opps.count()
+            metrics['lost_count'] = lost_opps.count()
+            
+            total_opps = metrics['won_count'] + metrics['lost_count']
+            if total_opps > 0:
+                metrics['win_rate'] = round((metrics['won_count'] / total_opps) * 100, 1)
+            
+            # 실제 매출 합계
+            total_revenue = won_opps.aggregate(
+                total=Sum('actual_revenue')
+            )['total'] or 0
+            metrics['total_revenue'] = float(total_revenue)
+            
+            if metrics['won_count'] > 0:
+                metrics['avg_deal_size'] = metrics['total_revenue'] / metrics['won_count']
+            
+            # 평균 응답 시간
+            avg_response = opportunities.aggregate(
+                avg=Avg('avg_response_time_hours')
+            )['avg']
+            if avg_response:
+                metrics['avg_response_time'] = float(avg_response)
+            
+            # 견적 및 미팅 수
+            metrics['total_quotes'] = opportunities.aggregate(
+                total=Sum('total_quotes_sent')
+            )['total'] or 0
+            metrics['total_meetings'] = opportunities.aggregate(
+                total=Sum('total_meetings')
+            )['total'] or 0
+        
+        # 2. 최근 3개월 활동 분석
+        three_months_ago = datetime.now().date() - timedelta(days=90)
+        recent_schedules = self.schedules.filter(
+            visit_date__gte=three_months_ago,
+            status='completed'
+        ).count()
+        metrics['recent_activity'] = recent_schedules
+        
+        # 3. 성장률 계산 (최근 3개월 vs 이전 3개월)
+        six_months_ago = datetime.now().date() - timedelta(days=180)
+        
+        recent_revenue = won_opps.filter(
+            won_date__gte=three_months_ago
+        ).aggregate(total=Sum('actual_revenue'))['total'] or 0
+        
+        old_revenue = won_opps.filter(
+            won_date__gte=six_months_ago,
+            won_date__lt=three_months_ago
+        ).aggregate(total=Sum('actual_revenue'))['total'] or 0
+        
+        if old_revenue > 0:
+            metrics['growth_rate'] = round(((float(recent_revenue) - float(old_revenue)) / float(old_revenue)) * 100, 1)
+        elif recent_revenue > 0:
+            metrics['growth_rate'] = 100  # 신규 고객
+        
+        # 4. AI 점수 계산 (0-100점)
+        
+        # 매출액 점수 (0-30점)
+        if metrics['total_revenue'] >= 100000000:  # 1억 이상
+            score += 30
+        elif metrics['total_revenue'] >= 50000000:  # 5천만 이상
+            score += 25
+        elif metrics['total_revenue'] >= 10000000:  # 1천만 이상
+            score += 20
+        elif metrics['total_revenue'] >= 5000000:  # 500만 이상
+            score += 15
+        elif metrics['total_revenue'] > 0:
+            score += 10
+        
+        # 수주율 점수 (0-25점)
+        if metrics['win_rate'] >= 70:
+            score += 25
+        elif metrics['win_rate'] >= 50:
+            score += 20
+        elif metrics['win_rate'] >= 30:
+            score += 15
+        elif metrics['win_rate'] > 0:
+            score += 10
+        
+        # 최근 활동 점수 (0-20점)
+        if metrics['recent_activity'] >= 10:
+            score += 20
+        elif metrics['recent_activity'] >= 5:
+            score += 15
+        elif metrics['recent_activity'] >= 3:
+            score += 10
+        elif metrics['recent_activity'] > 0:
+            score += 5
+        
+        # 성장률 점수 (0-15점)
+        if metrics['growth_rate'] >= 50:
+            score += 15
+        elif metrics['growth_rate'] >= 20:
+            score += 12
+        elif metrics['growth_rate'] >= 0:
+            score += 8
+        elif metrics['growth_rate'] >= -20:
+            score += 4
+        
+        # 거래 빈도 점수 (0-10점)
+        if metrics['won_count'] >= 10:
+            score += 10
+        elif metrics['won_count'] >= 5:
+            score += 8
+        elif metrics['won_count'] >= 3:
+            score += 6
+        elif metrics['won_count'] > 0:
+            score += 4
+        
+        # 5. 등급 산정
+        if score >= 80:
+            grade = 'VIP'
+        elif score >= 65:
+            grade = 'A'
+        elif score >= 45:
+            grade = 'B'
+        elif score >= 25:
+            grade = 'C'
+        else:
+            grade = 'D'
+        
+        # 6. 저장
+        from django.utils import timezone
+        self.ai_score = score
+        self.customer_grade = grade
+        self.grade_metrics = metrics
+        self.last_grade_updated = timezone.now()
+        self.save(update_fields=['ai_score', 'customer_grade', 'grade_metrics', 'last_grade_updated'])
+        
+        return {
+            'grade': grade,
+            'score': score,
+            'metrics': metrics
+        }
+    
+    def get_grade_badge_color(self):
+        """등급별 뱃지 색상 반환"""
+        colors = {
+            'VIP': '#FFD700',  # 금색
+            'A': '#C0C0C0',    # 은색
+            'B': '#CD7F32',    # 동색
+            'C': '#4A90E2',    # 파랑
+            'D': '#95A5A6',    # 회색
+        }
+        return colors.get(self.customer_grade, '#95A5A6')
+    
+    def get_priority_score(self):
+        """
+        우선순위 점수 계산 (종합 점수용)
+        긴급: 30점, 팔로업: 20점, 예정: 10점
+        """
+        priority_scores = {
+            'urgent': 30,
+            'followup': 20,
+            'scheduled': 10,
+        }
+        return priority_scores.get(self.priority, 0)
+    
+    def get_combined_score(self):
+        """
+        고객 등급(AI 점수)과 우선순위를 결합한 종합 점수
+        - AI 점수 (0-100점): 70% 가중치
+        - 우선순위 점수 (0-30점): 30% 가중치
+        최종 점수: 0-100점
+        """
+        ai_component = self.ai_score * 0.7  # AI 점수의 70%
+        priority_component = self.get_priority_score()  # 우선순위 점수 (최대 30점)
+        
+        total_score = ai_component + priority_component
+        return round(min(100, total_score), 1)
+    
+    def get_priority_level(self):
+        """
+        종합 점수 기반 우선순위 레벨
+        """
+        score = self.get_combined_score()
+        
+        if score >= 85:
+            return {
+                'level': 'critical',
+                'label': '최우선',
+                'color': '#dc3545',  # 빨강
+                'icon': '🔥',
+                'action': '즉시 대응'
+            }
+        elif score >= 70:
+            return {
+                'level': 'high',
+                'label': '높음',
+                'color': '#fd7e14',  # 주황
+                'icon': '⚡',
+                'action': '24시간 내'
+            }
+        elif score >= 50:
+            return {
+                'level': 'medium',
+                'label': '중간',
+                'color': '#ffc107',  # 노랑
+                'icon': '⭐',
+                'action': '주간 관리'
+            }
+        elif score >= 30:
+            return {
+                'level': 'low',
+                'label': '낮음',
+                'color': '#28a745',  # 초록
+                'icon': '📋',
+                'action': '월간 관리'
+            }
+        else:
+            return {
+                'level': 'minimal',
+                'label': '최소',
+                'color': '#6c757d',  # 회색
+                'icon': '📌',
+                'action': '분기 관리'
+            }
 
     class Meta:
         verbose_name = "팔로우업"
@@ -632,6 +915,25 @@ class OpportunityTracking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
+    def save(self, *args, **kwargs):
+        """저장 시 수주/실주 확정되면 고객 등급 자동 갱신"""
+        old_stage = None
+        if self.pk:
+            old_instance = OpportunityTracking.objects.filter(pk=self.pk).first()
+            if old_instance:
+                old_stage = old_instance.current_stage
+        
+        super().save(*args, **kwargs)
+        
+        # 수주 또는 실주로 전환된 경우 고객 등급 갱신
+        if old_stage != self.current_stage and self.current_stage in ['won', 'lost']:
+            try:
+                self.followup.calculate_customer_grade()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"고객 등급 자동 갱신 실패 (Opportunity {self.id}): {e}")
+    
     def update_stage(self, new_stage):
         """단계 업데이트 및 이력 기록 (중간 단계 자동 채움)"""
         from datetime import date
@@ -739,7 +1041,7 @@ class OpportunityTracking(models.Model):
         self.save()
     
     def save(self, *args, **kwargs):
-        """저장 시 가중 매출 자동 계산"""
+        """저장 시 가중 매출 자동 계산 및 고객 등급 갱신"""
         from decimal import Decimal
         
         # 가중 매출 계산: 예상 매출 × (확률 / 100)
@@ -748,7 +1050,18 @@ class OpportunityTracking(models.Model):
         else:
             self.weighted_revenue = 0
         
+        is_new = self.pk is None
         super().save(*args, **kwargs)
+        
+        # 수주(won) 또는 실주(lost) 단계로 변경된 경우 고객 등급 재계산
+        if not is_new and self.current_stage in ['won', 'lost', 'quote_lost']:
+            try:
+                self.followup.calculate_customer_grade()
+            except Exception as e:
+                # 등급 계산 실패해도 저장은 진행
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to calculate customer grade for followup {self.followup.id}: {e}")
     
     def __str__(self):
         if self.title:

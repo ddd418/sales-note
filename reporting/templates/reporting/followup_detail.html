@@ -92,13 +92,93 @@
                 </div>
               </div>
               <div class="mb-3">
-                <label class="form-label text-muted">우선순위</label>
+                <label class="form-label text-muted">
+                  <i class="fas fa-flag me-1"></i>우선순위
+                </label>
                 <div class="p-2 bg-light rounded border">
                   <span
-                    class="badge {% if followup.priority == 'one_month' %}bg-danger {% elif followup.priority == 'three_months' %}bg-warning {% elif followup.priority == 'long_term' %}bg-info {% else %}bg-secondary {% endif %}"
+                    class="badge {% if followup.priority == 'urgent' %}bg-danger {% elif followup.priority == 'followup' %}bg-warning {% elif followup.priority == 'scheduled' %}bg-info {% else %}bg-secondary {% endif %}"
                   >
-                    {{ followup.get_priority_display }}
+                    {% if followup.priority == 'urgent' %}
+                      🚨 긴급
+                    {% elif followup.priority == 'followup' %}
+                      ⏰ 팔로업
+                    {% elif followup.priority == 'scheduled' %}
+                      📅 예정
+                    {% else %}
+                      {{ followup.get_priority_display }}
+                    {% endif %}
                   </span>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted">
+                  <i class="fas fa-medal me-1"></i>AI 고객 등급
+                  {% if followup.last_grade_updated %}
+                  <small class="text-muted">({{ followup.last_grade_updated|date:"Y-m-d" }} 갱신)</small>
+                  {% endif %}
+                </label>
+                <div class="p-2 bg-light rounded border">
+                  <span class="badge" style="
+                    {% if followup.customer_grade == 'VIP' %}background: linear-gradient(135deg, #ffd700, #ffed4e);{% endif %}
+                    {% if followup.customer_grade == 'A' %}background: linear-gradient(135deg, #667eea, #764ba2);{% endif %}
+                    {% if followup.customer_grade == 'B' %}background: linear-gradient(135deg, #10b981, #059669);{% endif %}
+                    {% if followup.customer_grade == 'C' %}background: linear-gradient(135deg, #64748b, #475569);{% endif %}
+                    {% if followup.customer_grade == 'D' %}background: linear-gradient(135deg, #94a3b8, #64748b);{% endif %}
+                    color: white; font-size: 1rem; padding: 0.5rem 1rem;">
+                    {{ followup.customer_grade }}등급
+                  </span>
+                  <span class="ms-2 badge bg-secondary">
+                    AI 점수: {{ followup.ai_score }}점
+                  </span>
+                  {% if followup.grade_metrics %}
+                  <button type="button" class="btn btn-sm btn-outline-info ms-2" 
+                          data-bs-toggle="collapse" data-bs-target="#gradeMetrics">
+                    <i class="fas fa-info-circle"></i> 상세 정보
+                  </button>
+                  <div class="collapse mt-2" id="gradeMetrics">
+                    <div class="card card-body">
+                      <small>
+                        {% if followup.grade_metrics.win_rate %}
+                        <strong>수주율:</strong> {{ followup.grade_metrics.win_rate }}%<br>
+                        {% endif %}
+                        {% if followup.grade_metrics.total_revenue %}
+                        <strong>총 매출:</strong> {{ followup.grade_metrics.total_revenue|floatformat:0 }}원<br>
+                        {% endif %}
+                        {% if followup.grade_metrics.total_meetings %}
+                        <strong>총 미팅:</strong> {{ followup.grade_metrics.total_meetings }}회<br>
+                        {% endif %}
+                        {% if followup.grade_metrics.total_quotes %}
+                        <strong>총 견적:</strong> {{ followup.grade_metrics.total_quotes }}건<br>
+                        {% endif %}
+                        {% if followup.grade_metrics.avg_response_hours %}
+                        <strong>평균 응답:</strong> {{ followup.grade_metrics.avg_response_hours }}시간<br>
+                        {% endif %}
+                      </small>
+                    </div>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label text-muted">
+                  <i class="fas fa-chart-line me-1"></i>종합 우선순위
+                </label>
+                <div class="p-2 rounded border" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));">
+                  <div class="d-flex align-items-center gap-3">
+                    <span class="badge" style="background-color: {{ followup.get_priority_level.color }}; color: white; font-size: 1.1rem; padding: 0.6rem 1.2rem;">
+                      {{ followup.get_priority_level.icon }} {{ followup.get_priority_level.label }}
+                    </span>
+                    <div>
+                      <strong style="font-size: 1.5rem; color: #667eea;">{{ followup.get_combined_score }}점</strong>
+                      <small class="text-muted d-block">AI(70%) + 우선순위(30%)</small>
+                    </div>
+                    <div class="ms-auto">
+                      <span class="badge bg-info">
+                        <i class="fas fa-bell"></i> {{ followup.get_priority_level.action }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="mb-3">

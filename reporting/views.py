@@ -621,27 +621,81 @@ def followup_list_view(request):
     if priority_filter:
         followups = followups.filter(priority=priority_filter)
     
+    # 고객 등급 필터링
+    grade_filter = request.GET.get('grade')
+    if grade_filter:
+        followups = followups.filter(customer_grade=grade_filter)
+    
+    # 종합 점수(우선순위 레벨) 필터링
+    level_filter = request.GET.get('level')
+    if level_filter:
+        # 종합 점수 범위로 필터링 - queryset을 유지하기 위해 먼저 리스트로 변환
+        followups_list = list(followups)
+        if level_filter == 'critical':  # 최우선 85+
+            followups_list = [f for f in followups_list if f.get_combined_score() >= 85]
+        elif level_filter == 'high':  # 높음 70-84
+            followups_list = [f for f in followups_list if 70 <= f.get_combined_score() < 85]
+        elif level_filter == 'medium':  # 중간 50-69
+            followups_list = [f for f in followups_list if 50 <= f.get_combined_score() < 70]
+        elif level_filter == 'low':  # 낮음 30-49
+            followups_list = [f for f in followups_list if 30 <= f.get_combined_score() < 50]
+        elif level_filter == 'minimal':  # 최소 30-
+            followups_list = [f for f in followups_list if f.get_combined_score() < 30]
+    else:
+        followups_list = None
+    
     # 업체별 카운트 (업체 필터 적용 전 기준)
     from django.db.models import Count, Q as DbQ
-    stats = followups.aggregate(
-        total_count=Count('id'),
-        active_count=Count('id', filter=DbQ(status='active')),
-        completed_count=Count('id', filter=DbQ(status='completed')),
-        paused_count=Count('id', filter=DbQ(status='paused'))
-    )
+    if level_filter:
+        # 리스트로 변환되었으면 카운트 직접 계산
+        stats = {
+            'total_count': len(followups_list),
+            'active_count': len([f for f in followups_list if f.status == 'active']),
+            'completed_count': len([f for f in followups_list if f.status == 'completed']),
+            'paused_count': len([f for f in followups_list if f.status == 'paused']),
+        }
+    else:
+        stats = followups.aggregate(
+            total_count=Count('id'),
+            active_count=Count('id', filter=DbQ(status='active')),
+            completed_count=Count('id', filter=DbQ(status='completed')),
+            paused_count=Count('id', filter=DbQ(status='paused'))
+        )
     
     # 업체 필터링 (카운트 계산 후에 적용)
     company_filter = request.GET.get('company')
     if company_filter:
-        followups = followups.filter(
-            Q(company_id=company_filter) | Q(department__company_id=company_filter)
-        )
+        if level_filter:
+            # 리스트인 경우
+            followups_list = [f for f in followups_list if (f.company_id == int(company_filter) if company_filter.isdigit() else False) or (f.department and f.department.company_id == int(company_filter) if company_filter.isdigit() else False)]
+        else:
+            followups = followups.filter(
+                Q(company_id=company_filter) | Q(department__company_id=company_filter)
+            )
       
     # 정렬 (최신순)
-    followups = followups.order_by('-created_at')
+    if level_filter:
+        # 리스트인 경우 정렬
+        followups_list = sorted(followups_list, key=lambda x: x.created_at, reverse=True)
+        final_followups = followups_list
+    else:
+        followups = followups.order_by('-created_at')
+        final_followups = followups
     
     # 우선순위 선택지 (필터용)
     priority_choices = FollowUp.PRIORITY_CHOICES
+    
+    # 고객 등급 선택지 (필터용)
+    grade_choices = FollowUp.CUSTOMER_GRADE_CHOICES
+    
+    # 종합 점수 레벨 선택지 (필터용)
+    level_choices = [
+        ('critical', '🔥 최우선 (85점 이상)'),
+        ('high', '⚡ 높음 (70-84점)'),
+        ('medium', '⭐ 중간 (50-69점)'),
+        ('low', '📋 낮음 (30-49점)'),
+        ('minimal', '📌 최소 (30점 미만)'),
+    ]
     
     # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
     accessible_users = get_accessible_users(request.user)
@@ -680,7 +734,7 @@ def followup_list_view(request):
             pass
     
     # 페이지네이션 처리
-    paginator = Paginator(followups, 10) # 페이지당 10개 항목
+    paginator = Paginator(final_followups, 10) # 페이지당 10개 항목
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -690,6 +744,8 @@ def followup_list_view(request):
         'search_query': search_query,
         'company_filter': company_filter,
         'priority_filter': priority_filter,
+        'grade_filter': grade_filter,
+        'level_filter': level_filter,
         'selected_priority': selected_priority,
         'selected_priority_display': selected_priority_display,
         'selected_company': selected_company,
@@ -698,6 +754,8 @@ def followup_list_view(request):
         'completed_count': stats['completed_count'],
         'paused_count': stats['paused_count'],
         'priority_choices': priority_choices,
+        'grade_choices': grade_choices,
+        'level_choices': level_choices,
         'companies': companies,
         'user_profile': user_profile,  # 사용자 프로필 추가
     }
@@ -9505,6 +9563,15 @@ def funnel_dashboard_view(request):
     selected_user_id = request.GET.get('user_id')
     view_all = request.GET.get('view_all') == 'true'
     
+    # 고객 등급 필터 추가
+    grade_filter = request.GET.get('grade', '')
+    
+    # 우선순위 필터 추가
+    priority_filter = request.GET.get('priority', '')
+    
+    # 종합 점수 레벨 필터 추가
+    level_filter = request.GET.get('level', '')
+    
     # 필터: 사용자별
     filter_user = None
     selected_user = None
@@ -9549,8 +9616,14 @@ def funnel_dashboard_view(request):
     
     # OpportunityTracking 데이터 확인 (로그 제거)
     
-    # 상위 영업 기회 (전체 조회 - limit 제거)
-    top_opportunities = analytics.get_top_opportunities(user=filter_user, accessible_users=accessible_users_list)
+    # 상위 영업 기회 (전체 조회 - limit 제거, 모든 필터 적용)
+    top_opportunities = analytics.get_top_opportunities(
+        user=filter_user, 
+        accessible_users=accessible_users_list,
+        grade_filter=grade_filter if grade_filter else None,
+        priority_filter=priority_filter if priority_filter else None,
+        level_filter=level_filter if level_filter else None
+    )
     
     # 수주/실주 요약
     won_lost_summary = analytics.get_won_lost_summary(user=filter_user, accessible_users=accessible_users_list)
@@ -9628,6 +9701,17 @@ def funnel_dashboard_view(request):
         'salesman_users': salesman_users,
         'selected_user': selected_user,
         'view_all': view_all,
+        'grade_filter': grade_filter,  # 고객 등급 필터 추가
+        'priority_filter': priority_filter,  # 우선순위 필터 추가
+        'level_filter': level_filter,  # 종합 점수 레벨 필터 추가
+        'priority_choices': FollowUp.PRIORITY_CHOICES,  # 우선순위 선택지
+        'level_choices': [
+            ('critical', '🔥 최우선 (85점 이상)'),
+            ('high', '⚡ 높음 (70-84점)'),
+            ('medium', '⭐ 중간 (50-69점)'),
+            ('low', '📋 낮음 (30-49점)'),
+            ('minimal', '📌 최소 (30점 미만)'),
+        ],
     }
     
     return render(request, 'reporting/funnel/dashboard.html', context)

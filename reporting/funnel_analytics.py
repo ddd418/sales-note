@@ -252,7 +252,7 @@ class FunnelAnalytics:
         return sorted(bottlenecks, key=lambda x: x['count'], reverse=True)
     
     @staticmethod
-    def get_top_opportunities(limit=None, user=None, accessible_users=None):
+    def get_top_opportunities(limit=None, user=None, accessible_users=None, grade_filter=None, priority_filter=None, level_filter=None):
         """
         예측 매출 상위 영업 기회
         
@@ -265,6 +265,11 @@ class FunnelAnalytics:
         제외 단계:
         - won (수주)
         - quote_lost (견적실패)
+        
+        Args:
+            grade_filter: 고객 등급 필터 (VIP/A/B/C/D)
+            priority_filter: 우선순위 필터 (urgent/followup/scheduled)
+            level_filter: 종합 점수 레벨 필터 (critical/high/medium/low/minimal)
         """
         # 진행 중인 영업기회만 조회 (수주, 견적실패 제외)
         qs = OpportunityTracking.objects.exclude(
@@ -275,6 +280,14 @@ class FunnelAnalytics:
             qs = qs.filter(followup__user=user)
         elif accessible_users is not None:
             qs = qs.filter(followup__user__in=accessible_users)
+        
+        # 고객 등급 필터 추가
+        if grade_filter:
+            qs = qs.filter(followup__customer_grade=grade_filter)
+        
+        # 우선순위 필터 추가
+        if priority_filter:
+            qs = qs.filter(followup__priority=priority_filter)
         
         # limit이 지정되지 않으면 전체 조회
         if limit:
@@ -304,7 +317,26 @@ class FunnelAnalytics:
                 'stage_color': stage_color,
                 'expected_close_date': opp.expected_close_date,
                 'user': opp.followup.user.username,
+                'customer_grade': opp.followup.customer_grade,  # 고객 등급 추가
+                'ai_score': opp.followup.ai_score,  # AI 점수 추가
+                'priority': opp.followup.get_priority_display(),  # 우선순위
+                'priority_raw': opp.followup.priority,  # 우선순위 원본값
+                'combined_score': opp.followup.get_combined_score(),  # 종합 점수
+                'priority_level': opp.followup.get_priority_level(),  # 우선순위 레벨
             })
+        
+        # 종합 점수 레벨 필터링 (Python에서 처리)
+        if level_filter:
+            if level_filter == 'critical':  # 최우선 85+
+                result = [r for r in result if r['combined_score'] >= 85]
+            elif level_filter == 'high':  # 높음 70-84
+                result = [r for r in result if 70 <= r['combined_score'] < 85]
+            elif level_filter == 'medium':  # 중간 50-69
+                result = [r for r in result if 50 <= r['combined_score'] < 70]
+            elif level_filter == 'low':  # 낮음 30-49
+                result = [r for r in result if 30 <= r['combined_score'] < 50]
+            elif level_filter == 'minimal':  # 최소 30-
+                result = [r for r in result if r['combined_score'] < 30]
         
         return result
     
