@@ -9999,6 +9999,47 @@ def opportunity_history_api(request, opportunity_id):
                     'meeting_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else None,
                 })
             
+            # 일정과 관련된 견적 정보 가져오기 (일정 날짜 기준 ±7일 이내)
+            quote_info = None
+            if schedule.activity_type == 'quote':
+                from datetime import timedelta
+                quotes = Quote.objects.filter(
+                    followup=schedule.followup,
+                    created_at__date__gte=schedule.visit_date - timedelta(days=7),
+                    created_at__date__lte=schedule.visit_date + timedelta(days=7)
+                ).order_by('-created_at').first()
+                
+                if quotes:
+                    quote_items = QuoteItem.objects.filter(quote=quotes)
+                    items_text = ', '.join([f"{item.item_name} x{item.quantity}" for item in quote_items[:5]])
+                    if quote_items.count() > 5:
+                        items_text += f" 외 {quote_items.count() - 5}개"
+                    
+                    quote_info = {
+                        'quote_number': quotes.quote_number,
+                        'total_amount': str(quotes.total_amount),
+                        'items': items_text,
+                        'status': quotes.get_status_display(),
+                    }
+            
+            # 일정과 관련된 이메일 정보 가져오기 (일정 날짜 기준 ±3일 이내)
+            email_info = None
+            if schedule.activity_type in ['quote', 'customer_meeting']:
+                from datetime import timedelta
+                emails = EmailLog.objects.filter(
+                    followup=schedule.followup,
+                    sent_at__date__gte=schedule.visit_date - timedelta(days=3),
+                    sent_at__date__lte=schedule.visit_date + timedelta(days=3)
+                ).order_by('-sent_at').first()
+                
+                if emails:
+                    email_info = {
+                        'subject': emails.subject,
+                        'sent_at': emails.sent_at.strftime('%Y-%m-%d %H:%M'),
+                        'to_email': emails.to_email,
+                        'body_preview': emails.body_text[:100] + '...' if len(emails.body_text) > 100 else emails.body_text,
+                    }
+            
             schedule_data.append({
                 'id': schedule.id,
                 'activity_type': schedule.get_activity_type_display(),
@@ -10009,6 +10050,8 @@ def opportunity_history_api(request, opportunity_id):
                 'notes': schedule.notes or '',
                 'expected_revenue': str(schedule.expected_revenue) if schedule.expected_revenue else None,
                 'histories': history_list,
+                'quote': quote_info,
+                'email': email_info,
             })
         
         return JsonResponse({
