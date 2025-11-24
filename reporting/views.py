@@ -391,11 +391,18 @@ class ScheduleForm(forms.ModelForm):
             self.fields['status'].initial = 'scheduled'
         
         if user:
-            # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
+            # 사용자 소속 회사(UserCompany)의 모든 팔로우업을 선택할 수 있도록 필터링
             if user.is_staff or user.is_superuser:
                 base_queryset = FollowUp.objects.all()
             else:
-                base_queryset = FollowUp.objects.filter(user=user)
+                # 사용자의 UserCompany를 가져옴
+                user_company = user.userprofile.company
+                if user_company:
+                    # 같은 UserCompany에 속한 모든 사용자의 팔로우업
+                    base_queryset = FollowUp.objects.filter(user__userprofile__company=user_company)
+                else:
+                    # UserCompany가 없으면 본인 팔로우업만
+                    base_queryset = FollowUp.objects.filter(user=user)
                 
             # 기존 인스턴스가 있는 경우 해당 팔로우업도 포함
             if self.instance.pk and self.instance.followup:
@@ -404,7 +411,11 @@ class ScheduleForm(forms.ModelForm):
                 if user.is_staff or user.is_superuser:
                     queryset_filter = Q()  # 모든 팔로우업
                 else:
-                    queryset_filter = Q(user=user) | Q(pk=self.instance.followup.pk)
+                    user_company = user.userprofile.company
+                    if user_company:
+                        queryset_filter = Q(user__userprofile__company=user_company) | Q(pk=self.instance.followup.pk)
+                    else:
+                        queryset_filter = Q(user=user) | Q(pk=self.instance.followup.pk)
                 self.fields['followup'].queryset = FollowUp.objects.filter(queryset_filter).select_related('company', 'department').distinct()
             else:
                 self.fields['followup'].queryset = base_queryset.select_related('company', 'department')
