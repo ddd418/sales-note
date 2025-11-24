@@ -1535,6 +1535,42 @@ def dashboard_view(request):
         
         current_date += timedelta(days=1)
 
+    # 종합 점수 분포 계산
+    priority_level_distribution = {
+        'critical': 0,  # 최우선 85+
+        'high': 0,      # 높음 70-84
+        'medium': 0,    # 중간 50-69
+        'low': 0,       # 낮음 30-49
+        'minimal': 0,   # 최소 30-
+    }
+    
+    # 모든 팔로우업의 종합 점수 계산
+    for followup in followups:
+        combined_score = followup.get_combined_score()
+        if combined_score >= 85:
+            priority_level_distribution['critical'] += 1
+        elif combined_score >= 70:
+            priority_level_distribution['high'] += 1
+        elif combined_score >= 50:
+            priority_level_distribution['medium'] += 1
+        elif combined_score >= 30:
+            priority_level_distribution['low'] += 1
+        else:
+            priority_level_distribution['minimal'] += 1
+    
+    # 차트 데이터로 변환
+    priority_level_chart = {
+        'labels': ['🔥 최우선', '⚡ 높음', '⭐ 중간', '📋 낮음', '📌 최소'],
+        'data': [
+            priority_level_distribution['critical'],
+            priority_level_distribution['high'],
+            priority_level_distribution['medium'],
+            priority_level_distribution['low'],
+            priority_level_distribution['minimal'],
+        ],
+        'colors': ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#6b7280'],
+    }
+
     context = {        'page_title': '대시보드',
         'current_year': current_year,  # 현재 연도 정보 추가
         'selected_user': selected_user,  # 선택된 사용자 정보
@@ -1577,6 +1613,7 @@ def dashboard_view(request):
         'customer_distribution': json.dumps(customer_distribution, cls=DjangoJSONEncoder),
         'customer_type_stats': json.dumps(customer_type_stats, cls=DjangoJSONEncoder),
         'daily_activity_heatmap': json.dumps(daily_activity_heatmap, cls=DjangoJSONEncoder),
+        'priority_level_chart': json.dumps(priority_level_chart, cls=DjangoJSONEncoder),
     }
     
     # 선결제 통계 추가

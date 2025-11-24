@@ -201,54 +201,54 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         
         // 서명 HTML 생성 (models.py의 generate_signature와 동일한 스타일)
-        let signatureHTML = '<div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.4;">';
+        let signatureHTML = '<div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.2;">';
         
         // 로고 추가
         const existingLogoUrl = '{% if card.logo %}{{ request.scheme }}://{{ request.get_host }}{{ card.logo.url }}{% endif %}';
         let logoSrc = logoPreviewUrl || formData.logo_url || existingLogoUrl;
         
         if (logoSrc) {
-            let logoImg = `<img src="${logoSrc}" alt="${formData.company_name || 'Company'} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 10px;">`;
+            let logoImg = `<img src="${logoSrc}" alt="${formData.company_name || 'Company'} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 3px;">`;
             
             if (formData.logo_link_url) {
-                signatureHTML += `<div style="margin-bottom: 8px;"><a href="${formData.logo_link_url}" target="_blank" style="display: inline-block;">${logoImg}</a></div>`;
+                signatureHTML += `<div style="margin-bottom: 2px;"><a href="${formData.logo_link_url}" target="_blank" style="display: inline-block;">${logoImg}</a></div>`;
             } else {
-                signatureHTML += `<div style="margin-bottom: 8px;">${logoImg}</div>`;
+                signatureHTML += `<div style="margin-bottom: 2px;">${logoImg}</div>`;
             }
         }
         
         // 이름과 직함
         if (formData.full_name) {
-            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0;"><strong style="font-size: 14px;">${formData.full_name}</strong>`;
+            signatureHTML += `<p style="margin: 0; padding: 0;"><strong style="font-size: 14px;">${formData.full_name}</strong>`;
             if (formData.title) {
                 signatureHTML += ` | ${formData.title}`;
             }
             signatureHTML += '</p>';
         }
         
-        // 회사명
+        // 회사명과 부서
         if (formData.company_name) {
-            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${formData.company_name}</p>`;
+            signatureHTML += `<p style="margin: 1px 0 0 0; padding: 0; color: #666;">${formData.company_name}</p>`;
         }
         
         // 연락처 정보
         let contactInfo = '';
         if (formData.phone) contactInfo += `전화: ${formData.phone} | `;
         if (formData.mobile) contactInfo += `휴대폰: ${formData.mobile} | `;
-        if (formData.email) contactInfo += `이메일: <a href="mailto:${formData.email}" style="color: #0066cc;">${formData.email}</a>`;
+        if (formData.email) contactInfo += `이메일: <a href="mailto:${formData.email}" style="color: #0066cc; text-decoration: none;">${formData.email}</a>`;
         
         if (contactInfo) {
-            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${contactInfo}</p>`;
+            signatureHTML += `<p style="margin: 1px 0 0 0; padding: 0; color: #666;">${contactInfo}</p>`;
         }
         
         // 주소
         if (formData.address) {
-            signatureHTML += `<p style="margin: 0 0 3px 0; padding: 0; color: #666;">${formData.address}</p>`;
+            signatureHTML += `<p style="margin: 1px 0 0 0; padding: 0; color: #666;">${formData.address}</p>`;
         }
         
         // 웹사이트
         if (formData.website) {
-            signatureHTML += `<p style="margin: 0; padding: 0;"><a href="${formData.website}" style="color: #0066cc;">${formData.website}</a></p>`;
+            signatureHTML += `<p style="margin: 1px 0 0 0; padding: 0;"><a href="${formData.website}" style="color: #0066cc; text-decoration: none;">${formData.website}</a></p>`;
         }
         
         signatureHTML += '</div>';

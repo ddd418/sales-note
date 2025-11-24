@@ -165,7 +165,7 @@
                         {% for card in business_cards %}
                         <option value="{{ card.id }}" 
                                 {% if default_card and card.id == default_card.id %}selected{% endif %}
-                                data-signature="{{ card.signature_html|escapejs }}">
+                                data-signature='{{ card.signature_html }}'>
                             {{ card.name }} - {{ card.full_name }}
                         </option>
                         {% endfor %}

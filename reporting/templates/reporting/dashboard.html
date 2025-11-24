@@ -1251,7 +1251,7 @@ html, body {
   </div>
 </div>
 
-<!-- 2행: 고객사별 매출 & 고객 유형별 통계 -->
+<!-- 2행: 고객사별 매출 & 종합 우선순위 분포 -->
 <div class="dashboard-chart-row dashboard-chart-row-1-1">
   <!-- 3. 고객사별 매출 비중 (Doughnut) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
@@ -1263,7 +1263,20 @@ html, body {
     </div>
   </div>
 
-  <!-- 4. 고객 유형별 통계 (Grouped Bar) -->
+  <!-- 4. 종합 우선순위 분포 (Bar Chart) -->
+  <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+    <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
+      <i class="fas fa-chart-bar" style="color: #8b5cf6;"></i> 종합 우선순위 분포
+      <small style="font-size: 0.75rem; color: #6b7280; font-weight: normal;"> (AI 등급 70% + 우선순위 30%)</small>
+    </h3>
+    <div style="position: relative; height: 300px;">
+      <canvas id="priorityLevelChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 3행: 고객 유형별 통계 -->
+<div class="dashboard-chart-row">
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
       <i class="fas fa-users" style="color: #ef4444;"></i> 고객 유형별 통계
@@ -1533,7 +1546,65 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ============================================
-  // 6️⃣ 고객 유형별 통계 (Grouped Bar Chart)
+  // 6️⃣ 종합 우선순위 분포 (Bar Chart)
+  // ============================================
+  const priorityLevelCtx = document.getElementById('priorityLevelChart');
+  if (priorityLevelCtx) {
+    {% if priority_level_chart %}
+    const priorityData = {{ priority_level_chart|safe }};
+    
+    // 데이터가 있는지 확인
+    const hasData = priorityData.data.some(v => v > 0);
+    
+    if (hasData) {
+      new Chart(priorityLevelCtx, {
+        type: 'bar',
+        data: {
+          labels: priorityData.labels,
+          datasets: [{
+            label: '고객 수',
+            data: priorityData.data,
+            backgroundColor: priorityData.colors,
+            borderColor: priorityData.colors,
+            borderWidth: 2,
+            borderRadius: 8,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const total = priorityData.data.reduce((a, b) => a + b, 0);
+                  const percentage = ((context.parsed.y / total) * 100).toFixed(1);
+                  return context.parsed.y + '명 (' + percentage + '%)';
+                }
+              }
+            }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    } else {
+      priorityLevelCtx.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.875rem;">데이터가 없습니다</div>';
+    }
+    {% else %}
+    priorityLevelCtx.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.875rem;">데이터가 없습니다</div>';
+    {% endif %}
+  }
+
+  // ============================================
+  // 7️⃣ 고객 유형별 통계 (Grouped Bar Chart)
   // ============================================
   const customerTypeCtx = document.getElementById('customerTypeChart');
   if (customerTypeCtx) {
@@ -1590,7 +1661,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ============================================
-  // 7️⃣ 일정 및 미팅 활동 히트맵 (Calendar Heatmap)
+  // 8️⃣ 일정 및 미팅 활동 히트맵 (Calendar Heatmap)
   // ============================================
   const heatmapContainer = document.getElementById('activityHeatmap');
   if (heatmapContainer) {

@@ -1455,7 +1455,7 @@ class BusinessCard(models.Model):
             else:
                 logo_src = self.logo_url
             
-            logo_img = f'<img src="{logo_src}" alt="{self.company_name} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 10px;">'
+            logo_img = f'<img src="{logo_src}" alt="{self.company_name} 로고" style="max-width: 150px; max-height: 60px; margin-bottom: 3px;">'
             
             if self.logo_link_url:
                 logo_html = f'<a href="{self.logo_link_url}" target="_blank" style="display: inline-block;">{logo_img}</a>'
@@ -1463,23 +1463,23 @@ class BusinessCard(models.Model):
                 logo_html = logo_img
         
         signature = f"""
-        <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.4;">
-            {f'<div style="margin-bottom: 8px;">{logo_html}</div>' if logo_html else ''}
-            <p style="margin: 0 0 3px 0; padding: 0;">
+        <div style="font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.2;">
+            {f'<div style="margin-bottom: 2px;">{logo_html}</div>' if logo_html else ''}
+            <p style="margin: 0; padding: 0;">
                 <strong style="font-size: 14px;">{self.full_name}</strong>
                 {f' | {self.title}' if self.title else ''}
             </p>
-            <p style="margin: 0 0 3px 0; padding: 0; color: #666;">
+            <p style="margin: 1px 0 0 0; padding: 0; color: #666;">
                 {self.company_name}
                 {f' | {self.department}' if self.department else ''}
             </p>
-            <p style="margin: 0 0 3px 0; padding: 0; color: #666;">
+            <p style="margin: 1px 0 0 0; padding: 0; color: #666;">
                 {f'전화: {self.phone} | ' if self.phone else ''}
                 {f'휴대폰: {self.mobile} | ' if self.mobile else ''}
-                이메일: <a href="mailto:{self.email}" style="color: #0066cc;">{self.email}</a>
+                이메일: <a href="mailto:{self.email}" style="color: #0066cc; text-decoration: none;">{self.email}</a>
             </p>
-            {f'<p style="margin: 0 0 3px 0; padding: 0; color: #666;">{self.address}</p>' if self.address else ''}
-            {f'<p style="margin: 0; padding: 0;"><a href="{self.website}" style="color: #0066cc;">{self.website}</a></p>' if self.website else ''}
+            {f'<p style="margin: 1px 0 0 0; padding: 0; color: #666;">{self.address}</p>' if self.address else ''}
+            {f'<p style="margin: 1px 0 0 0; padding: 0;"><a href="{self.website}" style="color: #0066cc; text-decoration: none;">{self.website}</a></p>' if self.website else ''}
         </div>
         """
         return signature

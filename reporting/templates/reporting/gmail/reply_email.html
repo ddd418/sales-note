@@ -25,8 +25,11 @@
     }
     
     .original-email-body {
-        white-space: pre-wrap;
         font-size: 0.95rem;
+    }
+    
+    .original-email-body.text-mode {
+        white-space: pre-wrap;
     }
     
     /* Quill 에디터 스타일 */
@@ -127,7 +130,7 @@
                         {% for card in business_cards %}
                         <option value="{{ card.id }}" 
                                 {% if default_card and card.id == default_card.id %}selected{% endif %}
-                                data-signature="{{ card.signature_html|escapejs }}">
+                                data-signature='{{ card.signature_html }}'>
                             {{ card.name }} - {{ card.full_name }}
                         </option>
                         {% endfor %}
@@ -148,7 +151,7 @@
                         날짜: {{ original_email.sent_at|date:"Y-m-d H:i" }}<br>
                         제목: {{ original_email.subject }}
                     </div>
-                    <div class="original-email-body">
+                    <div class="original-email-body{% if not original_email.body_html %} text-mode{% endif %}">
                         {% if original_email.body_html %}
                             {{ original_email.body_html|safe }}
                         {% else %}
