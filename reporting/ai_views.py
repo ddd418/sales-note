@@ -1223,7 +1223,7 @@ def ai_refresh_all_grades(request):
                             # 이메일 교환 (최근 6개월)
                             email_count = EmailLog.objects.filter(
                                 followup=followup,
-                                sent_at__gte=six_months_ago
+                                created_at__gte=six_months_ago
                             ).count()
                             
                             # 견적 횟수 (최근 6개월)
@@ -1636,8 +1636,8 @@ def ai_meeting_advice(request):
         
         delivery_history = []
         for d in past_deliveries:
-            items = d.delivery_items.all()
-            total = sum(item.total_price for item in items)
+            items = d.delivery_items_set.all()
+            total = sum(item.total_price for item in items if item.total_price)
             delivery_history.append({
                 'date': d.visit_date.strftime('%Y-%m-%d'),
                 'amount': float(total),
@@ -1652,7 +1652,7 @@ def ai_meeting_advice(request):
         
         quote_history = []
         for q in past_quotes:
-            items = q.delivery_items.all()
+            items = q.delivery_items_set.all()
             total = sum(item.total_price for item in items)
             quote_history.append({
                 'date': q.visit_date.strftime('%Y-%m-%d'),
