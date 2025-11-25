@@ -1064,6 +1064,7 @@ def ai_refresh_all_grades(request):
         
         # 마지막 AI 등급 갱신 시간 조회 (가장 최근에 갱신된 고객 기준)
         from django.utils import timezone
+        from django.db.models import Count
         
         last_refresh_time = FollowUp.objects.filter(
             ai_grade_updated_at__isnull=False
@@ -1072,7 +1073,6 @@ def ai_refresh_all_grades(request):
         # 갱신 대상: 마지막 갱신 이후 활동이 있는 고객만
         if last_refresh_time:
             # 마지막 갱신 이후 스케줄이나 선결제가 생성/수정된 고객 ID 수집
-            from django.db.models import Q
             
             # 스케줄이 생성된 고객
             schedule_updated_ids = Schedule.objects.filter(
