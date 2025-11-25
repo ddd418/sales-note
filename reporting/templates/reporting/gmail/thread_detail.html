@@ -17,6 +17,21 @@
         border-radius: 8px;
     }
     
+    .text-purple {
+        color: #667eea;
+    }
+    
+    .bg-gradient-purple {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .thread-header {
+        background-color: #f8f9fa;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+    }
+    
     .email-message {
         border: 1px solid #dee2e6;
         border-radius: 8px;
@@ -165,6 +180,35 @@
         </div>
     </div>
     
+    <!-- AI 이메일 스레드 감정 분석 -->
+    {% if request.user.userprofile.can_use_ai %}
+    <div class="card shadow-sm mb-4" style="border: 2px solid transparent; background: linear-gradient(white, white) padding-box, linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;">
+        <div class="card-body">
+            <h5 class="card-title d-flex align-items-center gap-2">
+                <i class="fas fa-brain text-purple"></i>
+                AI 이메일 스레드 감정 분석
+                <span class="badge bg-gradient-purple text-white" style="font-size: 0.7rem;">NEW</span>
+            </h5>
+            <p class="card-text text-muted mb-3">
+                <i class="fas fa-info-circle"></i>
+                이메일 대화 내용을 AI가 분석하여 고객의 감정, 구매 의향, 관심사를 파악합니다.
+            </p>
+            <button id="analyzeThreadBtn" class="btn btn-primary">
+                <i class="fas fa-chart-line"></i> 스레드 분석하기
+            </button>
+            <div id="threadAnalysisLoading" class="mt-3" style="display: none;">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">분석 중...</span>
+                    </div>
+                    <p class="mt-2 text-muted">AI가 이메일 스레드를 분석하고 있습니다...</p>
+                </div>
+            </div>
+            <div id="threadAnalysisResults" class="mt-3" style="display: none;"></div>
+        </div>
+    </div>
+    {% endif %}
+    
     <!-- 이메일 메시지들 -->
     {% for email in emails %}
     <div class="email-message">
@@ -261,6 +305,15 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // AI 스레드 분석 버튼
+    const analyzeThreadBtn = document.getElementById('analyzeThreadBtn');
+    if (analyzeThreadBtn) {
+        analyzeThreadBtn.addEventListener('click', function() {
+            const threadId = '{{ thread_id }}';
+            analyzeEmailThread(threadId);
+        });
+    }
+    
     // 이메일 삭제 버튼
     document.querySelectorAll('.delete-email-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -292,5 +345,182 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// AI 이메일 스레드 감정 분석 함수
+function analyzeEmailThread(threadId) {
+    const loadingDiv = document.getElementById('threadAnalysisLoading');
+    const resultsDiv = document.getElementById('threadAnalysisResults');
+    const analyzeBtn = document.getElementById('analyzeThreadBtn');
+    
+    // 로딩 상태 표시
+    loadingDiv.style.display = 'block';
+    resultsDiv.style.display = 'none';
+    analyzeBtn.disabled = true;
+    
+    fetch('/reporting/ai/analyze-email-thread/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ thread_id: threadId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingDiv.style.display = 'none';
+        analyzeBtn.disabled = false;
+        
+        if (data.error) {
+            resultsDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>분석 실패:</strong> ${data.error}
+                </div>
+            `;
+            resultsDiv.style.display = 'block';
+            return;
+        }
+        
+        displayThreadAnalysisResults(data.analysis);
+        resultsDiv.style.display = 'block';
+    })
+    .catch(error => {
+        loadingDiv.style.display = 'none';
+        analyzeBtn.disabled = false;
+        resultsDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>오류:</strong> ${error.message}
+            </div>
+        `;
+        resultsDiv.style.display = 'block';
+    });
+}
+
+// AI 분석 결과 표시 함수
+function displayThreadAnalysisResults(analysis) {
+    const resultsDiv = document.getElementById('threadAnalysisResults');
+    
+    // 감정 점수 계산 (sentiment_timeline에서)
+    let overallSentiment = 'neutral';
+    if (analysis.sentiment_timeline && analysis.sentiment_timeline.length > 0) {
+        const lastSentiment = analysis.sentiment_timeline[analysis.sentiment_timeline.length - 1];
+        overallSentiment = lastSentiment.sentiment || 'neutral';
+    }
+    
+    // 감정 아이콘 매핑
+    const sentimentIcons = {
+        'positive': '😊',
+        'neutral': '😐',
+        'negative': '😟'
+    };
+    
+    const sentimentIcon = sentimentIcons[overallSentiment] || '😐';
+    
+    // 응답 품질 점수
+    const responseScore = analysis.response_quality?.score || 5;
+    const scoreColor = responseScore >= 8 ? 'success' : responseScore >= 6 ? 'warning' : 'danger';
+    
+    let html = `
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="card-title mb-3">
+                    <i class="fas fa-chart-pie text-primary"></i>
+                    종합 분석 결과
+                </h6>
+                
+                <!-- 핵심 지표 -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="text-center p-3 border rounded">
+                            <div style="font-size: 2rem;">${sentimentIcon}</div>
+                            <small class="text-muted d-block">전체 감정</small>
+                            <strong>${translateSentiment(overallSentiment)}</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-center p-3 border rounded">
+                            <span class="badge bg-${scoreColor}" style="font-size: 1.2rem;">
+                                ${responseScore}/10
+                            </span>
+                            <small class="text-muted d-block mt-2">응답 품질</small>
+                            <small class="text-muted">${analysis.response_quality?.feedback || '-'}</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 대화 요약 -->
+                <div class="alert alert-info mb-3">
+                    <h6><i class="fas fa-comments"></i> 대화 요약</h6>
+                    <p class="mb-2">${analysis.thread_summary || '요약 정보가 없습니다.'}</p>
+                    ${analysis.customer_intent ? `
+                    <hr class="my-2">
+                    <p class="mb-0"><strong>고객 의도:</strong> ${analysis.customer_intent}</p>
+                    ` : ''}
+                </div>
+                
+                <!-- 상세 분석 -->
+                <div class="row g-3">
+                    <!-- 주요 논의 주제 -->
+                    <div class="col-md-6">
+                        <div class="p-3 border rounded h-100">
+                            <h6 class="mb-2">
+                                <i class="fas fa-tags text-success"></i>
+                                주요 논의 주제
+                            </h6>
+                            ${analysis.key_topics && analysis.key_topics.length > 0 ? 
+                                analysis.key_topics.map(topic => 
+                                    `<span class="badge bg-success me-1 mb-1">${topic}</span>`
+                                ).join('') : 
+                                '<p class="text-muted small mb-0">논의 주제 정보가 없습니다.</p>'
+                            }
+                        </div>
+                    </div>
+                    
+                    <!-- 감정 변화 추이 -->
+                    <div class="col-md-6">
+                        <div class="p-3 border rounded h-100">
+                            <h6 class="mb-2">
+                                <i class="fas fa-chart-line text-warning"></i>
+                                감정 변화 추이
+                            </h6>
+                            ${analysis.sentiment_timeline && analysis.sentiment_timeline.length > 0 ? 
+                                '<ul class="mb-0 small">' + 
+                                analysis.sentiment_timeline.map(item => 
+                                    `<li>이메일 #${item.email_num}: ${sentimentIcons[item.sentiment] || '😐'} ${item.note || ''}</li>`
+                                ).join('') + 
+                                '</ul>' : 
+                                '<p class="text-muted small mb-0">감정 변화 데이터가 없습니다.</p>'
+                            }
+                        </div>
+                    </div>
+                    
+                    <!-- 다음 액션 -->
+                    <div class="col-md-12">
+                        <div class="p-3 border rounded bg-light">
+                            <h6 class="mb-2">
+                                <i class="fas fa-arrow-right text-danger"></i>
+                                권장 다음 액션
+                            </h6>
+                            <p class="mb-0 small"><strong>${analysis.suggested_next_action || '다음 액션 정보가 없습니다.'}</strong></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.innerHTML = html;
+}
+
+// 번역 헬퍼 함수들
+function translateSentiment(sentiment) {
+    const map = {
+        'positive': '긍정적',
+        'neutral': '중립',
+        'negative': '부정적'
+    };
+    return map[sentiment] || sentiment;
+}
 </script>
 {% endblock %}

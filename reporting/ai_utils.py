@@ -29,9 +29,24 @@ def get_openai_client():
         if not api_key:
             raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
         
-        # 최소한의 인자만 사용하여 초기화
-        _client = OpenAI(api_key=api_key)
-        logger.info(f"OpenAI client initialized with key: {api_key[:20]}...")
+        # Railway 환경에서 프록시 문제 해결을 위해 http_client 명시적 설정
+        try:
+            import httpx
+            # 프록시 설정 없이 httpx 클라이언트 생성
+            http_client = httpx.Client(
+                timeout=60.0,
+                follow_redirects=True
+            )
+            _client = OpenAI(
+                api_key=api_key,
+                http_client=http_client
+            )
+            logger.info(f"OpenAI client initialized with custom http_client")
+        except Exception as e:
+            # httpx 설정 실패 시 기본 클라이언트 사용
+            logger.warning(f"Failed to create custom http_client: {e}, using default")
+            _client = OpenAI(api_key=api_key)
+            logger.info(f"OpenAI client initialized with default settings")
     return _client
 
 # 모델 선택 상수 (환경 변수에서 로드)
@@ -403,6 +418,141 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
         raise
 
 
+def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
+    """
+    여러 고객 데이터를 분석하여 팔로우업 우선순위 제안
+    
+    Args:
+        customer_list: 고객 데이터 리스트 [
+            {
+                'id': 고객 ID,
+                'name': 고객명,
+                'company': 회사명,
+                'last_contact': 마지막 연락일,
+                'meeting_count': 미팅 횟수,
+                'quote_count': 견적 횟수,
+                'purchase_count': 구매 횟수,
+                'total_purchase': 총 구매액,
+                'grade': 고객 등급,
+                'opportunities': 진행 중인 기회,
+                'prepayment_balance': 선결제 잔액
+            },
+            ...
+        ]
+        user: 요청 사용자
+    
+    Returns:
+        우선순위 정렬된 고객 리스트 [
+            {
+                'customer_id': 고객 ID,
+                'customer_name': 고객명,
+                'priority_score': 우선순위 점수 (1-100),
+                'priority_level': 'urgent'/'high'/'medium'/'low',
+                'reason': 우선순위 이유,
+                'suggested_action': 제안 액션,
+                'best_contact_time': 최적 연락 시간
+            },
+            ...
+        ]
+    """
+    if user and not check_ai_permission(user):
+        raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    system_prompt = """당신은 B2B 영업 전략 전문가입니다.
+고객 데이터를 분석하여 오늘 우선적으로 연락해야 할 고객을 추천해주세요.
+
+**우선순위 평가 기준:**
+1. 마지막 연락 경과 시간 (장기 미접촉 고객)
+2. 진행 중인 기회의 단계 (클로징 단계 우선)
+3. 구매 패턴 및 예상 재구매 시기
+4. 고객 등급 (VIP, A 등급 우선)
+5. 선결제 잔액 (소진 유도 필요)
+6. 견적 후 미구매 기간
+
+**연락 타이밍 전략:**
+- 대학/연구소: 학기 시작 전, 예산 집행 시기
+- 일반 기업: 분기 초, 회계연도 초
+- 긴급한 경우: 즉시 연락
+- 일반적인 경우: 오전 10-11시, 오후 2-3시 추천
+
+응답 형식 (JSON 배열):
+[
+  {
+    "customer_id": 고객ID,
+    "customer_name": "고객명",
+    "priority_score": 85,
+    "priority_level": "urgent|high|medium|low",
+    "reason": "우선순위 이유 (구체적으로)",
+    "suggested_action": "제안 액션 (구체적으로)",
+    "best_contact_time": "최적 연락 시간"
+  },
+  ...
+]
+
+우선순위 점수가 높은 순으로 정렬해서 반환하세요."""
+
+    # 고객 데이터를 요약 형식으로 변환
+    customer_summary = []
+    for customer in customer_list[:20]:  # 최대 20명만 분석
+        summary = f"""
+고객 ID: {customer.get('id')}
+고객명: {customer.get('name', '미정')}
+회사: {customer.get('company', '미정')}
+마지막 연락: {customer.get('last_contact', '정보 없음')}
+미팅: {customer.get('meeting_count', 0)}회
+견적: {customer.get('quote_count', 0)}회
+구매: {customer.get('purchase_count', 0)}회
+총 구매액: {customer.get('total_purchase', 0):,}원
+등급: {customer.get('grade', '미분류')}
+진행 중인 기회: {len(customer.get('opportunities', []))}건
+선결제 잔액: {customer.get('prepayment_balance', 0):,}원
+"""
+        customer_summary.append(summary)
+    
+    user_prompt = f"""
+다음 {len(customer_list)}명의 고객 중 오늘 우선적으로 연락해야 할 고객을 추천해주세요:
+
+{chr(10).join(customer_summary)}
+
+우선순위가 높은 순서대로 최대 10명을 추천해주세요.
+"""
+    
+    # 우선순위 제안은 빠른 mini 모델 사용
+    try:
+        logger.info(f"Suggesting follow-up priorities for {len(customer_list)} customers")
+        
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_MINI,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=settings.OPENAI_MAX_TOKENS,
+            temperature=0.6,
+            response_format={"type": "json_object"}
+        )
+        
+        result_text = response.choices[0].message.content
+        result = json.loads(result_text)
+        
+        # 결과가 배열이 아니라 객체로 래핑되어 있을 수 있음
+        if isinstance(result, dict) and 'recommendations' in result:
+            suggestions = result['recommendations']
+        elif isinstance(result, dict) and 'priorities' in result:
+            suggestions = result['priorities']
+        elif isinstance(result, list):
+            suggestions = result
+        else:
+            suggestions = []
+        
+        logger.info(f"Generated {len(suggestions)} follow-up suggestions")
+        return suggestions
+    
+    except Exception as e:
+        logger.error(f"Error suggesting follow-ups: {e}")
+        raise
+
+
 def analyze_email_sentiment(email_content: str, user=None) -> Dict:
     """
     이메일 감정 분석 및 구매 가능성 예측
@@ -543,6 +693,109 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
         raise
 
 
+def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
+    """
+    이메일 스레드 전체를 분석하여 고객 온도와 구매 가능성 측정
+    
+    Args:
+        emails: 이메일 리스트 [
+            {
+                'date': '2024-01-01',
+                'from': '발신자',
+                'subject': '제목',
+                'body': '내용'
+            },
+            ...
+        ]
+        user: 요청 사용자
+    
+    Returns:
+        {
+            'overall_sentiment': 'positive'/'neutral'/'negative',
+            'temperature': 'hot'/'warm'/'cold',  # 고객 온도
+            'purchase_probability': 'high'/'medium'/'low',
+            'engagement_level': 'high'/'medium'/'low',  # 참여도
+            'key_topics': [...],  # 주요 논의 주제
+            'concerns': [...],  # 우려사항
+            'opportunities': [...],  # 기회
+            'next_action': '다음 액션 제안',
+            'summary': '스레드 요약'
+        }
+    """
+    if user and not check_ai_permission(user):
+        raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    system_prompt = """당신은 B2B 영업 커뮤니케이션 분석 전문가입니다.
+이메일 스레드를 분석하여 고객 관계의 현재 상태와 구매 가능성을 평가해주세요.
+
+**분석 요소:**
+1. 감정 톤 변화 (시간 경과에 따라)
+2. 고객 온도 (hot/warm/cold)
+   - Hot: 적극적, 빠른 응답, 구체적 질문
+   - Warm: 관심 있음, 정보 수집 단계
+   - Cold: 반응 느림, 소극적, 회피적
+3. 구매 신호 감지 (가격 문의, 일정 협의, 결정권자 언급 등)
+4. 우려사항 및 장애요인
+5. Cross-selling/Up-selling 기회
+
+응답 형식 (JSON):
+{
+  "overall_sentiment": "positive|neutral|negative",
+  "temperature": "hot|warm|cold",
+  "purchase_probability": "high|medium|low",
+  "engagement_level": "high|medium|low",
+  "key_topics": ["주제1", "주제2", ...],
+  "concerns": ["우려1", "우려2", ...],
+  "opportunities": ["기회1", "기회2", ...],
+  "next_action": "구체적인 다음 액션 제안",
+  "summary": "스레드 전체 요약 (3-5문장)"
+}"""
+
+    # 이메일 스레드를 시간순으로 정렬하여 텍스트로 변환
+    thread_text = ""
+    for email in sorted(emails, key=lambda x: x.get('date', '')):
+        thread_text += f"""
+날짜: {email.get('date', '날짜 없음')}
+발신: {email.get('from', '발신자 없음')}
+제목: {email.get('subject', '제목 없음')}
+내용:
+{email.get('body', '내용 없음')}
+
+---
+"""
+    
+    user_prompt = f"""
+다음 이메일 스레드를 분석해주세요 (총 {len(emails)}개 메일):
+
+{thread_text}
+
+고객과의 관계 온도, 구매 가능성, 다음 액션을 평가해주세요.
+"""
+    
+    # 스레드 분석은 중요하므로 standard 모델 사용
+    try:
+        logger.info(f"Analyzing email thread with {len(emails)} emails")
+        
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_STANDARD,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=settings.OPENAI_MAX_TOKENS,
+            temperature=0.4,
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        logger.info(f"Email thread analyzed successfully using {MODEL_STANDARD}")
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error analyzing email thread: {e}")
+        raise
+
+
 def natural_language_search(query: str, search_type: str = 'all', user=None) -> Dict:
     """
     자연어 검색 쿼리를 SQL 필터 조건으로 변환
@@ -561,17 +814,62 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
     if user and not check_ai_permission(user):
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
-    system_prompt = """당신은 CRM 시스템의 검색 쿼리 변환 전문가입니다.
+    from datetime import datetime
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    system_prompt = f"""당신은 CRM 시스템의 검색 쿼리 변환 전문가입니다.
 사용자의 자연어 검색 요청을 Django ORM 필터 조건으로 변환해주세요.
 
-사용 가능한 필드:
-- 고객: name, company, customer_grade, last_contact_date
-- 일정: schedule_type, start_date, end_date, content
-- 기회: stage, potential_value, created_at
+🔍 현재 날짜: {current_date}
+
+📋 사용 가능한 모델 필드 (실제 DB 스키마):
+
+**FollowUp (고객) 모델:**
+- customer_name (고객명)
+- company (관계: Company 객체)
+- customer_grade (등급: A+, A, B, C, D)
+- email, phone_number, address
+- manager (담당자명)
+- priority (우선순위)
+- created_at, updated_at
+
+**Schedule (일정) 모델:**
+- followup (관계: FollowUp 객체)
+- activity_type (활동 유형: 'customer_meeting', 'quote', 'delivery', 'call', 'email' 등)
+- visit_date (방문/일정 날짜)
+- visit_time (시간)
+- notes (노트/메모)
+- status (상태)
+- created_at, updated_at
+
+**OpportunityTracking (영업기회) 모델:**
+- followup (관계: FollowUp 객체)
+- title (제목)
+- current_stage (현재 단계: 'lead', 'contact', 'quote', 'closing', 'won', 'lost')
+- expected_revenue (예상 금액)
+- expected_close_date (예상 종료일)
+- probability (확률)
+- created_at, updated_at
+
+⚠️ 중요 규칙:
+1. **필드명은 위에 명시된 것만 사용** (예: last_contact_date 같은 존재하지 않는 필드 사용 금지)
+2. 날짜 조회는 관련 모델을 통해 접근:
+   - "최근 연락": schedules__visit_date__gte 사용 (고객 모델에서)
+   - "마지막 견적": schedules__activity_type='quote' + schedules__visit_date 조합 (고객 모델에서)
+   - 일정 모델에서는 schedules__ 접두사 없이 visit_date 직접 사용
+3. 관계 조회는 던더스코어(__) 사용:
+   - 고객의 일정: schedules__field_name (FollowUp 모델에서만!)
+   - 일정의 고객: followup__field_name
+4. 날짜 lookup: __gte (이상), __lte (이하), __range (범위)
+5. 문자열 lookup: __icontains (포함), __exact (정확히), __iexact (대소문자 무시)
+6. **검색 대상에 따라 다른 필터 사용**:
+   - customers 검색: schedules__ 접두사 사용 가능
+   - schedules 검색: schedules__ 접두사 사용 불가 (직접 필드명만)
+   - opportunities 검색: followup__ 접두사로 고객 정보 접근
 """
 
     user_prompt = f"""
-다음 검색 요청을 필터 조건으로 변환해주세요:
+다음 검색 요청을 Django ORM 필터 조건으로 변환해주세요:
 "{query}"
 
 검색 대상: {search_type}
@@ -582,20 +880,58 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
     "field_name__lookup": "value",
     ...
   }},
-  "interpretation": "쿼리 해석 설명"
+  "interpretation": "쿼리 해석 설명 (한국어)"
 }}
 
-예시:
+예시 1 - 고객 검색:
 입력: "지난달 견적 준 고객"
 출력:
 {{
   "filters": {{
-    "schedules__schedule_type": "quote",
-    "schedules__created_at__gte": "2024-10-01",
-    "schedules__created_at__lt": "2024-11-01"
+    "schedules__activity_type": "quote",
+    "schedules__visit_date__gte": "2024-10-01",
+    "schedules__visit_date__lt": "2024-11-01"
   }},
   "interpretation": "2024년 10월에 견적 일정이 있는 고객을 검색합니다."
 }}
+
+예시 2 - 기간 검색:
+입력: "3개월 이상 연락 안 한 A등급 고객"
+출력:
+{{
+  "filters": {{
+    "customer_grade": "A",
+    "schedules__visit_date__lt": "2024-08-25"
+  }},
+  "interpretation": "A등급 고객 중 2024년 8월 25일 이전에 마지막으로 연락한 고객을 검색합니다."
+}}
+
+예시 3 - 활동 유형 (고객 검색):
+입력: "저번에 견적 드렸는데 아직 연락 없는 고객"
+출력:
+{{
+  "filters": {{
+    "schedules__activity_type": "quote"
+  }},
+  "interpretation": "견적 일정이 있는 고객을 검색합니다."
+}}
+
+예시 4 - 일정 직접 검색:
+입력: "이번 달 견적 일정"
+출력:
+{{
+  "filters": {{
+    "activity_type": "quote",
+    "visit_date__gte": "2024-11-01",
+    "visit_date__lt": "2024-12-01"
+  }},
+  "interpretation": "2024년 11월의 견적 일정을 검색합니다."
+}}
+
+⚠️ 주의:
+- 고객(customers) 검색할 때만 schedules__ 접두사 사용
+- 일정(schedules) 검색할 때는 schedules__ 사용 안 함
+- __isnull 같은 복잡한 lookup은 사용하지 말 것
 """
     
     # 검색 쿼리 변환은 내부용이므로 빠른 mini 모델 사용
@@ -622,10 +958,11 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 
 def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
     """
-    고객의 구매 이력과 미팅 노트를 분석하여 상품 추천
+    고객의 구매 이력, 미팅 노트, 견적 이력을 종합 분석하여 상품 추천
+    구매 이력이 없어도 미팅/견적 내용을 기반으로 추천 가능
     
     Args:
-        customer_data: 고객 정보 (구매 이력, 미팅 노트, 관심사 등)
+        customer_data: 고객 정보 (구매 이력, 미팅 노트, 견적 이력, 관심사 등)
         user: 요청 사용자
     
     Returns:
@@ -634,37 +971,103 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
     if user and not check_ai_permission(user):
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
-    system_prompt = """당신은 과학 장비 및 실험실 제품 전문가입니다.
-고객의 구매 패턴과 관심사를 분석하여 관련 상품을 추천해주세요.
-추천 이유를 명확히 설명하고, 우선순위를 매겨주세요."""
+    # 데이터 유형 확인
+    has_purchases = len(customer_data.get('purchase_history', [])) > 0
+    has_quotes = len(customer_data.get('quote_history', [])) > 0
+    has_meetings = bool(customer_data.get('meeting_notes', '').strip())
+    
+    # 추천 전략 결정
+    if has_purchases:
+        strategy = "구매 이력 기반 + 소모품/업그레이드 추천"
+    elif has_quotes:
+        strategy = "견적 이력 기반 + 관련 제품 추천"
+    elif has_meetings:
+        strategy = "미팅 내용 기반 + 니즈 분석 추천"
+    else:
+        strategy = "업종/부서 기반 + 일반 추천"
+    
+    system_prompt = f"""당신은 20년 경력의 과학 장비 및 실험실 제품 영업 전문가입니다.
 
+**추천 전략**: {strategy}
+
+**전문 분야**:
+- HPLC, GC, LC-MS 등 분석 장비
+- 실험실 소모품 (컬럼, 시약, 필터 등)
+- 연구용 기기 및 악세사리
+
+**추천 원칙**:
+1. 구매 이력이 있으면: 소모품 교체 주기, 업그레이드, 관련 제품 추천
+2. 견적 이력만 있으면: 견적 제품의 필수 악세사리, 대체품, 업그레이드 옵션 추천
+3. 미팅 노트만 있으면: 논의된 니즈/문제점 해결 제품, 연구 목적에 맞는 제품 추천
+4. 아무것도 없으면: 업종/부서 특성에 맞는 일반적인 필수 제품 추천
+
+**우선순위 기준**:
+- high: 즉시 구매 가능성 높음 (교체 주기 도래, 명확한 니즈 확인)
+- medium: 제안 가치 있음 (관련성 높음, 업그레이드 기회)
+- low: 장기 육성 (미래 니즈, 일반 추천)"""
+
+    # 고객 데이터 포맷팅
+    purchase_info = "없음"
+    if has_purchases:
+        purchase_info = json.dumps(customer_data.get('purchase_history', []), ensure_ascii=False, indent=2)
+    
+    quote_info = "없음"
+    if has_quotes:
+        quote_info = json.dumps(customer_data.get('quote_history', []), ensure_ascii=False, indent=2)
+    
+    meeting_info = customer_data.get('meeting_notes', '').strip() or "없음"
+    
+    # 실제 제품 카탈로그
+    available_products = customer_data.get('available_products', [])
+    product_catalog_text = "없음 (제품 데이터베이스 없음)"
+    if available_products:
+        product_catalog_text = json.dumps(available_products[:50], ensure_ascii=False, indent=2)  # 최대 50개만
+    
     user_prompt = f"""
 다음 고객에게 추천할 상품을 제안해주세요:
 
-고객명: {customer_data.get('name', '')}
-업종: {customer_data.get('industry', '')}
+**고객 기본 정보**
+- 이름: {customer_data.get('name', '')}
+- 회사: {customer_data.get('company', '')}
+- 부서/업종: {customer_data.get('industry', '')}
 
-과거 구매 내역:
-{json.dumps(customer_data.get('purchase_history', []), ensure_ascii=False, indent=2)}
+**구매 이력** (최근 2년):
+{purchase_info}
 
-최근 미팅 노트:
-{customer_data.get('meeting_notes', '')}
+**견적 이력** (최근 6개월):
+{quote_info}
 
-관심 키워드:
+**미팅 노트** (최근 내용):
+{meeting_info}
+
+**관심 키워드**:
 {customer_data.get('interest_keywords', [])}
+
+**🔥 중요: 우리 회사 제품 카탈로그 (이 중에서만 추천하세요!)**
+{product_catalog_text}
+
+---
+
+**⚠️ 필수 규칙**:
+- 반드시 위의 "우리 회사 제품 카탈로그"에 있는 product_code만 추천하세요
+- 존재하지 않는 제품명이나 일반적인 제품명 절대 금지
+- product_name은 반드시 카탈로그의 product_code를 그대로 사용하세요
+- 최대 5개 제품 추천
+- 각 제품마다 구체적인 추천 이유 설명 (200자 이내)
 
 응답 형식 (JSON):
 {{
   "recommendations": [
     {{
-      "product_name": "상품명",
-      "category": "카테고리",
-      "reason": "추천 이유",
+      "product_name": "제품 카탈로그의 정확한 product_code",
+      "category": "카테고리 (예: 분석장비, 소모품, 시약 등)",
+      "reason": "추천 이유 - 구매/견적/미팅 히스토리와 연결하여 설명",
       "priority": "high|medium|low",
-      "cross_sell_items": ["관련 소모품1", "관련 소모품2"]
-    }},
-    ...
-  ]
+      "expected_timing": "제안 시기 (예: 즉시, 1-3개월 내, 3-6개월 내)",
+      "cross_sell_items": ["카탈로그에 있는 관련 제품 product_code들"]
+    }}
+  ],
+  "analysis_summary": "고객의 구매 패턴 또는 니즈 요약 (2-3문장)"
 }}
 """
     
@@ -676,14 +1079,14 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=settings.OPENAI_MAX_TOKENS,
+            max_tokens=2500,
             temperature=0.6,
             response_format={"type": "json_object"}
         )
         
         result = json.loads(response.choices[0].message.content)
-        logger.info(f"Product recommendations generated for {customer_data.get('name')} using {MODEL_MINI}")
-        return result.get('recommendations', [])
+        logger.info(f"Product recommendations generated for {customer_data.get('name')} using {MODEL_MINI} (strategy: {strategy})")
+        return result
     
     except Exception as e:
         logger.error(f"Error generating product recommendations: {e}")
@@ -882,27 +1285,50 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
 - C (40-59): 보통 고객, 장기 관리
 - D (0-39): 저조 고객, 재검토 필요"""
 
+    # 이전 등급 정보 추가
+    previous_grade_info = ""
+    if customer_data.get('current_grade') and customer_data.get('current_score') is not None:
+        previous_grade_info = f"""
+📌 현재 등급: {customer_data.get('current_grade')} ({customer_data.get('current_score')}점)
+   → 활동 데이터에 큰 변화가 없다면 현재 등급을 유지하세요.
+   → 명확한 변화가 있을 때만 등급을 조정하세요.
+"""
+
     user_prompt = f"""
 다음 고객의 등급을 평가해주세요:
 
 고객명: {customer_data.get('name', '')}
 회사: {customer_data.get('company', '')}
+{previous_grade_info}
+📊 전체 활동 내역:
+- 총 구매 횟수: {customer_data.get('purchase_count', 0)}회
+- 총 구매 금액: {customer_data.get('total_purchase', 0):,.0f}원
+- 선결제 건수: {customer_data.get('prepayment_count', 0)}건
+- 선결제 금액: {customer_data.get('total_prepayment', 0):,.0f}원
 
-활동 내역 (최근 6개월):
+📅 최근 6개월 활동:
 - 미팅: {customer_data.get('meeting_count', 0)}회
 - 이메일 교환: {customer_data.get('email_count', 0)}건
 - 견적: {customer_data.get('quote_count', 0)}건
-- 구매: {customer_data.get('purchase_count', 0)}회
-- 총 구매액: {customer_data.get('total_purchase', 0):,}원
+- 최근 구매: {customer_data.get('recent_purchase_count', 0)}회
+- 최근 구매액: {customer_data.get('recent_total_purchase', 0):,.0f}원
 - 마지막 접촉: {customer_data.get('last_contact', '없음')}
 
-커뮤니케이션 분석:
+💬 커뮤니케이션 분석:
 - 평균 응답 시간: {customer_data.get('avg_response_time', '알 수 없음')}
 - 이메일 감정 톤: {customer_data.get('email_sentiment', '중립')}
-- 미팅 노트 요약: {customer_data.get('meeting_summary', '')}
 
-현재 진행 중인 기회:
-{json.dumps(customer_data.get('opportunities', []), ensure_ascii=False, indent=2)}
+📝 최근 미팅 요약:
+{chr(10).join(customer_data.get('meeting_summary', []) or ['없음'])}
+
+🎯 현재 진행 중인 영업 기회:
+{json.dumps(customer_data.get('opportunities', []), ensure_ascii=False, indent=2) if customer_data.get('opportunities') else '없음'}
+
+⚠️ 중요: 
+- 전체 구매 이력과 선결제는 고객의 신뢰도와 장기 관계를 나타냅니다
+- 최근 6개월 활동은 현재 참여도를 나타냅니다
+- 구매 실적이 있는 고객은 최소 C등급 이상이어야 합니다
+- 선결제가 있는 고객은 신뢰도가 높으므로 가산점을 주세요
 
 응답 형식 (JSON):
 {{
@@ -932,7 +1358,7 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
                 {"role": "user", "content": user_prompt}
             ],
             max_tokens=1500,
-            temperature=0.4,  # 등급 평가는 일관성 중요
+            temperature=0.2,  # 등급 평가는 일관성이 매우 중요 (0.4 → 0.2로 낮춤)
             response_format={"type": "json_object"}
         )
         
@@ -942,4 +1368,113 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
     
     except Exception as e:
         logger.error(f"Error updating customer grade with AI: {e}")
+        raise
+
+
+def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
+    """
+    AI로 팔로우업 우선순위 제안
+    
+    Args:
+        customer_list: 고객 정보 리스트
+        user: 현재 사용자
+        
+    Returns:
+        우선순위순으로 정렬된 고객 리스트 (최대 20명)
+    """
+    from datetime import datetime
+    
+    system_prompt = """당신은 20년 경력의 B2B 영업 전문가이자 세일즈 코치입니다.
+고객 데이터를 심층 분석하여 실제 매출로 연결될 가능성이 높은 고객을 찾아내세요.
+
+🎯 핵심 분석 원칙:
+
+1. **매출 전환 신호 포착** (최우선)
+   - 견적 후 2주 경과: 결정 임박 또는 경쟁사 검토 중 (긴급 팔로우업)
+   - 미팅 후 견적 없음: 기회 상실 위험 (즉시 견적 발송)
+   - 구매 후 3개월 경과: 재구매/소모품 필요 시점 (크로스셀 기회)
+   - 선결제 잔액 보유: 신뢰 관계 기반, 추가 구매 확률 높음
+
+2. **위험 고객 선별** (매출 손실 방지)
+   - A/B등급 고객 30일+ 무응답: 경쟁사 전환 위험
+   - 진행 중인 기회 있으나 연락 끊김: Deal 증발 직전
+   - 과거 구매 고객의 장기 미접촉: 관계 단절 위험
+
+3. **영업 효율성 극대화**
+   - 단순 "연락 안 한 지 오래됨"은 낮은 우선순위
+   - 구매 이력 없는 D등급 + 장기 미접촉 = 우선순위 제외
+   - 최근 연락한 고객 중 Next Step이 명확한 경우만 포함
+
+4. **전략적 타이밍**
+   - 견적 후 Follow-up: 7-10일 (결정 촉진)
+   - 미팅 후 견적: 1-3일 (열기 유지)
+   - 구매 후 재접촉: 90일 (소모품/추가 수요)
+   - Cold 고객 재활성화: 90일+ (low priority)
+
+우선순위 레벨 기준:
+- **urgent (긴급)**: 지금 안 하면 매출 손실 확실 (예: A등급, 견적 후 2주, 진행 기회 있음)
+- **high (높음)**: 이번 주 내 처리 필수 (예: B등급, 구매 후 3개월, 미팅 후 견적 필요)
+- **medium (보통)**: 계획적 접근 (예: C등급, 견적 후 1개월, 잠재 수요 있음)
+- **low (낮음)**: 여유 있을 때 (예: D등급, 구매 없음, 특별 이슈 없음)
+
+⚠️ 주의사항:
+- 최근 1주일 내 연락한 고객은 특별한 이유 없으면 제외
+- 구매 이력 없는 D등급은 특별한 기회 요소 없으면 우선순위 낮춤
+- 이유는 반드시 "왜 지금 연락해야 매출이 나는지" 중심으로 작성
+- 추상적인 표현 금지, 구체적인 숫자와 날짜 활용
+"""
+    
+    user_prompt = f"""다음 고객들의 팔로우업 우선순위를 분석해주세요.
+
+📊 분석 대상: {len(customer_list)}명
+📅 현재 날짜: {datetime.now().strftime('%Y-%m-%d')}
+
+고객 데이터:
+{json.dumps(customer_list, ensure_ascii=False, indent=2)}
+
+응답 형식 (JSON):
+{{
+  "suggestions": [
+    {{
+      "customer_id": 고객ID,
+      "customer_name": "고객명",
+      "company": "회사명",
+      "priority_score": 1-100,
+      "priority_level": "urgent|high|medium|low",
+      "reason": "매출 관점에서 지금 연락해야 하는 구체적 이유 (숫자 포함, 2-3문장)",
+      "suggested_action": "구체적 액션 + 대화 주제 (예: '전화로 견적 검토 진행 상황 확인 후 의사결정 시점 재확인')",
+      "best_contact_time": "업종과 직급 고려한 최적 시간 (예: '대학 교수 - 오후 3-5시, 기업 구매담당 - 오전 10-11시')",
+      "customer_grade": "A+|A|B|C|D"
+    }}
+  ]
+}}
+
+규칙:
+1. 우선순위 점수는 차등 분배 (100점 만점을 소수에게만, 60점 이하 다수)
+2. urgent/high는 전체의 20% 이내만 선정
+3. 매출 전환 가능성이 낮으면 과감히 낮은 점수 부여
+4. 우선순위순 정렬, 최대 20명
+5. "최근 연락함"은 이유가 아님, 구체적 비즈니스 맥락 필요
+"""
+    
+    try:
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_MINI,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=4000,
+            temperature=0.4,  # 창의적 분석 필요하므로 적당한 온도
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        suggestions = result.get('suggestions', [])
+        
+        logger.info(f"Follow-up suggestions generated for {len(suggestions)} customers using {MODEL_MINI}")
+        return suggestions[:20]  # 최대 20명
+    
+    except Exception as e:
+        logger.error(f"Error suggesting follow-ups with AI: {e}")
         raise

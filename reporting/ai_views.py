@@ -9,6 +9,10 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.db.models import Q
+from datetime import timedelta
 import json
 import logging
 
@@ -21,7 +25,9 @@ from reporting.ai_utils import (
     recommend_products,
     summarize_meeting_notes,
     analyze_email_thread,
-    check_ai_permission
+    natural_language_search,
+    check_ai_permission,
+    suggest_follow_ups
 )
 from reporting.models import FollowUp, Schedule
 
@@ -290,51 +296,83 @@ def ai_update_customer_grade(request, followup_id):
         from django.db.models import Sum, Q
         from django.utils import timezone
         from datetime import timedelta
-        from reporting.models import History, OpportunityTracking, EmailLog
+        from decimal import Decimal
+        from reporting.models import (
+            History, OpportunityTracking, EmailLog, 
+            DeliveryItem, Prepayment
+        )
         
         followup = FollowUp.objects.get(id=followup_id)
         
         # 최근 6개월 데이터
         six_months_ago = timezone.now() - timedelta(days=180)
         
-        # 스케줄 통계
-        schedules = Schedule.objects.filter(
+        # 미팅 횟수 (최근 6개월)
+        meeting_count = Schedule.objects.filter(
             followup=followup,
-            visit_date__gte=six_months_ago
-        )
-        meeting_count = schedules.filter(activity_type='customer_meeting').count()
-        quote_count = schedules.filter(activity_type='quote').count()
-        
-        # 히스토리 통계
-        histories = History.objects.filter(
-            followup=followup,
-            created_at__gte=six_months_ago
-        )
-        
-        # 구매 내역 (납품 일정)
-        purchase_histories = histories.filter(action_type='delivery_schedule')
-        purchase_count = purchase_histories.count()
-        total_purchase = purchase_histories.aggregate(
-            total=Sum('delivery_amount')
-        )['total'] or 0
-        
-        # 이메일 교환
-        email_count = EmailLog.objects.filter(
-            Q(schedule__followup=followup) | Q(followup=followup),
+            activity_type='meeting',
             created_at__gte=six_months_ago
         ).count()
         
-        # 마지막 연락일
-        last_contact = '정보 없음'
-        last_schedule = schedules.order_by('-visit_date').first()
-        if last_schedule:
-            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
+        # 이메일 교환 (최근 6개월)
+        email_count = EmailLog.objects.filter(
+            followup=followup,
+            sent_at__gte=six_months_ago
+        ).count()
         
-        # 미팅 노트
-        meeting_summary = ''
-        recent_meeting = histories.filter(action_type='customer_meeting').order_by('-created_at').first()
-        if recent_meeting and recent_meeting.content:
-            meeting_summary = recent_meeting.content[:200]
+        # 견적 횟수 (최근 6개월)
+        quote_count = Schedule.objects.filter(
+            followup=followup,
+            activity_type='quote',
+            created_at__gte=six_months_ago
+        ).count()
+        
+        # 구매 횟수 및 금액 (전체 + 최근 6개월)
+        # 납품 일정(delivery)만 카운트 (견적 일정 제외)
+        all_deliveries = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery'
+        )
+        
+        recent_deliveries = all_deliveries.filter(
+            schedule__created_at__gte=six_months_ago
+        )
+        
+        purchase_count = all_deliveries.values('schedule').distinct().count()
+        recent_purchase_count = recent_deliveries.values('schedule').distinct().count()
+        
+        total_purchase = all_deliveries.aggregate(
+            total=Sum('total_price')
+        )['total'] or Decimal('0')
+        
+        recent_total_purchase = recent_deliveries.aggregate(
+            total=Sum('total_price')
+        )['total'] or Decimal('0')
+        
+        # 선결제 정보 (전체)
+        prepayments = Prepayment.objects.filter(
+            customer=followup
+        )
+        prepayment_count = prepayments.count()
+        total_prepayment = prepayments.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0')
+        
+        # 마지막 연락일 (최근 일정 기준)
+        last_schedule = Schedule.objects.filter(followup=followup).order_by('-visit_date').first()
+        last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else '없음'
+        
+        # 미팅 요약 (최근 3개)
+        recent_meetings = Schedule.objects.filter(
+            followup=followup,
+            activity_type='meeting',
+            notes__isnull=False
+        ).order_by('-visit_date')[:3]
+        
+        meeting_summary = []
+        for meeting in recent_meetings:
+            if meeting.notes:
+                meeting_summary.append(f"[{meeting.visit_date.strftime('%Y-%m-%d')}] {meeting.notes[:100]}")
         
         # 진행 중인 기회
         opportunities = []
@@ -355,7 +393,11 @@ def ai_update_customer_grade(request, followup_id):
             'email_count': email_count,
             'quote_count': quote_count,
             'purchase_count': purchase_count,
-            'total_purchase': total_purchase,
+            'recent_purchase_count': recent_purchase_count,
+            'total_purchase': float(total_purchase),
+            'recent_total_purchase': float(recent_total_purchase),
+            'prepayment_count': prepayment_count,
+            'total_prepayment': float(total_prepayment),
             'last_contact': last_contact,
             'avg_response_time': '알 수 없음',
             'email_sentiment': '중립',
@@ -388,4 +430,905 @@ def ai_update_customer_grade(request, followup_id):
         return JsonResponse({
             'success': False,
             'error': f'등급 업데이트 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_summarize_meeting_notes(request):
+    """
+    AI로 미팅 노트 요약
+    """
+    try:
+        if not check_ai_permission(request.user):
+            return JsonResponse({
+                'success': False,
+                'error': 'AI 기능 사용 권한이 없습니다.'
+            }, status=403)
+        
+        data = json.loads(request.body)
+        notes = data.get('notes', '').strip()
+        
+        if not notes:
+            return JsonResponse({
+                'success': False,
+                'error': '요약할 노트 내용이 없습니다.'
+            }, status=400)
+        
+        # 너무 짧은 노트는 요약 불필요
+        if len(notes) < 100:
+            return JsonResponse({
+                'success': False,
+                'error': '노트가 너무 짧아 요약이 필요하지 않습니다.'
+            }, status=400)
+        
+        result = summarize_meeting_notes(notes, request.user)
+        
+        # 요약 결과를 Markdown 형식으로 포맷팅
+        summary_text = f"""## 요약
+{result.get('summary', '')}
+
+## 주요 포인트
+{chr(10).join('- ' + point for point in result.get('key_points', []))}
+
+## 액션 아이템
+{chr(10).join('- ' + item for item in result.get('action_items', []))}
+"""
+        
+        # 키워드가 있으면 추가
+        keywords = result.get('keywords', {})
+        if any(keywords.values()):
+            summary_text += "\n## 주요 키워드\n"
+            if keywords.get('budget'):
+                summary_text += f"- 💰 예산: {keywords['budget']}\n"
+            if keywords.get('deadline'):
+                summary_text += f"- 📅 납기: {keywords['deadline']}\n"
+            if keywords.get('decision_maker'):
+                summary_text += f"- 👤 결정권자: {keywords['decision_maker']}\n"
+            if keywords.get('pain_points'):
+                summary_text += f"- ⚠️ 고객 문제점: {keywords['pain_points']}\n"
+            if keywords.get('competitors'):
+                summary_text += f"- 🏢 경쟁사: {keywords['competitors']}\n"
+        
+        return JsonResponse({
+            'success': True,
+            'summary': summary_text.strip(),
+            'original_length': len(notes),
+            'summary_length': len(summary_text)
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error summarizing meeting notes: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'노트 요약 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_suggest_follow_ups(request):
+    """
+    AI로 팔로우업 우선순위 제안
+    """
+    try:
+        if not check_ai_permission(request.user):
+            return JsonResponse({
+                'success': False,
+                'error': 'AI 기능 사용 권한이 없습니다.'
+            }, status=403)
+        
+        from django.db.models import Sum, Q, Max
+        from django.utils import timezone
+        from datetime import timedelta
+        from reporting.models import History, Prepayment, OpportunityTracking
+        
+        # 사용자의 모든 고객 가져오기 (최근 6개월 이내 활동이 있는 고객만)
+        six_months_ago = timezone.now() - timedelta(days=180)
+        
+        # 최근 6개월 내 스케줄이 있는 고객만 필터링
+        active_followup_ids = Schedule.objects.filter(
+            followup__user=request.user,
+            visit_date__gte=six_months_ago
+        ).values_list('followup_id', flat=True).distinct()
+        
+        followups = FollowUp.objects.filter(
+            id__in=active_followup_ids
+        ).select_related('company')
+        
+        customer_list = []
+        
+        for followup in followups[:50]:  # 최대 50명만 분석
+            # 스케줄 통계 (최근 6개월)
+            schedules = Schedule.objects.filter(
+                followup=followup,
+                visit_date__gte=six_months_ago
+            )
+            
+            # 활동 횟수 확인 (최소 1개 이상의 활동 필요)
+            total_activities = schedules.count()
+            if total_activities == 0:
+                continue  # 활동 없는 고객 제외
+            
+            meeting_count = schedules.filter(activity_type='customer_meeting').count()
+            quote_count = schedules.filter(activity_type='quote').count()
+            
+            # 구매 통계
+            delivery_schedules = schedules.filter(activity_type='delivery')
+            purchase_count = delivery_schedules.count()
+            total_purchase = delivery_schedules.aggregate(
+                total=Sum('expected_revenue')
+            )['total'] or 0
+            
+            # 마지막 연락일
+            last_schedule = schedules.order_by('-visit_date').first()
+            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else '연락 기록 없음'
+            
+            # 진행 중인 기회
+            opportunities = OpportunityTracking.objects.filter(
+                followup=followup,
+                current_stage__in=['lead', 'contact', 'quote', 'closing']
+            )
+            
+            # 선결제 잔액
+            prepayments = Prepayment.objects.filter(
+                customer=followup,
+                status='active'
+            )
+            prepayment_balance = sum(p.balance for p in prepayments)
+            
+            customer_list.append({
+                'id': followup.id,
+                'name': followup.customer_name,
+                'company': str(followup.company),
+                'last_contact': last_contact,
+                'meeting_count': meeting_count,
+                'quote_count': quote_count,
+                'purchase_count': purchase_count,
+                'total_purchase': float(total_purchase),
+                'grade': followup.customer_grade if followup.customer_grade else 'D',
+                'opportunities': [{'stage': o.get_current_stage_display()} for o in opportunities],
+                'prepayment_balance': float(prepayment_balance),
+                'total_activities': total_activities
+            })
+        
+        if not customer_list:
+            return JsonResponse({
+                'success': False,
+                'error': '최근 6개월 내 활동 이력이 있는 고객이 없습니다.'
+            }, status=400)
+        
+        suggestions = suggest_follow_ups(customer_list, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'suggestions': suggestions,
+            'total_analyzed': len(customer_list)
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error suggesting follow-ups: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'우선순위 제안 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_analyze_email_thread(request):
+    """
+    AI로 이메일 스레드 분석
+    """
+    try:
+        if not check_ai_permission(request.user):
+            return JsonResponse({
+                'success': False,
+                'error': 'AI 기능 사용 권한이 없습니다.'
+            }, status=403)
+        
+        data = json.loads(request.body)
+        thread_id = data.get('thread_id')
+        
+        if not thread_id:
+            return JsonResponse({
+                'success': False,
+                'error': '스레드 ID가 필요합니다.'
+            }, status=400)
+        
+        from reporting.models import EmailLog
+        
+        # 스레드의 모든 이메일 가져오기
+        emails = EmailLog.objects.filter(
+            gmail_thread_id=thread_id
+        ).order_by('sent_at')
+        
+        if not emails.exists():
+            return JsonResponse({
+                'success': False,
+                'error': '이메일 스레드를 찾을 수 없습니다.'
+            }, status=404)
+        
+        # 이메일 데이터 변환
+        email_list = []
+        for email in emails:
+            email_list.append({
+                'date': email.sent_at.strftime('%Y-%m-%d %H:%M') if email.sent_at else '',
+                'from': email.sender_email,
+                'subject': email.subject or '',
+                'body': email.body or email.body_html or ''
+            })
+        
+        result = analyze_email_thread(email_list, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'analysis': result,
+            'email_count': len(email_list)
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error analyzing email thread: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'이메일 스레드 분석 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+def ai_recommend_products(request, followup_id):
+    """
+    고객의 구매 이력, 견적 이력, 미팅 노트를 종합 분석하여 상품 추천
+    구매 이력이 없어도 견적/미팅 히스토리 기반으로 추천 가능
+    """
+    from reporting.ai_utils import recommend_products, check_ai_permission
+    
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        from reporting.models import FollowUp, DeliveryItem, Schedule, QuoteItem
+        
+        # 고객 정보 가져오기
+        followup = get_object_or_404(FollowUp, id=followup_id)
+        
+        # 구매 이력 가져오기 (최근 2년)
+        from datetime import timedelta
+        two_years_ago = timezone.now() - timedelta(days=730)
+        six_months_ago = timezone.now() - timedelta(days=180)
+        
+        delivery_items = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery',
+            schedule__created_at__gte=two_years_ago
+        ).select_related('product', 'schedule').order_by('-schedule__visit_date')
+        
+        purchase_history = []
+        for item in delivery_items[:20]:  # 최근 20개까지
+            purchase_history.append({
+                'product_name': item.product.product_code if item.product else '제품 정보 없음',
+                'quantity': float(item.quantity) if item.quantity else 0,
+                'unit': item.unit or '',
+                'date': item.schedule.visit_date.strftime('%Y-%m-%d') if item.schedule.visit_date else '',
+                'specification': item.product.specification if item.product else ''
+            })
+        
+        # 견적 이력 가져오기 (최근 6개월)
+        quote_items = QuoteItem.objects.filter(
+            quote__followup=followup,
+            quote__created_at__gte=six_months_ago
+        ).select_related('product', 'quote').order_by('-quote__quote_date')
+        
+        quote_history = []
+        for item in quote_items[:15]:  # 최근 15개까지
+            quote_history.append({
+                'product_name': item.product.product_code if item.product else '제품 정보 없음',
+                'quantity': float(item.quantity) if item.quantity else 0,
+                'unit_price': float(item.unit_price) if item.unit_price else 0,
+                'date': item.quote.quote_date.strftime('%Y-%m-%d') if item.quote.quote_date else '',
+                'specification': item.product.specification if item.product else ''
+            })
+        
+        # 최근 미팅 노트 가져오기 (최근 10개)
+        meeting_schedules = Schedule.objects.filter(
+            followup=followup,
+            activity_type='customer_meeting'
+        ).order_by('-visit_date')[:10]
+        
+        meeting_notes = ""
+        for schedule in meeting_schedules:
+            if schedule.notes:
+                meeting_notes += f"[{schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '날짜 미상'}] {schedule.notes}\n\n"
+        
+        # 관심 키워드 추출 (미팅 노트와 견적/구매 제품에서)
+        interest_keywords = []
+        all_text = meeting_notes
+        
+        # 제품명에서 키워드 추출
+        for item in purchase_history + quote_history:
+            if item.get('product_name'):
+                all_text += " " + item['product_name']
+        
+        # 일반적인 과학 장비 키워드 확인
+        common_keywords = [
+            'HPLC', 'GC', 'LC-MS', 'UV', '분광광도계',
+            '컬럼', '시약', '필터', '소모품',
+            '분석', '실험', '연구', '장비', '테스트',
+            '정제', '추출', '분리', '측정'
+        ]
+        for keyword in common_keywords:
+            if keyword.lower() in all_text.lower():
+                interest_keywords.append(keyword)
+        
+        # 중복 제거
+        interest_keywords = list(set(interest_keywords))
+        
+        # 실제 DB 제품 목록 가져오기 (활성 제품만)
+        from reporting.models import Product
+        available_products = Product.objects.filter(is_active=True).values(
+            'product_code', 'specification', 'unit', 'standard_price', 'description'
+        )[:100]  # 최대 100개
+        
+        product_catalog = []
+        for prod in available_products:
+            product_catalog.append({
+                'product_code': prod['product_code'],
+                'specification': prod['specification'] or '',
+                'unit': prod['unit'] or 'EA',
+                'price': float(prod['standard_price']) if prod['standard_price'] else 0,
+                'description': prod['description'] or ''
+            })
+        
+        # 고객 데이터 준비
+        customer_data = {
+            'name': followup.customer_name,
+            'company': followup.company or '',
+            'industry': followup.department or '',
+            'purchase_history': purchase_history,
+            'quote_history': quote_history,
+            'meeting_notes': meeting_notes[:2500],  # 토큰 절약
+            'interest_keywords': interest_keywords,
+            'available_products': product_catalog  # 실제 제품 카탈로그 추가
+        }
+        
+        # AI 추천 실행
+        result = recommend_products(customer_data, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'recommendations': result.get('recommendations', []),
+            'analysis_summary': result.get('analysis_summary', ''),
+            'customer_name': followup.customer_name,
+            'purchase_count': len(purchase_history),
+            'quote_count': len(quote_history),
+            'meeting_count': len(meeting_schedules),
+            'data_sources': {
+                'has_purchases': len(purchase_history) > 0,
+                'has_quotes': len(quote_history) > 0,
+                'has_meetings': bool(meeting_notes.strip())
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error recommending products: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'상품 추천 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_natural_language_search(request):
+    """
+    자연어 검색 쿼리를 SQL 필터 조건으로 변환
+    """
+    from reporting.ai_utils import natural_language_search, check_ai_permission
+    
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        from reporting.models import FollowUp, Schedule, OpportunityTracking
+        from django.db.models import Q
+        from datetime import datetime, timedelta
+        
+        data = json.loads(request.body)
+        query = data.get('query', '').strip()
+        search_type = data.get('search_type', 'all')  # customers, schedules, opportunities, all
+        
+        if not query:
+            return JsonResponse({
+                'success': False,
+                'error': '검색어를 입력해주세요.'
+            }, status=400)
+        
+        # AI로 자연어 쿼리 변환
+        result = natural_language_search(query, search_type, request.user)
+        
+        # 변환된 필터를 실제 쿼리로 실행
+        search_results = {
+            'interpretation': result.get('interpretation', ''),
+            'customers': [],
+            'schedules': [],
+            'opportunities': []
+        }
+        
+        filters = result.get('filters', {})
+        
+        # 고객 검색
+        if search_type in ['customers', 'all'] and filters:
+            try:
+                # 스케줄 관련 필터와 고객 직접 필터 분리
+                customer_filters = {}
+                schedule_filters = {}
+                
+                for key, value in filters.items():
+                    if 'schedules__' in key:
+                        # schedules__ 접두사 제거하고 스케줄 필터로
+                        clean_key = key.replace('schedules__', '')
+                        schedule_filters[clean_key] = value
+                    else:
+                        # 고객 직접 필터
+                        customer_filters[key] = value
+                
+                # 스케줄 필터가 있으면 해당 일정이 있는 고객만 조회
+                if schedule_filters:
+                    schedule_ids = Schedule.objects.filter(**schedule_filters).values_list('followup_id', flat=True).distinct()
+                    if customer_filters:
+                        customers = FollowUp.objects.filter(id__in=schedule_ids, **customer_filters)[:20]
+                    else:
+                        customers = FollowUp.objects.filter(id__in=schedule_ids)[:20]
+                elif customer_filters:
+                    customers = FollowUp.objects.filter(**customer_filters)[:20]
+                else:
+                    customers = FollowUp.objects.all()[:20]
+                
+                for customer in customers:
+                    # 마지막 연락일 계산
+                    last_schedule = Schedule.objects.filter(followup=customer).order_by('-visit_date').first()
+                    last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else ''
+                    
+                    search_results['customers'].append({
+                        'id': customer.id,
+                        'name': customer.customer_name,
+                        'company': str(customer.company) if customer.company else '',
+                        'grade': customer.customer_grade or '',
+                        'last_contact': last_contact
+                    })
+            except Exception as e:
+                logger.error(f"Customer search error: {e}")
+        
+        # 일정 검색
+        if search_type in ['schedules', 'all'] and filters:
+            try:
+                # schedules__ 접두사 제거 (일정 검색에서는 불필요)
+                schedule_filters = {}
+                followup_filters = {}
+                
+                for key, value in filters.items():
+                    if key.startswith('schedules__'):
+                        # schedules__ 접두사 제거
+                        clean_key = key.replace('schedules__', '')
+                        schedule_filters[clean_key] = value
+                    elif key.startswith('followup__'):
+                        # 고객 관련 필터
+                        followup_filters[key] = value
+                    else:
+                        # 일정 직접 필터
+                        schedule_filters[key] = value
+                
+                # 필터 적용
+                if followup_filters and schedule_filters:
+                    schedules = Schedule.objects.filter(**schedule_filters, **followup_filters).select_related('followup')[:20]
+                elif schedule_filters:
+                    schedules = Schedule.objects.filter(**schedule_filters).select_related('followup')[:20]
+                elif followup_filters:
+                    schedules = Schedule.objects.filter(**followup_filters).select_related('followup')[:20]
+                else:
+                    schedules = Schedule.objects.all().select_related('followup')[:20]
+                
+                for schedule in schedules:
+                    type_labels = {
+                        'customer_meeting': '미팅',
+                        'quote': '견적',
+                        'delivery': '납품',
+                        'call': '전화',
+                        'email': '이메일'
+                    }
+                    search_results['schedules'].append({
+                        'id': schedule.id,
+                        'type': type_labels.get(schedule.activity_type, schedule.activity_type),
+                        'customer': schedule.followup.customer_name if schedule.followup else '',
+                        'start_date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
+                        'content': schedule.notes[:100] if schedule.notes else ''
+                    })
+            except Exception as e:
+                logger.error(f"Schedule search error: {e}")
+        
+        # 영업기회 검색
+        if search_type in ['opportunities', 'all'] and filters:
+            try:
+                opp_filters = {k: v for k, v in filters.items() if not k.startswith('followup__')}
+                opportunities = OpportunityTracking.objects.filter(**opp_filters).select_related('followup')[:20]
+                
+                for opp in opportunities:
+                    search_results['opportunities'].append({
+                        'id': opp.id,
+                        'title': opp.title,
+                        'customer': opp.followup.customer_name if opp.followup else '',
+                        'stage': opp.get_current_stage_display(),
+                        'value': float(opp.expected_revenue) if opp.expected_revenue else 0,
+                        'created': opp.created_at.strftime('%Y-%m-%d') if opp.created_at else ''
+                    })
+            except Exception as e:
+                logger.error(f"Opportunity search error: {e}")
+        
+        return JsonResponse({
+            'success': True,
+            'query': query,
+            'results': search_results,
+            'total_count': len(search_results['customers']) + len(search_results['schedules']) + len(search_results['opportunities'])
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in natural language search: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'자연어 검색 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_refresh_all_grades(request):
+    """
+    전체 고객 등급을 AI로 일괄 업데이트 (백그라운드 작업)
+    """
+    from django.db.models import Count
+    from django.core.cache import cache
+    import threading
+    import time
+    import uuid
+    
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        limit = data.get('limit')
+        background = data.get('background', True)
+        
+        # 업데이트 대상 고객 수 계산 (일정, 이메일, 히스토리, 선결제 중 하나라도 있는 고객)
+        queryset = FollowUp.objects.annotate(
+            schedule_count=Count('schedules', distinct=True),
+            email_count=Count('emails', distinct=True),
+            history_count=Count('histories', distinct=True),
+            prepayment_count=Count('prepayments', distinct=True)
+        ).filter(
+            Q(schedule_count__gte=1) | 
+            Q(email_count__gte=1) | 
+            Q(history_count__gte=1) |
+            Q(prepayment_count__gte=1)
+        )
+        
+        if limit:
+            queryset = queryset[:limit]
+        
+        total_count = queryset.count()
+        
+        if total_count == 0:
+            return JsonResponse({
+                'success': False,
+                'error': '업데이트할 고객이 없습니다.'
+            }, status=400)
+        
+        # 예상 소요 시간 계산
+        estimated_minutes = (total_count * 2.5) / 60  # 고객당 약 2.5초
+        if estimated_minutes < 1:
+            estimated_time = f"{int(total_count * 2.5)}초"
+        else:
+            estimated_time = f"{int(estimated_minutes)}분"
+        
+        if background:
+            # 작업 ID 생성
+            task_id = str(uuid.uuid4())
+            
+            # 초기 상태 저장
+            cache.set(f'grade_update_{task_id}', {
+                'status': 'running',
+                'total': total_count,
+                'processed': 0,
+                'success': 0,
+                'failed': 0,
+                'grade_changes': 0
+            }, timeout=3600)  # 1시간
+            
+            # 백그라운드 스레드로 실행
+            # 스레드 밖에서 user_id 추출 (request는 thread-local이므로)
+            user_id = request.user.id
+            
+            def update_grades_background():
+                from django.contrib.auth import get_user_model
+                from django.db.models import Sum, Q
+                from django.utils import timezone
+                from datetime import timedelta
+                from decimal import Decimal
+                from reporting.models import (
+                    History, OpportunityTracking, EmailLog, 
+                    DeliveryItem, Prepayment
+                )
+                
+                # 스레드 내에서 User 객체 가져오기
+                User = get_user_model()
+                try:
+                    user = User.objects.get(id=user_id)
+                except User.DoesNotExist:
+                    logger.error(f"User {user_id} not found in background thread")
+                    cache.set(f'grade_update_{task_id}', {
+                        'status': 'failed',
+                        'error': 'User not found'
+                    }, timeout=3600)
+                    return
+                
+                start_time = time.time()
+                success_count = 0
+                failed_count = 0
+                grade_changes = []
+                six_months_ago = timezone.now() - timedelta(days=180)
+                
+                try:
+                    # 각 고객 처리
+                    for idx, followup in enumerate(queryset, 1):
+                        try:
+                            # 기존 등급 저장
+                            old_grade = followup.ai_grade_score
+                            old_grade_letter = followup.customer_grade
+                            
+                            # AI로 등급 업데이트 (내부 로직 직접 실행)
+                            # 미팅 횟수 (최근 6개월)
+                            meeting_count = Schedule.objects.filter(
+                                followup=followup,
+                                activity_type='meeting',
+                                created_at__gte=six_months_ago
+                            ).count()
+                            
+                            # 이메일 교환 (최근 6개월)
+                            email_count = EmailLog.objects.filter(
+                                followup=followup,
+                                sent_at__gte=six_months_ago
+                            ).count()
+                            
+                            # 견적 횟수 (최근 6개월)
+                            quote_count = Schedule.objects.filter(
+                                followup=followup,
+                                activity_type='quote',
+                                created_at__gte=six_months_ago
+                            ).count()
+                            
+                            # 구매 횟수 및 금액 (전체 + 최근 6개월)
+                            # 납품 일정(delivery)만 카운트 (견적 일정 제외)
+                            all_deliveries = DeliveryItem.objects.filter(
+                                schedule__followup=followup,
+                                schedule__activity_type='delivery'
+                            )
+                            
+                            recent_deliveries = all_deliveries.filter(
+                                schedule__created_at__gte=six_months_ago
+                            )
+                            
+                            purchase_count = all_deliveries.values('schedule').distinct().count()
+                            recent_purchase_count = recent_deliveries.values('schedule').distinct().count()
+                            
+                            total_purchase = all_deliveries.aggregate(
+                                total=Sum('total_price')
+                            )['total'] or Decimal('0')
+                            
+                            recent_total_purchase = recent_deliveries.aggregate(
+                                total=Sum('total_price')
+                            )['total'] or Decimal('0')
+                            
+                            # 선결제 정보 (전체)
+                            prepayments = Prepayment.objects.filter(
+                                customer=followup
+                            )
+                            prepayment_count = prepayments.count()
+                            total_prepayment = prepayments.aggregate(
+                                total=Sum('amount')
+                            )['total'] or Decimal('0')
+                            
+                            # 마지막 연락일 (최근 일정 기준)
+                            last_schedule = Schedule.objects.filter(followup=followup).order_by('-visit_date').first()
+                            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else '없음'
+                            
+                            # 미팅 요약 (최근 3개)
+                            recent_meetings = Schedule.objects.filter(
+                                followup=followup,
+                                activity_type='meeting',
+                                notes__isnull=False
+                            ).order_by('-visit_date')[:3]
+                            
+                            meeting_summary = []
+                            for meeting in recent_meetings:
+                                if meeting.notes:
+                                    meeting_summary.append(f"[{meeting.visit_date.strftime('%Y-%m-%d')}] {meeting.notes[:100]}")
+                            
+                            # 진행 중인 기회
+                            opportunities = []
+                            active_opps = OpportunityTracking.objects.filter(
+                                followup=followup,
+                                current_stage__in=['lead', 'contact', 'quote', 'closing']
+                            )[:5]
+                            for opp in active_opps:
+                                opportunities.append({
+                                    'stage': opp.get_current_stage_display(),
+                                    'content': opp.title or '영업 기회'
+                                })
+                            
+                            customer_data = {
+                                'name': followup.customer_name or '고객명 미정',
+                                'company': followup.company or '업체명 미정',
+                                'current_grade': old_grade_letter,  # 현재 등급 전달
+                                'current_score': old_grade,  # 현재 점수 전달
+                                'meeting_count': meeting_count,
+                                'email_count': email_count,
+                                'quote_count': quote_count,
+                                'purchase_count': purchase_count,
+                                'recent_purchase_count': recent_purchase_count,
+                                'total_purchase': float(total_purchase),
+                                'recent_total_purchase': float(recent_total_purchase),
+                                'prepayment_count': prepayment_count,
+                                'total_prepayment': float(total_prepayment),
+                                'last_contact': last_contact,
+                                'avg_response_time': '알 수 없음',
+                                'email_sentiment': '중립',
+                                'meeting_summary': meeting_summary,
+                                'opportunities': opportunities,
+                            }
+                            
+                            result = update_customer_grade_with_ai(customer_data, user)
+                            
+                            if result.get('grade') and result.get('score') is not None:
+                                # DB 업데이트
+                                followup.customer_grade = result.get('grade')
+                                followup.ai_grade_score = result.get('score')
+                                followup.save(update_fields=['customer_grade', 'ai_grade_score'])
+                                
+                                success_count += 1
+                                
+                                # 등급 변경 확인
+                                followup.refresh_from_db()
+                                new_grade = followup.ai_grade_score
+                                new_grade_letter = followup.customer_grade
+                                
+                                if old_grade != new_grade:
+                                    grade_changes.append({
+                                        'customer_name': followup.customer_name or '고객명 없음',
+                                        'company': str(followup.company) if followup.company else '업체명 없음',
+                                        'old_grade': old_grade_letter or 'N/A',
+                                        'new_grade': new_grade_letter or 'N/A',
+                                        'old_score': int(old_grade) if old_grade else 0,
+                                        'new_score': int(new_grade) if new_grade else 0
+                                    })
+                            else:
+                                failed_count += 1
+                            
+                            # 진행 상황 업데이트
+                            cache.set(f'grade_update_{task_id}', {
+                                'status': 'running',
+                                'total': total_count,
+                                'processed': idx,
+                                'success': success_count,
+                                'failed': failed_count,
+                                'grade_changes': len(grade_changes),
+                                'changes': grade_changes[:50]  # 최대 50개만 저장
+                            }, timeout=3600)
+                            
+                        except Exception as e:
+                            failed_count += 1
+                            logger.error(f"Failed to update grade for customer {followup.id}: {e}")
+                    
+                    # 결과 추출
+                    elapsed_time = time.time() - start_time
+                    
+                    # 완료 상태 저장
+                    cache.set(f'grade_update_{task_id}', {
+                        'status': 'completed',
+                        'total': total_count,
+                        'processed': total_count,
+                        'success': success_count,
+                        'failed': failed_count,
+                        'grade_changes': len(grade_changes),
+                        'changes': grade_changes,
+                        'elapsed_time': f"{int(elapsed_time)}초"
+                    }, timeout=3600)
+                    
+                    logger.info(f"Background grade update completed: {success_count} success, {failed_count} failed, {len(grade_changes)} changes in {elapsed_time:.1f}s")
+                    
+                except Exception as e:
+                    logger.error(f"Background grade update failed: {e}")
+                    cache.set(f'grade_update_{task_id}', {
+                        'status': 'failed',
+                        'error': str(e)
+                    }, timeout=3600)
+            
+            thread = threading.Thread(target=update_grades_background, daemon=True)
+            thread.start()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'{total_count}명의 고객 등급 업데이트가 백그라운드에서 시작되었습니다.',
+                'total_count': total_count,
+                'estimated_time': estimated_time,
+                'task_id': task_id
+            })
+        else:
+            # 동기 실행 (테스트용)
+            return JsonResponse({
+                'success': False,
+                'error': '동기 실행은 지원하지 않습니다. Management command를 사용하세요.'
+            }, status=400)
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in refresh all grades: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'등급 업데이트 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ai_check_grade_update_status(request, task_id):
+    """
+    등급 업데이트 작업 상태 확인
+    """
+    from django.core.cache import cache
+    
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        status_data = cache.get(f'grade_update_{task_id}')
+        
+        if not status_data:
+            return JsonResponse({
+                'success': False,
+                'error': '작업 정보를 찾을 수 없습니다.'
+            }, status=404)
+        
+        return JsonResponse({
+            'success': True,
+            'status': status_data
+        })
+    
+    except Exception as e:
+        logger.error(f"Error checking grade update status: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'상태 확인 중 오류가 발생했습니다: {str(e)}'
         }, status=500)

@@ -273,6 +273,25 @@
                     </div>
                   </div>
 
+                  <!-- 제품 추천 -->
+                  {% if request.user.userprofile.can_use_ai %}
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <h5 class="text-info mb-3">
+                        <i class="fas fa-shopping-cart me-2"></i>AI 상품 추천
+                      </h5>
+                      <div id="ai-product-recommendations">
+                        <div class="text-center text-muted py-4">
+                          <button class="btn btn-info" id="recommend-products-btn">
+                            <i class="fas fa-lightbulb me-2"></i>추천 상품 보기
+                          </button>
+                          <p class="small mt-2 mb-0">구매 이력과 관심사를 기반으로 상품을 추천합니다</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {% endif %}
+
                   <!-- 활동 통계 -->
                   <div class="row mt-3">
                     <div class="col-12">
@@ -918,6 +937,143 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         });
     });
+
+    // 제품 추천
+    const recommendBtn = document.getElementById('recommend-products-btn');
+    if (recommendBtn) {
+        recommendBtn.addEventListener('click', function() {
+            const btn = this;
+            const container = document.getElementById('ai-product-recommendations');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>추천 상품 분석 중...';
+            
+            fetch(`/reporting/ai/recommend-products/{{ followup.id }}/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-lightbulb me-2"></i>추천 상품 보기';
+                
+                if (data.success) {
+                    const recommendations = data.recommendations || [];
+                    const dataSources = data.data_sources || {};
+                    
+                    if (recommendations.length === 0) {
+                        let message = '현재 추천 가능한 상품이 없습니다.';
+                        if (!dataSources.has_purchases && !dataSources.has_quotes && !dataSources.has_meetings) {
+                            message = '구매 이력, 견적 이력, 미팅 기록이 없어 상품을 추천할 수 없습니다. 고객과의 활동을 기록해주세요.';
+                        }
+                        container.innerHTML = `
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>${message}
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    const priorityColors = {
+                        'high': 'danger',
+                        'medium': 'warning',
+                        'low': 'info'
+                    };
+                    
+                    const priorityLabels = {
+                        'high': '높음',
+                        'medium': '보통',
+                        'low': '낮음'
+                    };
+                    
+                    // 분석 요약 표시
+                    let html = '';
+                    if (data.analysis_summary) {
+                        html += `
+                            <div class="alert alert-info mb-3">
+                                <h6 class="mb-2"><i class="fas fa-brain me-2"></i>AI 분석 요약</h6>
+                                <p class="mb-0 small">${data.analysis_summary}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    html += '<div class="row">';
+                    recommendations.forEach((rec, idx) => {
+                        const color = priorityColors[rec.priority] || 'secondary';
+                        const label = priorityLabels[rec.priority] || rec.priority;
+                        
+                        html += `
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100 shadow-sm border-${color}" style="border-width: 2px;">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <h6 class="card-title mb-0">
+                                                <i class="fas fa-box me-2 text-info"></i>${rec.product_name || '상품명'}
+                                            </h6>
+                                            <span class="badge bg-${color}">${label}</span>
+                                        </div>
+                                        ${rec.category ? `<p class="small text-muted mb-2"><i class="fas fa-tag me-1"></i>${rec.category}</p>` : ''}
+                                        ${rec.expected_timing ? `<p class="small mb-2"><i class="far fa-clock me-1 text-success"></i><strong>제안 시기:</strong> ${rec.expected_timing}</p>` : ''}
+                                        <p class="card-text small">${rec.reason || ''}</p>
+                                        ${rec.cross_sell_items && rec.cross_sell_items.length > 0 ? `
+                                            <div class="mt-2 pt-2 border-top">
+                                                <small class="text-muted d-block mb-1"><i class="fas fa-plus-circle me-1"></i>함께 추천:</small>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    ${rec.cross_sell_items.map(item => 
+                                                        `<span class="badge bg-light text-dark border">${item}</span>`
+                                                    ).join('')}
+                                                </div>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    
+                    // 데이터 소스 표시
+                    const sources = [];
+                    if (dataSources.has_purchases) sources.push(`구매 ${data.purchase_count}건`);
+                    if (dataSources.has_quotes) sources.push(`견적 ${data.quote_count}건`);
+                    if (dataSources.has_meetings) sources.push(`미팅 ${data.meeting_count}건`);
+                    
+                    html += `
+                        <div class="alert alert-light mt-3">
+                            <small class="text-muted">
+                                <i class="fas fa-database me-2"></i>
+                                <strong>분석 데이터:</strong> ${sources.join(', ')}
+                                ${!dataSources.has_purchases && dataSources.has_quotes ? 
+                                    ' | <span class="text-info">📝 견적 이력 기반 추천</span>' : ''}
+                                ${!dataSources.has_purchases && !dataSources.has_quotes && dataSources.has_meetings ? 
+                                    ' | <span class="text-warning">💬 미팅 내용 기반 추천</span>' : ''}
+                            </small>
+                        </div>
+                    `;
+                    
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>${data.error || '상품 추천 실패'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-lightbulb me-2"></i>추천 상품 보기';
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>요청 중 오류가 발생했습니다.
+                    </div>
+                `;
+            });
+        });
+    }
 });
 </script>
 {% endif %}

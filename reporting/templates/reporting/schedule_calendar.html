@@ -3447,6 +3447,67 @@
     }
   }
 
+  // AI 미팅 노트 요약
+  function summarizeMeetingNotes(scheduleId) {
+    const textarea = document.getElementById(`contentTextarea-${scheduleId}`);
+    if (!textarea) {
+      alert('텍스트 영역을 찾을 수 없습니다.');
+      return;
+    }
+    
+    const notes = textarea.value.trim();
+    
+    if (!notes) {
+      alert('요약할 내용을 먼저 입력해주세요.');
+      return;
+    }
+    
+    if (notes.length < 100) {
+      alert('노트가 너무 짧아 요약이 필요하지 않습니다. (최소 100자)');
+      return;
+    }
+    
+    if (!confirm('현재 작성한 내용을 AI로 요약하시겠습니까?\n\n원본 내용이 요약본으로 대체됩니다.')) {
+      return;
+    }
+    
+    // 로딩 표시
+    const originalValue = textarea.value;
+    textarea.value = '🤖 AI가 노트를 요약하고 있습니다...\n\n잠시만 기다려주세요.';
+    textarea.disabled = true;
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+    
+    fetch('/reporting/ai/summarize-meeting/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({
+        notes: originalValue
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      textarea.disabled = false;
+      
+      if (data.success) {
+        textarea.value = data.summary;
+        showSuccessMessage(`노트가 요약되었습니다 (${data.original_length}자 → ${data.summary_length}자)`);
+      } else {
+        textarea.value = originalValue;
+        alert('요약 실패: ' + (data.error || '알 수 없는 오류'));
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      textarea.disabled = false;
+      textarea.value = originalValue;
+      alert('요약 중 오류가 발생했습니다: ' + error.message);
+    });
+  }
+
   // 인라인 히스토리 폼 제출 - 전역 스코프로 이동
   function submitInlineHistory(event, scheduleId) {
     // 기본 폼 제출 동작을 완전히 차단
@@ -6180,7 +6241,15 @@
                             
                             <div class="col-12">
                               <label class="form-label">활동 내용</label>
-                              <textarea class="form-control" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
+                              {% if request.user.userprofile.can_use_ai %}
+                              <div class="d-flex gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="summarizeMeetingNotes(${schedule.id})">
+                                  <i class="fas fa-magic me-1"></i>AI 요약
+                                </button>
+                                <small class="text-muted align-self-center">긴 노트를 핵심 내용으로 요약합니다</small>
+                              </div>
+                              {% endif %}
+                              <textarea class="form-control" id="contentTextarea-${schedule.id}" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
                             </div>
                             
                             <!-- 견적용 필드들 -->

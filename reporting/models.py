@@ -171,6 +171,26 @@ class FollowUp(models.Model):
         help_text="마지막으로 AI 등급이 계산된 시점"
     )
     
+    # AI 등급 상세 정보 (새로운 AI 시스템용)
+    ai_grade_score = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="AI 등급 점수",
+        help_text="GPT 기반 등급 점수 (0-100)"
+    )
+    ai_grade_reasoning = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="AI 등급 평가 근거",
+        help_text="GPT가 생성한 등급 평가 근거"
+    )
+    ai_grade_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="AI 등급 갱신일",
+        help_text="GPT 기반 등급이 마지막으로 업데이트된 시점"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
