@@ -52,6 +52,7 @@ def get_openai_client():
 # 모델 선택 상수 (환경 변수에서 로드)
 MODEL_MINI = settings.OPENAI_MODEL_MINI  # 빠르고 저렴, 일반 용도
 MODEL_STANDARD = settings.OPENAI_MODEL_STANDARD  # 고품질, 전문 문서
+MODEL_PREMIUM = settings.OPENAI_MODEL_PREMIUM  # 최고 품질, AI 미팅 준비
 
 # 톤 설정
 TONE_PROMPTS = {
@@ -1622,7 +1623,7 @@ Markdown 형식으로 간결하고 명확하게 작성하세요."""
 
     try:
         response = get_openai_client().chat.completions.create(
-            model=MODEL_STANDARD,  # 고품질 조언이 필요하므로 표준 모델 사용
+            model=MODEL_PREMIUM,  # AI 미팅 준비는 프리미엄 모델 사용 (환경 변수로 설정 가능)
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1632,7 +1633,7 @@ Markdown 형식으로 간결하고 명확하게 작성하세요."""
         )
         
         advice = response.choices[0].message.content
-        logger.info(f"Meeting advice generated for customer {customer_info.get('name')} using {MODEL_STANDARD}")
+        logger.info(f"Meeting advice generated for customer {customer_info.get('name')} using {MODEL_PREMIUM}")
         return advice
     
     except Exception as e:
