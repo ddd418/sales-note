@@ -368,6 +368,72 @@
         <i class="fas fa-chart-line"></i> 영업 시스템
       </h1>
     </div>
+    
+    <!-- 관리자 필터링 영역 -->
+    {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'admin' %}
+    <div style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.1);">
+      <div class="mb-2">
+        <label class="form-label text-white-50 small mb-1">
+          <i class="fas fa-filter me-1"></i>관리자 필터
+        </label>
+      </div>
+      
+      <!-- 회사 선택 -->
+      <div class="mb-2">
+        <select id="adminCompanyFilter" class="form-select form-select-sm" style="background-color: rgba(255, 255, 255, 0.9); border: none;">
+          <option value="">전체 회사</option>
+          {% load reporting_extras %}
+          {% get_all_companies as all_companies %}
+          {% for company in all_companies %}
+          <option value="{{ company.id }}" {% if request.admin_filter_company and request.admin_filter_company.id == company.id %}selected{% endif %}>
+            {{ company.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- 사용자 선택 (회사 선택 시에만 활성화) -->
+      <div class="mb-2">
+        <select id="adminUserFilter" class="form-select form-select-sm" style="background-color: rgba(255, 255, 255, 0.9); border: none;" {% if not request.admin_filter_company %}disabled{% endif %}>
+          <option value="">전체 사용자</option>
+          {% if request.admin_filter_company %}
+            {% get_users_by_company request.admin_filter_company.id as company_users %}
+            {% for user in company_users %}
+            <option value="{{ user.id }}" {% if request.admin_filter_user and request.admin_filter_user.id == user.id %}selected{% endif %}>
+              {{ user.get_full_name|default:user.username }}
+            </option>
+            {% endfor %}
+          {% endif %}
+        </select>
+      </div>
+      
+      <!-- 필터 적용 및 초기화 버튼 -->
+      <div class="d-grid gap-1">
+        <button type="button" id="applyAdminFilter" class="btn btn-sm btn-primary">
+          <i class="fas fa-check me-1"></i>필터 적용
+        </button>
+        <button type="button" id="resetAdminFilter" class="btn btn-sm btn-outline-light">
+          <i class="fas fa-redo me-1"></i>필터 초기화
+        </button>
+      </div>
+      
+      <!-- 현재 보기 정보 -->
+      <div class="mt-2 pt-2" style="border-top: 1px solid rgba(255, 255, 255, 0.1);">
+        <small class="text-white-50 d-block">
+          <i class="fas fa-eye me-1"></i>현재 보기:
+        </small>
+        <small class="text-white fw-bold d-block mt-1">
+          {% if request.admin_filter_user %}
+            {{ request.admin_filter_user.get_full_name|default:request.admin_filter_user.username }}
+          {% elif request.admin_filter_company %}
+            {{ request.admin_filter_company.name }} (전체)
+          {% else %}
+            전체 데이터
+          {% endif %}
+        </small>
+      </div>
+    </div>
+    {% endif %}
 
     <nav class="sidebar-nav" style="padding: 1.5rem 0;">
       <ul class="nav flex-column" style="list-style: none; margin: 0; padding: 0;">
@@ -409,8 +475,8 @@
         </li>
         {% endif %}
         {% endif %}
-        <!-- Salesman & Manager 공통 메뉴 -->
-        {% if user.is_authenticated and user.userprofile and user.userprofile.role in 'salesman,manager' %}
+        <!-- Admin, Salesman & Manager 공통 메뉴 -->
+        {% if user.is_authenticated and user.userprofile and user.userprofile.role in 'admin,salesman,manager' %}
         <li class="nav-item">
           <a href="{% url 'reporting:followup_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}">
             <i class="fas fa-user-check"></i>
@@ -644,6 +710,42 @@
           }
         }, 250);
       });
+      
+      // ========== 관리자 필터 이벤트 리스너 ==========
+      const adminCompanyFilter = document.getElementById('adminCompanyFilter');
+      const adminUserFilter = document.getElementById('adminUserFilter');
+      const applyAdminFilter = document.getElementById('applyAdminFilter');
+      const resetAdminFilter = document.getElementById('resetAdminFilter');
+      
+      if (adminCompanyFilter) {
+        adminCompanyFilter.addEventListener('change', function() {
+          const companyId = this.value;
+          
+          // 회사 선택 시 사용자 필터 활성화 및 사용자 목록 로드
+          if (companyId) {
+            adminUserFilter.disabled = false;
+            loadCompanyUsers(companyId);
+          } else {
+            adminUserFilter.disabled = true;
+            adminUserFilter.innerHTML = '<option value="">전체 사용자</option>';
+          }
+          // 즉시 저장하지 않음 - 적용 버튼 클릭 시 저장
+        });
+      }
+      
+      if (applyAdminFilter) {
+        applyAdminFilter.addEventListener('click', function() {
+          const companyId = adminCompanyFilter.value;
+          const userId = adminUserFilter.value;
+          saveAdminFilter(companyId, userId);
+        });
+      }
+      
+      if (resetAdminFilter) {
+        resetAdminFilter.addEventListener('click', function() {
+          saveAdminFilter('', '');
+        });
+      }
 
       // 6️⃣ 전역 터치 스와이프로 사이드바 열기/닫기 (단순 버전)
       let touchStartX = null;
@@ -690,6 +792,53 @@
         touchCurrentX = null;
       });
     });
+    
+    // ========== 관리자 필터 전역 함수 ==========
+    // 관리자 필터 저장 함수
+    function saveAdminFilter(companyId, userId) {
+      fetch('/reporting/set-admin-filter/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          company_id: companyId,
+          user_id: userId
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // 페이지 리로드하여 필터 적용
+          window.location.reload();
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('필터 설정 중 오류가 발생했습니다.');
+      });
+    }
+    
+    // 회사의 사용자 목록 로드 함수
+    function loadCompanyUsers(companyId) {
+      fetch(`/reporting/get-company-users/${companyId}/`)
+        .then(response => response.json())
+        .then(data => {
+          const adminUserFilter = document.getElementById('adminUserFilter');
+          adminUserFilter.innerHTML = '<option value="">전체 사용자</option>';
+          
+          data.users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.id;
+            option.textContent = user.name;
+            adminUserFilter.appendChild(option);
+          });
+        })
+        .catch(error => {
+          console.error('Error:', error);
+        });
+    }
   </script>
 
   {% block extra_js %}{% endblock %}

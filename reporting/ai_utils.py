@@ -80,6 +80,9 @@ TONE_PROMPTS = {
 def check_ai_permission(user) -> bool:
     """사용자의 AI 기능 사용 권한 확인"""
     try:
+        # 관리자는 AI 기능 사용 불가
+        if hasattr(user, 'userprofile') and user.userprofile.role == 'admin':
+            return False
         return user.userprofile.can_use_ai
     except AttributeError:
         return False

@@ -244,4 +244,10 @@ urlpatterns = [
     path('ai/search/', ai_views.ai_natural_language_search, name='ai_natural_language_search'),
     path('ai/refresh-all-grades/', ai_views.ai_refresh_all_grades, name='ai_refresh_all_grades'),
     path('ai/check-grade-update-status/<str:task_id>/', ai_views.ai_check_grade_update_status, name='ai_check_grade_update_status'),
+    
+    # 관리자 필터 API
+    path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),
+    path('get-company-users/<int:company_id>/', views.get_company_users, name='get_company_users'),
+    path('toggle-ai-permission/', views.toggle_ai_permission, name='toggle_ai_permission'),
 ]
+

@@ -8,6 +8,28 @@ from django.contrib import messages
 from django.urls import reverse
 from django.shortcuts import redirect
 
+def get_filtered_user(request):
+    """
+    관리자가 필터링한 사용자 또는 현재 로그인 사용자 반환
+    
+    Returns:
+        User: 관리자가 선택한 사용자 또는 현재 로그인 사용자
+    """
+    if request.is_admin and hasattr(request, 'admin_filter_user') and request.admin_filter_user:
+        return request.admin_filter_user
+    return request.user
+
+def get_filtered_company(request):
+    """
+    관리자가 필터링한 회사 또는 현재 사용자의 회사 반환
+    
+    Returns:
+        UserCompany or None: 관리자가 선택한 회사 또는 현재 사용자의 회사
+    """
+    if request.is_admin and hasattr(request, 'admin_filter_company') and request.admin_filter_company:
+        return request.admin_filter_company
+    return getattr(request, 'user_company', None)
+
 def hanagwahak_only(view_func):
     """
     하나과학 회사 사용자만 접근할 수 있는 데코레이터

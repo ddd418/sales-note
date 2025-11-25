@@ -233,13 +233,34 @@ def can_modify_user_data(request_user, target_user):
     # Salesman은 자신의 데이터만 수정 가능
     return request_user == target_user
 
-def get_accessible_users(request_user):
-    """현재 사용자가 접근할 수 있는 사용자 목록을 반환"""
+def get_accessible_users(request_user, request=None):
+    """
+    현재 사용자가 접근할 수 있는 사용자 목록을 반환
+    
+    Args:
+        request_user: 현재 로그인한 사용자
+        request: HTTP request 객체 (관리자 필터 확인용)
+        
+    Returns:
+        QuerySet: 접근 가능한 사용자 목록
+    """
     user_profile = get_user_profile(request_user)
     
     if user_profile.is_admin():
-        # Admin은 모든 사용자에 접근 가능
-        return User.objects.all()
+        # 관리자: 필터링 적용
+        if request and hasattr(request, 'admin_filter_user') and request.admin_filter_user:
+            # 특정 사용자 선택됨
+            return User.objects.filter(id=request.admin_filter_user.id)
+        elif request and hasattr(request, 'admin_filter_company') and request.admin_filter_company:
+            # 특정 회사 선택됨 - 해당 회사의 모든 실무자
+            return User.objects.filter(
+                userprofile__company=request.admin_filter_company,
+                userprofile__role__in=['salesman', 'manager']
+            )
+        else:
+            # 전체 접근
+            return User.objects.all()
+            
     elif user_profile.company:
         # Manager와 Salesman 모두 같은 회사의 모든 사용자에 접근 가능
         user_company = user_profile.company
@@ -589,7 +610,7 @@ def followup_list_view(request):
     # 권한에 따른 데이터 필터링
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 모든 또는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         
         # 매니저가 특정 실무자를 선택한 경우
         if user_filter and not view_all:
@@ -698,7 +719,7 @@ def followup_list_view(request):
     ]
     
     # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
-    accessible_users = get_accessible_users(request.user)
+    accessible_users = get_accessible_users(request.user, request)
     companies = Company.objects.filter(
         Q(followup_companies__user__in=accessible_users) |
         Q(departments__followup_departments__user__in=accessible_users)
@@ -1048,7 +1069,7 @@ def dashboard_view(request):
     # 매니저용 팀원 목록
     salesman_users = []
     if user_profile.can_view_all_users():
-        salesman_users = get_accessible_users(request.user)
+        salesman_users = get_accessible_users(request.user, request)
     
     # 현재 연도와 월 가져오기
     now = timezone.now()
@@ -1057,21 +1078,53 @@ def dashboard_view(request):
     
     # 권한에 따른 데이터 필터링
     if user_profile.is_admin() and not selected_user:
-        # Admin은 모든 데이터 접근 가능
-        followup_count = FollowUp.objects.count()
-        schedule_count = Schedule.objects.filter(status='scheduled').count()
-        # 영업 기록 (미팅, 납품만 카운팅 - 서비스 제외)
-        sales_record_count = History.objects.filter(
-            created_at__year=current_year, 
-            action_type__in=['customer_meeting', 'delivery_schedule']
-        ).count()
-        histories = History.objects.all()
-        histories_current_year = History.objects.filter(created_at__year=current_year)
-        schedules = Schedule.objects.all()
-        followups = FollowUp.objects.all()
+        # Admin은 필터링된 데이터 접근
+        if hasattr(request, 'admin_filter_user') and request.admin_filter_user:
+            # 특정 사용자 선택됨
+            accessible_users = User.objects.filter(id=request.admin_filter_user.id)
+            followup_count = FollowUp.objects.filter(user__in=accessible_users).count()
+            schedule_count = Schedule.objects.filter(user__in=accessible_users, status='scheduled').count()
+            sales_record_count = History.objects.filter(
+                user__in=accessible_users,
+                created_at__year=current_year, 
+                action_type__in=['customer_meeting', 'delivery_schedule']
+            ).count()
+            histories = History.objects.filter(user__in=accessible_users)
+            histories_current_year = History.objects.filter(user__in=accessible_users, created_at__year=current_year)
+            schedules = Schedule.objects.filter(user__in=accessible_users)
+            followups = FollowUp.objects.filter(user__in=accessible_users)
+        elif hasattr(request, 'admin_filter_company') and request.admin_filter_company:
+            # 특정 회사 선택됨
+            accessible_users = User.objects.filter(
+                userprofile__company=request.admin_filter_company,
+                userprofile__role__in=['salesman', 'manager']
+            )
+            followup_count = FollowUp.objects.filter(user__in=accessible_users).count()
+            schedule_count = Schedule.objects.filter(user__in=accessible_users, status='scheduled').count()
+            sales_record_count = History.objects.filter(
+                user__in=accessible_users,
+                created_at__year=current_year, 
+                action_type__in=['customer_meeting', 'delivery_schedule']
+            ).count()
+            histories = History.objects.filter(user__in=accessible_users)
+            histories_current_year = History.objects.filter(user__in=accessible_users, created_at__year=current_year)
+            schedules = Schedule.objects.filter(user__in=accessible_users)
+            followups = FollowUp.objects.filter(user__in=accessible_users)
+        else:
+            # 전체 데이터
+            followup_count = FollowUp.objects.count()
+            schedule_count = Schedule.objects.filter(status='scheduled').count()
+            sales_record_count = History.objects.filter(
+                created_at__year=current_year, 
+                action_type__in=['customer_meeting', 'delivery_schedule']
+            ).count()
+            histories = History.objects.all()
+            histories_current_year = History.objects.filter(created_at__year=current_year)
+            schedules = Schedule.objects.all()
+            followups = FollowUp.objects.all()
     elif user_profile.can_view_all_users() and target_user is None:
         # Manager가 전체 팀원을 선택한 경우 - 접근 가능한 모든 사용자의 데이터
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         followup_count = FollowUp.objects.filter(user__in=accessible_users).count()
         schedule_count = Schedule.objects.filter(user__in=accessible_users, status='scheduled').count()
         sales_record_count = History.objects.filter(
@@ -1100,19 +1153,47 @@ def dashboard_view(request):
 
     # 올해 매출 통계 (Schedule의 DeliveryItem 기준, 취소된 일정 제외)
     if user_profile.is_admin() and not selected_user:
-        # Admin은 모든 사용자 데이터
-        schedule_delivery_stats = DeliveryItem.objects.filter(
-            schedule__visit_date__year=current_year,
-            schedule__activity_type='delivery'
-        ).exclude(
-            schedule__status='cancelled'
-        ).aggregate(
-            total_amount=Sum('total_price'),
-            delivery_count=Count('schedule', distinct=True)
-        )
+        # Admin은 필터링된 데이터
+        if hasattr(request, 'admin_filter_user') and request.admin_filter_user:
+            accessible_users = User.objects.filter(id=request.admin_filter_user.id)
+            schedule_delivery_stats = DeliveryItem.objects.filter(
+                schedule__user__in=accessible_users,
+                schedule__visit_date__year=current_year,
+                schedule__activity_type='delivery'
+            ).exclude(
+                schedule__status='cancelled'
+            ).aggregate(
+                total_amount=Sum('total_price'),
+                delivery_count=Count('schedule', distinct=True)
+            )
+        elif hasattr(request, 'admin_filter_company') and request.admin_filter_company:
+            accessible_users = User.objects.filter(
+                userprofile__company=request.admin_filter_company,
+                userprofile__role__in=['salesman', 'manager']
+            )
+            schedule_delivery_stats = DeliveryItem.objects.filter(
+                schedule__user__in=accessible_users,
+                schedule__visit_date__year=current_year,
+                schedule__activity_type='delivery'
+            ).exclude(
+                schedule__status='cancelled'
+            ).aggregate(
+                total_amount=Sum('total_price'),
+                delivery_count=Count('schedule', distinct=True)
+            )
+        else:
+            schedule_delivery_stats = DeliveryItem.objects.filter(
+                schedule__visit_date__year=current_year,
+                schedule__activity_type='delivery'
+            ).exclude(
+                schedule__status='cancelled'
+            ).aggregate(
+                total_amount=Sum('total_price'),
+                delivery_count=Count('schedule', distinct=True)
+            )
     elif user_profile.can_view_all_users() and target_user is None:
         # Manager가 전체 팀원을 선택한 경우 - 접근 가능한 모든 사용자의 데이터
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         schedule_delivery_stats = DeliveryItem.objects.filter(
             schedule__user__in=accessible_users,
             schedule__visit_date__year=current_year,
@@ -1247,7 +1328,7 @@ def dashboard_view(request):
     # accessible_users_list 계산
     accessible_users_list = None
     if user_profile.can_view_all_users() and target_user is None:
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
     
     # 평균 리드 타임 분석
     lead_time_analysis = analytics.get_average_lead_time(user=target_user, accessible_users=accessible_users_list)
@@ -1327,7 +1408,7 @@ def dashboard_view(request):
         ).count()
     elif user_profile.can_view_all_users() and target_user is None:
         # Manager가 전체 팀원을 선택한 경우
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         monthly_prepayment_count = Prepayment.objects.filter(
             created_by__in=accessible_users,
             payment_date__year=current_year,
@@ -1800,7 +1881,7 @@ def schedule_list_view(request):
     # 권한에 따른 데이터 필터링
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         
         # 매니저가 특정 실무자를 선택한 경우
         if user_filter and not view_all:
@@ -3212,7 +3293,7 @@ def schedule_api_view(request):
         # 권한에 따른 데이터 필터링 (최적화: select_related, prefetch_related 추가)
         if user_profile.can_view_all_users():
             # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             
             # 매니저가 특정 실무자를 선택한 경우
             if user_filter and not view_all:
@@ -3338,7 +3419,7 @@ def schedule_api_view(request):
         # ====== PersonalSchedule 데이터 추가 ======
         # 권한에 따른 개인 일정 필터링
         if user_profile.can_view_all_users():
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             if user_filter and not view_all:
                 try:
                     selected_user = accessible_users.get(id=user_filter)
@@ -3417,7 +3498,7 @@ def history_list_view(request):
     # 권한에 따른 데이터 필터링 (매니저 메모 제외)
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         
         # 매니저가 특정 실무자를 선택한 경우
         if user_filter and not view_all:
@@ -3538,7 +3619,7 @@ def history_list_view(request):
     
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 접근 가능한 사용자 목록
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         users = accessible_users.filter(history__isnull=False).distinct()
         
         # 선택된 사용자 정보 - 권한 체크 추가
@@ -5245,7 +5326,7 @@ def salesman_detail(request, user_id):
             return redirect('reporting:manager_dashboard')
         
         # 접근 권한 확인
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         
         # 해당 사용자가 존재하고 접근 가능한지 확인
         try:
@@ -6146,7 +6227,7 @@ def followup_autocomplete(request):
     is_admin = getattr(request, 'is_admin', False)
     
     if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         followups = FollowUp.objects.filter(user__in=accessible_users)
     else:
         followups = FollowUp.objects.filter(user=request.user)
@@ -6285,13 +6366,22 @@ def department_create_api(request):
 def company_list_view(request):
     """업체/학교 목록 (Admin, Salesman 전용)"""
     
-    # Admin 사용자는 모든 업체를 볼 수 있음
+    # Admin 사용자는 필터링된 업체를 볼 수 있음
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
-        # Admin은 모든 업체 조회 가능
-        companies = Company.objects.all().annotate(
-            department_count=Count('departments', distinct=True),
-            followup_count=Count('followup_companies', distinct=True)
-        ).order_by('name')
+        # Admin은 필터링된 사용자의 업체 조회
+        accessible_users = get_accessible_users(request.user, request)
+        if accessible_users.count() == User.objects.count():
+            # 전체 사용자면 모든 업체
+            companies = Company.objects.all().annotate(
+                department_count=Count('departments', distinct=True),
+                followup_count=Count('followup_companies', distinct=True)
+            ).order_by('name')
+        else:
+            # 필터링된 사용자의 업체만
+            companies = Company.objects.filter(created_by__in=accessible_users).annotate(
+                department_count=Count('departments', distinct=True),
+                followup_count=Count('followup_companies', distinct=True)
+            ).order_by('name')
     else:
         # 일반 사용자: 같은 회사 소속 사용자들이 생성한 업체만 조회
         user_company = getattr(request.user, 'userprofile', None)
@@ -7232,7 +7322,7 @@ def followup_excel_download(request):
     
     # 권한에 따른 데이터 필터링 (기존 로직과 동일)
     if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         followups = FollowUp.objects.filter(user__in=accessible_users).select_related(
             'user', 'company', 'department'
         ).prefetch_related('schedules', 'histories')
@@ -7571,7 +7661,7 @@ def followup_basic_excel_download(request):
     
     # 권한에 따른 데이터 필터링 (기존 로직과 동일)
     if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         followups = FollowUp.objects.filter(user__in=accessible_users).select_related(
             'user', 'company', 'department'
         )
@@ -7709,7 +7799,7 @@ def customer_report_view(request):
     user_filter = None  # 초기화
     
     if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         # 전체 팀원 선택 시 세션 초기화
         if view_all:
             if 'selected_user_id' in request.session:
@@ -7745,7 +7835,7 @@ def customer_report_view(request):
     
     # Manager용 팀원 목록
     if user_profile.can_view_all_users():
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
         if not getattr(request, 'is_hanagwahak', False):
             user_profile_obj = getattr(request.user, 'userprofile', None)
             if user_profile_obj and user_profile_obj.company:
@@ -9757,7 +9847,7 @@ def funnel_dashboard_view(request):
                 request.session['selected_user_id'] = str(user_filter)
                 # 특정 실무자 선택
                 try:
-                    accessible_users = get_accessible_users(request.user)
+                    accessible_users = get_accessible_users(request.user, request)
                     selected_user = accessible_users.get(id=user_filter)
                     filter_user = selected_user
                 except (User.DoesNotExist, ValueError):
@@ -9771,7 +9861,7 @@ def funnel_dashboard_view(request):
     # accessible_users 계산 (매니저가 전체 팀원 선택 시 사용)
     accessible_users_list = None
     if user_profile.can_view_all_users() and filter_user is None:
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
     
     # 파이프라인 요약
     pipeline_summary = analytics.get_pipeline_summary(user=filter_user, accessible_users=accessible_users_list)
@@ -9845,7 +9935,7 @@ def funnel_dashboard_view(request):
     }
     
     # 사용자 목록 (Admin/Manager용)
-    accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
+    accessible_users = get_accessible_users(request.user, request) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
     
     context = {
@@ -9903,7 +9993,7 @@ def funnel_pipeline_view(request):
         elif selected_user_id:
             # 특정 실무자 선택
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=selected_user_id)
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -9911,7 +10001,7 @@ def funnel_pipeline_view(request):
         elif request.GET.get('user'):
             # 기존 호환성
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=request.GET.get('user'))
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -9923,7 +10013,7 @@ def funnel_pipeline_view(request):
     # accessible_users 계산
     accessible_users_list = None
     if user_profile.can_view_all_users() and filter_user is None:
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
     
     # 단계 목록
     stages = FunnelStage.objects.all().order_by('stage_order')
@@ -9963,7 +10053,7 @@ def funnel_pipeline_view(request):
         })
     
     # 사용자 목록 (Admin/Manager용)
-    accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
+    accessible_users = get_accessible_users(request.user, request) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
     
     context = {
@@ -10001,7 +10091,7 @@ def funnel_analytics_view(request):
         elif selected_user_id:
             # 특정 실무자 선택
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=selected_user_id)
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -10009,7 +10099,7 @@ def funnel_analytics_view(request):
         elif request.GET.get('user'):
             # 기존 호환성
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=request.GET.get('user'))
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -10021,7 +10111,7 @@ def funnel_analytics_view(request):
     # accessible_users 계산
     accessible_users_list = None
     if user_profile.can_view_all_users() and filter_user is None:
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
     
     # 전환율 분석
     conversion_rates = analytics.get_conversion_rates(user=filter_user, accessible_users=accessible_users_list)
@@ -10044,7 +10134,7 @@ def funnel_analytics_view(request):
     }
     
     # 사용자 목록 (Admin/Manager용)
-    accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
+    accessible_users = get_accessible_users(request.user, request) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
     
     context = {
@@ -10085,7 +10175,7 @@ def funnel_forecast_view(request):
         elif selected_user_id:
             # 특정 실무자 선택
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=selected_user_id)
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -10093,7 +10183,7 @@ def funnel_forecast_view(request):
         elif request.GET.get('user'):
             # 기존 호환성
             try:
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 selected_user = accessible_users.get(id=request.GET.get('user'))
                 filter_user = selected_user
             except User.DoesNotExist:
@@ -10105,7 +10195,7 @@ def funnel_forecast_view(request):
     # accessible_users 계산
     accessible_users_list = None
     if user_profile.can_view_all_users() and filter_user is None:
-        accessible_users_list = get_accessible_users(request.user)
+        accessible_users_list = get_accessible_users(request.user, request)
     
     # 월별 예측 (6개월)
     monthly_forecast = analytics.get_monthly_forecast(months=6, user=filter_user, accessible_users=accessible_users_list)
@@ -10129,7 +10219,7 @@ def funnel_forecast_view(request):
     }
     
     # 사용자 목록 (Admin/Manager용)
-    accessible_users = get_accessible_users(request.user) if user_profile.can_view_all_users() else []
+    accessible_users = get_accessible_users(request.user, request) if user_profile.can_view_all_users() else []
     salesman_users = accessible_users.filter(userprofile__role='salesman') if user_profile.can_view_all_users() else []
     
     context = {
@@ -10526,7 +10616,7 @@ def prepayment_list_view(request):
             if 'selected_user_id' in request.session:
                 del request.session['selected_user_id']
             # 접근 가능한 모든 사용자의 선결제 조회
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             base_queryset = base_queryset.filter(created_by__in=accessible_users)
         else:
             user_filter = request.GET.get('user')
@@ -10536,7 +10626,7 @@ def prepayment_list_view(request):
             
             if user_filter:
                 try:
-                    accessible_users = get_accessible_users(request.user)
+                    accessible_users = get_accessible_users(request.user, request)
                     selected_user = accessible_users.get(id=user_filter)
                     # 세션에 저장
                     request.session['selected_user_id'] = str(user_filter)
@@ -10547,11 +10637,11 @@ def prepayment_list_view(request):
                     if 'selected_user_id' in request.session:
                         del request.session['selected_user_id']
                     # 접근 가능한 모든 사용자의 선결제 조회
-                    accessible_users = get_accessible_users(request.user)
+                    accessible_users = get_accessible_users(request.user, request)
                     base_queryset = base_queryset.filter(created_by__in=accessible_users)
             else:
                 # 접근 가능한 모든 사용자의 선결제 조회
-                accessible_users = get_accessible_users(request.user)
+                accessible_users = get_accessible_users(request.user, request)
                 base_queryset = base_queryset.filter(created_by__in=accessible_users)
     elif user_profile.role == 'admin':
         # Admin은 모든 선결제 조회 가능
@@ -10782,7 +10872,7 @@ def prepayment_edit_view(request, pk):
     # 고객 목록 필터링 (회사별)
     user_profile = get_user_profile(request.user)
     if user_profile and user_profile.company:
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         form.fields['customer'].queryset = FollowUp.objects.filter(user__in=accessible_users)
     
     context = {
@@ -10879,7 +10969,7 @@ def prepayment_customer_view(request, customer_id):
         user_filter = request.session.get('selected_user_id')
         if user_filter:
             from django.contrib.auth.models import User
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             try:
                 target_user = accessible_users.get(id=user_filter)
             except User.DoesNotExist:
@@ -10960,7 +11050,7 @@ def prepayment_customer_excel(request, customer_id):
         user_filter = request.session.get('selected_user_id')
         if user_filter:
             from django.contrib.auth.models import User
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             try:
                 target_user = accessible_users.get(id=user_filter)
             except User.DoesNotExist:
@@ -11487,10 +11577,19 @@ def product_list(request):
     
     # 회사별 필터링
     if user_profile.is_admin():
-        products = Product.objects.all()
+        # 관리자는 필터링된 사용자의 제품만
+        accessible_users = get_accessible_users(request.user, request)
+        if accessible_users.count() == User.objects.count():
+            # 전체 사용자면 모두 표시
+            products = Product.objects.all()
+        else:
+            # 필터링된 사용자의 제품만
+            products = Product.objects.filter(
+                Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
+            )
     elif user_profile.company:
         # 같은 회사의 사용자가 생성한 제품만
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         products = Product.objects.filter(
             Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
         )
@@ -11831,7 +11930,7 @@ def product_edit(request, product_id):
     if not user_profile.is_admin():
         if product.created_by:
             # 제품 생성자가 있는 경우
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             if product.created_by not in accessible_users:
                 messages.error(request, '이 제품을 수정할 권한이 없습니다.')
                 return redirect('reporting:product_list')
@@ -11887,7 +11986,7 @@ def product_delete(request, product_id):
     if not user_profile.is_admin():
         if product.created_by:
             # 제품 생성자가 있는 경우
-            accessible_users = get_accessible_users(request.user)
+            accessible_users = get_accessible_users(request.user, request)
             if product.created_by not in accessible_users:
                 messages.error(request, '이 제품을 삭제할 권한이 없습니다.')
                 return redirect('reporting:product_list')
@@ -11916,7 +12015,7 @@ def product_api_list(request):
         products = Product.objects.filter(is_active=True)
     elif user_profile.company:
         # 같은 회사의 사용자가 생성한 제품만
-        accessible_users = get_accessible_users(request.user)
+        accessible_users = get_accessible_users(request.user, request)
         products = Product.objects.filter(
             is_active=True
         ).filter(
@@ -12614,3 +12713,121 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# ==================== 관리자 필터 API ====================
+
+@login_required
+@require_POST
+def set_admin_filter(request):
+    """
+    관리자 필터 설정 (회사/사용자 선택)
+    
+    POST /reporting/set-admin-filter/
+    Body: {
+        "company_id": "1",
+        "user_id": "2"
+    }
+    """
+    # 관리자만 접근 가능
+    if not request.is_admin:
+        return JsonResponse({'success': False, 'error': '관리자만 접근 가능합니다.'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        company_id = data.get('company_id', '')
+        user_id = data.get('user_id', '')
+        
+        # 세션에 저장
+        if company_id:
+            request.session['admin_selected_company'] = int(company_id)
+        else:
+            request.session.pop('admin_selected_company', None)
+        
+        if user_id:
+            request.session['admin_selected_user'] = int(user_id)
+        else:
+            request.session.pop('admin_selected_user', None)
+        
+        request.session.modified = True
+        
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        logger.error(f"관리자 필터 설정 오류: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def get_company_users(request, company_id):
+    """
+    특정 회사의 사용자 목록 반환 (관리자용)
+    
+    GET /reporting/get-company-users/<company_id>/
+    """
+    # 관리자만 접근 가능
+    if not request.is_admin:
+        return JsonResponse({'success': False, 'error': '관리자만 접근 가능합니다.'}, status=403)
+    
+    try:
+        users = User.objects.filter(
+            userprofile__company_id=company_id
+        ).select_related('userprofile')
+        
+        user_list = [{
+            'id': user.id,
+            'name': user.get_full_name() or user.username,
+            'username': user.username,
+            'role': user.userprofile.get_role_display() if hasattr(user, 'userprofile') else ''
+        } for user in users]
+        
+        return JsonResponse({'success': True, 'users': user_list})
+        
+    except Exception as e:
+        logger.error(f"사용자 목록 조회 오류: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def toggle_ai_permission(request):
+    """
+    사용자 AI 권한 토글 (관리자만)
+    
+    POST /reporting/toggle-ai-permission/
+    Body: {
+        "user_id": "1",
+        "enabled": true
+    }
+    """
+    # 관리자만 접근 가능
+    if not request.is_admin:
+        return JsonResponse({'success': False, 'error': '관리자만 접근 가능합니다.'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id')
+        enabled = data.get('enabled', False)
+        
+        target_user = User.objects.get(id=user_id)
+        
+        # 관리자 계정은 AI 권한 변경 불가
+        if hasattr(target_user, 'userprofile') and target_user.userprofile.role == 'admin':
+            return JsonResponse({'success': False, 'error': '관리자 계정은 AI 권한을 변경할 수 없습니다.'}, status=400)
+        
+        if hasattr(target_user, 'userprofile'):
+            target_user.userprofile.can_use_ai = enabled
+            target_user.userprofile.save(update_fields=['can_use_ai'])
+            
+            return JsonResponse({
+                'success': True,
+                'message': f"AI 권한이 {'활성화' if enabled else '비활성화'}되었습니다."
+            })
+        else:
+            return JsonResponse({'success': False, 'error': 'UserProfile이 없습니다.'}, status=400)
+        
+    except User.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '사용자를 찾을 수 없습니다.'}, status=404)
+    except Exception as e:
+        logger.error(f"AI 권한 토글 오류: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

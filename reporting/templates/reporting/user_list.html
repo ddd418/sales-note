@@ -80,6 +80,7 @@
                         <th>이름</th>
                         <th>권한</th>
                         <th>엑셀 다운로드</th>
+                        <th>AI 기능</th>
                         <th>상태</th>
                         <th>작업</th>
                       </tr>
@@ -132,6 +133,34 @@
                               <span class="badge bg-secondary">
                                 <i class="fas fa-times me-1"></i>제한
                               </span>
+                            {% endif %}
+                          {% else %}
+                            <span class="badge bg-secondary">-</span>
+                          {% endif %}
+                        </td>
+                        <!-- AI 기능 권한 -->
+                        <td>
+                          {% if user.userprofile %}
+                            {% if user.userprofile.role == 'admin' %}
+                              <!-- 관리자는 AI 기능 사용 불가 -->
+                              <span class="badge bg-secondary">
+                                <i class="fas fa-lock me-1"></i>사용 불가
+                              </span>
+                            {% else %}
+                              <div class="form-check form-switch">
+                                <input class="form-check-input ai-permission-toggle" 
+                                       type="checkbox" 
+                                       role="switch" 
+                                       data-user-id="{{ user.id }}"
+                                       {% if user.userprofile.can_use_ai %}checked{% endif %}>
+                                <label class="form-check-label small">
+                                  {% if user.userprofile.can_use_ai %}
+                                    <span class="text-success"><i class="fas fa-brain me-1"></i>활성</span>
+                                  {% else %}
+                                    <span class="text-muted">비활성</span>
+                                  {% endif %}
+                                </label>
+                              </div>
                             {% endif %}
                           {% else %}
                             <span class="badge bg-secondary">-</span>
@@ -344,5 +373,58 @@ function confirmAction(message) {
     // 기존 확인 액션
   }
 }
+
+// AI 권한 토글
+document.addEventListener('DOMContentLoaded', function() {
+  const aiToggles = document.querySelectorAll('.ai-permission-toggle');
+  
+  aiToggles.forEach(toggle => {
+    toggle.addEventListener('change', function() {
+      const userId = this.dataset.userId;
+      const enabled = this.checked;
+      
+      // 로딩 상태
+      this.disabled = true;
+      
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                        document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      
+      fetch('/reporting/toggle-ai-permission/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          enabled: enabled
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // AI 권한 변경 시 템플릿이 다르므로 페이지 새로고침
+          if (typeof showToast !== 'undefined') {
+            showToast('AI 권한이 업데이트되었습니다. 페이지를 새로고침합니다.', 'success');
+          }
+          setTimeout(() => {
+            location.reload();
+          }, 500);
+        } else {
+          // 실패 시 원래대로
+          this.disabled = false;
+          this.checked = !enabled;
+          alert(data.error || 'AI 권한 업데이트 실패');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        this.disabled = false;
+        this.checked = !enabled;
+        alert('AI 권한 업데이트 중 오류가 발생했습니다.');
+      });
+    });
+  });
+});
 </script>
 {% endblock %}

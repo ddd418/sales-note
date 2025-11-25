@@ -50,18 +50,46 @@ class CompanyFilterMiddleware(MiddlewareMixin):
                     profile = request.user.userprofile
                     # Admin 사용자는 모든 데이터에 접근 가능
                     if profile.role == 'admin':
-                        request.user_company = None
+                        # 관리자 필터링: 세션에서 선택한 회사/사용자 가져오기
+                        selected_company_id = request.session.get('admin_selected_company')
+                        selected_user_id = request.session.get('admin_selected_user')
+                        
+                        request.user_company = None  # 기본값: 전체 접근
                         request.user_company_name = 'Admin (전체 접근)'
-                        request.is_hanagwahak = True
+                        request.is_hanagwahak = True  # 관리자는 항상 모든 기능 접근 가능
                         request.is_admin = True
                         
-                        # 세션 캐시 저장
-                        request.session[cache_key] = {
-                            'company_id': None,
-                            'company_name': 'Admin (전체 접근)',
-                            'is_admin': True,
-                            'is_hanagwahak': True
-                        }
+                        # 관리자가 특정 회사를 선택한 경우
+                        if selected_company_id:
+                            from reporting.models import UserCompany
+                            try:
+                                selected_company = UserCompany.objects.get(id=selected_company_id)
+                                request.admin_filter_company = selected_company
+                                request.admin_filter_company_name = selected_company.name
+                            except UserCompany.DoesNotExist:
+                                request.admin_filter_company = None
+                                request.admin_filter_company_name = None
+                        else:
+                            request.admin_filter_company = None
+                            request.admin_filter_company_name = None
+                        
+                        # 관리자가 특정 사용자를 선택한 경우
+                        if selected_user_id:
+                            from django.contrib.auth import get_user_model
+                            User = get_user_model()
+                            try:
+                                selected_user = User.objects.get(id=selected_user_id)
+                                request.admin_filter_user = selected_user
+                                request.admin_filter_user_name = selected_user.get_full_name() or selected_user.username
+                            except User.DoesNotExist:
+                                request.admin_filter_user = None
+                                request.admin_filter_user_name = None
+                        else:
+                            request.admin_filter_user = None
+                            request.admin_filter_user_name = None
+                        
+                        # 세션 캐시 저장 (관리자는 캐싱하지 않음 - 필터 변경이 즉시 반영되어야 함)
+                        # request.session[cache_key] = {...}  # 주석 처리
                     
                     # 일반 사용자 - 회사 정보 조회
                     elif profile.company:
