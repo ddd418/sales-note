@@ -1092,10 +1092,18 @@ def ai_refresh_all_grades(request):
             # 합치기
             updated_followup_ids = set(schedule_updated_ids) | set(prepayment_updated_ids) | set(history_updated_ids)
             
-            # 해당 고객들 + 한 번도 갱신 안 된 고객
-            queryset = FollowUp.objects.filter(
-                Q(id__in=updated_followup_ids) | Q(ai_grade_updated_at__isnull=True)
-            ).distinct()
+            if not updated_followup_ids:
+                # 변경된 고객이 없으면 한 번도 갱신 안 된 고객만 대상
+                queryset = FollowUp.objects.filter(
+                    ai_grade_updated_at__isnull=True
+                ).distinct()
+                refresh_info = f"마지막 갱신: {last_refresh_time.strftime('%Y-%m-%d %H:%M')}, 변경 없음 (미갱신 고객만)"
+            else:
+                # 해당 고객들만 (한 번도 갱신 안 된 고객 제외)
+                queryset = FollowUp.objects.filter(
+                    id__in=updated_followup_ids
+                ).distinct()
+                refresh_info = f"마지막 갱신: {last_refresh_time.strftime('%Y-%m-%d %H:%M')}, 변경된 고객 {len(updated_followup_ids)}명"
             
             refresh_info = f"마지막 갱신: {last_refresh_time.strftime('%Y-%m-%d %H:%M')}, 변경된 고객만 선별"
         else:
