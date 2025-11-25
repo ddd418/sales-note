@@ -1059,23 +1059,35 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
 **관심 키워드**:
 {customer_data.get('interest_keywords', [])}
 
-**🔥 중요: 우리 회사 제품 카탈로그 (이 중에서만 추천하세요!)**
+**🔥 중요: 우리 회사 제품 카탈로그 (1순위 추천 대상)**
 {product_catalog_text}
 
 ---
 
+**추천 방식**:
+
+**1순위: 우리 회사 제품 추천 (필수)**
+- 위의 "우리 회사 제품 카탈로그"에 있는 product_code만 추천
+- 고객의 구매/견적/미팅 히스토리와 연결하여 추천
+- 최대 3-5개 제품 추천
+
+**2순위: 고객에게 필요한 추가 제품 (선택적)**
+- 카탈로그에 없더라도 고객이 꼭 필요할 것으로 판단되는 제품
+- 고객의 연구/업무 환경에 필수적이라고 판단되는 경우만
+- 최대 1-2개만 추천
+
 **⚠️ 필수 규칙**:
-- 반드시 위의 "우리 회사 제품 카탈로그"에 있는 product_code만 추천하세요
-- 존재하지 않는 제품명이나 일반적인 제품명 절대 금지
-- product_name은 반드시 카탈로그의 product_code를 그대로 사용하세요
-- 최대 5개 제품 추천
+- 1순위 추천의 product_name은 반드시 카탈로그의 product_code를 그대로 사용
+- 2순위 추천의 product_name은 일반적인 제품명 사용 (예: "딥프리저", "초저온냉동고")
+- 각 제품의 source 필드로 구분: "company_catalog" 또는 "additional_need"
 - 각 제품마다 구체적인 추천 이유 설명 (200자 이내)
 
 응답 형식 (JSON):
 {{
   "recommendations": [
     {{
-      "product_name": "제품 카탈로그의 정확한 product_code",
+      "product_name": "제품 카탈로그의 정확한 product_code 또는 일반 제품명",
+      "source": "company_catalog 또는 additional_need",
       "category": "카테고리 (예: 분석장비, 소모품, 시약 등)",
       "reason": "추천 이유 - 구매/견적/미팅 히스토리와 연결하여 설명",
       "priority": "high|medium|low",

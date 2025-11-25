@@ -816,11 +816,28 @@ def ai_recommend_products(request, followup_id):
         # 중복 제거
         interest_keywords = list(set(interest_keywords))
         
-        # 실제 DB 제품 목록 가져오기 (활성 제품만)
+        # 실제 DB 제품 목록 가져오기 (활성 제품만, 사용자 회사 제품만)
         from reporting.models import Product
-        available_products = Product.objects.filter(is_active=True).values(
-            'product_code', 'specification', 'unit', 'standard_price', 'description'
-        )[:100]  # 최대 100개
+        
+        # 사용자의 회사에 속한 제품만 가져오기
+        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
+        
+        if user_company:
+            # 같은 회사의 사용자가 생성한 제품만
+            available_products = Product.objects.filter(
+                is_active=True,
+                created_by__userprofile__company=user_company
+            ).values(
+                'product_code', 'specification', 'unit', 'standard_price', 'description'
+            )[:100]  # 최대 100개
+        else:
+            # 회사 정보가 없으면 사용자가 생성한 제품만
+            available_products = Product.objects.filter(
+                is_active=True,
+                created_by=request.user
+            ).values(
+                'product_code', 'specification', 'unit', 'standard_price', 'description'
+            )[:100]  # 최대 100개
         
         product_catalog = []
         for prod in available_products:
