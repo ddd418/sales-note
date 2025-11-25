@@ -245,6 +245,12 @@ urlpatterns = [
     path('ai/refresh-all-grades/', ai_views.ai_refresh_all_grades, name='ai_refresh_all_grades'),
     path('ai/check-grade-update-status/<str:task_id>/', ai_views.ai_check_grade_update_status, name='ai_check_grade_update_status'),
     
+    # AI 미팅 준비
+    path('ai/meeting-advisor/', ai_views.ai_meeting_advisor, name='ai_meeting_advisor'),
+    path('ai/upcoming-schedules/', ai_views.ai_upcoming_schedules, name='ai_upcoming_schedules'),
+    path('ai/schedule-detail/<int:schedule_id>/', ai_views.ai_schedule_detail, name='ai_schedule_detail'),
+    path('ai/meeting-advice/', ai_views.ai_meeting_advice, name='ai_meeting_advice'),
+    
     # 관리자 필터 API
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),
     path('get-company-users/<int:company_id>/', views.get_company_users, name='get_company_users'),

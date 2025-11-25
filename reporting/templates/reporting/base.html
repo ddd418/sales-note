@@ -553,6 +553,15 @@
           </a>
         </li>
         {% endif %}
+        <!-- AI 질문 메뉴 - Salesman 전용 -->
+        {% if user.userprofile.role == 'salesman' and user.userprofile.can_use_ai %}
+        <li class="nav-item">
+          <a href="{% url 'reporting:ai_meeting_advisor' %}" class="nav-link {% if request.resolver_match.url_name == 'ai_meeting_advisor' %}active{% endif %}">
+            <i class="fas fa-brain"></i>
+            <span>AI 미팅 준비</span>
+          </a>
+        </li>
+        {% endif %}
         {% endif %}
         <!-- 프로필 메뉴 - 모든 로그인 사용자 -->
         {% if user.is_authenticated %}

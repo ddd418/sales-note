@@ -1418,3 +1418,311 @@ def ai_check_grade_update_status(request, task_id):
             'success': False,
             'error': f'상태 확인 중 오류가 발생했습니다: {str(e)}'
         }, status=500)
+
+
+@login_required
+def ai_meeting_advisor(request):
+    """
+    AI 미팅 준비 페이지
+    """
+    from django.shortcuts import render
+    from django.http import HttpResponseForbidden
+    
+    # UserProfile 확인
+    if not hasattr(request.user, 'userprofile'):
+        return HttpResponseForbidden("사용자 프로필이 없습니다.")
+    
+    user_profile = request.user.userprofile
+    
+    # 실무자(salesman)만 접근 가능
+    if user_profile.role != 'salesman':
+        return HttpResponseForbidden("실무자만 접근 가능합니다.")
+    
+    # AI 권한 확인
+    if not check_ai_permission(request.user):
+        return HttpResponseForbidden("AI 기능 사용 권한이 없습니다.")
+    
+    return render(request, 'reporting/ai_meeting_advisor.html')
+
+
+@login_required
+@require_http_methods(["GET"])
+def ai_upcoming_schedules(request):
+    """
+    다가오는 일정 목록 (오늘 포함 미래 일정)
+    """
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        from datetime import date
+        from reporting.views import get_accessible_users
+        
+        # 접근 가능한 사용자의 일정만
+        accessible_users = get_accessible_users(request.user, request)
+        
+        # 오늘 이후 일정 (최대 30일)
+        today = date.today()
+        end_date = today + timedelta(days=30)
+        
+        schedules = Schedule.objects.filter(
+            user__in=accessible_users,
+            visit_date__gte=today,
+            visit_date__lte=end_date,
+            status__in=['scheduled', 'in_progress']
+        ).select_related('followup', 'followup__company').order_by('visit_date', 'visit_time')[:50]
+        
+        schedule_list = []
+        for schedule in schedules:
+            schedule_list.append({
+                'id': schedule.id,
+                'customer_name': schedule.followup.customer_name or '고객명 미정',
+                'company': str(schedule.followup.company) if schedule.followup.company else '회사명 미정',
+                'activity_type': schedule.activity_type,
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'visit_time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else None,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'schedules': schedule_list
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting upcoming schedules: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'일정 조회 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ai_schedule_detail(request, schedule_id):
+    """
+    일정 상세 정보
+    """
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        
+        # 권한 확인
+        from reporting.views import get_accessible_users
+        accessible_users = get_accessible_users(request.user, request)
+        if schedule.user not in accessible_users:
+            return JsonResponse({
+                'success': False,
+                'error': '접근 권한이 없습니다.'
+            }, status=403)
+        
+        return JsonResponse({
+            'success': True,
+            'schedule': {
+                'id': schedule.id,
+                'customer_name': schedule.followup.customer_name or '고객명 미정',
+                'company': str(schedule.followup.company) if schedule.followup.company else '회사명 미정',
+                'activity_type': schedule.activity_type,
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'visit_time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else None,
+                'location': schedule.location,
+                'notes': schedule.notes,
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting schedule detail: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'일정 조회 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_meeting_advice(request):
+    """
+    AI 미팅 조언 생성
+    """
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        schedule_id = data.get('schedule_id')
+        user_question = data.get('question', '')
+        
+        if not schedule_id:
+            return JsonResponse({
+                'success': False,
+                'error': '일정 ID가 필요합니다.'
+            }, status=400)
+        
+        if not user_question:
+            return JsonResponse({
+                'success': False,
+                'error': '질문을 입력해주세요.'
+            }, status=400)
+        
+        # 일정 조회
+        schedule = get_object_or_404(Schedule, id=schedule_id)
+        
+        # 권한 확인
+        from reporting.views import get_accessible_users
+        accessible_users = get_accessible_users(request.user, request)
+        if schedule.user not in accessible_users:
+            return JsonResponse({
+                'success': False,
+                'error': '접근 권한이 없습니다.'
+            }, status=403)
+        
+        # 고객 정보 수집
+        followup = schedule.followup
+        
+        # 모든 히스토리 메모 수집
+        from datetime import timedelta
+        from django.db.models import Sum
+        
+        histories = History.objects.filter(
+            followup=followup
+        ).exclude(content__isnull=True).exclude(content='').order_by('-created_at')[:20]
+        
+        history_notes = [
+            f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content}"
+            for h in histories
+        ]
+        
+        # 구매 이력 (스케줄 기반)
+        past_deliveries = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery',
+            status='completed'
+        ).order_by('-visit_date')[:10]
+        
+        delivery_history = []
+        for d in past_deliveries:
+            items = d.delivery_items.all()
+            total = sum(item.total_price for item in items)
+            delivery_history.append({
+                'date': d.visit_date.strftime('%Y-%m-%d'),
+                'amount': float(total),
+                'items_count': items.count()
+            })
+        
+        # 견적 이력
+        past_quotes = Schedule.objects.filter(
+            followup=followup,
+            activity_type='quote'
+        ).order_by('-visit_date')[:10]
+        
+        quote_history = []
+        for q in past_quotes:
+            items = q.delivery_items.all()
+            total = sum(item.total_price for item in items)
+            quote_history.append({
+                'date': q.visit_date.strftime('%Y-%m-%d'),
+                'amount': float(total),
+                'items_count': items.count()
+            })
+        
+        # 과거 미팅 메모
+        past_meetings = Schedule.objects.filter(
+            followup=followup,
+            activity_type='customer_meeting',
+            notes__isnull=False
+        ).exclude(notes='').order_by('-visit_date')[:5]
+        
+        meeting_notes = [
+            f"[{m.visit_date.strftime('%Y-%m-%d')}] {m.notes}"
+            for m in past_meetings
+        ]
+        
+        # 이메일 주고받은 내역 수집
+        from reporting.models import EmailLog
+        
+        email_history = []
+        emails = EmailLog.objects.filter(
+            followup=followup
+        ).order_by('-created_at')[:20]
+        
+        for email in emails:
+            email_type = '발신' if email.email_type == 'sent' else '수신'
+            email_date = email.created_at.strftime('%Y-%m-%d %H:%M')
+            email_subject = email.subject or '(제목 없음)'
+            email_body = email.body[:200] if email.body else ''  # 본문 일부만
+            
+            email_history.append(
+                f"[{email_date}] {email_type} - {email_subject}\n내용: {email_body}"
+            )
+        
+        # 고객 구분 판단
+        customer_type = '미정'
+        if followup.company and followup.company.name:
+            company_name = followup.company.name
+            customer_name = followup.customer_name or ''
+            manager_name = followup.manager or ''
+            
+            if any(keyword in company_name for keyword in ['대학', '연구소', '연구원', 'University', 'Research']):
+                if customer_name and manager_name and customer_name == manager_name:
+                    customer_type = '교수'
+                else:
+                    customer_type = '연구원'
+            else:
+                if customer_name and manager_name and customer_name == manager_name:
+                    customer_type = '대표'
+                else:
+                    customer_type = '실무자'
+        
+        # AI에게 전달할 컨텍스트 구성
+        context = {
+            'schedule': {
+                'type': schedule.get_activity_type_display(),
+                'date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '미정',
+                'location': schedule.location or '미정',
+                'notes': schedule.notes or '없음'
+            },
+            'customer': {
+                'name': followup.customer_name or '고객명 미정',
+                'company': str(followup.company) if followup.company else '회사명 미정',
+                'department': str(followup.department) if followup.department else '부서 미정',
+                'type': customer_type,
+                'manager': followup.manager or '미정',
+                'grade': followup.customer_grade or 'C',
+            },
+            'history_notes': history_notes,
+            'delivery_history': delivery_history,
+            'quote_history': quote_history,
+            'meeting_notes': meeting_notes,
+            'email_history': email_history,
+            'user_question': user_question
+        }
+        
+        # AI 조언 생성
+        from reporting.ai_utils import generate_meeting_advice
+        advice = generate_meeting_advice(context, request.user)
+        
+        return JsonResponse({
+            'success': True,
+            'advice': advice
+        })
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error generating meeting advice: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'AI 조언 생성 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+

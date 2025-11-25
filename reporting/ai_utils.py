@@ -1494,3 +1494,130 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error suggesting follow-ups with AI: {e}")
         raise
+
+
+def generate_meeting_advice(context: dict, user=None) -> str:
+    """
+    다가오는 미팅에 대한 AI 조언 생성
+    
+    Args:
+        context: 미팅 및 고객 정보
+            - schedule: 일정 정보 (type, date, time, location, notes)
+            - customer: 고객 정보 (name, company, type, manager, grade)
+            - history_notes: 히스토리 메모 리스트
+            - delivery_history: 구매 이력
+            - quote_history: 견적 이력
+            - meeting_notes: 과거 미팅 메모
+            - email_history: 이메일 주고받은 내역
+            - user_question: 실무자의 질문
+        user: 요청 사용자
+    
+    Returns:
+        AI가 생성한 미팅 조언 (Markdown 형식)
+    """
+    if user and not check_ai_permission(user):
+        raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    # 컨텍스트 요약 생성
+    schedule_info = context.get('schedule', {})
+    customer_info = context.get('customer', {})
+    history_notes = context.get('history_notes', [])
+    delivery_history = context.get('delivery_history', [])
+    quote_history = context.get('quote_history', [])
+    meeting_notes = context.get('meeting_notes', [])
+    email_history = context.get('email_history', [])
+    user_question = context.get('user_question', '')
+    
+    # 히스토리 요약
+    history_summary = '\n'.join(history_notes[:10]) if history_notes else '기록 없음'
+    
+    # 구매 이력 요약
+    total_purchase = sum(d['amount'] for d in delivery_history)
+    purchase_summary = f"총 {len(delivery_history)}건, {total_purchase:,.0f}원" if delivery_history else '없음'
+    
+    # 견적 이력 요약
+    total_quote = sum(q['amount'] for q in quote_history)
+    quote_summary = f"총 {len(quote_history)}건, {total_quote:,.0f}원" if quote_history else '없음'
+    
+    # 미팅 메모 요약
+    meeting_summary = '\n'.join(meeting_notes) if meeting_notes else '기록 없음'
+    
+    # 이메일 이력 요약
+    email_summary = '\n\n'.join(email_history[:10]) if email_history else '기록 없음'
+    
+    system_prompt = f"""당신은 20년 경력의 B2B 영업 전문가입니다.
+실무자가 다가오는 미팅을 준비할 수 있도록 구체적이고 실용적인 조언을 제공합니다.
+
+**조언 원칙:**
+1. 고객의 이전 활동 패턴과 관심사를 기반으로 한 구체적인 전략
+2. 고객 구분(교수/연구원/대표/실무자)에 따른 맞춤형 접근
+3. 실무자의 질문에 직접적으로 답변
+4. 실행 가능한 구체적인 액션 아이템 제시
+5. 예상 질문과 답변 준비
+6. 주의사항 및 리스크 요소 지적
+
+**응답 형식:**
+Markdown 형식으로 작성하되, 다음 섹션을 포함:
+- 상황 분석
+- 추천 전략
+- 구체적 액션 아이템
+- 예상 질문 및 답변
+- 주의사항
+
+실무자가 바로 활용할 수 있도록 구체적이고 명확하게 작성하세요."""
+
+    user_prompt = f"""
+**다가오는 미팅 정보:**
+- 일정 유형: {schedule_info.get('type', '미정')}
+- 날짜: {schedule_info.get('date', '미정')}
+- 시간: {schedule_info.get('time', '미정')}
+- 장소: {schedule_info.get('location', '미정')}
+- 메모: {schedule_info.get('notes', '없음')}
+
+**고객 정보:**
+- 고객명: {customer_info.get('name', '미정')} ({customer_info.get('type', '미정')})
+- 회사: {customer_info.get('company', '미정')}
+- 부서: {customer_info.get('department', '미정')}
+- 책임자: {customer_info.get('manager', '미정')}
+- 고객 등급: {customer_info.get('grade', 'C')}
+
+**과거 구매 이력:**
+{purchase_summary}
+
+**과거 견적 이력:**
+{quote_summary}
+
+**최근 히스토리 메모 (최대 10개):**
+{history_summary}
+
+**과거 미팅 메모:**
+{meeting_summary}
+
+**이메일 주고받은 내역 (최근 10개):**
+{email_summary}
+
+**실무자의 질문:**
+{user_question}
+
+위 정보를 종합하여 이번 미팅을 어떻게 준비하고 진행하면 좋을지 전문가 조언을 제공해주세요.
+"""
+
+    try:
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_STANDARD,  # 고품질 조언이 필요하므로 표준 모델 사용
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7  # 창의적이면서도 실용적인 조언
+        )
+        
+        advice = response.choices[0].message.content
+        logger.info(f"Meeting advice generated for customer {customer_info.get('name')} using {MODEL_STANDARD}")
+        return advice
+    
+    except Exception as e:
+        logger.error(f"Error generating meeting advice: {e}")
+        raise
+
