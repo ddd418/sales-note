@@ -1558,60 +1558,66 @@ def generate_meeting_advice(context: dict, user=None) -> str:
     email_summary = '\n\n'.join(email_history[:10]) if email_history else '기록 없음'
     
     system_prompt = f"""당신은 20년 경력의 B2B 영업 전문가입니다.
-실무자가 다가오는 미팅을 준비할 수 있도록 구체적이고 실용적인 조언을 제공합니다.
+실무자의 질문에 답변하고 미팅 준비를 도와주는 것이 주 목적입니다.
 
-**조언 원칙:**
-1. 고객의 이전 활동 패턴과 관심사를 기반으로 한 구체적인 전략
-2. 고객 구분(교수/연구원/대표/실무자)에 따른 맞춤형 접근
-3. 실무자의 질문에 직접적으로 답변
-4. 실행 가능한 구체적인 액션 아이템 제시
-5. 예상 질문과 답변 준비
-6. 주의사항 및 리스크 요소 지적
+**핵심 원칙:**
+1. **실무자의 질문이 최우선** - 질문에 직접적이고 명확하게 답변
+2. **백그라운드 지식 활용** - 고객의 과거 이력(구매, 견적, 미팅, 이메일)을 참고하되, 질문에 관련된 정보만 활용
+3. **실용적 조언** - 즉시 실행 가능한 구체적인 액션 제시
+4. **맥락 고려** - 고객 유형(교수/연구원/대표/실무자)에 맞춘 커뮤니케이션 스타일 제안
+
+**응답 구조:**
+1. 질문에 대한 직접 답변 (핵심 내용)
+2. 관련 배경 정보 (고객 이력 기반)
+3. 구체적 실행 방안
+4. 추가 고려사항 (선택적)
 
 **응답 형식:**
-Markdown 형식으로 작성하되, 다음 섹션을 포함:
-- 상황 분석
-- 추천 전략
-- 구체적 액션 아이템
-- 예상 질문 및 답변
-- 주의사항
-
-실무자가 바로 활용할 수 있도록 구체적이고 명확하게 작성하세요."""
+Markdown 형식으로 간결하고 명확하게 작성하세요."""
 
     user_prompt = f"""
-**다가오는 미팅 정보:**
-- 일정 유형: {schedule_info.get('type', '미정')}
-- 날짜: {schedule_info.get('date', '미정')}
-- 시간: {schedule_info.get('time', '미정')}
-- 장소: {schedule_info.get('location', '미정')}
-- 메모: {schedule_info.get('notes', '없음')}
-
-**고객 정보:**
-- 고객명: {customer_info.get('name', '미정')} ({customer_info.get('type', '미정')})
-- 회사: {customer_info.get('company', '미정')}
-- 부서: {customer_info.get('department', '미정')}
-- 책임자: {customer_info.get('manager', '미정')}
-- 고객 등급: {customer_info.get('grade', 'C')}
-
-**과거 구매 이력:**
-{purchase_summary}
-
-**과거 견적 이력:**
-{quote_summary}
-
-**최근 히스토리 메모 (최대 10개):**
-{history_summary}
-
-**과거 미팅 메모:**
-{meeting_summary}
-
-**이메일 주고받은 내역 (최근 10개):**
-{email_summary}
-
-**실무자의 질문:**
+**🎯 실무자의 질문 (최우선):**
 {user_question}
 
-위 정보를 종합하여 이번 미팅을 어떻게 준비하고 진행하면 좋을지 전문가 조언을 제공해주세요.
+---
+
+**📋 참고할 백그라운드 정보:**
+
+**미팅 일정:**
+- 유형: {schedule_info.get('type', '미정')} | 날짜: {schedule_info.get('date', '미정')} {schedule_info.get('time', '미정')}
+- 장소: {schedule_info.get('location', '미정')}
+- 일정 메모: {schedule_info.get('notes', '없음')}
+
+**고객 프로필:**
+- {customer_info.get('name', '미정')} ({customer_info.get('type', '미정')}) | 등급: {customer_info.get('grade', 'C')}
+- {customer_info.get('company', '미정')} - {customer_info.get('department', '미정')}
+- 책임자: {customer_info.get('manager', '미정')}
+
+**거래 이력:**
+- 구매: {purchase_summary}
+- 견적: {quote_summary}
+
+**과거 활동 (참고용):**
+<details>
+<summary>히스토리 메모 (최근 10개)</summary>
+{history_summary}
+</details>
+
+<details>
+<summary>과거 미팅 메모</summary>
+{meeting_summary}
+</details>
+
+<details>
+<summary>이메일 주고받은 내역 (최근 10개)</summary>
+{email_summary}
+</details>
+
+---
+
+**💡 요청사항:**
+위의 질문에 명확하게 답변하되, 필요한 경우에만 백그라운드 정보를 활용하여 조언을 보강해주세요.
+질문과 관련 없는 정보는 생략하고, 실무자가 즉시 활용할 수 있는 구체적인 답변을 제공해주세요.
 """
 
     try:
