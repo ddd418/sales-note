@@ -464,6 +464,12 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
     system_prompt = """당신은 B2B 영업 전략 전문가입니다.
 고객 데이터를 분석하여 오늘 우선적으로 연락해야 할 고객을 추천해주세요.
 
+**고객 구분별 접근 전략:**
+- **교수**: 의사결정권자로 연구비 집행권한 보유. 직접 컨택 가능하며 장기 관계 구축 중요
+- **연구원**: 실무 담당자로 교수에게 보고 필요. 교수 소개나 추천 확보가 중요
+- **대표**: 의사결정권자로 구매 권한 보유. 직접 컨택으로 빠른 결정 가능
+- **실무자**: 업무 담당자로 대표에게 보고 필요. 대표 연결이나 추천 확보가 중요
+
 **우선순위 평가 기준:**
 1. 마지막 연락 경과 시간 (장기 미접촉 고객)
 2. 진행 중인 기회의 단계 (클로징 단계 우선)
@@ -471,6 +477,7 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
 4. 고객 등급 (VIP, A 등급 우선)
 5. 선결제 잔액 (소진 유도 필요)
 6. 견적 후 미구매 기간
+7. 고객 구분 (교수/대표는 높은 우선순위, 연구원/실무자는 의사결정자 연결 전략 필요)
 
 **연락 타이밍 전략:**
 - 대학/연구소: 학기 시작 전, 예산 집행 시기
@@ -485,8 +492,8 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
     "customer_name": "고객명",
     "priority_score": 85,
     "priority_level": "urgent|high|medium|low",
-    "reason": "우선순위 이유 (구체적으로)",
-    "suggested_action": "제안 액션 (구체적으로)",
+    "reason": "우선순위 이유 (고객 구분 고려)",
+    "suggested_action": "제안 액션 (고객 구분별 전략 반영)",
     "best_contact_time": "최적 연락 시간"
   },
   ...
@@ -497,9 +504,13 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
     # 고객 데이터를 요약 형식으로 변환
     customer_summary = []
     for customer in customer_list[:20]:  # 최대 20명만 분석
+        customer_type = customer.get('customer_type', '미정')
+        history_notes = customer.get('history_notes', [])
+        history_text = '\n'.join([f"- {note}" for note in history_notes]) if history_notes else '없음'
+        
         summary = f"""
 고객 ID: {customer.get('id')}
-고객명: {customer.get('name', '미정')}
+고객명: {customer.get('name', '미정')} ({customer_type})
 회사: {customer.get('company', '미정')}
 마지막 연락: {customer.get('last_contact', '정보 없음')}
 미팅: {customer.get('meeting_count', 0)}회
@@ -509,6 +520,8 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
 등급: {customer.get('grade', '미분류')}
 진행 중인 기회: {len(customer.get('opportunities', []))}건
 선결제 잔액: {customer.get('prepayment_balance', 0):,}원
+최근 히스토리 메모:
+{history_text}
 """
         customer_summary.append(summary)
     

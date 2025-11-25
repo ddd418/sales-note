@@ -11584,20 +11584,14 @@ def product_list(request):
             products = Product.objects.all()
         else:
             # 필터링된 사용자의 제품만
-            products = Product.objects.filter(
-                Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
-            )
+            products = Product.objects.filter(created_by__in=accessible_users)
     elif user_profile.company:
         # 같은 회사의 사용자가 생성한 제품만
         accessible_users = get_accessible_users(request.user, request)
-        products = Product.objects.filter(
-            Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
-        )
+        products = Product.objects.filter(created_by__in=accessible_users)
     else:
-        # 본인이 생성한 제품 + 생성자가 없는 제품
-        products = Product.objects.filter(
-            Q(created_by=request.user) | Q(created_by__isnull=True)
-        )
+        # 본인이 생성한 제품만
+        products = Product.objects.filter(created_by=request.user)
     
     if search_query:
         products = products.filter(

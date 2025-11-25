@@ -29,7 +29,7 @@ from reporting.ai_utils import (
     check_ai_permission,
     suggest_follow_ups
 )
-from reporting.models import FollowUp, Schedule
+from reporting.models import FollowUp, Schedule, History, Prepayment
 
 logger = logging.getLogger(__name__)
 
@@ -547,24 +547,66 @@ def ai_suggest_follow_ups(request):
                 visit_date__gte=six_months_ago
             )
             
-            # 활동 횟수 확인 (최소 1개 이상의 활동 필요)
-            total_activities = schedules.count()
+            # 히스토리에서 사용자가 작성한 메모만 가져오기 (최근 6개월)
+            histories = History.objects.filter(
+                followup=followup,
+                created_at__gte=six_months_ago
+            ).exclude(content__isnull=True).exclude(content='')
+            
+            # 활동 횟수 확인 (스케줄 + 히스토리 최소 1개 이상)
+            total_activities = schedules.count() + histories.count()
             if total_activities == 0:
                 continue  # 활동 없는 고객 제외
             
+            # 미팅 횟수 (스케줄에서만)
             meeting_count = schedules.filter(activity_type='customer_meeting').count()
+            
+            # 견적 횟수 (스케줄에서만)
             quote_count = schedules.filter(activity_type='quote').count()
             
-            # 구매 통계
+            # 구매 통계 (스케줄에서만)
             delivery_schedules = schedules.filter(activity_type='delivery')
             purchase_count = delivery_schedules.count()
-            total_purchase = delivery_schedules.aggregate(
-                total=Sum('expected_revenue')
-            )['total'] or 0
+            total_purchase = delivery_schedules.aggregate(total=Sum('expected_revenue'))['total'] or 0
             
-            # 마지막 연락일
+            # 마지막 연락일 (스케줄과 히스토리 모두 확인)
             last_schedule = schedules.order_by('-visit_date').first()
-            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else '연락 기록 없음'
+            last_history = histories.order_by('-created_at').first()
+            
+            if last_schedule and last_history:
+                last_contact_date = max(last_schedule.visit_date, last_history.created_at.date())
+            elif last_schedule:
+                last_contact_date = last_schedule.visit_date
+            elif last_history:
+                last_contact_date = last_history.created_at.date()
+            else:
+                last_contact_date = None
+                
+            last_contact = last_contact_date.strftime('%Y-%m-%d') if last_contact_date else '연락 기록 없음'
+            
+            # 히스토리 메모 수집 (최근 5개만)
+            history_notes = [h.content for h in histories.order_by('-created_at')[:5] if h.content]
+            
+            # 고객 구분 판단
+            customer_type = '미정'
+            if followup.company and followup.company.name:
+                company_name = followup.company.name
+                customer_name = followup.customer_name or ''
+                manager_name = followup.manager or ''
+                
+                # 대학/연구소 판단
+                if any(keyword in company_name for keyword in ['대학', '연구소', '연구원', 'University', 'Research']):
+                    # 이름과 책임자명이 같으면 교수, 다르면 연구원
+                    if customer_name and manager_name and customer_name == manager_name:
+                        customer_type = '교수'
+                    else:
+                        customer_type = '연구원'
+                else:
+                    # 일반 업체: 이름과 책임자명이 같으면 대표, 다르면 실무자
+                    if customer_name and manager_name and customer_name == manager_name:
+                        customer_type = '대표'
+                    else:
+                        customer_type = '실무자'
             
             # 진행 중인 기회
             opportunities = OpportunityTracking.objects.filter(
@@ -583,6 +625,7 @@ def ai_suggest_follow_ups(request):
                 'id': followup.id,
                 'name': followup.customer_name,
                 'company': str(followup.company),
+                'customer_type': customer_type,  # 고객 구분 추가
                 'last_contact': last_contact,
                 'meeting_count': meeting_count,
                 'quote_count': quote_count,
@@ -591,7 +634,8 @@ def ai_suggest_follow_ups(request):
                 'grade': followup.customer_grade if followup.customer_grade else 'D',
                 'opportunities': [{'stage': o.get_current_stage_display()} for o in opportunities],
                 'prepayment_balance': float(prepayment_balance),
-                'total_activities': total_activities
+                'total_activities': total_activities,
+                'history_notes': history_notes  # 히스토리 메모 추가
             })
         
         if not customer_list:
@@ -1018,18 +1062,56 @@ def ai_refresh_all_grades(request):
         limit = data.get('limit')
         background = data.get('background', True)
         
-        # 업데이트 대상 고객 수 계산 (일정, 이메일, 히스토리, 선결제 중 하나라도 있는 고객)
-        queryset = FollowUp.objects.annotate(
-            schedule_count=Count('schedules', distinct=True),
-            email_count=Count('emails', distinct=True),
-            history_count=Count('histories', distinct=True),
-            prepayment_count=Count('prepayments', distinct=True)
-        ).filter(
-            Q(schedule_count__gte=1) | 
-            Q(email_count__gte=1) | 
-            Q(history_count__gte=1) |
-            Q(prepayment_count__gte=1)
-        )
+        # 마지막 AI 등급 갱신 시간 조회 (가장 최근에 갱신된 고객 기준)
+        from django.utils import timezone
+        
+        last_refresh_time = FollowUp.objects.filter(
+            ai_grade_updated_at__isnull=False
+        ).order_by('-ai_grade_updated_at').values_list('ai_grade_updated_at', flat=True).first()
+        
+        # 갱신 대상: 마지막 갱신 이후 활동이 있는 고객만
+        if last_refresh_time:
+            # 마지막 갱신 이후 스케줄이나 선결제가 생성/수정된 고객 ID 수집
+            from django.db.models import Q
+            
+            # 스케줄이 생성된 고객
+            schedule_updated_ids = Schedule.objects.filter(
+                Q(created_at__gte=last_refresh_time) | Q(updated_at__gte=last_refresh_time)
+            ).values_list('followup_id', flat=True).distinct()
+            
+            # 선결제가 생성된 고객 (updated_at 필드 없음)
+            prepayment_updated_ids = Prepayment.objects.filter(
+                created_at__gte=last_refresh_time
+            ).values_list('customer_id', flat=True).distinct()
+            
+            # 히스토리가 생성된 고객
+            history_updated_ids = History.objects.filter(
+                created_at__gte=last_refresh_time
+            ).values_list('followup_id', flat=True).distinct()
+            
+            # 합치기
+            updated_followup_ids = set(schedule_updated_ids) | set(prepayment_updated_ids) | set(history_updated_ids)
+            
+            # 해당 고객들 + 한 번도 갱신 안 된 고객
+            queryset = FollowUp.objects.filter(
+                Q(id__in=updated_followup_ids) | Q(ai_grade_updated_at__isnull=True)
+            ).distinct()
+            
+            refresh_info = f"마지막 갱신: {last_refresh_time.strftime('%Y-%m-%d %H:%M')}, 변경된 고객만 선별"
+        else:
+            # 첫 갱신: 활동 이력이 있는 모든 고객
+            queryset = FollowUp.objects.annotate(
+                schedule_count=Count('schedules', distinct=True),
+                email_count=Count('emails', distinct=True),
+                history_count=Count('histories', distinct=True),
+                prepayment_count=Count('prepayments', distinct=True)
+            ).filter(
+                Q(schedule_count__gte=1) | 
+                Q(email_count__gte=1) | 
+                Q(history_count__gte=1) |
+                Q(prepayment_count__gte=1)
+            )
+            refresh_info = "전체 고객 첫 갱신"
         
         if limit:
             queryset = queryset[:limit]
@@ -1039,7 +1121,8 @@ def ai_refresh_all_grades(request):
         if total_count == 0:
             return JsonResponse({
                 'success': False,
-                'error': '업데이트할 고객이 없습니다.'
+                'error': '업데이트할 고객이 없습니다. (마지막 갱신 이후 활동 없음)',
+                'last_refresh': last_refresh_time.strftime('%Y-%m-%d %H:%M') if last_refresh_time else None
             }, status=400)
         
         # 예상 소요 시간 계산
@@ -1208,10 +1291,11 @@ def ai_refresh_all_grades(request):
                             result = update_customer_grade_with_ai(customer_data, user)
                             
                             if result.get('grade') and result.get('score') is not None:
-                                # DB 업데이트
+                                # DB 업데이트 (갱신 시간 포함)
                                 followup.customer_grade = result.get('grade')
                                 followup.ai_grade_score = result.get('score')
-                                followup.save(update_fields=['customer_grade', 'ai_grade_score'])
+                                followup.ai_grade_updated_at = timezone.now()  # 갱신 시간 기록
+                                followup.save(update_fields=['customer_grade', 'ai_grade_score', 'ai_grade_updated_at'])
                                 
                                 success_count += 1
                                 
@@ -1279,7 +1363,9 @@ def ai_refresh_all_grades(request):
                 'message': f'{total_count}명의 고객 등급 업데이트가 백그라운드에서 시작되었습니다.',
                 'total_count': total_count,
                 'estimated_time': estimated_time,
-                'task_id': task_id
+                'task_id': task_id,
+                'refresh_info': refresh_info,
+                'last_refresh': last_refresh_time.strftime('%Y-%m-%d %H:%M') if last_refresh_time else '첫 갱신'
             })
         else:
             # 동기 실행 (테스트용)

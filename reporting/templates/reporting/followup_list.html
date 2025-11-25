@@ -1944,6 +1944,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <i class="fas fa-sync-alt fa-spin me-2"></i>등급 업데이트 진행 중
                             </h5>
                             <hr>
+                            <p class="mb-2"><strong>갱신 정보:</strong> ${data.refresh_info || '전체 고객 갱신'}</p>
+                            <p class="mb-2"><strong>마지막 갱신:</strong> ${data.last_refresh || '첫 갱신'}</p>
                             <p class="mb-2"><strong>처리 대상:</strong> ${data.total_count}명</p>
                             <p class="mb-2"><strong>예상 소요 시간:</strong> ${data.estimated_time}</p>
                             <hr>
