@@ -4,6 +4,7 @@ from . import views
 from . import backup_api
 from . import personal_schedule_views
 from . import gmail_views
+from . import ai_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
@@ -228,4 +229,12 @@ urlpatterns = [
     
     # 이미지 업로드
     path('upload-image/', gmail_views.upload_editor_image, name='upload_editor_image'),
+    
+    # ============================================
+    # AI 기능 URL들
+    # ============================================
+    path('ai/generate-email/', ai_views.ai_generate_email, name='ai_generate_email'),
+    path('ai/transform-email/', ai_views.ai_transform_email, name='ai_transform_email'),
+    path('ai/customer-summary/<int:followup_id>/', ai_views.ai_generate_customer_summary, name='ai_customer_summary'),
+    path('ai/update-grade/<int:followup_id>/', ai_views.ai_update_customer_grade, name='ai_update_grade'),
 ]

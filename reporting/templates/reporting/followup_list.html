@@ -856,7 +856,8 @@
                     </select>
                   </div>
                   
-                  <!-- 고객 등급 필터 -->
+                  {% if request.user.userprofile.can_use_ai %}
+                  <!-- AI 사용자: 고객 등급 필터 -->
                   <div class="col-md-2">
                     <label for="grade" class="form-label">고객 등급</label>
                     <select class="form-control" id="grade" name="grade">
@@ -869,7 +870,7 @@
                     </select>
                   </div>
                   
-                  <!-- 종합 점수 레벨 필터 -->
+                  <!-- AI 사용자: 종합 점수 레벨 필터 -->
                   <div class="col-md-3">
                     <label for="level" class="form-label">종합 우선순위</label>
                     <select class="form-control" id="level" name="level">
@@ -881,6 +882,7 @@
                       {% endfor %}
                     </select>
                   </div>
+                  {% endif %}
                   
                   <!-- 버튼들 -->
                   <div class="col-md-3 d-flex align-items-end">
@@ -960,11 +962,11 @@
                 </a>
               </h6>
               <div class="d-flex gap-1">
-                <!-- 종합 우선순위 배지 -->
+                {% if request.user.userprofile.can_use_ai %}
+                <!-- AI 사용자: 종합 우선순위 + 고객 등급 표시 -->
                 <span class="badge" style="background-color: {{ followup.get_priority_level.color }}; color: white;">
                   {{ followup.get_priority_level.icon }} {{ followup.get_priority_level.label }}
                 </span>
-                <!-- 고객 등급 배지 -->
                 {% if followup.customer_grade %}
                 <span class="badge" style="
                   {% if followup.customer_grade == 'VIP' %}background: linear-gradient(135deg, #ffd700, #ffed4e);{% endif %}
@@ -976,12 +978,14 @@
                   {{ followup.customer_grade }}
                 </span>
                 {% endif %}
-                <!-- 우선순위 배지 -->
+                {% else %}
+                <!-- 일반 사용자: 우선순위만 표시 -->
                 <span
                   class="badge bg-{% if followup.priority == 'urgent' %}danger{% elif followup.priority == 'followup' %}warning{% elif followup.priority == 'scheduled' %}info{% else %}secondary{% endif %}"
                 >
                   {{ followup.get_priority_display }}
                 </span>
+                {% endif %}
               </div>
             </div>
 
@@ -992,7 +996,9 @@
                 <strong>부서:</strong> {{ followup.department.name }}<br />
                 {% endif %}
                 <strong>담당자:</strong> {{ followup.user.username }}<br />
+                {% if request.user.userprofile.can_use_ai %}
                 <strong>종합점수:</strong> <span class="badge bg-secondary">{{ followup.get_combined_score }}점</span><br />
+                {% endif %}
                 {% if followup.manager %}
                 <strong>책임자:</strong> {{ followup.manager }}<br />
                 {% endif %}

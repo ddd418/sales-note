@@ -1251,7 +1251,7 @@ html, body {
   </div>
 </div>
 
-<!-- 2행: 고객사별 매출 & 종합 우선순위 분포 -->
+<!-- 2행: 고객사별 매출 & 종합 우선순위 분포 & 고객 유형별 통계 -->
 <div class="dashboard-chart-row dashboard-chart-row-1-1">
   <!-- 3. 고객사별 매출 비중 (Doughnut) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
@@ -1263,7 +1263,8 @@ html, body {
     </div>
   </div>
 
-  <!-- 4. 종합 우선순위 분포 (Bar Chart) -->
+  {% if request.user.userprofile.can_use_ai %}
+  <!-- AI 사용자: 종합 우선순위 분포 (Bar Chart) -->
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
       <i class="fas fa-chart-bar" style="color: #8b5cf6;"></i> 종합 우선순위 분포
@@ -1273,9 +1274,21 @@ html, body {
       <canvas id="priorityLevelChart"></canvas>
     </div>
   </div>
+  {% else %}
+  <!-- 일반 사용자: 고객 유형별 통계 -->
+  <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+    <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
+      <i class="fas fa-users" style="color: #ef4444;"></i> 고객 유형별 통계
+    </h3>
+    <div style="position: relative; height: 300px;">
+      <canvas id="customerTypeChart"></canvas>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
-<!-- 3행: 고객 유형별 통계 -->
+{% if request.user.userprofile.can_use_ai %}
+<!-- AI 사용자: 고객 유형별 통계 (별도 행) -->
 <div class="dashboard-chart-row">
   <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
     <h3 class="section-title" style="font-size: 1.125rem; margin-bottom: 1.5rem;">
@@ -1286,6 +1299,7 @@ html, body {
     </div>
   </div>
 </div>
+{% endif %}
 
 <!-- 4행: 활동 히트맵 -->
 <div style="background: white; border-radius: 1.25rem; padding: 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 2rem;">
@@ -1546,8 +1560,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ============================================
-  // 6️⃣ 종합 우선순위 분포 (Bar Chart)
+  // 6️⃣ 종합 우선순위 분포 (Bar Chart) - AI 권한자만
   // ============================================
+  {% if request.user.userprofile.can_use_ai %}
   const priorityLevelCtx = document.getElementById('priorityLevelChart');
   if (priorityLevelCtx) {
     {% if priority_level_chart %}
@@ -1602,6 +1617,7 @@ document.addEventListener('DOMContentLoaded', function() {
     priorityLevelCtx.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 0.875rem;">데이터가 없습니다</div>';
     {% endif %}
   }
+  {% endif %}
 
   // ============================================
   // 7️⃣ 고객 유형별 통계 (Grouped Bar Chart)

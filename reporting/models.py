@@ -62,6 +62,10 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='salesman', verbose_name="권한")
     can_download_excel = models.BooleanField(default=False, verbose_name="엑셀 다운로드 권한")
     
+    # AI 기능 사용 권한
+    can_use_ai = models.BooleanField(default=False, verbose_name="AI 기능 사용 권한", 
+                                      help_text="AI 이메일 생성, 고객 분석, 자동 요약 등 GPT 기능 사용 가능 여부")
+    
     # Gmail 연동 정보
     gmail_token = models.JSONField(null=True, blank=True, verbose_name="Gmail OAuth 토큰", help_text="암호화된 토큰 저장")
     gmail_email = models.EmailField(blank=True, verbose_name="연결된 Gmail 주소")

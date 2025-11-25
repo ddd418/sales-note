@@ -245,9 +245,15 @@
     
     <!-- 답장 버튼 (고정) -->
     <div class="text-center reply-btn">
-        <a href="{% url 'reporting:reply_email' emails.last.id %}" class="btn btn-primary btn-lg">
+        {% if last_received_email %}
+        <a href="{% url 'reporting:reply_email' last_received_email.id %}" class="btn btn-primary btn-lg">
             <i class="bi bi-reply"></i> 답장하기
         </a>
+        {% else %}
+        <button class="btn btn-secondary btn-lg" disabled>
+            <i class="bi bi-info-circle"></i> 답장할 수신 메일이 없습니다
+        </button>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

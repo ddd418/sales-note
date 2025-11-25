@@ -805,11 +805,120 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
+    # AI 분석 (AI 권한이 있는 사용자만)
+    ai_analysis = None
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        
+        # 최근 6개월 데이터 수집
+        six_months_ago = timezone.now() - timedelta(days=180)
+        
+        # 스케줄 통계
+        schedules = Schedule.objects.filter(
+            followup=followup,
+            visit_date__gte=six_months_ago
+        )
+        meeting_count = schedules.filter(activity_type='customer_meeting').count()
+        quote_count = schedules.filter(activity_type='quote').count()
+        
+        # 구매 내역 (납품 일정)
+        delivery_schedules = schedules.filter(activity_type='delivery')
+        purchase_count = delivery_schedules.count()
+        
+        # 납품 금액 합계 (expected_revenue 사용)
+        total_purchase = delivery_schedules.aggregate(
+            total=Sum('expected_revenue')
+        )['total'] or 0
+        
+        # 이메일 교환
+        email_count = EmailLog.objects.filter(
+            Q(schedule__followup=followup) | Q(followup=followup),
+            created_at__gte=six_months_ago
+        ).count()
+        
+        # 마지막 연락일
+        last_contact = None
+        last_schedule = schedules.order_by('-visit_date').first()
+        if last_schedule:
+            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
+        
+        # 미팅 노트 수집 (최근 5개) - 히스토리에서
+        histories = History.objects.filter(
+            followup=followup,
+            created_at__gte=six_months_ago
+        )
+        meeting_notes = []
+        recent_meetings = histories.filter(
+            action_type='customer_meeting'
+        ).order_by('-created_at')[:5]
+        for h in recent_meetings:
+            if h.content:
+                meeting_notes.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:200]}")
+        
+        # 진행 중인 기회
+        opportunities = []
+        active_opps = OpportunityTracking.objects.filter(
+            followup=followup,
+            current_stage__in=['lead', 'contact', 'quote', 'closing']
+        )[:5]
+        for opp in active_opps:
+            opportunities.append({
+                'name': opp.title or '영업 기회',
+                'stage': opp.get_current_stage_display(),
+                'value': opp.expected_revenue or 0
+            })
+        
+        # 선결제 정보 (있는 경우만)
+        from reporting.models import Prepayment
+        prepayments = Prepayment.objects.filter(
+            customer=followup,
+            status='active'
+        ).order_by('-payment_date')
+        
+        prepayment_info = None
+        if prepayments.exists():
+            total_balance = sum(p.balance for p in prepayments)
+            prepayment_info = {
+                'total_balance': total_balance,
+                'count': prepayments.count(),
+                'details': [{
+                    'date': p.payment_date.strftime('%Y-%m-%d'),
+                    'amount': p.amount,
+                    'balance': p.balance,
+                    'memo': p.memo
+                } for p in prepayments[:3]]  # 최근 3건만
+            }
+        
+        # 고객 데이터 준비
+        customer_data = {
+            'name': followup.customer_name,
+            'company': followup.company,
+            'industry': '과학/실험실',  # 기본값
+            'meeting_count': meeting_count,
+            'quote_count': quote_count,
+            'purchase_count': purchase_count,
+            'total_purchase': total_purchase,
+            'email_count': email_count,
+            'last_contact': last_contact or '정보 없음',
+            'meeting_notes': meeting_notes,
+            'customer_grade': followup.get_customer_grade_display() if hasattr(followup, 'customer_grade') else '미분류',
+            'opportunities': opportunities,
+            'prepayment': prepayment_info,  # 선결제 정보 추가
+        }
+        
+        # AI 분석 요청 준비 (실제 API 호출은 AJAX로)
+        ai_analysis = {
+            'customer_data': customer_data,
+            'ready': True
+        }
+    
     context = {
         'followup': followup,
         'related_histories': related_histories,
         'quotation_templates': quotation_templates,
         'transaction_templates': transaction_templates,
+        'ai_analysis': ai_analysis,
         'page_title': f'팔로우업 상세 - {followup.customer_name}'
     }
     return render(request, 'reporting/followup_detail.html', context)
@@ -6916,7 +7025,7 @@ def history_update_api(request, history_id):
 @login_required
 def memo_create_view(request):
     """메모 생성 (팔로우업 연결 선택사항)"""
-    followup_id = request.GET.get('followup')
+    followup_id = request.GET.get('followup') or request.POST.get('followup')
     followup = None
     
     if followup_id:
@@ -6924,6 +7033,11 @@ def memo_create_view(request):
             followup = get_object_or_404(FollowUp, pk=followup_id)
             # 권한 체크 (팔로우업이 있는 경우만)
             if not can_modify_user_data(request.user, followup.user):
+                if request.method == 'POST':
+                    return JsonResponse({
+                        'success': False,
+                        'error': '메모 작성 권한이 없습니다.'
+                    }, status=403)
                 messages.error(request, '메모 작성 권한이 없습니다.')
                 return redirect('reporting:followup_detail', pk=followup.pk)
         except FollowUp.DoesNotExist:
@@ -6933,16 +7047,30 @@ def memo_create_view(request):
         content = request.POST.get('content', '').strip()
         
         if not content:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/x-www-form-urlencoded':
+                return JsonResponse({
+                    'success': False,
+                    'error': '메모 내용을 입력해주세요.'
+                }, status=400)
             messages.error(request, '메모 내용을 입력해주세요.')
         else:
             # 메모 히스토리 생성
             history = History.objects.create(
                 user=request.user,
+                company=request.user.userprofile.company,
                 followup=followup,  # followup이 None일 수도 있음
                 action_type='memo',
                 content=content,
                 schedule=None  # 메모는 일정과 연결되지 않음
             )
+            
+            # AJAX 요청인 경우 JSON 응답
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/x-www-form-urlencoded':
+                return JsonResponse({
+                    'success': True,
+                    'message': '메모가 성공적으로 추가되었습니다.',
+                    'history_id': history.id
+                })
             
             messages.success(request, '메모가 성공적으로 추가되었습니다.')
             

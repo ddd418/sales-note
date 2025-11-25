@@ -107,6 +107,14 @@ else:
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
+
+# OpenAI API 설정
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENAI_MODEL_MINI = os.environ.get('OPENAI_MODEL_MINI', 'gpt-4o-mini')  # 빠르고 저렴 (내부용)
+OPENAI_MODEL_STANDARD = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')  # 고품질 (외부용)
+OPENAI_MAX_TOKENS = int(os.environ.get('OPENAI_MAX_TOKENS', '2000'))
+OPENAI_TEMPERATURE = float(os.environ.get('OPENAI_TEMPERATURE', '0.7'))
+
 # Celery 설정
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')

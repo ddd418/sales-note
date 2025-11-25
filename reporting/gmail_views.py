@@ -372,10 +372,13 @@ def reply_email(request, email_log_id):
     """이메일 답장"""
     email_log = get_object_or_404(EmailLog, id=email_log_id)
     
-    # 권한 확인
-    if email_log.sender != request.user and request.user.userprofile.role != 'manager':
-        messages.error(request, '권한이 없습니다.')
-        return redirect('reporting:mailbox_inbox')
+    # 권한 확인: 발신 메일은 발신자만, 수신 메일은 누구나 답장 가능
+    if email_log.email_type == 'sent':
+        # 발신 메일: 본인이 보낸 메일만 답장 가능
+        if email_log.sender != request.user and request.user.userprofile.role != 'manager':
+            messages.error(request, '권한이 없습니다.')
+            return redirect('reporting:mailbox_inbox')
+    # 수신 메일은 권한 체크 없이 누구나 답장 가능
     
     # Gmail 연결 확인
     profile = request.user.userprofile
@@ -666,10 +669,14 @@ def mailbox_thread(request, thread_id):
             except:
                 pass  # 실패해도 계속 진행
     
+    # 답장 대상: 가장 최근 수신 메일
+    last_received_email = emails.filter(email_type='received').order_by('-sent_at', '-received_at').first()
+    
     context = {
         'thread_id': thread_id,
         'emails': emails,
         'followup': emails.first().followup,
+        'last_received_email': last_received_email,
     }
     return render(request, 'reporting/gmail/thread_detail.html', context)
 
