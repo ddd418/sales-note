@@ -890,6 +890,75 @@ def ai_recommend_products(request, followup_id):
 
 
 @login_required
+@require_http_methods(["GET"])
+def ai_get_product_detail(request, product_code):
+    """
+    제품 상세 정보 조회 (AI 추천에서 사용)
+    """
+    if not check_ai_permission(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'AI 기능 사용 권한이 없습니다.'
+        }, status=403)
+    
+    try:
+        from reporting.models import Product
+        from urllib.parse import unquote
+        
+        # URL 디코딩
+        product_code = unquote(product_code)
+        
+        # 사용자의 회사에 속한 제품만 조회
+        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
+        
+        if user_company:
+            product = Product.objects.filter(
+                product_code=product_code,
+                created_by__userprofile__company=user_company,
+                is_active=True
+            ).first()
+        else:
+            product = Product.objects.filter(
+                product_code=product_code,
+                created_by=request.user,
+                is_active=True
+            ).first()
+        
+        if not product:
+            return JsonResponse({
+                'success': False,
+                'error': '제품을 찾을 수 없습니다.',
+                'is_catalog_product': False
+            })
+        
+        # 제품 정보 반환
+        return JsonResponse({
+            'success': True,
+            'is_catalog_product': True,
+            'product': {
+                'product_code': product.product_code,
+                'specification': product.specification or '',
+                'description': product.description or '',
+                'unit': product.unit or 'EA',
+                'standard_price': float(product.standard_price) if product.standard_price else 0,
+                'current_price': float(product.get_current_price()),
+                'is_promo': product.is_promo,
+                'promo_price': float(product.promo_price) if product.promo_price else None,
+                'total_quoted': product.total_quoted,
+                'total_sold': product.total_sold,
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting product detail: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'제품 정보 조회 중 오류가 발생했습니다: {str(e)}',
+            'is_catalog_product': False
+        }, status=500)
+
+
+@login_required
 @require_http_methods(["POST"])
 def ai_natural_language_search(request):
     """
@@ -1484,17 +1553,14 @@ def ai_upcoming_schedules(request):
     
     try:
         from datetime import date
-        from reporting.views import get_accessible_users
         
-        # 접근 가능한 사용자의 일정만
-        accessible_users = get_accessible_users(request.user, request)
-        
+        # 실무자는 본인 일정만 조회 (미팅 준비는 개인용 기능)
         # 오늘 이후 일정 (최대 30일)
         today = date.today()
         end_date = today + timedelta(days=30)
         
         schedules = Schedule.objects.filter(
-            user__in=accessible_users,
+            user=request.user,  # 본인 일정만
             visit_date__gte=today,
             visit_date__lte=end_date,
             status__in=['scheduled', 'in_progress']
@@ -1539,13 +1605,11 @@ def ai_schedule_detail(request, schedule_id):
     try:
         schedule = get_object_or_404(Schedule, id=schedule_id)
         
-        # 권한 확인
-        from reporting.views import get_accessible_users
-        accessible_users = get_accessible_users(request.user, request)
-        if schedule.user not in accessible_users:
+        # 권한 확인 - 본인 일정만 조회 가능
+        if schedule.user != request.user:
             return JsonResponse({
                 'success': False,
-                'error': '접근 권한이 없습니다.'
+                'error': '본인의 일정만 조회할 수 있습니다.'
             }, status=403)
         
         return JsonResponse({
@@ -1602,13 +1666,11 @@ def ai_meeting_advice(request):
         # 일정 조회
         schedule = get_object_or_404(Schedule, id=schedule_id)
         
-        # 권한 확인
-        from reporting.views import get_accessible_users
-        accessible_users = get_accessible_users(request.user, request)
-        if schedule.user not in accessible_users:
+        # 권한 확인 - 본인 일정만 조회 가능
+        if schedule.user != request.user:
             return JsonResponse({
                 'success': False,
-                'error': '접근 권한이 없습니다.'
+                'error': '본인의 일정만 조회할 수 있습니다.'
             }, status=403)
         
         # 고객 정보 수집

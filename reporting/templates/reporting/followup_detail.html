@@ -1003,36 +1003,53 @@ document.addEventListener('DOMContentLoaded', function() {
                     recommendations.forEach((rec, idx) => {
                         const color = priorityColors[rec.priority] || 'secondary';
                         const label = priorityLabels[rec.priority] || rec.priority;
+                        const sourceLabel = rec.source === 'company_catalog' ? '회사 제품' : '추가 필요 제품';
+                        const sourceIcon = rec.source === 'company_catalog' ? 'fa-check-circle text-success' : 'fa-plus-circle text-info';
                         
                         html += `
                             <div class="col-md-6 mb-3">
-                                <div class="card h-100 shadow-sm border-${color}" style="border-width: 2px;">
+                                <div class="card h-100 shadow-sm border-${color} product-recommendation-card" 
+                                     style="border-width: 2px; cursor: pointer;"
+                                     data-product='${JSON.stringify(rec)}'>
                                     <div class="card-body">
                                         <div class="d-flex justify-content-between align-items-start mb-2">
                                             <h6 class="card-title mb-0">
                                                 <i class="fas fa-box me-2 text-info"></i>${rec.product_name || '상품명'}
                                             </h6>
-                                            <span class="badge bg-${color}">${label}</span>
+                                            <div>
+                                                <span class="badge bg-${color} me-1">${label}</span>
+                                                <span class="badge bg-light text-dark border">
+                                                    <i class="fas ${sourceIcon} me-1"></i>${sourceLabel}
+                                                </span>
+                                            </div>
                                         </div>
                                         ${rec.category ? `<p class="small text-muted mb-2"><i class="fas fa-tag me-1"></i>${rec.category}</p>` : ''}
                                         ${rec.expected_timing ? `<p class="small mb-2"><i class="far fa-clock me-1 text-success"></i><strong>제안 시기:</strong> ${rec.expected_timing}</p>` : ''}
                                         <p class="card-text small">${rec.reason || ''}</p>
                                         ${rec.cross_sell_items && rec.cross_sell_items.length > 0 ? `
                                             <div class="mt-2 pt-2 border-top">
-                                                <small class="text-muted d-block mb-1"><i class="fas fa-plus-circle me-1"></i>함께 추천:</small>
-                                                <div class="d-flex flex-wrap gap-1">
-                                                    ${rec.cross_sell_items.map(item => 
-                                                        `<span class="badge bg-light text-dark border">${item}</span>`
-                                                    ).join('')}
-                                                </div>
+                                                <small class="text-muted d-block mb-1"><i class="fas fa-plus-circle me-1"></i>함께 추천 ${rec.cross_sell_items.length}개</small>
                                             </div>
                                         ` : ''}
+                                        <div class="text-end mt-2">
+                                            <small class="text-primary"><i class="fas fa-info-circle me-1"></i>클릭하여 상세보기</small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         `;
                     });
                     html += '</div>';
+                    
+                    // 제품 카드 클릭 이벤트 추가
+                    setTimeout(() => {
+                        document.querySelectorAll('.product-recommendation-card').forEach(card => {
+                            card.addEventListener('click', function() {
+                                const productData = JSON.parse(this.dataset.product);
+                                showProductDetailModal(productData);
+                            });
+                        });
+                    }, 100);
                     
                     // 데이터 소스 표시
                     const sources = [];
@@ -1072,6 +1089,278 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 `;
             });
+        });
+    }
+    
+    // 제품 상세 모달 표시 함수
+    function showProductDetailModal(product) {
+        const priorityColors = {
+            'high': 'danger',
+            'medium': 'warning',
+            'low': 'info'
+        };
+        const priorityLabels = {
+            'high': '높음',
+            'medium': '보통',
+            'low': '낮음'
+        };
+        
+        const color = priorityColors[product.priority] || 'secondary';
+        const label = priorityLabels[product.priority] || product.priority;
+        const sourceLabel = product.source === 'company_catalog' ? '회사 제품' : '추가 필요 제품';
+        const sourceIcon = product.source === 'company_catalog' ? 'fa-check-circle text-success' : 'fa-plus-circle text-info';
+        const sourceBadgeColor = product.source === 'company_catalog' ? 'success' : 'info';
+        
+        // 회사 카탈로그 제품이면 실제 제품 정보 가져오기
+        if (product.source === 'company_catalog') {
+            fetch(`/reporting/ai/product-detail/${encodeURIComponent(product.product_name)}/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.is_catalog_product) {
+                    // 실제 제품 정보로 모달 표시
+                    displayProductModal(product, data.product, color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+                } else {
+                    // 제품 정보 없으면 기본 정보로 표시
+                    displayProductModal(product, null, color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching product detail:', error);
+                // 오류 시 기본 정보로 표시
+                displayProductModal(product, null, color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+            });
+        } else {
+            // 추가 필요 제품은 바로 표시
+            displayProductModal(product, null, color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+        }
+    }
+    
+    // 실제 모달 표시 함수
+    function displayProductModal(product, productDetail, color, label, sourceLabel, sourceIcon, sourceBadgeColor) {
+        // 함께 추천 제품 정보도 가져오기
+        if (product.cross_sell_items && product.cross_sell_items.length > 0) {
+            // 모든 함께 추천 제품의 정보를 병렬로 가져오기
+            const crossSellPromises = product.cross_sell_items.map(itemName => 
+                fetch(`/reporting/ai/product-detail/${encodeURIComponent(itemName)}/`, {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => ({
+                    name: itemName,
+                    detail: data.success && data.is_catalog_product ? data.product : null
+                }))
+                .catch(error => ({
+                    name: itemName,
+                    detail: null
+                }))
+            );
+            
+            Promise.all(crossSellPromises).then(crossSellDetails => {
+                renderProductModal(product, productDetail, crossSellDetails, color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+            });
+        } else {
+            renderProductModal(product, productDetail, [], color, label, sourceLabel, sourceIcon, sourceBadgeColor);
+        }
+    }
+    
+    // 모달 렌더링 함수
+    function renderProductModal(product, productDetail, crossSellDetails, color, label, sourceLabel, sourceIcon, sourceBadgeColor) {
+        const modalHtml = `
+            <div class="modal fade" id="productDetailModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header bg-light">
+                            <h5 class="modal-title">
+                                <i class="fas fa-box-open me-2 text-primary"></i>제품 추천 상세정보
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <!-- 주 추천 제품 -->
+                            <div class="card border-${color} mb-4" style="border-width: 2px;">
+                                <div class="card-header bg-${color} bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-star text-warning me-2"></i>${product.product_name}
+                                        </h5>
+                                        <div>
+                                            <span class="badge bg-${color} me-2">${label}</span>
+                                            <span class="badge bg-${sourceBadgeColor}">
+                                                <i class="fas ${sourceIcon} me-1"></i>${sourceLabel}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    ${product.category ? `
+                                        <div class="mb-3">
+                                            <strong><i class="fas fa-tag me-2 text-muted"></i>카테고리:</strong>
+                                            <span class="badge bg-light text-dark border ms-2">${product.category}</span>
+                                        </div>
+                                    ` : ''}
+                                    
+                                    ${productDetail ? `
+                                        <div class="mb-3 p-3 bg-light rounded">
+                                            <h6 class="mb-2"><i class="fas fa-info-circle me-2 text-primary"></i>제품 정보</h6>
+                                            ${productDetail.specification ? `
+                                                <div class="mb-2">
+                                                    <strong>규격:</strong> <span class="ms-2">${productDetail.specification}</span>
+                                                </div>
+                                            ` : ''}
+                                            ${productDetail.description ? `
+                                                <div class="mb-2">
+                                                    <strong>설명:</strong>
+                                                    <p class="ms-2 mb-0 mt-1">${productDetail.description}</p>
+                                                </div>
+                                            ` : ''}
+                                            <div class="mb-2">
+                                                <strong>단위:</strong> <span class="ms-2">${productDetail.unit}</span>
+                                            </div>
+                                            <div class="mb-2">
+                                                <strong>가격:</strong> 
+                                                <span class="ms-2 text-success fw-bold">${productDetail.current_price.toLocaleString()}원</span>
+                                                ${productDetail.is_promo ? 
+                                                    ` <span class="badge bg-danger">프로모션</span>` : ''}
+                                            </div>
+                                            ${productDetail.total_sold > 0 || productDetail.total_quoted > 0 ? `
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-chart-line me-1"></i>
+                                                        판매 ${productDetail.total_sold}회 | 견적 ${productDetail.total_quoted}회
+                                                    </small>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                    
+                                    ${product.expected_timing ? `
+                                        <div class="mb-3">
+                                            <strong><i class="far fa-clock me-2 text-success"></i>제안 시기:</strong>
+                                            <span class="text-success ms-2">${product.expected_timing}</span>
+                                        </div>
+                                    ` : ''}
+                                    
+                                    <div class="alert alert-light mb-0">
+                                        <h6 class="mb-2"><i class="fas fa-lightbulb me-2 text-warning"></i>추천 이유</h6>
+                                        <p class="mb-0">${product.reason || '추천 이유 없음'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 함께 추천 제품 목록 -->
+                            ${product.cross_sell_items && product.cross_sell_items.length > 0 ? `
+                                <div class="card border-primary">
+                                    <div class="card-header bg-primary bg-opacity-10">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-plus-circle me-2 text-primary"></i>
+                                            함께 추천하는 제품 (${product.cross_sell_items.length}개)
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="list-group list-group-flush">
+                                            ${crossSellDetails.map((item, idx) => `
+                                                <div class="list-group-item">
+                                                    <div class="d-flex align-items-start">
+                                                        <span class="badge bg-primary rounded-circle me-3 mt-1" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                                                            ${idx + 1}
+                                                        </span>
+                                                        <div class="flex-grow-1">
+                                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                                <h6 class="mb-0">
+                                                                    <i class="fas fa-box me-2 text-info"></i>
+                                                                    ${item.name}
+                                                                </h6>
+                                                                ${item.detail ? `
+                                                                    <span class="badge bg-success">
+                                                                        <i class="fas fa-check-circle me-1"></i>카탈로그 제품
+                                                                    </span>
+                                                                ` : ''}
+                                                            </div>
+                                                            ${item.detail ? `
+                                                                <div class="mt-2 p-2 bg-light rounded small">
+                                                                    ${item.detail.specification ? `
+                                                                        <div class="mb-1">
+                                                                            <strong>규격:</strong> ${item.detail.specification}
+                                                                        </div>
+                                                                    ` : ''}
+                                                                    ${item.detail.description ? `
+                                                                        <div class="mb-1">
+                                                                            <strong>설명:</strong> ${item.detail.description}
+                                                                        </div>
+                                                                    ` : ''}
+                                                                    <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+                                                                        <span>
+                                                                            <strong>단위:</strong> ${item.detail.unit}
+                                                                        </span>
+                                                                        <span class="text-success fw-bold">
+                                                                            ${item.detail.current_price.toLocaleString()}원
+                                                                            ${item.detail.is_promo ? '<span class="badge bg-danger ms-1">프로모션</span>' : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                    ${item.detail.total_sold > 0 || item.detail.total_quoted > 0 ? `
+                                                                        <div class="mt-1 text-muted">
+                                                                            <small>
+                                                                                <i class="fas fa-chart-line me-1"></i>
+                                                                                판매 ${item.detail.total_sold}회 | 견적 ${item.detail.total_quoted}회
+                                                                            </small>
+                                                                        </div>
+                                                                    ` : ''}
+                                                                </div>
+                                                            ` : ''}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div class="alert alert-info mt-3 mb-0">
+                                            <small>
+                                                <i class="fas fa-info-circle me-2"></i>
+                                                <strong>참고:</strong> 위 제품들은 주 추천 제품과 함께 제안하면 효과적입니다.
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : `
+                                <div class="alert alert-light">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    함께 추천할 제품이 없습니다.
+                                </div>
+                            `}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                <i class="fas fa-times me-2"></i>닫기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 기존 모달 제거
+        const existingModal = document.getElementById('productDetailModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // 새 모달 추가
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // 모달 표시
+        const modal = new bootstrap.Modal(document.getElementById('productDetailModal'));
+        modal.show();
+        
+        // 모달이 닫히면 DOM에서 제거
+        document.getElementById('productDetailModal').addEventListener('hidden.bs.modal', function () {
+            this.remove();
         });
     }
 });

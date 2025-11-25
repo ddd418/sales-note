@@ -241,6 +241,7 @@ urlpatterns = [
     path('ai/suggest-follow-ups/', ai_views.ai_suggest_follow_ups, name='ai_suggest_follow_ups'),
     path('ai/analyze-email-thread/', ai_views.ai_analyze_email_thread, name='ai_analyze_email_thread'),
     path('ai/recommend-products/<int:followup_id>/', ai_views.ai_recommend_products, name='ai_recommend_products'),
+    path('ai/product-detail/<str:product_code>/', ai_views.ai_get_product_detail, name='ai_product_detail'),
     path('ai/search/', ai_views.ai_natural_language_search, name='ai_natural_language_search'),
     path('ai/refresh-all-grades/', ai_views.ai_refresh_all_grades, name='ai_refresh_all_grades'),
     path('ai/check-grade-update-status/<str:task_id>/', ai_views.ai_check_grade_update_status, name='ai_check_grade_update_status'),
