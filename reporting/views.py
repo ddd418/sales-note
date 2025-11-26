@@ -12277,6 +12277,7 @@ def document_template_toggle_default(request, pk):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def generate_document_pdf(request, document_type, schedule_id, output_format='xlsx'):
     """
     일정 기반 서류 생성 및 다운로드
