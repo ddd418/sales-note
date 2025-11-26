@@ -135,34 +135,6 @@
                     <textarea class="form-control" id="html-editor"></textarea>
                     <input type="hidden" id="body_text" name="body_text" required>
                     <input type="hidden" id="body_html" name="body_html">
-                    
-                    {% if request.user.userprofile.can_use_ai %}
-                    <!-- AI 톤 변환 옵션 (숨김 상태) -->
-                    <div id="ai-transform-options" class="mt-2" style="display: none;">
-                        <div class="card border-info">
-                            <div class="card-body p-2">
-                                <div class="row g-2 align-items-center">
-                                    <div class="col-md-3">
-                                        <select class="form-select form-select-sm" id="ai-transform-tone">
-                                            <option value="formal">포멀로 변환</option>
-                                            <option value="casual">캐주얼로 변환</option>
-                                            <option value="simple">간결하게 변환</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <input type="text" class="form-control form-control-sm" id="ai-transform-instructions" 
-                                               placeholder="추가 지시사항 (선택)">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <button type="button" class="btn btn-info btn-sm w-100" id="ai-transform-execute-btn">
-                                            <i class="bi bi-arrow-repeat"></i> 변환하기
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
                 
                 <!-- 첨부파일 -->
@@ -403,18 +375,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // AI 기능
     // ============================================
     
-    // AI 톤 변환 버튼 클릭
-    document.getElementById('ai-transform-btn').addEventListener('click', function() {
-        const options = document.getElementById('ai-transform-options');
-        if (options.style.display === 'none') {
-            options.style.display = 'block';
-        } else {
-            options.style.display = 'none';
-        }
-    });
-    
-    // AI 톤 변환 실행
-    document.getElementById('ai-transform-execute-btn').addEventListener('click', async function() {
+    // AI 톤 변환 버튼 클릭 (바로 실행)
+    document.getElementById('ai-transform-btn').addEventListener('click', async function() {
         const btn = this;
         const originalHtml = btn.innerHTML;
         
@@ -438,8 +400,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({
                     content: currentContent,
-                    tone: document.getElementById('ai-transform-tone').value,
-                    instructions: document.getElementById('ai-transform-instructions').value
+                    tone: 'formal',  // 고정
+                    instructions: ''  // 사용 안함
                 })
             });
             
@@ -448,10 +410,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 // 본문 변경
                 quill.root.innerHTML = data.body;
-                
-                // 옵션 패널 숨기기
-                document.getElementById('ai-transform-options').style.display = 'none';
-                
                 alert('이메일 톤이 변환되었습니다!');
             } else {
                 alert('오류: ' + data.error);
