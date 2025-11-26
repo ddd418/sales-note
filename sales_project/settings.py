@@ -129,7 +129,7 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 OPENAI_MODEL_MINI = os.environ.get('OPENAI_MODEL_MINI', 'gpt-4o-mini')  # 빠르고 저렴 (내부용)
 OPENAI_MODEL_STANDARD = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')  # 고품질 (외부용)
 OPENAI_MODEL_PREMIUM = os.environ.get('OPENAI_MODEL_PREMIUM', 'gpt-4')  # 최고 품질 (AI 미팅 준비 등 중요 기능)
-OPENAI_MAX_TOKENS = int(os.environ.get('OPENAI_MAX_TOKENS', '2000'))
+OPENAI_MAX_TOKENS = int(os.environ.get('OPENAI_MAX_TOKENS', '3500'))  # GPT-4 최대 8192, 프롬프트 ~4400, 응답 3500
 OPENAI_TEMPERATURE = float(os.environ.get('OPENAI_TEMPERATURE', '0.7'))
 
 # Celery 설정

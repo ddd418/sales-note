@@ -1003,6 +1003,10 @@ def ai_natural_language_search(request):
         # 고객 검색
         if search_type in ['customers', 'all'] and filters:
             try:
+                # 권한 필터링 추가
+                from reporting.views import get_accessible_users
+                accessible_users = get_accessible_users(request.user)
+                
                 # 스케줄 관련 필터와 고객 직접 필터 분리
                 customer_filters = {}
                 schedule_filters = {}
@@ -1018,15 +1022,30 @@ def ai_natural_language_search(request):
                 
                 # 스케줄 필터가 있으면 해당 일정이 있는 고객만 조회
                 if schedule_filters:
-                    schedule_ids = Schedule.objects.filter(**schedule_filters).values_list('followup_id', flat=True).distinct()
+                    schedule_ids = Schedule.objects.filter(
+                        user__in=accessible_users,  # 권한 필터 추가
+                        **schedule_filters
+                    ).values_list('followup_id', flat=True).distinct()
                     if customer_filters:
-                        customers = FollowUp.objects.filter(id__in=schedule_ids, **customer_filters)[:20]
+                        customers = FollowUp.objects.filter(
+                            user__in=accessible_users,  # 권한 필터 추가
+                            id__in=schedule_ids, 
+                            **customer_filters
+                        )[:20]
                     else:
-                        customers = FollowUp.objects.filter(id__in=schedule_ids)[:20]
+                        customers = FollowUp.objects.filter(
+                            user__in=accessible_users,  # 권한 필터 추가
+                            id__in=schedule_ids
+                        )[:20]
                 elif customer_filters:
-                    customers = FollowUp.objects.filter(**customer_filters)[:20]
+                    customers = FollowUp.objects.filter(
+                        user__in=accessible_users,  # 권한 필터 추가
+                        **customer_filters
+                    )[:20]
                 else:
-                    customers = FollowUp.objects.all()[:20]
+                    customers = FollowUp.objects.filter(
+                        user__in=accessible_users  # 권한 필터 추가
+                    )[:20]
                 
                 for customer in customers:
                     # 마지막 연락일 계산
@@ -1046,6 +1065,10 @@ def ai_natural_language_search(request):
         # 일정 검색
         if search_type in ['schedules', 'all'] and filters:
             try:
+                # 권한 필터링 추가
+                from reporting.views import get_accessible_users
+                accessible_users = get_accessible_users(request.user)
+                
                 # schedules__ 접두사 제거 (일정 검색에서는 불필요)
                 schedule_filters = {}
                 followup_filters = {}
@@ -1062,15 +1085,27 @@ def ai_natural_language_search(request):
                         # 일정 직접 필터
                         schedule_filters[key] = value
                 
-                # 필터 적용
+                # 필터 적용 (권한 필터 추가)
                 if followup_filters and schedule_filters:
-                    schedules = Schedule.objects.filter(**schedule_filters, **followup_filters).select_related('followup')[:20]
+                    schedules = Schedule.objects.filter(
+                        user__in=accessible_users,  # 권한 필터 추가
+                        **schedule_filters, 
+                        **followup_filters
+                    ).select_related('followup')[:20]
                 elif schedule_filters:
-                    schedules = Schedule.objects.filter(**schedule_filters).select_related('followup')[:20]
+                    schedules = Schedule.objects.filter(
+                        user__in=accessible_users,  # 권한 필터 추가
+                        **schedule_filters
+                    ).select_related('followup')[:20]
                 elif followup_filters:
-                    schedules = Schedule.objects.filter(**followup_filters).select_related('followup')[:20]
+                    schedules = Schedule.objects.filter(
+                        user__in=accessible_users,  # 권한 필터 추가
+                        **followup_filters
+                    ).select_related('followup')[:20]
                 else:
-                    schedules = Schedule.objects.all().select_related('followup')[:20]
+                    schedules = Schedule.objects.filter(
+                        user__in=accessible_users  # 권한 필터 추가
+                    ).select_related('followup')[:20]
                 
                 for schedule in schedules:
                     type_labels = {
@@ -1093,8 +1128,15 @@ def ai_natural_language_search(request):
         # 영업기회 검색
         if search_type in ['opportunities', 'all'] and filters:
             try:
+                # 권한 필터링 추가
+                from reporting.views import get_accessible_users
+                accessible_users = get_accessible_users(request.user)
+                
                 opp_filters = {k: v for k, v in filters.items() if not k.startswith('followup__')}
-                opportunities = OpportunityTracking.objects.filter(**opp_filters).select_related('followup')[:20]
+                opportunities = OpportunityTracking.objects.filter(
+                    followup__user__in=accessible_users,  # 권한 필터 추가
+                    **opp_filters
+                ).select_related('followup')[:20]
                 
                 for opp in opportunities:
                     search_results['opportunities'].append({

@@ -53,6 +53,7 @@ def get_openai_client():
 MODEL_MINI = settings.OPENAI_MODEL_MINI  # 빠르고 저렴, 일반 용도
 MODEL_STANDARD = settings.OPENAI_MODEL_STANDARD  # 고품질, 전문 문서
 MODEL_PREMIUM = settings.OPENAI_MODEL_PREMIUM  # 최고 품질, AI 미팅 준비
+MAX_TOKENS = settings.OPENAI_MAX_TOKENS  # 최대 토큰 수
 
 # 톤 설정
 TONE_PROMPTS = {
@@ -1501,8 +1502,17 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
         result = json.loads(response.choices[0].message.content)
         suggestions = result.get('suggestions', [])
         
-        logger.info(f"Follow-up suggestions generated for {len(suggestions)} customers using {MODEL_MINI}")
-        return suggestions[:20]  # 최대 20명
+        # 중복 제거 (같은 customer_id는 한 번만)
+        seen_ids = set()
+        unique_suggestions = []
+        for suggestion in suggestions:
+            customer_id = suggestion.get('customer_id')
+            if customer_id not in seen_ids:
+                seen_ids.add(customer_id)
+                unique_suggestions.append(suggestion)
+        
+        logger.info(f"Follow-up suggestions generated for {len(unique_suggestions)} customers using {MODEL_MINI}")
+        return unique_suggestions[:20]  # 최대 20명
     
     except Exception as e:
         logger.error(f"Error suggesting follow-ups with AI: {e}")
@@ -1665,7 +1675,7 @@ def generate_meeting_advice(context: dict, user=None) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=4000,  # 상세한 데이터 분석과 스크립트를 위해 토큰 수 증가
+            max_tokens=MAX_TOKENS,  # settings.OPENAI_MAX_TOKENS 사용
             temperature=0.7  # 창의적이면서도 실용적인 조언
         )
         
