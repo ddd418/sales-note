@@ -49,15 +49,6 @@ body.modal-open .col-md-10 {
           {{ schedule.followup.customer_name|default:"고객명 미정" }} 일정
         </h1>
         <div>
-          {% if user.userprofile.can_use_ai %}
-          <button
-            id="aiStrategyBtn"
-            class="btn btn-info me-2"
-            data-schedule-id="{{ schedule.pk }}"
-          >
-            <i class="fas fa-brain me-1"></i>AI 미팅 전략 추천
-          </button>
-          {% endif %}
           <a
             href="{% url 'reporting:send_email_from_schedule' schedule.pk %}"
             class="btn btn-success me-2"
@@ -1636,107 +1627,7 @@ async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx')
 }
 </script>
 
-<!-- AI 미팅 전략 추천 모달 -->
-<div class="modal fade" id="aiStrategyModal" tabindex="-1">
-  <div class="modal-dialog modal-xl">
-    <div class="modal-content">
-      <div class="modal-header bg-info text-white">
-        <h5 class="modal-title">
-          <i class="fas fa-brain me-2"></i>AI 미팅 전략 추천
-        </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="aiStrategyContent">
-          <!-- AI 전략 내용이 여기에 표시됩니다 -->
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
-// AI 미팅 전략 추천 버튼
-document.addEventListener('DOMContentLoaded', function() {
-  const aiStrategyBtn = document.getElementById('aiStrategyBtn');
-  if (!aiStrategyBtn) return;
-  
-  aiStrategyBtn.addEventListener('click', async function() {
-    const scheduleId = this.dataset.scheduleId;
-    
-    await runAITaskWithDetails(
-      '미팅 전략 추천',
-      "{% url 'reporting:ai_meeting_strategy' %}",
-      { schedule_id: scheduleId },
-      // 상세 로그 콜백
-      async function() {
-        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        addAILog('🏢 고객: {{ schedule.followup.customer_name }}', 'info');
-        addAILog('📅 활동: {{ schedule.get_activity_type_display }}', 'info');
-        addAILog('📆 날짜: {{ schedule.visit_date|date:"Y-m-d" }}', 'info');
-        {% if schedule.followup.department %}
-        addAILog('🏛️  부서: {{ schedule.followup.department }}', 'info');
-        {% endif %}
-        {% if schedule.followup.address %}
-        addAILog('📍 위치: {{ schedule.followup.address }}', 'info');
-        {% endif %}
-        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-        await sleep(500);
-        addAILog('🔍 고객 구매 이력 조회 중...', 'info');
-        await sleep(300);
-        addAILog('📊 견적-구매 전환율 분석 중...', 'info');
-        await sleep(300);
-        addAILog('📝 과거 미팅 메모 수집 중...', 'info');
-      },
-      // 성공 콜백
-      function(data) {
-        // 모달 표시
-        const modal = new bootstrap.Modal(document.getElementById('aiStrategyModal'));
-        
-        // 마크다운을 HTML로 변환 (간단한 변환)
-        let htmlContent = data.strategy
-          .replace(/\n/g, '<br>')
-          .replace(/^━━━.*$/gm, '<hr>')
-          .replace(/^【(.+?)】$/gm, '<h6 class="mt-3 mb-2 text-primary">$1</h6>')
-          .replace(/^▶ (.+)$/gm, '<h6 class="mt-2 mb-1 text-secondary">▶ $1</h6>')
-          .replace(/^\*\*(.+?)\*\*$/gm, '<strong>$1</strong>')
-          .replace(/^• (.+)$/gm, '<li class="ms-3">$1</li>')
-          .replace(/^□ (.+)$/gm, '<div class="form-check"><input class="form-check-input" type="checkbox" disabled><label class="form-check-label">$1</label></div>')
-          .replace(/^(\d+)\. (.+)$/gm, '<div class="ms-3"><strong>$1.</strong> $2</div>');
-        
-        // 컨텐츠 표시
-        document.getElementById('aiStrategyContent').innerHTML = `
-          <div class="alert alert-info">
-            <strong><i class="fas fa-user me-2"></i>${data.schedule_info.customer_name}</strong> - 
-            ${data.schedule_info.activity_type} (${data.schedule_info.visit_date} ${data.schedule_info.visit_time})
-          </div>
-          <div class="strategy-content">
-            ${htmlContent}
-          </div>
-        `;
-        
-        modal.show();
-      },
-      // 에러 콜백
-      function(error) {
-        alert(`AI 미팅 전략 생성 실패: ${error.message}`);
-      }
-    );
-  });
-});
-</script>
-
-<style>
-.strategy-content {
-  line-height: 1.8;
-}
-.strategy-content h4 {
-  border-bottom: 2px solid #0d6efd;
-  padding-bottom: 0.5rem;
-}
 .strategy-content h5 {
   border-left: 3px solid #6c757d;
   padding-left: 0.75rem;

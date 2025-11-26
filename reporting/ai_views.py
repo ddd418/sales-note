@@ -61,6 +61,7 @@ def ai_generate_email(request):
         data = json.loads(request.body)
         purpose = data.get('purpose', 'compose')
         tone = data.get('tone', 'formal')
+        schedule_id = data.get('schedule_id')
         
         context = {
             'customer_name': data.get('customer_name', ''),
@@ -68,6 +69,7 @@ def ai_generate_email(request):
             'product': data.get('product', ''),
             'schedule_content': data.get('schedule_content', ''),
             'notes': data.get('notes', ''),
+            'schedule_id': schedule_id,
         }
         
         if purpose == 'reply':

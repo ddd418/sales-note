@@ -459,6 +459,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     customer_name: '{{ schedule.followup.customer_name }}',
                     company_name: '{{ schedule.followup.company }}',
                     schedule_content: '{{ schedule.content|escapejs }}',
+                    schedule_id: {{ schedule.pk }},
                     notes: document.getElementById('ai-notes').value
                 })
             });
