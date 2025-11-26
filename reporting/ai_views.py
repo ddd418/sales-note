@@ -1042,11 +1042,12 @@ def ai_natural_language_search(request):
                 from reporting.views import get_accessible_users
                 accessible_users = get_accessible_users(request.user)
                 
-                # 필터 분리: 고객 직접, 스케줄, 납품상품, 견적상품
+                # 필터 분리: 고객 직접, 스케줄, 납품상품, 견적상품, 이메일 발송 이력
                 customer_filters = {}
                 schedule_filters = {}
                 delivery_filters = {}
                 quote_filters = {}
+                email_filters = {}
                 
                 for key, value in filters.items():
                     if 'deliveryitems__' in key:
@@ -1057,6 +1058,10 @@ def ai_natural_language_search(request):
                         # quoteitems__ 접두사 제거하고 견적상품 필터로
                         clean_key = key.replace('quoteitems__', '')
                         quote_filters[clean_key] = value
+                    elif 'emaillogs__' in key:
+                        # emaillogs__ 접두사 제거하고 이메일 필터로
+                        clean_key = key.replace('emaillogs__', '')
+                        email_filters[clean_key] = value
                     elif 'schedules__' in key:
                         # schedules__ 접두사 제거하고 스케줄 필터로
                         clean_key = key.replace('schedules__', '')
@@ -1092,6 +1097,15 @@ def ai_natural_language_search(request):
                     ).values_list('followup_id', flat=True).distinct()
                     logger.info(f"[자연어검색] 일정 필터: {schedule_filters} → 고객 {len(customer_ids_from_schedule)}명")
                 
+                # 이메일 발송 이력 필터가 있으면 해당 이메일을 보낸/받은 고객만 조회
+                customer_ids_from_email = None
+                if email_filters:
+                    from reporting.models import EmailLog
+                    customer_ids_from_email = EmailLog.objects.filter(
+                        **email_filters
+                    ).values_list('followup_id', flat=True).distinct()
+                    logger.info(f"[자연어검색] 이메일 필터: {email_filters} → 고객 {len(customer_ids_from_email)}명")
+                
                 # 고객 ID 리스트 결합 (교집합)
                 final_customer_ids = None
                 
@@ -1109,6 +1123,12 @@ def ai_natural_language_search(request):
                         final_customer_ids = set(customer_ids_from_schedule)
                     else:
                         final_customer_ids &= set(customer_ids_from_schedule)
+                
+                if customer_ids_from_email is not None:
+                    if final_customer_ids is None:
+                        final_customer_ids = set(customer_ids_from_email)
+                    else:
+                        final_customer_ids &= set(customer_ids_from_email)
                 
                 # 최종 고객 쿼리
                 if final_customer_ids is not None:

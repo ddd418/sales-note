@@ -940,6 +940,16 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - status (상태)
 - created_at, updated_at
 
+**EmailLog (이메일 발송 이력) 모델:**
+- followup (관계: FollowUp 객체)
+- schedule (관계: Schedule 객체)
+- email_type (유형: 'sent', 'received')
+- sender (발신자: User 객체)
+- recipient_email (수신자)
+- subject (제목)
+- sent_at (발송 일시)
+- created_at
+
 **DeliveryItem (납품 상품) 모델:**
 - schedule (관계: Schedule 객체, activity_type='delivery'인 일정만)
 - product (관계: Product 객체)
@@ -979,14 +989,19 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
    - 일정의 고객: followup__field_name
    - 납품 상품의 고객: schedule__followup__field_name
    - 견적 상품의 고객: quote__followup__field_name
+   - 이메일 발송 이력의 고객: emaillogs__field_name (FollowUp 모델에서!)
 4. 상품 검색:
    - 상품 코드 검색: product__product_code__icontains="826"
    - 상품명 검색: product__product_name__icontains="HPLC"
    - item_name은 직접 문자열이므로: item_name__icontains="826"
-5. 날짜 lookup: __gte (이상), __lte (이하), __range (범위)
-6. 문자열 lookup: __icontains (포함), __exact (정확히), __iexact (대소문자 무시)
-7. **검색 대상에 따라 다른 필터 사용**:
-   - customers 검색: schedules__ 또는 deliveryitems__ 접두사 사용 가능
+5. 이메일 발송 이력 검색:
+   - 이메일 보낸 고객: emaillogs__email_type="sent"
+   - 특정 날짜 이메일 보낸 고객: emaillogs__sent_at__date="2024-11-27"
+   - 특정 기간 이메일 보낸 고객: emaillogs__sent_at__gte="2024-11-01"
+6. 날짜 lookup: __gte (이상), __lte (이하), __range (범위), __date (날짜만)
+7. 문자열 lookup: __icontains (포함), __exact (정확히), __iexact (대소문자 무시)
+8. **검색 대상에 따라 다른 필터 사용**:
+   - customers 검색: schedules__, deliveryitems__, emaillogs__ 접두사 사용 가능
    - schedules 검색: schedules__ 접두사 사용 불가 (직접 필드명만)
    - opportunities 검색: followup__ 접두사로 고객 정보 접근
    - products 검색: DeliveryItem 또는 QuoteItem 모델 기준으로 검색
@@ -995,6 +1010,11 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - "826이 포함된 상품을 구매한 고객" → customers 검색 + deliveryitems__product__product_code__icontains="826"
 - "HPLC를 구매한 고객" → customers 검색 + deliveryitems__item_name__icontains="HPLC"
 - "SO826.1000 구매 고객" → customers 검색 + deliveryitems__product__product_code__icontains="SO826.1000"
+
+📧 이메일 발송 이력 검색 패턴:
+- "11월 27일에 메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__date="2024-11-27"
+- "지난주 이메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__gte="2024-11-20"
+- "이번 달 이메일 받은 고객" → customers 검색 + emaillogs__email_type="received" + emaillogs__sent_at__gte="2024-11-01"
 """
 
     user_prompt = f"""
@@ -1087,10 +1107,44 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
   "interpretation": "상품 코드 SO826.1000을 구매한 고객을 검색합니다."
 }}
 
+예시 8 - 이메일 발송 이력 검색:
+입력: "11월 27일에 메일 보낸 고객"
+출력:
+{{
+  "filters": {{
+    "emaillogs__email_type": "sent",
+    "emaillogs__sent_at__date": "2024-11-27"
+  }},
+  "interpretation": "2024년 11월 27일에 이메일을 보낸 고객을 검색합니다."
+}}
+
+예시 9 - 이메일 발송 이력 (오늘):
+입력: "오늘 메일 보낸 고객"
+출력:
+{{
+  "filters": {{
+    "emaillogs__email_type": "sent",
+    "emaillogs__sent_at__date": "{current_date}"
+  }},
+  "interpretation": "{current_date}에 이메일을 보낸 고객을 검색합니다."
+}}
+
+예시 10 - 이메일 발송 이력 (기간):
+입력: "이번 달 이메일 보낸 고객"
+출력:
+{{
+  "filters": {{
+    "emaillogs__email_type": "sent",
+    "emaillogs__sent_at__gte": "2024-11-01"
+  }},
+  "interpretation": "2024년 11월 이후에 이메일을 보낸 고객을 검색합니다."
+}}
+
 ⚠️ 주의:
-- 고객(customers) 검색할 때만 schedules__ 또는 deliveryitems__ 접두사 사용
+- 고객(customers) 검색할 때만 schedules__, deliveryitems__, emaillogs__ 접두사 사용
 - 일정(schedules) 검색할 때는 schedules__ 사용 안 함
 - 상품 관련 검색은 반드시 deliveryitems__ 또는 quoteitems__ 사용
+- 이메일 발송 이력 검색은 emaillogs__ 사용
 - __isnull 같은 복잡한 lookup은 사용하지 말 것
 """
     
