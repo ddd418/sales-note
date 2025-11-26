@@ -251,6 +251,7 @@ urlpatterns = [
     path('ai/upcoming-schedules/', ai_views.ai_upcoming_schedules, name='ai_upcoming_schedules'),
     path('ai/schedule-detail/<int:schedule_id>/', ai_views.ai_schedule_detail, name='ai_schedule_detail'),
     path('ai/meeting-advice/', ai_views.ai_meeting_advice, name='ai_meeting_advice'),
+    path('ai/meeting-strategy/', ai_views.ai_generate_meeting_strategy, name='ai_meeting_strategy'),  # 신규 API
     
     # 관리자 필터 API
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),

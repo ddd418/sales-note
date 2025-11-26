@@ -49,6 +49,15 @@ body.modal-open .col-md-10 {
           {{ schedule.followup.customer_name|default:"고객명 미정" }} 일정
         </h1>
         <div>
+          {% if user.userprofile.can_use_ai %}
+          <button
+            id="aiStrategyBtn"
+            class="btn btn-info me-2"
+            data-schedule-id="{{ schedule.pk }}"
+          >
+            <i class="fas fa-brain me-1"></i>AI 미팅 전략 추천
+          </button>
+          {% endif %}
           <a
             href="{% url 'reporting:send_email_from_schedule' schedule.pk %}"
             class="btn btn-success me-2"
@@ -1627,4 +1636,128 @@ async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx')
 }
 </script>
 
+<!-- AI 미팅 전략 추천 모달 -->
+<div class="modal fade" id="aiStrategyModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">
+          <i class="fas fa-brain me-2"></i>AI 미팅 전략 추천
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="aiStrategyLoading" class="text-center py-5">
+          <div class="spinner-border text-info mb-3" role="status">
+            <span class="visually-hidden">분석 중...</span>
+          </div>
+          <p class="text-muted">AI가 고객 데이터를 분석하여 미팅 전략을 수립하고 있습니다...</p>
+          <small class="text-muted">최대 30초 소요될 수 있습니다</small>
+        </div>
+        <div id="aiStrategyContent" class="d-none">
+          <!-- AI 전략 내용이 여기에 표시됩니다 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// AI 미팅 전략 추천 버튼
+document.addEventListener('DOMContentLoaded', function() {
+  const aiStrategyBtn = document.getElementById('aiStrategyBtn');
+  if (!aiStrategyBtn) return;
+  
+  aiStrategyBtn.addEventListener('click', async function() {
+    const scheduleId = this.dataset.scheduleId;
+    const modal = new bootstrap.Modal(document.getElementById('aiStrategyModal'));
+    
+    // 모달 표시
+    modal.show();
+    
+    // 로딩 표시, 컨텐츠 숨김
+    document.getElementById('aiStrategyLoading').classList.remove('d-none');
+    document.getElementById('aiStrategyContent').classList.add('d-none');
+    
+    try {
+      const response = await fetch("{% url 'reporting:ai_meeting_strategy' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          schedule_id: scheduleId
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // 마크다운을 HTML로 변환 (간단한 변환)
+        let htmlContent = data.strategy
+          .replace(/\n/g, '<br>')
+          .replace(/^## (.+)$/gm, '<h4 class="mt-4 mb-3 text-primary">$1</h4>')
+          .replace(/^### (.+)$/gm, '<h5 class="mt-3 mb-2 text-secondary">$1</h5>')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/- \[ \] (.+)/g, '<div class="form-check"><input class="form-check-input" type="checkbox" disabled><label class="form-check-label">$1</label></div>')
+          .replace(/^- (.+)$/gm, '<li>$1</li>')
+          .replace(/(<li>.*<\/li>)/s, '<ul class="list-unstyled ms-3">$1</ul>');
+        
+        // 컨텐츠 표시
+        document.getElementById('aiStrategyContent').innerHTML = `
+          <div class="alert alert-info">
+            <strong><i class="fas fa-user me-2"></i>${data.schedule_info.customer_name}</strong> - 
+            ${data.schedule_info.activity_type} (${data.schedule_info.visit_date} ${data.schedule_info.visit_time})
+          </div>
+          <div class="strategy-content">
+            ${htmlContent}
+          </div>
+        `;
+        
+        // 로딩 숨김, 컨텐츠 표시
+        document.getElementById('aiStrategyLoading').classList.add('d-none');
+        document.getElementById('aiStrategyContent').classList.remove('d-none');
+      } else {
+        throw new Error(data.error || 'AI 전략 생성 실패');
+      }
+    } catch (error) {
+      console.error('AI 전략 생성 오류:', error);
+      document.getElementById('aiStrategyContent').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          오류: ${error.message}
+        </div>
+      `;
+      document.getElementById('aiStrategyLoading').classList.add('d-none');
+      document.getElementById('aiStrategyContent').classList.remove('d-none');
+    }
+  });
+});
+</script>
+
+<style>
+.strategy-content {
+  line-height: 1.8;
+}
+.strategy-content h4 {
+  border-bottom: 2px solid #0d6efd;
+  padding-bottom: 0.5rem;
+}
+.strategy-content h5 {
+  border-left: 3px solid #6c757d;
+  padding-left: 0.75rem;
+}
+.strategy-content ul {
+  margin-left: 1.5rem;
+}
+.strategy-content .form-check {
+  margin-bottom: 0.5rem;
+}
+</style>
+
 {% endblock %}
+

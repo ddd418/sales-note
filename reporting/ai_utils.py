@@ -1519,9 +1519,274 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
         raise
 
 
+def generate_meeting_strategy(schedule_id: int, user=None) -> str:
+    """
+    일정 기반 AI 미팅 전략 추천
+    
+    Args:
+        schedule_id: 일정 ID
+        user: 요청 사용자
+    
+    Returns:
+        AI가 생성한 미팅 전략 (Markdown 형식)
+    """
+    from reporting.models import Schedule, History, QuoteItem, DeliveryItem
+    from django.db.models import Sum, Q
+    from decimal import Decimal
+    
+    if user and not check_ai_permission(user):
+        raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    try:
+        schedule = Schedule.objects.select_related('followup', 'followup__company', 'followup__department').get(id=schedule_id)
+    except Schedule.DoesNotExist:
+        raise ValueError(f"일정 ID {schedule_id}를 찾을 수 없습니다.")
+    
+    customer = schedule.followup
+    
+    # 1. 구매 기록 수집
+    purchase_histories = History.objects.filter(
+        followup=customer,
+        action_type='delivery_schedule'
+    ).exclude(
+        Q(delivery_amount__isnull=True) | Q(delivery_amount=0)
+    ).values('delivery_date', 'delivery_amount', 'delivery_items', 'content').order_by('-delivery_date')[:20]
+    
+    purchase_records = []
+    total_purchase_amount = Decimal('0')
+    for ph in purchase_histories:
+        amount = ph['delivery_amount'] or Decimal('0')
+        total_purchase_amount += amount
+        purchase_records.append({
+            'date': ph['delivery_date'].strftime('%Y-%m-%d') if ph['delivery_date'] else '날짜 미기록',
+            'amount': f"{amount:,.0f}원",
+            'items': ph['delivery_items'] or '품목 미기록',
+            'note': ph['content'] or ''
+        })
+    
+    # 2. 견적 → 구매 전환 분석
+    quote_items = QuoteItem.objects.filter(quote__followup=customer).select_related('quote', 'product')
+    delivery_items = DeliveryItem.objects.filter(schedule__followup=customer).values_list('item_name', flat=True)
+    delivery_items_set = set(delivery_items)
+    
+    converted_products = []  # 견적→구매 전환된 제품
+    not_converted_products = []  # 전환되지 않은 제품
+    
+    for quote_item in quote_items:
+        product_name = quote_item.product.name if quote_item.product else '제품명 없음'
+        if product_name in delivery_items_set:
+            converted_products.append({
+                'product': product_name,
+                'quote_date': quote_item.quote.quote_date.strftime('%Y-%m-%d') if quote_item.quote.quote_date else '',
+                'quote_amount': f"{quote_item.subtotal:,.0f}원"
+            })
+        else:
+            not_converted_products.append({
+                'product': product_name,
+                'quote_date': quote_item.quote.quote_date.strftime('%Y-%m-%d') if quote_item.quote.quote_date else '',
+                'quote_amount': f"{quote_item.subtotal:,.0f}원",
+                'reason': '전환 실패 (추가 분석 필요)'
+            })
+    
+    quote_conversion_rate = 0
+    if len(converted_products) + len(not_converted_products) > 0:
+        quote_conversion_rate = int(len(converted_products) / (len(converted_products) + len(not_converted_products)) * 100)
+    
+    # 3. 히스토리 메모 (실무자 작성 글)
+    history_notes = History.objects.filter(
+        followup=customer
+    ).exclude(
+        content__isnull=True
+    ).exclude(
+        content=''
+    ).values('created_at', 'action_type', 'content', 'meeting_date').order_by('-created_at')[:30]
+    
+    history_records = []
+    for hn in history_notes:
+        action_type_display = dict(History.ACTION_CHOICES).get(hn['action_type'], hn['action_type'])
+        date = hn['meeting_date'] or hn['created_at'].date()
+        history_records.append(f"[{date}] {action_type_display}: {hn['content']}")
+    
+    # 4. 일정과 연결된 히스토리 찾기
+    schedule_histories = History.objects.filter(schedule=schedule).exclude(
+        content__isnull=True
+    ).exclude(content='').values('content', 'action_type', 'created_at').order_by('-created_at')
+    
+    schedule_context = []
+    for sh in schedule_histories:
+        action_type_display = dict(History.ACTION_CHOICES).get(sh['action_type'], sh['action_type'])
+        schedule_context.append(f"[{action_type_display}] {sh['content']}")
+    
+    # System Prompt
+    system_prompt = """당신은 20년 이상 B2B 생명과학·의료·연구장비 시장에서 활동한 최고 수준의 세일즈 컨설팅 전문가입니다.
+당신의 역할은 특정 고객에 대한 모든 CRM 데이터를 바탕으로, 다음 미팅에서 어떤 전략을 활용해야 가장 높은 확률로 영업 성과를 만들 수 있을지 컨설팅하는 것입니다.
+
+**핵심 원칙:**
+1. 절대 모호하거나 원론적인 내용 금지
+2. "~할 수도 있다" 같은 추측성 빈 문장은 피할 것
+3. 반드시 데이터 기반으로 구체적인 전략을 작성
+4. 실무자가 현장에서 바로 사용할 수 있는 형태로 제시
+5. 피펫·팁·디스펜서 등 연구장비 중심의 세일즈 특성을 반영할 것
+
+**답변 형식:**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 고객 상황 분석
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【구매 패턴】
+• 총 구매 실적: [구체적 금액과 건수]
+• 주요 구매 제품: [실제 구매한 제품명]
+• 구매 주기: [분석 결과]
+
+【견적 전환 분석】
+• 전환율: [%]
+• 전환 성공 제품: [제품명, 시기, 금액]
+• 미전환 제품: [제품명, 실패 이유]
+
+【고객 니즈 & 페인포인트】
+• [히스토리 기반으로 발견한 실제 고민점]
+• [관심 제품 및 예산 범위]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 미팅 전략
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【이번 미팅 핵심 주제 TOP 3】
+1. [구체적 주제] - 근거: [과거 데이터]
+2. [구체적 주제] - 근거: [과거 데이터]
+3. [구체적 주제] - 근거: [과거 데이터]
+
+【대화 전략】
+
+▶ 오프닝 (첫 30초)
+"[고객 데이터를 활용한 자연스러운 인사]"
+
+▶ 니즈 확인 질문
+• [과거 히스토리 기반 질문 1]
+• [과거 히스토리 기반 질문 2]
+• [과거 히스토리 기반 질문 3]
+
+▶ 제안 순서
+1. [제품/서비스] - 이유: [구매 패턴 분석]
+2. [제품/서비스] - 이유: [구매 패턴 분석]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 실행 체크리스트
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【준비물】
+□ [구체적 자료/샘플]
+□ [가격 전략 - 과거 구매가 기준]
+□ [기타 필요 자료]
+
+【확인 사항】
+□ [고객 연구실 특성 관련]
+□ [예산/타이밍 관련]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💬 후속 조치
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【미팅 직후】
+• [즉시 실행할 액션 1]
+• [즉시 실행할 액션 2]
+
+【다음 단계 조건】
+• [구매 확정으로 가기 위한 체크포인트]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 예상 리스크
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【리스크 1】 [항목]
+→ 근거: [과거 데이터]
+→ 대응: [구체적 방법]
+
+【리스크 2】 [항목]
+→ 근거: [과거 데이터]
+→ 대응: [구체적 방법]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**중요: 모든 전략은 제공된 고객 데이터(구매 이력, 견적 전환, 히스토리 메모)를 구체적으로 인용해야 합니다.**"""
+
+    # User Prompt
+    activity_type_display = dict(Schedule.ACTIVITY_TYPE_CHOICES).get(schedule.activity_type, schedule.activity_type)
+    
+    user_prompt = f"""
+**📅 다음 일정 정보:**
+- **유형**: {activity_type_display}
+- **날짜/시간**: {schedule.visit_date} {schedule.visit_time}
+- **장소**: {schedule.location or '미정'}
+- **메모**: {schedule.notes or '없음'}
+
+**일정과 연결된 히스토리:**
+{chr(10).join(schedule_context) if schedule_context else '연결된 히스토리 없음 - 아래 전체 고객 데이터를 기반으로 전략 수립'}
+
+---
+
+**👤 고객 정보:**
+- **이름**: {customer.customer_name}
+- **소속**: {customer.company.name if customer.company else '미등록'} - {customer.department.name if customer.department else '미등록'}
+- **담당자/책임자**: {customer.manager or '미등록'}
+- **등급**: {customer.get_customer_grade_display()}
+- **AI 점수**: {customer.ai_score}점
+
+---
+
+**💰 구매 기록 ({len(purchase_records)}건, 총 {total_purchase_amount:,.0f}원):**
+
+{chr(10).join([f"- {p['date']}: {p['amount']} | {p['items'][:100]}..." for p in purchase_records[:10]]) if purchase_records else '구매 기록 없음'}
+
+---
+
+**📋 견적 → 구매 전환 분석:**
+
+**전환율**: {quote_conversion_rate}% ({len(converted_products)}건 전환 / {len(not_converted_products)}건 미전환)
+
+**전환된 제품:**
+{chr(10).join([f"- {c['product']} ({c['quote_date']}, {c['quote_amount']})" for c in converted_products[:10]]) if converted_products else '전환된 견적 없음'}
+
+**전환되지 않은 제품:**
+{chr(10).join([f"- {n['product']} ({n['quote_date']}, {n['quote_amount']}) - {n['reason']}" for n in not_converted_products[:10]]) if not_converted_products else '미전환 견적 없음'}
+
+---
+
+**📝 고객 히스토리 (실무자 작성 메모, 최근 30개):**
+
+{chr(10).join(history_records) if history_records else '히스토리 기록 없음'}
+
+---
+
+위 데이터를 바탕으로, **{activity_type_display}** 일정에 대한 구체적이고 실행 가능한 전략을 작성해주세요.
+특히 일정과 연결된 히스토리가 있다면 이를 우선적으로 활용하고, 없다면 전체 고객 데이터를 기반으로 전략을 수립하세요.
+"""
+
+    try:
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_PREMIUM,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=MAX_TOKENS,
+            temperature=0.7
+        )
+        
+        strategy = response.choices[0].message.content
+        logger.info(f"Meeting strategy generated for schedule {schedule_id} ({customer.customer_name}) using {MODEL_PREMIUM}")
+        return strategy
+    
+    except Exception as e:
+        logger.error(f"Error generating meeting strategy: {e}")
+        raise
+
+
 def generate_meeting_advice(context: dict, user=None) -> str:
     """
-    다가오는 미팅에 대한 AI 조언 생성
+    [DEPRECATED] 기존 AI 미팅 준비 함수 (하위 호환성 유지)
+    새로운 generate_meeting_strategy() 사용 권장
     
     Args:
         context: 미팅 및 고객 정보

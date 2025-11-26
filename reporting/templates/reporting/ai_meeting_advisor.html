@@ -8,9 +8,9 @@
   <div class="row mb-4">
     <div class="col-12">
       <h2 class="mb-3">
-        <i class="fas fa-brain text-primary me-2"></i>AI 미팅 준비
+        <i class="fas fa-brain text-primary me-2"></i>AI 미팅 전략 추천
       </h2>
-      <p class="text-muted">다가오는 미팅을 선택하고 AI에게 조언을 받아보세요.</p>
+      <p class="text-muted">다가오는 일정을 선택하면 AI가 고객 데이터를 분석하여 전략을 추천합니다.</p>
     </div>
   </div>
 
@@ -65,30 +65,17 @@
         </div>
       </div>
 
-      <!-- 질문 입력 -->
-      <div id="question-area" class="card shadow-sm mb-4" style="display: none;">
+      <!-- 미팅 전략 추천 버튼 -->
+      <div id="strategy-button-area" class="card shadow-sm mb-4" style="display: none;">
         <div class="card-header bg-success text-white">
           <h5 class="mb-0">
-            <i class="fas fa-question-circle me-2"></i>AI에게 질문하기
+            <i class="fas fa-lightbulb me-2"></i>AI 전략 추천
           </h5>
         </div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label for="user-question" class="form-label">
-              미팅에 대해 궁금한 점을 입력하세요
-            </label>
-            <textarea 
-              class="form-control" 
-              id="user-question" 
-              rows="4" 
-              placeholder="예시:
-- 이번 미팅에서 어떤 제품을 중점적으로 소개하면 좋을까요?
-- 고객의 관심사를 고려해 어떤 접근 방식이 효과적일까요?
-- 견적서 제시 시 주의할 점이 있을까요?
-- 이전 미팅에서 나온 이슈를 어떻게 다뤄야 할까요?"></textarea>
-          </div>
-          <button type="button" class="btn btn-primary btn-lg w-100" id="ask-ai-btn">
-            <i class="fas fa-magic me-2"></i>AI 조언 받기
+        <div class="card-body text-center">
+          <p class="mb-3">고객의 구매 이력, 견적 전환율, 히스토리를 분석하여 실전 전략을 제시합니다.</p>
+          <button type="button" class="btn btn-success btn-lg" id="get-strategy-btn">
+            <i class="fas fa-brain me-2"></i>미팅 전략 추천 받기
           </button>
         </div>
       </div>
@@ -97,7 +84,7 @@
       <div id="ai-response-area" class="card shadow-sm" style="display: none;">
         <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
           <h5 class="mb-0">
-            <i class="fas fa-robot me-2"></i>AI 영업 전문가 조언
+            <i class="fas fa-robot me-2"></i>AI 미팅 전략
           </h5>
         </div>
         <div class="card-body">
@@ -285,11 +272,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // 영역 표시
         document.getElementById('initial-message').style.display = 'none';
         document.getElementById('schedule-info').style.display = 'block';
-        document.getElementById('question-area').style.display = 'block';
+        document.getElementById('strategy-button-area').style.display = 'block';
         document.getElementById('ai-response-area').style.display = 'none';
-        
-        // 질문 입력란 초기화
-        document.getElementById('user-question').value = '';
       }
     })
     .catch(error => {
@@ -314,23 +298,17 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('schedule-notes').textContent = schedule.notes || '메모 없음';
   }
 
-  // AI 조언 요청
-  document.getElementById('ask-ai-btn').addEventListener('click', function() {
+  // AI 미팅 전략 추천 요청
+  document.getElementById('get-strategy-btn').addEventListener('click', function() {
     if (!selectedScheduleId) {
       alert('일정을 먼저 선택해주세요.');
-      return;
-    }
-
-    const question = document.getElementById('user-question').value.trim();
-    if (!question) {
-      alert('질문을 입력해주세요.');
       return;
     }
 
     // 버튼 비활성화
     const btn = this;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>AI가 분석 중...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>AI가 전략을 수립하고 있습니다...';
 
     // AI 응답 영역 표시
     document.getElementById('ai-response-area').style.display = 'block';
@@ -339,34 +317,34 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="spinner-border text-primary mb-3" role="status">
           <span class="visually-hidden">분석 중...</span>
         </div>
-        <p class="text-muted">AI가 고객 정보와 히스토리를 분석하여 조언을 준비하고 있습니다...</p>
+        <p class="text-muted">AI가 고객의 구매 이력, 견적 전환율, 히스토리 메모를 분석하여 전략을 수립하고 있습니다...</p>
+        <small class="text-muted">최대 30초 소요될 수 있습니다</small>
       </div>
     `;
 
-    // AI 조언 요청
-    fetch('/reporting/ai/meeting-advice/', {
+    // AI 전략 요청
+    fetch('/reporting/ai/meeting-strategy/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token }}'
       },
       body: JSON.stringify({
-        schedule_id: selectedScheduleId,
-        question: question
+        schedule_id: selectedScheduleId
       })
     })
     .then(response => response.json())
     .then(data => {
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-magic me-2"></i>AI 조언 받기';
+      btn.innerHTML = '<i class="fas fa-brain me-2"></i>미팅 전략 추천 받기';
 
-      if (data.success && data.advice) {
-        displayAIAdvice(data.advice);
+      if (data.success && data.strategy) {
+        displayAIStrategy(data.strategy);
       } else {
         document.getElementById('ai-response-content').innerHTML = `
           <div class="alert alert-danger">
             <i class="fas fa-exclamation-triangle me-2"></i>
-            ${data.error || 'AI 조언을 받는 중 오류가 발생했습니다.'}
+            ${data.error || 'AI 전략을 받는 중 오류가 발생했습니다.'}
           </div>
         `;
       }
@@ -374,35 +352,27 @@ document.addEventListener('DOMContentLoaded', function() {
     .catch(error => {
       console.error('Error:', error);
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-magic me-2"></i>AI 조언 받기';
+      btn.innerHTML = '<i class="fas fa-brain me-2"></i>미팅 전략 추천 받기';
       
       document.getElementById('ai-response-content').innerHTML = `
         <div class="alert alert-danger">
           <i class="fas fa-exclamation-triangle me-2"></i>
-          AI 조언을 받는 중 오류가 발생했습니다.
+          AI 전략을 받는 중 오류가 발생했습니다.
         </div>
       `;
     });
   });
 
-  function displayAIAdvice(advice) {
-    // Markdown 형식의 응답을 HTML로 변환 (간단한 변환)
-    let html = advice
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+  function displayAIStrategy(strategy) {
+    // Markdown 형식의 응답을 HTML로 변환
+    let html = strategy
+      .replace(/\n/g, '<br>')
+      .replace(/^## (.+)$/gm, '<h4 class="mt-4 mb-3 text-primary border-bottom pb-2">$1</h4>')
+      .replace(/^### (.+)$/gm, '<h5 class="mt-3 mb-2 text-secondary">$1</h5>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-info">$1</strong>')
+      .replace(/- \[ \] (.+)/g, '<div class="form-check"><input class="form-check-input" type="checkbox" disabled><label class="form-check-label">$1</label></div>')
       .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/<li>/g, '<ul><li>')
-      .replace(/<\/li>(?![\s\S]*<li>)/g, '</li></ul>');
-
-    // 단락으로 감싸기
-    if (!html.startsWith('<h') && !html.startsWith('<ul')) {
-      html = '<p>' + html;
-    }
-    if (!html.endsWith('</h4>') && !html.endsWith('</ul>') && !html.endsWith('</p>')) {
-      html = html + '</p>';
-    }
+      .replace(/(<li>.*<\/li>)/s, '<ul class="mb-3">$1</ul>');
 
     document.getElementById('ai-response-content').innerHTML = html;
   }

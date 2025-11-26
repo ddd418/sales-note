@@ -1855,3 +1855,92 @@ def ai_meeting_advice(request):
             'error': f'AI 조언 생성 중 오류가 발생했습니다: {str(e)}'
         }, status=500)
 
+
+@login_required
+@require_http_methods(["POST"])
+def ai_generate_meeting_strategy(request):
+    """
+    일정 기반 AI 미팅 전략 추천 (신규 버전)
+    
+    POST 파라미터:
+    - schedule_id: 일정 ID (필수)
+    
+    Returns:
+        - success: True/False
+        - strategy: AI가 생성한 미팅 전략 (Markdown)
+        - error: 에러 메시지 (실패 시)
+    """
+    try:
+        # AI 권한 체크
+        if not check_ai_permission(request.user):
+            return JsonResponse({
+                'success': False,
+                'error': 'AI 기능 사용 권한이 없습니다. 관리자에게 문의하세요.'
+            }, status=403)
+        
+        # 파라미터 받기
+        data = json.loads(request.body)
+        schedule_id = data.get('schedule_id')
+        
+        if not schedule_id:
+            return JsonResponse({
+                'success': False,
+                'error': '일정 ID가 필요합니다.'
+            }, status=400)
+        
+        # 일정 조회 및 권한 확인
+        from reporting.models import Schedule
+        from reporting.views import can_access_user_data
+        
+        try:
+            schedule = Schedule.objects.select_related('followup', 'user').get(id=schedule_id)
+        except Schedule.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': f'일정 ID {schedule_id}를 찾을 수 없습니다.'
+            }, status=404)
+        
+        # 접근 권한 확인
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({
+                'success': False,
+                'error': '해당 일정에 대한 접근 권한이 없습니다.'
+            }, status=403)
+        
+        # AI 미팅 전략 생성
+        from reporting.ai_utils import generate_meeting_strategy
+        strategy = generate_meeting_strategy(schedule_id, request.user)
+        
+        logger.info(f"Meeting strategy generated for schedule {schedule_id} by user {request.user.username}")
+        
+        return JsonResponse({
+            'success': True,
+            'strategy': strategy,
+            'schedule_info': {
+                'customer_name': schedule.followup.customer_name,
+                'activity_type': schedule.get_activity_type_display(),
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'visit_time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '미정'
+            }
+        })
+    
+    except PermissionError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=403)
+    
+    except ValueError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error generating meeting strategy: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'AI 미팅 전략 생성 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
