@@ -2,4 +2,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn sales_project.wsgi:application --timeout 120 --workers 2"
+startCommand = "gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
