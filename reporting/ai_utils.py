@@ -1756,7 +1756,10 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
 
 def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     """
-    일정 기반 AI 미팅 전략 추천
+    일정 기반 AI 미팅 전략 추천 (간소화 버전)
+    - 해당 일정 정보
+    - 일정 관련 히스토리 (실무자가 남긴 글)
+    - 선결제 잔액
     
     Args:
         schedule_id: 일정 ID
@@ -1765,8 +1768,7 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     Returns:
         AI가 생성한 미팅 전략 (Markdown 형식)
     """
-    from reporting.models import Schedule, History, QuoteItem, DeliveryItem
-    from django.db.models import Sum, Q
+    from reporting.models import Schedule, History, Prepayment
     from decimal import Decimal
     
     logger.info(f"[미팅전략] 함수 시작 - 일정 ID: {schedule_id}")
@@ -1785,69 +1787,15 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     
     customer = schedule.followup
     
-    logger.info(f"[미팅전략] 1단계: 구매 기록 수집 중...")
-    # 1. 구매 기록 수집
-    purchase_histories = History.objects.filter(
-        followup=customer,
-        action_type='delivery_schedule'
-    ).exclude(
-        Q(delivery_amount__isnull=True) | Q(delivery_amount=0)
-    ).values('delivery_date', 'delivery_amount', 'delivery_items', 'content').order_by('-delivery_date')[:20]
-    
-    purchase_records = []
-    total_purchase_amount = Decimal('0')
-    for ph in purchase_histories:
-        amount = ph['delivery_amount'] or Decimal('0')
-        total_purchase_amount += amount
-        purchase_records.append({
-            'date': ph['delivery_date'].strftime('%Y-%m-%d') if ph['delivery_date'] else '날짜 미기록',
-            'amount': f"{amount:,.0f}원",
-            'items': ph['delivery_items'] or '품목 미기록',
-            'note': ph['content'] or ''
-        })
-    
-    logger.info(f"[미팅전략] 구매 기록 수집 완료 - {len(purchase_records)}건, 총액: {total_purchase_amount:,.0f}원")
-    
-    logger.info(f"[미팅전략] 2단계: 견적→구매 전환 분석 중...")
-    # 2. 견적 → 구매 전환 분석
-    quote_items = QuoteItem.objects.filter(quote__followup=customer).select_related('quote', 'product')
-    delivery_items = DeliveryItem.objects.filter(schedule__followup=customer).values_list('item_name', flat=True)
-    delivery_items_set = set(delivery_items)
-    
-    converted_products = []  # 견적→구매 전환된 제품
-    not_converted_products = []  # 전환되지 않은 제품
-    
-    for quote_item in quote_items:
-        product_name = quote_item.product.name if quote_item.product else '제품명 없음'
-        if product_name in delivery_items_set:
-            converted_products.append({
-                'product': product_name,
-                'quote_date': quote_item.quote.quote_date.strftime('%Y-%m-%d') if quote_item.quote.quote_date else '',
-                'quote_amount': f"{quote_item.subtotal:,.0f}원"
-            })
-        else:
-            not_converted_products.append({
-                'product': product_name,
-                'quote_date': quote_item.quote.quote_date.strftime('%Y-%m-%d') if quote_item.quote.quote_date else '',
-                'quote_amount': f"{quote_item.subtotal:,.0f}원",
-                'reason': '전환 실패 (추가 분석 필요)'
-            })
-    
-    quote_conversion_rate = 0
-    if len(converted_products) + len(not_converted_products) > 0:
-        quote_conversion_rate = int(len(converted_products) / (len(converted_products) + len(not_converted_products)) * 100)
-    
-    logger.info(f"[미팅전략] 견적 분석 완료 - 전환: {len(converted_products)}건, 미전환: {len(not_converted_products)}건, 전환율: {quote_conversion_rate}%")
-    
-    logger.info(f"[미팅전략] 3단계: 히스토리 메모 수집 중...")
-    # 3. 히스토리 메모 (실무자 작성 글)
+    logger.info(f"[미팅전략] 1단계: 히스토리 메모 수집 중...")
+    # 1. 고객의 전체 히스토리 (실무자 작성 글)
     history_notes = History.objects.filter(
         followup=customer
     ).exclude(
         content__isnull=True
     ).exclude(
         content=''
-    ).values('created_at', 'action_type', 'content', 'meeting_date').order_by('-created_at')[:30]
+    ).values('created_at', 'action_type', 'content', 'meeting_date').order_by('-created_at')[:20]
     
     history_records = []
     for hn in history_notes:
@@ -1857,28 +1805,8 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     
     logger.info(f"[미팅전략] 히스토리 메모 수집 완료 - {len(history_records)}건")
     
-    logger.info(f"[미팅전략] 3-1단계: 이메일 내용 분석 중...")
-    # 3-1. 이메일 송수신 내용 (고객과의 커뮤니케이션 히스토리)
-    from reporting.models import EmailLog
-    email_logs = EmailLog.objects.filter(
-        followup=customer
-    ).values('sent_at', 'email_type', 'subject', 'body').order_by('-sent_at')[:20]
-    
-    email_records = []
-    for email in email_logs:
-        email_type_display = '발신' if email['email_type'] == 'sent' else '수신'
-        # body에서 HTML 태그 제거 및 첫 200자만
-        import re
-        body_text = re.sub(r'<[^>]+>', '', email['body'] or '')
-        body_preview = body_text[:200].strip() + '...' if len(body_text) > 200 else body_text.strip()
-        email_records.append(
-            f"[{email['sent_at'].strftime('%Y-%m-%d')}] [{email_type_display}] {email['subject']}\n   내용: {body_preview}"
-        )
-    
-    logger.info(f"[미팅전략] 이메일 내용 수집 완료 - {len(email_records)}건")
-    
-    logger.info(f"[미팅전략] 4단계: 일정 컨텍스트 수집 중...")
-    # 4. 일정과 연결된 히스토리 찾기
+    logger.info(f"[미팅전략] 2단계: 일정 컨텍스트 수집 중...")
+    # 2. 이 일정과 연결된 히스토리 찾기
     schedule_histories = History.objects.filter(schedule=schedule).exclude(
         content__isnull=True
     ).exclude(content='').values('content', 'action_type', 'created_at').order_by('-created_at')
@@ -1890,147 +1818,95 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     
     logger.info(f"[미팅전략] 일정 컨텍스트 수집 완료 - {len(schedule_context)}건")
     
-    logger.info(f"[미팅전략] 5단계: 프롬프트 생성 및 AI 호출 준비...")
-    # System Prompt
+    logger.info(f"[미팅전략] 3단계: 선결제 잔액 확인 중...")
+    # 3. 선결제 잔액
+    prepayments = Prepayment.objects.filter(
+        customer=customer,
+        status='active'
+    ).order_by('-payment_date')
+    
+    total_prepayment_balance = Decimal('0')
+    prepayment_details = []
+    for prepayment in prepayments:
+        total_prepayment_balance += prepayment.balance
+        prepayment_details.append({
+            'date': prepayment.payment_date.strftime('%Y-%m-%d'),
+            'amount': f"{prepayment.amount:,.0f}원",
+            'balance': f"{prepayment.balance:,.0f}원",
+            'memo': prepayment.memo or ''
+        })
+    
+    logger.info(f"[미팅전략] 선결제 잔액 확인 완료 - 총 {total_prepayment_balance:,.0f}원 ({len(prepayment_details)}건)")
+    
+    logger.info(f"[미팅전략] 4단계: 프롬프트 생성 및 AI 호출 준비...")
+    
+    # System Prompt (간소화 버전)
     system_prompt = """당신은 20년 이상 B2B 생명과학·의료·연구장비 시장에서 활동한 최고 수준의 세일즈 컨설팅 전문가입니다.
-당신의 역할은 특정 고객에 대한 모든 CRM 데이터를 바탕으로, 다음 미팅에서 어떤 전략을 활용해야 가장 높은 확률로 영업 성과를 만들 수 있을지 컨설팅하는 것입니다.
+다음 미팅에서 어떤 전략을 활용해야 가장 높은 확률로 영업 성과를 만들 수 있을지 컨설팅하는 것입니다.
 
 **핵심 원칙:**
 1. 절대 모호하거나 원론적인 내용 금지
-2. "~할 수도 있다" 같은 추측성 빈 문장은 피할 것
-3. 반드시 데이터 기반으로 구체적인 전략을 작성
-4. 실무자가 현장에서 바로 사용할 수 있는 형태로 제시
-5. 피펫·팁·디스펜서 등 연구장비 중심의 세일즈 특성을 반영할 것
-
-**🎯 고객 직급별 세일즈 전략 (매우 중요!)**
-
-고객명과 책임자 이름을 비교하여 직급을 판단하고, 그에 맞는 전략을 사용하세요:
-
-【교수/대표급 (고객명 = 책임자명)】
-→ 의사결정권자로 최종 예산 승인권 보유
-→ 전략 포인트:
-  • 연구 비전, 장기적 가치, 전략적 파트너십 중심
-  • "이 장비가 연구실 성과에 어떤 영향을 미칠지" 강조
-  • 높은 가격도 성과 대비 정당화 가능
-  • 학계 레퍼런스, 논문 출판 사례 활용
-  • 의사결정 주기: 단기 (직접 결정 가능)
-
-【연구원/구매담당자 (고객명 ≠ 책임자명)】
-→ 실무 수행자로 의사결정권자에게 보고 필요
-→ 전략 포인트:
-  • 실용성, 편의성, 가성비 중심 제안
-  • "상부 보고용 자료" 제공 (비교표, ROI 계산서 등)
-  • 의사결정권자 설득 논리 함께 준비
-  • 빠른 구매보다는 신뢰 구축 우선
-  • 의사결정 주기: 중장기 (승인 단계 거쳐야 함)
+2. 반드시 데이터 기반으로 구체적인 전략을 작성
+3. 실무자가 현장에서 바로 사용할 수 있는 형태로 제시
+4. 피펫·팁·디스펜서 등 연구장비 중심의 세일즈 특성을 반영
 
 **답변 형식:**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 고객 상황 분석
+📊 상황 분석
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-【고객 직급 및 의사결정 구조】
-• 직급: [교수/대표급 또는 연구원/구매담당자]
-• 의사결정권: [직접 결정 가능 또는 상부 승인 필요]
-• 핵심 관심사: [직급에 맞는 관심사 분석]
-
-【구매 패턴】
-• 총 구매 실적: [구체적 금액과 건수]
-• 주요 구매 제품: [실제 구매한 제품명]
-• 구매 주기: [분석 결과]
-
-【견적 전환 분석】
-• 전환율: [%]
-• 전환 성공 제품: [제품명, 시기, 금액]
-• 미전환 제품: [제품명, 실패 이유]
-
-【고객 니즈 & 페인포인트】
-• [히스토리 기반으로 발견한 실제 고민점]
-• [관심 제품 및 예산 범위]
+【고객 정보】
+• 이름/소속: [정보]
+• 히스토리 기반 니즈: [실무자가 남긴 글에서 파악한 고객의 관심사/문제점]
+• 선결제 잔액: [잔액 정보 및 활용 전략]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 미팅 전략 (직급별 맞춤 전략)
+🎯 미팅 전략
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-【이번 미팅 핵심 주제 TOP 3】
-1. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
-2. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
-3. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
+【핵심 주제 TOP 3】
+1. [구체적 주제] - 근거: [히스토리 내용]
+2. [구체적 주제] - 근거: [히스토리 내용]
+3. [구체적 주제] - 근거: [히스토리 내용]
 
 【대화 전략】
+▶ 오프닝: "[히스토리 기반 자연스러운 인사]"
+▶ 니즈 확인 질문:
+• [히스토리 기반 질문 1]
+• [히스토리 기반 질문 2]
+• [히스토리 기반 질문 3]
 
-▶ 오프닝 (첫 30초)
-"[고객 데이터와 직급을 활용한 자연스러운 인사]"
-
-▶ 니즈 확인 질문 (직급별 맞춤)
-• [과거 히스토리 기반 질문 1] - [교수급: 연구 방향 / 실무자: 실무 편의성]
-• [과거 히스토리 기반 질문 2] - [교수급: 예산 규모 / 실무자: 상부 관심사]
-• [과거 히스토리 기반 질문 3] - [교수급: 장기 계획 / 실무자: 의사결정 프로세스]
-
-▶ 제안 순서
-1. [제품/서비스] - 이유: [구매 패턴 분석] - 강조점: [직급별 가치 제안]
-2. [제품/서비스] - 이유: [구매 패턴 분석] - 강조점: [직급별 가치 제안]
+【제안 포인트】
+• [히스토리에서 파악한 니즈에 맞는 제안 1]
+• [히스토리에서 파악한 니즈에 맞는 제안 2]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 실행 체크리스트
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【준비물】
-□ [구체적 자료/샘플]
-□ [가격 전략 - 과거 구매가 기준]
-□ [직급별 추가 자료: 교수급-레퍼런스/실무자-비교표]
-□ [기타 필요 자료]
+□ [필요 자료/샘플]
+□ [선결제 활용 가능 여부 확인]
 
 【확인 사항】
-□ [고객 연구실 특성 관련]
+□ [히스토리 기반 확인 사항]
 □ [예산/타이밍 관련]
-□ [의사결정 프로세스 - 실무자인 경우 필수]
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💬 후속 조치
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
-【미팅 직후】
-• [즉시 실행할 액션 1]
-• [즉시 실행할 액션 2]
-• [실무자인 경우: 의사결정권자 접촉 전략]
-
-【다음 단계 조건】
-• [구매 확정으로 가기 위한 체크포인트]
-• [실무자인 경우: 상부 승인 단계별 전략]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ 예상 리스크
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-【리스크 1】 [항목]
-→ 근거: [과거 데이터]
-→ 대응: [구체적 방법 - 직급 고려]
-
-【리스크 2】 [항목]
-→ 근거: [과거 데이터]
-→ 대응: [구체적 방법 - 직급 고려]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**중요: 
-1. 모든 전략은 제공된 고객 데이터(구매 이력, 견적 전환, 히스토리 메모)를 구체적으로 인용
-2. 고객의 직급(교수/대표급 vs 연구원/구매담당자)에 따라 전략을 완전히 다르게 수립
-3. 실무자일 경우 반드시 의사결정권자 설득 전략 포함**"""
-
-    # User Prompt
+    # User Prompt (간소화 버전)
     activity_type_display = dict(Schedule.ACTIVITY_TYPE_CHOICES).get(schedule.activity_type, schedule.activity_type)
     
     user_prompt = f"""
-**📅 다음 일정 정보:**
+**📅 이번 일정 정보:**
 - **유형**: {activity_type_display}
 - **날짜/시간**: {schedule.visit_date} {schedule.visit_time}
 - **장소**: {schedule.location or '미정'}
 - **메모**: {schedule.notes or '없음'}
 
-**일정과 연결된 히스토리:**
-{chr(10).join(schedule_context) if schedule_context else '연결된 히스토리 없음 - 아래 전체 고객 데이터를 기반으로 전략 수립'}
+**이 일정과 관련된 히스토리:**
+{chr(10).join(schedule_context) if schedule_context else '연결된 히스토리 없음'}
 
 ---
 
@@ -2038,60 +1914,39 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 - **이름**: {customer.customer_name}
 - **소속**: {customer.company.name if customer.company else '미등록'} - {customer.department.name if customer.department else '미등록'}
 - **담당자/책임자**: {customer.manager or '미등록'}
-- **직급 분석**: {'교수/대표급 (의사결정권자)' if customer.customer_name == customer.manager else '연구원/구매담당자 (실무자)'} 
-  {'← 고객명과 책임자가 동일 (최종 의사결정권 보유)' if customer.customer_name == customer.manager else '← 고객명과 책임자가 다름 (의사결정권자와 협의 필요)'}
 - **등급**: {customer.get_customer_grade_display()}
-- **AI 점수**: {customer.ai_score}점
-
-💡 **직급에 따른 세일즈 전략 차이**
-{'• 교수/대표급: 예산 결정권, 연구 방향 결정권 보유 → 전략적 가치, 장기 관계, 연구 비전 중심 대화' if customer.customer_name == customer.manager else '• 연구원/구매담당자: 실무 수행, 상부 보고 필요 → 실용성, 편의성, 가성비 중심 제안 + 의사결정권자 설득 자료 제공'}
 
 ---
 
-**💰 구매 기록 ({len(purchase_records)}건, 총 {total_purchase_amount:,.0f}원):**
+**💰 선결제 잔액:**
+- **총 잔액**: {total_prepayment_balance:,.0f}원 ({len(prepayment_details)}건)
+"""
 
-{chr(10).join([f"- {p['date']}: {p['amount']} | {p['items'][:100]}..." for p in purchase_records[:10]]) if purchase_records else '구매 기록 없음'}
-
+    if prepayment_details:
+        user_prompt += "\n**선결제 내역:**\n"
+        for p in prepayment_details[:5]:
+            user_prompt += f"- {p['date']}: {p['amount']} 입금, 잔액 {p['balance']}"
+            if p['memo']:
+                user_prompt += f" ({p['memo']})"
+            user_prompt += "\n"
+    
+    user_prompt += f"""
 ---
 
-**📋 견적 → 구매 전환 분석:**
-
-**전환율**: {quote_conversion_rate}% ({len(converted_products)}건 전환 / {len(not_converted_products)}건 미전환)
-
-**전환된 제품:**
-{chr(10).join([f"- {c['product']} ({c['quote_date']}, {c['quote_amount']})" for c in converted_products[:10]]) if converted_products else '전환된 견적 없음'}
-
-**전환되지 않은 제품:**
-{chr(10).join([f"- {n['product']} ({n['quote_date']}, {n['quote_amount']}) - {n['reason']}" for n in not_converted_products[:10]]) if not_converted_products else '미전환 견적 없음'}
-
----
-
-**📝 고객 히스토리 (실무자 작성 메모, 최근 30개):**
+**📝 고객 히스토리 (실무자가 남긴 메모, 최근 20개):**
 
 {chr(10).join(history_records) if history_records else '히스토리 기록 없음'}
 
 ---
 
-**📧 이메일 송수신 내용 (최근 20건):**
-
-{chr(10).join(email_records) if email_records else '이메일 기록 없음'}
-
-💡 **이메일 분석 포인트:**
-- 고객이 관심 있는 제품/주제는 무엇인가?
-- 고객의 응답 패턴 (빠른 답장 vs 무응답)
-- 고객이 직접 언급한 니즈, 예산, 일정
-- 우리가 제안한 내용 중 반응이 좋았던 것
-
----
-
 위 데이터를 바탕으로, **{activity_type_display}** 일정에 대한 구체적이고 실행 가능한 전략을 작성해주세요.
-특히 일정과 연결된 히스토리가 있다면 이를 우선적으로 활용하고, 없다면 전체 고객 데이터를 기반으로 전략을 수립하세요.
+특히 이 일정과 연결된 히스토리가 있다면 이를 우선적으로 활용하고, 전체 히스토리에서 고객의 니즈와 관심사를 파악하세요.
 """
 
     try:
         logger.info(f"[미팅전략] AI 호출 시작 - 모델: {MODEL_PREMIUM}")
         logger.info(f"[미팅전략] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
-        logger.info(f"[미팅전략] 수집된 데이터 - 구매: {len(purchase_records)}건, 견적전환: {len(converted_products)}건, 히스토리: {len(history_records)}건")
+        logger.info(f"[미팅전략] 수집된 데이터 - 히스토리: {len(history_records)}건, 일정 컨텍스트: {len(schedule_context)}건, 선결제: {len(prepayment_details)}건")
         
         response = get_openai_client().chat.completions.create(
             model=MODEL_PREMIUM,
@@ -2099,7 +1954,7 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=2000,  # 입력 토큰이 많을 때를 대비해 응답 토큰 제한
+            max_tokens=1500,  # 간소화 버전이므로 1500으로 충분
             temperature=0.7
         )
         
