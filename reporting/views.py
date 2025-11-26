@@ -12339,12 +12339,42 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 'error': f'{doc_type_name} 템플릿이 등록되어 있지 않습니다. 서류 관리 메뉴에서 먼저 템플릿을 등록해주세요.'
             }, status=404)
         
-        # 파일이 존재하는지 확인
-        if not document_template.file or not os.path.exists(document_template.file.path):
+        # 파일이 존재하는지 확인 (Cloudinary 지원)
+        if not document_template.file:
             return JsonResponse({
                 'success': False,
                 'error': '서류 템플릿 파일을 찾을 수 없습니다.'
             }, status=404)
+        
+        # Cloudinary 또는 로컬 파일 시스템에서 파일 가져오기
+        import tempfile
+        import requests
+        
+        # 파일 URL 가져오기
+        file_url = document_template.file.url
+        
+        # Cloudinary URL인 경우 다운로드
+        if 'cloudinary' in file_url or file_url.startswith('http'):
+            # 임시 파일로 다운로드
+            response = requests.get(file_url)
+            if response.status_code != 200:
+                return JsonResponse({
+                    'success': False,
+                    'error': '서류 템플릿 파일을 다운로드할 수 없습니다.'
+                }, status=500)
+            
+            # 임시 파일에 저장
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                template_file_path = tmp_file.name
+        else:
+            # 로컬 파일 시스템
+            if not os.path.exists(document_template.file.path):
+                return JsonResponse({
+                    'success': False,
+                    'error': '서류 템플릿 파일을 찾을 수 없습니다.'
+                }, status=404)
+            template_file_path = document_template.file.path
         
         # 납품 품목 조회
         delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
@@ -12358,11 +12388,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 # xlwings를 사용하여 이미지 완벽 보존
                 import xlwings as xw
                 import shutil
-                import tempfile
                 
+                # template_file_path를 사용 (이미 Cloudinary에서 다운로드되었거나 로컬 경로)
                 # 원본 파일을 임시 위치에 복사
                 with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
-                    shutil.copy2(document_template.file.path, tmp_file.name)
+                    shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
                 # xlwings로 파일 열기 (백그라운드, 보이지 않게)
@@ -12685,6 +12715,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                         app.quit()
                     if 'temp_path' in locals() and os.path.exists(temp_path):
                         os.unlink(temp_path)
+                    # Cloudinary에서 다운로드한 임시 파일 정리
+                    if 'cloudinary' in file_url or file_url.startswith('http'):
+                        if os.path.exists(template_file_path):
+                            os.unlink(template_file_path)
                 except Exception as cleanup_error:
                     logger.error(f"정리 오류: {cleanup_error}")
                 
@@ -12692,6 +12726,15 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     'success': False,
                     'error': f'엑셀 파일 처리 중 오류가 발생했습니다: {str(excel_error)}'
                 }, status=500)
+            
+            # 성공 시에도 Cloudinary 임시 파일 정리
+            finally:
+                try:
+                    if 'cloudinary' in file_url or file_url.startswith('http'):
+                        if 'template_file_path' in locals() and os.path.exists(template_file_path):
+                            os.unlink(template_file_path)
+                except Exception as cleanup_error:
+                    logger.error(f"최종 정리 오류: {cleanup_error}")
             
         else:
             # PDF 등 다른 형식은 그대로 다운로드 (향후 PDF 편집 기능 추가 예정)
