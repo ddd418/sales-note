@@ -153,7 +153,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Additional static files directories
 STATICFILES_DIRS = [
     BASE_DIR / 'theme' / 'static',
-] if (BASE_DIR / 'theme' / 'static').exists() else []
+    BASE_DIR / 'static',
+] if (BASE_DIR / 'theme' / 'static').exists() else [BASE_DIR / 'static']
 
 # Static files for production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

@@ -2,4 +2,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python manage.py migrate && gunicorn sales_project.wsgi:application"
+startCommand = "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn sales_project.wsgi:application"
