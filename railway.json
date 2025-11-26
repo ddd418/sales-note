@@ -3,6 +3,6 @@
     "command": "pip install -r requirements.txt && python manage.py collectstatic --noinput"
   },
   "deploy": {
-    "startCommand": "python manage.py migrate && gunicorn sales_project.wsgi:application"
+    "startCommand": "python manage.py migrate && gunicorn sales_project.wsgi:application --timeout 120 --workers 2"
   }
 }
