@@ -12115,14 +12115,12 @@ def document_template_create(request):
                 messages.error(request, '파일을 선택해주세요.')
                 return redirect('reporting:document_template_create')
             
-            # 파일 확장자 확인
+            # 파일 확장자 확인 (엑셀만 허용)
             file_ext = os.path.splitext(file.name)[1].lower()
             if file_ext == '.xlsx' or file_ext == '.xls':
                 file_type = 'xlsx'
-            elif file_ext == '.pdf':
-                file_type = 'pdf'
             else:
-                messages.error(request, '엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.')
+                messages.error(request, '엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.')
                 return redirect('reporting:document_template_create')
             
             template = DocumentTemplate.objects.create(
@@ -12172,17 +12170,15 @@ def document_template_edit(request, pk):
             template.description = request.POST.get('description', '')
             template.is_default = request.POST.get('is_default') == 'on'
             
-            # 파일 변경 시
+            # 파일 변경 시 (엑셀만 허용)
             if 'file' in request.FILES:
                 file = request.FILES['file']
                 file_ext = os.path.splitext(file.name)[1].lower()
                 
                 if file_ext == '.xlsx' or file_ext == '.xls':
                     template.file_type = 'xlsx'
-                elif file_ext == '.pdf':
-                    template.file_type = 'pdf'
                 else:
-                    messages.error(request, '엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.')
+                    messages.error(request, '엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.')
                     return redirect('reporting:document_template_edit', pk=pk)
                 
                 template.file = file

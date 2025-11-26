@@ -47,17 +47,17 @@
                                    name="file" 
                                    id="file" 
                                    class="form-control"
-                                   accept=".xlsx,.xls,.pdf"
+                                   accept=".xlsx,.xls"
                                    {% if not template %}required{% endif %}>
                             <small class="form-text text-muted">
-                                엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일만 업로드 가능합니다.
+                                엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.
                             </small>
                             {% if template and template.file %}
                             <div class="mt-2">
                                 <small class="text-muted">
                                     현재 파일: 
                                     <a href="{% url 'reporting:document_template_download' template.pk %}" target="_blank">
-                                        <i class="fas fa-file-{% if template.file_type == 'pdf' %}pdf{% else %}excel{% endif %}"></i>
+                                        <i class="fas fa-file-excel"></i>
                                         {{ template.file.name|slice:"20:" }}
                                     </a>
                                 </small>
