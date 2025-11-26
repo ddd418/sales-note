@@ -1647,14 +1647,7 @@ async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx')
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div id="aiStrategyLoading" class="text-center py-5">
-          <div class="spinner-border text-info mb-3" role="status">
-            <span class="visually-hidden">분석 중...</span>
-          </div>
-          <p class="text-muted">AI가 고객 데이터를 분석하여 미팅 전략을 수립하고 있습니다...</p>
-          <small class="text-muted">최대 30초 소요될 수 있습니다</small>
-        </div>
-        <div id="aiStrategyContent" class="d-none">
+        <div id="aiStrategyContent">
           <!-- AI 전략 내용이 여기에 표시됩니다 -->
         </div>
       </div>
@@ -1673,39 +1666,46 @@ document.addEventListener('DOMContentLoaded', function() {
   
   aiStrategyBtn.addEventListener('click', async function() {
     const scheduleId = this.dataset.scheduleId;
-    const modal = new bootstrap.Modal(document.getElementById('aiStrategyModal'));
     
-    // 모달 표시
-    modal.show();
-    
-    // 로딩 표시, 컨텐츠 숨김
-    document.getElementById('aiStrategyLoading').classList.remove('d-none');
-    document.getElementById('aiStrategyContent').classList.add('d-none');
-    
-    try {
-      const response = await fetch("{% url 'reporting:ai_meeting_strategy' %}", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: JSON.stringify({
-          schedule_id: scheduleId
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
+    await runAITaskWithDetails(
+      '미팅 전략 추천',
+      "{% url 'reporting:ai_meeting_strategy' %}",
+      { schedule_id: scheduleId },
+      // 상세 로그 콜백
+      async function() {
+        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        addAILog('🏢 고객: {{ schedule.followup.customer_name }}', 'info');
+        addAILog('📅 활동: {{ schedule.get_activity_type_display }}', 'info');
+        addAILog('📆 날짜: {{ schedule.visit_date|date:"Y-m-d" }}', 'info');
+        {% if schedule.followup.department %}
+        addAILog('🏛️  부서: {{ schedule.followup.department }}', 'info');
+        {% endif %}
+        {% if schedule.followup.address %}
+        addAILog('📍 위치: {{ schedule.followup.address }}', 'info');
+        {% endif %}
+        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        await sleep(500);
+        addAILog('🔍 고객 구매 이력 조회 중...', 'info');
+        await sleep(300);
+        addAILog('📊 견적-구매 전환율 분석 중...', 'info');
+        await sleep(300);
+        addAILog('📝 과거 미팅 메모 수집 중...', 'info');
+      },
+      // 성공 콜백
+      function(data) {
+        // 모달 표시
+        const modal = new bootstrap.Modal(document.getElementById('aiStrategyModal'));
+        
         // 마크다운을 HTML로 변환 (간단한 변환)
         let htmlContent = data.strategy
           .replace(/\n/g, '<br>')
-          .replace(/^## (.+)$/gm, '<h4 class="mt-4 mb-3 text-primary">$1</h4>')
-          .replace(/^### (.+)$/gm, '<h5 class="mt-3 mb-2 text-secondary">$1</h5>')
-          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-          .replace(/- \[ \] (.+)/g, '<div class="form-check"><input class="form-check-input" type="checkbox" disabled><label class="form-check-label">$1</label></div>')
-          .replace(/^- (.+)$/gm, '<li>$1</li>')
-          .replace(/(<li>.*<\/li>)/s, '<ul class="list-unstyled ms-3">$1</ul>');
+          .replace(/^━━━.*$/gm, '<hr>')
+          .replace(/^【(.+?)】$/gm, '<h6 class="mt-3 mb-2 text-primary">$1</h6>')
+          .replace(/^▶ (.+)$/gm, '<h6 class="mt-2 mb-1 text-secondary">▶ $1</h6>')
+          .replace(/^\*\*(.+?)\*\*$/gm, '<strong>$1</strong>')
+          .replace(/^• (.+)$/gm, '<li class="ms-3">$1</li>')
+          .replace(/^□ (.+)$/gm, '<div class="form-check"><input class="form-check-input" type="checkbox" disabled><label class="form-check-label">$1</label></div>')
+          .replace(/^(\d+)\. (.+)$/gm, '<div class="ms-3"><strong>$1.</strong> $2</div>');
         
         // 컨텐츠 표시
         document.getElementById('aiStrategyContent').innerHTML = `
@@ -1718,23 +1718,13 @@ document.addEventListener('DOMContentLoaded', function() {
           </div>
         `;
         
-        // 로딩 숨김, 컨텐츠 표시
-        document.getElementById('aiStrategyLoading').classList.add('d-none');
-        document.getElementById('aiStrategyContent').classList.remove('d-none');
-      } else {
-        throw new Error(data.error || 'AI 전략 생성 실패');
+        modal.show();
+      },
+      // 에러 콜백
+      function(error) {
+        alert(`AI 미팅 전략 생성 실패: ${error.message}`);
       }
-    } catch (error) {
-      console.error('AI 전략 생성 오류:', error);
-      document.getElementById('aiStrategyContent').innerHTML = `
-        <div class="alert alert-danger">
-          <i class="fas fa-exclamation-triangle me-2"></i>
-          오류: ${error.message}
-        </div>
-      `;
-      document.getElementById('aiStrategyLoading').classList.add('d-none');
-      document.getElementById('aiStrategyContent').classList.remove('d-none');
-    }
+    );
   });
 });
 </script>

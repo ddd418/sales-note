@@ -328,8 +328,13 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
     Returns:
         마크다운 형식의 고객 요약 리포트
     """
+    logger.info(f"[인사이트] 함수 시작 - 고객: {customer_data.get('name')}")
+    
     if user and not check_ai_permission(user):
+        logger.warning(f"[인사이트] 권한 없음 - 사용자: {user}")
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    logger.info(f"[인사이트] 프롬프트 생성 중... (미팅: {customer_data.get('meeting_count', 0)}건, 견적: {customer_data.get('quote_count', 0)}건)")
     
     system_prompt = """당신은 B2B 과학실험실 장비 영업 분석 전문가입니다.
 10년 이상의 영업 경력을 바탕으로 고객 데이터를 분석하여 실질적이고 구체적인 인사이트를 제공합니다.
@@ -400,8 +405,8 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
     
     # 고객 리포트는 외부 공유 가능성이 있으므로 고품질 모델 사용
     try:
-        logger.info(f"Generating customer summary for {customer_data.get('name')}")
-        logger.info(f"Using model: {MODEL_STANDARD}")
+        logger.info(f"[인사이트] AI 호출 시작 - 모델: {MODEL_STANDARD}")
+        logger.info(f"[인사이트] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
         
         response = get_openai_client().chat.completions.create(
             model=MODEL_STANDARD,
@@ -414,7 +419,8 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
         )
         
         result = response.choices[0].message.content
-        logger.info(f"Customer summary generated for {customer_data.get('name')} using {MODEL_STANDARD}")
+        logger.info(f"[인사이트] AI 응답 완료 - 응답 길이: {len(result)}자")
+        logger.info(f"[인사이트] 토큰 사용 - 입력: {response.usage.prompt_tokens}, 출력: {response.usage.completion_tokens}, 총: {response.usage.total_tokens}")
         return result
     
     except Exception as e:
@@ -860,6 +866,25 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - status (상태)
 - created_at, updated_at
 
+**DeliveryItem (납품 상품) 모델:**
+- schedule (관계: Schedule 객체, activity_type='delivery'인 일정만)
+- product (관계: Product 객체)
+- item_name (상품명)
+- quantity (수량)
+- unit_price (단가)
+- 관계 접근: schedule__followup (고객 정보)
+
+**QuoteItem (견적 상품) 모델:**
+- quote (관계: Quote 객체)
+- product (관계: Product 객체)
+- 관계 접근: quote__followup (고객 정보)
+
+**Product (상품) 모델:**
+- product_code (상품 코드 - 예: SO826.1000, HPLC-C18-100 등)
+- product_name (상품명)
+- category (카테고리)
+- specification (규격)
+
 **OpportunityTracking (영업기회) 모델:**
 - followup (관계: FollowUp 객체)
 - title (제목)
@@ -878,12 +903,24 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 3. 관계 조회는 던더스코어(__) 사용:
    - 고객의 일정: schedules__field_name (FollowUp 모델에서만!)
    - 일정의 고객: followup__field_name
-4. 날짜 lookup: __gte (이상), __lte (이하), __range (범위)
-5. 문자열 lookup: __icontains (포함), __exact (정확히), __iexact (대소문자 무시)
-6. **검색 대상에 따라 다른 필터 사용**:
-   - customers 검색: schedules__ 접두사 사용 가능
+   - 납품 상품의 고객: schedule__followup__field_name
+   - 견적 상품의 고객: quote__followup__field_name
+4. 상품 검색:
+   - 상품 코드 검색: product__product_code__icontains="826"
+   - 상품명 검색: product__product_name__icontains="HPLC"
+   - item_name은 직접 문자열이므로: item_name__icontains="826"
+5. 날짜 lookup: __gte (이상), __lte (이하), __range (범위)
+6. 문자열 lookup: __icontains (포함), __exact (정확히), __iexact (대소문자 무시)
+7. **검색 대상에 따라 다른 필터 사용**:
+   - customers 검색: schedules__ 또는 deliveryitems__ 접두사 사용 가능
    - schedules 검색: schedules__ 접두사 사용 불가 (직접 필드명만)
    - opportunities 검색: followup__ 접두사로 고객 정보 접근
+   - products 검색: DeliveryItem 또는 QuoteItem 모델 기준으로 검색
+
+🔍 상품 관련 검색 패턴:
+- "826이 포함된 상품을 구매한 고객" → customers 검색 + deliveryitems__product__product_code__icontains="826"
+- "HPLC를 구매한 고객" → customers 검색 + deliveryitems__item_name__icontains="HPLC"
+- "SO826.1000 구매 고객" → customers 검색 + deliveryitems__product__product_code__icontains="SO826.1000"
 """
 
     user_prompt = f"""
@@ -946,9 +983,40 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
   "interpretation": "2024년 11월의 견적 일정을 검색합니다."
 }}
 
+예시 5 - 상품 코드로 구매 고객 검색:
+입력: "826이 포함된 상품을 구매한 고객"
+출력:
+{{
+  "filters": {{
+    "deliveryitems__product__product_code__icontains": "826"
+  }},
+  "interpretation": "상품 코드에 826이 포함된 제품을 구매한 고객을 검색합니다."
+}}
+
+예시 6 - 상품명으로 구매 고객 검색:
+입력: "HPLC 구매한 고객"
+출력:
+{{
+  "filters": {{
+    "deliveryitems__item_name__icontains": "HPLC"
+  }},
+  "interpretation": "HPLC가 포함된 상품을 구매한 고객을 검색합니다."
+}}
+
+예시 7 - 특정 상품 코드 완전 일치:
+입력: "SO826.1000 구매 고객"
+출력:
+{{
+  "filters": {{
+    "deliveryitems__product__product_code__icontains": "SO826.1000"
+  }},
+  "interpretation": "상품 코드 SO826.1000을 구매한 고객을 검색합니다."
+}}
+
 ⚠️ 주의:
-- 고객(customers) 검색할 때만 schedules__ 접두사 사용
+- 고객(customers) 검색할 때만 schedules__ 또는 deliveryitems__ 접두사 사용
 - 일정(schedules) 검색할 때는 schedules__ 사용 안 함
+- 상품 관련 검색은 반드시 deliveryitems__ 또는 quoteitems__ 사용
 - __isnull 같은 복잡한 lookup은 사용하지 말 것
 """
     
@@ -986,13 +1054,18 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
     Returns:
         추천 상품 리스트
     """
+    logger.info(f"[상품추천] 함수 시작 - 고객: {customer_data.get('name')}")
+    
     if user and not check_ai_permission(user):
+        logger.warning(f"[상품추천] 권한 없음 - 사용자: {user}")
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
     # 데이터 유형 확인
     has_purchases = len(customer_data.get('purchase_history', [])) > 0
     has_quotes = len(customer_data.get('quote_history', [])) > 0
     has_meetings = bool(customer_data.get('meeting_notes', '').strip())
+    
+    logger.info(f"[상품추천] 데이터 확인 - 구매: {has_purchases}, 견적: {has_quotes}, 미팅: {has_meetings}")
     
     # 추천 전략 결정
     if has_purchases:
@@ -1003,6 +1076,8 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
         strategy = "미팅 내용 기반 + 니즈 분석 추천"
     else:
         strategy = "업종/부서 기반 + 일반 추천"
+    
+    logger.info(f"[상품추천] 추천 전략: {strategy}")
     
     system_prompt = f"""당신은 20년 경력의 과학 장비 및 실험실 제품 영업 전문가입니다.
 
@@ -1039,7 +1114,11 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
     available_products = customer_data.get('available_products', [])
     product_catalog_text = "없음 (제품 데이터베이스 없음)"
     if available_products:
+        logger.info(f"[상품추천] 카탈로그 제품 수: {len(available_products)}개")
         product_catalog_text = json.dumps(available_products[:50], ensure_ascii=False, indent=2)  # 최대 50개만
+        # 각 제품 로그 (처음 5개만)
+        for i, prod in enumerate(available_products[:5], 1):
+            logger.info(f"[상품추천] 제품 {i}: {prod.get('product_code', '')} - {prod.get('product_name', '')}")
     
     user_prompt = f"""
 다음 고객에게 추천할 상품을 제안해주세요:
@@ -1103,6 +1182,9 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
     
     # 상품 추천은 내부용이므로 빠른 mini 모델 사용
     try:
+        logger.info(f"[상품추천] AI 호출 시작 - 모델: {MODEL_MINI}")
+        logger.info(f"[상품추천] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
+        
         response = get_openai_client().chat.completions.create(
             model=MODEL_MINI,
             messages=[
@@ -1115,7 +1197,8 @@ def recommend_products(customer_data: Dict, user=None) -> List[Dict]:
         )
         
         result = json.loads(response.choices[0].message.content)
-        logger.info(f"Product recommendations generated for {customer_data.get('name')} using {MODEL_MINI} (strategy: {strategy})")
+        logger.info(f"[상품추천] AI 응답 완료 - 추천: {len(result.get('recommendations', []))}개")
+        logger.info(f"[상품추천] 토큰 사용 - 입력: {response.usage.prompt_tokens}, 출력: {response.usage.completion_tokens}, 총: {response.usage.total_tokens}")
         return result
     
     except Exception as e:
@@ -1296,8 +1379,13 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
             }
         }
     """
+    logger.info(f"[등급평가] 함수 시작 - 고객: {customer_data.get('name')}")
+    
     if user and not check_ai_permission(user):
+        logger.warning(f"[등급평가] 권한 없음 - 사용자: {user}")
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
+    
+    logger.info(f"[등급평가] 데이터 확인 - 구매: {customer_data.get('purchase_count', 0)}건, 선결제: {customer_data.get('prepayment_count', 0)}건")
     
     system_prompt = """당신은 B2B 고객 등급 평가 전문가입니다.
 다음 기준으로 고객을 평가하고 A+, A, B, C, D 등급을 매겨주세요:
@@ -1381,6 +1469,9 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
     
     # 고객 등급 평가는 내부용이므로 빠른 mini 모델 사용
     try:
+        logger.info(f"[등급평가] AI 호출 시작 - 모델: {MODEL_MINI}")
+        logger.info(f"[등급평가] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
+        
         response = get_openai_client().chat.completions.create(
             model=MODEL_MINI,
             messages=[
@@ -1393,7 +1484,8 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
         )
         
         result = json.loads(response.choices[0].message.content)
-        logger.info(f"Customer grade updated via AI for {customer_data.get('name')}: {result.get('grade')} using {MODEL_MINI}")
+        logger.info(f"[등급평가] AI 응답 완료 - 등급: {result.get('grade')}, 점수: {result.get('score')}")
+        logger.info(f"[등급평가] 토큰 사용 - 입력: {response.usage.prompt_tokens}, 출력: {response.usage.completion_tokens}, 총: {response.usage.total_tokens}")
         return result
     
     except Exception as e:
@@ -1413,6 +1505,12 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
         우선순위순으로 정렬된 고객 리스트 (최대 20명)
     """
     from datetime import datetime
+    
+    logger.info(f"[팔로우업] 함수 시작 - 고객 수: {len(customer_list)}명")
+    
+    # 각 고객 이름 로그 (처음 10명만)
+    for i, customer in enumerate(customer_list[:10], 1):
+        logger.info(f"[팔로우업] 고객 {i}: {customer.get('customer_name', '')} ({customer.get('company', '')})")
     
     system_prompt = """당신은 20년 경력의 B2B 영업 전문가이자 세일즈 코치입니다.
 고객 데이터를 심층 분석하여 실제 매출로 연결될 가능성이 높은 고객을 찾아내세요.
@@ -1488,6 +1586,9 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
 """
     
     try:
+        logger.info(f"[팔로우업] AI 호출 시작 - 모델: {MODEL_MINI}")
+        logger.info(f"[팔로우업] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
+        
         response = get_openai_client().chat.completions.create(
             model=MODEL_MINI,
             messages=[
@@ -1502,6 +1603,9 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
         result = json.loads(response.choices[0].message.content)
         suggestions = result.get('suggestions', [])
         
+        logger.info(f"[팔로우업] AI 응답 완료 - 추천: {len(suggestions)}건")
+        logger.info(f"[팔로우업] 토큰 사용 - 입력: {response.usage.prompt_tokens}, 출력: {response.usage.completion_tokens}, 총: {response.usage.total_tokens}")
+        
         # 중복 제거 (같은 customer_id는 한 번만)
         seen_ids = set()
         unique_suggestions = []
@@ -1511,7 +1615,7 @@ def suggest_follow_ups(customer_list: List[Dict], user) -> List[Dict]:
                 seen_ids.add(customer_id)
                 unique_suggestions.append(suggestion)
         
-        logger.info(f"Follow-up suggestions generated for {len(unique_suggestions)} customers using {MODEL_MINI}")
+        logger.info(f"[팔로우업] 중복 제거 완료 - 최종: {len(unique_suggestions)}건")
         return unique_suggestions[:20]  # 최대 20명
     
     except Exception as e:
@@ -1534,16 +1638,23 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     from django.db.models import Sum, Q
     from decimal import Decimal
     
+    logger.info(f"[미팅전략] 함수 시작 - 일정 ID: {schedule_id}")
+    
     if user and not check_ai_permission(user):
+        logger.warning(f"[미팅전략] 권한 없음 - 사용자: {user}")
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
+    logger.info(f"[미팅전략] 일정 조회 중...")
     try:
         schedule = Schedule.objects.select_related('followup', 'followup__company', 'followup__department').get(id=schedule_id)
+        logger.info(f"[미팅전략] 일정 조회 완료 - 고객: {schedule.followup.customer_name}")
     except Schedule.DoesNotExist:
+        logger.error(f"[미팅전략] 일정 없음 - ID: {schedule_id}")
         raise ValueError(f"일정 ID {schedule_id}를 찾을 수 없습니다.")
     
     customer = schedule.followup
     
+    logger.info(f"[미팅전략] 1단계: 구매 기록 수집 중...")
     # 1. 구매 기록 수집
     purchase_histories = History.objects.filter(
         followup=customer,
@@ -1564,6 +1675,9 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
             'note': ph['content'] or ''
         })
     
+    logger.info(f"[미팅전략] 구매 기록 수집 완료 - {len(purchase_records)}건, 총액: {total_purchase_amount:,.0f}원")
+    
+    logger.info(f"[미팅전략] 2단계: 견적→구매 전환 분석 중...")
     # 2. 견적 → 구매 전환 분석
     quote_items = QuoteItem.objects.filter(quote__followup=customer).select_related('quote', 'product')
     delivery_items = DeliveryItem.objects.filter(schedule__followup=customer).values_list('item_name', flat=True)
@@ -1592,6 +1706,9 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     if len(converted_products) + len(not_converted_products) > 0:
         quote_conversion_rate = int(len(converted_products) / (len(converted_products) + len(not_converted_products)) * 100)
     
+    logger.info(f"[미팅전략] 견적 분석 완료 - 전환: {len(converted_products)}건, 미전환: {len(not_converted_products)}건, 전환율: {quote_conversion_rate}%")
+    
+    logger.info(f"[미팅전략] 3단계: 히스토리 메모 수집 중...")
     # 3. 히스토리 메모 (실무자 작성 글)
     history_notes = History.objects.filter(
         followup=customer
@@ -1607,6 +1724,9 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
         date = hn['meeting_date'] or hn['created_at'].date()
         history_records.append(f"[{date}] {action_type_display}: {hn['content']}")
     
+    logger.info(f"[미팅전략] 히스토리 메모 수집 완료 - {len(history_records)}건")
+    
+    logger.info(f"[미팅전략] 4단계: 일정 컨텍스트 수집 중...")
     # 4. 일정과 연결된 히스토리 찾기
     schedule_histories = History.objects.filter(schedule=schedule).exclude(
         content__isnull=True
@@ -1617,6 +1737,9 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
         action_type_display = dict(History.ACTION_CHOICES).get(sh['action_type'], sh['action_type'])
         schedule_context.append(f"[{action_type_display}] {sh['content']}")
     
+    logger.info(f"[미팅전략] 일정 컨텍스트 수집 완료 - {len(schedule_context)}건")
+    
+    logger.info(f"[미팅전략] 5단계: 프롬프트 생성 및 AI 호출 준비...")
     # System Prompt
     system_prompt = """당신은 20년 이상 B2B 생명과학·의료·연구장비 시장에서 활동한 최고 수준의 세일즈 컨설팅 전문가입니다.
 당신의 역할은 특정 고객에 대한 모든 CRM 데이터를 바탕으로, 다음 미팅에서 어떤 전략을 활용해야 가장 높은 확률로 영업 성과를 만들 수 있을지 컨설팅하는 것입니다.
@@ -1628,11 +1751,38 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 4. 실무자가 현장에서 바로 사용할 수 있는 형태로 제시
 5. 피펫·팁·디스펜서 등 연구장비 중심의 세일즈 특성을 반영할 것
 
+**🎯 고객 직급별 세일즈 전략 (매우 중요!)**
+
+고객명과 책임자 이름을 비교하여 직급을 판단하고, 그에 맞는 전략을 사용하세요:
+
+【교수/대표급 (고객명 = 책임자명)】
+→ 의사결정권자로 최종 예산 승인권 보유
+→ 전략 포인트:
+  • 연구 비전, 장기적 가치, 전략적 파트너십 중심
+  • "이 장비가 연구실 성과에 어떤 영향을 미칠지" 강조
+  • 높은 가격도 성과 대비 정당화 가능
+  • 학계 레퍼런스, 논문 출판 사례 활용
+  • 의사결정 주기: 단기 (직접 결정 가능)
+
+【연구원/구매담당자 (고객명 ≠ 책임자명)】
+→ 실무 수행자로 의사결정권자에게 보고 필요
+→ 전략 포인트:
+  • 실용성, 편의성, 가성비 중심 제안
+  • "상부 보고용 자료" 제공 (비교표, ROI 계산서 등)
+  • 의사결정권자 설득 논리 함께 준비
+  • 빠른 구매보다는 신뢰 구축 우선
+  • 의사결정 주기: 중장기 (승인 단계 거쳐야 함)
+
 **답변 형식:**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 고객 상황 분석
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【고객 직급 및 의사결정 구조】
+• 직급: [교수/대표급 또는 연구원/구매담당자]
+• 의사결정권: [직접 결정 가능 또는 상부 승인 필요]
+• 핵심 관심사: [직급에 맞는 관심사 분석]
 
 【구매 패턴】
 • 총 구매 실적: [구체적 금액과 건수]
@@ -1649,27 +1799,27 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 • [관심 제품 및 예산 범위]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 미팅 전략
+🎯 미팅 전략 (직급별 맞춤 전략)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 【이번 미팅 핵심 주제 TOP 3】
-1. [구체적 주제] - 근거: [과거 데이터]
-2. [구체적 주제] - 근거: [과거 데이터]
-3. [구체적 주제] - 근거: [과거 데이터]
+1. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
+2. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
+3. [구체적 주제] - 근거: [과거 데이터] - 직급 고려: [교수급/실무자용]
 
 【대화 전략】
 
 ▶ 오프닝 (첫 30초)
-"[고객 데이터를 활용한 자연스러운 인사]"
+"[고객 데이터와 직급을 활용한 자연스러운 인사]"
 
-▶ 니즈 확인 질문
-• [과거 히스토리 기반 질문 1]
-• [과거 히스토리 기반 질문 2]
-• [과거 히스토리 기반 질문 3]
+▶ 니즈 확인 질문 (직급별 맞춤)
+• [과거 히스토리 기반 질문 1] - [교수급: 연구 방향 / 실무자: 실무 편의성]
+• [과거 히스토리 기반 질문 2] - [교수급: 예산 규모 / 실무자: 상부 관심사]
+• [과거 히스토리 기반 질문 3] - [교수급: 장기 계획 / 실무자: 의사결정 프로세스]
 
 ▶ 제안 순서
-1. [제품/서비스] - 이유: [구매 패턴 분석]
-2. [제품/서비스] - 이유: [구매 패턴 분석]
+1. [제품/서비스] - 이유: [구매 패턴 분석] - 강조점: [직급별 가치 제안]
+2. [제품/서비스] - 이유: [구매 패턴 분석] - 강조점: [직급별 가치 제안]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 실행 체크리스트
@@ -1678,11 +1828,13 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 【준비물】
 □ [구체적 자료/샘플]
 □ [가격 전략 - 과거 구매가 기준]
+□ [직급별 추가 자료: 교수급-레퍼런스/실무자-비교표]
 □ [기타 필요 자료]
 
 【확인 사항】
 □ [고객 연구실 특성 관련]
 □ [예산/타이밍 관련]
+□ [의사결정 프로세스 - 실무자인 경우 필수]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💬 후속 조치
@@ -1691,9 +1843,11 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 【미팅 직후】
 • [즉시 실행할 액션 1]
 • [즉시 실행할 액션 2]
+• [실무자인 경우: 의사결정권자 접촉 전략]
 
 【다음 단계 조건】
 • [구매 확정으로 가기 위한 체크포인트]
+• [실무자인 경우: 상부 승인 단계별 전략]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ 예상 리스크
@@ -1701,15 +1855,18 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 
 【리스크 1】 [항목]
 → 근거: [과거 데이터]
-→ 대응: [구체적 방법]
+→ 대응: [구체적 방법 - 직급 고려]
 
 【리스크 2】 [항목]
 → 근거: [과거 데이터]
-→ 대응: [구체적 방법]
+→ 대응: [구체적 방법 - 직급 고려]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**중요: 모든 전략은 제공된 고객 데이터(구매 이력, 견적 전환, 히스토리 메모)를 구체적으로 인용해야 합니다.**"""
+**중요: 
+1. 모든 전략은 제공된 고객 데이터(구매 이력, 견적 전환, 히스토리 메모)를 구체적으로 인용
+2. 고객의 직급(교수/대표급 vs 연구원/구매담당자)에 따라 전략을 완전히 다르게 수립
+3. 실무자일 경우 반드시 의사결정권자 설득 전략 포함**"""
 
     # User Prompt
     activity_type_display = dict(Schedule.ACTIVITY_TYPE_CHOICES).get(schedule.activity_type, schedule.activity_type)
@@ -1730,8 +1887,13 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 - **이름**: {customer.customer_name}
 - **소속**: {customer.company.name if customer.company else '미등록'} - {customer.department.name if customer.department else '미등록'}
 - **담당자/책임자**: {customer.manager or '미등록'}
+- **직급 분석**: {'교수/대표급 (의사결정권자)' if customer.customer_name == customer.manager else '연구원/구매담당자 (실무자)'} 
+  {'← 고객명과 책임자가 동일 (최종 의사결정권 보유)' if customer.customer_name == customer.manager else '← 고객명과 책임자가 다름 (의사결정권자와 협의 필요)'}
 - **등급**: {customer.get_customer_grade_display()}
 - **AI 점수**: {customer.ai_score}점
+
+💡 **직급에 따른 세일즈 전략 차이**
+{'• 교수/대표급: 예산 결정권, 연구 방향 결정권 보유 → 전략적 가치, 장기 관계, 연구 비전 중심 대화' if customer.customer_name == customer.manager else '• 연구원/구매담당자: 실무 수행, 상부 보고 필요 → 실용성, 편의성, 가성비 중심 제안 + 의사결정권자 설득 자료 제공'}
 
 ---
 
@@ -1764,6 +1926,10 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 """
 
     try:
+        logger.info(f"[미팅전략] AI 호출 시작 - 모델: {MODEL_PREMIUM}")
+        logger.info(f"[미팅전략] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
+        logger.info(f"[미팅전략] 수집된 데이터 - 구매: {len(purchase_records)}건, 견적전환: {len(converted_products)}건, 히스토리: {len(history_records)}건")
+        
         response = get_openai_client().chat.completions.create(
             model=MODEL_PREMIUM,
             messages=[
@@ -1775,7 +1941,9 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
         )
         
         strategy = response.choices[0].message.content
-        logger.info(f"Meeting strategy generated for schedule {schedule_id} ({customer.customer_name}) using {MODEL_PREMIUM}")
+        logger.info(f"[미팅전략] AI 응답 완료 - 응답 길이: {len(strategy)}자")
+        logger.info(f"[미팅전략] 토큰 사용 - 입력: {response.usage.prompt_tokens}, 출력: {response.usage.completion_tokens}, 총: {response.usage.total_tokens}")
+        
         return strategy
     
     except Exception as e:
@@ -1950,5 +2118,272 @@ def generate_meeting_advice(context: dict, user=None) -> str:
     
     except Exception as e:
         logger.error(f"Error generating meeting advice: {e}")
+        raise
+
+
+def analyze_funnel_performance(funnel_data: Dict, user=None) -> str:
+    """
+    펀넬 대시보드 전체 분석 및 실전 세일즈 전략 수립
+    
+    Args:
+        funnel_data: 펀넬 데이터 (pipeline_summary, stage_breakdown, top_opportunities, won_lost_summary 등)
+        user: 현재 사용자 (로그용)
+        
+    Returns:
+        str: AI가 생성한 실전 세일즈 전략 (마크다운 형식)
+    """
+    system_prompt = """당신은 **20년 경력의 B2B 영업 전략 디렉터**입니다. 
+실험실 소모품/장비 영업 조직의 세일즈 파이프라인을 분석하고, 매출 목표 달성을 위한 **실전 중심 액션 플랜**을 제시합니다.
+
+---
+
+## 💼 당신의 역할
+
+**① 영업 관리자** - 팀 전체 파이프라인 건강도 평가, 병목 구간 진단  
+**② 전략 컨설턴트** - 단계별 전환율 개선 방안, 예산 갭 해소 로드맵  
+**③ 실전 코치** - 개별 고객별 즉시 실행 가능한 액션 아이템 제시
+
+---
+
+## 📋 필수 출력 구조 (반드시 7개 항목 모두 포함)
+
+### **1️⃣ 전체 펀넬 체력 평가 🏥**
+
+**현재 건강도:**  
+- 전체 파이프라인 규모 (기회 건수, 예상 매출, 가용 매출)  
+- 전환율 현황 (리드→컨택→견적→수주)  
+- 승률 (Won/Total)  
+- **종합 진단:** 🟢 건강함 / 🟡 주의 필요 / 🔴 위험
+
+**병목 구간:**  
+특정 단계에 고객이 몰려있거나, 전환율이 낮은 구간 지적  
+예) "견적 단계에 30건 집중, 협상 전환율 낮음 → 견적 후속 관리 강화 필요"
+
+**리스크 요인:**  
+- 파이프라인 건수 부족  
+- 특정 단계 정체  
+- 승률 저하  
+- 실주(Lost) 비율 증가
+
+---
+
+### **2️⃣ 금주 TOP 5 액션 아이템 🎯**
+
+**⚠️ 중요: 반드시 제공된 실제 고객 데이터만 사용하세요. 가상의 고객명이나 데이터를 절대 만들지 마세요.**
+
+**실제 데이터가 5개 미만인 경우:**
+- 있는 만큼만 표시 (예: 고객이 2명이면 TOP 2만 표시)
+- 부족한 부분은 "신규 리드 확보 필요" 같은 일반적인 제안으로 채우지 말 것
+- 절대로 "(주)한화", "XX대학교" 같은 예시 고객명을 사용하지 말 것
+
+| 순위 | 고객명 | 액션 | 복붙 가능한 멘트/메일 제목 |
+|------|--------|------|----------------------------|
+| 1 | [실제 고객명] | [실제 단계 기반 액션] | "[실제 상황 기반 멘트]" |
+| 2 | [실제 고객명] | [실제 단계 기반 액션] | "[실제 상황 기반 멘트]" |
+| ... | ... | ... | ... |
+
+**우선순위 기준:**  
+- 예상 매출액 큰 고객  
+- 가용 매출률(Probability) 높은 고객  
+- 오래 머물러 있는 고객 (단계별 평균 체류 시간 초과)
+
+**실제 데이터 예시:**
+- 제공된 상위 영업 기회 목록에서 고객명, 단계, 예상 매출 확인
+- 각 고객의 현재 상태에 맞는 구체적 액션 제시
+
+---
+
+### **3️⃣ 단계별 전략 제안 📊**
+
+**각 단계별 (리드→컨택→견적→협상→클로징→수주/실주) 현황 + 액션:**
+
+예시:
+**견적 단계 (30건, 예상 매출 3억)**  
+- 현황: 건수 많으나 협상 전환율 낮음  
+- 문제: 견적 발송 후 2주 이상 응답 없는 고객 다수  
+- 액션:  
+  1. 견적 발송 후 3일 이내 후속 전화 (스크립트: "견적서 잘 받으셨나요? 궁금한 점...")  
+  2. 견적서 유효기간 명시 (긴급성 부여)  
+  3. 경쟁사 대응 자료 첨부
+
+**협상 단계 (10건, 예상 매출 2억)**  
+- 현황: 가격 네고 진행 중  
+- 액션: 번들 상품 제안, 장기 계약 할인 옵션 제시
+
+---
+
+### **4️⃣ 고객별 맞춤 전략 🎯**
+
+**⚠️ 중요: 반드시 제공된 실제 고객 데이터만 사용하세요.**
+
+**실제 상위 영업 기회 고객 3~5명에 대해:**
+
+**[고객명: 실제 제공된 고객명]**  
+- 온도: 🔥 Hot / 🟡 Warm / 🔵 Cold (실제 가용 매출률 기준)
+- 예상 매출: [실제 금액]
+- 현재 단계: [실제 단계]
+- 우선순위: [실제 우선순위]
+- **즉시 실행 액션:**  
+  1. [실제 상황 기반 액션 1]
+  2. [실제 상황 기반 액션 2]
+  3. [실제 상황 기반 액션 3]
+- **예상 전환 확률:** [실제 probability 기반]
+
+**데이터가 없으면:**
+- "현재 상위 영업 기회 데이터가 부족합니다" 라고 명시
+- 가상의 고객이나 예시를 절대 만들지 말 것
+
+---
+
+### **5️⃣ 매출 예측 & 갭 분석 💰**
+
+**예상 매출 vs 목표:**  
+- 현재 파이프라인 예상 매출: X억  
+- 가용 매출 (확률 반영): Y억  
+- 목표 매출 (월/분기): Z억  
+- **갭:** (Z - Y)억 부족
+
+**갭 해소 전략:**  
+- 신규 리드 확보 필요량: XX건  
+- 기존 기회 전환율 향상 목표: +X%  
+- 고액 기회 집중 공략: 예상 매출 상위 10% 고객 중점 관리
+
+**포트폴리오 전략:**  
+- Short-term Win (이번 달 수주 가능): 협상/클로징 단계 고객  
+- Mid-term Pipeline (다음 달): 견적 단계 고객  
+- Long-term Seed (3개월 후): 신규 리드
+
+---
+
+### **6️⃣ 영업 리스크 관리 ⚠️**
+
+**취소/지연 가능성 높은 고객:**  
+- (주)XX: 예산 승인 지연 (액션: 재무팀 직접 컨택)  
+- YY연구소: 프로젝트 연기 (액션: 대안 제품 제안)
+
+**경쟁사 이슈:**  
+특정 고객에서 경쟁사 제안 확인된 경우 → 차별화 포인트 강조, 가격 재조정
+
+**오래 정체된 기회:**  
+3개월 이상 같은 단계에 머문 고객 → Lost 전환 또는 재접근 전략 수립
+
+---
+
+### **7️⃣ 업무 효율화 전략 ⚡**
+
+**미팅 루틴 최적화:**  
+- 주간 파이프라인 리뷰 회의 (30분)  
+- 일일 TOP 3 고객 집중 관리  
+- 단계별 체크리스트 활용
+
+**팔로우업 템플릿:**  
+- 견적 발송 후 3일차: "검토 상황 확인" 전화  
+- 미팅 후 24시간 이내: 감사 이메일 + 추가 자료 발송  
+- 협상 중: 주 1회 정기 체크인
+
+**성과 추적 KPI:**  
+- 주간 신규 리드 건수  
+- 단계별 전환율  
+- 평균 영업 사이클 기간
+
+---
+
+## ✅ 출력 규칙
+
+1. **실제 데이터만 사용** - 제공된 고객명, 금액, 단계만 사용. 가상 데이터 절대 금지
+2. **복붙 가능한 멘트/이메일 제목** - 실무자가 즉시 사용 가능  
+3. **수치 중심** - "많다/적다" X, "30건, 전환율 15%" O  
+4. **액션 중심** - "~해야 한다" X, "오늘 오후 3시까지 전화" O  
+5. **이모지 활용** - 가독성 향상 (🎯 🏥 💰 ⚠️ 등)
+6. **데이터 부족 시** - "현재 데이터 부족" 명시, 예시/가상 데이터로 채우지 말 것
+
+---
+
+**⚠️ 절대 금지 사항:**
+- "(주)한화", "XX대학교", "YY연구소" 같은 가상 고객명 사용 금지
+- 제공되지 않은 데이터를 임의로 만들지 말 것
+- 예시나 샘플로 테이블을 채우지 말 것
+- 실제 제공된 고객 목록에 없는 고객을 언급하지 말 것
+
+**중요: 제공된 펀넬 데이터를 최대한 활용하여, 실무자가 "이 AI는 우리 영업 상황을 정확히 파악하고 있다"고 느낄 수 있도록 분석하세요.**"""
+
+    # 펀넬 데이터 포맷팅
+    pipeline = funnel_data.get('pipeline_summary', {})
+    stages = funnel_data.get('stage_breakdown', [])
+    opportunities = funnel_data.get('top_opportunities', [])
+    won_lost = funnel_data.get('won_lost_summary', {})
+    
+    # 단계별 데이터 포맷팅
+    stage_info = "\n".join([
+        f"- {s.get('stage_display', s.get('stage', ''))}: {s.get('count', 0)}건, "
+        f"예상 매출 {s.get('expected_revenue', 0):,.0f}원, "
+        f"가용 매출 {s.get('weighted_revenue', 0):,.0f}원"
+        for s in stages
+    ]) if stages else "단계별 데이터 없음"
+    
+    # 상위 기회 포맷팅
+    opportunity_info = "\n".join([
+        f"- {opp.get('customer_name', '미정')}: {opp.get('stage_display', opp.get('current_stage', ''))} 단계, "
+        f"예상 매출 {opp.get('expected_revenue', 0):,.0f}원, "
+        f"가용 매출률 {opp.get('probability', 0)}%, "
+        f"우선순위 {opp.get('priority', 'C')}, "
+        f"등급 {opp.get('grade', 'C')}"
+        for opp in opportunities[:10]  # 상위 10개만
+    ]) if opportunities else "영업 기회 데이터 없음"
+    
+    user_prompt = f"""
+**📊 현재 세일즈 파이프라인 데이터:**
+
+**전체 파이프라인 요약:**
+- 총 기회 건수: {pipeline.get('total_opportunities', 0)}건
+- 예상 매출: {pipeline.get('total_expected_revenue', 0):,.0f}원
+- 가용 매출 (확률 반영): {pipeline.get('total_weighted_revenue', 0):,.0f}원
+- 평균 전환율: {pipeline.get('conversion_rate', 0):.1f}%
+- 승률 (Won Rate): {pipeline.get('win_rate', 0):.1f}%
+
+**단계별 분포:**
+{stage_info}
+
+**수주/실주 현황:**
+- 수주: {won_lost.get('won_count', 0)}건, {won_lost.get('won_revenue', 0):,.0f}원
+- 실주: {won_lost.get('lost_count', 0)}건, {won_lost.get('lost_revenue', 0):,.0f}원
+
+**상위 영업 기회 (Top 10):**
+{opportunity_info}
+
+---
+
+**위 데이터를 기반으로 7가지 필수 항목을 모두 포함하여 실전 세일즈 전략을 수립해주세요:**
+
+1️⃣ 전체 펀넬 체력 평가 🏥
+2️⃣ 금주 TOP 5 액션 아이템 🎯
+3️⃣ 단계별 전략 제안 📊
+4️⃣ 고객별 맞춤 전략 🎯
+5️⃣ 매출 예측 & 갭 분석 💰
+6️⃣ 영업 리스크 관리 ⚠️
+7️⃣ 업무 효율화 전략 ⚡
+
+**실무자가 오늘 당장 실행할 수 있는, 구체적이고 데이터 기반의 전략을 제시해주세요.**
+"""
+
+    try:
+        logger.info(f"[펀넬 분석] AI 호출 시작 - 모델: {MODEL_STANDARD}, 사용자: {user}")
+        
+        response = get_openai_client().chat.completions.create(
+            model=MODEL_STANDARD,  # GPT-4o 사용 (실전 전략 수립)
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=MAX_TOKENS,
+            temperature=0.7  # 창의적이면서도 실용적인 조언
+        )
+        
+        analysis = response.choices[0].message.content
+        logger.info(f"Funnel analysis generated using {MODEL_STANDARD}")
+        return analysis
+    
+    except Exception as e:
+        logger.error(f"Error analyzing funnel performance: {e}")
         raise
 

@@ -316,6 +316,13 @@
                 </h1>
                 <p class="mb-0 opacity-90">영업 파이프라인 전체 현황을 한눈에 확인하세요</p>
             </div>
+            {% if request.user.userprofile.can_use_ai %}
+            <div>
+                <button type="button" class="btn btn-light btn-lg" id="analyzeFunnelBtn" style="font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <i class="fas fa-robot"></i> AI 펀넬 분석
+                </button>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -1007,6 +1014,216 @@ function createScheduleCard(schedule) {
 function formatCurrency(value) {
     if (!value) return '0';
     return parseFloat(value).toLocaleString('ko-KR');
+}
+
+// AI 펀넬 분석 모달
+document.getElementById('analyzeFunnelBtn')?.addEventListener('click', async function() {
+    // 현재 필터 가져오기
+    const urlParams = new URLSearchParams(window.location.search);
+    const filters = {
+        user: urlParams.get('user') || '',
+        grade: urlParams.get('grade') || '',
+        priority: urlParams.get('priority') || '',
+        level: urlParams.get('level') || ''
+    };
+    
+    await runAITaskWithDetails(
+        '펀넬 분석',
+        '{% url "reporting:ai_analyze_funnel" %}',
+        filters,
+        // 상세 로그 콜백
+        async function() {
+            addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            addAILog('📊 펀넬 분석 파라미터:', 'info');
+            if (filters.user) addAILog(`   - 사용자 필터: ${filters.user}`, 'info');
+            if (filters.grade) addAILog(`   - 등급 필터: ${filters.grade}`, 'info');
+            if (filters.priority) addAILog(`   - 우선순위 필터: ${filters.priority}`, 'info');
+            if (filters.level) addAILog(`   - 레벨 필터: ${filters.level}`, 'info');
+            addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            await sleep(500);
+            addAILog('📈 파이프라인 데이터 수집 중...', 'info');
+            await sleep(300);
+            addAILog('📊 단계별 분포 분석 중...', 'info');
+            await sleep(300);
+            addAILog('🎯 상위 영업 기회 추출 중...', 'info');
+            await sleep(300);
+            addAILog('💰 수주/실주 통계 집계 중...', 'info');
+            await sleep(400);
+            addAILog('🤖 AI 전략 수립 시작...', 'info');
+        },
+        // 성공 콜백
+        function(data) {
+            if (data.success) {
+                // 결과 모달 생성
+                showFunnelAnalysisModal(data.analysis, data.summary);
+            } else {
+                alert('AI 분석 실패: ' + (data.error || '알 수 없는 오류'));
+            }
+        },
+        // 에러 콜백
+        function(error) {
+            alert(`펀넬 분석 실패: ${error.message}`);
+        }
+    );
+});
+
+// 유틸리티: sleep 함수
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// AI 분석 결과 모달 표시
+function showFunnelAnalysisModal(analysis, summary) {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('funnelAnalysisModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 모달 HTML 생성
+    const modalHTML = `
+        <div class="modal fade" id="funnelAnalysisModal" tabindex="-1" aria-labelledby="funnelAnalysisModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <h5 class="modal-title" id="funnelAnalysisModalLabel">
+                            <i class="fas fa-robot"></i> AI 펀넬 분석 결과
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" style="background-color: #f8f9fa;">
+                        <!-- 요약 정보 -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="card text-center" style="border: 2px solid #667eea;">
+                                    <div class="card-body">
+                                        <h6 class="text-muted mb-2">총 기회</h6>
+                                        <h3 class="mb-0" style="color: #667eea; font-weight: 800;">${summary.total_opportunities}건</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center" style="border: 2px solid #10b981;">
+                                    <div class="card-body">
+                                        <h6 class="text-muted mb-2">예상 매출</h6>
+                                        <h3 class="mb-0" style="color: #10b981; font-weight: 800;">${formatCurrency(summary.total_expected_revenue)}원</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center" style="border: 2px solid #f59e0b;">
+                                    <div class="card-body">
+                                        <h6 class="text-muted mb-2">가용 매출</h6>
+                                        <h3 class="mb-0" style="color: #f59e0b; font-weight: 800;">${formatCurrency(summary.total_weighted_revenue)}원</h3>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-center" style="border: 2px solid #8b5cf6;">
+                                    <div class="card-body">
+                                        <h6 class="text-muted mb-2">승률</h6>
+                                        <h3 class="mb-0" style="color: #8b5cf6; font-weight: 800;">${summary.win_rate.toFixed(1)}%</h3>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI 분석 내용 (마크다운 렌더링) -->
+                        <div class="card">
+                            <div class="card-body" id="analysisContent" style="font-size: 1rem; line-height: 1.8;">
+                                ${renderMarkdown(analysis)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times"></i> 닫기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 모달 추가 및 표시
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const modal = new bootstrap.Modal(document.getElementById('funnelAnalysisModal'));
+    modal.show();
+    
+    // 모달 닫힐 때 DOM에서 제거
+    document.getElementById('funnelAnalysisModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+// 간단한 마크다운 렌더링 (기본 형식만 지원)
+function renderMarkdown(text) {
+    if (!text) return '';
+    
+    let html = text;
+    
+    // 1. 테이블 처리 (HTML 이스케이프 전에 먼저 처리)
+    const tables = [];
+    html = html.replace(/\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g, function(match, header, rows) {
+        const headers = header.split('|').filter(h => h.trim()).map(h => h.trim());
+        const rowsArray = rows.trim().split('\n').map(row => 
+            row.split('|').filter(cell => cell.trim()).map(cell => cell.trim())
+        );
+        
+        let tableHTML = '<div class="table-responsive mt-3 mb-3"><table class="table table-hover table-bordered" style="background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">';
+        tableHTML += '<thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;"><tr>';
+        headers.forEach(h => tableHTML += `<th style="font-weight: 700; padding: 1rem;">${h}</th>`);
+        tableHTML += '</tr></thead><tbody>';
+        rowsArray.forEach((row, idx) => {
+            const rowClass = idx % 2 === 0 ? 'table-light' : '';
+            tableHTML += `<tr class="${rowClass}">`;
+            row.forEach(cell => tableHTML += `<td style="padding: 0.75rem;">${cell}</td>`);
+            tableHTML += '</tr>';
+        });
+        tableHTML += '</tbody></table></div>';
+        
+        // 테이블을 플레이스홀더로 대체
+        const placeholder = `<!--TABLE_${tables.length}-->`;
+        tables.push(tableHTML);
+        return placeholder;
+    });
+    
+    // 2. 나머지 텍스트 처리
+    html = html
+        // 헤더 (이스케이프 전에)
+        .replace(/^### (.*$)/gim, '<!--H3_START-->$1<!--H3_END-->')
+        .replace(/^## (.*$)/gim, '<!--H2_START-->$1<!--H2_END-->')
+        .replace(/^# (.*$)/gim, '<!--H1_START-->$1<!--H1_END-->')
+        // 굵게
+        .replace(/\*\*(.*?)\*\*/gim, '<!--BOLD_START-->$1<!--BOLD_END-->')
+        // 기울임
+        .replace(/\*(.*?)\*/gim, '<!--ITALIC_START-->$1<!--ITALIC_END-->')
+        // 목록
+        .replace(/^\- (.*$)/gim, '<!--LI-->$1')
+        .replace(/^(\d+)\. (.*$)/gim, '<!--LI-->$2')
+        // 코드 블록
+        .replace(/`([^`]+)`/gim, '<!--CODE_START-->$1<!--CODE_END-->')
+        // 이스케이프 HTML
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        // 플레이스홀더를 실제 HTML로 변환
+        .replace(/&lt;!--H3_START--&gt;(.*?)&lt;!--H3_END--&gt;/gim, '<h3 style="color: #667eea; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem;">$1</h3>')
+        .replace(/&lt;!--H2_START--&gt;(.*?)&lt;!--H2_END--&gt;/gim, '<h2 style="color: #764ba2; font-weight: 800; margin-top: 2rem; margin-bottom: 1rem; border-bottom: 3px solid #764ba2; padding-bottom: 0.5rem;">$1</h2>')
+        .replace(/&lt;!--H1_START--&gt;(.*?)&lt;!--H1_END--&gt;/gim, '<h1 style="color: #667eea; font-weight: 900; margin-top: 2rem; margin-bottom: 1rem;">$1</h1>')
+        .replace(/&lt;!--BOLD_START--&gt;(.*?)&lt;!--BOLD_END--&gt;/gim, '<strong style="color: #2d3748;">$1</strong>')
+        .replace(/&lt;!--ITALIC_START--&gt;(.*?)&lt;!--ITALIC_END--&gt;/gim, '<em>$1</em>')
+        .replace(/&lt;!--LI--&gt;(.*$)/gim, '<li style="margin-left: 1rem; margin-bottom: 0.5rem;">$1</li>')
+        .replace(/&lt;!--CODE_START--&gt;(.*?)&lt;!--CODE_END--&gt;/gim, '<code style="background-color: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: monospace; color: #e83e8c;">$1</code>')
+        // 테이블 플레이스홀더를 실제 테이블로 복원
+        .replace(/&lt;!--TABLE_(\d+)--&gt;/g, function(match, idx) {
+            return tables[parseInt(idx)];
+        })
+        // 줄바꿈
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    
+    return '<p style="line-height: 1.8;">' + html + '</p>';
 }
 
 </script>

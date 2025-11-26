@@ -850,6 +850,437 @@
     }
   </script>
 
+  <!-- 🤖 AI 작업 로딩 모달 (전역) -->
+  <div class="modal fade" id="aiLoadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="fas fa-brain me-2"></i>
+            <span id="aiLoadingTitle">AI 작업 중...</span>
+          </h5>
+        </div>
+        <div class="modal-body">
+          <!-- 진행률 표시 -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <small class="text-muted">진행률</small>
+              <strong id="aiProgressText" class="text-primary">0%</strong>
+            </div>
+            <div class="progress" style="height: 25px;">
+              <div id="aiProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                   role="progressbar" 
+                   style="width: 0%;" 
+                   aria-valuenow="0" 
+                   aria-valuemin="0" 
+                   aria-valuemax="100">
+                <span id="aiProgressBarText" style="font-weight: bold;">0%</span>
+              </div>
+            </div>
+            <p class="mt-2 text-center text-muted mb-0">
+              <small id="aiLoadingMessage">AI가 데이터를 분석하고 있습니다...</small>
+            </p>
+          </div>
+          
+          <!-- 로딩 스피너 (백그라운드) -->
+          <div class="text-center mb-3" style="opacity: 0.5;">
+            <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;">
+              <span class="visually-hidden">처리 중...</span>
+            </div>
+          </div>
+          
+          <!-- 디버깅 로그 -->
+          <div class="card border-primary" style="max-height: 250px; overflow-y: auto; background: linear-gradient(to bottom, #1a1a2e 0%, #0f0f1e 100%);">
+            <div class="card-body p-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <i class="fas fa-terminal text-success me-1"></i>
+                  <strong class="text-light">실시간 처리 로그</strong>
+                  <span class="badge bg-secondary ms-2" id="logCounter">0건</span>
+                </div>
+                <button class="btn btn-sm btn-outline-light" onclick="clearAILogs()" style="padding: 0.2rem 0.6rem; font-size: 0.75rem;">
+                  <i class="fas fa-trash me-1"></i> 초기화
+                </button>
+              </div>
+              <hr class="bg-secondary" style="margin: 0.5rem 0; opacity: 0.3;">
+              <pre id="aiDebugLogs" class="mb-0" style="font-size: 0.85rem; line-height: 1.5; color: #00ff00; font-family: 'Courier New', monospace; text-shadow: 0 0 5px rgba(0, 255, 0, 0.3);"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // AI 로딩 모달 전역 함수
+    let aiLoadingModal = null;
+    let aiLogCount = 0;
+    let aiProgressInterval = null;
+    let currentProgress = 0;
+
+    function showAILoading(title = 'AI 작업 중...', message = 'AI가 데이터를 분석하고 있습니다...') {
+      if (!aiLoadingModal) {
+        aiLoadingModal = new bootstrap.Modal(document.getElementById('aiLoadingModal'));
+      }
+      
+      document.getElementById('aiLoadingTitle').textContent = title;
+      document.getElementById('aiLoadingMessage').textContent = message;
+      document.getElementById('aiDebugLogs').textContent = '';
+      aiLogCount = 0;
+      
+      // 프로그레스 바 초기화
+      currentProgress = 0;
+      updateProgress(0);
+      
+      // 자동 진행률 시뮬레이션 시작 (실제 진행 상황 추정)
+      startProgressSimulation();
+      
+      aiLoadingModal.show();
+    }
+
+    function hideAILoading() {
+      if (aiLoadingModal) {
+        // 완료 시 100%로 설정
+        updateProgress(100);
+        
+        // 프로그레스 시뮬레이션 중지
+        if (aiProgressInterval) {
+          clearInterval(aiProgressInterval);
+          aiProgressInterval = null;
+        }
+        
+        // 잠시 후 모달 닫기 (100% 보여주기 위해)
+        setTimeout(() => {
+          aiLoadingModal.hide();
+        }, 500);
+      }
+    }
+
+    function updateProgress(percent) {
+      currentProgress = Math.min(percent, 100);
+      const progressBar = document.getElementById('aiProgressBar');
+      const progressText = document.getElementById('aiProgressText');
+      const progressBarText = document.getElementById('aiProgressBarText');
+      
+      progressBar.style.width = currentProgress + '%';
+      progressBar.setAttribute('aria-valuenow', currentProgress);
+      progressText.textContent = currentProgress + '%';
+      progressBarText.textContent = currentProgress + '%';
+      
+      // 진행률에 따라 색상 변경
+      progressBar.classList.remove('bg-primary', 'bg-info', 'bg-success', 'bg-warning');
+      if (currentProgress < 30) {
+        progressBar.classList.add('bg-primary');
+      } else if (currentProgress < 60) {
+        progressBar.classList.add('bg-info');
+      } else if (currentProgress < 90) {
+        progressBar.classList.add('bg-warning');
+      } else {
+        progressBar.classList.add('bg-success');
+      }
+    }
+
+    function startProgressSimulation() {
+      // 기존 인터벌 정리
+      if (aiProgressInterval) {
+        clearInterval(aiProgressInterval);
+      }
+      
+      currentProgress = 0;
+      updateProgress(0);
+      
+      // 진행률 시뮬레이션 (실제 AI 응답 시간 추정)
+      aiProgressInterval = setInterval(() => {
+        if (currentProgress < 90) {
+          // 초기에는 빠르게, 나중에는 느리게
+          let increment;
+          if (currentProgress < 20) {
+            increment = 3; // 0-20%: 빠르게
+          } else if (currentProgress < 50) {
+            increment = 2; // 20-50%: 중간
+          } else if (currentProgress < 80) {
+            increment = 1; // 50-80%: 느리게
+          } else {
+            increment = 0.5; // 80-90%: 매우 느리게
+          }
+          
+          currentProgress += increment;
+          updateProgress(Math.floor(currentProgress));
+        }
+      }, 300); // 300ms마다 업데이트
+    }
+
+    function addAILog(message, type = 'info') {
+      const logsElement = document.getElementById('aiDebugLogs');
+      const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+      aiLogCount++;
+      
+      // 로그 카운터 업데이트
+      const logCounter = document.getElementById('logCounter');
+      if (logCounter) {
+        logCounter.textContent = `${aiLogCount}건`;
+      }
+      
+      let icon = '▸';
+      let color = '#00ff00'; // 기본 초록색
+      let prefix = 'INFO';
+      
+      if (type === 'error') {
+        icon = '✗';
+        color = '#ff4444';
+        prefix = 'ERROR';
+      } else if (type === 'success') {
+        icon = '✓';
+        color = '#00ff88';
+        prefix = 'SUCCESS';
+      } else if (type === 'warning') {
+        icon = '⚠';
+        color = '#ffaa00';
+        prefix = 'WARN';
+      }
+      
+      // 터미널 스타일 로그
+      const logLine = `<span style="color: #888;">[${timestamp}]</span> <span style="color: ${color}; font-weight: bold;">[${prefix}]</span> <span style="color: ${color};">${icon} ${message}</span>\n`;
+      logsElement.innerHTML += logLine;
+      
+      // 자동 스크롤
+      logsElement.parentElement.scrollTop = logsElement.parentElement.scrollHeight;
+      
+      // 메시지 업데이트
+      const messageElement = document.getElementById('aiLoadingMessage');
+      if (messageElement) {
+        messageElement.textContent = message;
+      }
+      
+      // 로그에 따라 진행률 업데이트 (추가 힌트)
+      if (message.includes('시작') || message.includes('준비')) {
+        updateProgress(Math.max(currentProgress, 10));
+      } else if (message.includes('조회') || message.includes('수집') || message.includes('전송')) {
+        updateProgress(Math.max(currentProgress, 30));
+      } else if (message.includes('분석') || message.includes('호출') || message.includes('처리')) {
+        updateProgress(Math.max(currentProgress, 60));
+      } else if (message.includes('완료') || message.includes('성공')) {
+        updateProgress(Math.max(currentProgress, 90));
+      }
+    }
+
+    function clearAILogs() {
+      document.getElementById('aiDebugLogs').textContent = '';
+      aiLogCount = 0;
+      const logCounter = document.getElementById('logCounter');
+      if (logCounter) {
+        logCounter.textContent = '0건';
+      }
+    }
+
+    // 결과 파싱 및 상세 로그
+    function parseAndLogResults(data) {
+      // 미팅 전략 결과
+      if (data.strategy) {
+        const lines = data.strategy.split('\n');
+        let keyPoints = [];
+        for (const line of lines) {
+          if (line.includes('【') || line.includes('▶')) {
+            keyPoints.push(line.replace(/【|】|▶/g, '').trim());
+          }
+        }
+        if (keyPoints.length > 0) {
+          addAILog('📌 주요 포인트:', 'info');
+          keyPoints.slice(0, 3).forEach(point => {
+            if (point) addAILog(`   • ${point}`, 'info');
+          });
+        }
+      }
+      
+      // 고객 인사이트 결과
+      if (data.summary) {
+        if (typeof data.summary === 'string') {
+          // 문자열인 경우 (미팅 전략 등)
+          const summaryPreview = data.summary.substring(0, 100);
+          addAILog(`📄 인사이트 생성 완료 (${data.summary.length}자)`, 'success');
+        } else if (typeof data.summary === 'object') {
+          // 객체인 경우 (펀넬 분석)
+          addAILog(`📊 펀넬 분석 완료`, 'success');
+          if (data.summary.total_opportunities !== undefined) {
+            addAILog(`   ✓ 총 기회: ${data.summary.total_opportunities}건`, 'info');
+          }
+          if (data.summary.total_weighted_revenue !== undefined) {
+            addAILog(`   ✓ 가중 매출: ${data.summary.total_weighted_revenue.toLocaleString()}원`, 'info');
+          }
+        }
+      }
+      
+      // 등급 평가 결과
+      if (data.grade) {
+        addAILog(`⭐ 최종 등급: ${data.grade}등급 (${data.score}점)`, 'success');
+        if (data.recommendations && data.recommendations.length > 0) {
+          addAILog(`   💡 개선 제안: ${data.recommendations.length}개`, 'info');
+        }
+      }
+      
+      // 상품 추천 결과
+      if (data.recommendations && Array.isArray(data.recommendations)) {
+        addAILog(`🎁 추천 상품 목록:`, 'success');
+        data.recommendations.slice(0, 5).forEach((rec, idx) => {
+          const priority = rec.priority === 'high' ? '🔥' : rec.priority === 'medium' ? '⚡' : '💡';
+          addAILog(`   ${priority} ${idx + 1}. ${rec.product_name}`, 'info');
+        });
+        if (data.recommendations.length > 5) {
+          addAILog(`   ... 외 ${data.recommendations.length - 5}개`, 'info');
+        }
+      }
+      
+      // 팔로우업 우선순위 결과
+      if (data.suggestions && Array.isArray(data.suggestions)) {
+        addAILog(`👥 우선순위 고객 목록:`, 'success');
+        data.suggestions.slice(0, 5).forEach((sug, idx) => {
+          const priority = sug.priority_level === 'urgent' ? '🚨' : 
+                          sug.priority_level === 'high' ? '🔴' : 
+                          sug.priority_level === 'medium' ? '🟡' : '🟢';
+          addAILog(`   ${priority} ${idx + 1}. ${sug.customer_name} (${sug.company || '회사명 없음'})`, 'info');
+        });
+        if (data.suggestions.length > 5) {
+          addAILog(`   ... 외 ${data.suggestions.length - 5}명`, 'info');
+        }
+      }
+    }
+
+    // AI 작업 래퍼 함수 (기본)
+    async function runAITask(taskName, apiUrl, requestData, onSuccess, onError) {
+      await runAITaskWithDetails(taskName, apiUrl, requestData, null, onSuccess, onError);
+    }
+
+    // AI 작업 래퍼 함수 (상세 로그 포함)
+    async function runAITaskWithDetails(taskName, apiUrl, requestData, detailsCallback, onSuccess, onError) {
+      showAILoading(`AI ${taskName}`, `${taskName} 데이터를 준비하고 있습니다...`);
+      
+      // 단계별 로그 표시
+      addAILog(`🚀 ${taskName} 작업 시작`, 'info');
+      updateProgress(5);
+      
+      // 상세 정보 콜백 실행
+      if (detailsCallback) {
+        await detailsCallback();
+      }
+      
+      await sleep(200);
+      addAILog(`📋 요청 데이터 준비 중...`, 'info');
+      if (requestData && Object.keys(requestData).length > 0) {
+        for (const [key, value] of Object.entries(requestData)) {
+          addAILog(`   - ${key}: ${value}`, 'info');
+        }
+      }
+      updateProgress(10);
+      
+      await sleep(300);
+      addAILog(`🔐 인증 토큰 확인 중...`, 'info');
+      updateProgress(15);
+      
+      try {
+        await sleep(200);
+        addAILog(`📡 서버로 요청 전송 중...`, 'info');
+        addAILog(`   ➜ ${apiUrl}`, 'info');
+        updateProgress(20);
+        
+        const startTime = Date.now();
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
+          },
+          body: JSON.stringify(requestData)
+        });
+        
+        const responseTime = Date.now() - startTime;
+        addAILog(`✓ 서버 응답 수신 (${response.status}) - ${responseTime}ms`, response.ok ? 'success' : 'error');
+        updateProgress(30);
+        
+        await sleep(200);
+        addAILog(`📦 응답 데이터 파싱 중...`, 'info');
+        updateProgress(40);
+        
+        const data = await response.json();
+        
+        await sleep(200);
+        addAILog(`🔍 응답 데이터 검증 중...`, 'info');
+        updateProgress(50);
+        
+        if (data.success) {
+          await sleep(300);
+          addAILog(`🤖 AI 분석 완료!`, 'success');
+          updateProgress(70);
+          
+          await sleep(200);
+          addAILog(`📊 결과 데이터 처리 중...`, 'info');
+          
+          // 결과 요약 로그
+          parseAndLogResults(data);
+          
+          if (data.strategy) {
+            addAILog(`   ✓ 전략 문서 생성됨 (${data.strategy.length}자)`, 'success');
+          }
+          if (data.summary) {
+            addAILog(`   ✓ 요약 보고서 생성됨 (${data.summary.length}자)`, 'success');
+          }
+          if (data.grade) {
+            addAILog(`   ✓ 등급: ${data.grade} (${data.score}점)`, 'success');
+          }
+          if (data.recommendations) {
+            addAILog(`   ✓ 추천 상품: ${data.recommendations.length}개`, 'success');
+          }
+          if (data.suggestions) {
+            addAILog(`   ✓ 추천 고객: ${data.suggestions.length}명`, 'success');
+          }
+          
+          updateProgress(85);
+          
+          await sleep(200);
+          addAILog(`✅ 모든 작업 완료!`, 'success');
+          updateProgress(100);
+          
+          if (onSuccess) {
+            setTimeout(() => {
+              hideAILoading();
+              onSuccess(data);
+            }, 800);
+          } else {
+            setTimeout(() => {
+              hideAILoading();
+            }, 800);
+          }
+        } else {
+          throw new Error(data.error || '알 수 없는 오류');
+        }
+      } catch (error) {
+        addAILog(`❌ 오류 발생: ${error.message}`, 'error');
+        if (error.stack) {
+          addAILog(`   상세: ${error.stack.split('\n')[0]}`, 'error');
+        }
+        updateProgress(100);
+        
+        if (onError) {
+          setTimeout(() => {
+            hideAILoading();
+            onError(error);
+          }, 1500);
+        } else {
+          setTimeout(() => {
+            hideAILoading();
+            alert(`오류: ${error.message}`);
+          }, 1500);
+        }
+      }
+    }
+
+    // 유틸리티: sleep 함수
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
+
   {% block extra_js %}{% endblock %}
 </body>
 </html>
+

@@ -1,4 +1,6 @@
-{% extends "reporting/base.html" %}{% block title %}{{ page_title }} - 영업 보고
+{% extends "reporting/base.html" %}
+{% load humanize %}
+{% block title %}{{ page_title }} - 영업 보고
 시스템{% endblock %}{% block content %}
 <div class="container">
   <div class="row justify-content-center">
@@ -362,6 +364,146 @@
     </div>
   </div>
 
+  <!-- 납품 상품 목록 섹션 -->
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+              <i class="fas fa-box-open me-2"></i>납품 상품 목록
+            </h5>
+            <div>
+              <span class="badge bg-primary me-2">총 {{ delivery_stats.total_items }}건</span>
+              <span class="badge bg-success me-2">수량 {{ delivery_stats.total_quantity|floatformat:0 }}</span>
+              <span class="badge bg-info">총액 {{ delivery_stats.total_revenue|floatformat:0|intcomma }}원</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if delivered_items %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 15%;">납품일</th>
+                  <th style="width: 30%;">품목명</th>
+                  <th style="width: 10%;" class="text-end">수량</th>
+                  <th style="width: 10%;" class="text-end">단가</th>
+                  <th style="width: 15%;" class="text-end">총액</th>
+                  <th style="width: 10%;" class="text-center">세금계산서</th>
+                  <th style="width: 10%;" class="text-center">일정</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in delivered_items %}
+                <tr>
+                  <td>
+                    {% if item.schedule.visit_date %}
+                      {{ item.schedule.visit_date|date:"Y-m-d" }}
+                    {% else %}
+                      <span class="text-muted">날짜 미정</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <strong>{{ item.item_name }}</strong>
+                    {% if item.product %}
+                      <br>
+                      <small class="text-muted">{{ item.product.specification|default:"" }}</small>
+                    {% endif %}
+                    {% if item.notes %}
+                      <br>
+                      <small class="text-info"><i class="fas fa-info-circle"></i> {{ item.notes|truncatechars:50 }}</small>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {{ item.quantity|floatformat:0 }} {{ item.unit }}
+                  </td>
+                  <td class="text-end">
+                    {% if item.unit_price %}
+                      {{ item.unit_price|floatformat:0|intcomma }}원
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if item.total_price %}
+                      <strong class="text-success">{{ item.total_price|floatformat:0|intcomma }}원</strong>
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    {% if item.tax_invoice_issued %}
+                      <span class="badge bg-success"><i class="fas fa-check"></i> 발행</span>
+                    {% else %}
+                      <span class="badge bg-secondary">미발행</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <a href="{% url 'reporting:schedule_detail' item.schedule.pk %}" 
+                       class="btn btn-sm btn-outline-primary" 
+                       title="일정 상세보기">
+                      <i class="fas fa-calendar-alt"></i>
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot class="table-light">
+                <tr>
+                  <td colspan="2" class="text-end"><strong>합계</strong></td>
+                  <td class="text-end"><strong>{{ delivery_stats.total_quantity|floatformat:0 }}</strong></td>
+                  <td></td>
+                  <td class="text-end">
+                    <strong class="text-success fs-5">
+                      {{ delivery_stats.total_revenue|floatformat:0|intcomma }}원
+                    </strong>
+                  </td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          
+          <!-- 간단 통계 -->
+          <div class="mt-3 p-3 bg-light rounded">
+            <div class="row text-center">
+              <div class="col-md-4">
+                <div class="mb-0">
+                  <i class="fas fa-boxes fa-2x text-primary mb-2"></i>
+                  <h4 class="mb-0">{{ delivery_stats.total_items }}</h4>
+                  <small class="text-muted">총 납품 건수</small>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="mb-0">
+                  <i class="fas fa-cubes fa-2x text-success mb-2"></i>
+                  <h4 class="mb-0">{{ delivery_stats.total_quantity|floatformat:0 }}</h4>
+                  <small class="text-muted">총 수량</small>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="mb-0">
+                  <i class="fas fa-won-sign fa-2x text-info mb-2"></i>
+                  <h4 class="mb-0">{{ delivery_stats.total_revenue|floatformat:0|intcomma }}원</h4>
+                  <small class="text-muted">총 납품 금액</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% else %}
+          <div class="text-center py-5 text-muted">
+            <i class="fas fa-box-open fa-3x mb-3"></i>
+            <p>아직 납품된 상품이 없습니다.</p>
+            <p class="small">납품 일정을 생성하고 품목을 추가해보세요.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 관련 히스토리 섹션 -->
   <div class="row mt-4">
     <div class="col-12">
@@ -719,23 +861,36 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // AI 요약 생성
-    document.getElementById('generate-summary-btn')?.addEventListener('click', function() {
-        const btn = this;
+    document.getElementById('generate-summary-btn')?.addEventListener('click', async function() {
         const container = document.getElementById('ai-summary-container');
         
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>분석 중...';
-        
-        fetch(`/reporting/ai/customer-summary/${followupId}/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
+        await runAITaskWithDetails(
+            '고객 인사이트',
+            `/reporting/ai/customer-summary/${followupId}/`,
+            {},
+            // 상세 로그 콜백
+            async function() {
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                addAILog('👤 고객: {{ followup.customer_name }}', 'info');
+                {% if followup.company %}
+                addAILog('🏢 회사: {{ followup.company }}', 'info');
+                {% endif %}
+                {% if followup.department %}
+                addAILog('🏛️  부서: {{ followup.department }}', 'info');
+                {% endif %}
+                {% if followup.position %}
+                addAILog('💼 직책: {{ followup.position }}', 'info');
+                {% endif %}
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                await sleep(500);
+                addAILog('🔍 고객 활동 이력 수집 중...', 'info');
+                await sleep(300);
+                addAILog('📊 구매 패턴 분석 중...', 'info');
+                await sleep(300);
+                addAILog('📝 미팅 메모 분석 중...', 'info');
+            },
+            // 성공 콜백
+            function(data) {
                 currentSummary = data.summary; // 원본 저장
                 
                 // 모달에 표시
@@ -746,7 +901,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const modal = new bootstrap.Modal(document.getElementById('aiSummaryModal'));
                 modal.show();
                 
-                // 컨테이너에 간단한 성공 메시지
+                // 컨테이너에 성공 메시지
                 container.innerHTML = `
                     <div class="alert alert-success">
                         <i class="fas fa-check-circle me-2"></i>AI 분석이 완료되었습니다. 
@@ -755,28 +910,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                     </div>
                 `;
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-redo me-2"></i>재분석';
-            } else {
+                
+                // 버튼 텍스트 변경
+                document.getElementById('generate-summary-btn').innerHTML = '<i class="fas fa-redo me-2"></i>재분석';
+            },
+            // 에러 콜백
+            function(error) {
                 container.innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>${data.error || 'AI 요약 생성 실패'}
+                        <i class="fas fa-exclamation-circle me-2"></i>${error.message}
                     </div>
                 `;
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-magic me-2"></i>AI 요약 생성';
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            container.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle me-2"></i>요청 중 오류가 발생했습니다.
-                </div>
-            `;
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-magic me-2"></i>AI 요약 생성';
-        });
+        );
     });
 
     // AI 요약을 메모로 저장
@@ -830,23 +976,29 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // AI 등급 평가
-    document.getElementById('generate-grade-btn')?.addEventListener('click', function() {
-        const btn = this;
+    document.getElementById('generate-grade-btn')?.addEventListener('click', async function() {
         const container = document.getElementById('ai-grade-container');
         
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>평가 중...';
-        
-        fetch(`/reporting/ai/update-grade/${followupId}/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
+        await runAITaskWithDetails(
+            '등급 평가',
+            `/reporting/ai/update-grade/${followupId}/`,
+            {},
+            // 상세 로그 콜백
+            async function() {
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                addAILog('⭐ 평가 대상: {{ followup.customer_name }}', 'info');
+                {% if followup.customer_grade %}
+                addAILog('📋 현재 등급: {{ followup.customer_grade }}등급', 'info');
+                {% endif %}
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                await sleep(500);
+                addAILog('💰 구매 금액 집계 중...', 'info');
+                await sleep(300);
+                addAILog('📈 구매 빈도 분석 중...', 'info');
+                await sleep(300);
+                addAILog('🎯 잠재력 평가 중...', 'info');
+            },
+            function(data) {
                 const gradeColors = {
                     'A+': 'danger',
                     'A': 'warning',
@@ -920,46 +1072,40 @@ document.addEventListener('DOMContentLoaded', function() {
                         ` : ''}
                     </div>
                 `;
-            } else {
+            },
+            function(error) {
                 container.innerHTML = `
                     <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>${data.error || 'AI 등급 평가 실패'}
+                        <i class="fas fa-exclamation-circle me-2"></i>${error || '요청 중 오류가 발생했습니다.'}
                     </div>
                 `;
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            container.innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle me-2"></i>요청 중 오류가 발생했습니다.
-                </div>
-            `;
-        });
+        );
     });
 
     // 제품 추천
     const recommendBtn = document.getElementById('recommend-products-btn');
     if (recommendBtn) {
-        recommendBtn.addEventListener('click', function() {
-            const btn = this;
+        recommendBtn.addEventListener('click', async function() {
             const container = document.getElementById('ai-product-recommendations');
             
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>추천 상품 분석 중...';
-            
-            fetch(`/reporting/ai/recommend-products/{{ followup.id }}/`, {
-                method: 'GET',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-lightbulb me-2"></i>추천 상품 보기';
-                
-                if (data.success) {
+            await runAITaskWithDetails(
+                '상품 추천',
+                `/reporting/ai/recommend-products/{{ followup.id }}/`,
+                {},
+                // 상세 로그 콜백
+                async function() {
+                    addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                    addAILog('🛒 대상 고객: {{ followup.customer_name }}', 'info');
+                    addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                    await sleep(500);
+                    addAILog('📦 과거 구매 상품 조회 중...', 'info');
+                    await sleep(300);
+                    addAILog('📋 견적 요청 상품 분석 중...', 'info');
+                    await sleep(300);
+                    addAILog('🔍 상품 카탈로그 매칭 중...', 'info');
+                },
+                function(data) {
                     const recommendations = data.recommendations || [];
                     const dataSources = data.data_sources || {};
                     
@@ -1071,24 +1217,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                     
                     container.innerHTML = html;
-                } else {
+                },
+                function(error) {
                     container.innerHTML = `
                         <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i>${data.error || '상품 추천 실패'}
+                            <i class="fas fa-exclamation-circle me-2"></i>${error || '요청 중 오류가 발생했습니다.'}
                         </div>
                     `;
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-lightbulb me-2"></i>추천 상품 보기';
-                container.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>요청 중 오류가 발생했습니다.
-                    </div>
-                `;
-            });
+            );
         });
     }
     

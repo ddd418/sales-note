@@ -158,6 +158,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   let selectedScheduleId = null;
+  let upcomingSchedules = []; // 전역 변수로 일정 목록 저장
 
   // 다가오는 일정 불러오기
   loadUpcomingSchedules();
@@ -172,6 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
     .then(response => response.json())
     .then(data => {
       if (data.success && data.schedules) {
+        upcomingSchedules = data.schedules; // 일정 목록 저장
         displaySchedules(data.schedules);
       } else {
         document.getElementById('upcoming-schedules').innerHTML = `
@@ -299,68 +301,55 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // AI 미팅 전략 추천 요청
-  document.getElementById('get-strategy-btn').addEventListener('click', function() {
+  document.getElementById('get-strategy-btn').addEventListener('click', async function() {
     if (!selectedScheduleId) {
       alert('일정을 먼저 선택해주세요.');
       return;
     }
 
-    // 버튼 비활성화
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>AI가 전략을 수립하고 있습니다...';
-
-    // AI 응답 영역 표시
-    document.getElementById('ai-response-area').style.display = 'block';
-    document.getElementById('ai-response-content').innerHTML = `
-      <div class="text-center py-5">
-        <div class="spinner-border text-primary mb-3" role="status">
-          <span class="visually-hidden">분석 중...</span>
-        </div>
-        <p class="text-muted">AI가 고객의 구매 이력, 견적 전환율, 히스토리 메모를 분석하여 전략을 수립하고 있습니다...</p>
-        <small class="text-muted">최대 30초 소요될 수 있습니다</small>
-      </div>
-    `;
-
-    // AI 전략 요청
-    fetch('/reporting/ai/meeting-strategy/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}'
+    // 선택된 일정 정보 가져오기
+    const selectedSchedule = upcomingSchedules.find(s => s.id === selectedScheduleId);
+    
+    await runAITaskWithDetails(
+      '미팅 전략 추천',
+      '/reporting/ai/meeting-strategy/',
+      { schedule_id: selectedScheduleId },
+      // 상세 로그 콜백
+      async function() {
+        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        if (selectedSchedule) {
+          addAILog(`🏢 고객: ${selectedSchedule.customer_name}`, 'info');
+          addAILog(`📅 활동: ${selectedSchedule.activity_type}`, 'info');
+          addAILog(`📆 날짜: ${selectedSchedule.visit_date}`, 'info');
+          if (selectedSchedule.department) {
+            addAILog(`🏛️  부서: ${selectedSchedule.department}`, 'info');
+          }
+        }
+        addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+        await sleep(500);
+        addAILog('🔍 고객 구매 이력 조회 중...', 'info');
+        await sleep(300);
+        addAILog('📊 견적-구매 전환율 분석 중...', 'info');
+        await sleep(300);
+        addAILog('📝 과거 미팅 메모 수집 중...', 'info');
+        await sleep(300);
+        addAILog('💡 직급별 맞춤 전략 수립 중...', 'info');
       },
-      body: JSON.stringify({
-        schedule_id: selectedScheduleId
-      })
-    })
-    .then(response => response.json())
-    .then(data => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-brain me-2"></i>미팅 전략 추천 받기';
-
-      if (data.success && data.strategy) {
-        displayAIStrategy(data.strategy);
-      } else {
-        document.getElementById('ai-response-content').innerHTML = `
-          <div class="alert alert-danger">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            ${data.error || 'AI 전략을 받는 중 오류가 발생했습니다.'}
-          </div>
-        `;
+      // 성공 콜백
+      function(data) {
+        if (data.success && data.strategy) {
+          // AI 응답 영역 표시
+          document.getElementById('ai-response-area').style.display = 'block';
+          displayAIStrategy(data.strategy);
+        } else {
+          alert(data.error || 'AI 전략을 받는 중 오류가 발생했습니다.');
+        }
+      },
+      // 에러 콜백
+      function(error) {
+        alert(`AI 미팅 전략 생성 실패: ${error.message}`);
       }
-    })
-    .catch(error => {
-      console.error('Error:', error);
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-brain me-2"></i>미팅 전략 추천 받기';
-      
-      document.getElementById('ai-response-content').innerHTML = `
-        <div class="alert alert-danger">
-          <i class="fas fa-exclamation-triangle me-2"></i>
-          AI 전략을 받는 중 오류가 발생했습니다.
-        </div>
-      `;
-    });
+    );
   });
 
   function displayAIStrategy(strategy) {
@@ -375,6 +364,11 @@ document.addEventListener('DOMContentLoaded', function() {
       .replace(/(<li>.*<\/li>)/s, '<ul class="mb-3">$1</ul>');
 
     document.getElementById('ai-response-content').innerHTML = html;
+  }
+  
+  // 유틸리티: sleep 함수
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 });
 </script>

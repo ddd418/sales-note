@@ -934,12 +934,30 @@ def followup_detail_view(request, pk):
             'ready': True
         }
     
+    # 납품된 상품 목록 조회 (모든 사용자에게 표시)
+    from reporting.models import DeliveryItem
+    delivered_items = DeliveryItem.objects.filter(
+        schedule__followup=followup,
+        schedule__activity_type='delivery'
+    ).exclude(
+        schedule__status='cancelled'
+    ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
+    
+    # 납품 품목 통계
+    delivery_stats = {
+        'total_items': delivered_items.count(),
+        'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
+        'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
+    }
+    
     context = {
         'followup': followup,
         'related_histories': related_histories,
         'quotation_templates': quotation_templates,
         'transaction_templates': transaction_templates,
         'ai_analysis': ai_analysis,
+        'delivered_items': delivered_items,
+        'delivery_stats': delivery_stats,
         'page_title': f'팔로우업 상세 - {followup.customer_name}'
     }
     return render(request, 'reporting/followup_detail.html', context)

@@ -1528,48 +1528,52 @@ document.addEventListener('DOMContentLoaded', function() {
     const suggestionsDiv = document.getElementById('ai-followup-suggestions');
     
     if (suggestBtn && suggestionsDiv) {
-        suggestBtn.addEventListener('click', function() {
-            // 로딩 상태
-            suggestBtn.disabled = true;
-            suggestBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>AI 분석 중...';
-            suggestionsDiv.style.display = 'none';
-            
-            fetch('/reporting/ai/suggest-follow-ups/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
+        suggestBtn.addEventListener('click', async function() {
+            await runAITaskWithDetails(
+                '팔로우업 우선순위 제안',
+                '/reporting/ai/suggest-follow-ups/',
+                {},
+                // 상세 로그 콜백
+                async function() {
+                    addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                    addAILog('🎯 팔로우업 우선순위 분석 시작', 'info');
+                    addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                    await sleep(500);
+                    addAILog('📊 전체 고객 데이터 조회 중...', 'info');
+                    await sleep(300);
+                    addAILog('📅 일정이 있는 고객 필터링 중...', 'info');
+                    await sleep(300);
+                    addAILog('🔍 고객별 활동 이력 분석 중...', 'info');
+                    await sleep(300);
+                    addAILog('⏰ 마지막 연락 시점 확인 중...', 'info');
+                    await sleep(300);
+                    addAILog('💡 우선순위 알고리즘 적용 중...', 'info');
                 },
-                body: JSON.stringify({})
-            })
-            .then(response => response.json())
-            .then(data => {
-                suggestBtn.disabled = false;
-                suggestBtn.innerHTML = '<i class="fas fa-magic me-1"></i>우선순위 분석';
-                
-                if (data.success && data.suggestions && data.suggestions.length > 0) {
-                    displayFollowUpSuggestions(data);
-                } else {
+                // 성공 콜백
+                function(data) {
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        displayFollowUpSuggestions(data);
+                        suggestionsDiv.style.display = 'block';
+                    } else {
+                        suggestionsDiv.innerHTML = `
+                            <div class="alert alert-warning">
+                                <i class="fas fa-info-circle me-2"></i>
+                                ${data.error || '분석할 고객이 없습니다.'}
+                            </div>
+                        `;
+                        suggestionsDiv.style.display = 'block';
+                    }
+                },
+                // 에러 콜백
+                function(error) {
                     suggestionsDiv.innerHTML = `
-                        <div class="alert alert-warning">
-                            <i class="fas fa-info-circle me-2"></i>
-                            ${data.error || '분석할 고객이 없습니다. 최소 1개 이상의 활동 이력이 필요합니다.'}
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>분석 중 오류: ${error.message}
                         </div>
                     `;
                     suggestionsDiv.style.display = 'block';
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                suggestBtn.disabled = false;
-                suggestBtn.innerHTML = '<i class="fas fa-magic me-1"></i>우선순위 분석';
-                suggestionsDiv.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>분석 중 오류가 발생했습니다.
-                    </div>
-                `;
-                suggestionsDiv.style.display = 'block';
-            });
+            );
         });
     }
     
@@ -1716,10 +1720,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // 로딩 상태
-            aiSearchBtn.disabled = true;
-            aiSearchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>AI 분석 중...';
+            // 프로그레스 모달 표시
+            showProgressModal('AI 자연어 검색 중...', [
+                '검색어 분석 중...',
+                'AI 쿼리 생성 중...',
+                '데이터베이스 검색 중...',
+                '결과 정리 중...'
+            ]);
+            
             aiSearchResults.style.display = 'none';
+            
+            updateProgress(0, '검색어 분석 중...');
             
             fetch('/reporting/ai/search/', {
                 method: 'POST',
@@ -1732,10 +1743,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     search_type: 'customers'  // 고객만 검색
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                updateProgress(50, 'AI 쿼리 생성 완료');
+                return response.json();
+            })
             .then(data => {
-                aiSearchBtn.disabled = false;
-                aiSearchBtn.innerHTML = '<i class="fas fa-search me-1"></i>AI 검색';
+                updateProgress(75, '데이터베이스 검색 완료');
+                
+                // 프로그레스 모달 닫기
+                closeProgressModal();
                 
                 if (data.success) {
                     displayAISearchResults(data);
@@ -1750,8 +1766,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error:', error);
-                aiSearchBtn.disabled = false;
-                aiSearchBtn.innerHTML = '<i class="fas fa-search me-1"></i>AI 검색';
+                closeProgressModal();
                 aiSearchResults.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="fas fa-exclamation-circle me-2"></i>검색 중 오류가 발생했습니다.
@@ -2151,6 +2166,76 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 {% endif %}
+
+// 프로그레스 모달 관련 함수들
+let progressModal = null;
+
+function showProgressModal(title, steps) {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('progressModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    const modalHTML = `
+        <div class="modal fade" id="progressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
+                        <h5 class="modal-title">
+                            <i class="fas fa-robot fa-spin"></i> ${title}
+                        </h5>
+                    </div>
+                    <div class="modal-body" style="padding: 2rem;">
+                        <div class="progress" style="height: 30px; border-radius: 15px; background-color: #e9ecef;">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" 
+                                 style="width: 0%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); font-weight: 700; font-size: 0.9rem;"
+                                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <div id="progressLog" class="mt-3" style="max-height: 200px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85rem; background-color: #1a1a1a; color: #0f0; padding: 1rem; border-radius: 8px;">
+                            ${steps.map(step => `<div style="opacity: 0.5;">⏳ ${step}</div>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+    progressModal.show();
+}
+
+function updateProgress(percent, message) {
+    const progressBar = document.getElementById('progressBar');
+    const progressLog = document.getElementById('progressLog');
+    
+    if (progressBar) {
+        progressBar.style.width = percent + '%';
+        progressBar.setAttribute('aria-valuenow', percent);
+        progressBar.textContent = percent + '%';
+    }
+    
+    if (progressLog && message) {
+        const timestamp = new Date().toLocaleTimeString('ko-KR');
+        progressLog.innerHTML += `<div style="color: #0f0;">✓ [${timestamp}] ${message}</div>`;
+        progressLog.scrollTop = progressLog.scrollHeight;
+    }
+}
+
+function closeProgressModal() {
+    if (progressModal) {
+        progressModal.hide();
+        progressModal = null;
+    }
+    const modalElement = document.getElementById('progressModal');
+    if (modalElement) {
+        modalElement.remove();
+    }
+    // backdrop 제거
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+}
 
 // 관리자 권한 필요 알림 함수
 function showAdminRequiredAlert() {

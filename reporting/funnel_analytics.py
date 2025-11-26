@@ -437,13 +437,14 @@ class FunnelAnalytics:
     
     @staticmethod
     def get_product_sales_distribution(user=None, accessible_users=None):
-        """제품군별 매출 비중"""
+        """제품별 매출 비중"""
         from .models import DeliveryItem, Product
         
-        # 납품 완료된 품목들의 제품별 집계 (status='completed'인 Schedule)
+        # 납품된 품목들의 제품별 집계 (취소된 일정만 제외)
         delivery_items = DeliveryItem.objects.select_related('product', 'schedule').filter(
-            product__isnull=False,  # 제품이 연결된 품목만
-            schedule__status='completed'  # 완료된 일정만
+            schedule__isnull=False,  # Schedule이 있는 것만
+        ).exclude(
+            schedule__status='cancelled'  # 취소된 일정만 제외
         )
         
         if user:
@@ -456,8 +457,13 @@ class FunnelAnalytics:
         total_revenue = Decimal('0')
         
         for item in delivery_items:
+            # product 또는 item_name 사용
             product_name = item.product.product_code if item.product else item.item_name
             product_desc = item.product.description if item.product else ''
+            
+            if not product_name:  # 제품명이 없으면 스킵
+                continue
+            
             item_total = item.total_price or Decimal('0')
             
             if product_name not in product_sales:

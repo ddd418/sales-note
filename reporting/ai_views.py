@@ -147,7 +147,10 @@ def ai_generate_customer_summary(request, followup_id):
     AI로 고객 요약 리포트 생성
     """
     try:
+        logger.info(f"[AI 인사이트] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
+        
         if not check_ai_permission(request.user):
+            logger.warning(f"[AI 인사이트] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({
                 'success': False,
                 'error': 'AI 기능 사용 권한이 없습니다.'
@@ -158,11 +161,14 @@ def ai_generate_customer_summary(request, followup_id):
         from datetime import timedelta
         from reporting.models import OpportunityTracking, EmailLog
         
+        logger.info(f"[AI 인사이트] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
+        logger.info(f"[AI 인사이트] 고객명: {followup.customer_name}")
         
         # 최근 6개월 데이터
         six_months_ago = timezone.now() - timedelta(days=180)
         
+        logger.info(f"[AI 인사이트] 스케줄 데이터 수집 중...")
         # 스케줄 통계
         schedules = Schedule.objects.filter(
             followup=followup,
@@ -170,6 +176,7 @@ def ai_generate_customer_summary(request, followup_id):
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
+        logger.info(f"[AI 인사이트] 미팅: {meeting_count}건, 견적: {quote_count}건")
         
         # 구매 내역 (납품 일정)
         delivery_schedules = schedules.filter(activity_type='delivery')
@@ -257,7 +264,9 @@ def ai_generate_customer_summary(request, followup_id):
             'prepayment': prepayment_info,  # 선결제 정보 추가
         }
         
+        logger.info(f"[AI 인사이트] AI 요약 생성 시작...")
         summary = generate_customer_summary(customer_data, request.user)
+        logger.info(f"[AI 인사이트] AI 요약 생성 완료 (길이: {len(summary)} 자)")
         
         return JsonResponse({
             'success': True,
@@ -287,7 +296,10 @@ def ai_update_customer_grade(request, followup_id):
     AI로 고객 등급 자동 업데이트
     """
     try:
+        logger.info(f"[AI 등급평가] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
+        
         if not check_ai_permission(request.user):
+            logger.warning(f"[AI 등급평가] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({
                 'success': False,
                 'error': 'AI 기능 사용 권한이 없습니다.'
@@ -302,17 +314,21 @@ def ai_update_customer_grade(request, followup_id):
             DeliveryItem, Prepayment
         )
         
+        logger.info(f"[AI 등급평가] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
+        logger.info(f"[AI 등급평가] 고객명: {followup.customer_name}")
         
         # 최근 6개월 데이터
         six_months_ago = timezone.now() - timedelta(days=180)
         
+        logger.info(f"[AI 등급평가] 활동 데이터 수집 중...")
         # 미팅 횟수 (최근 6개월)
         meeting_count = Schedule.objects.filter(
             followup=followup,
             activity_type='meeting',
             created_at__gte=six_months_ago
         ).count()
+        logger.info(f"[AI 등급평가] 미팅 횟수: {meeting_count}건")
         
         # 이메일 교환 (최근 6개월)
         email_count = EmailLog.objects.filter(
@@ -405,7 +421,9 @@ def ai_update_customer_grade(request, followup_id):
             'opportunities': opportunities,
         }
         
+        logger.info(f"[AI 등급평가] AI 분석 시작...")
         result = update_customer_grade_with_ai(customer_data, request.user)
+        logger.info(f"[AI 등급평가] AI 분석 완료 - 등급: {result.get('grade')}, 점수: {result.get('score')}")
         
         # 고객 등급 업데이트 (실제 적용은 사용자 확인 후)
         return JsonResponse({
@@ -514,33 +532,40 @@ def ai_suggest_follow_ups(request):
     AI로 팔로우업 우선순위 제안
     """
     try:
+        logger.info(f"[AI 팔로우업] 시작 - 사용자: {request.user.username}")
+        
         if not check_ai_permission(request.user):
+            logger.warning(f"[AI 팔로우업] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({
                 'success': False,
                 'error': 'AI 기능 사용 권한이 없습니다.'
             }, status=403)
         
-        from django.db.models import Sum, Q, Max
+        from django.db.models import Sum, Q, Max, Count
         from django.utils import timezone
         from datetime import timedelta
         from reporting.models import History, Prepayment, OpportunityTracking
         
+        logger.info(f"[AI 팔로우업] 고객 데이터 수집 중...")
         # 사용자의 모든 고객 가져오기 (최근 6개월 이내 활동이 있는 고객만)
         six_months_ago = timezone.now() - timedelta(days=180)
         
-        # 최근 6개월 내 스케줄이 있는 고객만 필터링
-        active_followup_ids = Schedule.objects.filter(
-            followup__user=request.user,
-            visit_date__gte=six_months_ago
-        ).values_list('followup_id', flat=True).distinct()
-        
-        followups = FollowUp.objects.filter(
-            id__in=active_followup_ids
+        # ✅ 일정이 1개라도 있는 고객만 필터링 (속도 & 토큰 절약)
+        # Schedule 테이블에서 일정이 있는 followup_id만 추출
+        followups_with_schedules = FollowUp.objects.filter(
+            user=request.user
+        ).annotate(
+            schedule_count=Count('schedules'),
+            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=six_months_ago))
+        ).filter(
+            schedule_count__gt=0  # 일정이 1개라도 있는 고객만
         ).select_related('company')
+        
+        logger.info(f"[AI 팔로우업] 일정 있는 고객 수: {followups_with_schedules.count()}명")
         
         customer_list = []
         
-        for followup in followups[:50]:  # 최대 50명만 분석
+        for followup in followups_with_schedules[:50]:  # 최대 50명만 분석
             # 스케줄 통계 (최근 6개월)
             schedules = Schedule.objects.filter(
                 followup=followup,
@@ -641,9 +666,10 @@ def ai_suggest_follow_ups(request):
         if not customer_list:
             return JsonResponse({
                 'success': False,
-                'error': '최근 6개월 내 활동 이력이 있는 고객이 없습니다.'
+                'error': '일정이 있는 고객이 없습니다. 먼저 고객과의 일정을 등록해주세요.'
             }, status=400)
         
+        # AI에게 일정이 있는 고객만 전달하여 분석 (토큰 절약)
         suggestions = suggest_follow_ups(customer_list, request.user)
         
         return JsonResponse({
@@ -733,7 +759,10 @@ def ai_recommend_products(request, followup_id):
     """
     from reporting.ai_utils import recommend_products, check_ai_permission
     
+    logger.info(f"[AI 상품추천] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
+    
     if not check_ai_permission(request.user):
+        logger.warning(f"[AI 상품추천] 권한 없음 - 사용자: {request.user.username}")
         return JsonResponse({
             'success': False,
             'error': 'AI 기능 사용 권한이 없습니다.'
@@ -742,8 +771,10 @@ def ai_recommend_products(request, followup_id):
     try:
         from reporting.models import FollowUp, DeliveryItem, Schedule, QuoteItem
         
+        logger.info(f"[AI 상품추천] 고객 데이터 조회 중...")
         # 고객 정보 가져오기
         followup = get_object_or_404(FollowUp, id=followup_id)
+        logger.info(f"[AI 상품추천] 고객명: {followup.customer_name}")
         
         # 구매 이력 가져오기 (최근 2년)
         from datetime import timedelta
@@ -861,8 +892,10 @@ def ai_recommend_products(request, followup_id):
             'available_products': product_catalog  # 실제 제품 카탈로그 추가
         }
         
+        logger.info(f"[AI 상품추천] AI 분석 시작 - 구매: {len(purchase_history)}건, 견적: {len(quote_history)}건")
         # AI 추천 실행
         result = recommend_products(customer_data, request.user)
+        logger.info(f"[AI 상품추천] AI 분석 완료 - 추천: {len(result.get('recommendations', []))}개")
         
         return JsonResponse({
             'success': True,
@@ -1007,12 +1040,22 @@ def ai_natural_language_search(request):
                 from reporting.views import get_accessible_users
                 accessible_users = get_accessible_users(request.user)
                 
-                # 스케줄 관련 필터와 고객 직접 필터 분리
+                # 필터 분리: 고객 직접, 스케줄, 납품상품, 견적상품
                 customer_filters = {}
                 schedule_filters = {}
+                delivery_filters = {}
+                quote_filters = {}
                 
                 for key, value in filters.items():
-                    if 'schedules__' in key:
+                    if 'deliveryitems__' in key:
+                        # deliveryitems__ 접두사 제거하고 납품상품 필터로
+                        clean_key = key.replace('deliveryitems__', '')
+                        delivery_filters[clean_key] = value
+                    elif 'quoteitems__' in key:
+                        # quoteitems__ 접두사 제거하고 견적상품 필터로
+                        clean_key = key.replace('quoteitems__', '')
+                        quote_filters[clean_key] = value
+                    elif 'schedules__' in key:
                         # schedules__ 접두사 제거하고 스케줄 필터로
                         clean_key = key.replace('schedules__', '')
                         schedule_filters[clean_key] = value
@@ -1020,44 +1063,101 @@ def ai_natural_language_search(request):
                         # 고객 직접 필터
                         customer_filters[key] = value
                 
+                # 납품 상품 필터가 있으면 해당 상품을 구매한 고객만 조회
+                customer_ids_from_delivery = None
+                if delivery_filters:
+                    from reporting.models import DeliveryItem
+                    customer_ids_from_delivery = DeliveryItem.objects.filter(
+                        **delivery_filters
+                    ).values_list('schedule__followup_id', flat=True).distinct()
+                    logger.info(f"[자연어검색] 납품상품 필터: {delivery_filters} → 고객 {len(customer_ids_from_delivery)}명")
+                
+                # 견적 상품 필터가 있으면 해당 상품을 견적받은 고객만 조회
+                customer_ids_from_quote = None
+                if quote_filters:
+                    from reporting.models import QuoteItem
+                    customer_ids_from_quote = QuoteItem.objects.filter(
+                        **quote_filters
+                    ).values_list('quote__followup_id', flat=True).distinct()
+                    logger.info(f"[자연어검색] 견적상품 필터: {quote_filters} → 고객 {len(customer_ids_from_quote)}명")
+                
                 # 스케줄 필터가 있으면 해당 일정이 있는 고객만 조회
+                customer_ids_from_schedule = None
                 if schedule_filters:
-                    schedule_ids = Schedule.objects.filter(
+                    customer_ids_from_schedule = Schedule.objects.filter(
                         user__in=accessible_users,  # 권한 필터 추가
                         **schedule_filters
                     ).values_list('followup_id', flat=True).distinct()
+                    logger.info(f"[자연어검색] 일정 필터: {schedule_filters} → 고객 {len(customer_ids_from_schedule)}명")
+                
+                # 고객 ID 리스트 결합 (교집합)
+                final_customer_ids = None
+                
+                if customer_ids_from_delivery is not None:
+                    final_customer_ids = set(customer_ids_from_delivery)
+                
+                if customer_ids_from_quote is not None:
+                    if final_customer_ids is None:
+                        final_customer_ids = set(customer_ids_from_quote)
+                    else:
+                        final_customer_ids &= set(customer_ids_from_quote)
+                
+                if customer_ids_from_schedule is not None:
+                    if final_customer_ids is None:
+                        final_customer_ids = set(customer_ids_from_schedule)
+                    else:
+                        final_customer_ids &= set(customer_ids_from_schedule)
+                
+                # 최종 고객 쿼리
+                if final_customer_ids is not None:
                     if customer_filters:
                         customers = FollowUp.objects.filter(
-                            user__in=accessible_users,  # 권한 필터 추가
-                            id__in=schedule_ids, 
+                            user__in=accessible_users,
+                            id__in=final_customer_ids,
                             **customer_filters
-                        )[:20]
+                        ).distinct()[:20]
                     else:
                         customers = FollowUp.objects.filter(
-                            user__in=accessible_users,  # 권한 필터 추가
-                            id__in=schedule_ids
-                        )[:20]
+                            user__in=accessible_users,
+                            id__in=final_customer_ids
+                        ).distinct()[:20]
                 elif customer_filters:
                     customers = FollowUp.objects.filter(
-                        user__in=accessible_users,  # 권한 필터 추가
+                        user__in=accessible_users,
                         **customer_filters
-                    )[:20]
+                    ).distinct()[:20]
                 else:
                     customers = FollowUp.objects.filter(
-                        user__in=accessible_users  # 권한 필터 추가
-                    )[:20]
+                        user__in=accessible_users
+                    ).distinct()[:20]
+                
+                logger.info(f"[자연어검색] 최종 고객 수: {customers.count()}명")
                 
                 for customer in customers:
                     # 마지막 연락일 계산
                     last_schedule = Schedule.objects.filter(followup=customer).order_by('-visit_date').first()
                     last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else ''
                     
+                    # 구매 상품 정보 (상품 검색인 경우)
+                    purchased_products = []
+                    if delivery_filters:
+                        from reporting.models import DeliveryItem
+                        delivery_items = DeliveryItem.objects.filter(
+                            schedule__followup=customer,
+                            **delivery_filters
+                        ).select_related('product')[:5]
+                        
+                        for item in delivery_items:
+                            product_info = item.product.product_code if item.product else item.item_name
+                            purchased_products.append(product_info)
+                    
                     search_results['customers'].append({
                         'id': customer.id,
                         'name': customer.customer_name,
                         'company': str(customer.company) if customer.company else '',
                         'grade': customer.customer_grade or '',
-                        'last_contact': last_contact
+                        'last_contact': last_contact,
+                        'purchased_products': purchased_products if delivery_filters else None
                     })
             except Exception as e:
                 logger.error(f"Customer search error: {e}")
@@ -1871,8 +1971,11 @@ def ai_generate_meeting_strategy(request):
         - error: 에러 메시지 (실패 시)
     """
     try:
+        logger.info(f"[AI 미팅전략] 시작 - 사용자: {request.user.username}")
+        
         # AI 권한 체크
         if not check_ai_permission(request.user):
+            logger.warning(f"[AI 미팅전략] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({
                 'success': False,
                 'error': 'AI 기능 사용 권한이 없습니다. 관리자에게 문의하세요.'
@@ -1881,6 +1984,8 @@ def ai_generate_meeting_strategy(request):
         # 파라미터 받기
         data = json.loads(request.body)
         schedule_id = data.get('schedule_id')
+        
+        logger.info(f"[AI 미팅전략] 일정 ID: {schedule_id}")
         
         if not schedule_id:
             return JsonResponse({
@@ -1892,9 +1997,12 @@ def ai_generate_meeting_strategy(request):
         from reporting.models import Schedule
         from reporting.views import can_access_user_data
         
+        logger.info(f"[AI 미팅전략] 일정 조회 중...")
         try:
             schedule = Schedule.objects.select_related('followup', 'user').get(id=schedule_id)
+            logger.info(f"[AI 미팅전략] 일정 조회 완료 - 고객: {schedule.followup.customer_name}, 활동: {schedule.get_activity_type_display()}")
         except Schedule.DoesNotExist:
+            logger.error(f"[AI 미팅전략] 일정을 찾을 수 없음 - ID: {schedule_id}")
             return JsonResponse({
                 'success': False,
                 'error': f'일정 ID {schedule_id}를 찾을 수 없습니다.'
@@ -1909,9 +2017,10 @@ def ai_generate_meeting_strategy(request):
         
         # AI 미팅 전략 생성
         from reporting.ai_utils import generate_meeting_strategy
-        strategy = generate_meeting_strategy(schedule_id, request.user)
         
-        logger.info(f"Meeting strategy generated for schedule {schedule_id} by user {request.user.username}")
+        logger.info(f"[AI 미팅전략] AI 전략 생성 시작...")
+        strategy = generate_meeting_strategy(schedule_id, request.user)
+        logger.info(f"[AI 미팅전략] AI 전략 생성 완료 (길이: {len(strategy)} 자)")
         
         return JsonResponse({
             'success': True,
@@ -1943,4 +2052,105 @@ def ai_generate_meeting_strategy(request):
         return JsonResponse({
             'success': False,
             'error': f'AI 미팅 전략 생성 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def ai_analyze_funnel(request):
+    """
+    펀넬 대시보드 AI 분석
+    """
+    try:
+        # AI 권한 확인
+        check_ai_permission(request.user)
+        
+        # 필터 파라미터 가져오기
+        data = json.loads(request.body) if request.body else {}
+        user_filter = data.get('user')
+        grade_filter = data.get('grade')
+        priority_filter = data.get('priority')
+        level_filter = data.get('level')
+        
+        logger.info(f"[펀넬 AI] 분석 시작 - 필터: user={user_filter}, grade={grade_filter}, priority={priority_filter}, level={level_filter}")
+        
+        # FunnelAnalytics로 펀넬 데이터 수집
+        from reporting.funnel_analytics import FunnelAnalytics
+        from reporting.views import get_accessible_users
+        
+        analytics = FunnelAnalytics()
+        
+        # 접근 가능한 사용자 결정
+        if request.user.is_superuser:
+            accessible_users = None  # 모든 사용자
+        else:
+            accessible_users = get_accessible_users(request.user, request)
+        
+        # 펀넬 데이터 수집
+        pipeline_summary = analytics.get_pipeline_summary(
+            user=user_filter,
+            accessible_users=accessible_users
+        )
+        
+        stage_breakdown = analytics.get_stage_breakdown(
+            user=user_filter,
+            accessible_users=accessible_users
+        )
+        
+        top_opportunities = analytics.get_top_opportunities(
+            user=user_filter,
+            grade_filter=grade_filter,
+            priority_filter=priority_filter,
+            level_filter=level_filter,
+            accessible_users=accessible_users,
+            limit=20  # 상위 20개 기회
+        )
+        
+        won_lost_summary = analytics.get_won_lost_summary(
+            user=user_filter,
+            accessible_users=accessible_users
+        )
+        
+        # 펀넬 데이터 구조화
+        funnel_data = {
+            'pipeline_summary': pipeline_summary,
+            'stage_breakdown': stage_breakdown,
+            'top_opportunities': top_opportunities,
+            'won_lost_summary': won_lost_summary
+        }
+        
+        logger.info(f"[펀넬 AI] 데이터 수집 완료 - 기회 {pipeline_summary.get('total_opportunities', 0)}건")
+        
+        # AI 분석 실행
+        from reporting.ai_utils import analyze_funnel_performance
+        
+        logger.info(f"[펀넬 AI] AI 분석 시작...")
+        analysis = analyze_funnel_performance(funnel_data, request.user)
+        logger.info(f"[펀넬 AI] AI 분석 완료 (길이: {len(analysis)} 자)")
+        
+        return JsonResponse({
+            'success': True,
+            'analysis': analysis,
+            'summary': {
+                'total_opportunities': pipeline_summary.get('total_opportunities', 0),
+                'total_expected_revenue': pipeline_summary.get('total_expected_revenue', 0),
+                'total_weighted_revenue': pipeline_summary.get('total_weighted_revenue', 0),
+                'conversion_rate': pipeline_summary.get('conversion_rate', 0),
+                'win_rate': pipeline_summary.get('win_rate', 0)
+            }
+        })
+    
+    except PermissionError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=403)
+    
+    except Exception as e:
+        import traceback
+        logger.error(f"Error analyzing funnel: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JsonResponse({
+            'success': False,
+            'error': f'펀넬 분석 중 오류가 발생했습니다: {str(e)}'
         }, status=500)
