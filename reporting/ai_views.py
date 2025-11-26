@@ -250,6 +250,25 @@ def ai_generate_customer_summary(request, followup_id):
                 } for p in prepayments[:3]]  # 최근 3건만
             }
         
+        # 이메일 커뮤니케이션 내용 (최근 10건)
+        import re
+        email_logs = EmailLog.objects.filter(
+            Q(schedule__followup=followup) | Q(followup=followup),
+            created_at__gte=six_months_ago
+        ).order_by('-sent_at')[:10]
+        
+        email_conversations = []
+        for email in email_logs:
+            email_type = '발신' if email.email_type == 'sent' else '수신'
+            # HTML 태그 제거
+            body_text = re.sub(r'<[^>]+>', '', email.body or '')
+            body_preview = body_text[:200].strip() + '...' if len(body_text) > 200 else body_text.strip()
+            email_conversations.append(
+                f"[{email.sent_at.strftime('%Y-%m-%d')}] [{email_type}] {email.subject}\n   내용: {body_preview}"
+            )
+        
+        email_conversations_text = '\n'.join(email_conversations) if email_conversations else '이메일 기록 없음'
+        
         customer_data = {
             'name': followup.customer_name or '고객명 미정',
             'company': followup.company or '업체명 미정',
@@ -264,6 +283,7 @@ def ai_generate_customer_summary(request, followup_id):
             'email_count': email_count,
             'customer_grade': customer_grade,
             'prepayment': prepayment_info,  # 선결제 정보 추가
+            'email_conversations': email_conversations_text,  # 이메일 내용 추가
         }
         
         logger.info(f"[AI 인사이트] AI 요약 생성 시작...")
@@ -648,6 +668,23 @@ def ai_suggest_follow_ups(request):
             )
             prepayment_balance = sum(p.balance for p in prepayments)
             
+            # 이메일 통계 및 최근 내용
+            from reporting.models import EmailLog
+            import re
+            
+            email_logs = EmailLog.objects.filter(
+                Q(schedule__followup=followup) | Q(followup=followup),
+                created_at__gte=six_months_ago
+            ).order_by('-sent_at')[:5]
+            
+            email_count = email_logs.count()
+            recent_emails = []
+            for email in email_logs:
+                email_type = '발신' if email.email_type == 'sent' else '수신'
+                body_text = re.sub(r'<[^>]+>', '', email.body or '')
+                body_preview = body_text[:100].strip()
+                recent_emails.append(f"[{email_type}] {email.subject}: {body_preview}")
+            
             customer_list.append({
                 'id': followup.id,
                 'name': followup.customer_name,
@@ -662,7 +699,9 @@ def ai_suggest_follow_ups(request):
                 'opportunities': [{'stage': o.get_current_stage_display()} for o in opportunities],
                 'prepayment_balance': float(prepayment_balance),
                 'total_activities': total_activities,
-                'history_notes': history_notes  # 히스토리 메모 추가
+                'history_notes': history_notes,  # 히스토리 메모 추가
+                'email_count': email_count,
+                'recent_emails': recent_emails  # 최근 이메일 내용 추가
             })
         
         if not customer_list:

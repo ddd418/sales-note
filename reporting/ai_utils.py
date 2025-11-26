@@ -448,6 +448,9 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
 견적 내역: {customer_data.get('quotes', [])}
 미팅 노트: {customer_data.get('meeting_notes', [])}
 
+이메일 커뮤니케이션 내용:
+{customer_data.get('email_conversations', '이메일 기록 없음')}
+
 현재 고객 등급: {customer_data.get('customer_grade', '미분류')}
 """
     
@@ -1854,6 +1857,26 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     
     logger.info(f"[미팅전략] 히스토리 메모 수집 완료 - {len(history_records)}건")
     
+    logger.info(f"[미팅전략] 3-1단계: 이메일 내용 분석 중...")
+    # 3-1. 이메일 송수신 내용 (고객과의 커뮤니케이션 히스토리)
+    from reporting.models import EmailLog
+    email_logs = EmailLog.objects.filter(
+        followup=customer
+    ).values('sent_at', 'email_type', 'subject', 'body').order_by('-sent_at')[:20]
+    
+    email_records = []
+    for email in email_logs:
+        email_type_display = '발신' if email['email_type'] == 'sent' else '수신'
+        # body에서 HTML 태그 제거 및 첫 200자만
+        import re
+        body_text = re.sub(r'<[^>]+>', '', email['body'] or '')
+        body_preview = body_text[:200].strip() + '...' if len(body_text) > 200 else body_text.strip()
+        email_records.append(
+            f"[{email['sent_at'].strftime('%Y-%m-%d')}] [{email_type_display}] {email['subject']}\n   내용: {body_preview}"
+        )
+    
+    logger.info(f"[미팅전략] 이메일 내용 수집 완료 - {len(email_records)}건")
+    
     logger.info(f"[미팅전략] 4단계: 일정 컨텍스트 수집 중...")
     # 4. 일정과 연결된 히스토리 찾기
     schedule_histories = History.objects.filter(schedule=schedule).exclude(
@@ -2049,6 +2072,18 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 
 ---
 
+**📧 이메일 송수신 내용 (최근 20건):**
+
+{chr(10).join(email_records) if email_records else '이메일 기록 없음'}
+
+💡 **이메일 분석 포인트:**
+- 고객이 관심 있는 제품/주제는 무엇인가?
+- 고객의 응답 패턴 (빠른 답장 vs 무응답)
+- 고객이 직접 언급한 니즈, 예산, 일정
+- 우리가 제안한 내용 중 반응이 좋았던 것
+
+---
+
 위 데이터를 바탕으로, **{activity_type_display}** 일정에 대한 구체적이고 실행 가능한 전략을 작성해주세요.
 특히 일정과 연결된 히스토리가 있다면 이를 우선적으로 활용하고, 없다면 전체 고객 데이터를 기반으로 전략을 수립하세요.
 """
@@ -2064,7 +2099,7 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=MAX_TOKENS,
+            max_tokens=2000,  # 입력 토큰이 많을 때를 대비해 응답 토큰 제한
             temperature=0.7
         )
         
