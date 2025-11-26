@@ -5,4 +5,7 @@ nixPkgs = ["python311"]
 cmds = ["python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"]
 
 [start]
-cmd = "gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+cmd = ". /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+
+[variables]
+NIXPACKS_NO_MUSL = "1"
