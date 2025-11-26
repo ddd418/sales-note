@@ -12825,3 +12825,17 @@ def toggle_ai_permission(request):
     except Exception as e:
         logger.error(f"AI 권한 토글 오류: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ============================================
+# 법적 문서 뷰
+# ============================================
+
+def privacy_policy_view(request):
+    """개인정보처리방침 페이지"""
+    return render(request, 'reporting/privacy_policy.html')
+
+
+def terms_of_service_view(request):
+    """서비스 이용약관 페이지"""
+    return render(request, 'reporting/terms_of_service.html')

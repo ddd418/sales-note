@@ -256,5 +256,9 @@ urlpatterns = [
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),
     path('get-company-users/<int:company_id>/', views.get_company_users, name='get_company_users'),
     path('toggle-ai-permission/', views.toggle_ai_permission, name='toggle_ai_permission'),
+    
+    # 법적 문서
+    path('privacy-policy/', views.privacy_policy_view, name='privacy_policy'),
+    path('terms-of-service/', views.terms_of_service_view, name='terms_of_service'),
 ]
 

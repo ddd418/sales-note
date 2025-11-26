@@ -59,7 +59,23 @@ else:
     USE_TZ = True
     STATIC_URL = "static/"
     STATIC_ROOT = BASE_DIR / "staticfiles"
-    STATICFILES_DIRS = [BASE_DIR / "theme" / "static"]
+    STATICFILES_DIRS = [
+        BASE_DIR / "theme" / "static",
+        BASE_DIR / "static",
+    ]
+    
+    # Static files storage 설정
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+    
+    # Django 4.2 이하 버전 호환성을 위한 설정
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
     
     # Cloudinary 설정 (로컬에서는 사용하지 않고 Railway에서만 사용)
     USE_CLOUDINARY = os.environ.get('USE_CLOUDINARY', 'false').lower() == 'true'
