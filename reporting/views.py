@@ -12632,7 +12632,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             if hasattr(settings, 'CLOUDINARY_STORAGE'):
                 try:
                     import cloudinary
-                    import cloudinary.uploader
+                    import cloudinary.api
+                    from urllib.parse import unquote
                     
                     # Cloudinary public_id는 파일명 그대로 사용 (확장자 포함)
                     public_id = document_template.file.name
@@ -12640,13 +12641,23 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     logger.info(f"[서류생성] public_id: {public_id}")
                     
                     if public_id.startswith('document_templates/'):
-                        # Cloudinary URL 생성 (raw 타입으로 - Excel 파일용)
-                        # 확장자 포함된 그대로 사용
-                        file_url = cloudinary.utils.cloudinary_url(
-                            public_id,
-                            resource_type='raw'
-                        )[0]
-                        logger.info(f"[서류생성] Cloudinary URL 생성: {file_url}")
+                        try:
+                            # Cloudinary API로 실제 파일 정보 조회
+                            resource = cloudinary.api.resource(
+                                public_id,
+                                resource_type='raw'
+                            )
+                            # secure_url 사용
+                            file_url = resource.get('secure_url') or resource.get('url')
+                            logger.info(f"[서류생성] Cloudinary API로 URL 조회 성공: {file_url}")
+                        except cloudinary.exceptions.NotFound:
+                            logger.warning(f"[서류생성] Cloudinary에서 파일을 찾을 수 없음: {public_id}")
+                            # API 조회 실패 시 URL 직접 생성
+                            file_url = cloudinary.utils.cloudinary_url(
+                                public_id,
+                                resource_type='raw'
+                            )[0]
+                            logger.info(f"[서류생성] Cloudinary URL 직접 생성: {file_url}")
                 except Exception as cloudinary_error:
                     logger.warning(f"[서류생성] Cloudinary URL 생성 실패: {cloudinary_error}")
                     logger.error(f"[서류생성] 상세 오류: {str(cloudinary_error)}")
