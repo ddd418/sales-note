@@ -12649,8 +12649,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
             try:
-                # openpyxl + ZIP 이미지 보존 방식
-                from openpyxl import load_workbook
+                # ZIP 레벨에서 직접 처리 (한글 완벽 보존 + 이미지 보존)
                 import shutil
                 import zipfile
                 
@@ -12660,7 +12659,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
-                logger.info(f"[서류생성] openpyxl + ZIP 방식으로 파일 처리: {temp_path}")
+                logger.info(f"[서류생성] ZIP 직접 처리 방식: {temp_path}")
                 
                 # 총액 계산
                 subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
@@ -12817,8 +12816,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
                 
-                # 1단계: ZIP에서 이미지/차트/미디어 파일 백업 (ZipInfo 포함)
+                # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}
+                
                 with zipfile.ZipFile(temp_path, 'r') as zip_ref:
                     for file_info in zip_ref.infolist():
                         # 이미지, 차트, 미디어 파일 백업
@@ -12830,55 +12830,64 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"[서류생성] 총 {len(media_files)}개 미디어 파일 백업 완료")
                 
-                # 2단계: openpyxl로 변수 치환
-                wb = load_workbook(temp_path)
-                
+                # 2단계: ZIP 레벨에서 직접 sharedStrings.xml 수정 (한글 보존)
                 import re
                 from datetime import timedelta
+                from xml.etree import ElementTree as ET
                 
+                temp_modified = temp_path.replace('.xlsx', '_modified.xlsx')
                 replaced_count = 0
-                for sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    
-                    for row in ws.iter_rows():
-                        for cell in row:
-                            if cell.value and isinstance(cell.value, str) and '{{' in cell.value:
-                                original_value = cell.value
-                                new_value = cell.value
-                                
-                                # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
-                                item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', new_value)
-                                if item_patterns:
-                                    item_num = int(item_patterns[0])
-                                    if item_num > len(delivery_items):
-                                        cell.value = ''
-                                        continue
-                                
-                                # 일반 변수 치환
-                                for key, value in data_map.items():
-                                    pattern = f'{{{{{key}}}}}'
-                                    if pattern in new_value:
-                                        new_value = new_value.replace(pattern, str(value))
-                                
-                                # {{유효일+숫자}} 패턴 처리
-                                valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
-                                valid_matches = re.findall(valid_date_pattern, new_value)
-                                if valid_matches:
-                                    for days_str in valid_matches:
+                
+                with zipfile.ZipFile(temp_path, 'r') as zip_in:
+                    with zipfile.ZipFile(temp_modified, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                        for item in zip_in.infolist():
+                            data = zip_in.read(item.filename)
+                            
+                            # sharedStrings.xml 처리 (한글 변수 치환)
+                            if item.filename == 'xl/sharedStrings.xml':
+                                try:
+                                    xml_str = data.decode('utf-8')
+                                    
+                                    # 변수 치환
+                                    for key, value in data_map.items():
+                                        pattern = f'{{{{{key}}}}}'
+                                        if pattern in xml_str:
+                                            xml_str = xml_str.replace(pattern, str(value))
+                                            replaced_count += 1
+                                            logger.info(f"[서류생성] {pattern} → {value}")
+                                    
+                                    # {{유효일+숫자}} 패턴 처리
+                                    valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
+                                    valid_matches = re.findall(valid_date_pattern, xml_str)
+                                    for days_str in set(valid_matches):
                                         days = int(days_str)
                                         valid_date = schedule.visit_date + timedelta(days=days)
                                         pattern = f'{{{{유효일+{days_str}}}}}'
-                                        new_value = new_value.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
-                                
-                                if new_value != original_value:
-                                    cell.value = new_value
-                                    replaced_count += 1
+                                        xml_str = xml_str.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
+                                        replaced_count += 1
+                                    
+                                    # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
+                                    item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', xml_str)
+                                    for item_pattern in set(item_patterns):
+                                        item_num = int(item_pattern)
+                                        if item_num > len(delivery_items):
+                                            # 해당 품목 변수를 빈칸으로
+                                            pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
+                                            xml_str = re.sub(pattern, '', xml_str)
+                                    
+                                    data = xml_str.encode('utf-8')
+                                    logger.info(f"[서류생성] sharedStrings.xml 처리 완료")
+                                except Exception as xml_error:
+                                    logger.warning(f"[서류생성] sharedStrings.xml 처리 오류: {xml_error}")
+                            
+                            zip_out.writestr(item, data)
+                
+                # 원본 삭제하고 수정본으로 교체
+                os.unlink(temp_path)
+                shutil.move(temp_modified, temp_path)
                 
                 logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
-                
-                # 임시로 저장
-                wb.save(temp_path)
-                wb.close()
+                logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
                 
                 # 3단계: ZIP으로 미디어 파일 복원
                 if media_files:
@@ -13023,11 +13032,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 try:
                     if 'temp_path' in locals() and os.path.exists(temp_path):
                         os.unlink(temp_path)
-                    if 'wb' in locals():
-                        try:
-                            wb.close()
-                        except:
-                            pass
                     # Cloudinary에서 다운로드한 임시 파일 정리
                     if 'cloudinary' in file_url or file_url.startswith('http'):
                         if os.path.exists(template_file_path):
