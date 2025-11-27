@@ -12673,31 +12673,25 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 resolver = local_context.ServiceManager.createInstanceWithContext(
                     "com.sun.star.bridge.UnoUrlResolver", local_context)
                 
-                try:
-                    # LibreOffice에 연결 (headless 모드)
-                    ctx = resolver.resolve(
-                        "uno:socket,host=localhost,port=2002;urp;StarOffice.ComponentContext")
-                    smgr = ctx.ServiceManager
-                    desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
-                except Exception as conn_error:
-                    logger.error(f"[서류생성] LibreOffice 연결 실패: {conn_error}")
-                    # LibreOffice 시작 시도
-                    import subprocess
-                    subprocess.Popen([
-                        'soffice',
-                        '--headless',
-                        '--accept=socket,host=localhost,port=2002;urp;',
-                        '--norestore',
-                        '--nofirststartwizard'
-                    ])
-                    import time
-                    time.sleep(3)  # LibreOffice 시작 대기
-                    
-                    # 재연결
-                    ctx = resolver.resolve(
-                        "uno:socket,host=localhost,port=2002;urp;StarOffice.ComponentContext")
-                    smgr = ctx.ServiceManager
-                    desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+                # LibreOffice에 연결 (최대 3번 재시도)
+                max_retries = 3
+                ctx = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        ctx = resolver.resolve(
+                            "uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ServiceManager")
+                        break
+                    except Exception as conn_error:
+                        logger.warning(f"[서류생성] LibreOffice 연결 시도 {attempt+1}/{max_retries} 실패: {conn_error}")
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(2)
+                        else:
+                            raise Exception(f"LibreOffice 연결 실패 (모든 재시도 소진): {conn_error}")
+                
+                smgr = ctx
+                desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
                 
                 # 파일 열기 옵션
                 properties = (
