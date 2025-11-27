@@ -12617,14 +12617,26 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             if hasattr(settings, 'CLOUDINARY_STORAGE'):
                 try:
                     import cloudinary
-                    # Cloudinary public_id 추출 (media/ 이후 경로)
+                    import cloudinary.uploader
+                    from urllib.parse import quote
+                    
+                    # Cloudinary public_id 추출 (확장자 제외)
                     public_id = document_template.file.name
                     if public_id.startswith('document_templates/'):
-                        # Cloudinary URL 생성
-                        file_url = cloudinary.CloudinaryImage(public_id).build_url()
+                        # 확장자 분리
+                        public_id_without_ext = os.path.splitext(public_id)[0]
+                        ext = os.path.splitext(public_id)[1]
+                        
+                        # Cloudinary URL 생성 (raw 타입으로 - Excel 파일용)
+                        file_url = cloudinary.utils.cloudinary_url(
+                            public_id_without_ext,
+                            resource_type='raw',
+                            format=ext.lstrip('.') if ext else 'xlsx'
+                        )[0]
                         logger.info(f"[서류생성] Cloudinary URL 생성: {file_url}")
                 except Exception as cloudinary_error:
                     logger.warning(f"[서류생성] Cloudinary URL 생성 실패: {cloudinary_error}")
+                    # 실패 시 원본 URL 유지
         
         # Cloudinary URL인 경우 다운로드 (http/https로 시작하거나 cloudinary 포함)
         if file_url.startswith('http://') or file_url.startswith('https://') or 'cloudinary' in file_url:
