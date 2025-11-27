@@ -1,13 +1,14 @@
 [phases.setup]
-nixPkgs = ["python311", "libreoffice", "libreoffice-unwrapped"]
+nixPkgs = ["python311", "libreoffice"]
 
 [phases.install]
 cmds = [
-  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt",
+  "cp -r $(find /nix/store -name 'uno.py' -o -name 'unohelper.py' | head -1 | xargs dirname)/* /opt/venv/lib/python3.11/site-packages/ 2>/dev/null || true"
 ]
 
 [start]
-cmd = "export PYTHONPATH=/nix/store/$(ls /nix/store | grep libreoffice.*unwrapped | head -1)/lib/libreoffice/program:$PYTHONPATH && soffice --headless --accept='socket,host=localhost,port=2002;urp;' --norestore --nofirststartwizard & sleep 2 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+cmd = "soffice --headless --accept='socket,host=localhost,port=2002;urp;' --norestore --nofirststartwizard & sleep 3 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
 
 [variables]
 NIXPACKS_NO_MUSL = "1"
