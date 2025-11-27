@@ -12277,6 +12277,251 @@ def document_template_toggle_default(request, pk):
 
 
 @login_required
+def get_document_template_data(request, document_type, schedule_id):
+    """
+    클라이언트에서 xlwings로 처리하기 위한 템플릿 URL과 변수 데이터 반환
+    
+    Returns:
+        JSON {
+            template_url: Cloudinary URL,
+            template_filename: 원본 파일명,
+            variables: {변수명: 값} 딕셔너리,
+            file_info: {파일명, 회사명, 고객명 등}
+        }
+    """
+    from reporting.models import Schedule, DeliveryItem, DocumentTemplate
+    from decimal import Decimal
+    import pytz
+    from datetime import timedelta
+    
+    try:
+        schedule = get_object_or_404(Schedule, pk=schedule_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+        
+        # 해당 회사의 기본 서류 템플릿 찾기
+        company = request.user.userprofile.company
+        
+        document_template = DocumentTemplate.objects.filter(
+            company=company,
+            document_type=document_type,
+            is_active=True,
+            is_default=True
+        ).first()
+        
+        if not document_template:
+            document_template = DocumentTemplate.objects.filter(
+                company=company,
+                document_type=document_type,
+                is_active=True
+            ).first()
+        
+        if not document_template:
+            doc_type_names = {
+                'quotation': '견적서',
+                'transaction_statement': '거래명세서',
+                'delivery_note': '납품서',
+            }
+            doc_type_name = doc_type_names.get(document_type, '서류')
+            
+            return JsonResponse({
+                'success': False,
+                'error': f'{doc_type_name} 템플릿이 등록되어 있지 않습니다.'
+            }, status=404)
+        
+        if not document_template.file:
+            return JsonResponse({
+                'success': False,
+                'error': '서류 템플릿 파일을 찾을 수 없습니다.'
+            }, status=404)
+        
+        # 납품 품목 조회
+        delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
+        
+        # 총액 계산
+        subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
+        tax = subtotal * Decimal('0.1')
+        total = subtotal + tax
+        
+        # 총액을 한글로 변환
+        def number_to_korean(number):
+            num = int(number)
+            if num == 0:
+                return '영'
+            
+            units = ['', '만', '억', '조']
+            digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
+            
+            result = []
+            unit_idx = 0
+            
+            while num > 0:
+                segment = num % 10000
+                if segment > 0:
+                    segment_str = []
+                    
+                    if segment >= 1000:
+                        d = segment // 1000
+                        if d > 1:
+                            segment_str.append(digits[d])
+                        segment_str.append('천')
+                        segment %= 1000
+                    
+                    if segment >= 100:
+                        d = segment // 100
+                        if d > 1:
+                            segment_str.append(digits[d])
+                        segment_str.append('백')
+                        segment %= 100
+                    
+                    if segment >= 10:
+                        d = segment // 10
+                        if d > 1:
+                            segment_str.append(digits[d])
+                        segment_str.append('십')
+                        segment %= 10
+                    
+                    if segment > 0:
+                        segment_str.append(digits[segment])
+                    
+                    if unit_idx > 0:
+                        segment_str.append(units[unit_idx])
+                    
+                    result.insert(0, ''.join(segment_str))
+                
+                num //= 10000
+                unit_idx += 1
+            
+            return ''.join(result)
+        
+        total_korean = number_to_korean(total)
+        
+        # 거래번호 생성
+        korea_tz = pytz.timezone('Asia/Seoul')
+        today = timezone.now().astimezone(korea_tz)
+        today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        from reporting.models import DocumentGenerationLog
+        today_count = DocumentGenerationLog.objects.filter(
+            company=company,
+            created_at__gte=today_start,
+            created_at__lte=today_end
+        ).count() + 1
+        
+        transaction_number = f"{today.strftime('%Y')}-{today.strftime('%m')}-{today.strftime('%d')}-{today_count:03d}"
+        
+        # 담당자 정보
+        salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
+        
+        # 데이터 매핑
+        data_map = {
+            '년': today.strftime('%Y'),
+            '월': today.strftime('%m'),
+            '일': today.strftime('%d'),
+            '거래번호': transaction_number,
+            
+            '고객명': schedule.followup.customer_name,
+            '업체명': str(schedule.followup.company) if schedule.followup.company else '',
+            '학교명': str(schedule.followup.company) if schedule.followup.company else '',
+            '부서명': str(schedule.followup.department) if schedule.followup.department else '',
+            '연구실': str(schedule.followup.department) if schedule.followup.department else '',
+            '담당자': schedule.followup.customer_name,
+            '이메일': schedule.followup.email or '',
+            '연락처': schedule.followup.phone_number or '',
+            '전화번호': schedule.followup.phone_number or '',
+            
+            '실무자': salesman_name,
+            '영업담당자': salesman_name,
+            '담당영업': salesman_name,
+            
+            '일정날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
+            '날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
+            '발행일': today.strftime('%Y년 %m월 %d일'),
+            
+            '회사명': company.name,
+            
+            '공급가액': f"{int(subtotal):,}",
+            '소계': f"{int(subtotal):,}",
+            '부가세액': f"{int(tax):,}",
+            '부가세': f"{int(tax):,}",
+            '총액': f"{int(total):,}",
+            '합계': f"{int(total):,}",
+            '총액한글': f"금 {total_korean}원정",
+            '한글금액': f"금 {total_korean}원정",
+        }
+        
+        # 품목 데이터 추가
+        items_data = []
+        for idx, item in enumerate(delivery_items, 1):
+            item_subtotal = item.unit_price * item.quantity
+            item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
+            
+            item_data = {
+                f'품목{idx}_이름': item.item_name,
+                f'품목{idx}_품목명': item.item_name,
+                f'품목{idx}_수량': str(item.quantity),
+                f'품목{idx}_단위': item_unit,
+                f'품목{idx}_규격': item.product.specification if item.product and item.product.specification else '',
+                f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
+                f'품목{idx}_공급가액': f"{int(item.unit_price):,}",
+                f'품목{idx}_단가': f"{int(item.unit_price):,}",
+                f'품목{idx}_부가세액': f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}",
+                f'품목{idx}_금액': f"{int(item_subtotal):,}",
+                f'품목{idx}_총액': f"{int(item_subtotal * Decimal('1.1')):,}",
+            }
+            data_map.update(item_data)
+            items_data.append({
+                'index': idx,
+                'name': item.item_name,
+                'quantity': item.quantity,
+                'unit': item_unit,
+                'unit_price': int(item.unit_price),
+                'subtotal': int(item_subtotal)
+            })
+        
+        # 유효일 계산용 기준일
+        base_date = schedule.visit_date.strftime('%Y-%m-%d')
+        
+        # 파일명 정보
+        doc_type_names = {
+            'quotation': '견적서',
+            'transaction_statement': '거래명세서',
+            'delivery_note': '납품서',
+        }
+        doc_name = doc_type_names.get(document_type, document_template.name)
+        customer_company = schedule.followup.company.name if schedule.followup.company else schedule.followup.customer_name
+        
+        return JsonResponse({
+            'success': True,
+            'template_url': document_template.file.url,
+            'template_filename': document_template.file.name,
+            'variables': data_map,
+            'file_info': {
+                'company_name': company.name,
+                'customer_company': customer_company,
+                'doc_name': doc_name,
+                'today_str': today.strftime('%Y%m%d'),
+                'base_date': base_date,
+                'transaction_number': transaction_number
+            },
+            'items': items_data,
+            'item_count': len(delivery_items)
+        })
+        
+    except Exception as e:
+        logger.error(f"서류 데이터 조회 실패: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': f'서류 데이터 조회 중 오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def generate_document_pdf(request, document_type, schedule_id, output_format='xlsx'):
     """
