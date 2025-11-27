@@ -12927,11 +12927,25 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     if not xml_str.startswith('<?xml'):
                                         xml_str = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml_str
                                     
-                                    # 변수 치환
+                                    # 한글을 XML 엔티티로 변환하는 함수
+                                    def encode_korean_to_entity(text):
+                                        """한글을 XML 숫자 엔티티로 변환"""
+                                        result = []
+                                        for char in str(text):
+                                            # 한글 범위: U+AC00 ~ U+D7A3
+                                            if '\uac00' <= char <= '\ud7a3':
+                                                result.append(f'&#{ord(char)};')
+                                            else:
+                                                result.append(char)
+                                        return ''.join(result)
+                                    
+                                    # 변수 치환 (한글 엔티티 변환)
                                     for key, value in data_map.items():
                                         pattern = f'{{{{{key}}}}}'
                                         if pattern in xml_str:
-                                            xml_str = xml_str.replace(pattern, str(value))
+                                            # 한글을 엔티티로 변환
+                                            encoded_value = encode_korean_to_entity(value)
+                                            xml_str = xml_str.replace(pattern, encoded_value)
                                             replaced_count += 1
                                             logger.info(f"[서류생성] {pattern} → {value}")
                                     
@@ -12942,7 +12956,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                         days = int(days_str)
                                         valid_date = schedule.visit_date + timedelta(days=days)
                                         pattern = f'{{{{유효일+{days_str}}}}}'
-                                        xml_str = xml_str.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
+                                        formatted_date = valid_date.strftime('%Y년 %m월 %d일')
+                                        encoded_date = encode_korean_to_entity(formatted_date)
+                                        xml_str = xml_str.replace(pattern, encoded_date)
                                         replaced_count += 1
                                     
                                     # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
@@ -12959,6 +12975,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     logger.info(f"[서류생성] sharedStrings.xml 처리 완료")
                                 except Exception as xml_error:
                                     logger.warning(f"[서류생성] sharedStrings.xml 처리 오류: {xml_error}")
+                                    import traceback
+                                    logger.error(traceback.format_exc())
                             
                             zip_out.writestr(item, data)
                 
