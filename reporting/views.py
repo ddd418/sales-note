@@ -12649,10 +12649,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
             try:
-                # ZIP + XML 방식으로 이미지/서식 완벽 보존하며 변수 치환
-                import zipfile
+                # openpyxl + 이미지 수동 복사 방식
+                from openpyxl import load_workbook
+                from openpyxl.drawing.image import Image as OpenpyxlImage
                 import shutil
-                from xml.etree import ElementTree as ET
+                import zipfile
                 
                 # template_file_path를 사용 (이미 Cloudinary에서 다운로드되었거나 로컬 경로)
                 # 원본 파일을 임시 위치에 복사
@@ -12660,7 +12661,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
-                logger.info(f"[서류생성] ZIP 방식으로 파일 처리: {temp_path}")
+                logger.info(f"[서류생성] openpyxl로 파일 처리: {temp_path}")
                 
                 # 총액 계산
                 subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
@@ -12817,71 +12818,72 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
                 
-                # ZIP + XML 방식으로 변수 치환 (이미지/서식 완벽 보존)
+                # openpyxl로 엑셀 파일 열기 및 변수 치환
+                wb = load_workbook(temp_path)
+                
+                # 먼저 이미지 정보 저장 (나중에 복원)
+                images_backup = {}
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    if hasattr(ws, '_images') and ws._images:
+                        images_backup[sheet_name] = list(ws._images)
+                        logger.info(f"[서류생성] {sheet_name} 시트에서 {len(ws._images)}개 이미지 백업")
+                
+                # 모든 시트에서 변수 치환
                 import re
                 from datetime import timedelta
                 
-                # 출력 파일 경로
-                output_path = temp_path.replace('.xlsx', '_output.xlsx')
-                
-                # ZIP 파일로 열기
-                with zipfile.ZipFile(temp_path, 'r') as zip_in:
-                    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zip_out:
-                        replaced_count = 0
-                        
-                        for item in zip_in.infolist():
-                            data = zip_in.read(item.filename)
-                            
-                            # worksheet XML 파일만 처리
-                            if item.filename.startswith('xl/worksheets/sheet') and item.filename.endswith('.xml'):
-                                try:
-                                    # XML 파싱
-                                    xml_content = data.decode('utf-8')
-                                    original_xml = xml_content
-                                    
-                                    # 각 변수 치환
-                                    for key, value in data_map.items():
-                                        pattern = f'{{{{{key}}}}}'
-                                        if pattern in xml_content:
-                                            xml_content = xml_content.replace(pattern, str(value))
-                                            replaced_count += 1
-                                    
-                                    # {{유효일+숫자}} 패턴 처리
-                                    valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
-                                    valid_matches = re.findall(valid_date_pattern, xml_content)
-                                    for days_str in set(valid_matches):
+                replaced_count = 0
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    
+                    for row in ws.iter_rows():
+                        for cell in row:
+                            if cell.value and isinstance(cell.value, str) and '{{' in cell.value:
+                                original_value = cell.value
+                                new_value = cell.value
+                                
+                                # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
+                                item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', new_value)
+                                if item_patterns:
+                                    item_num = int(item_patterns[0])
+                                    if item_num > len(delivery_items):
+                                        cell.value = ''
+                                        continue
+                                
+                                # 일반 변수 치환
+                                for key, value in data_map.items():
+                                    pattern = f'{{{{{key}}}}}'
+                                    if pattern in new_value:
+                                        new_value = new_value.replace(pattern, str(value))
+                                
+                                # {{유효일+숫자}} 패턴 처리
+                                valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
+                                valid_matches = re.findall(valid_date_pattern, new_value)
+                                if valid_matches:
+                                    for days_str in valid_matches:
                                         days = int(days_str)
                                         valid_date = schedule.visit_date + timedelta(days=days)
                                         pattern = f'{{{{유효일+{days_str}}}}}'
-                                        xml_content = xml_content.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
-                                        replaced_count += 1
-                                    
-                                    # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
-                                    item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', xml_content)
-                                    for item_pattern in set(item_patterns):
-                                        item_num = int(item_pattern)
-                                        if item_num > len(delivery_items):
-                                            # 해당 품목 변수를 빈칸으로
-                                            pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
-                                            xml_content = re.sub(pattern, '', xml_content)
-                                    
-                                    data = xml_content.encode('utf-8')
-                                    
-                                    if xml_content != original_xml:
-                                        logger.info(f"[서류생성] {item.filename} 처리 완료")
-                                        
-                                except Exception as xml_error:
-                                    logger.warning(f"[서류생성] XML 처리 오류 ({item.filename}): {xml_error}")
-                                    # 오류 시 원본 데이터 사용
-                            
-                            # 모든 파일 복사 (이미지, 차트, 서식 등 포함)
-                            zip_out.writestr(item, data)
+                                        new_value = new_value.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
+                                
+                                if new_value != original_value:
+                                    cell.value = new_value
+                                    replaced_count += 1
                 
                 logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
                 
-                # 원본 파일 삭제, 출력 파일 이름 변경
-                os.unlink(temp_path)
-                shutil.move(output_path, temp_path)
+                # 이미지 복원
+                for sheet_name, images in images_backup.items():
+                    ws = wb[sheet_name]
+                    ws._images = images
+                    logger.info(f"[서류생성] {sheet_name} 시트에 {len(images)}개 이미지 복원")
+                
+                # 저장
+                wb.save(temp_path)
+                wb.close()
+                
+                logger.info(f"[서류생성] 파일 저장 완료: {temp_path}")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
@@ -13001,8 +13003,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 try:
                     if 'temp_path' in locals() and os.path.exists(temp_path):
                         os.unlink(temp_path)
-                    if 'output_path' in locals() and os.path.exists(output_path):
-                        os.unlink(output_path)
+                    if 'wb' in locals():
+                        try:
+                            wb.close()
+                        except:
+                            pass
                     # Cloudinary에서 다운로드한 임시 파일 정리
                     if 'cloudinary' in file_url or file_url.startswith('http'):
                         if os.path.exists(template_file_path):
