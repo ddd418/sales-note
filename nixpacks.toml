@@ -1,11 +1,13 @@
 [phases.setup]
-nixPkgs = ["python311"]
+nixPkgs = ["python311", "libreoffice", "xorg.xorgserver"]
 
 [phases.install]
-cmds = ["python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"]
+cmds = [
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"
+]
 
 [start]
-cmd = ". /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+cmd = "soffice --headless --accept='socket,host=localhost,port=2002;urp;' --norestore --nofirststartwizard & sleep 2 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
 
 [variables]
 NIXPACKS_NO_MUSL = "1"

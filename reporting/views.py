@@ -12649,8 +12649,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
             try:
-                # xlwings를 사용하여 이미지 완벽 보존
-                import xlwings as xw
+                # LibreOffice UNO API를 사용하여 이미지/서식 완벽 보존
+                import uno
+                from com.sun.star.beans import PropertyValue
                 import shutil
                 
                 # template_file_path를 사용 (이미 Cloudinary에서 다운로드되었거나 로컬 경로)
@@ -12659,12 +12660,52 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
-                # xlwings로 파일 열기 (백그라운드, 보이지 않게)
-                app = xw.App(visible=False, add_book=False)
-                app.display_alerts = False
-                app.screen_updating = False
+                # UNO 경로 형식으로 변환 (file:///...)
+                if not temp_path.startswith('file://'):
+                    uno_url = 'file://' + temp_path.replace('\\', '/')
+                else:
+                    uno_url = temp_path
                 
-                wb = app.books.open(temp_path)
+                logger.info(f"[서류생성] LibreOffice로 파일 열기: {uno_url}")
+                
+                # LibreOffice 연결
+                local_context = uno.getComponentContext()
+                resolver = local_context.ServiceManager.createInstanceWithContext(
+                    "com.sun.star.bridge.UnoUrlResolver", local_context)
+                
+                try:
+                    # LibreOffice에 연결 (headless 모드)
+                    ctx = resolver.resolve(
+                        "uno:socket,host=localhost,port=2002;urp;StarOffice.ComponentContext")
+                    smgr = ctx.ServiceManager
+                    desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+                except Exception as conn_error:
+                    logger.error(f"[서류생성] LibreOffice 연결 실패: {conn_error}")
+                    # LibreOffice 시작 시도
+                    import subprocess
+                    subprocess.Popen([
+                        'soffice',
+                        '--headless',
+                        '--accept=socket,host=localhost,port=2002;urp;',
+                        '--norestore',
+                        '--nofirststartwizard'
+                    ])
+                    import time
+                    time.sleep(3)  # LibreOffice 시작 대기
+                    
+                    # 재연결
+                    ctx = resolver.resolve(
+                        "uno:socket,host=localhost,port=2002;urp;StarOffice.ComponentContext")
+                    smgr = ctx.ServiceManager
+                    desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+                
+                # 파일 열기 옵션
+                properties = (
+                    PropertyValue("Hidden", 0, True, 0),
+                    PropertyValue("ReadOnly", 0, False, 0),
+                )
+                
+                doc = desktop.loadComponentFromURL(uno_url, "_blank", 0, properties)
                 
                 # 총액 계산
                 subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
@@ -12821,40 +12862,54 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
                 
-                # xlwings로 변수 치환
+                # LibreOffice UNO API로 변수 치환
                 replaced_count = 0
+                sheets = doc.getSheets()
                 
-                for sheet in wb.sheets:
-                    # 시트의 사용된 범위 전체 검색
-                    used_range = sheet.used_range
+                for sheet_idx in range(sheets.getCount()):
+                    sheet = sheets.getByIndex(sheet_idx)
                     
-                    if used_range is None:
-                        continue
+                    # Find & Replace 사용 (더 빠름)
+                    replace_descriptor = sheet.createReplaceDescriptor()
+                    replace_descriptor.SearchCaseSensitive = True
                     
-                    # 각 셀 순회
-                    for row_idx in range(1, used_range.last_cell.row + 1):
-                        for col_idx in range(1, used_range.last_cell.column + 1):
-                            cell = sheet.range((row_idx, col_idx))
+                    # 각 변수 치환
+                    for key, value in data_map.items():
+                        search_pattern = f'{{{{{key}}}}}'
+                        replace_descriptor.setSearchString(search_pattern)
+                        replace_descriptor.setReplaceString(str(value))
+                        count = sheet.replaceAll(replace_descriptor)
+                        if count > 0:
+                            replaced_count += count
+                            logger.info(f"[서류생성] {search_pattern} → {value} ({count}개)")
+                    
+                    # {{유효일+숫자}} 패턴 수동 처리 (정규식 필요)
+                    import re
+                    from datetime import timedelta
+                    
+                    # 모든 셀 검색 (사용된 영역만)
+                    cursor = sheet.createCursor()
+                    cursor.gotoStartOfUsedArea(False)
+                    cursor.gotoEndOfUsedArea(True)
+                    
+                    for row_idx in range(cursor.getRangeAddress().StartRow, cursor.getRangeAddress().EndRow + 1):
+                        for col_idx in range(cursor.getRangeAddress().StartColumn, cursor.getRangeAddress().EndColumn + 1):
+                            cell = sheet.getCellByPosition(col_idx, row_idx)
+                            cell_value = cell.getString()
                             
-                            if cell.value and isinstance(cell.value, str):
-                                original_value = cell.value
+                            if cell_value and '{{' in cell_value:
+                                original_value = cell_value
+                                new_value = cell_value
                                 
-                                # {{품목N_xxx}} 패턴 찾기
-                                import re
-                                item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', original_value)
-                                
+                                # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
+                                item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', new_value)
                                 if item_patterns:
-                                    # 품목 번호 확인
                                     item_num = int(item_patterns[0])
-                                    # 해당 품목 데이터가 없으면 셀 값을 빈 문자열로
                                     if item_num > len(delivery_items):
-                                        cell.value = ''
+                                        cell.setString('')
                                         continue
                                 
-                                # 변수 치환
-                                new_value = original_value
-                                
-                                # {{유효일+숫자}} 패턴 처리 (예: {{유효일+30}}, {{유효일+60}})
+                                # {{유효일+숫자}} 패턴
                                 valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
                                 valid_matches = re.findall(valid_date_pattern, new_value)
                                 if valid_matches:
@@ -12865,15 +12920,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                         new_value = new_value.replace(pattern, valid_date.strftime('%Y년 %m월 %d일'))
                                         replaced_count += 1
                                 
-                                # 일반 변수 치환
-                                for key, value in data_map.items():
-                                    pattern = f'{{{{{key}}}}}'
-                                    if pattern in new_value:
-                                        new_value = new_value.replace(pattern, str(value))
-                                        replaced_count += 1
-                                
                                 if new_value != original_value:
-                                    cell.value = new_value
+                                    cell.setString(new_value)
+                
+                logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
@@ -12895,10 +12945,15 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     # PDF로 변환하여 저장
                     pdf_path = temp_path.replace('.xlsx', '.pdf')
                     
-                    # Excel에서 PDF로 내보내기
-                    wb.api.ExportAsFixedFormat(0, pdf_path)  # 0 = xlTypePDF
-                    wb.close()
-                    app.quit()
+                    # LibreOffice UNO로 PDF 내보내기
+                    pdf_url = 'file://' + pdf_path.replace('\\', '/')
+                    pdf_properties = (
+                        PropertyValue("FilterName", 0, "calc_pdf_Export", 0),
+                    )
+                    doc.storeToURL(pdf_url, pdf_properties)
+                    doc.close(True)
+                    
+                    logger.info(f"[서류생성] PDF 저장 완료: {pdf_path}")
                     
                     # PDF 파일 읽기
                     with open(pdf_path, 'rb') as f:
@@ -12917,9 +12972,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     
                 else:
                     # Excel 파일로 저장
-                    wb.save(temp_path)
-                    wb.close()
-                    app.quit()
+                    doc.store()
+                    doc.close(True)
+                    
+                    logger.info(f"[서류생성] Excel 저장 완료: {temp_path}")
                     
                     # 저장된 파일을 읽어서 반환
                     with open(temp_path, 'rb') as f:
@@ -12971,12 +13027,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 import traceback
                 logger.error(traceback.format_exc())
                 
-                # xlwings 정리
+                # LibreOffice 정리
                 try:
-                    if 'wb' in locals():
-                        wb.close()
-                    if 'app' in locals():
-                        app.quit()
+                    if 'doc' in locals():
+                        doc.close(True)
                     if 'temp_path' in locals() and os.path.exists(temp_path):
                         os.unlink(temp_path)
                     # Cloudinary에서 다운로드한 임시 파일 정리
