@@ -12138,7 +12138,10 @@ def document_template_create(request):
             logger.info(f"[서류 업로드] 템플릿 생성 완료 - ID: {template.id}")
             logger.info(f"[서류 업로드] 파일 public_id: {template.file.public_id if hasattr(template.file, 'public_id') else 'N/A'}")
             logger.info(f"[서류 업로드] 파일 URL: {template.file.url}")
-            logger.info(f"[서류 업로드] 파일 스토리지: {template.file.storage.__class__.__name__}")
+            if hasattr(template.file, 'storage'):
+                logger.info(f"[서류 업로드] 파일 스토리지: {template.file.storage.__class__.__name__}")
+            else:
+                logger.info(f"[서류 업로드] 파일 타입: CloudinaryField")
             
             # Cloudinary 설정 확인
             from django.conf import settings
