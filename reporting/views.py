@@ -12923,6 +12923,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                 try:
                                     xml_str = data.decode('utf-8')
                                     
+                                    # XML 선언 확인 및 추가
+                                    if not xml_str.startswith('<?xml'):
+                                        xml_str = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml_str
+                                    
                                     # 변수 치환
                                     for key, value in data_map.items():
                                         pattern = f'{{{{{key}}}}}'
@@ -12950,6 +12954,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                             pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
                                             xml_str = re.sub(pattern, '', xml_str)
                                     
+                                    # UTF-8 BOM 없이 인코딩
                                     data = xml_str.encode('utf-8')
                                     logger.info(f"[서류생성] sharedStrings.xml 처리 완료")
                                 except Exception as xml_error:
