@@ -12687,78 +12687,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     'error': '서류 템플릿 파일 URL이 올바르지 않습니다.'
                 }, status=500)
         else:
-            # FileField - 기존 로직
-            file_url = document_template.file.url
-            logger.info(f"[서류생성] 파일 URL: {file_url}")
-        
-        # 상대 경로인 경우 Cloudinary URL로 변환 시도
-        if not file_url.startswith('http://') and not file_url.startswith('https://'):
-            # Cloudinary 설정 확인
-            from django.conf import settings
-            if hasattr(settings, 'CLOUDINARY_STORAGE'):
-                try:
-                    import cloudinary
-                    import cloudinary.api
-                    from urllib.parse import unquote
-                    
-                    # Cloudinary public_id는 파일명 그대로 사용 (확장자 포함)
-                    public_id = document_template.file.name
-                    
-                    logger.info(f"[서류생성] public_id: {public_id}")
-                    
-                    if public_id.startswith('document_templates/'):
-                        try:
-                            # Cloudinary API로 실제 파일 정보 조회
-                            resource = cloudinary.api.resource(
-                                public_id,
-                                resource_type='raw'
-                            )
-                            # secure_url 사용
-                            file_url = resource.get('secure_url') or resource.get('url')
-                            logger.info(f"[서류생성] Cloudinary API로 URL 조회 성공: {file_url}")
-                        except cloudinary.exceptions.NotFound:
-                            logger.warning(f"[서류생성] Cloudinary에서 파일을 찾을 수 없음: {public_id}")
-                            # API 조회 실패 시 URL 직접 생성
-                            file_url = cloudinary.utils.cloudinary_url(
-                                public_id,
-                                resource_type='raw'
-                            )[0]
-                            logger.info(f"[서류생성] Cloudinary URL 직접 생성: {file_url}")
-                except Exception as cloudinary_error:
-                    logger.warning(f"[서류생성] Cloudinary URL 생성 실패: {cloudinary_error}")
-                    logger.error(f"[서류생성] 상세 오류: {str(cloudinary_error)}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    # 실패 시 원본 URL 유지
-        
-        # Cloudinary URL인 경우 다운로드 (http/https로 시작하거나 cloudinary 포함)
-        if file_url.startswith('http://') or file_url.startswith('https://') or 'cloudinary' in file_url:
-            logger.info(f"[서류생성] Cloudinary 파일 다운로드 시작")
-            # 임시 파일로 다운로드
-            response = requests.get(file_url)
-            if response.status_code != 200:
-                logger.error(f"[서류생성] 다운로드 실패 - 상태코드: {response.status_code}")
-                return JsonResponse({
-                    'success': False,
-                    'error': '서류 템플릿 파일을 다운로드할 수 없습니다.'
-                }, status=500)
-            
-            logger.info(f"[서류생성] 다운로드 성공 - 크기: {len(response.content)} bytes")
-            # 임시 파일에 저장
-            with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
-                tmp_file.write(response.content)
-                template_file_path = tmp_file.name
-            logger.info(f"[서류생성] 임시 파일 생성: {template_file_path}")
-        else:
-            # 로컬 파일 시스템
-            logger.info(f"[서류생성] 로컬 파일 사용")
+            # FileField - 로컬 파일 경로 사용
             template_file_path = document_template.file.path
-            if not os.path.exists(template_file_path):
-                logger.error(f"[서류생성] 로컬 파일 없음: {template_file_path}")
-                return JsonResponse({
-                    'success': False,
-                    'error': '서류 템플릿 파일을 찾을 수 없습니다.'
-                }, status=404)
             logger.info(f"[서류생성] 로컬 파일 경로: {template_file_path}")
         
         # 납품 품목 조회
