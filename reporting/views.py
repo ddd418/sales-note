@@ -12138,8 +12138,19 @@ def document_template_create(request):
             logger.info(f"[서류 업로드] 템플릿 생성 완료 - ID: {template.id}")
             logger.info(f"[서류 업로드] 파일명: {template.file.name}")
             logger.info(f"[서류 업로드] 파일 URL: {template.file.url}")
+            logger.info(f"[서류 업로드] 파일 스토리지: {template.file.storage.__class__.__name__}")
+            
+            # Cloudinary 설정 확인
+            from django.conf import settings
+            logger.info(f"[서류 업로드] DEFAULT_FILE_STORAGE: {settings.DEFAULT_FILE_STORAGE}")
+            if hasattr(settings, 'CLOUDINARY_STORAGE'):
+                logger.info(f"[서류 업로드] CLOUDINARY_STORAGE 설정됨")
+                logger.info(f"[서류 업로드] CLOUD_NAME: {settings.CLOUDINARY_STORAGE.get('CLOUD_NAME', 'NOT_SET')}")
+            
             if hasattr(template.file, 'public_id'):
                 logger.info(f"[서류 업로드] Cloudinary public_id: {template.file.public_id}")
+            else:
+                logger.warning(f"[서류 업로드] public_id 속성 없음 - Cloudinary에 저장되지 않았을 수 있음")
             
             # Cloudinary에 실제 저장된 파일 목록 조회
             try:
@@ -12158,6 +12169,8 @@ def document_template_create(request):
                     logger.info(f"    URL: {resource.get('secure_url')}")
             except Exception as e:
                 logger.warning(f"[서류 업로드] Cloudinary 목록 조회 실패: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
             
             messages.success(request, f'서류 "{name}"이(가) 등록되었습니다.')
             return redirect('reporting:document_template_list')
