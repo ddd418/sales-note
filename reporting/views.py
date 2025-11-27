@@ -12926,33 +12926,16 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     # 원본 일부 로그 (처음 500자)
                                     logger.info(f"[서류생성] 원본 sharedStrings.xml 샘플:\n{xml_str[:500]}")
                                     
-                                    # XML 선언 확인 및 추가
-                                    if not xml_str.startswith('<?xml'):
-                                        xml_str = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml_str
-                                    
-                                    # 한글을 XML 엔티티로 변환하는 함수
-                                    def encode_korean_to_entity(text):
-                                        """한글을 XML 숫자 엔티티로 변환"""
-                                        result = []
-                                        for char in str(text):
-                                            # 한글 범위: U+AC00 ~ U+D7A3
-                                            if '\uac00' <= char <= '\ud7a3':
-                                                result.append(f'&#{ord(char)};')
-                                            else:
-                                                result.append(char)
-                                        return ''.join(result)
-                                    
-                                    # 변수 치환 (한글 엔티티 변환)
+                                    # 변수 치환 (한글 그대로 UTF-8 유지)
                                     for key, value in data_map.items():
                                         pattern = f'{{{{{key}}}}}'
                                         if pattern in xml_str:
-                                            # 한글을 엔티티로 변환
-                                            encoded_value = encode_korean_to_entity(value)
-                                            xml_str = xml_str.replace(pattern, encoded_value)
+                                            # XML 특수문자만 이스케이프 (&, <, >, ", ')
+                                            import html
+                                            escaped_value = html.escape(str(value), quote=False)
+                                            xml_str = xml_str.replace(pattern, escaped_value)
                                             replaced_count += 1
-                                            # 변환된 값 일부 로그
-                                            sample = encoded_value[:100] if len(encoded_value) > 100 else encoded_value
-                                            logger.info(f"[서류생성] {pattern} → {value} (엔티티: {sample}...)")
+                                            logger.info(f"[서류생성] {pattern} → {value}")
                                     
                                     # {{유효일+숫자}} 패턴 처리
                                     valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
@@ -12962,8 +12945,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                         valid_date = schedule.visit_date + timedelta(days=days)
                                         pattern = f'{{{{유효일+{days_str}}}}}'
                                         formatted_date = valid_date.strftime('%Y년 %m월 %d일')
-                                        encoded_date = encode_korean_to_entity(formatted_date)
-                                        xml_str = xml_str.replace(pattern, encoded_date)
+                                        xml_str = xml_str.replace(pattern, formatted_date)
                                         replaced_count += 1
                                     
                                     # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
@@ -12975,7 +12957,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                             pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
                                             xml_str = re.sub(pattern, '', xml_str)
                                     
-                                    # UTF-8 BOM 없이 인코딩
+                                    # UTF-8로 인코딩 (한글 그대로)
                                     data = xml_str.encode('utf-8')
                                     
                                     # 수정된 내용 일부 로그
