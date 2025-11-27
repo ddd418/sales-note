@@ -12945,14 +12945,20 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}
                 
-                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                    for file_info in zip_ref.infolist():
-                        # 이미지, 차트, 미디어 파일 백업
-                        if (file_info.filename.startswith('xl/media/') or 
-                            file_info.filename.startswith('xl/drawings/') or 
-                            file_info.filename.startswith('xl/charts/')):
-                            media_files[file_info.filename] = (file_info, zip_ref.read(file_info.filename))
-                            logger.info(f"[서류생성] 미디어 파일 백업: {file_info.filename}")
+                logger.info(f"[서류생성] ZIP 파일 열기 시작: {temp_path}")
+                try:
+                    with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                        logger.info(f"[서류생성] ZIP 파일 열림 성공")
+                        for file_info in zip_ref.infolist():
+                            # 이미지, 차트, 미디어 파일 백업
+                            if (file_info.filename.startswith('xl/media/') or 
+                                file_info.filename.startswith('xl/drawings/') or 
+                                file_info.filename.startswith('xl/charts/')):
+                                media_files[file_info.filename] = (file_info, zip_ref.read(file_info.filename))
+                                logger.info(f"[서류생성] 미디어 파일 백업: {file_info.filename}")
+                except Exception as zip_error:
+                    logger.error(f"[서류생성] ZIP 파일 열기 실패: {zip_error}")
+                    raise
                 
                 logger.info(f"[서류생성] 총 {len(media_files)}개 미디어 파일 백업 완료")
                 
