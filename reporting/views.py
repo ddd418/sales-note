@@ -12141,6 +12141,24 @@ def document_template_create(request):
             if hasattr(template.file, 'public_id'):
                 logger.info(f"[서류 업로드] Cloudinary public_id: {template.file.public_id}")
             
+            # Cloudinary에 실제 저장된 파일 목록 조회
+            try:
+                import cloudinary
+                import cloudinary.api
+                # 최근 업로드된 raw 파일 조회
+                recent_resources = cloudinary.api.resources(
+                    resource_type='raw',
+                    type='upload',
+                    prefix='document_templates/',
+                    max_results=5
+                )
+                logger.info(f"[서류 업로드] Cloudinary 최근 파일 목록:")
+                for resource in recent_resources.get('resources', []):
+                    logger.info(f"  - public_id: {resource.get('public_id')}")
+                    logger.info(f"    URL: {resource.get('secure_url')}")
+            except Exception as e:
+                logger.warning(f"[서류 업로드] Cloudinary 목록 조회 실패: {e}")
+            
             messages.success(request, f'서류 "{name}"이(가) 등록되었습니다.')
             return redirect('reporting:document_template_list')
             
