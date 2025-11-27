@@ -1,15 +1,13 @@
 [phases.setup]
-nixPkgs = ["python311", "libreoffice", "fontconfig", "dejavu_fonts"]
+nixPkgs = ["python311", "libreoffice", "unoconv"]
 
 [phases.install]
 cmds = [
-  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt",
-  "mkdir -p /tmp/runtime-root",
-  "cp -r $(find /nix/store -name 'uno.py' -o -name 'unohelper.py' | head -1 | xargs dirname)/* /opt/venv/lib/python3.11/site-packages/ 2>/dev/null || true"
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "export SAL_USE_VCLPLUGIN=svp && export HOME=/tmp && soffice --headless --accept='socket,host=127.0.0.1,port=2002;urp;StarOffice.ServiceManager' --norestore --nofirststartwizard --nologo --nodefault & sleep 5 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+cmd = ". /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
 
 [variables]
 NIXPACKS_NO_MUSL = "1"
