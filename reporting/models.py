@@ -1207,8 +1207,9 @@ class DocumentTemplate(models.Model):
         verbose_name="서류 종류"
     )
     name = models.CharField(max_length=200, verbose_name="서류명")
-    file = models.FileField(
-        upload_to='document_templates/%Y/%m/',
+    file = CloudinaryField(
+        resource_type='raw',
+        folder='document_templates',
         verbose_name="파일"
     )
     file_type = models.CharField(
