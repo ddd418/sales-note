@@ -12136,7 +12136,7 @@ def document_template_create(request):
             
             # 업로드 로그
             logger.info(f"[서류 업로드] 템플릿 생성 완료 - ID: {template.id}")
-            logger.info(f"[서류 업로드] 파일명: {template.file.name}")
+            logger.info(f"[서류 업로드] 파일 public_id: {template.file.public_id if hasattr(template.file, 'public_id') else 'N/A'}")
             logger.info(f"[서류 업로드] 파일 URL: {template.file.url}")
             logger.info(f"[서류 업로드] 파일 스토리지: {template.file.storage.__class__.__name__}")
             
@@ -12225,7 +12225,7 @@ def document_template_edit(request, pk):
             
             # 업로드 로그
             logger.info(f"[서류 업데이트] 템플릿 수정 완료 - ID: {template.id}")
-            logger.info(f"[서류 업데이트] 파일명: {template.file.name}")
+            logger.info(f"[서류 업데이트] 파일 public_id: {template.file.public_id if hasattr(template.file, 'public_id') else 'N/A'}")
             logger.info(f"[서류 업데이트] 파일 URL: {template.file.url}")
             if hasattr(template.file, 'public_id'):
                 logger.info(f"[서류 업데이트] Cloudinary public_id: {template.file.public_id}")
@@ -12652,9 +12652,41 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         import tempfile
         import requests
         
-        # 파일 URL 가져오기
-        file_url = document_template.file.url
-        logger.info(f"[서류생성] 파일 URL: {file_url}")
+        # CloudinaryField인 경우 직접 URL 사용
+        if hasattr(document_template.file, 'public_id'):
+            # CloudinaryField - public_id와 URL 직접 사용
+            public_id = document_template.file.public_id
+            file_url = document_template.file.url
+            logger.info(f"[서류생성] Cloudinary 파일 - public_id: {public_id}")
+            logger.info(f"[서류생성] Cloudinary URL: {file_url}")
+            
+            # URL이 이미 http(s)로 시작하면 바로 다운로드
+            if file_url.startswith('http://') or file_url.startswith('https://'):
+                logger.info(f"[서류생성] Cloudinary 파일 다운로드 시작")
+                response = requests.get(file_url)
+                if response.status_code != 200:
+                    logger.error(f"[서류생성] 다운로드 실패 - 상태코드: {response.status_code}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': '서류 템플릿 파일을 다운로드할 수 없습니다.'
+                    }, status=500)
+                
+                logger.info(f"[서류생성] 다운로드 성공 - 크기: {len(response.content)} bytes")
+                # 임시 파일에 저장
+                with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
+                    tmp_file.write(response.content)
+                    template_file_path = tmp_file.name
+                logger.info(f"[서류생성] 임시 파일 생성: {template_file_path}")
+            else:
+                logger.error(f"[서류생성] Cloudinary URL이 상대 경로: {file_url}")
+                return JsonResponse({
+                    'success': False,
+                    'error': '서류 템플릿 파일 URL이 올바르지 않습니다.'
+                }, status=500)
+        else:
+            # FileField - 기존 로직
+            file_url = document_template.file.url
+            logger.info(f"[서류생성] 파일 URL: {file_url}")
         
         # 상대 경로인 경우 Cloudinary URL로 변환 시도
         if not file_url.startswith('http://') and not file_url.startswith('https://'):
