@@ -12764,8 +12764,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         # 납품 품목 조회
         delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
         
-        # 원본 파일 확장자 확인
-        original_ext = os.path.splitext(document_template.file.name)[1].lower()
+        # 원본 파일 확장자 확인 (CloudinaryField는 public_id 사용)
+        if hasattr(document_template.file, 'public_id'):
+            # CloudinaryField - public_id에서 확장자 추출
+            original_ext = os.path.splitext(document_template.file.public_id)[1].lower()
+        else:
+            # FileField - name 속성 사용
+            original_ext = os.path.splitext(document_template.file.name)[1].lower()
         
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
