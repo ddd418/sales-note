@@ -12817,15 +12817,15 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
                 
-                # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
-                media_files = {}
+                # 1단계: ZIP에서 이미지/차트/미디어 파일 백업 (ZipInfo 포함)
+                media_files = {}  # {filename: (ZipInfo, data)}
                 with zipfile.ZipFile(temp_path, 'r') as zip_ref:
                     for file_info in zip_ref.infolist():
                         # 이미지, 차트, 미디어 파일 백업
                         if (file_info.filename.startswith('xl/media/') or 
                             file_info.filename.startswith('xl/drawings/') or 
                             file_info.filename.startswith('xl/charts/')):
-                            media_files[file_info.filename] = zip_ref.read(file_info.filename)
+                            media_files[file_info.filename] = (file_info, zip_ref.read(file_info.filename))
                             logger.info(f"[서류생성] 미디어 파일 백업: {file_info.filename}")
                 
                 logger.info(f"[서류생성] 총 {len(media_files)}개 미디어 파일 백업 완료")
@@ -12888,12 +12888,14 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                         with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
                             # 기존 파일 모두 복사
                             for item in zip_in.infolist():
-                                data = zip_in.read(item.filename)
-                                zip_out.writestr(item, data)
+                                # 미디어 파일은 나중에 덮어쓰기
+                                if item.filename not in media_files:
+                                    data = zip_in.read(item.filename)
+                                    zip_out.writestr(item, data)
                             
-                            # 백업한 미디어 파일 덮어쓰기
-                            for filename, data in media_files.items():
-                                zip_out.writestr(filename, data)
+                            # 백업한 미디어 파일 복원 (원본 ZipInfo 사용)
+                            for filename, (file_info, data) in media_files.items():
+                                zip_out.writestr(file_info, data)
                                 logger.info(f"[서류생성] 미디어 파일 복원: {filename}")
                     
                     # 원본 삭제하고 새 파일로 교체
