@@ -12930,10 +12930,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     for key, value in data_map.items():
                                         pattern = f'{{{{{key}}}}}'
                                         if pattern in xml_str:
-                                            # XML 특수문자만 이스케이프 (&, <, >, ", ')
-                                            import html
-                                            escaped_value = html.escape(str(value), quote=False)
-                                            xml_str = xml_str.replace(pattern, escaped_value)
+                                            # 그대로 치환 (XML은 이미 올바른 형식이므로)
+                                            xml_str = xml_str.replace(pattern, str(value))
                                             replaced_count += 1
                                             logger.info(f"[서류생성] {pattern} → {value}")
                                     
