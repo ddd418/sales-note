@@ -12134,6 +12134,13 @@ def document_template_create(request):
                 created_by=request.user
             )
             
+            # 업로드 로그
+            logger.info(f"[서류 업로드] 템플릿 생성 완료 - ID: {template.id}")
+            logger.info(f"[서류 업로드] 파일명: {template.file.name}")
+            logger.info(f"[서류 업로드] 파일 URL: {template.file.url}")
+            if hasattr(template.file, 'public_id'):
+                logger.info(f"[서류 업로드] Cloudinary public_id: {template.file.public_id}")
+            
             messages.success(request, f'서류 "{name}"이(가) 등록되었습니다.')
             return redirect('reporting:document_template_list')
             
@@ -12184,6 +12191,14 @@ def document_template_edit(request, pk):
                 template.file = file
             
             template.save()
+            
+            # 업로드 로그
+            logger.info(f"[서류 업데이트] 템플릿 수정 완료 - ID: {template.id}")
+            logger.info(f"[서류 업데이트] 파일명: {template.file.name}")
+            logger.info(f"[서류 업데이트] 파일 URL: {template.file.url}")
+            if hasattr(template.file, 'public_id'):
+                logger.info(f"[서류 업데이트] Cloudinary public_id: {template.file.public_id}")
+            
             messages.success(request, f'서류 "{template.name}"이(가) 수정되었습니다.')
             return redirect('reporting:document_template_list')
             
