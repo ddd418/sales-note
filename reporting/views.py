@@ -12923,6 +12923,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                 try:
                                     xml_str = data.decode('utf-8')
                                     
+                                    # 원본 일부 로그 (처음 500자)
+                                    logger.info(f"[서류생성] 원본 sharedStrings.xml 샘플:\n{xml_str[:500]}")
+                                    
                                     # XML 선언 확인 및 추가
                                     if not xml_str.startswith('<?xml'):
                                         xml_str = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml_str
@@ -12947,7 +12950,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                             encoded_value = encode_korean_to_entity(value)
                                             xml_str = xml_str.replace(pattern, encoded_value)
                                             replaced_count += 1
-                                            logger.info(f"[서류생성] {pattern} → {value}")
+                                            # 변환된 값 일부 로그
+                                            sample = encoded_value[:100] if len(encoded_value) > 100 else encoded_value
+                                            logger.info(f"[서류생성] {pattern} → {value} (엔티티: {sample}...)")
                                     
                                     # {{유효일+숫자}} 패턴 처리
                                     valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
@@ -12972,6 +12977,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     
                                     # UTF-8 BOM 없이 인코딩
                                     data = xml_str.encode('utf-8')
+                                    
+                                    # 수정된 내용 일부 로그
+                                    logger.info(f"[서류생성] 수정된 sharedStrings.xml 샘플:\n{xml_str[:500]}")
                                     logger.info(f"[서류생성] sharedStrings.xml 처리 완료")
                                 except Exception as xml_error:
                                     logger.warning(f"[서류생성] sharedStrings.xml 처리 오류: {xml_error}")
