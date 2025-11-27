@@ -12610,8 +12610,24 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         file_url = document_template.file.url
         logger.info(f"[서류생성] 파일 URL: {file_url}")
         
-        # Cloudinary URL인 경우 다운로드
-        if 'cloudinary' in file_url or file_url.startswith('http'):
+        # 상대 경로인 경우 Cloudinary URL로 변환 시도
+        if not file_url.startswith('http://') and not file_url.startswith('https://'):
+            # Cloudinary 설정 확인
+            from django.conf import settings
+            if hasattr(settings, 'CLOUDINARY_STORAGE'):
+                try:
+                    import cloudinary
+                    # Cloudinary public_id 추출 (media/ 이후 경로)
+                    public_id = document_template.file.name
+                    if public_id.startswith('document_templates/'):
+                        # Cloudinary URL 생성
+                        file_url = cloudinary.CloudinaryImage(public_id).build_url()
+                        logger.info(f"[서류생성] Cloudinary URL 생성: {file_url}")
+                except Exception as cloudinary_error:
+                    logger.warning(f"[서류생성] Cloudinary URL 생성 실패: {cloudinary_error}")
+        
+        # Cloudinary URL인 경우 다운로드 (http/https로 시작하거나 cloudinary 포함)
+        if file_url.startswith('http://') or file_url.startswith('https://') or 'cloudinary' in file_url:
             logger.info(f"[서류생성] Cloudinary 파일 다운로드 시작")
             # 임시 파일로 다운로드
             response = requests.get(file_url)
@@ -12631,13 +12647,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         else:
             # 로컬 파일 시스템
             logger.info(f"[서류생성] 로컬 파일 사용")
-            if not os.path.exists(document_template.file.path):
-                logger.error(f"[서류생성] 로컬 파일 없음: {document_template.file.path}")
+            template_file_path = document_template.file.path
+            if not os.path.exists(template_file_path):
+                logger.error(f"[서류생성] 로컬 파일 없음: {template_file_path}")
                 return JsonResponse({
                     'success': False,
                     'error': '서류 템플릿 파일을 찾을 수 없습니다.'
                 }, status=404)
-            template_file_path = document_template.file.path
             logger.info(f"[서류생성] 로컬 파일 경로: {template_file_path}")
         
         # 납품 품목 조회
