@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "libreoffice", "xorg.xorgserver"]
+nixPkgs = ["python311", "libreoffice", "libreoffice-unwrapped"]
 
 [phases.install]
 cmds = [
@@ -7,7 +7,7 @@ cmds = [
 ]
 
 [start]
-cmd = "soffice --headless --accept='socket,host=localhost,port=2002;urp;' --norestore --nofirststartwizard & sleep 2 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+cmd = "export PYTHONPATH=/nix/store/$(ls /nix/store | grep libreoffice.*unwrapped | head -1)/lib/libreoffice/program:$PYTHONPATH && soffice --headless --accept='socket,host=localhost,port=2002;urp;' --norestore --nofirststartwizard & sleep 2 && . /opt/venv/bin/activate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
 
 [variables]
 NIXPACKS_NO_MUSL = "1"
