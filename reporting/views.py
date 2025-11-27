@@ -12292,6 +12292,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
     템플릿 파일 형식:
     - 엑셀: {{고객명}}, {{업체명}}, {{품목1_이름}}, {{품목1_수량}}, {{품목1_단가}}, {{품목1_금액}} 등의 변수 사용
     """
+    logger.info(f"[서류생성] 시작 - document_type={document_type}, schedule_id={schedule_id}, output_format={output_format}")
+    logger.info(f"[서류생성] 요청 방식: {request.method}, 사용자: {request.user.username}")
+    
     from reporting.models import Schedule, DeliveryItem, DocumentTemplate
     from django.http import HttpResponse, FileResponse
     from urllib.parse import quote
@@ -12303,13 +12306,17 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
     
     try:
         schedule = get_object_or_404(Schedule, pk=schedule_id)
+        logger.info(f"[서류생성] 일정 조회 완료 - ID: {schedule_id}")
         
         # 권한 체크
         if not can_access_user_data(request.user, schedule.user):
+            logger.warning(f"[서류생성] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
+        logger.info(f"[서류생성] 회사: {company.name}, 서류 타입: {document_type}")
+        
         document_template = DocumentTemplate.objects.filter(
             company=company,
             document_type=document_type,
@@ -12326,6 +12333,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             ).first()
         
         if not document_template:
+            logger.error(f"[서류생성] 템플릿 없음 - 회사: {company.name}, 타입: {document_type}")
             # 서류 종류 이름 매핑
             doc_type_names = {
                 'quotation': '견적서',
@@ -12339,8 +12347,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 'error': f'{doc_type_name} 템플릿이 등록되어 있지 않습니다. 서류 관리 메뉴에서 먼저 템플릿을 등록해주세요.'
             }, status=404)
         
+        logger.info(f"[서류생성] 템플릿 찾음 - ID: {document_template.id}, 이름: {document_template.name}")
+        
         # 파일이 존재하는지 확인 (Cloudinary 지원)
         if not document_template.file:
+            logger.error(f"[서류생성] 파일 없음 - 템플릿 ID: {document_template.id}")
             return JsonResponse({
                 'success': False,
                 'error': '서류 템플릿 파일을 찾을 수 없습니다.'
@@ -12352,29 +12363,37 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         
         # 파일 URL 가져오기
         file_url = document_template.file.url
+        logger.info(f"[서류생성] 파일 URL: {file_url}")
         
         # Cloudinary URL인 경우 다운로드
         if 'cloudinary' in file_url or file_url.startswith('http'):
+            logger.info(f"[서류생성] Cloudinary 파일 다운로드 시작")
             # 임시 파일로 다운로드
             response = requests.get(file_url)
             if response.status_code != 200:
+                logger.error(f"[서류생성] 다운로드 실패 - 상태코드: {response.status_code}")
                 return JsonResponse({
                     'success': False,
                     'error': '서류 템플릿 파일을 다운로드할 수 없습니다.'
                 }, status=500)
             
+            logger.info(f"[서류생성] 다운로드 성공 - 크기: {len(response.content)} bytes")
             # 임시 파일에 저장
             with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
                 tmp_file.write(response.content)
                 template_file_path = tmp_file.name
+            logger.info(f"[서류생성] 임시 파일 생성: {template_file_path}")
         else:
             # 로컬 파일 시스템
+            logger.info(f"[서류생성] 로컬 파일 사용")
             if not os.path.exists(document_template.file.path):
+                logger.error(f"[서류생성] 로컬 파일 없음: {document_template.file.path}")
                 return JsonResponse({
                     'success': False,
                     'error': '서류 템플릿 파일을 찾을 수 없습니다.'
                 }, status=404)
             template_file_path = document_template.file.path
+            logger.info(f"[서류생성] 로컬 파일 경로: {template_file_path}")
         
         # 납품 품목 조회
         delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
