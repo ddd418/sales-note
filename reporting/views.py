@@ -13181,7 +13181,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             
         else:
             # PDF 등 다른 형식은 그대로 다운로드 (향후 PDF 편집 기능 추가 예정)
-            file_path = document_template.file.path
+            # CloudinaryField는 path 속성이 없으므로 template_file_path 사용
+            file_path = template_file_path
             file_name = f"{document_template.name}_{schedule.followup.customer_name}_{timezone.now().strftime('%Y%m%d')}{original_ext}"
             
             content_type_map = {
