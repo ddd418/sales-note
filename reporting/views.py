@@ -12289,15 +12289,22 @@ def document_template_download(request, pk):
         return redirect('reporting:document_template_list')
     
     try:
-        file_path = template.file.path
-        file_name = os.path.basename(file_path)
-        
-        response = FileResponse(
-            open(file_path, 'rb'),
-            as_attachment=True,
-            filename=file_name
-        )
-        return response
+        # CloudinaryField는 URL로 리다이렉트, FileField는 파일 다운로드
+        if hasattr(template.file, 'public_id'):
+            # CloudinaryField - URL로 리다이렉트
+            from django.shortcuts import redirect
+            return redirect(template.file.url)
+        else:
+            # FileField - 로컬 파일 다운로드
+            file_path = template.file.path
+            file_name = os.path.basename(file_path)
+            
+            response = FileResponse(
+                open(file_path, 'rb'),
+                as_attachment=True,
+                filename=file_name
+            )
+            return response
     except Exception as e:
         logger.error(f"파일 다운로드 실패: {e}")
         messages.error(request, '파일 다운로드에 실패했습니다.')
