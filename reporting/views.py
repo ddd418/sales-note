@@ -12698,12 +12698,17 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         if hasattr(document_template.file, 'public_id'):
             # CloudinaryField - public_id에서 확장자 추출
             original_ext = os.path.splitext(document_template.file.public_id)[1].lower()
+            logger.info(f"[서류생성] CloudinaryField 확장자: {original_ext}")
         else:
             # FileField - name 속성 사용
             original_ext = os.path.splitext(document_template.file.name)[1].lower()
+            logger.info(f"[서류생성] FileField 확장자: {original_ext}")
+        
+        logger.info(f"[서류생성] 파일 확장자: {original_ext}, 경로: {template_file_path}")
         
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
+            logger.info(f"[서류생성] 엑셀 파일 처리 시작")
             try:
                 # ZIP 레벨에서 직접 처리 (한글 완벽 보존 + 이미지 보존)
                 import shutil
