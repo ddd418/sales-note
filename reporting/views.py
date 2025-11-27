@@ -12696,9 +12696,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         
         # 원본 파일 확장자 확인 (CloudinaryField는 public_id 사용)
         if hasattr(document_template.file, 'public_id'):
-            # CloudinaryField - public_id에서 확장자 추출
-            original_ext = os.path.splitext(document_template.file.public_id)[1].lower()
-            logger.info(f"[서류생성] CloudinaryField 확장자: {original_ext}")
+            # CloudinaryField - URL에서 확장자 추출 (public_id는 확장자가 없을 수 있음)
+            file_url = document_template.file.url
+            original_ext = os.path.splitext(file_url.split('?')[0])[1].lower()  # 쿼리 스트링 제거 후 확장자 추출
+            logger.info(f"[서류생성] CloudinaryField URL에서 확장자 추출: {original_ext}")
         else:
             # FileField - name 속성 사용
             original_ext = os.path.splitext(document_template.file.name)[1].lower()
