@@ -194,9 +194,9 @@ urlpatterns = [
     path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
     path('documents/<int:pk>/toggle-default/', views.document_template_toggle_default, name='document_template_toggle_default'),
     
-    # 서류 생성 API (일정 기반)
-    path('documents/generate/<str:document_type>/<int:schedule_id>/', views.generate_document_pdf, name='generate_document_pdf'),
+    # 서류 생성 API (일정 기반) - 더 구체적인 패턴을 먼저
     path('documents/generate/<str:document_type>/<int:schedule_id>/<str:output_format>/', views.generate_document_pdf, name='generate_document_pdf_format'),
+    path('documents/generate/<str:document_type>/<int:schedule_id>/', views.generate_document_pdf, name='generate_document_pdf'),
     
     # ============================================
     # Gmail 연동 URL들
