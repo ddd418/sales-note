@@ -12649,9 +12649,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
             try:
-                # openpyxl + 이미지 수동 복사 방식
+                # openpyxl + ZIP 이미지 보존 방식
                 from openpyxl import load_workbook
-                from openpyxl.drawing.image import Image as OpenpyxlImage
                 import shutil
                 import zipfile
                 
@@ -12661,7 +12660,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
-                logger.info(f"[서류생성] openpyxl로 파일 처리: {temp_path}")
+                logger.info(f"[서류생성] openpyxl + ZIP 방식으로 파일 처리: {temp_path}")
                 
                 # 총액 계산
                 subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
@@ -12818,18 +12817,22 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
                 
-                # openpyxl로 엑셀 파일 열기 및 변수 치환
+                # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
+                media_files = {}
+                with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                    for file_info in zip_ref.infolist():
+                        # 이미지, 차트, 미디어 파일 백업
+                        if (file_info.filename.startswith('xl/media/') or 
+                            file_info.filename.startswith('xl/drawings/') or 
+                            file_info.filename.startswith('xl/charts/')):
+                            media_files[file_info.filename] = zip_ref.read(file_info.filename)
+                            logger.info(f"[서류생성] 미디어 파일 백업: {file_info.filename}")
+                
+                logger.info(f"[서류생성] 총 {len(media_files)}개 미디어 파일 백업 완료")
+                
+                # 2단계: openpyxl로 변수 치환
                 wb = load_workbook(temp_path)
                 
-                # 먼저 이미지 정보 저장 (나중에 복원)
-                images_backup = {}
-                for sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    if hasattr(ws, '_images') and ws._images:
-                        images_backup[sheet_name] = list(ws._images)
-                        logger.info(f"[서류생성] {sheet_name} 시트에서 {len(ws._images)}개 이미지 백업")
-                
-                # 모든 시트에서 변수 치환
                 import re
                 from datetime import timedelta
                 
@@ -12873,17 +12876,32 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
                 
-                # 이미지 복원
-                for sheet_name, images in images_backup.items():
-                    ws = wb[sheet_name]
-                    ws._images = images
-                    logger.info(f"[서류생성] {sheet_name} 시트에 {len(images)}개 이미지 복원")
-                
-                # 저장
+                # 임시로 저장
                 wb.save(temp_path)
                 wb.close()
                 
-                logger.info(f"[서류생성] 파일 저장 완료: {temp_path}")
+                # 3단계: ZIP으로 미디어 파일 복원
+                if media_files:
+                    temp_output = temp_path.replace('.xlsx', '_with_media.xlsx')
+                    
+                    with zipfile.ZipFile(temp_path, 'r') as zip_in:
+                        with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                            # 기존 파일 모두 복사
+                            for item in zip_in.infolist():
+                                data = zip_in.read(item.filename)
+                                zip_out.writestr(item, data)
+                            
+                            # 백업한 미디어 파일 덮어쓰기
+                            for filename, data in media_files.items():
+                                zip_out.writestr(filename, data)
+                                logger.info(f"[서류생성] 미디어 파일 복원: {filename}")
+                    
+                    # 원본 삭제하고 새 파일로 교체
+                    os.unlink(temp_path)
+                    shutil.move(temp_output, temp_path)
+                    logger.info(f"[서류생성] 미디어 파일 복원 완료")
+                
+                logger.info(f"[서류생성] 파일 처리 완료: {temp_path}")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
