@@ -1140,9 +1140,14 @@ def ai_natural_language_search(request):
                 customer_ids_from_email = None
                 if email_filters:
                     from reporting.models import EmailLog
-                    customer_ids_from_email = EmailLog.objects.filter(
-                        **email_filters
-                    ).values_list('followup_id', flat=True).distinct()
+                    # 이메일 발송자도 권한 필터 추가
+                    email_query = EmailLog.objects.filter(**email_filters)
+                    
+                    # sender 필드가 있으면 권한 필터 적용
+                    if 'sender' not in email_filters:
+                        email_query = email_query.filter(sender__in=accessible_users)
+                    
+                    customer_ids_from_email = email_query.values_list('followup_id', flat=True).distinct()
                     logger.info(f"[자연어검색] 이메일 필터: {email_filters} → 고객 {len(customer_ids_from_email)}명")
                 
                 # 고객 ID 리스트 결합 (교집합)

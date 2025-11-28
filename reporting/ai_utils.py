@@ -1015,9 +1015,15 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - "SO826.1000 구매 고객" → customers 검색 + deliveryitems__product__product_code__icontains="SO826.1000"
 
 📧 이메일 발송 이력 검색 패턴:
+- "어제 메일 나눈 고객" → customers 검색 + emaillogs__sent_at__date="2024-11-27" (email_type 지정 없음 = 보낸것+받은것 모두)
 - "11월 27일에 메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__date="2024-11-27"
-- "지난주 이메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__gte="2024-11-20"
-- "이번 달 이메일 받은 고객" → customers 검색 + emaillogs__email_type="received" + emaillogs__sent_at__gte="2024-11-01"
+- "지난주 이메일 받은 고객" → customers 검색 + emaillogs__email_type="received" + emaillogs__sent_at__gte="2024-11-20"
+- "이번 달 이메일 주고받은 고객" → customers 검색 + emaillogs__sent_at__gte="2024-11-01" (email_type 없이)
+
+⚠️ 이메일 검색 중요 규칙:
+- "메일 나눈", "메일 주고받은", "메일 교환한" = email_type 필터 없음 (보낸것+받은것 모두 포함)
+- "메일 보낸" = email_type="sent" 명시
+- "메일 받은" = email_type="received" 명시
 """
 
     user_prompt = f"""
@@ -1110,7 +1116,7 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
   "interpretation": "상품 코드 SO826.1000을 구매한 고객을 검색합니다."
 }}
 
-예시 8 - 이메일 발송 이력 검색:
+예시 8 - 이메일 발송 이력 검색 (보낸 것만):
 입력: "11월 27일에 메일 보낸 고객"
 출력:
 {{
@@ -1121,26 +1127,24 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
   "interpretation": "2024년 11월 27일에 이메일을 보낸 고객을 검색합니다."
 }}
 
-예시 9 - 이메일 발송 이력 (오늘):
-입력: "오늘 메일 보낸 고객"
+예시 9 - 이메일 발송 이력 (주고받은 것 모두):
+입력: "어제 메일 나눈 고객"
 출력:
 {{
   "filters": {{
-    "emaillogs__email_type": "sent",
-    "emaillogs__sent_at__date": "{current_date}"
+    "emaillogs__sent_at__date": "2024-11-27"
   }},
-  "interpretation": "{current_date}에 이메일을 보낸 고객을 검색합니다."
+  "interpretation": "2024년 11월 27일에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
 }}
 
-예시 10 - 이메일 발송 이력 (기간):
-입력: "이번 달 이메일 보낸 고객"
+예시 10 - 이메일 발송 이력 (기간, 주고받은 것):
+입력: "이번 달 이메일 주고받은 고객"
 출력:
 {{
   "filters": {{
-    "emaillogs__email_type": "sent",
     "emaillogs__sent_at__gte": "2024-11-01"
   }},
-  "interpretation": "2024년 11월 이후에 이메일을 보낸 고객을 검색합니다."
+  "interpretation": "2024년 11월 이후에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
 }}
 
 ⚠️ 주의:
