@@ -13,6 +13,14 @@
           {{ followup.customer_name|default:"고객명 미정" }} 고객 정보
         </h1>
         <div>
+          {% if followup.email and user.is_authenticated and user.userprofile.gmail_email %}
+          <a
+            href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}"
+            class="btn btn-success me-2"
+          >
+            <i class="fas fa-envelope me-1"></i>메일 보내기
+          </a>
+          {% endif %}
           {% if user.is_authenticated and user.userprofile and user.userprofile.role != 'manager' %}
           <a
             href="{% url 'reporting:followup_edit' followup.pk %}"
@@ -67,13 +75,21 @@
               {% endif %} {% if followup.email %}
               <div class="mb-3">
                 <label class="form-label text-muted">메일 주소</label>
-                <div class="p-2 bg-light rounded border">
-                  <i class="fas fa-envelope me-1"></i>
-                  <a
-                    href="mailto:{{ followup.email }}"
-                    class="text-decoration-none"
-                    >{{ followup.email }}</a
-                  >
+                <div class="p-2 bg-light rounded border d-flex justify-content-between align-items-center">
+                  <div>
+                    <i class="fas fa-envelope me-1"></i>
+                    <a
+                      href="mailto:{{ followup.email }}"
+                      class="text-decoration-none"
+                      >{{ followup.email }}</a
+                    >
+                  </div>
+                  {% if user.userprofile.gmail_email %}
+                  <a href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}" 
+                     class="btn btn-sm btn-success">
+                    <i class="fas fa-paper-plane me-1"></i>메일 보내기
+                  </a>
+                  {% endif %}
                 </div>
               </div>
               {% endif %} {% if followup.manager %}
