@@ -551,7 +551,10 @@ def ai_summarize_meeting_notes(request):
 @require_http_methods(["POST"])
 def ai_suggest_follow_ups(request):
     """
-    AI로 팔로우업 우선순위 제안
+    AI로 팔로우업 우선순위 제안 (최적화 버전)
+    - annotate로 집계 쿼리 통합 (N+1 문제 해결)
+    - prefetch_related로 관련 데이터 일괄 로드
+    - AI에 전달할 20명만 사전 필터링
     """
     try:
         logger.info(f"[AI 팔로우업] 시작 - 사용자: {request.user.username}")
@@ -563,76 +566,122 @@ def ai_suggest_follow_ups(request):
                 'error': 'AI 기능 사용 권한이 없습니다.'
             }, status=403)
         
-        from django.db.models import Sum, Q, Max, Count
+        from django.db.models import Sum, Q, Max, Count, Subquery, OuterRef, F, Value, CharField
+        from django.db.models.functions import Coalesce
         from django.utils import timezone
         from datetime import timedelta
-        from reporting.models import History, Prepayment, OpportunityTracking
+        from reporting.models import History, Prepayment, OpportunityTracking, EmailLog
+        import re
         
-        logger.info(f"[AI 팔로우업] 고객 데이터 수집 중...")
-        # 사용자의 모든 고객 가져오기 (최근 6개월 이내 활동이 있는 고객만)
+        logger.info(f"[AI 팔로우업] 고객 데이터 수집 중 (최적화 버전)...")
         six_months_ago = timezone.now() - timedelta(days=180)
         
-        # ✅ 일정이 1개라도 있는 고객만 필터링 (속도 & 토큰 절약)
-        # Schedule 테이블에서 일정이 있는 followup_id만 추출
-        followups_with_schedules = FollowUp.objects.filter(
+        # ✅ 1단계: annotate로 모든 집계를 한 번에 처리 (N+1 문제 해결)
+        followups = FollowUp.objects.filter(
             user=request.user
         ).annotate(
-            schedule_count=Count('schedules'),
-            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=six_months_ago))
+            # 일정 통계
+            schedule_count=Count('schedules', distinct=True),
+            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=six_months_ago), distinct=True),
+            meeting_count=Count('schedules', filter=Q(schedules__activity_type='customer_meeting', schedules__visit_date__gte=six_months_ago), distinct=True),
+            quote_count=Count('schedules', filter=Q(schedules__activity_type='quote', schedules__visit_date__gte=six_months_ago), distinct=True),
+            purchase_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago), distinct=True),
+            total_purchase=Coalesce(Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago)), 0),
+            last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__visit_date__gte=six_months_ago)),
+            # 히스토리 통계
+            history_count=Count('histories', filter=Q(histories__created_at__gte=six_months_ago), distinct=True),
+            last_history_date=Max('histories__created_at', filter=Q(histories__created_at__gte=six_months_ago)),
+            # 진행 중인 기회 수
+            opportunity_count=Count('opportunities', filter=Q(opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
+            # 이메일 수
+            email_count=Count('emaillogs', filter=Q(emaillogs__created_at__gte=six_months_ago), distinct=True),
         ).filter(
-            schedule_count__gt=0  # 일정이 1개라도 있는 고객만
-        ).select_related('company')
+            Q(schedule_count__gt=0) | Q(history_count__gt=0)  # 일정 또는 히스토리가 있는 고객만
+        ).select_related('company').prefetch_related(
+            # ✅ 2단계: prefetch_related로 관련 데이터 일괄 로드
+            'opportunities',
+            'prepayments',
+        ).order_by('-last_schedule_date', '-last_history_date')[:20]  # AI에 전달할 20명만
         
-        logger.info(f"[AI 팔로우업] 일정 있는 고객 수: {followups_with_schedules.count()}명")
+        logger.info(f"[AI 팔로우업] 대상 고객 수: {len(followups)}명 (최적화됨)")
         
+        # ✅ 3단계: 히스토리와 이메일은 ID 목록으로 한 번에 조회
+        followup_ids = [f.id for f in followups]
+        
+        # 히스토리 일괄 조회 (고객별 최근 5개)
+        histories_by_followup = {}
+        all_histories = History.objects.filter(
+            followup_id__in=followup_ids,
+            created_at__gte=six_months_ago
+        ).exclude(content__isnull=True).exclude(content='').order_by('followup_id', '-created_at')
+        
+        for history in all_histories:
+            fid = history.followup_id
+            if fid not in histories_by_followup:
+                histories_by_followup[fid] = []
+            if len(histories_by_followup[fid]) < 5:
+                histories_by_followup[fid].append(history.content)
+        
+        # 이메일 일괄 조회 (고객별 최근 5개)
+        emails_by_followup = {}
+        all_emails = EmailLog.objects.filter(
+            Q(followup_id__in=followup_ids) | Q(schedule__followup_id__in=followup_ids),
+            created_at__gte=six_months_ago
+        ).order_by('-sent_at')
+        
+        for email in all_emails:
+            fid = email.followup_id or (email.schedule.followup_id if email.schedule else None)
+            if fid and fid in followup_ids:
+                if fid not in emails_by_followup:
+                    emails_by_followup[fid] = []
+                if len(emails_by_followup[fid]) < 5:
+                    email_type = '발신' if email.email_type == 'sent' else '수신'
+                    body_text = re.sub(r'<[^>]+>', '', email.body or '')
+                    body_preview = body_text[:100].strip()
+                    emails_by_followup[fid].append(f"[{email_type}] {email.subject}: {body_preview}")
+        
+        # 선결제 잔액 일괄 조회
+        prepayments_by_followup = {}
+        all_prepayments = Prepayment.objects.filter(
+            customer_id__in=followup_ids,
+            status='active'
+        )
+        for prep in all_prepayments:
+            fid = prep.customer_id
+            if fid not in prepayments_by_followup:
+                prepayments_by_followup[fid] = 0
+            prepayments_by_followup[fid] += prep.balance
+        
+        # 진행 중인 기회 일괄 조회
+        opportunities_by_followup = {}
+        all_opportunities = OpportunityTracking.objects.filter(
+            followup_id__in=followup_ids,
+            current_stage__in=['lead', 'contact', 'quote', 'closing']
+        )
+        for opp in all_opportunities:
+            fid = opp.followup_id
+            if fid not in opportunities_by_followup:
+                opportunities_by_followup[fid] = []
+            opportunities_by_followup[fid].append({'stage': opp.get_current_stage_display()})
+        
+        # ✅ 4단계: 고객 리스트 구성
         customer_list = []
         
-        for followup in followups_with_schedules[:50]:  # 최대 50명만 분석
-            # 스케줄 통계 (최근 6개월)
-            schedules = Schedule.objects.filter(
-                followup=followup,
-                visit_date__gte=six_months_ago
-            )
+        for followup in followups:
+            # 마지막 연락일 계산
+            last_schedule_date = followup.last_schedule_date
+            last_history_date = followup.last_history_date.date() if followup.last_history_date else None
             
-            # 히스토리에서 사용자가 작성한 메모만 가져오기 (최근 6개월)
-            histories = History.objects.filter(
-                followup=followup,
-                created_at__gte=six_months_ago
-            ).exclude(content__isnull=True).exclude(content='')
-            
-            # 활동 횟수 확인 (스케줄 + 히스토리 최소 1개 이상)
-            total_activities = schedules.count() + histories.count()
-            if total_activities == 0:
-                continue  # 활동 없는 고객 제외
-            
-            # 미팅 횟수 (스케줄에서만)
-            meeting_count = schedules.filter(activity_type='customer_meeting').count()
-            
-            # 견적 횟수 (스케줄에서만)
-            quote_count = schedules.filter(activity_type='quote').count()
-            
-            # 구매 통계 (스케줄에서만)
-            delivery_schedules = schedules.filter(activity_type='delivery')
-            purchase_count = delivery_schedules.count()
-            total_purchase = delivery_schedules.aggregate(total=Sum('expected_revenue'))['total'] or 0
-            
-            # 마지막 연락일 (스케줄과 히스토리 모두 확인)
-            last_schedule = schedules.order_by('-visit_date').first()
-            last_history = histories.order_by('-created_at').first()
-            
-            if last_schedule and last_history:
-                last_contact_date = max(last_schedule.visit_date, last_history.created_at.date())
-            elif last_schedule:
-                last_contact_date = last_schedule.visit_date
-            elif last_history:
-                last_contact_date = last_history.created_at.date()
+            if last_schedule_date and last_history_date:
+                last_contact_date = max(last_schedule_date, last_history_date)
+            elif last_schedule_date:
+                last_contact_date = last_schedule_date
+            elif last_history_date:
+                last_contact_date = last_history_date
             else:
                 last_contact_date = None
                 
             last_contact = last_contact_date.strftime('%Y-%m-%d') if last_contact_date else '연락 기록 없음'
-            
-            # 히스토리 메모 수집 (최근 5개만)
-            history_notes = [h.content for h in histories.order_by('-created_at')[:5] if h.content]
             
             # 고객 구분 판단
             customer_type = '미정'
@@ -641,76 +690,43 @@ def ai_suggest_follow_ups(request):
                 customer_name = followup.customer_name or ''
                 manager_name = followup.manager or ''
                 
-                # 대학/연구소 판단
                 if any(keyword in company_name for keyword in ['대학', '연구소', '연구원', 'University', 'Research']):
-                    # 이름과 책임자명이 같으면 교수, 다르면 연구원
                     if customer_name and manager_name and customer_name == manager_name:
                         customer_type = '교수'
                     else:
                         customer_type = '연구원'
                 else:
-                    # 일반 업체: 이름과 책임자명이 같으면 대표, 다르면 실무자
                     if customer_name and manager_name and customer_name == manager_name:
                         customer_type = '대표'
                     else:
                         customer_type = '실무자'
             
-            # 진행 중인 기회
-            opportunities = OpportunityTracking.objects.filter(
-                followup=followup,
-                current_stage__in=['lead', 'contact', 'quote', 'closing']
-            )
-            
-            # 선결제 잔액
-            prepayments = Prepayment.objects.filter(
-                customer=followup,
-                status='active'
-            )
-            prepayment_balance = sum(p.balance for p in prepayments)
-            
-            # 이메일 통계 및 최근 내용
-            from reporting.models import EmailLog
-            import re
-            
-            email_logs = EmailLog.objects.filter(
-                Q(schedule__followup=followup) | Q(followup=followup),
-                created_at__gte=six_months_ago
-            ).order_by('-sent_at')[:5]
-            
-            email_count = email_logs.count()
-            recent_emails = []
-            for email in email_logs:
-                email_type = '발신' if email.email_type == 'sent' else '수신'
-                body_text = re.sub(r'<[^>]+>', '', email.body or '')
-                body_preview = body_text[:100].strip()
-                recent_emails.append(f"[{email_type}] {email.subject}: {body_preview}")
-            
             customer_list.append({
                 'id': followup.id,
                 'name': followup.customer_name,
-                'company': str(followup.company),
-                'customer_type': customer_type,  # 고객 구분 추가
+                'company': str(followup.company) if followup.company else '',
+                'customer_type': customer_type,
                 'last_contact': last_contact,
-                'meeting_count': meeting_count,
-                'quote_count': quote_count,
-                'purchase_count': purchase_count,
-                'total_purchase': float(total_purchase),
+                'meeting_count': followup.meeting_count,
+                'quote_count': followup.quote_count,
+                'purchase_count': followup.purchase_count,
+                'total_purchase': float(followup.total_purchase),
                 'grade': followup.customer_grade if followup.customer_grade else 'D',
-                'opportunities': [{'stage': o.get_current_stage_display()} for o in opportunities],
-                'prepayment_balance': float(prepayment_balance),
-                'total_activities': total_activities,
-                'history_notes': history_notes,  # 히스토리 메모 추가
-                'email_count': email_count,
-                'recent_emails': recent_emails  # 최근 이메일 내용 추가
+                'opportunities': opportunities_by_followup.get(followup.id, []),
+                'prepayment_balance': float(prepayments_by_followup.get(followup.id, 0)),
+                'total_activities': followup.schedule_count + followup.history_count,
+                'history_notes': histories_by_followup.get(followup.id, []),
+                'email_count': followup.email_count,
+                'recent_emails': emails_by_followup.get(followup.id, [])
             })
         
         if not customer_list:
             return JsonResponse({
                 'success': False,
-                'error': '일정이 있는 고객이 없습니다. 먼저 고객과의 일정을 등록해주세요.'
+                'error': '활동 기록이 있는 고객이 없습니다. 먼저 고객과의 일정이나 히스토리를 등록해주세요.'
             }, status=400)
         
-        # AI에게 일정이 있는 고객만 전달하여 분석 (토큰 절약)
+        logger.info(f"[AI 팔로우업] AI 분석 시작 - {len(customer_list)}명")
         suggestions = suggest_follow_ups(customer_list, request.user)
         
         return JsonResponse({
