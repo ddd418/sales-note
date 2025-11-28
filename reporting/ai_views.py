@@ -554,7 +554,7 @@ def ai_suggest_follow_ups(request):
     AI로 팔로우업 우선순위 제안 (최적화 버전)
     - annotate로 집계 쿼리 통합 (N+1 문제 해결)
     - prefetch_related로 관련 데이터 일괄 로드
-    - AI에 전달할 20명만 사전 필터링
+    - 필터 지원: 등급, 업체, 기간, 개수
     """
     try:
         logger.info(f"[AI 팔로우업] 시작 - 사용자: {request.user.username}")
@@ -574,39 +574,59 @@ def ai_suggest_follow_ups(request):
         import re
         from decimal import Decimal
         
-        logger.info(f"[AI 팔로우업] 고객 데이터 수집 중 (최적화 버전)...")
-        six_months_ago = timezone.now() - timedelta(days=180)
+        # ✅ 필터 파라미터 파싱
+        data = json.loads(request.body) if request.body else {}
+        grade_filter = data.get('grade', '')
+        company_id_filter = data.get('company_id', '')
+        period_months = data.get('period_months', '6')
+        top_count = int(data.get('top_count', 10))
         
-        # ✅ 1단계: annotate로 모든 집계를 한 번에 처리 (N+1 문제 해결)
-        followups = FollowUp.objects.filter(
-            user=request.user
-        ).annotate(
+        # 기간 계산
+        if period_months == 'all':
+            period_ago = timezone.now() - timedelta(days=365*10)  # 10년 (사실상 전체)
+        else:
+            period_ago = timezone.now() - timedelta(days=int(period_months) * 30)
+        
+        logger.info(f"[AI 팔로우업] 필터: 등급={grade_filter}, 업체={company_id_filter}, 기간={period_months}개월, TOP={top_count}")
+        
+        # ✅ 1단계: 기본 쿼리셋
+        base_queryset = FollowUp.objects.filter(user=request.user)
+        
+        # 등급 필터
+        if grade_filter:
+            base_queryset = base_queryset.filter(customer_grade=grade_filter)
+        
+        # 업체 필터
+        if company_id_filter:
+            base_queryset = base_queryset.filter(company_id=company_id_filter)
+        
+        # ✅ 2단계: annotate로 모든 집계를 한 번에 처리 (N+1 문제 해결)
+        followups = base_queryset.annotate(
             # 일정 통계
             schedule_count=Count('schedules', distinct=True),
-            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=six_months_ago), distinct=True),
-            meeting_count=Count('schedules', filter=Q(schedules__activity_type='customer_meeting', schedules__visit_date__gte=six_months_ago), distinct=True),
-            quote_count=Count('schedules', filter=Q(schedules__activity_type='quote', schedules__visit_date__gte=six_months_ago), distinct=True),
-            purchase_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago), distinct=True),
+            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=period_ago), distinct=True),
+            meeting_count=Count('schedules', filter=Q(schedules__activity_type='customer_meeting', schedules__visit_date__gte=period_ago), distinct=True),
+            quote_count=Count('schedules', filter=Q(schedules__activity_type='quote', schedules__visit_date__gte=period_ago), distinct=True),
+            purchase_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=period_ago), distinct=True),
             total_purchase=Coalesce(
-                Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago)),
+                Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=period_ago)),
                 Value(Decimal('0')),
                 output_field=DecimalField()
             ),
-            last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__visit_date__gte=six_months_ago)),
+            last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__visit_date__gte=period_ago)),
             # 히스토리 통계
-            history_count=Count('histories', filter=Q(histories__created_at__gte=six_months_ago), distinct=True),
-            last_history_date=Max('histories__created_at', filter=Q(histories__created_at__gte=six_months_ago)),
+            history_count=Count('histories', filter=Q(histories__created_at__gte=period_ago), distinct=True),
+            last_history_date=Max('histories__created_at', filter=Q(histories__created_at__gte=period_ago)),
             # 진행 중인 기회 수
             opportunity_count=Count('opportunities', filter=Q(opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
             # 이메일 수
-            email_count=Count('emails', filter=Q(emails__created_at__gte=six_months_ago), distinct=True),
+            email_count=Count('emails', filter=Q(emails__created_at__gte=period_ago), distinct=True),
         ).filter(
             Q(schedule_count__gt=0) | Q(history_count__gt=0)  # 일정 또는 히스토리가 있는 고객만
         ).select_related('company').prefetch_related(
-            # ✅ 2단계: prefetch_related로 관련 데이터 일괄 로드
             'opportunities',
             'prepayments',
-        ).order_by('-last_schedule_date', '-last_history_date')[:20]  # AI에 전달할 20명만
+        ).order_by('-last_schedule_date', '-last_history_date')[:top_count * 2]  # AI에 전달할 고객 (여유있게)
         
         logger.info(f"[AI 팔로우업] 대상 고객 수: {len(followups)}명 (최적화됨)")
         
@@ -617,7 +637,7 @@ def ai_suggest_follow_ups(request):
         histories_by_followup = {}
         all_histories = History.objects.filter(
             followup_id__in=followup_ids,
-            created_at__gte=six_months_ago
+            created_at__gte=period_ago
         ).exclude(content__isnull=True).exclude(content='').order_by('followup_id', '-created_at')
         
         for history in all_histories:
@@ -631,7 +651,7 @@ def ai_suggest_follow_ups(request):
         emails_by_followup = {}
         all_emails = EmailLog.objects.filter(
             Q(followup_id__in=followup_ids) | Q(schedule__followup_id__in=followup_ids),
-            created_at__gte=six_months_ago
+            created_at__gte=period_ago
         ).order_by('-sent_at')
         
         for email in all_emails:
@@ -734,10 +754,19 @@ def ai_suggest_follow_ups(request):
         logger.info(f"[AI 팔로우업] AI 분석 시작 - {len(customer_list)}명")
         suggestions = suggest_follow_ups(customer_list, request.user)
         
+        # top_count만큼 잘라서 반환
+        suggestions = suggestions[:top_count] if suggestions else []
+        
         return JsonResponse({
             'success': True,
             'suggestions': suggestions,
-            'total_analyzed': len(customer_list)
+            'total_analyzed': len(customer_list),
+            'filters_applied': {
+                'grade': grade_filter or '전체',
+                'company_id': company_id_filter or '전체',
+                'period_months': period_months,
+                'top_count': top_count
+            }
         })
     
     except Exception as e:

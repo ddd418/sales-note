@@ -873,7 +873,7 @@
                   </button>
                 </div>
                 <small class="text-muted d-block">
-                  💡 AI가 고객 활동 이력을 분석하여 지금 연락해야 할 고객을 제안합니다.
+                  💡 AI가 고객 히스토리/이메일을 분석하여 <strong>중요한 내용이 있는 고객</strong>을 우선 추천합니다.
                 </small>
               </div>
               
@@ -1538,14 +1538,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
                     addAILog('🎯 팔로우업 우선순위 분석 시작', 'info');
                     addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
-                    await sleep(500);
-                    addAILog('📊 전체 고객 데이터 조회 중...', 'info');
-                    await sleep(300);
-                    addAILog('📅 일정이 있는 고객 필터링 중...', 'info');
                     await sleep(300);
                     addAILog('🔍 고객별 활동 이력 분석 중...', 'info');
                     await sleep(300);
-                    addAILog('⏰ 마지막 연락 시점 확인 중...', 'info');
+                    addAILog('📝 히스토리/이메일에서 중요 신호 탐색 중...', 'info');
                     await sleep(300);
                     addAILog('💡 우선순위 알고리즘 적용 중...', 'info');
                 },
@@ -1580,6 +1576,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function displayFollowUpSuggestions(data) {
         const suggestions = data.suggestions;
         const totalAnalyzed = data.total_analyzed || 0;
+        const filters = data.filters_applied || {};
+        
+        // 필터 정보 텍스트
+        let filterText = '';
+        if (filters.grade && filters.grade !== '전체') filterText += `등급: ${filters.grade}, `;
+        if (filters.company_id && filters.company_id !== '전체') filterText += `업체 필터 적용, `;
+        filterText += `기간: ${filters.period_months === 'all' ? '전체' : filters.period_months + '개월'}`;
         
         // 우선순위 레벨별 색상 및 아이콘
         const priorityConfig = {
@@ -1588,6 +1591,9 @@ document.addEventListener('DOMContentLoaded', function() {
             'medium': { color: 'info', icon: '🟡', label: '보통' },
             'low': { color: 'secondary', icon: '🟢', label: '낮음' }
         };
+        
+        // 고객명 목록 (검색 결과로 필터링용)
+        const customerNames = suggestions.map(s => s.customer_name).join(',');
         
         let html = `
             <div class="alert alert-success">
@@ -1598,12 +1604,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <button type="button" class="btn-close" onclick="document.getElementById('ai-followup-suggestions').style.display='none'"></button>
                 </div>
-                <small class="text-muted d-block mt-2">총 ${totalAnalyzed}명의 고객을 분석했습니다.</small>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted">
+                        총 ${totalAnalyzed}명의 고객을 분석했습니다. 
+                        <span class="badge bg-light text-dark ms-2">${filterText}</span>
+                    </small>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="applyFollowUpSuggestionsToSearch('${customerNames.replace(/'/g, "\\'")}')">
+                        <i class="fas fa-filter me-1"></i>검색 결과로 필터링
+                    </button>
+                </div>
             </div>
             
             <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <i class="fas fa-list-ol me-2"></i>우선순위 TOP ${suggestions.length}
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <span class="text-dark"><i class="fas fa-list-ol me-2"></i>우선순위 TOP ${suggestions.length}</span>
+                    <small class="text-dark">💡 히스토리/이메일에서 중요 신호가 있는 고객 우선</small>
                 </div>
                 <div class="list-group list-group-flush">
         `;
@@ -1669,9 +1684,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <a href="/reporting/followups/${item.customer_id}/" class="btn btn-sm btn-outline-primary">
                             <i class="fas fa-eye me-1"></i>고객 상세
                         </a>
-                        <a href="/reporting/schedules/create/?followup=${item.followup_id}" class="btn btn-sm btn-outline-success">
-                            <i class="fas fa-calendar-plus me-1"></i>일정 추가
-                        </a>
                     </div>
                 </div>
             `;
@@ -1693,6 +1705,19 @@ document.addEventListener('DOMContentLoaded', function() {
         // 결과 영역으로 스크롤
         suggestionsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
+    
+    // AI 팔로우업 제안 결과를 검색창에 적용하는 함수
+    window.applyFollowUpSuggestionsToSearch = function(customerNames) {
+        const searchInput = document.getElementById('search');
+        if (searchInput) {
+            searchInput.value = customerNames;
+            // 폼 제출
+            const form = searchInput.closest('form');
+            if (form) {
+                form.submit();
+            }
+        }
+    };
 });
 {% endif %}
 
