@@ -915,8 +915,16 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
     if user and not check_ai_permission(user):
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
-    from datetime import datetime
+    from datetime import datetime, timedelta
     current_date = datetime.now().strftime('%Y-%m-%d')
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    last_month = (datetime.now().replace(day=1) - timedelta(days=1))
+    last_month_start = last_month.replace(day=1).strftime('%Y-%m-%d')
+    last_month_end = (datetime.now().replace(day=1) - timedelta(days=1)).strftime('%Y-%m-%d')
+    current_month_start = datetime.now().replace(day=1).strftime('%Y-%m-%d')
+    three_months_ago = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
     
     system_prompt = f"""당신은 CRM 시스템의 검색 쿼리 변환 전문가입니다.
 사용자의 자연어 검색 요청을 Django ORM 필터 조건으로 변환해주세요.
@@ -1015,10 +1023,10 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - "SO826.1000 구매 고객" → customers 검색 + deliveryitems__product__product_code__icontains="SO826.1000"
 
 📧 이메일 발송 이력 검색 패턴:
-- "어제 메일 나눈 고객" → customers 검색 + emaillogs__sent_at__date="2024-11-27" (email_type 지정 없음 = 보낸것+받은것 모두)
-- "11월 27일에 메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__date="2024-11-27"
-- "지난주 이메일 받은 고객" → customers 검색 + emaillogs__email_type="received" + emaillogs__sent_at__gte="2024-11-20"
-- "이번 달 이메일 주고받은 고객" → customers 검색 + emaillogs__sent_at__gte="2024-11-01" (email_type 없이)
+- "어제 메일 나눈 고객" → customers 검색 + emaillogs__sent_at__date="{yesterday}" (email_type 지정 없음 = 보낸것+받은것 모두)
+- "11월 27일에 메일 보낸 고객" → customers 검색 + emaillogs__email_type="sent" + emaillogs__sent_at__date="2025-11-27"
+- "지난주 이메일 받은 고객" → customers 검색 + emaillogs__email_type="received" + emaillogs__sent_at__gte="지난주 월요일"
+- "이번 달 이메일 주고받은 고객" → customers 검색 + emaillogs__sent_at__gte="{current_month_start}" (email_type 없이)
 
 ⚠️ 이메일 검색 중요 규칙:
 - "메일 나눈", "메일 주고받은", "메일 교환한" = email_type 필터 없음 (보낸것+받은것 모두 포함)
@@ -1047,10 +1055,10 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 {{
   "filters": {{
     "schedules__activity_type": "quote",
-    "schedules__visit_date__gte": "2024-10-01",
-    "schedules__visit_date__lt": "2024-11-01"
+    "schedules__visit_date__gte": "{last_month_start}",
+    "schedules__visit_date__lt": "{current_month_start}"
   }},
-  "interpretation": "2024년 10월에 견적 일정이 있는 고객을 검색합니다."
+  "interpretation": "지난달에 견적 일정이 있는 고객을 검색합니다."
 }}
 
 예시 2 - 기간 검색:
@@ -1059,9 +1067,9 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 {{
   "filters": {{
     "customer_grade": "A",
-    "schedules__visit_date__lt": "2024-08-25"
+    "schedules__visit_date__lt": "{three_months_ago}"
   }},
-  "interpretation": "A등급 고객 중 2024년 8월 25일 이전에 마지막으로 연락한 고객을 검색합니다."
+  "interpretation": "A등급 고객 중 3개월 이전에 마지막으로 연락한 고객을 검색합니다."
 }}
 
 예시 3 - 활동 유형 (고객 검색):
@@ -1122,9 +1130,9 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 {{
   "filters": {{
     "emaillogs__email_type": "sent",
-    "emaillogs__sent_at__date": "2024-11-27"
+    "emaillogs__sent_at__date": "{current_year}-11-27"
   }},
-  "interpretation": "2024년 11월 27일에 이메일을 보낸 고객을 검색합니다."
+  "interpretation": "{current_year}년 11월 27일에 이메일을 보낸 고객을 검색합니다."
 }}
 
 예시 9 - 이메일 발송 이력 (주고받은 것 모두):
@@ -1132,9 +1140,9 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 출력:
 {{
   "filters": {{
-    "emaillogs__sent_at__date": "2024-11-27"
+    "emaillogs__sent_at__date": "{yesterday}"
   }},
-  "interpretation": "2024년 11월 27일에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
+  "interpretation": "어제({yesterday})에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
 }}
 
 예시 10 - 이메일 발송 이력 (기간, 주고받은 것):
@@ -1142,9 +1150,9 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 출력:
 {{
   "filters": {{
-    "emaillogs__sent_at__gte": "2024-11-01"
+    "emaillogs__sent_at__gte": "{current_month_start}"
   }},
-  "interpretation": "2024년 11월 이후에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
+  "interpretation": "{current_year}년 {current_month}월 이후에 이메일을 주고받은 고객을 검색합니다 (보낸것+받은것 모두 포함)."
 }}
 
 ⚠️ 주의:
