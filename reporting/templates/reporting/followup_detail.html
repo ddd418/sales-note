@@ -1197,25 +1197,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }, 100);
                     
-                    // 데이터 소스 표시
-                    const sources = [];
-                    if (dataSources.has_purchases) sources.push(`구매 ${data.purchase_count}건`);
-                    if (dataSources.has_quotes) sources.push(`견적 ${data.quote_count}건`);
-                    if (dataSources.has_meetings) sources.push(`미팅 ${data.meeting_count}건`);
-                    
-                    html += `
-                        <div class="alert alert-light mt-3">
-                            <small class="text-muted">
-                                <i class="fas fa-database me-2"></i>
-                                <strong>분석 데이터:</strong> ${sources.join(', ')}
-                                ${!dataSources.has_purchases && dataSources.has_quotes ? 
-                                    ' | <span class="text-info">📝 견적 이력 기반 추천</span>' : ''}
-                                ${!dataSources.has_purchases && !dataSources.has_quotes && dataSources.has_meetings ? 
-                                    ' | <span class="text-warning">💬 미팅 내용 기반 추천</span>' : ''}
-                            </small>
-                        </div>
-                    `;
-                    
                     container.innerHTML = html;
                 },
                 function(error) {
