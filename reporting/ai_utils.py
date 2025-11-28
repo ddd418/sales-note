@@ -1881,7 +1881,24 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     
     logger.info(f"[미팅전략] 선결제 잔액 확인 완료 - 총 {total_prepayment_balance:,.0f}원 ({len(prepayment_details)}건)")
     
-    logger.info(f"[미팅전략] 4단계: 프롬프트 생성 및 AI 호출 준비...")
+    # 4. 납품 일정인 경우 납품 품목 정보 수집
+    logger.info(f"[미팅전략] 4단계: 납품 품목 확인 중...")
+    delivery_items = []
+    if schedule.activity_type == 'delivery':
+        from reporting.models import DeliveryItem
+        items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
+        for item in items:
+            product_name = item.product.name if item.product else item.product_name
+            delivery_items.append({
+                'name': product_name,
+                'quantity': item.quantity,
+                'unit': item.unit or '개',
+                'unit_price': f"{item.unit_price:,.0f}원" if item.unit_price else '-',
+                'total_price': f"{item.total_price:,.0f}원" if item.total_price else '-'
+            })
+    logger.info(f"[미팅전략] 납품 품목 확인 완료 - {len(delivery_items)}건")
+    
+    logger.info(f"[미팅전략] 5단계: 프롬프트 생성 및 AI 호출 준비...")
     
     # System Prompt (간소화 버전)
     system_prompt = """당신은 20년 이상 B2B 생명과학·의료·연구장비 시장에서 활동한 최고 수준의 세일즈 컨설팅 전문가입니다.
@@ -1983,6 +2000,12 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
                 user_prompt += f" ({p['memo']})"
             user_prompt += "\n"
     
+    # 납품 품목 정보 추가
+    if delivery_items:
+        user_prompt += "\n---\n\n**📦 이번 납품 품목 (준비물로 반드시 포함!):**\n"
+        for item in delivery_items:
+            user_prompt += f"- {item['name']} × {item['quantity']}{item['unit']} (단가: {item['unit_price']}, 합계: {item['total_price']})\n"
+    
     user_prompt += f"""
 ---
 
@@ -1997,13 +2020,14 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 **중요 지침:**
 - 이 일정과 연결된 히스토리가 있다면 이를 **최우선**으로 활용하세요.
 - **준비물과 체크리스트**는 반드시 **이번 일정 메모와 연결된 히스토리**에서만 추출하세요. 과거 전체 히스토리에서 추출하지 마세요.
+- **납품 일정인 경우**: 납품 품목 목록에 있는 제품들을 **준비물에 반드시 포함**하세요.
 - 전체 히스토리는 고객의 전반적인 니즈와 관심사를 파악하는 **배경 정보**로만 활용하세요.
 """
 
     try:
         logger.info(f"[미팅전략] AI 호출 시작 - 모델: {MODEL_STANDARD}")
         logger.info(f"[미팅전략] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
-        logger.info(f"[미팅전략] 수집된 데이터 - 히스토리: {len(history_records)}건, 일정 컨텍스트: {len(schedule_context)}건, 선결제: {len(prepayment_details)}건")
+        logger.info(f"[미팅전략] 수집된 데이터 - 히스토리: {len(history_records)}건, 일정 컨텍스트: {len(schedule_context)}건, 선결제: {len(prepayment_details)}건, 납품품목: {len(delivery_items)}건")
         
         response = get_openai_client().chat.completions.create(
             model=MODEL_STANDARD,
