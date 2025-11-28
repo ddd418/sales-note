@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "libreoffice", "unoconv"]
+nixPkgs = ["python311", "libreoffice", "unoconv", "nanum", "nanum-gothic-coding"]
 
 [phases.install]
 cmds = [
