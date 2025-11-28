@@ -194,7 +194,16 @@
                           {% endif %}
                         </a>
                       </th>
-                      <th class="text-center">선결제</th>
+                      <th class="text-center">
+                        <a href="?sort=prepayment&order={% if sort_by == 'prepayment' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}" class="text-decoration-none text-dark">
+                          선결제 
+                          {% if sort_by == 'prepayment' %}
+                            <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                          {% else %}
+                            <i class="fas fa-sort text-muted"></i>
+                          {% endif %}
+                        </a>
+                      </th>
                       <th class="text-center">
                         <a href="?sort=unpaid&order={% if sort_by == 'unpaid' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if user_filter %}&user={{ user_filter }}{% endif %}" class="text-decoration-none text-dark">
                           세금계산서 

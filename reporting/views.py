@@ -8043,6 +8043,7 @@ def customer_report_view(request):
         'meetings': lambda x: x.total_meetings,
         'deliveries': lambda x: x.total_deliveries,
         'amount': lambda x: x.total_amount,
+        'prepayment': lambda x: x.prepayment_balance,
         'unpaid': lambda x: x.unpaid_count,
         'last_contact': lambda x: x.last_contact or timezone.now().replace(year=1900),
     }
