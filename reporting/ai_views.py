@@ -263,8 +263,11 @@ def ai_generate_customer_summary(request, followup_id):
             # HTML 태그 제거
             body_text = re.sub(r'<[^>]+>', '', email.body or '')
             body_preview = body_text[:200].strip() + '...' if len(body_text) > 200 else body_text.strip()
+            # sent_at이 None인 경우 created_at 사용
+            email_date = email.sent_at or email.created_at
+            date_str = email_date.strftime('%Y-%m-%d') if email_date else '날짜 없음'
             email_conversations.append(
-                f"[{email.sent_at.strftime('%Y-%m-%d')}] [{email_type}] {email.subject}\n   내용: {body_preview}"
+                f"[{date_str}] [{email_type}] {email.subject}\n   내용: {body_preview}"
             )
         
         email_conversations_text = '\n'.join(email_conversations) if email_conversations else '이메일 기록 없음'
