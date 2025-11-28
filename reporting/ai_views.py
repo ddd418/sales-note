@@ -902,38 +902,6 @@ def ai_recommend_products(request, followup_id):
         interest_keywords = list(set(interest_keywords))
         
         # 실제 DB 제품 목록 가져오기 (활성 제품만, 사용자 회사 제품만)
-        from reporting.models import Product
-        
-        # 사용자의 회사에 속한 제품만 가져오기
-        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-        
-        if user_company:
-            # 같은 회사의 사용자가 생성한 제품만
-            available_products = Product.objects.filter(
-                is_active=True,
-                created_by__userprofile__company=user_company
-            ).values(
-                'product_code', 'specification', 'unit', 'standard_price', 'description'
-            )[:100]  # 최대 100개
-        else:
-            # 회사 정보가 없으면 사용자가 생성한 제품만
-            available_products = Product.objects.filter(
-                is_active=True,
-                created_by=request.user
-            ).values(
-                'product_code', 'specification', 'unit', 'standard_price', 'description'
-            )[:100]  # 최대 100개
-        
-        product_catalog = []
-        for prod in available_products:
-            product_catalog.append({
-                'product_code': prod['product_code'],
-                'specification': prod['specification'] or '',
-                'unit': prod['unit'] or 'EA',
-                'price': float(prod['standard_price']) if prod['standard_price'] else 0,
-                'description': prod['description'] or ''
-            })
-        
         # 고객 데이터 준비
         customer_data = {
             'name': followup.customer_name,
@@ -943,8 +911,7 @@ def ai_recommend_products(request, followup_id):
             'quote_history': quote_history,
             'meeting_notes': meeting_notes[:2500],  # 토큰 절약
             'history_notes': history_notes[:2500],  # 실무자 작성 히스토리 추가
-            'interest_keywords': interest_keywords,
-            'available_products': product_catalog  # 실제 제품 카탈로그 추가
+            'interest_keywords': interest_keywords
         }
         
         logger.info(f"[AI 상품추천] AI 분석 시작 - 구매: {len(purchase_history)}건, 견적: {len(quote_history)}건, 히스토리: {len(customer_histories)}건")
