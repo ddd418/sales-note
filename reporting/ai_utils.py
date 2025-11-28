@@ -825,7 +825,7 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
 
 def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
     """
-    이메일 스레드 전체를 분석하여 고객 온도와 구매 가능성 측정
+    이메일 스레드 전체를 분석하여 고객 구매 온도와 실무 영업 전략 제시
     
     Args:
         emails: 이메일 리스트 [
@@ -841,44 +841,82 @@ def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
     
     Returns:
         {
-            'overall_sentiment': 'positive'/'neutral'/'negative',
-            'temperature': 'hot'/'warm'/'cold',  # 고객 온도
-            'purchase_probability': 'high'/'medium'/'low',
-            'engagement_level': 'high'/'medium'/'low',  # 참여도
-            'key_topics': [...],  # 주요 논의 주제
-            'concerns': [...],  # 우려사항
-            'opportunities': [...],  # 기회
-            'next_action': '다음 액션 제안',
+            'purchase_temperature': 8,  # 0~10점 구매 온도
+            'temperature_reason': '구매 온도 판단 근거',
+            'hidden_intent': [...],  # 고객의 숨은 의도/제한조건
+            'customer_status': '고객 상태 라벨',
+            'recommended_actions': [...],  # 추천 후속 액션
+            'followup_email_draft': '후속 이메일 초안',
+            'latent_needs': [...],  # 잠재 니즈 예측
             'summary': '스레드 요약'
         }
     """
     if user and not check_ai_permission(user):
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
-    system_prompt = """당신은 B2B 영업 커뮤니케이션 분석 전문가입니다.
-이메일 스레드를 분석하여 고객 관계의 현재 상태와 구매 가능성을 평가해주세요.
+    system_prompt = """당신은 20년 경력의 B2B 연구장비 영업 전문가입니다.
+이메일 스레드를 분석하여 실전 영업에 즉시 활용할 수 있는 인사이트를 제공해주세요.
 
-**분석 요소:**
-1. 감정 톤 변화 (시간 경과에 따라)
-2. 고객 온도 (hot/warm/cold)
-   - Hot: 적극적, 빠른 응답, 구체적 질문
-   - Warm: 관심 있음, 정보 수집 단계
-   - Cold: 반응 느림, 소극적, 회피적
-3. 구매 신호 감지 (가격 문의, 일정 협의, 결정권자 언급 등)
-4. 우려사항 및 장애요인
-5. Cross-selling/Up-selling 기회
+**분석 항목:**
+
+1. **고객 구매 온도 (0~10점)**
+   - 8~10점: 즉시 구매 가능 (결재 진행, 납품 일정 협의 등)
+   - 5~7점: 관심 있으나 조건/예산 확인 필요
+   - 3~4점: 탐색 단계 (정보 수집 중)
+   - 0~2점: 구매 의사 없음 또는 거절
+
+2. **고객의 숨은 의도/제한조건**
+   - 직접 말하지 않았지만 표현에 숨어있는 진짜 니즈
+   - 시간적 제약, 예산 제약, 결정권자 관련 힌트
+   - "결재 진행하겠습니다" 뒤에 "추가 논의 시 연락드릴게요" = 지금은 바쁨, 효율적 제안 시 확대 여지 있음
+
+3. **고객 상태 라벨** (CRM 분류용)
+   - 신규 리드 (New Lead)
+   - 탐색 중 (Exploring)
+   - 관심/검토 단계 (Interested)
+   - 견적 후 보류 (Quote Pending)
+   - 결재 확정 대기 (Closed-Won Pending Payment)
+   - 납품 완료 (Delivered)
+   - 재구매 가능 (Reorder Ready)
+   - 이탈 위험 (At Risk)
+
+4. **추천 후속 액션** (구체적으로)
+   - 타이밍 (며칠 후, 언제)
+   - 방법 (이메일, 전화, 방문)
+   - 접근 방식 (부담 없는 단문, 가치 제안 등)
+
+5. **후속 이메일 초안**
+   - 바로 보낼 수 있는 자연스러운 문구
+   - 교수님/박사님 등 적절한 호칭 사용
+   - 납품 일정, 결재 확인 등 상황에 맞는 내용
+
+6. **잠재 니즈 예측**
+   - 이번 구매와 연계할 수 있는 추가 제안
+   - 피펫 서비스/교정, 소모품 정기 주문, 관련 장비 등
+   - 고객의 구매 패턴 기반 예측
 
 응답 형식 (JSON):
 {
-  "overall_sentiment": "positive|neutral|negative",
-  "temperature": "hot|warm|cold",
-  "purchase_probability": "high|medium|low",
-  "engagement_level": "high|medium|low",
-  "key_topics": ["주제1", "주제2", ...],
-  "concerns": ["우려1", "우려2", ...],
-  "opportunities": ["기회1", "기회2", ...],
-  "next_action": "구체적인 다음 액션 제안",
-  "summary": "스레드 전체 요약 (3-5문장)"
+  "purchase_temperature": 8,
+  "temperature_reason": "결재 진행 의사 명확, 납품 일정 협의 요청",
+  "hidden_intent": [
+    "지금은 업무로 바쁜 상황",
+    "효율적인 제안이 들어오면 구매 확대 여지 있음",
+    "일정 조율은 고객이 주도하기 원함"
+  ],
+  "customer_status": "Closed-Won Pending Payment (결재 확정 대기)",
+  "recommended_actions": [
+    "결재 확인 3~5일 뒤 자연스러운 follow-up",
+    "부담 없는 단문 위주로 연락",
+    "납품 일정 제안 포함"
+  ],
+  "followup_email_draft": "안녕하세요 교수님,\\n\\n지난번 검토하셨던 건의 결재가 잘 처리되었는지 여쭙고자 연락드립니다.\\n납품 일정은 교수님 일정에 맞춰 조정 가능합니다.\\n\\n편하실 때 회신 부탁드립니다.\\n\\n감사합니다.",
+  "latent_needs": [
+    "소모품의 정기 주문 가능성 높음",
+    "피펫 서비스·교정 시점 안내 시 반응 좋을 가능성",
+    "구매 습관이 빠름 - 재고/입고 일정 안내 효과적"
+  ],
+  "summary": "고객이 결재 진행 의사를 밝힌 상태. 현재 업무로 바쁜 것으로 보이며, 3~5일 후 부담 없는 follow-up이 적절함."
 }"""
 
     # 이메일 스레드를 시간순으로 정렬하여 텍스트로 변환
@@ -899,7 +937,15 @@ def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
 
 {thread_text}
 
-고객과의 관계 온도, 구매 가능성, 다음 액션을 평가해주세요.
+실전 영업에 바로 활용할 수 있도록:
+1. 고객 구매 온도 (0~10점)
+2. 숨은 의도/제한조건
+3. 고객 상태 라벨 (CRM용)
+4. 추천 후속 액션
+5. 후속 이메일 초안 (바로 보낼 수 있는 문구)
+6. 잠재 니즈 예측
+
+을 분석해주세요.
 """
     
     # 스레드 분석은 중요하므로 standard 모델 사용
