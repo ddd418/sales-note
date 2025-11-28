@@ -1888,7 +1888,7 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
         from reporting.models import DeliveryItem
         items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
         for item in items:
-            product_name = item.product.name if item.product else item.product_name
+            product_name = item.product.product_code if item.product else item.item_name
             delivery_items.append({
                 'name': product_name,
                 'quantity': item.quantity,
