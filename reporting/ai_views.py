@@ -865,9 +865,22 @@ def ai_recommend_products(request, followup_id):
             if schedule.notes:
                 meeting_notes += f"[{schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '날짜 미상'}] {schedule.notes}\n\n"
         
+        # 고객 히스토리 가져오기 (실무자가 작성한 내용)
+        from reporting.models import History
+        customer_histories = History.objects.filter(
+            followup=followup
+        ).order_by('-created_at')[:15]  # 최근 15개
+        
+        history_notes = ""
+        for history in customer_histories:
+            if history.content:
+                date_str = history.created_at.strftime('%Y-%m-%d') if history.created_at else '날짜 미상'
+                action_type = history.get_action_type_display() if hasattr(history, 'get_action_type_display') else history.action_type
+                history_notes += f"[{date_str}] ({action_type}) {history.content}\n\n"
+        
         # 관심 키워드 추출 (미팅 노트와 견적/구매 제품에서)
         interest_keywords = []
-        all_text = meeting_notes
+        all_text = meeting_notes + history_notes
         
         # 제품명에서 키워드 추출
         for item in purchase_history + quote_history:
@@ -929,11 +942,12 @@ def ai_recommend_products(request, followup_id):
             'purchase_history': purchase_history,
             'quote_history': quote_history,
             'meeting_notes': meeting_notes[:2500],  # 토큰 절약
+            'history_notes': history_notes[:2500],  # 실무자 작성 히스토리 추가
             'interest_keywords': interest_keywords,
             'available_products': product_catalog  # 실제 제품 카탈로그 추가
         }
         
-        logger.info(f"[AI 상품추천] AI 분석 시작 - 구매: {len(purchase_history)}건, 견적: {len(quote_history)}건")
+        logger.info(f"[AI 상품추천] AI 분석 시작 - 구매: {len(purchase_history)}건, 견적: {len(quote_history)}건, 히스토리: {len(customer_histories)}건")
         # AI 추천 실행
         result = recommend_products(customer_data, request.user)
         logger.info(f"[AI 상품추천] AI 분석 완료 - 추천: {len(result.get('recommendations', []))}개")
@@ -946,10 +960,12 @@ def ai_recommend_products(request, followup_id):
             'purchase_count': len(purchase_history),
             'quote_count': len(quote_history),
             'meeting_count': len(meeting_schedules),
+            'history_count': len(customer_histories),
             'data_sources': {
                 'has_purchases': len(purchase_history) > 0,
                 'has_quotes': len(quote_history) > 0,
-                'has_meetings': bool(meeting_notes.strip())
+                'has_meetings': bool(meeting_notes.strip()),
+                'has_histories': bool(history_notes.strip())
             }
         })
     
@@ -1113,7 +1129,9 @@ def ai_natural_language_search(request):
                 customer_ids_from_delivery = None
                 if delivery_filters:
                     from reporting.models import DeliveryItem
+                    # 권한 필터 추가: 자신의 일정에 연결된 납품상품만
                     customer_ids_from_delivery = DeliveryItem.objects.filter(
+                        schedule__user__in=accessible_users,
                         **delivery_filters
                     ).values_list('schedule__followup_id', flat=True).distinct()
                     logger.info(f"[자연어검색] 납품상품 필터: {delivery_filters} → 고객 {len(customer_ids_from_delivery)}명")
@@ -1122,7 +1140,9 @@ def ai_natural_language_search(request):
                 customer_ids_from_quote = None
                 if quote_filters:
                     from reporting.models import QuoteItem
+                    # 권한 필터 추가: 자신이 작성한 견적의 상품만
                     customer_ids_from_quote = QuoteItem.objects.filter(
+                        quote__created_by__in=accessible_users,
                         **quote_filters
                     ).values_list('quote__followup_id', flat=True).distinct()
                     logger.info(f"[자연어검색] 견적상품 필터: {quote_filters} → 고객 {len(customer_ids_from_quote)}명")
