@@ -12602,8 +12602,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
     템플릿 파일 형식:
     - 엑셀: {{고객명}}, {{업체명}}, {{품목1_이름}}, {{품목1_수량}}, {{품목1_단가}}, {{품목1_금액}} 등의 변수 사용
     """
-    logger.info(f"[서류생성] 시작 - document_type={document_type}, schedule_id={schedule_id}, output_format={output_format}")
-    logger.info(f"[서류생성] 요청 방식: {request.method}, 사용자: {request.user.username}")
     
     from reporting.models import Schedule, DeliveryItem, DocumentTemplate
     from django.http import HttpResponse, FileResponse
@@ -12616,7 +12614,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
     
     try:
         schedule = get_object_or_404(Schedule, pk=schedule_id)
-        logger.info(f"[서류생성] 일정 조회 완료 - ID: {schedule_id}")
         
         # 권한 체크
         if not can_access_user_data(request.user, schedule.user):
@@ -12625,7 +12622,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
-        logger.info(f"[서류생성] 회사: {company.name}, 서류 타입: {document_type}")
         
         document_template = DocumentTemplate.objects.filter(
             company=company,
@@ -12657,7 +12653,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 'error': f'{doc_type_name} 템플릿이 등록되어 있지 않습니다. 서류 관리 메뉴에서 먼저 템플릿을 등록해주세요.'
             }, status=404)
         
-        logger.info(f"[서류생성] 템플릿 찾음 - ID: {document_template.id}, 이름: {document_template.name}")
         
         # 파일이 존재하는지 확인 (Cloudinary 지원)
         if not document_template.file:
@@ -12676,12 +12671,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             # CloudinaryField - public_id와 URL 직접 사용
             public_id = document_template.file.public_id
             file_url = document_template.file.url
-            logger.info(f"[서류생성] Cloudinary 파일 - public_id: {public_id}")
-            logger.info(f"[서류생성] Cloudinary URL: {file_url}")
             
             # URL이 이미 http(s)로 시작하면 바로 다운로드
             if file_url.startswith('http://') or file_url.startswith('https://'):
-                logger.info(f"[서류생성] Cloudinary 파일 다운로드 시작")
                 response = requests.get(file_url)
                 if response.status_code != 200:
                     logger.error(f"[서류생성] 다운로드 실패 - 상태코드: {response.status_code}")
@@ -12690,12 +12682,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                         'error': '서류 템플릿 파일을 다운로드할 수 없습니다.'
                     }, status=500)
                 
-                logger.info(f"[서류생성] 다운로드 성공 - 크기: {len(response.content)} bytes")
                 # 임시 파일에 저장
                 with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
                     tmp_file.write(response.content)
                     template_file_path = tmp_file.name
-                logger.info(f"[서류생성] 임시 파일 생성: {template_file_path}")
             else:
                 logger.error(f"[서류생성] Cloudinary URL이 상대 경로: {file_url}")
                 return JsonResponse({
@@ -12705,7 +12695,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         else:
             # FileField - 로컬 파일 경로 사용
             template_file_path = document_template.file.path
-            logger.info(f"[서류생성] 로컬 파일 경로: {template_file_path}")
         
         # 납품 품목 조회
         delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
@@ -12715,17 +12704,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             # CloudinaryField - URL에서 확장자 추출 (public_id는 확장자가 없을 수 있음)
             file_url = document_template.file.url
             original_ext = os.path.splitext(file_url.split('?')[0])[1].lower()  # 쿼리 스트링 제거 후 확장자 추출
-            logger.info(f"[서류생성] CloudinaryField URL에서 확장자 추출: {original_ext}")
         else:
             # FileField - name 속성 사용
             original_ext = os.path.splitext(document_template.file.name)[1].lower()
-            logger.info(f"[서류생성] FileField 확장자: {original_ext}")
         
-        logger.info(f"[서류생성] 파일 확장자: {original_ext}, 경로: {template_file_path}")
         
         # 엑셀 파일인 경우 데이터 채우기
         if original_ext in ['.xlsx', '.xls', '.xlsm']:
-            logger.info(f"[서류생성] 엑셀 파일 처리 시작")
             try:
                 # ZIP 레벨에서 직접 처리 (한글 완벽 보존 + 이미지 보존)
                 import shutil
@@ -12737,7 +12722,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     shutil.copy2(template_file_path, tmp_file.name)
                     temp_path = tmp_file.name
                 
-                logger.info(f"[서류생성] ZIP 직접 처리 방식: {temp_path}")
                 
                 # 총액 계산
                 subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
@@ -12892,27 +12876,21 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_금액'] = f"{int(item_subtotal):,}"
                     data_map[f'품목{idx}_총액'] = f"{int(item_subtotal * Decimal('1.1')):,}"
                 
-                logger.info(f"데이터 매핑 완료: {len(delivery_items)}개 품목")
-                
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}
                 
-                logger.info(f"[서류생성] ZIP 파일 열기 시작: {temp_path}")
                 try:
                     with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                        logger.info(f"[서류생성] ZIP 파일 열림 성공")
                         for file_info in zip_ref.infolist():
                             # 이미지, 차트, 미디어 파일 백업
                             if (file_info.filename.startswith('xl/media/') or 
                                 file_info.filename.startswith('xl/drawings/') or 
                                 file_info.filename.startswith('xl/charts/')):
                                 media_files[file_info.filename] = (file_info, zip_ref.read(file_info.filename))
-                                logger.info(f"[서류생성] 미디어 파일 백업: {file_info.filename}")
                 except Exception as zip_error:
                     logger.error(f"[서류생성] ZIP 파일 열기 실패: {zip_error}")
                     raise
                 
-                logger.info(f"[서류생성] 총 {len(media_files)}개 미디어 파일 백업 완료")
                 
                 # 2단계: ZIP 레벨에서 직접 sharedStrings.xml 수정 (한글 보존)
                 import re
@@ -12933,7 +12911,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     xml_str = data.decode('utf-8')
                                     
                                     # 원본 일부 로그 (처음 500자)
-                                    logger.info(f"[서류생성] 원본 sharedStrings.xml 샘플:\n{xml_str[:500]}")
                                     
                                     # 변수 치환 (한글 그대로 UTF-8 유지)
                                     for key, value in data_map.items():
@@ -12942,7 +12919,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                             # 그대로 치환 (XML은 이미 올바른 형식이므로)
                                             xml_str = xml_str.replace(pattern, str(value))
                                             replaced_count += 1
-                                            logger.info(f"[서류생성] {pattern} → {value}")
                                     
                                     # {{유효일+숫자}} 패턴 처리
                                     valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
@@ -12968,8 +12944,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                                     data = xml_str.encode('utf-8')
                                     
                                     # 수정된 내용 일부 로그
-                                    logger.info(f"[서류생성] 수정된 sharedStrings.xml 샘플:\n{xml_str[:500]}")
-                                    logger.info(f"[서류생성] sharedStrings.xml 처리 완료")
                                 except Exception as xml_error:
                                     logger.warning(f"[서류생성] sharedStrings.xml 처리 오류: {xml_error}")
                                     import traceback
@@ -12981,8 +12955,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 os.unlink(temp_path)
                 shutil.move(temp_modified, temp_path)
                 
-                logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
-                logger.info(f"[서류생성] 변수 치환 완료: {replaced_count}개")
                 
                 # 3단계: ZIP으로 미디어 파일 복원
                 if media_files:
@@ -13000,14 +12972,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                             # 백업한 미디어 파일 복원 (원본 ZipInfo 사용)
                             for filename, (file_info, data) in media_files.items():
                                 zip_out.writestr(file_info, data)
-                                logger.info(f"[서류생성] 미디어 파일 복원: {filename}")
                     
                     # 원본 삭제하고 새 파일로 교체
                     os.unlink(temp_path)
                     shutil.move(temp_output, temp_path)
-                    logger.info(f"[서류생성] 미디어 파일 복원 완료")
                 
-                logger.info(f"[서류생성] 파일 처리 완료: {temp_path}")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
@@ -13038,7 +13007,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                             temp_path
                         ], capture_output=True, timeout=30, check=True)
                         
-                        logger.info(f"[서류생성] PDF 변환 완료: {pdf_path}")
                         
                         # PDF 파일 읽기
                         with open(pdf_path, 'rb') as f:
@@ -13071,7 +13039,6 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     
                 else:
                     # Excel 파일로 저장
-                    logger.info(f"[서류생성] Excel 파일 반환: {temp_path}")
                     
                     # 저장된 파일을 읽어서 반환
                     with open(temp_path, 'rb') as f:
