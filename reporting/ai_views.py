@@ -566,12 +566,13 @@ def ai_suggest_follow_ups(request):
                 'error': 'AI 기능 사용 권한이 없습니다.'
             }, status=403)
         
-        from django.db.models import Sum, Q, Max, Count, Subquery, OuterRef, F, Value, CharField
+        from django.db.models import Sum, Q, Max, Count, Subquery, OuterRef, F, Value, CharField, DecimalField
         from django.db.models.functions import Coalesce
         from django.utils import timezone
         from datetime import timedelta
         from reporting.models import History, Prepayment, OpportunityTracking, EmailLog
         import re
+        from decimal import Decimal
         
         logger.info(f"[AI 팔로우업] 고객 데이터 수집 중 (최적화 버전)...")
         six_months_ago = timezone.now() - timedelta(days=180)
@@ -586,7 +587,11 @@ def ai_suggest_follow_ups(request):
             meeting_count=Count('schedules', filter=Q(schedules__activity_type='customer_meeting', schedules__visit_date__gte=six_months_ago), distinct=True),
             quote_count=Count('schedules', filter=Q(schedules__activity_type='quote', schedules__visit_date__gte=six_months_ago), distinct=True),
             purchase_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago), distinct=True),
-            total_purchase=Coalesce(Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago)), 0),
+            total_purchase=Coalesce(
+                Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=six_months_ago)),
+                Value(Decimal('0')),
+                output_field=DecimalField()
+            ),
             last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__visit_date__gte=six_months_ago)),
             # 히스토리 통계
             history_count=Count('histories', filter=Q(histories__created_at__gte=six_months_ago), distinct=True),
