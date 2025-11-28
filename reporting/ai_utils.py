@@ -1993,16 +1993,20 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
 ---
 
 위 데이터를 바탕으로, **{activity_type_display}** 일정에 대한 구체적이고 실행 가능한 전략을 작성해주세요.
-특히 이 일정과 연결된 히스토리가 있다면 이를 우선적으로 활용하고, 전체 히스토리에서 고객의 니즈와 관심사를 파악하세요.
+
+**중요 지침:**
+- 이 일정과 연결된 히스토리가 있다면 이를 **최우선**으로 활용하세요.
+- **준비물과 체크리스트**는 반드시 **이번 일정 메모와 연결된 히스토리**에서만 추출하세요. 과거 전체 히스토리에서 추출하지 마세요.
+- 전체 히스토리는 고객의 전반적인 니즈와 관심사를 파악하는 **배경 정보**로만 활용하세요.
 """
 
     try:
-        logger.info(f"[미팅전략] AI 호출 시작 - 모델: {MODEL_PREMIUM}")
+        logger.info(f"[미팅전략] AI 호출 시작 - 모델: {MODEL_STANDARD}")
         logger.info(f"[미팅전략] 프롬프트 길이 - 시스템: {len(system_prompt)}자, 사용자: {len(user_prompt)}자")
         logger.info(f"[미팅전략] 수집된 데이터 - 히스토리: {len(history_records)}건, 일정 컨텍스트: {len(schedule_context)}건, 선결제: {len(prepayment_details)}건")
         
         response = get_openai_client().chat.completions.create(
-            model=MODEL_PREMIUM,
+            model=MODEL_STANDARD,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
