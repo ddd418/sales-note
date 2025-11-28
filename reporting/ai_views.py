@@ -1200,8 +1200,11 @@ def ai_natural_language_search(request):
                 logger.info(f"[자연어검색] 최종 고객 수: {customers.count()}명")
                 
                 for customer in customers:
-                    # 마지막 연락일 계산
-                    last_schedule = Schedule.objects.filter(followup=customer).order_by('-visit_date').first()
+                    # 마지막 연락일 계산 (권한 있는 일정만)
+                    last_schedule = Schedule.objects.filter(
+                        followup=customer,
+                        user__in=accessible_users
+                    ).order_by('-visit_date').first()
                     last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else ''
                     
                     # 구매 상품 정보 (상품 검색인 경우)
