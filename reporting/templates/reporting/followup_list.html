@@ -908,11 +908,11 @@
               <div id="ai-search-results" class="mb-3" style="display: none;"></div>
               {% endif %}
               
-              <form method="GET" action="{% url 'reporting:followup_list' %}">
+              <form method="GET" action="{% url 'reporting:followup_list' %}" id="followup-search-form">
                 <div class="row g-3">
                   <!-- 검색어 -->
                   <div class="col-md-4">
-                    <label for="search" class="form-label">검색어</label>
+                    <label for="search" class="form-label">검색어 <small class="text-muted">(쉼표로 다중 검색)</small></label>
                     <input 
                       type="text" 
                       class="form-control" 
@@ -1781,6 +1781,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const results = data.results;
         const totalCount = data.total_count || 0;
         
+        // 고객명 목록 추출 (다중 검색용)
+        const customerNames = results.customers ? results.customers.map(c => c.name) : [];
+        const searchParam = customerNames.join(',');
+        
         let html = `
             <div class="alert alert-info">
                 <div class="d-flex justify-content-between align-items-center">
@@ -1790,7 +1794,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <button type="button" class="btn-close" onclick="document.getElementById('ai-search-results').style.display='none'"></button>
                 </div>
-                <small class="text-muted d-block mt-2">총 ${totalCount}개의 결과를 찾았습니다.</small>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted">총 ${totalCount}개의 결과를 찾았습니다.</small>
+                    ${customerNames.length > 0 ? `
+                        <button type="button" class="btn btn-sm btn-primary" onclick="applyAISearchToList('${searchParam.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-filter me-1"></i>검색 결과로 필터링
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `;
         
@@ -1798,8 +1809,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (results.customers && results.customers.length > 0) {
             html += `
                 <div class="card mb-3">
-                    <div class="card-header bg-primary text-white">
-                        <i class="fas fa-users me-2"></i>고객 (${results.customers.length}건)
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-users me-2"></i>고객 (${results.customers.length}건)</span>
+                        <button type="button" class="btn btn-sm btn-light" onclick="applyAISearchToList('${searchParam.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-search me-1"></i>전체 검색
+                        </button>
                     </div>
                     <div class="list-group list-group-flush">
             `;
@@ -1906,6 +1920,22 @@ document.addEventListener('DOMContentLoaded', function() {
         aiSearchResults.innerHTML = html;
         aiSearchResults.style.display = 'block';
     }
+    
+    // AI 검색 결과를 검색 폼에 적용하는 함수 (전역)
+    window.applyAISearchToList = function(searchTerms) {
+        const searchInput = document.getElementById('search');
+        const searchForm = document.getElementById('followup-search-form');
+        
+        if (searchInput && searchForm) {
+            searchInput.value = searchTerms;
+            // AI 검색 결과 영역 숨기기
+            const aiSearchResults = document.getElementById('ai-search-results');
+            if (aiSearchResults) {
+                aiSearchResults.style.display = 'none';
+            }
+            searchForm.submit();
+        }
+    };
 });
 {% endif %}
 

@@ -626,16 +626,24 @@ def followup_list_view(request):
         # Salesman은 자신의 데이터만 조회
         followups = FollowUp.objects.filter(user=request.user).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     
-    # 고객명/업체명/책임자명 검색 기능
+    # 고객명/업체명/책임자명 검색 기능 (다중 검색 지원: 쉼표로 구분)
     search_query = request.GET.get('search')
     if search_query:
-        followups = followups.filter(
-            Q(customer_name__icontains=search_query) |
-            Q(company__name__icontains=search_query) |
-            Q(department__name__icontains=search_query) |
-            Q(manager__icontains=search_query) |
-            Q(notes__icontains=search_query)
-        )
+        # 쉼표로 구분된 다중 검색어 처리
+        search_terms = [term.strip() for term in search_query.split(',') if term.strip()]
+        
+        if search_terms:
+            # 각 검색어에 대해 OR 조건으로 검색
+            combined_q = Q()
+            for term in search_terms:
+                combined_q |= (
+                    Q(customer_name__icontains=term) |
+                    Q(company__name__icontains=term) |
+                    Q(department__name__icontains=term) |
+                    Q(manager__icontains=term) |
+                    Q(notes__icontains=term)
+                )
+            followups = followups.filter(combined_q).distinct()
     
     # 우선순위 필터링
     priority_filter = request.GET.get('priority')
