@@ -922,8 +922,9 @@ def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
     # 사용자 이름 가져오기
     sender_name = "담당자"
     if user:
-        if hasattr(user, 'userprofile') and user.userprofile.name:
-            sender_name = user.userprofile.name
+        # User 모델의 first_name 또는 get_full_name() 사용
+        if user.get_full_name():
+            sender_name = user.get_full_name()
         elif user.first_name:
             sender_name = user.first_name
         elif user.username:
