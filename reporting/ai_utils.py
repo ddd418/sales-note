@@ -919,6 +919,16 @@ def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
   "summary": "고객이 결재 진행 의사를 밝힌 상태. 현재 업무로 바쁜 것으로 보이며, 3~5일 후 부담 없는 follow-up이 적절함."
 }"""
 
+    # 사용자 이름 가져오기
+    sender_name = "담당자"
+    if user:
+        if hasattr(user, 'userprofile') and user.userprofile.name:
+            sender_name = user.userprofile.name
+        elif user.first_name:
+            sender_name = user.first_name
+        elif user.username:
+            sender_name = user.username
+
     # 이메일 스레드를 시간순으로 정렬하여 텍스트로 변환
     thread_text = ""
     for email in sorted(emails, key=lambda x: x.get('date', '')):
@@ -937,18 +947,20 @@ def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
 
 {thread_text}
 
+**발신자 정보:** {sender_name}
+
 실전 영업에 바로 활용할 수 있도록:
 1. 고객 구매 온도 (0~10점)
 2. 숨은 의도/제한조건
 3. 고객 상태 라벨 (CRM용)
 4. 추천 후속 액션
-5. 후속 이메일 초안 (바로 보낼 수 있는 문구)
+5. 후속 이메일 초안 (바로 보낼 수 있는 문구, 발신자 이름은 "{sender_name}"으로)
 6. 잠재 니즈 예측
 
 을 분석해주세요.
 """
     
-    # 스레드 분석은 중요하므로 standard 모델 사용
+    # 이메일 스레드 분석은 실무 영업에 중요하므로 standard 모델 사용 (json_object 지원)
     try:
         logger.info(f"Analyzing email thread with {len(emails)} emails")
         
@@ -1489,90 +1501,6 @@ def summarize_meeting_notes(meeting_notes: str, user=None) -> Dict:
     
     except Exception as e:
         logger.error(f"Error summarizing meeting notes: {e}")
-        raise
-
-
-def analyze_email_thread(emails: List[Dict], user=None) -> Dict:
-    """
-    일정별 이메일 왕복 분석
-    
-    Args:
-        emails: 이메일 리스트 [{'sender': ..., 'body': ..., 'date': ...}, ...]
-        user: 요청 사용자
-    
-    Returns:
-        {
-            'thread_summary': '전체 대화 요약',
-            'customer_intent': '고객 의도 분석',
-            'response_quality': '응답 품질 평가',
-            'suggested_next_action': '다음 액션 제안',
-            'sentiment_timeline': [...],
-            'key_topics': [...]
-        }
-    """
-    if user and not check_ai_permission(user):
-        raise PermissionError("AI 기능 사용 권한이 없습니다.")
-    
-    system_prompt = """당신은 이메일 커뮤니케이션 분석 전문가입니다.
-이메일 왕복 내역을 분석하여:
-1. 전체 대화 흐름 요약
-2. 고객의 진짜 의도 파악
-3. 우리의 응답 품질 평가
-4. 다음에 취해야 할 액션
-5. 감정 변화 추이
-6. 주요 논의 주제"""
-
-    # 이메일 스레드를 읽기 쉽게 포맷팅
-    formatted_emails = []
-    for i, email in enumerate(emails[:10], 1):  # 최대 10개
-        formatted_emails.append(f"""
-이메일 #{i}
-발신: {email.get('sender', 'Unknown')}
-날짜: {email.get('date', '')}
-내용: {email.get('body', '')[:500]}  # 500자만
-""")
-    
-    user_prompt = f"""
-다음 이메일 왕복 내역을 분석해주세요:
-
-{chr(10).join(formatted_emails)}
-
-응답 형식 (JSON):
-{{
-  "thread_summary": "전체 대화 요약 (3-5문장)",
-  "customer_intent": "고객의 진짜 의도",
-  "response_quality": {{
-    "score": 1-10,
-    "feedback": "응답 품질 평가"
-  }},
-  "suggested_next_action": "다음 액션 제안",
-  "sentiment_timeline": [
-    {{"email_num": 1, "sentiment": "positive|neutral|negative", "note": "이유"}},
-    ...
-  ],
-  "key_topics": ["주제1", "주제2", ...]
-}}
-"""
-    
-    # 이메일 스레드 분석은 내부용이므로 빠른 mini 모델 사용
-    try:
-        response = get_openai_client().chat.completions.create(
-            model=MODEL_MINI,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=2000,
-            temperature=0.5,
-            response_format={"type": "json_object"}
-        )
-        
-        result = json.loads(response.choices[0].message.content)
-        logger.info(f"Email thread analyzed ({len(emails)} emails) using {MODEL_MINI}")
-        return result
-    
-    except Exception as e:
-        logger.error(f"Error analyzing email thread: {e}")
         raise
 
 
