@@ -594,7 +594,7 @@ def ai_suggest_follow_ups(request):
             # 진행 중인 기회 수
             opportunity_count=Count('opportunities', filter=Q(opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
             # 이메일 수
-            email_count=Count('emaillogs', filter=Q(emaillogs__created_at__gte=six_months_ago), distinct=True),
+            email_count=Count('emails', filter=Q(emails__created_at__gte=six_months_ago), distinct=True),
         ).filter(
             Q(schedule_count__gt=0) | Q(history_count__gt=0)  # 일정 또는 히스토리가 있는 고객만
         ).select_related('company').prefetch_related(
