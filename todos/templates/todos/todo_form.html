@@ -1,0 +1,260 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{% if edit_mode %}TODO 수정{% else %}TODO 추가{% endif %} - 영업 보고 시스템{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 모달 스타일 수정 */
+    .modal-backdrop { display: none !important; }
+    .modal { z-index: 1055 !important; pointer-events: none !important; }
+    .modal.show { display: flex !important; align-items: center; justify-content: center; }
+    .modal-dialog { z-index: 1056 !important; pointer-events: auto !important; }
+    .modal-content { 
+        position: relative; z-index: 1057 !important; pointer-events: auto !important;
+        background-color: #fff; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 0.5rem;
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.3);
+    }
+    .modal-header, .modal-body, .modal-footer,
+    .modal-header *, .modal-body *, .modal-footer * { pointer-events: auto !important; }
+    
+    /* 검색 결과 리스트 */
+    .client-search-results { max-height: 300px; overflow-y: auto; }
+    .client-search-item {
+        cursor: pointer; padding: 0.75rem 1rem; border-bottom: 1px solid #eee;
+        transition: background 0.15s;
+    }
+    .client-search-item:hover { background: #f8f9fa; }
+    .client-search-item:last-child { border-bottom: none; }
+    .client-search-item .company-name { font-weight: 600; color: #333; }
+    .client-search-item .customer-name { font-size: 0.875rem; color: #666; }
+    
+    /* 선택된 고객 표시 */
+    .selected-client-badge {
+        display: inline-flex;
+        align-items: center;
+        background: #e7f1ff;
+        border: 1px solid #b6d4fe;
+        border-radius: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        color: #0d6efd;
+        font-weight: 500;
+    }
+    .selected-client-badge .remove-btn {
+        margin-left: 0.5rem;
+        color: #dc3545;
+        cursor: pointer;
+    }
+    .selected-client-badge .remove-btn:hover {
+        color: #bb2d3b;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">
+                        <i class="fas fa-{% if edit_mode %}edit{% else %}plus-circle{% endif %} me-2 text-primary"></i>
+                        {% if edit_mode %}TODO 수정{% else %}새 TODO 추가{% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <!-- 제목 -->
+                        <div class="mb-3">
+                            <label for="title" class="form-label">제목 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   value="{{ todo.title|default:'' }}" placeholder="할 일을 입력하세요" required autofocus>
+                        </div>
+                        
+                        <!-- 상세 내용 -->
+                        <div class="mb-3">
+                            <label for="description" class="form-label">상세 내용</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" 
+                                      placeholder="상세 내용을 입력하세요 (선택사항)">{{ todo.description|default:'' }}</textarea>
+                        </div>
+                        
+                        <!-- 예상 소요시간 -->
+                        <div class="mb-3">
+                            <label for="expected_duration" class="form-label">예상 소요시간</label>
+                            <select class="form-select" id="expected_duration" name="expected_duration">
+                                <option value="">선택 안함</option>
+                                {% for value, label in duration_choices %}
+                                <option value="{{ value }}" {% if todo.expected_duration == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- 관련 고객 -->
+                        <div class="mb-3">
+                            <label class="form-label">관련 고객</label>
+                            <input type="hidden" id="related_client" name="related_client" value="{{ todo.related_client_id|default:'' }}">
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#clientSearchModal">
+                                    <i class="fas fa-search me-1"></i>고객 검색
+                                </button>
+                                <span id="selectedClientDisplay">
+                                    {% if todo.related_client %}
+                                    <span class="selected-client-badge">
+                                        <i class="fas fa-user me-1"></i>
+                                        {{ todo.related_client.customer_name }}
+                                        {% if todo.related_client.company %} ({{ todo.related_client.company.name }}){% endif %}
+                                        <i class="fas fa-times remove-btn" onclick="clearClient()"></i>
+                                    </span>
+                                    {% else %}
+                                    <span class="text-muted">선택된 고객 없음</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        {% if not edit_mode %}
+                        <!-- 첨부파일 (새 TODO일 때만) -->
+                        <div class="mb-3">
+                            <label for="attachments" class="form-label">첨부파일</label>
+                            <input type="file" class="form-control" id="attachments" name="attachments" multiple>
+                            <div class="form-text">여러 파일을 동시에 선택할 수 있습니다.</div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- 버튼 -->
+                        <div class="d-flex justify-content-end gap-2 pt-3 border-top">
+                            <a href="{% url 'todos:list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times me-1"></i>취소
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-{% if edit_mode %}save{% else %}plus{% endif %} me-1"></i>
+                                {% if edit_mode %}수정{% else %}추가{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 고객 검색 모달 -->
+<div class="modal fade" id="clientSearchModal" tabindex="-1" aria-labelledby="clientSearchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="clientSearchModalLabel">
+                    <i class="fas fa-search me-2 text-primary"></i>고객 검색
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 검색창 -->
+                <div class="mb-3">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="clientSearchInput" 
+                               placeholder="고객명 또는 회사명으로 검색...">
+                    </div>
+                </div>
+                
+                <!-- 검색 결과 -->
+                <div class="client-search-results border rounded" id="clientSearchResults">
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-info-circle me-1"></i>검색어를 입력하세요
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('clientSearchInput');
+    const resultsContainer = document.getElementById('clientSearchResults');
+    const hiddenInput = document.getElementById('related_client');
+    const displaySpan = document.getElementById('selectedClientDisplay');
+    let searchTimeout;
+    
+    // 검색 입력 이벤트
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        
+        if (query.length < 1) {
+            resultsContainer.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle me-1"></i>검색어를 입력하세요</div>';
+            return;
+        }
+        
+        resultsContainer.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> 검색중...</div>';
+        
+        searchTimeout = setTimeout(() => {
+            fetch(`/todos/api/search-clients/?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.results && data.results.length > 0) {
+                        resultsContainer.innerHTML = data.results.map(client => `
+                            <div class="client-search-item" data-id="${client.id}" data-name="${client.customer_name}" data-company="${client.company_name || ''}">
+                                <div class="company-name">
+                                    <i class="fas fa-building me-1 text-muted"></i>
+                                    ${client.company_name || '(회사명 없음)'}
+                                </div>
+                                <div class="customer-name">
+                                    <i class="fas fa-user me-1"></i>${client.customer_name}
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        // 클릭 이벤트 바인딩
+                        document.querySelectorAll('.client-search-item').forEach(item => {
+                            item.addEventListener('click', function() {
+                                selectClient(this.dataset.id, this.dataset.name, this.dataset.company);
+                            });
+                        });
+                    } else {
+                        resultsContainer.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-exclamation-circle me-1"></i>검색 결과가 없습니다</div>';
+                    }
+                })
+                .catch(err => {
+                    resultsContainer.innerHTML = '<div class="text-center text-danger py-4"><i class="fas fa-exclamation-triangle me-1"></i>검색 중 오류 발생</div>';
+                });
+        }, 300);
+    });
+    
+    // 고객 선택 함수
+    window.selectClient = function(id, name, company) {
+        hiddenInput.value = id;
+        const companyText = company ? ` (${company})` : '';
+        displaySpan.innerHTML = `
+            <span class="selected-client-badge">
+                <i class="fas fa-user me-1"></i>${name}${companyText}
+                <i class="fas fa-times remove-btn" onclick="clearClient()"></i>
+            </span>
+        `;
+        
+        // 모달 닫기
+        const modal = bootstrap.Modal.getInstance(document.getElementById('clientSearchModal'));
+        modal.hide();
+    };
+    
+    // 선택 해제
+    window.clearClient = function() {
+        hiddenInput.value = '';
+        displaySpan.innerHTML = '<span class="text-muted">선택된 고객 없음</span>';
+    };
+    
+    // 모달 열릴 때 포커스
+    document.getElementById('clientSearchModal').addEventListener('shown.bs.modal', function() {
+        searchInput.focus();
+        searchInput.value = '';
+        resultsContainer.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle me-1"></i>검색어를 입력하세요</div>';
+    });
+});
+</script>
+{% endblock %}

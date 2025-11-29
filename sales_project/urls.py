@@ -32,6 +32,7 @@ urlpatterns = [
     path('', home_redirect, name='home'),  # 루트 URL 추가
     path('admin/', admin.site.urls),
     path('reporting/', include('reporting.urls')),
+    path('todos/', include('todos.urls')),  # TODOLIST 앱
     path('logout/', auth_views.LogoutView.as_view(), name='logout'), # logout URL 추가
 ]
 

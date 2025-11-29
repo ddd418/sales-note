@@ -1,0 +1,248 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{{ todo.title }} - TODOLIST{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <!-- 메인 콘텐츠 -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <span class="badge {{ todo.status_badge_class }} me-2">{{ todo.get_status_display }}</span>
+                        <span class="badge {{ todo.source_badge_class }}">{{ todo.get_source_type_display }}</span>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog me-1"></i>관리
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'todos:edit' todo.pk %}">
+                                    <i class="fas fa-edit me-2"></i>수정
+                                </a>
+                            </li>
+                            {% if todo.status != 'done' %}
+                            <li>
+                                <form method="post" action="{% url 'todos:complete' todo.pk %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-success">
+                                        <i class="fas fa-check me-2"></i>완료 처리
+                                    </button>
+                                </form>
+                            </li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="{% url 'todos:delete' todo.pk %}" 
+                                      onsubmit="return confirm('정말 삭제하시겠습니까?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <i class="fas fa-trash me-2"></i>삭제
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h4 class="card-title mb-3 {% if todo.status == 'done' %}text-muted text-decoration-line-through{% endif %}">
+                        {{ todo.title }}
+                    </h4>
+                    
+                    {% if todo.description %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">상세 내용</h6>
+                        <p class="card-text" style="white-space: pre-wrap;">{{ todo.description }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- 정보 그리드 -->
+                    <div class="row g-3">
+                        {% if todo.due_date %}
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center {% if todo.is_overdue %}border-danger bg-danger bg-opacity-10{% endif %}">
+                                <div class="text-muted small mb-1">마감일</div>
+                                <div class="fw-bold {% if todo.is_overdue %}text-danger{% endif %}">
+                                    <i class="fas fa-calendar me-1"></i>{{ todo.due_date|date:"Y년 m월 d일" }}
+                                </div>
+                                {% if todo.is_overdue %}
+                                <small class="text-danger">마감일이 지났습니다!</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if todo.expected_duration %}
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <div class="text-muted small mb-1">예상 소요시간</div>
+                                <div class="fw-bold">
+                                    <i class="fas fa-clock me-1"></i>{{ todo.get_expected_duration_display }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if todo.related_client %}
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <div class="text-muted small mb-1">관련 고객</div>
+                                <div class="fw-bold">
+                                    <i class="fas fa-building me-1"></i>
+                                    <a href="{% url 'reporting:followup_detail' todo.related_client.pk %}">
+                                        {{ todo.related_client.company_name }}
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 첨부파일 -->
+            {% if attachments %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-paperclip me-2"></i>첨부파일 ({{ attachments.count }})
+                    </h6>
+                </div>
+                <ul class="list-group list-group-flush">
+                    {% for attachment in attachments %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-file me-2 text-muted"></i>
+                            {{ attachment.filename }}
+                            <small class="text-muted ms-2">({{ attachment.file_size|filesizeformat }})</small>
+                        </div>
+                        <a href="{{ attachment.file.url }}" class="btn btn-sm btn-outline-primary" download>
+                            <i class="fas fa-download"></i>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <!-- 활동 로그 -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-history me-2"></i>활동 로그
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if logs %}
+                    <div class="timeline">
+                        {% for log in logs %}
+                        <div class="d-flex mb-3">
+                            <div class="flex-shrink-0 me-3">
+                                <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" 
+                                     style="width: 36px; height: 36px;">
+                                    <i class="fas fa-{% if log.action_type == 'created' %}plus{% elif log.action_type == 'completed' %}check{% elif log.action_type == 'status_changed' %}exchange-alt{% else %}edit{% endif %} text-muted"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-medium">
+                                    {{ log.actor.get_full_name|default:log.actor.username }}
+                                    <span class="text-muted fw-normal">{{ log.get_action_type_display }}</span>
+                                </div>
+                                {% if log.message %}
+                                <div class="text-muted small">{{ log.message }}</div>
+                                {% endif %}
+                                <div class="text-muted small">{{ log.created_at|date:"Y-m-d H:i" }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center mb-0">활동 로그가 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 사이드바 -->
+        <div class="col-lg-4">
+            <!-- 상태 변경 카드 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-tasks me-2"></i>상태 변경
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'todos:change_status' todo.pk %}">
+                        {% csrf_token %}
+                        <div class="d-grid gap-2">
+                            {% if todo.status != 'ongoing' %}
+                            <button type="submit" name="status" value="ongoing" class="btn btn-outline-primary">
+                                <i class="fas fa-play me-1"></i>진행중
+                            </button>
+                            {% endif %}
+                            {% if todo.status != 'on_hold' %}
+                            <button type="submit" name="status" value="on_hold" class="btn btn-outline-secondary">
+                                <i class="fas fa-pause me-1"></i>보류
+                            </button>
+                            {% endif %}
+                            {% if todo.status != 'done' %}
+                            <button type="submit" name="status" value="done" class="btn btn-outline-success">
+                                <i class="fas fa-check me-1"></i>완료
+                            </button>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- 정보 카드 -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>상세 정보
+                    </h6>
+                </div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">생성자</span>
+                        <span>{{ todo.created_by.get_full_name|default:todo.created_by.username }}</span>
+                    </li>
+                    {% if todo.assigned_to %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">담당자</span>
+                        <span>{{ todo.assigned_to.get_full_name|default:todo.assigned_to.username }}</span>
+                    </li>
+                    {% endif %}
+                    {% if todo.requested_by and todo.requested_by != todo.created_by %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">요청자</span>
+                        <span>{{ todo.requested_by.get_full_name|default:todo.requested_by.username }}</span>
+                    </li>
+                    {% endif %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">생성일</span>
+                        <span>{{ todo.created_at|date:"Y-m-d H:i" }}</span>
+                    </li>
+                    {% if todo.completed_at %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span class="text-muted">완료일</span>
+                        <span>{{ todo.completed_at|date:"Y-m-d H:i" }}</span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 하단 네비게이션 -->
+    <div class="mt-4">
+        <a href="{% url 'todos:list' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>목록으로
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -27,6 +27,7 @@ else:
         "cloudinary",
         "django.contrib.humanize",
         "reporting",
+        "todos",
         "tailwind",
         "theme",
     ]

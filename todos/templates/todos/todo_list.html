@@ -1,0 +1,194 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}TODOLIST - 영업 보고 시스템{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 탭 스타일 - 기본 검은색, 선택 시 파란색 */
+    #todoTabs .nav-link {
+        color: #333 !important;
+        font-weight: 500;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+    }
+    #todoTabs .nav-link:hover {
+        color: #1e40af !important;
+        border-bottom-color: #ddd;
+    }
+    #todoTabs .nav-link.active {
+        color: #1e40af !important;
+        font-weight: 600;
+        border-bottom: 2px solid #1e40af !important;
+        background: transparent;
+    }
+    
+    /* ============================================
+       모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+       ============================================ */
+    
+    /* backdrop을 완전히 투명하게 (배경 없음) */
+    .modal-backdrop {
+        display: none !important;
+    }
+    
+    /* 모달 자체는 backdrop보다 높게 */
+    .modal {
+        z-index: 1055 !important;
+        pointer-events: none !important;
+    }
+    
+    /* 모달이 열렸을 때만 표시 */
+    .modal.show {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* 모달 다이얼로그만 클릭 가능하게 */
+    .modal-dialog {
+        z-index: 1056 !important;
+        pointer-events: auto !important;
+    }
+    
+    /* 모달 컨텐츠를 확실히 클릭 가능하게 */
+    .modal-content {
+        position: relative;
+        z-index: 1057 !important;
+        pointer-events: auto !important;
+        background-color: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 0.5rem;
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.3);
+    }
+    
+    /* 모달 내부의 모든 요소가 클릭 가능하도록 */
+    .modal-header,
+    .modal-body,
+    .modal-footer,
+    .modal-header *,
+    .modal-body *,
+    .modal-footer * {
+        pointer-events: auto !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="fas fa-tasks me-2 text-primary"></i>TODOLIST
+            </h2>
+            <p class="text-muted mb-0">할 일을 관리하고 업무를 추적하세요</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#quickAddModal">
+                <i class="fas fa-plus me-1"></i>빠른 추가
+            </button>
+            <a href="{% url 'todos:create' %}" class="btn btn-outline-primary">
+                <i class="fas fa-edit me-1"></i>상세 추가
+            </a>
+        </div>
+    </div>
+    
+    <!-- 탭 네비게이션 -->
+    <ul class="nav nav-tabs mb-4" id="todoTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'my' %}active{% endif %}" 
+                    id="my-tab" data-bs-toggle="tab" data-bs-target="#my" 
+                    type="button" role="tab" aria-controls="my" aria-selected="{% if active_tab == 'my' %}true{% else %}false{% endif %}">
+                <i class="fas fa-user me-1"></i>내 할 일
+                {% if my_count > 0 %}<span class="badge bg-primary ms-1">{{ my_count }}</span>{% endif %}
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'received' %}active{% endif %}" 
+                    id="received-tab" data-bs-toggle="tab" data-bs-target="#received" 
+                    type="button" role="tab" aria-controls="received" aria-selected="{% if active_tab == 'received' %}true{% else %}false{% endif %}">
+                <i class="fas fa-inbox me-1"></i>받은 일
+                {% if received_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ received_count }}</span>{% endif %}
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'requested' %}active{% endif %}" 
+                    id="requested-tab" data-bs-toggle="tab" data-bs-target="#requested" 
+                    type="button" role="tab" aria-controls="requested" aria-selected="{% if active_tab == 'requested' %}true{% else %}false{% endif %}">
+                <i class="fas fa-share me-1"></i>맡긴 일
+                {% if requested_count > 0 %}<span class="badge bg-info ms-1">{{ requested_count }}</span>{% endif %}
+            </button>
+        </li>
+    </ul>
+    
+    <!-- 탭 컨텐츠 -->
+    <div class="tab-content" id="todoTabContent">
+        <!-- 내 할 일 -->
+        <div class="tab-pane fade {% if active_tab == 'my' %}show active{% endif %}" id="my" role="tabpanel" aria-labelledby="my-tab">
+            <div id="my-todo-content" hx-get="{% url 'todos:my_list' %}" hx-trigger="load, todoCreated from:body, todoUpdated from:body, todoDeleted from:body" hx-swap="innerHTML">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">로딩중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 받은 일 -->
+        <div class="tab-pane fade {% if active_tab == 'received' %}show active{% endif %}" id="received" role="tabpanel" aria-labelledby="received-tab">
+            <div id="received-todo-content" hx-get="{% url 'todos:received_list' %}" hx-trigger="revealed, todoUpdated from:body" hx-swap="innerHTML">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">로딩중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 맡긴 일 -->
+        <div class="tab-pane fade {% if active_tab == 'requested' %}show active{% endif %}" id="requested" role="tabpanel" aria-labelledby="requested-tab">
+            <div id="requested-todo-content" hx-get="{% url 'todos:requested_list' %}" hx-trigger="revealed, todoUpdated from:body" hx-swap="innerHTML">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">로딩중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 빠른 추가 모달 -->
+<div class="modal fade" id="quickAddModal" tabindex="-1" aria-labelledby="quickAddModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="quickAddModalLabel">
+                    <i class="fas fa-plus-circle me-2 text-primary"></i>빠른 TODO 추가
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form hx-post="{% url 'todos:api_quick_add' %}" hx-target="#my-todo-content" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) { this.reset(); bootstrap.Modal.getInstance(document.getElementById('quickAddModal')).hide(); }">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="quickTitle" class="form-label">할 일 제목</label>
+                        <input type="text" class="form-control" id="quickTitle" name="title" placeholder="예: 견적서 작성하기" required autofocus>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i>추가
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- HTMX -->
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+{% endblock %}

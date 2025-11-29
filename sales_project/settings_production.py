@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'cloudinary',
     'django.contrib.humanize',
     'reporting',
+    'todos',
 ]
 
 MIDDLEWARE = [

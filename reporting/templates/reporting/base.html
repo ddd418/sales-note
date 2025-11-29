@@ -484,6 +484,12 @@
           </a>
         </li>
         <li class="nav-item">
+          <a href="{% url 'todos:list' %}" class="nav-link {% if request.resolver_match.app_name == 'todos' %}active{% endif %}">
+            <i class="fas fa-tasks"></i>
+            <span>TODOLIST</span>
+          </a>
+        </li>
+        <li class="nav-item">
           <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
             <i class="fas fa-list"></i>
             <span>일정 목록</span>

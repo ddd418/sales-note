@@ -1,0 +1,95 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{% if is_manager_assign %}업무 하달{% else %}동료에게 요청{% endif %} - TODOLIST{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0">
+                        {% if is_manager_assign %}
+                        <i class="fas fa-user-tie me-2 text-primary"></i>업무 하달
+                        {% else %}
+                        <i class="fas fa-user-friends me-2 text-primary"></i>동료에게 업무 요청
+                        {% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <!-- 담당자 선택 -->
+                        <div class="mb-3">
+                            <label for="assigned_to" class="form-label">
+                                {% if is_manager_assign %}담당자{% else %}요청할 동료{% endif %} <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="assigned_to" name="assigned_to" required>
+                                <option value="">선택하세요</option>
+                                {% if is_manager_assign %}
+                                {% for member in team_members %}
+                                <option value="{{ member.pk }}">
+                                    {{ member.get_full_name|default:member.username }}
+                                </option>
+                                {% endfor %}
+                                {% else %}
+                                {% for peer in peers %}
+                                <option value="{{ peer.pk }}">
+                                    {{ peer.get_full_name|default:peer.username }}
+                                </option>
+                                {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        
+                        <!-- 제목 -->
+                        <div class="mb-3">
+                            <label for="title" class="form-label">제목 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   placeholder="요청할 업무를 입력하세요" required>
+                        </div>
+                        
+                        <!-- 상세 내용 -->
+                        <div class="mb-3">
+                            <label for="description" class="form-label">상세 내용</label>
+                            <textarea class="form-control" id="description" name="description" rows="5" 
+                                      placeholder="업무에 대한 상세 설명을 입력하세요"></textarea>
+                        </div>
+                        
+                        <!-- 마감일 -->
+                        <div class="mb-3">
+                            <label for="due_date" class="form-label">마감일</label>
+                            <input type="date" class="form-control" id="due_date" name="due_date">
+                        </div>
+                        
+                        {% if not is_manager_assign %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>동료 요청</strong>은 상대방이 <strong>승인</strong> 후 진행됩니다.
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>매니저 하달</strong>은 즉시 담당자의 업무로 등록됩니다.
+                        </div>
+                        {% endif %}
+                        
+                        <!-- 버튼 -->
+                        <div class="d-flex justify-content-end gap-2 pt-3 border-top">
+                            <a href="{% url 'todos:list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times me-1"></i>취소
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane me-1"></i>
+                                {% if is_manager_assign %}하달하기{% else %}요청하기{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
