@@ -18,13 +18,14 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # Django app에서 tasks 자동 검색
 app.autodiscover_tasks()
 
-# 주기적 작업 스케줄 (현재 비활성화)
-# app.conf.beat_schedule = {
-#     'sync-gmail-every-10-minutes': {
-#         'task': 'reporting.tasks.auto_sync_gmail',
-#         'schedule': crontab(minute='*/10'),  # 10분마다 실행
-#     },
-# }
+# 주기적 작업 스케줄
+app.conf.beat_schedule = {
+    # 매일 새벽 3시에 오래된 파일 정리
+    'cleanup-old-files-daily': {
+        'task': 'reporting.tasks.cleanup_old_files_task',
+        'schedule': crontab(hour=3, minute=0),
+    },
+}
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):

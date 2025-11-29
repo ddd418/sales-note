@@ -39,3 +39,8 @@ urlpatterns = [
 # 개발 환경에서 미디어 파일 서빙
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# 프로덕션 환경에서도 미디어 파일 서빙 (Railway Volume 사용 시)
+# WhiteNoise는 static 파일만 처리하므로 media는 Django가 직접 서빙
+if not settings.DEBUG and settings.MEDIA_ROOT:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

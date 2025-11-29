@@ -60,9 +60,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage',
     'django.contrib.staticfiles',
-    'cloudinary',
     'django.contrib.humanize',
     'reporting',
     'todos',
@@ -202,25 +200,26 @@ LOGGING = {
     },
 }
 
-# Cloudinary 설정 (Railway 프로덕션 환경)
-import cloudinary
-
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET')
-}
-
-# cloudinary 패키지 직접 설정
-cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.environ.get('CLOUDINARY_API_KEY'),
-    api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
-    secure=True
-)
-
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+# Railway Volume 파일 저장소 설정
+# Mount Path: /data/media (250GB)
 MEDIA_URL = '/media/'
+MEDIA_ROOT = '/data/media'
+
+# 기본 파일 저장소 (로컬 파일 시스템)
+DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
+# 파일 정리 정책 설정
+FILE_CLEANUP_SETTINGS = {
+    # 영구 보관 파일 (삭제하지 않음)
+    'PERMANENT_PATHS': [
+        'document_templates/',    # 서류 템플릿
+        'business_card_logos/',   # 서명 관리 회사 로고
+    ],
+    # 영구 보관 최대 파일 크기 (5MB 이하는 영구 보관)
+    'PERMANENT_MAX_SIZE_MB': 5,
+    # 임시 파일 보관 기간 (100일)
+    'TEMP_FILE_RETENTION_DAYS': 100,
+}
 
 # 절대 URL 생성을 위한 도메인 설정
 if 'RAILWAY_ENVIRONMENT' in os.environ:
