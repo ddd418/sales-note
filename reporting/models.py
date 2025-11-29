@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
 from django.db.models import Sum
-from cloudinary.models import CloudinaryField
 
 # 사용자 소속 회사 (UserCompany) 모델 - 직원들의 소속 회사
 class UserCompany(models.Model):
@@ -1207,9 +1206,8 @@ class DocumentTemplate(models.Model):
         verbose_name="서류 종류"
     )
     name = models.CharField(max_length=200, verbose_name="서류명")
-    file = CloudinaryField(
-        resource_type='raw',
-        folder='document_templates',
+    file = models.FileField(
+        upload_to='document_templates/%Y/',
         verbose_name="파일"
     )
     file_type = models.CharField(
@@ -1432,7 +1430,7 @@ class BusinessCard(models.Model):
     
     # 추가 정보
     fax = models.CharField(max_length=50, blank=True, verbose_name="팩스")
-    logo = CloudinaryField(blank=True, null=True, folder='business_card_logos')
+    logo = models.ImageField(upload_to='business_card_logos/%Y/', blank=True, null=True, verbose_name="로고")
     logo_url = models.URLField(blank=True, verbose_name="로고 이미지 URL", help_text="로고를 클릭했을 때 이동할 URL")
     logo_link_url = models.URLField(blank=True, verbose_name="로고 링크 URL", help_text="로고를 클릭했을 때 이동할 URL")
     
