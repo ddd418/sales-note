@@ -12531,7 +12531,7 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_단위': item_unit,
                 f'품목{idx}_규격': item.product.specification if item.product and item.product.specification else '',
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
-                f'품목{idx}_공급가액': f"{int(item.unit_price):,}",
+                f'품목{idx}_공급가액': f"{int(item_subtotal):,}",
                 f'품목{idx}_단가': f"{int(item.unit_price):,}",
                 f'품목{idx}_부가세액': f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}",
                 f'품목{idx}_금액': f"{int(item_subtotal):,}",
@@ -12870,7 +12870,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_단위'] = item_unit
                     data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
-                    data_map[f'품목{idx}_공급가액'] = f"{int(item.unit_price):,}"
+                    data_map[f'품목{idx}_공급가액'] = f"{int(item_subtotal):,}"
                     data_map[f'품목{idx}_단가'] = f"{int(item.unit_price):,}"
                     data_map[f'품목{idx}_부가세액'] = f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}"
                     data_map[f'품목{idx}_금액'] = f"{int(item_subtotal):,}"
