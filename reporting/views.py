@@ -12306,25 +12306,26 @@ def document_template_download(request, pk):
     """서류 템플릿 다운로드"""
     from reporting.models import DocumentTemplate
     from django.http import FileResponse
+    from django.shortcuts import redirect as django_redirect
     import os
     
     template = get_object_or_404(DocumentTemplate, pk=pk)
     
-    # 권한 체크
-    if template.company != request.user.userprofile.company:
-        messages.error(request, '다른 회사의 서류는 다운로드할 수 없습니다.')
-        return redirect('reporting:document_template_list')
+    # 권한 체크 (관리자는 모든 서류 다운로드 가능)
+    if not request.user.is_superuser:
+        if template.company != request.user.userprofile.company:
+            messages.error(request, '다른 회사의 서류는 다운로드할 수 없습니다.')
+            return django_redirect('reporting:document_template_list')
     
     if not template.file:
         messages.error(request, '파일이 존재하지 않습니다.')
-        return redirect('reporting:document_template_list')
+        return django_redirect('reporting:document_template_list')
     
     try:
         # CloudinaryField는 URL로 리다이렉트, FileField는 파일 다운로드
         if hasattr(template.file, 'public_id'):
             # CloudinaryField - URL로 리다이렉트
-            from django.shortcuts import redirect
-            return redirect(template.file.url)
+            return django_redirect(template.file.url)
         else:
             # FileField - 로컬 파일 다운로드
             file_path = template.file.path
@@ -12339,7 +12340,7 @@ def document_template_download(request, pk):
     except Exception as e:
         logger.error(f"파일 다운로드 실패: {e}")
         messages.error(request, '파일 다운로드에 실패했습니다.')
-        return redirect('reporting:document_template_list')
+        return django_redirect('reporting:document_template_list')
 
 
 @login_required
