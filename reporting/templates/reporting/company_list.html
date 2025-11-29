@@ -306,10 +306,62 @@
 }
 
 /* 모달 스타일 */
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 숨김 */
+.modal-backdrop {
+    display: none !important;
+}
+
+/* 모달 자체 설정 */
+.modal-premium {
+    z-index: 1055 !important;
+    pointer-events: none !important;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* 모달 다이얼로그 - 사이드바 피해서 오른쪽 배치 */
+.modal-premium .modal-dialog {
+    z-index: 1056 !important;
+    pointer-events: auto !important;
+    max-width: 800px !important;
+    margin-left: 280px;  /* 사이드바(250px) 피해서 오른쪽으로 */
+    margin-right: auto;
+}
+
+/* modal-lg, modal-xl 오버라이드 */
+.modal-premium .modal-dialog.modal-lg,
+.modal-premium .modal-dialog.modal-xl {
+    max-width: 800px !important;
+}
+
+/* 모달 본문 높이 설정 - 세로로 길게 */
+.modal-premium .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 2rem;
+}
+
+/* 모달 컨텐츠 */
 .modal-premium .modal-content {
+    position: relative;
+    z-index: 1057 !important;
+    pointer-events: auto !important;
     border-radius: 16px;
     border: none;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+/* 모달 내부 요소 클릭 가능 */
+.modal-premium .modal-header,
+.modal-premium .modal-body,
+.modal-premium .modal-footer,
+.modal-premium .modal-header *,
+.modal-premium .modal-body *,
+.modal-premium .modal-footer * {
+    pointer-events: auto !important;
 }
 
 .modal-premium .modal-header {
@@ -325,10 +377,6 @@
 
 .modal-premium .btn-close {
     filter: brightness(0) invert(1);
-}
-
-.modal-premium .modal-body {
-    padding: 2rem;
 }
 
 /* 반응형 */
