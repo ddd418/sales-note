@@ -15,11 +15,12 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.contrib.auth import views as auth_views # auth_views 임포트
 from django.shortcuts import redirect
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 
 # 루트 URL을 대시보드로 리디렉션하는 뷰
 def home_redirect(request):
@@ -40,7 +41,9 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# 프로덕션 환경에서도 미디어 파일 서빙 (Railway Volume 사용 시)
-# WhiteNoise는 static 파일만 처리하므로 media는 Django가 직접 서빙
+# 프로덕션 환경에서 미디어 파일 서빙 (Railway Volume 사용)
+# static() 함수는 DEBUG=True일 때만 작동하므로, re_path + serve 사용
 if not settings.DEBUG and settings.MEDIA_ROOT:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    ]
