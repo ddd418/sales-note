@@ -3,13 +3,88 @@
 
 {% block title %}{{ todo.title }} - TODOLIST{% endblock %}
 
+{% block extra_css %}
+<style>
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 투명하게 (배경 없음) */
+.modal-backdrop {
+    display: none !important;
+}
+
+/* 모달 자체는 backdrop보다 높게 */
+#delegateModal,
+#rejectModal {
+    z-index: 1055 !important;
+    pointer-events: none !important;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* 모달 다이얼로그만 클릭 가능하게 */
+#delegateModal .modal-dialog,
+#rejectModal .modal-dialog {
+    z-index: 1056 !important;
+    pointer-events: auto !important;
+}
+
+/* 모달 컨텐츠를 확실히 클릭 가능하게 */
+#delegateModal .modal-content,
+#rejectModal .modal-content {
+    position: relative;
+    z-index: 1057 !important;
+    pointer-events: auto !important;
+    background-color: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* 모달 내부의 모든 요소가 클릭 가능하도록 */
+#delegateModal .modal-header,
+#delegateModal .modal-body,
+#delegateModal .modal-footer,
+#delegateModal .modal-header *,
+#delegateModal .modal-body *,
+#delegateModal .modal-footer *,
+#rejectModal .modal-header,
+#rejectModal .modal-body,
+#rejectModal .modal-footer,
+#rejectModal .modal-header *,
+#rejectModal .modal-body *,
+#rejectModal .modal-footer * {
+    pointer-events: auto !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-4">
+    <!-- 완료된 항목 알림 배너 -->
+    {% if todo.status == 'done' %}
+    <div class="alert alert-success d-flex align-items-center mb-4" role="alert">
+        <i class="fas fa-check-circle me-3 fs-4"></i>
+        <div class="flex-grow-1">
+            <strong>이 항목은 완료되었습니다.</strong>
+            {% if todo.completed_at %}
+            <span class="ms-2 text-muted">완료일: {{ todo.completed_at|date:"Y년 m월 d일 H:i" }}</span>
+            {% endif %}
+        </div>
+        <form method="post" action="{% url 'todos:change_status' todo.pk %}" class="d-inline ms-3">
+            {% csrf_token %}
+            <button type="submit" name="status" value="ongoing" class="btn btn-outline-success btn-sm">
+                <i class="fas fa-redo me-1"></i>다시 진행하기
+            </button>
+        </form>
+    </div>
+    {% endif %}
+    
     <div class="row">
         <!-- 메인 콘텐츠 -->
         <div class="col-lg-8">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div class="card shadow-sm mb-4 {% if todo.status == 'done' %}border-success{% endif %}">
+                <div class="card-header {% if todo.status == 'done' %}bg-success bg-opacity-10{% else %}bg-white{% endif %} py-3 d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center">
                         <span class="badge {{ todo.status_badge_class }} me-2">{{ todo.get_status_display }}</span>
                         <span class="badge {{ todo.source_badge_class }}">{{ todo.get_source_type_display }}</span>
@@ -19,21 +94,73 @@
                             <i class="fas fa-cog me-1"></i>관리
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
+                            {% if todo.source_type != 'manager_assign' and todo.created_by == request.user and not todo.assigned_to %}
+                            <!-- 내가 만든 일이고 위임하지 않은 경우만 수정 가능 (매니저 하달 제외) -->
                             <li>
                                 <a class="dropdown-item" href="{% url 'todos:edit' todo.pk %}">
                                     <i class="fas fa-edit me-2"></i>수정
                                 </a>
                             </li>
-                            {% if todo.status != 'done' %}
-                            <li>
-                                <form method="post" action="{% url 'todos:complete' todo.pk %}" class="d-inline">
-                                    {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-success">
-                                        <i class="fas fa-check me-2"></i>완료 처리
-                                    </button>
-                                </form>
-                            </li>
                             {% endif %}
+                            
+                            {% if todo.status != 'done' and todo.status != 'rejected' %}
+                                {% if todo.source_type == 'manager_assign' and todo.assigned_to == request.user %}
+                                <!-- 매니저 하달 업무: 완료만 가능 -->
+                                <li>
+                                    <form method="post" action="{% url 'todos:complete' todo.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item text-success">
+                                            <i class="fas fa-check me-2"></i>완료 처리
+                                        </button>
+                                    </form>
+                                </li>
+                                {% elif todo.assigned_to and todo.requested_by == request.user and todo.assigned_to != request.user %}
+                                <!-- 내가 맡긴 일: 요청 취소만 가능 (승인 대기 상태일 때만) -->
+                                    {% if todo.status == 'pending' %}
+                                    <li>
+                                        <form method="post" action="{% url 'todos:cancel_request' todo.pk %}" 
+                                              onsubmit="return confirm('요청을 취소하시겠습니까? 다시 나의 할 일로 돌아옵니다.');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item text-warning">
+                                                <i class="fas fa-undo me-2"></i>요청 취소
+                                            </button>
+                                        </form>
+                                    </li>
+                                    {% endif %}
+                                {% elif todo.status == 'pending' and todo.assigned_to == request.user %}
+                                <!-- 내가 담당자이고 승인 대기 상태: 먼저 승인/반려 필요 -->
+                                {% elif todo.assigned_to == request.user and todo.requested_by and todo.requested_by != request.user %}
+                                <!-- 위임받은 TODO: 완료만 가능, 재위임 불가 -->
+                                <li>
+                                    <form method="post" action="{% url 'todos:complete' todo.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item text-success">
+                                            <i class="fas fa-check me-2"></i>완료 처리
+                                        </button>
+                                    </form>
+                                </li>
+                                {% else %}
+                                <!-- 내 할일 (직접 생성): 완료/동료에게 요청 가능 -->
+                                    {% if not todo.assigned_to %}
+                                    <li>
+                                        <form method="post" action="{% url 'todos:complete' todo.pk %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item text-success">
+                                                <i class="fas fa-check me-2"></i>완료 처리
+                                            </button>
+                                        </form>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item text-primary" href="#" data-bs-toggle="modal" data-bs-target="#delegateModal">
+                                            <i class="fas fa-user-plus me-2"></i>동료에게 요청
+                                        </a>
+                                    </li>
+                                    {% endif %}
+                                {% endif %}
+                            {% endif %}
+                            
+                            {% if todo.source_type != 'manager_assign' and todo.created_by == request.user %}
+                            <!-- 매니저 하달 업무가 아닌 경우만 삭제 가능 -->
                             <li><hr class="dropdown-divider"></li>
                             <li>
                                 <form method="post" action="{% url 'todos:delete' todo.pk %}" 
@@ -44,6 +171,7 @@
                                     </button>
                                 </form>
                             </li>
+                            {% endif %}
                         </ul>
                     </div>
                 </div>
@@ -93,7 +221,7 @@
                                 <div class="fw-bold">
                                     <i class="fas fa-building me-1"></i>
                                     <a href="{% url 'reporting:followup_detail' todo.related_client.pk %}">
-                                        {{ todo.related_client.company_name }}
+                                        {{ todo.related_client.customer_name }} ({{ todo.related_client.company }})
                                     </a>
                                 </div>
                             </div>
@@ -118,6 +246,9 @@
                             <i class="fas fa-file me-2 text-muted"></i>
                             {{ attachment.filename }}
                             <small class="text-muted ms-2">({{ attachment.file_size|filesizeformat }})</small>
+                            {% if attachment.uploaded_by %}
+                            <br><small class="text-muted">by {{ attachment.uploaded_by.get_full_name|default:attachment.uploaded_by.username }}</small>
+                            {% endif %}
                         </div>
                         <a href="{{ attachment.file.url }}" class="btn btn-sm btn-outline-primary" download>
                             <i class="fas fa-download"></i>
@@ -125,6 +256,29 @@
                     </li>
                     {% endfor %}
                 </ul>
+            </div>
+            {% endif %}
+            
+            <!-- 증빙자료 업로드 (매니저 하달 업무이고 내가 담당자인 경우) -->
+            {% if todo.source_type == 'manager_assign' and todo.assigned_to == request.user %}
+            <div class="card shadow-sm mb-4 border-success">
+                <div class="card-header bg-success bg-opacity-10">
+                    <h6 class="mb-0 text-success">
+                        <i class="fas fa-file-upload me-2"></i>완료 증빙자료 업로드
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'todos:upload_completion_file' todo.pk %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <input type="file" class="form-control" name="files" multiple required>
+                            <small class="text-muted">완료 증빙자료를 첨부해주세요. 여러 파일 선택 가능합니다.</small>
+                        </div>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-upload me-1"></i>자료 업로드
+                        </button>
+                    </form>
+                </div>
             </div>
             {% endif %}
             
@@ -168,6 +322,33 @@
         
         <!-- 사이드바 -->
         <div class="col-lg-4">
+            <!-- 승인/반려 카드 (내가 담당자이고 승인 대기 상태일 때) -->
+            {% if todo.status == 'pending' and todo.assigned_to == request.user %}
+            <div class="card shadow-sm mb-4 border-warning">
+                <div class="card-header bg-warning bg-opacity-10">
+                    <h6 class="mb-0 text-warning">
+                        <i class="fas fa-clock me-2"></i>승인 대기 중
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        <strong>{{ todo.requested_by.get_full_name|default:todo.requested_by.username }}</strong>님이 이 업무를 요청했습니다.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <form method="post" action="{% url 'todos:approve_request' todo.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="fas fa-check me-1"></i>승인하기
+                            </button>
+                        </form>
+                        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">
+                            <i class="fas fa-times me-1"></i>반려하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
             <!-- 상태 변경 카드 -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white">
@@ -176,6 +357,32 @@
                     </h6>
                 </div>
                 <div class="card-body">
+                    {% if todo.status == 'pending' and todo.assigned_to == request.user %}
+                    <!-- 승인 대기 상태이고 내가 담당자인 경우: 먼저 승인/반려 필요 -->
+                    <div class="alert alert-warning border mb-0 text-center">
+                        <i class="fas fa-exclamation-circle me-1"></i>
+                        <small>먼저 위의 <strong>승인/반려</strong>를 결정해주세요.</small>
+                    </div>
+                    {% elif todo.assigned_to and todo.assigned_to != request.user and todo.requested_by == request.user %}
+                    <!-- 내가 맡긴 일인 경우: 상태 변경 불가 안내 -->
+                    <div class="alert alert-light border mb-0 text-center">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        <small class="text-muted">맡긴 일은 담당자만 상태를 변경할 수 있습니다.</small>
+                    </div>
+                    {% elif todo.assigned_to and todo.assigned_to != request.user %}
+                    <!-- 담당자가 다른 사람인 경우 -->
+                    <div class="alert alert-light border mb-0 text-center">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        <small class="text-muted">담당자만 상태를 변경할 수 있습니다.</small>
+                    </div>
+                    {% elif todo.status == 'rejected' %}
+                    <!-- 반려된 TODO -->
+                    <div class="alert alert-danger border mb-0 text-center">
+                        <i class="fas fa-times-circle me-1"></i>
+                        <small>이 업무는 반려되었습니다.</small>
+                    </div>
+                    {% else %}
+                    <!-- 내가 담당자이거나 내가 만든 일인 경우 -->
                     <form method="post" action="{% url 'todos:change_status' todo.pk %}">
                         {% csrf_token %}
                         <div class="d-grid gap-2">
@@ -196,6 +403,7 @@
                             {% endif %}
                         </div>
                     </form>
+                    {% endif %}
                 </div>
             </div>
             
@@ -243,6 +451,150 @@
         <a href="{% url 'todos:list' %}" class="btn btn-secondary">
             <i class="fas fa-arrow-left me-1"></i>목록으로
         </a>
+        {% if todo.status != 'done' and todo.status != 'rejected' and todo.status != 'pending' and not todo.assigned_to and todo.created_by == request.user %}
+        <!-- 내가 만든 일이고 위임하지 않은 경우만 동료에게 요청 가능 -->
+        <button type="button" class="btn btn-primary ms-2" data-bs-toggle="modal" data-bs-target="#delegateModal">
+            <i class="fas fa-user-plus me-1"></i>동료에게 요청
+        </button>
+        {% endif %}
     </div>
 </div>
+
+<!-- 동료에게 위임 모달 -->
+<div class="modal fade" id="delegateModal" tabindex="-1" aria-labelledby="delegateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'todos:delegate' todo.pk %}">
+                {% csrf_token %}
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="delegateModalLabel">
+                        <i class="fas fa-user-plus me-2"></i>동료에게 업무 요청
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 현재 TODO 정보 -->
+                    <div class="alert alert-light border mb-3">
+                        <small class="text-muted d-block">위임할 TODO</small>
+                        <strong>{{ todo.title }}</strong>
+                    </div>
+                    
+                    <!-- 담당자 선택 -->
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">담당자 선택 <span class="text-danger">*</span></label>
+                        <select name="assigned_to" id="delegateAssignee" class="form-select" required>
+                            <option value="">-- 동료를 선택하세요 --</option>
+                        </select>
+                        <div class="form-text">같은 회사의 동료 목록이 표시됩니다.</div>
+                    </div>
+                    
+                    <!-- 요청 메시지 -->
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">요청 메시지</label>
+                        <textarea name="delegate_message" class="form-control" rows="3" 
+                                  placeholder="위임하는 이유나 참고사항을 입력하세요..."></textarea>
+                    </div>
+                    
+                    <!-- 안내 -->
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <small>
+                            업무를 위임하면 상대방의 <strong>"받은 일"</strong> 목록에 표시되며,<br>
+                            상대방이 <strong>승인</strong>해야 진행됩니다.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-1"></i>요청 보내기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 반려 모달 -->
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'todos:reject_request' todo.pk %}">
+                {% csrf_token %}
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="rejectModalLabel">
+                        <i class="fas fa-times-circle me-2"></i>업무 요청 반려
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 현재 TODO 정보 -->
+                    <div class="alert alert-light border mb-3">
+                        <small class="text-muted d-block">반려할 업무</small>
+                        <strong>{{ todo.title }}</strong>
+                        {% if todo.requested_by %}
+                        <div class="mt-1">
+                            <small class="text-muted">요청자: {{ todo.requested_by.get_full_name|default:todo.requested_by.username }}</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- 반려 사유 -->
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">반려 사유</label>
+                        <textarea name="reject_reason" class="form-control" rows="3" 
+                                  placeholder="반려하는 이유를 입력하세요 (선택사항)..."></textarea>
+                    </div>
+                    
+                    <!-- 안내 -->
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <small>
+                            반려하면 이 업무는 <strong>요청자의 할 일</strong>로 돌아갑니다.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-times me-1"></i>반려하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// 동료 목록 로드
+document.addEventListener('DOMContentLoaded', function() {
+    const delegateModal = document.getElementById('delegateModal');
+    const assigneeSelect = document.getElementById('delegateAssignee');
+    
+    if (delegateModal && assigneeSelect) {
+        delegateModal.addEventListener('show.bs.modal', function() {
+            // 동료 목록 API 호출
+            fetch('{% url "todos:api_colleagues" %}')
+                .then(response => response.json())
+                .then(data => {
+                    // 기존 옵션 제거 (첫번째 제외)
+                    while (assigneeSelect.options.length > 1) {
+                        assigneeSelect.remove(1);
+                    }
+                    
+                    // 동료 목록 추가
+                    data.colleagues.forEach(colleague => {
+                        const option = document.createElement('option');
+                        option.value = colleague.id;
+                        option.textContent = colleague.full_name + (colleague.role ? ` (${colleague.role})` : '');
+                        assigneeSelect.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('동료 목록 로드 실패:', error);
+                });
+        });
+    }
+});
+</script>
 {% endblock %}

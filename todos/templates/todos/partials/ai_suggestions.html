@@ -1,0 +1,97 @@
+{% load static %}
+
+{% if suggestions %}
+<div class="card shadow-sm border-0 mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+    <div class="card-header bg-transparent border-0 text-white py-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                <i class="fas fa-robot me-2"></i>AI 추천 TODO
+                <span class="badge bg-white bg-opacity-25 ms-2">{{ suggestions|length }}개</span>
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-light" onclick="loadAISuggestions()">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+            {% for suggestion in suggestions %}
+            <div class="list-group-item bg-white bg-opacity-95 border-0 border-bottom" 
+                 id="ai-suggestion-{{ forloop.counter }}"
+                 style="cursor: pointer;"
+                 onclick="showSuggestionDetail({{ forloop.counter }})">
+                <div class="d-flex align-items-start">
+                    <!-- 아이콘 -->
+                    <div class="me-3 mt-1">
+                        <span class="fa-stack" style="font-size: 0.8rem;">
+                            <i class="fas fa-circle fa-stack-2x {{ suggestion.icon_color }}" style="opacity: 0.2;"></i>
+                            <i class="fas {{ suggestion.icon }} fa-stack-1x {{ suggestion.icon_color }}"></i>
+                        </span>
+                    </div>
+                    
+                    <!-- 내용 -->
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <div>
+                                <span class="fw-medium text-dark">{{ suggestion.title }}</span>
+                                {% if suggestion.urgency == 'high' %}
+                                <span class="badge bg-danger ms-1">긴급</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <small class="text-muted">{{ suggestion.description|truncatechars:60 }}</small>
+                        <div class="mt-1">
+                            <small class="text-primary"><i class="fas fa-info-circle me-1"></i>클릭하여 상세 보기</small>
+                        </div>
+                    </div>
+                    
+                    <!-- 액션 버튼 -->
+                    <div class="ms-2 d-flex gap-1" onclick="event.stopPropagation();">
+                        <button type="button" class="btn btn-sm btn-success" title="TODO로 추가"
+                                onclick="event.stopPropagation(); acceptAISuggestion(this, '{{ suggestion.title|escapejs }}', '{{ suggestion.description|escapejs }}', '{{ suggestion.suggested_duration }}', '{{ suggestion.related_type }}', '{{ suggestion.related_id }}')">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" title="무시"
+                                onclick="event.stopPropagation(); dismissAISuggestion(this, '{{ suggestion.type }}_{{ suggestion.related_id }}')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 숨겨진 데이터 (모달용) -->
+                <div class="d-none" id="suggestion-data-{{ forloop.counter }}">
+                    <span class="suggestion-title">{{ suggestion.title }}</span>
+                    <span class="suggestion-description">{{ suggestion.description }}</span>
+                    <span class="suggestion-duration">{{ suggestion.suggested_duration }}</span>
+                    <span class="suggestion-related-type">{{ suggestion.related_type }}</span>
+                    <span class="suggestion-related-id">{{ suggestion.related_id }}</span>
+                    <span class="suggestion-type">{{ suggestion.type }}</span>
+                    <span class="suggestion-urgency">{{ suggestion.urgency }}</span>
+                    <span class="suggestion-icon">{{ suggestion.icon }}</span>
+                    <span class="suggestion-icon-color">{{ suggestion.icon_color }}</span>
+                    <div class="suggestion-reason">{{ suggestion.reason|default:"추천 이유를 분석 중입니다..."|safe }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card shadow-sm border-0 mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+    <div class="card-header bg-transparent border-0 text-white py-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                <i class="fas fa-robot me-2"></i>AI 추천 TODO
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-light" onclick="loadAISuggestions()">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body text-center py-4 text-white">
+        <i class="fas fa-check-circle fa-2x mb-2 opacity-75"></i>
+        <p class="mb-0 opacity-75">현재 추천할 TODO가 없습니다</p>
+        <small class="opacity-50">모든 업무를 잘 처리하고 계시네요! 👏</small>
+    </div>
+</div>
+{% endif %}

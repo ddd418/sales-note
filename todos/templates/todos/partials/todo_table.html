@@ -3,18 +3,77 @@
 <!-- 필터 -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="btn-group btn-group-sm" role="group">
+        {% if tab == 'received' %}
+        <!-- 받은 일 탭 필터 -->
+        <a href="?status=active" class="btn btn-{% if status_filter == 'active' %}primary{% else %}outline-primary{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=active" hx-target="#received-todo-content" hx-swap="innerHTML">
+            진행중
+        </a>
+        <a href="?status=pending" class="btn btn-{% if status_filter == 'pending' %}warning{% else %}outline-warning{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=pending" hx-target="#received-todo-content" hx-swap="innerHTML">
+            승인대기
+        </a>
+        <a href="?status=rejected" class="btn btn-{% if status_filter == 'rejected' %}danger{% else %}outline-danger{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=rejected" hx-target="#received-todo-content" hx-swap="innerHTML">
+            반려
+        </a>
+        <a href="?status=on_hold" class="btn btn-{% if status_filter == 'on_hold' %}secondary{% else %}outline-secondary{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=on_hold" hx-target="#received-todo-content" hx-swap="innerHTML">
+            보류
+        </a>
+        <a href="?status=done" class="btn btn-{% if status_filter == 'done' %}success{% else %}outline-success{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=done" hx-target="#received-todo-content" hx-swap="innerHTML">
+            완료
+        </a>
+        <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}dark{% else %}outline-dark{% endif %}"
+           hx-get="{% url 'todos:received_list' %}?status=all" hx-target="#received-todo-content" hx-swap="innerHTML">
+            전체
+        </a>
+        {% elif tab == 'requested' %}
+        <!-- 맡긴 일 탭 필터 -->
+        <a href="?status=active" class="btn btn-{% if status_filter == 'active' %}primary{% else %}outline-primary{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=active" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            진행중
+        </a>
+        <a href="?status=pending" class="btn btn-{% if status_filter == 'pending' %}warning{% else %}outline-warning{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=pending" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            승인대기
+        </a>
+        <a href="?status=rejected" class="btn btn-{% if status_filter == 'rejected' %}danger{% else %}outline-danger{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=rejected" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            반려
+        </a>
+        <a href="?status=on_hold" class="btn btn-{% if status_filter == 'on_hold' %}secondary{% else %}outline-secondary{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=on_hold" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            보류
+        </a>
+        <a href="?status=done" class="btn btn-{% if status_filter == 'done' %}success{% else %}outline-success{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=done" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            완료
+        </a>
+        <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}dark{% else %}outline-dark{% endif %}"
+           hx-get="{% url 'todos:requested_list' %}?status=all" hx-target="#requested-todo-content" hx-swap="innerHTML">
+            전체
+        </a>
+        {% else %}
+        <!-- 내 할 일 탭 필터 -->
         <a href="?status=active" class="btn btn-{% if status_filter == 'active' %}primary{% else %}outline-primary{% endif %}"
            hx-get="{% url 'todos:my_list' %}?status=active" hx-target="#my-todo-content" hx-swap="innerHTML">
             진행중
         </a>
-        <a href="?status=done" class="btn btn-{% if status_filter == 'done' %}primary{% else %}outline-primary{% endif %}"
+        <a href="?status=on_hold" class="btn btn-{% if status_filter == 'on_hold' %}secondary{% else %}outline-secondary{% endif %}"
+           hx-get="{% url 'todos:my_list' %}?status=on_hold" hx-target="#my-todo-content" hx-swap="innerHTML">
+            보류
+        </a>
+        <a href="?status=done" class="btn btn-{% if status_filter == 'done' %}success{% else %}outline-success{% endif %}"
            hx-get="{% url 'todos:my_list' %}?status=done" hx-target="#my-todo-content" hx-swap="innerHTML">
             완료
         </a>
-        <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}primary{% else %}outline-primary{% endif %}"
+        <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}dark{% else %}outline-dark{% endif %}"
            hx-get="{% url 'todos:my_list' %}?status=all" hx-target="#my-todo-content" hx-swap="innerHTML">
             전체
         </a>
+        {% endif %}
     </div>
     <small class="text-muted">총 {{ todos.paginator.count }}개</small>
 </div>
@@ -35,11 +94,25 @@
     <ul class="pagination pagination-sm justify-content-center">
         {% if todos.has_previous %}
         <li class="page-item">
+            {% if tab == 'received' %}
+            <a class="page-link" href="?page={{ todos.previous_page_number }}&status={{ status_filter }}"
+               hx-get="{% url 'todos:received_list' %}?page={{ todos.previous_page_number }}&status={{ status_filter }}"
+               hx-target="#received-todo-content" hx-swap="innerHTML">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+            {% elif tab == 'requested' %}
+            <a class="page-link" href="?page={{ todos.previous_page_number }}&status={{ status_filter }}"
+               hx-get="{% url 'todos:requested_list' %}?page={{ todos.previous_page_number }}&status={{ status_filter }}"
+               hx-target="#requested-todo-content" hx-swap="innerHTML">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+            {% else %}
             <a class="page-link" href="?page={{ todos.previous_page_number }}&status={{ status_filter }}"
                hx-get="{% url 'todos:my_list' %}?page={{ todos.previous_page_number }}&status={{ status_filter }}"
                hx-target="#my-todo-content" hx-swap="innerHTML">
                 <i class="fas fa-chevron-left"></i>
             </a>
+            {% endif %}
         </li>
         {% endif %}
         
@@ -49,11 +122,25 @@
         
         {% if todos.has_next %}
         <li class="page-item">
+            {% if tab == 'received' %}
+            <a class="page-link" href="?page={{ todos.next_page_number }}&status={{ status_filter }}"
+               hx-get="{% url 'todos:received_list' %}?page={{ todos.next_page_number }}&status={{ status_filter }}"
+               hx-target="#received-todo-content" hx-swap="innerHTML">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% elif tab == 'requested' %}
+            <a class="page-link" href="?page={{ todos.next_page_number }}&status={{ status_filter }}"
+               hx-get="{% url 'todos:requested_list' %}?page={{ todos.next_page_number }}&status={{ status_filter }}"
+               hx-target="#requested-todo-content" hx-swap="innerHTML">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% else %}
             <a class="page-link" href="?page={{ todos.next_page_number }}&status={{ status_filter }}"
                hx-get="{% url 'todos:my_list' %}?page={{ todos.next_page_number }}&status={{ status_filter }}"
                hx-target="#my-todo-content" hx-swap="innerHTML">
                 <i class="fas fa-chevron-right"></i>
             </a>
+            {% endif %}
         </li>
         {% endif %}
     </ul>
@@ -66,6 +153,12 @@
         <i class="fas fa-clipboard-list fa-3x text-muted"></i>
     </div>
     <h5 class="text-muted">등록된 할 일이 없습니다</h5>
+    {% if tab == 'received' %}
+    <p class="text-muted small">동료가 요청한 업무가 이곳에 표시됩니다.</p>
+    {% elif tab == 'requested' %}
+    <p class="text-muted small">동료에게 맡긴 업무가 이곳에 표시됩니다.</p>
+    {% else %}
     <p class="text-muted small">상단의 "빠른 추가" 또는 "상세 추가" 버튼을 눌러 새 TODO를 추가하세요.</p>
+    {% endif %}
 </div>
 {% endif %}

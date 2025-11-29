@@ -1,0 +1,493 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}업무 하달 - 매니저{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 투명하게 (배경 없음) */
+.modal-backdrop {
+    display: none !important;
+}
+
+/* 모달 자체는 backdrop보다 높게 */
+#assignTaskModal {
+    z-index: 1055 !important;
+    pointer-events: none !important;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* 모달 다이얼로그만 클릭 가능하게 */
+#assignTaskModal .modal-dialog {
+    z-index: 1056 !important;
+    pointer-events: auto !important;
+}
+
+/* 모달 컨텐츠를 확실히 클릭 가능하게 */
+#assignTaskModal .modal-content {
+    position: relative;
+    z-index: 1057 !important;
+    pointer-events: auto !important;
+    background-color: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* 모달 내부의 모든 요소가 클릭 가능하도록 */
+#assignTaskModal .modal-header,
+#assignTaskModal .modal-body,
+#assignTaskModal .modal-footer,
+#assignTaskModal .modal-header *,
+#assignTaskModal .modal-body *,
+#assignTaskModal .modal-footer * {
+    pointer-events: auto !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">
+                <i class="fas fa-bullhorn me-2 text-primary"></i>업무 하달
+            </h4>
+            <p class="text-muted mb-0">실무자에게 업무를 하달하고 진행상황을 관리합니다</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#assignTaskModal">
+            <i class="fas fa-plus me-1"></i>업무 하달하기
+        </button>
+    </div>
+    
+    <!-- 상태별 카운트 카드 -->
+    <div class="row mb-4">
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);">
+                <div class="card-body text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">진행중</h6>
+                            <h2 class="mb-0">{{ status_counts.ongoing|default:0 }}</h2>
+                        </div>
+                        <i class="fas fa-spinner fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">
+                <div class="card-body text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">보류</h6>
+                            <h2 class="mb-0">{{ status_counts.on_hold|default:0 }}</h2>
+                        </div>
+                        <i class="fas fa-pause fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);">
+                <div class="card-body text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">완료</h6>
+                            <h2 class="mb-0">{{ status_counts.done|default:0 }}</h2>
+                        </div>
+                        <i class="fas fa-check fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);">
+                <div class="card-body text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 opacity-75">전체</h6>
+                            <h2 class="mb-0">{{ total_count|default:0 }}</h2>
+                        </div>
+                        <i class="fas fa-list fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 필터 탭 -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="btn-group" role="group">
+                    <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}dark{% else %}outline-dark{% endif %}">
+                        전체
+                    </a>
+                    <a href="?status=ongoing" class="btn btn-{% if status_filter == 'ongoing' %}primary{% else %}outline-primary{% endif %}">
+                        진행중
+                    </a>
+                    <a href="?status=on_hold" class="btn btn-{% if status_filter == 'on_hold' %}warning{% else %}outline-warning{% endif %}">
+                        보류
+                    </a>
+                    <a href="?status=done" class="btn btn-{% if status_filter == 'done' %}success{% else %}outline-success{% endif %}">
+                        완료
+                    </a>
+                </div>
+                
+                <!-- 담당자 필터 -->
+                <div class="d-flex align-items-center gap-2">
+                    <label class="mb-0 text-muted small">담당자:</label>
+                    <select class="form-select form-select-sm" style="width: auto;" onchange="location.href='?status={{ status_filter }}&assignee=' + this.value">
+                        <option value="">전체</option>
+                        {% for member in team_members %}
+                        <option value="{{ member.pk }}" {% if assignee_filter == member.pk|stringformat:"d" %}selected{% endif %}>
+                            {{ member.get_full_name|default:member.username }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            {% if assigned_todos %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 40%;">업무 내용</th>
+                            <th style="width: 15%;">담당자</th>
+                            <th style="width: 12%;">유형</th>
+                            <th style="width: 10%;">상태</th>
+                            <th style="width: 12%;">마감일</th>
+                            <th style="width: 11%;">액션</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for todo in assigned_todos %}
+                        <tr class="{% if todo.is_overdue %}table-danger{% endif %}">
+                            <td>
+                                <a href="{% url 'todos:manager_task_detail' todo.pk %}" class="text-decoration-none fw-medium">
+                                    {{ todo.title }}
+                                </a>
+                                {% if todo.related_client %}
+                                <br>
+                                <small class="text-muted">
+                                    <i class="fas fa-user me-1"></i>{{ todo.related_client.customer_name }}
+                                    {% if todo.related_client.company %}({{ todo.related_client.company }}){% endif %}
+                                </small>
+                                {% endif %}
+                                {% if todo.attachments.exists %}
+                                <span class="badge bg-secondary ms-1"><i class="fas fa-paperclip"></i> {{ todo.attachments.count }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">
+                                    {{ todo.assigned_to.get_full_name|default:todo.assigned_to.username }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if todo.related_client %}
+                                <span class="badge bg-success">고객형</span>
+                                {% else %}
+                                <span class="badge bg-secondary">일반형</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {{ todo.status_badge_class }}">
+                                    {{ todo.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if todo.due_date %}
+                                <small class="{% if todo.is_overdue %}text-danger fw-bold{% else %}text-muted{% endif %}">
+                                    {{ todo.due_date|date:"m/d" }}
+                                    {% if todo.is_overdue %}<i class="fas fa-exclamation-triangle ms-1"></i>{% endif %}
+                                </small>
+                                {% else %}
+                                <small class="text-muted">-</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'todos:manager_task_detail' todo.pk %}" class="btn btn-outline-primary" title="상세보기">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    {% if todo.status != 'done' %}
+                                    <button type="button" class="btn btn-outline-danger" 
+                                            onclick="cancelTask({{ todo.pk }})" title="취소">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <p class="text-muted mb-0">하달한 업무가 없습니다</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- 담당자별 업무 현황 -->
+    {% if assignee_summary %}
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0">
+                <i class="fas fa-users me-2 text-primary"></i>담당자별 진행 현황
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for summary in assignee_summary %}
+                <div class="col-md-4 col-sm-6 mb-3">
+                    <div class="border rounded p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">{{ summary.name }}</h6>
+                            <span class="badge bg-primary">{{ summary.total }}건</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-success" style="width: {{ summary.done_percent }}%;" title="완료 {{ summary.done }}건"></div>
+                            <div class="progress-bar bg-primary" style="width: {{ summary.ongoing_percent }}%;" title="진행중 {{ summary.ongoing }}건"></div>
+                            <div class="progress-bar bg-warning" style="width: {{ summary.on_hold_percent }}%;" title="보류 {{ summary.on_hold }}건"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2 small text-muted">
+                            <span>완료 {{ summary.done }}</span>
+                            <span>진행 {{ summary.ongoing }}</span>
+                            <span>보류 {{ summary.on_hold }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 업무 하달 모달 -->
+<div class="modal fade" id="assignTaskModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'todos:manager_assign' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-bullhorn me-2 text-primary"></i>업무 하달
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 업무 유형 선택 -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">업무 유형</label>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="task_type" id="typeGeneral" value="general" checked>
+                                <label class="btn btn-outline-secondary w-100 py-3" for="typeGeneral">
+                                    <i class="fas fa-clipboard-list fa-2x mb-2 d-block"></i>
+                                    <strong>일반형</strong>
+                                    <br><small class="text-muted">텍스트 업무 하달</small>
+                                </label>
+                            </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="task_type" id="typeCustomer" value="customer">
+                                <label class="btn btn-outline-success w-100 py-3" for="typeCustomer">
+                                    <i class="fas fa-user-tie fa-2x mb-2 d-block"></i>
+                                    <strong>고객형</strong>
+                                    <br><small class="text-muted">특정 고객 관련 업무</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 담당자 선택 (복수) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">담당자 <span class="text-danger">*</span></label>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            {% for member in team_members %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="assigned_to" 
+                                       value="{{ member.pk }}" id="member_{{ member.pk }}">
+                                <label class="form-check-label" for="member_{{ member.pk }}">
+                                    {{ member.get_full_name|default:member.username }}
+                                    <small class="text-muted">({{ member.userprofile.get_role_display|default:'실무자' }})</small>
+                                </label>
+                            </div>
+                            {% empty %}
+                            <p class="text-muted mb-0">하달 가능한 실무자가 없습니다.</p>
+                            {% endfor %}
+                        </div>
+                        <small class="text-muted">여러 명을 선택하면 각각에게 동일한 업무가 하달됩니다.</small>
+                    </div>
+                    
+                    <!-- 고객 선택 (고객형일 때만) -->
+                    <div class="mb-3" id="customerSelectDiv" style="display: none;">
+                        <label class="form-label fw-bold">고객 선택 <span class="text-danger">*</span></label>
+                        <div class="position-relative">
+                            <input type="text" class="form-control" id="customerSearch" 
+                                   placeholder="고객명 검색..." autocomplete="off">
+                            <input type="hidden" name="related_client" id="selectedClientId">
+                            <div id="customerSearchResults" class="list-group position-absolute w-100 mt-1" style="z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
+                        </div>
+                        <div id="selectedCustomerInfo" class="alert alert-success py-2 px-3 mt-2 mb-0 d-none">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong id="selectedCustomerName"></strong>
+                            <button type="button" class="btn-close btn-sm float-end" onclick="clearCustomer()"></button>
+                        </div>
+                    </div>
+                    
+                    <!-- 제목 -->
+                    <div class="mb-3">
+                        <label for="taskTitle" class="form-label fw-bold">업무 내용 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="taskTitle" name="title" 
+                               placeholder="업무 내용을 입력하세요" required>
+                    </div>
+                    
+                    <!-- 상세 내용 -->
+                    <div class="mb-3">
+                        <label for="taskDescription" class="form-label fw-bold">상세 지시사항</label>
+                        <textarea class="form-control" id="taskDescription" name="description" rows="4" 
+                                  placeholder="상세한 지시사항을 입력하세요"></textarea>
+                    </div>
+                    
+                    <!-- 마감일 -->
+                    <div class="mb-3">
+                        <label for="taskDueDate" class="form-label fw-bold">마감일</label>
+                        <input type="date" class="form-control" id="taskDueDate" name="due_date">
+                    </div>
+                    
+                    <!-- 첨부파일 -->
+                    <div class="mb-3">
+                        <label for="taskFiles" class="form-label fw-bold">첨부파일</label>
+                        <input type="file" class="form-control" id="taskFiles" name="files" multiple>
+                        <small class="text-muted">여러 파일을 선택할 수 있습니다.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-1"></i>업무 하달
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 업무 유형 변경 시 고객 선택 영역 토글
+document.querySelectorAll('input[name="task_type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const customerDiv = document.getElementById('customerSelectDiv');
+        const customerInput = document.getElementById('selectedClientId');
+        
+        if (this.value === 'customer') {
+            customerDiv.style.display = 'block';
+        } else {
+            customerDiv.style.display = 'none';
+            customerInput.value = '';
+            clearCustomer();
+        }
+    });
+});
+
+// 고객 검색
+let searchTimeout;
+document.getElementById('customerSearch').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const query = this.value.trim();
+    const resultsDiv = document.getElementById('customerSearchResults');
+    
+    if (query.length < 2) {
+        resultsDiv.innerHTML = '';
+        return;
+    }
+    
+    searchTimeout = setTimeout(() => {
+        fetch(`{% url 'todos:api_search_clients' %}?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                resultsDiv.innerHTML = '';
+                if (data.clients && data.clients.length > 0) {
+                    data.clients.forEach(client => {
+                        const item = document.createElement('a');
+                        item.href = 'javascript:void(0)';
+                        item.className = 'list-group-item list-group-item-action py-2';
+                        
+                        // 회사명이 있으면 표시
+                        let html = '<strong>' + client.name + '</strong>';
+                        if (client.company) {
+                            html += ' <small class="text-muted">(' + client.company + ')</small>';
+                        }
+                        item.innerHTML = html;
+                        
+                        item.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            selectCustomer(client.id, client.name, client.company);
+                        });
+                        resultsDiv.appendChild(item);
+                    });
+                } else {
+                    resultsDiv.innerHTML = '<div class="list-group-item text-muted py-2">검색 결과가 없습니다</div>';
+                }
+            });
+    }, 300);
+});
+
+function selectCustomer(id, name, company) {
+    // 값 설정
+    document.getElementById('selectedClientId').value = id;
+    
+    // 표시 텍스트 설정 (회사가 있으면 포함)
+    const displayText = company ? name + ' (' + company + ')' : name;
+    document.getElementById('selectedCustomerName').textContent = displayText;
+    
+    // 검색 결과 숨기고 선택 정보 표시
+    document.getElementById('customerSearchResults').innerHTML = '';
+    document.getElementById('customerSearch').value = '';
+    document.getElementById('selectedCustomerInfo').classList.remove('d-none');
+}
+
+function clearCustomer() {
+    document.getElementById('selectedClientId').value = '';
+    document.getElementById('selectedCustomerName').textContent = '';
+    document.getElementById('selectedCustomerInfo').classList.add('d-none');
+}
+
+// 업무 취소
+function cancelTask(todoId) {
+    if (!confirm('이 업무를 취소하시겠습니까?')) return;
+    
+    fetch(`{% url 'todos:manager_cancel_task' 0 %}`.replace('0', todoId), {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('취소 처리 중 오류가 발생했습니다.');
+        }
+    });
+}
+</script>
+{% endblock %}

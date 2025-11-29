@@ -1,0 +1,250 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}업무 상세 - {{ todo.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{% url 'todos:manager_dashboard' %}">업무 하달</a></li>
+                    <li class="breadcrumb-item active">상세보기</li>
+                </ol>
+            </nav>
+            <h4 class="mb-1">{{ todo.title }}</h4>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge {{ todo.status_badge_class }}">{{ todo.get_status_display }}</span>
+                {% if todo.related_client %}
+                <span class="badge bg-success">고객형</span>
+                {% else %}
+                <span class="badge bg-secondary">일반형</span>
+                {% endif %}
+                {% if todo.is_overdue %}
+                <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>마감 초과</span>
+                {% endif %}
+            </div>
+        </div>
+        <a href="{% url 'todos:manager_dashboard' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>목록으로
+        </a>
+    </div>
+    
+    <div class="row">
+        <!-- 좌측: 업무 정보 -->
+        <div class="col-lg-8">
+            <!-- 업무 상세 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0"><i class="fas fa-clipboard-list me-2 text-primary"></i>업무 상세</h6>
+                </div>
+                <div class="card-body">
+                    {% if todo.description %}
+                    <div class="mb-4">
+                        <label class="form-label text-muted small">지시사항</label>
+                        <div class="bg-light p-3 rounded">
+                            {{ todo.description|linebreaks }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if todo.related_client %}
+                    <div class="mb-4">
+                        <label class="form-label text-muted small">관련 고객</label>
+                        <div>
+                            <a href="{% url 'reporting:followup_detail' todo.related_client.pk %}" class="text-decoration-none">
+                                <i class="fas fa-user me-1"></i>
+                                {{ todo.related_client.customer_name }}
+                                {% if todo.related_client.company %}({{ todo.related_client.company }}){% endif %}
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">담당자</label>
+                            <div>
+                                <span class="badge bg-info">
+                                    {{ todo.assigned_to.get_full_name|default:todo.assigned_to.username }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">하달일시</label>
+                            <div>{{ todo.created_at|date:"Y-m-d H:i" }}</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label text-muted small">마감일</label>
+                            <div class="{% if todo.is_overdue %}text-danger fw-bold{% endif %}">
+                                {% if todo.due_date %}
+                                {{ todo.due_date|date:"Y-m-d" }}
+                                {% if todo.is_overdue %}<i class="fas fa-exclamation-triangle ms-1"></i>{% endif %}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if todo.completed_at %}
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>완료일시:</strong> {{ todo.completed_at|date:"Y-m-d H:i" }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- 첨부파일 (매니저가 첨부한 파일) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0">
+                        <i class="fas fa-paperclip me-2 text-primary"></i>업무 첨부파일
+                        <span class="badge bg-secondary ms-1">{{ manager_attachments.count }}</span>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if manager_attachments %}
+                    <div class="list-group list-group-flush">
+                        {% for att in manager_attachments %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <i class="fas fa-file me-2 text-muted"></i>
+                                <a href="{{ att.file.url }}" target="_blank">{{ att.filename }}</a>
+                                <small class="text-muted ms-2">{{ att.file_size|filesizeformat }}</small>
+                            </div>
+                            <small class="text-muted">{{ att.uploaded_at|date:"m/d H:i" }}</small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">첨부파일이 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- 증빙자료 (실무자가 업로드한 파일) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-file-upload me-2 text-success"></i>완료 증빙자료
+                        <span class="badge bg-success ms-1">{{ completion_attachments.count }}</span>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if completion_attachments %}
+                    <div class="list-group list-group-flush">
+                        {% for att in completion_attachments %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <i class="fas fa-file-alt me-2 text-success"></i>
+                                <a href="{{ att.file.url }}" target="_blank">{{ att.filename }}</a>
+                                <small class="text-muted ms-2">{{ att.file_size|filesizeformat }}</small>
+                                <br>
+                                <small class="text-muted">
+                                    업로드: {{ att.uploaded_by.get_full_name|default:att.uploaded_by.username }}
+                                </small>
+                            </div>
+                            <small class="text-muted">{{ att.uploaded_at|date:"m/d H:i" }}</small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">아직 증빙자료가 없습니다.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 우측: 진행 로그 -->
+        <div class="col-lg-4">
+            <!-- 진행 상태 변경 (매니저용) -->
+            {% if todo.status != 'done' %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0"><i class="fas fa-cog me-2 text-primary"></i>상태 관리</h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'todos:manager_update_status' todo.pk %}">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <select name="status" class="form-select">
+                                <option value="ongoing" {% if todo.status == 'ongoing' %}selected{% endif %}>진행중</option>
+                                <option value="on_hold" {% if todo.status == 'on_hold' %}selected{% endif %}>보류</option>
+                                <option value="done" {% if todo.status == 'done' %}selected{% endif %}>완료</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">
+                            <i class="fas fa-save me-1"></i>상태 변경
+                        </button>
+                    </form>
+                    
+                    <hr>
+                    
+                    <form method="post" action="{% url 'todos:manager_cancel_task' todo.pk %}" 
+                          onsubmit="return confirm('이 업무를 취소하시겠습니까?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                            <i class="fas fa-times me-1"></i>업무 취소
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- 진행 로그 -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>진행 로그</h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if todo.logs.all %}
+                    <div class="timeline-list">
+                        {% for log in todo.logs.all %}
+                        <div class="timeline-item p-3 {% if not forloop.last %}border-bottom{% endif %}">
+                            <div class="d-flex align-items-start">
+                                <div class="timeline-icon me-3">
+                                    {% if log.action_type == 'created' or log.action_type == 'assigned' %}
+                                    <span class="badge bg-primary rounded-circle p-2"><i class="fas fa-plus"></i></span>
+                                    {% elif log.action_type == 'completed' %}
+                                    <span class="badge bg-success rounded-circle p-2"><i class="fas fa-check"></i></span>
+                                    {% elif log.action_type == 'status_changed' %}
+                                    <span class="badge bg-info rounded-circle p-2"><i class="fas fa-exchange-alt"></i></span>
+                                    {% elif log.action_type == 'commented' %}
+                                    <span class="badge bg-secondary rounded-circle p-2"><i class="fas fa-comment"></i></span>
+                                    {% else %}
+                                    <span class="badge bg-secondary rounded-circle p-2"><i class="fas fa-circle"></i></span>
+                                    {% endif %}
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between">
+                                        <strong class="small">{{ log.actor.get_full_name|default:log.actor.username }}</strong>
+                                        <small class="text-muted">{{ log.created_at|date:"m/d H:i" }}</small>
+                                    </div>
+                                    <div class="small text-muted">{{ log.message }}</div>
+                                    {% if log.prev_status and log.new_status %}
+                                    <div class="small mt-1">
+                                        <span class="badge bg-secondary">{{ log.prev_status }}</span>
+                                        <i class="fas fa-arrow-right mx-1 small"></i>
+                                        <span class="badge bg-primary">{{ log.new_status }}</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="p-3 text-center text-muted">
+                        로그가 없습니다
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

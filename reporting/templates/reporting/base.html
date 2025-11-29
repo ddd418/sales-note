@@ -483,12 +483,21 @@
             <span>팔로우업</span>
           </a>
         </li>
+        {% if user.userprofile.role == 'manager' %}
+        <li class="nav-item">
+          <a href="{% url 'todos:manager_dashboard' %}" class="nav-link {% if request.resolver_match.app_name == 'todos' %}active{% endif %}">
+            <i class="fas fa-bullhorn"></i>
+            <span>업무 하달</span>
+          </a>
+        </li>
+        {% else %}
         <li class="nav-item">
           <a href="{% url 'todos:list' %}" class="nav-link {% if request.resolver_match.app_name == 'todos' %}active{% endif %}">
             <i class="fas fa-tasks"></i>
             <span>TODOLIST</span>
           </a>
         </li>
+        {% endif %}
         <li class="nav-item">
           <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
             <i class="fas fa-list"></i>
@@ -1157,7 +1166,7 @@
     }
 
     // AI 작업 래퍼 함수 (상세 로그 포함)
-    async function runAITaskWithDetails(taskName, apiUrl, requestData, detailsCallback, onSuccess, onError) {
+    async function runAITaskWithDetails(taskName, apiUrl, requestData, detailsCallback, onSuccess, onError, method = 'POST') {
       showAILoading(`AI ${taskName}`, `${taskName} 데이터를 준비하고 있습니다...`);
       
       // 단계별 로그 표시
@@ -1190,14 +1199,27 @@
         
         const startTime = Date.now();
         
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
-          },
-          body: JSON.stringify(requestData)
-        });
+        // GET 또는 POST 요청 구분
+        let response;
+        if (method === 'GET') {
+          const params = new URLSearchParams(requestData);
+          const urlWithParams = params.toString() ? `${apiUrl}?${params}` : apiUrl;
+          response = await fetch(urlWithParams, {
+            method: 'GET',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          });
+        } else {
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}'
+            },
+            body: JSON.stringify(requestData)
+          });
+        }
         
         const responseTime = Date.now() - startTime;
         addAILog(`✓ 서버 응답 수신 (${response.status}) - ${responseTime}ms`, response.ok ? 'success' : 'error');

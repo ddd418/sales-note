@@ -19,6 +19,9 @@ urlpatterns = [
     # 상태 변경
     path('<int:pk>/complete/', views.todo_complete, name='complete'),
     path('<int:pk>/status/', views.todo_change_status, name='change_status'),
+    path('<int:pk>/cancel-request/', views.todo_cancel_request, name='cancel_request'),
+    path('<int:pk>/approve/', views.todo_approve_request, name='approve_request'),
+    path('<int:pk>/reject/', views.todo_reject_request, name='reject_request'),
     
     # 탭별 목록 (HTMX partial)
     path('my/', views.todo_my_list, name='my_list'),  # 내 할 일
@@ -27,14 +30,27 @@ urlpatterns = [
     
     # 동료 요청
     path('request/', views.todo_request_to_peer, name='request_to_peer'),
+    path('<int:pk>/delegate/', views.todo_delegate, name='delegate'),
+    path('<int:pk>/upload-completion/', views.upload_completion_file, name='upload_completion_file'),
+    
+    # 동료 목록 API
+    path('api/colleagues/', views.api_get_colleagues, name='api_colleagues'),
     
     # 매니저 기능
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
     path('manager/assign/', views.manager_assign, name='manager_assign'),
+    path('manager/task/<int:pk>/', views.manager_task_detail, name='manager_task_detail'),
+    path('manager/task/<int:pk>/status/', views.manager_update_status, name='manager_update_status'),
+    path('manager/task/<int:pk>/cancel/', views.manager_cancel_task, name='manager_cancel_task'),
     path('manager/workload/', views.manager_workload, name='manager_workload'),
     
     # API (HTMX용)
     path('api/quick-add/', views.api_quick_add, name='api_quick_add'),
     path('api/<int:pk>/toggle/', views.api_toggle_status, name='api_toggle_status'),
     path('api/search-clients/', views.api_search_clients, name='api_search_clients'),
+    
+    # AI 추천
+    path('ai/suggestions/', views.ai_suggestions, name='ai_suggestions'),
+    path('ai/accept/', views.ai_accept_suggestion, name='ai_accept'),
+    path('ai/dismiss/', views.ai_dismiss_suggestion, name='ai_dismiss'),
 ]

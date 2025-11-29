@@ -95,6 +95,33 @@
         </div>
     </div>
     
+    <!-- AI 추천 섹션 (AI 기능 활성화된 사용자만) -->
+    {% if request.user.userprofile.can_use_ai %}
+    <div id="ai-suggestions-container">
+        <div class="card shadow-sm border-0 mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="card-header bg-transparent border-0 text-white py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>AI 추천 TODO
+                    </h6>
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="loadAISuggestions()">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0" id="ai-suggestions-content">
+                <div class="text-center py-4 text-white">
+                    <i class="fas fa-robot fa-2x mb-2 opacity-50"></i>
+                    <p class="mb-2 opacity-75">버튼을 눌러 AI 추천을 받아보세요</p>
+                    <button type="button" class="btn btn-light btn-sm" onclick="loadAISuggestions()">
+                        <i class="fas fa-magic me-1"></i>AI 추천 받기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
     <!-- 탭 네비게이션 -->
     <ul class="nav nav-tabs mb-4" id="todoTabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -102,7 +129,7 @@
                     id="my-tab" data-bs-toggle="tab" data-bs-target="#my" 
                     type="button" role="tab" aria-controls="my" aria-selected="{% if active_tab == 'my' %}true{% else %}false{% endif %}">
                 <i class="fas fa-user me-1"></i>내 할 일
-                {% if my_count > 0 %}<span class="badge bg-primary ms-1">{{ my_count }}</span>{% endif %}
+                <span class="badge bg-primary ms-1" id="my-count-badge" {% if my_count == 0 %}style="display:none"{% endif %}>{{ my_count }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -110,7 +137,7 @@
                     id="received-tab" data-bs-toggle="tab" data-bs-target="#received" 
                     type="button" role="tab" aria-controls="received" aria-selected="{% if active_tab == 'received' %}true{% else %}false{% endif %}">
                 <i class="fas fa-inbox me-1"></i>받은 일
-                {% if received_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ received_count }}</span>{% endif %}
+                <span class="badge bg-warning text-dark ms-1" id="received-count-badge" {% if received_count == 0 %}style="display:none"{% endif %}>{{ received_count }}</span>
             </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -118,7 +145,7 @@
                     id="requested-tab" data-bs-toggle="tab" data-bs-target="#requested" 
                     type="button" role="tab" aria-controls="requested" aria-selected="{% if active_tab == 'requested' %}true{% else %}false{% endif %}">
                 <i class="fas fa-share me-1"></i>맡긴 일
-                {% if requested_count > 0 %}<span class="badge bg-info ms-1">{{ requested_count }}</span>{% endif %}
+                <span class="badge bg-info ms-1" id="requested-count-badge" {% if requested_count == 0 %}style="display:none"{% endif %}>{{ requested_count }}</span>
             </button>
         </li>
     </ul>
@@ -170,7 +197,7 @@
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form hx-post="{% url 'todos:api_quick_add' %}" hx-target="#my-todo-content" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) { this.reset(); bootstrap.Modal.getInstance(document.getElementById('quickAddModal')).hide(); }">
+            <form id="quickAddForm" hx-post="{% url 'todos:api_quick_add' %}" hx-swap="none" hx-on::after-request="if(event.detail.successful) { this.reset(); bootstrap.Modal.getInstance(document.getElementById('quickAddModal')).hide(); htmx.trigger('#my-todo-content', 'todoCreated'); updateMyCount(1); }">
                 {% csrf_token %}
                 <div class="modal-body">
                     <div class="mb-3">
@@ -191,4 +218,313 @@
 
 <!-- HTMX -->
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script>
+    // HTMX에 CSRF 토큰 자동 포함
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        evt.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
+    });
+    
+    // 탭 카운트 업데이트 함수
+    function updateMyCount(delta) {
+        const badge = document.getElementById('my-count-badge');
+        if (badge) {
+            let count = parseInt(badge.textContent) || 0;
+            count += delta;
+            badge.textContent = count;
+            badge.style.display = count > 0 ? '' : 'none';
+        }
+    }
+    
+    function updateReceivedCount(delta) {
+        const badge = document.getElementById('received-count-badge');
+        if (badge) {
+            let count = parseInt(badge.textContent) || 0;
+            count += delta;
+            badge.textContent = count;
+            badge.style.display = count > 0 ? '' : 'none';
+        }
+    }
+    
+    function updateRequestedCount(delta) {
+        const badge = document.getElementById('requested-count-badge');
+        if (badge) {
+            let count = parseInt(badge.textContent) || 0;
+            count += delta;
+            badge.textContent = count;
+            badge.style.display = count > 0 ? '' : 'none';
+        }
+    }
+    
+    // 완료/진행중 토글 시 카운트 업데이트
+    function updateCountOnToggle(tab, previousStatus) {
+        // 이전 상태가 done이면 → ongoing으로 변경됨 → 카운트 +1
+        // 이전 상태가 ongoing이면 → done으로 변경됨 → 카운트 -1
+        const delta = previousStatus === 'done' ? 1 : -1;
+        
+        if (tab === 'my') {
+            updateMyCount(delta);
+        } else if (tab === 'received') {
+            updateReceivedCount(delta);
+        } else if (tab === 'requested') {
+            updateRequestedCount(delta);
+        }
+    }
+    
+    // HX-Trigger 이벤트 리스너 - 서버에서 보낸 카운트 업데이트 정보 처리
+    document.body.addEventListener('todoStatusChanged', function(evt) {
+        const data = evt.detail;
+        if (data && data.prevStatus) {
+            updateCountOnToggle(data.tab, data.prevStatus);
+        }
+    });
+    
+    // AI 추천 로드 (프로그레스 모달 사용)
+    async function loadAISuggestions() {
+        await runAITaskWithDetails(
+            'AI TODO 추천',
+            '{% url "todos:ai_suggestions" %}',
+            {},
+            
+            // 상세 로그 콜백
+            async function() {
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                addAILog('🤖 AI TODO 추천 시작', 'info');
+                addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+                await sleep(300);
+                addAILog('📧 미답장 이메일 분석 중...', 'info');
+                await sleep(300);
+                addAILog('👤 연락 필요 고객 검색 중...', 'info');
+                await sleep(300);
+                addAILog('📄 만료 임박 견적 확인 중...', 'info');
+                await sleep(300);
+                addAILog('🎯 진행중인 기회 분석 중...', 'info');
+                await sleep(300);
+                addAILog('📅 다가오는 일정 준비 확인 중...', 'info');
+                await sleep(400);
+                addAILog('📝 최근 히스토리 AI 분석 중...', 'info');
+                await sleep(300);
+                addAILog('   - 데모/시연 요청 키워드 탐색', 'info');
+                await sleep(200);
+                addAILog('   - 제품 관심/문의 키워드 탐색', 'info');
+                await sleep(200);
+                addAILog('   - 견적/교육/A/S 키워드 탐색', 'info');
+                await sleep(300);
+                addAILog('✨ 추천 목록 생성 중...', 'info');
+            },
+            
+            // 성공 콜백
+            function(data) {
+                if (data && data.html) {
+                    document.getElementById('ai-suggestions-container').innerHTML = data.html;
+                } else if (typeof data === 'string') {
+                    document.getElementById('ai-suggestions-container').innerHTML = data;
+                }
+            },
+            
+            // 에러 콜백
+            function(error) {
+                document.getElementById('ai-suggestions-content').innerHTML = `
+                    <div class="text-center py-4 text-white">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <p class="mb-0">추천을 불러오지 못했습니다</p>
+                        <button type="button" class="btn btn-outline-light btn-sm mt-2" onclick="loadAISuggestions()">
+                            <i class="fas fa-redo me-1"></i>다시 시도
+                        </button>
+                    </div>
+                `;
+            },
+            
+            // GET 요청 사용
+            'GET'
+        );
+    }
+    
+    // AI 추천 수락
+    async function acceptAISuggestion(btn, title, description, duration, relatedType, relatedId) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        try {
+            const response = await fetch('{% url "todos:ai_accept" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: new URLSearchParams({
+                    title: title,
+                    description: description,
+                    duration: duration,
+                    related_type: relatedType,
+                    related_id: relatedId
+                })
+            });
+            
+            if (response.ok) {
+                // 부모 요소 제거 (애니메이션)
+                const row = btn.closest('.list-group-item');
+                row.style.transition = 'all 0.3s ease';
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    row.remove();
+                    // 남은 추천이 없으면 빈 상태 표시
+                    const remaining = document.querySelectorAll('#ai-suggestions-container .list-group-item');
+                    if (remaining.length === 0) {
+                        loadAISuggestions();
+                    }
+                }, 300);
+                
+                // TODO 목록 새로고침
+                htmx.trigger('#my-todo-content', 'todoCreated');
+                
+                // 토스트 알림
+                if (typeof showNotification === 'function') {
+                    showNotification('TODO가 추가되었습니다', 'success');
+                }
+            }
+        } catch (error) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus"></i>';
+            console.error('Error:', error);
+        }
+    }
+    
+    // AI 추천 무시
+    async function dismissAISuggestion(btn, key) {
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch('{% url "todos:ai_dismiss" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: new URLSearchParams({ key: key })
+            });
+            
+            if (response.ok) {
+                const row = btn.closest('.list-group-item');
+                row.style.transition = 'all 0.3s ease';
+                row.style.opacity = '0';
+                row.style.height = '0';
+                row.style.padding = '0';
+                setTimeout(() => row.remove(), 300);
+            }
+        } catch (error) {
+            btn.disabled = false;
+            console.error('Error:', error);
+        }
+    }
+    
+    // AI 추천 상세 모달 표시
+    function showSuggestionDetail(index) {
+        const data = document.getElementById(`suggestion-data-${index}`);
+        if (!data) {
+            console.error('Suggestion data not found:', index);
+            return;
+        }
+        
+        const title = data.querySelector('.suggestion-title').textContent;
+        const description = data.querySelector('.suggestion-description').textContent;
+        const duration = data.querySelector('.suggestion-duration').textContent;
+        const relatedType = data.querySelector('.suggestion-related-type').textContent;
+        const relatedId = data.querySelector('.suggestion-related-id').textContent;
+        const type = data.querySelector('.suggestion-type').textContent;
+        const urgency = data.querySelector('.suggestion-urgency').textContent;
+        const icon = data.querySelector('.suggestion-icon').textContent;
+        const iconColor = data.querySelector('.suggestion-icon-color').textContent;
+        const reason = data.querySelector('.suggestion-reason').innerHTML;
+        
+        // 모달 내용 채우기
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-icon').className = `fas ${icon} fa-stack-1x ${iconColor}`;
+        document.getElementById('modal-icon-bg').className = `fas fa-circle fa-stack-2x ${iconColor}`;
+        document.getElementById('modal-reason').innerHTML = reason;
+        
+        // 긴급도 배지
+        const urgencyBadge = document.getElementById('modal-urgency-badge');
+        if (urgency === 'high') {
+            urgencyBadge.className = 'badge bg-danger';
+            urgencyBadge.textContent = '긴급';
+        } else {
+            urgencyBadge.className = 'badge bg-warning text-dark';
+            urgencyBadge.textContent = '보통';
+        }
+        
+        // 소요시간 배지
+        const durationBadge = document.getElementById('modal-duration-badge');
+        const mins = parseInt(duration);
+        if (mins >= 60) {
+            durationBadge.textContent = `예상 ${Math.floor(mins/60)}시간 ${mins%60 > 0 ? mins%60 + '분' : ''}`;
+        } else {
+            durationBadge.textContent = `예상 ${mins}분`;
+        }
+        
+        // 추가 버튼 설정
+        const acceptBtn = document.getElementById('modal-accept-btn');
+        acceptBtn.onclick = function() {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('suggestionDetailModal'));
+            modal.hide();
+            
+            // 해당 항목의 추가 버튼 찾아서 클릭
+            const suggestionRow = document.getElementById(`ai-suggestion-${index}`);
+            const addBtn = suggestionRow.querySelector('.btn-success');
+            if (addBtn) {
+                acceptAISuggestion(addBtn, title, description, duration, relatedType, relatedId);
+            }
+        };
+        
+        // 모달 표시
+        const modal = new bootstrap.Modal(document.getElementById('suggestionDetailModal'));
+        modal.show();
+    }
+</script>
+
+<!-- AI 추천 상세 모달 -->
+<div class="modal fade" id="suggestionDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-robot me-2"></i>AI 추천 상세
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 추천 제목 -->
+                <div class="d-flex align-items-center mb-4">
+                    <div class="me-3">
+                        <span class="fa-stack fa-2x">
+                            <i class="fas fa-circle fa-stack-2x" id="modal-icon-bg" style="opacity: 0.2;"></i>
+                            <i class="fas fa-stack-1x" id="modal-icon"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <h4 class="mb-1" id="modal-title"></h4>
+                        <span class="badge" id="modal-urgency-badge"></span>
+                        <span class="badge bg-secondary ms-1" id="modal-duration-badge"></span>
+                    </div>
+                </div>
+                
+                <!-- 추천 이유 -->
+                <div class="card bg-light border-0 mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title text-primary mb-3">
+                            <i class="fas fa-lightbulb me-2"></i>왜 이 TODO를 추천하나요?
+                        </h6>
+                        <div id="modal-reason" class="text-dark"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-success" id="modal-accept-btn">
+                    <i class="fas fa-plus me-1"></i>TODO로 추가
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
