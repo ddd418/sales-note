@@ -12082,12 +12082,17 @@ def document_template_list(request):
     """서류 템플릿 목록"""
     from reporting.models import DocumentTemplate
     
-    # 자신의 회사 서류만 조회
-    user_company = request.user.userprofile.company
-    templates = DocumentTemplate.objects.filter(
-        company=user_company,
-        is_active=True
-    ).select_related('created_by')
+    # 슈퍼유저는 모든 서류 조회, 일반 사용자는 자신의 회사 서류만
+    if request.user.is_superuser:
+        templates = DocumentTemplate.objects.filter(
+            is_active=True
+        ).select_related('created_by', 'company')
+    else:
+        user_company = request.user.userprofile.company
+        templates = DocumentTemplate.objects.filter(
+            company=user_company,
+            is_active=True
+        ).select_related('created_by')
     
     # 서류 종류별 필터
     document_type = request.GET.get('type')
@@ -12107,12 +12112,27 @@ def document_template_list(request):
 @role_required(['admin', 'manager'])
 def document_template_create(request):
     """서류 템플릿 생성 (Admin, Manager 전용)"""
-    from reporting.models import DocumentTemplate
+    from reporting.models import DocumentTemplate, UserCompany
     import os
+    
+    # 관리자(superuser)는 모든 회사 선택 가능
+    if request.user.is_superuser:
+        companies = UserCompany.objects.all().order_by('name')
+    else:
+        companies = None
     
     if request.method == 'POST':
         try:
-            user_company = request.user.userprofile.company
+            # 관리자는 회사 선택, 일반 사용자는 자신의 회사
+            if request.user.is_superuser:
+                company_id = request.POST.get('company')
+                if company_id:
+                    user_company = UserCompany.objects.get(pk=company_id)
+                else:
+                    messages.error(request, '회사를 선택해주세요.')
+                    return redirect('reporting:document_template_create')
+            else:
+                user_company = request.user.userprofile.company
             
             document_type = request.POST.get('document_type')
             name = request.POST.get('name')
@@ -12194,6 +12214,8 @@ def document_template_create(request):
     from reporting.models import DocumentTemplate
     context = {
         'document_types': DocumentTemplate.DOCUMENT_TYPE_CHOICES,
+        'companies': companies,  # 관리자만 사용
+        'is_superuser': request.user.is_superuser,
         'page_title': '서류 등록'
     }
     return render(request, 'reporting/document_template_form.html', context)
