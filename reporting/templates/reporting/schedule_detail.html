@@ -774,9 +774,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const addItemButton = document.getElementById('add-delivery-item');
     const modalElement = document.getElementById('deliveryItemsModal');
     
-    // 모달 요소가 있을 때만 초기화
-    if (modalElement && typeof bootstrap !== 'undefined') {
-        deliveryModal = new bootstrap.Modal(modalElement);
+    // 모달 초기화 (Bootstrap 5)
+    if (modalElement) {
+        try {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                deliveryModal = new bootstrap.Modal(modalElement);
+            }
+        } catch (e) {
+            console.error('Modal 초기화 에러:', e);
+        }
     }
 
     if (editButton) {
@@ -784,9 +790,16 @@ document.addEventListener('DOMContentLoaded', function() {
             loadExistingItems();
             if (deliveryModal) {
                 deliveryModal.show();
-            } else {
-                // fallback: jQuery 방식
-                $('#deliveryItemsModal').modal('show');
+            } else if (modalElement) {
+                // fallback: 직접 클래스 조작
+                modalElement.classList.add('show');
+                modalElement.style.display = 'block';
+                document.body.classList.add('modal-open');
+                // backdrop 추가
+                const backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop fade show';
+                backdrop.id = 'deliveryModalBackdrop';
+                document.body.appendChild(backdrop);
             }
         });
     }
@@ -794,6 +807,22 @@ document.addEventListener('DOMContentLoaded', function() {
     if (addItemButton) {
         addItemButton.addEventListener('click', function() {
             addDeliveryItem();
+        });
+    }
+    
+    // 모달 닫기 버튼 이벤트 (fallback용)
+    if (modalElement) {
+        const closeButtons = modalElement.querySelectorAll('[data-bs-dismiss="modal"]');
+        closeButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (!deliveryModal) {
+                    modalElement.classList.remove('show');
+                    modalElement.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    const backdrop = document.getElementById('deliveryModalBackdrop');
+                    if (backdrop) backdrop.remove();
+                }
+            });
         });
     }
 });
