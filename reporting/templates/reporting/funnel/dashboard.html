@@ -806,6 +806,23 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- 이메일 요약 -->
+                    <div id="emailSummarySection" class="card mb-4" style="border-left: 4px solid #10b981; display: none;">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1"><i class="fas fa-envelope"></i> 이메일 주고받은 횟수</h6>
+                                    <span class="badge bg-primary me-2" id="emailSentCount"></span>
+                                    <span class="badge bg-success me-2" id="emailReceivedCount"></span>
+                                    <span class="text-muted" id="emailTotalCount"></span>
+                                </div>
+                                <a id="emailMailboxLink" href="#" class="btn btn-outline-primary btn-sm" target="_blank">
+                                    <i class="fas fa-external-link-alt"></i> 메일함 보기
+                                </a>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- 일정 및 히스토리 -->
                     <div id="schedulesContainer"></div>
@@ -895,6 +912,19 @@ function displayOpportunityHistory(data) {
     document.getElementById('oppExpectedRevenue').textContent = formatCurrency(opp.expected_revenue) + '원';
     document.getElementById('oppProbability').textContent = opp.probability + '%';
     
+    // 이메일 요약 표시
+    const emailSection = document.getElementById('emailSummarySection');
+    if (data.email_summary && data.email_summary.total > 0) {
+        emailSection.style.display = 'block';
+        document.getElementById('emailSentCount').textContent = `발신 ${data.email_summary.sent}건`;
+        document.getElementById('emailReceivedCount').textContent = `수신 ${data.email_summary.received}건`;
+        document.getElementById('emailTotalCount').textContent = `(총 ${data.email_summary.total}건)`;
+        // 메일함 링크 설정
+        document.getElementById('emailMailboxLink').href = `/reporting/gmail/mailbox/?followup_id=${opp.followup_id}`;
+    } else {
+        emailSection.style.display = 'none';
+    }
+    
     // 일정 및 히스토리 표시
     const schedulesContainer = document.getElementById('schedulesContainer');
     schedulesContainer.innerHTML = '';
@@ -929,20 +959,6 @@ function createScheduleCard(schedule) {
                 <p class="mb-1"><strong>총 금액:</strong> ${formatCurrency(schedule.quote.total_amount)}원</p>
                 <p class="mb-1"><strong>품목:</strong> ${schedule.quote.items}</p>
                 <p class="mb-0"><strong>상태:</strong> <span class="badge bg-primary">${schedule.quote.status}</span></p>
-            </div>
-        `;
-    }
-    
-    // 이메일 정보 HTML
-    let emailHTML = '';
-    if (schedule.email) {
-        emailHTML = `
-            <div class="alert alert-success mt-3 mb-2">
-                <h6 class="mb-2"><i class="fas fa-envelope"></i> 이메일 정보</h6>
-                <p class="mb-1"><strong>제목:</strong> ${schedule.email.subject}</p>
-                <p class="mb-1"><strong>수신:</strong> ${schedule.email.to_email}</p>
-                <p class="mb-1"><strong>발송일:</strong> ${schedule.email.sent_at}</p>
-                <p class="mb-0"><strong>내용:</strong> ${schedule.email.body_preview}</p>
             </div>
         `;
     }
@@ -985,7 +1001,6 @@ function createScheduleCard(schedule) {
             ${schedule.notes ? `<p class="mb-1"><strong>메모:</strong> ${schedule.notes}</p>` : ''}
             ${schedule.expected_revenue ? `<p class="mb-1"><strong>예상 매출:</strong> ${formatCurrency(schedule.expected_revenue)}원</p>` : ''}
             ${quoteHTML}
-            ${emailHTML}
             ${historiesHTML}
         </div>
     `;

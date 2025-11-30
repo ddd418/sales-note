@@ -10122,23 +10122,9 @@ def opportunity_history_api(request, opportunity_id):
                         'status': quotes.get_status_display(),
                     }
             
-            # 일정과 관련된 이메일 정보 가져오기 (일정 날짜 기준 ±3일 이내)
+            # 일정과 관련된 이메일 정보 가져오기 - 간소화 (횟수만)
             email_info = None
-            if schedule.activity_type in ['quote', 'customer_meeting']:
-                from datetime import timedelta
-                emails = EmailLog.objects.filter(
-                    followup=schedule.followup,
-                    sent_at__date__gte=schedule.visit_date - timedelta(days=3),
-                    sent_at__date__lte=schedule.visit_date + timedelta(days=3)
-                ).order_by('-sent_at').first()
-                
-                if emails:
-                    email_info = {
-                        'subject': emails.subject,
-                        'sent_at': emails.sent_at.strftime('%Y-%m-%d %H:%M'),
-                        'to_email': emails.recipient_email,
-                        'body_preview': emails.body[:100] + '...' if len(emails.body) > 100 else emails.body,
-                    }
+            # 이메일 정보는 전체 opportunity 레벨에서 처리하므로 여기선 생략
             
             schedule_data.append({
                 'id': schedule.id,
@@ -10151,8 +10137,12 @@ def opportunity_history_api(request, opportunity_id):
                 'expected_revenue': str(schedule.expected_revenue) if schedule.expected_revenue else None,
                 'histories': history_list,
                 'quote': quote_info,
-                'email': email_info,
             })
+        
+        # 해당 팔로우업과 관련된 전체 이메일 카운트
+        email_count = EmailLog.objects.filter(followup=opportunity.followup).count()
+        sent_count = EmailLog.objects.filter(followup=opportunity.followup, email_type='sent').count()
+        received_count = EmailLog.objects.filter(followup=opportunity.followup, email_type='received').count()
         
         return JsonResponse({
             'success': True,
@@ -10165,6 +10155,12 @@ def opportunity_history_api(request, opportunity_id):
                 'expected_revenue': str(opportunity.expected_revenue),
                 'probability': opportunity.probability,
                 'expected_close_date': opportunity.expected_close_date.strftime('%Y-%m-%d') if opportunity.expected_close_date else None,
+                'followup_id': opportunity.followup.id,
+            },
+            'email_summary': {
+                'total': email_count,
+                'sent': sent_count,
+                'received': received_count,
             },
             'schedules': schedule_data,
         })
