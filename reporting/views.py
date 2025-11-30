@@ -2854,6 +2854,7 @@ def schedule_edit_view(request, pk):
     delivery_items = schedule.delivery_items_set.all().order_by('id')
     
     if delivery_items.exists():
+        from decimal import Decimal
         delivery_text_parts = []
         total_amount = Decimal('0')
         
