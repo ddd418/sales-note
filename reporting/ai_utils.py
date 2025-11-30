@@ -1068,6 +1068,16 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - category (카테고리)
 - specification (규격)
 
+**Prepayment (선결제) 모델:**
+- followup (관계: FollowUp 객체 - 선결제한 고객)
+- amount (선결제 금액)
+- remaining_amount (잔액)
+- payment_date (결제일)
+- memo (메모)
+- created_by (등록자)
+- created_at (등록일)
+- 관계 접근: prepayments__field_name (고객 모델에서)
+
 **OpportunityTracking (영업기회) 모델:**
 - followup (관계: FollowUp 객체)
 - title (제목)
@@ -1120,6 +1130,13 @@ def natural_language_search(query: str, search_type: str = 'all', user=None) -> 
 - "메일 나눈", "메일 주고받은", "메일 교환한" = email_type 필터 없음 (보낸것+받은것 모두 포함)
 - "메일 보낸" = email_type="sent" 명시
 - "메일 받은" = email_type="received" 명시
+
+💰 선결제 검색 패턴:
+- "선결제한 고객" → customers 검색 + prepayments__isnull=False
+- "선결제 잔액이 있는 고객" → customers 검색 + prepayments__remaining_amount__gt=0
+- "이번 달 선결제한 고객" → customers 검색 + prepayments__payment_date__gte="{current_month_start}"
+- "100만원 이상 선결제한 고객" → customers 검색 + prepayments__amount__gte=1000000
+- "선결제를 진행한 고객" → customers 검색 + prepayments__isnull=False (선결제 이력이 있는 고객)
 """
 
     user_prompt = f"""

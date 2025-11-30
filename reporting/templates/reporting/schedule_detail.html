@@ -767,16 +767,27 @@ function showSuccessMessage(message) {
 
 // 납품 품목 편집 기능
 let deliveryItemIndex = 0;
+let deliveryModal = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     const editButton = document.getElementById('edit-delivery-items');
     const addItemButton = document.getElementById('add-delivery-item');
-    const modal = new bootstrap.Modal(document.getElementById('deliveryItemsModal'));
+    const modalElement = document.getElementById('deliveryItemsModal');
+    
+    // 모달 요소가 있을 때만 초기화
+    if (modalElement && typeof bootstrap !== 'undefined') {
+        deliveryModal = new bootstrap.Modal(modalElement);
+    }
 
     if (editButton) {
         editButton.addEventListener('click', function() {
             loadExistingItems();
-            modal.show();
+            if (deliveryModal) {
+                deliveryModal.show();
+            } else {
+                // fallback: jQuery 방식
+                $('#deliveryItemsModal').modal('show');
+            }
         });
     }
 
