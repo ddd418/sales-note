@@ -22,8 +22,9 @@ django.setup()
 
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
-from reporting.models import Schedule, OpportunityTracking, FollowUp, FunnelStage
+from reporting.models import Schedule, OpportunityTracking, FollowUp, FunnelStage, DeliveryItem
 
 def sync_funnel_for_user(username):
     """특정 사용자의 펀넬 데이터 동기화"""
@@ -104,9 +105,20 @@ def sync_funnel_for_user(username):
                 created = False
             else:
                 # 견적/클로징 단계만 새로 생성
-                # expected_revenue는 견적 일정에서 가져옴
-                quote_schedule = schedules.filter(activity_type='quote').first()
-                expected_revenue = quote_schedule.expected_revenue if quote_schedule and quote_schedule.expected_revenue else 0
+                # expected_revenue는 견적 일정의 품목 합계 금액에서 가져옴
+                expected_revenue = 0
+                quote_schedule = schedules.filter(activity_type='quote').order_by('-visit_date').first()
+                if quote_schedule:
+                    # 견적 품목 합계 계산
+                    items_total = DeliveryItem.objects.filter(schedule=quote_schedule).aggregate(
+                        total=Sum('total_price')
+                    )['total']
+                    if items_total:
+                        expected_revenue = items_total
+                    elif quote_schedule.expected_revenue:
+                        # 품목이 없으면 일정의 expected_revenue 사용
+                        expected_revenue = quote_schedule.expected_revenue
+                
                 opp = OpportunityTracking.objects.create(
                     followup=followup,
                     current_stage=new_stage,
@@ -118,8 +130,20 @@ def sync_funnel_for_user(username):
             if created:
                 stats['created'] += 1
                 stats[new_stage] += 1
-                print(f"  ✨ {followup.customer_name or followup.company.name}: 새 영업기회 생성 → {get_stage_display(new_stage)}")
+                print(f"  ✨ {followup.customer_name or followup.company.name}: 새 영업기회 생성 → {get_stage_display(new_stage)} (예상매출: {expected_revenue:,.0f}원)")
             else:
+                # 기존 영업기회도 견적 단계면 예상매출 업데이트
+                if new_stage == 'quote':
+                    quote_schedule = schedules.filter(activity_type='quote').order_by('-visit_date').first()
+                    if quote_schedule:
+                        items_total = DeliveryItem.objects.filter(schedule=quote_schedule).aggregate(
+                            total=Sum('total_price')
+                        )['total']
+                        if items_total:
+                            opp.expected_revenue = items_total
+                        elif quote_schedule.expected_revenue:
+                            opp.expected_revenue = quote_schedule.expected_revenue
+                
                 # 기존 단계와 다르면 업데이트
                 if opp.current_stage != new_stage:
                     old_stage = opp.current_stage
@@ -128,8 +152,10 @@ def sync_funnel_for_user(username):
                     opp.save()
                     stats['updated'] += 1
                     stats[new_stage] += 1
-                    print(f"  🔄 {followup.customer_name or followup.company.name}: {get_stage_display(old_stage)} → {get_stage_display(new_stage)}")
+                    print(f"  🔄 {followup.customer_name or followup.company.name}: {get_stage_display(old_stage)} → {get_stage_display(new_stage)} (예상매출: {opp.expected_revenue:,.0f}원)")
                 else:
+                    # 단계는 같지만 예상매출이 변경됐으면 저장
+                    opp.save()
                     stats[new_stage] += 1
     
     # 결과 출력
