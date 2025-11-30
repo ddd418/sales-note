@@ -10136,8 +10136,8 @@ def opportunity_history_api(request, opportunity_id):
                     email_info = {
                         'subject': emails.subject,
                         'sent_at': emails.sent_at.strftime('%Y-%m-%d %H:%M'),
-                        'to_email': emails.to_email,
-                        'body_preview': emails.body_text[:100] + '...' if len(emails.body_text) > 100 else emails.body_text,
+                        'to_email': emails.recipient_email,
+                        'body_preview': emails.body[:100] + '...' if len(emails.body) > 100 else emails.body,
                     }
             
             schedule_data.append({
