@@ -56,12 +56,10 @@ def sync_funnel_for_user(username):
     
     with transaction.atomic():
         for followup in followups:
-            # 해당 FollowUp의 가장 최근 일정 조회
-            latest_schedule = Schedule.objects.filter(
-                followup=followup
-            ).order_by('-visit_date', '-visit_time').first()
+            # 해당 FollowUp의 모든 일정 조회
+            schedules = Schedule.objects.filter(followup=followup)
             
-            if not latest_schedule:
+            if not schedules.exists():
                 stats['no_schedule'] += 1
                 # 일정 없으면 영업기회도 삭제
                 deleted_count = OpportunityTracking.objects.filter(followup=followup).delete()[0]
@@ -69,11 +67,10 @@ def sync_funnel_for_user(username):
                     stats['deleted'] += deleted_count
                 continue
             
-            # 일정 유형과 상태에 따라 펀넬 단계 결정
-            activity_type = latest_schedule.activity_type
-            status = latest_schedule.status
+            # 가장 진행도가 높은 단계 결정 (우선순위: 납품 > 견적 > 미팅)
+            best_stage = determine_best_stage(schedules)
             
-            new_stage = determine_stage(activity_type, status)
+            new_stage = best_stage
             
             # 납품 완료 = 수주 → 영업기회에서 제외
             if new_stage == 'won':
@@ -107,10 +104,13 @@ def sync_funnel_for_user(username):
                 created = False
             else:
                 # 견적/클로징 단계만 새로 생성
+                # expected_revenue는 견적 일정에서 가져옴
+                quote_schedule = schedules.filter(activity_type='quote').first()
+                expected_revenue = quote_schedule.expected_revenue if quote_schedule and quote_schedule.expected_revenue else 0
                 opp = OpportunityTracking.objects.create(
                     followup=followup,
                     current_stage=new_stage,
-                    expected_revenue=latest_schedule.expected_revenue or 0,
+                    expected_revenue=expected_revenue,
                     probability=get_default_probability(new_stage),
                 )
                 created = True
@@ -146,6 +146,34 @@ def sync_funnel_for_user(username):
     print(f"  📋 견적 (Quote): {stats['quote']}건")
     print(f"  🤝 클로징 (Closing): {stats['closing']}건")
     print(f"  🏆 수주 완료 (Won): {stats['won']}건")
+
+
+def determine_best_stage(schedules):
+    """
+    일정들 중 가장 진행도가 높은 단계 결정
+    우선순위: 납품완료(won) > 납품예정(closing) > 견적(quote) > 미팅완료(contact) > 미팅예정(lead)
+    """
+    # 우선순위 (높을수록 우선)
+    stage_priority = {
+        'won': 5,
+        'closing': 4,
+        'quote': 3,
+        'contact': 2,
+        'lead': 1,
+    }
+    
+    best_stage = 'lead'
+    best_priority = 0
+    
+    for schedule in schedules:
+        stage = determine_stage(schedule.activity_type, schedule.status)
+        priority = stage_priority.get(stage, 0)
+        
+        if priority > best_priority:
+            best_priority = priority
+            best_stage = stage
+    
+    return best_stage
 
 
 def determine_stage(activity_type, status):
