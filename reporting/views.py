@@ -2285,6 +2285,19 @@ def schedule_create_view(request):
             selected_opportunity = schedule.opportunity  # 폼에서 선택한 opportunity
             should_create_or_update_opportunity = False
             
+            # 견적 취소 시 영업기회를 실주(lost)로 처리
+            if schedule.activity_type == 'quote' and schedule.status == 'cancelled':
+                # 해당 일정에 연결된 영업기회 또는 같은 FollowUp의 영업기회 찾기
+                if selected_opportunity and selected_opportunity.current_stage not in ['won', 'lost']:
+                    selected_opportunity.update_stage('lost')
+                else:
+                    # FollowUp에 연결된 영업기회 중 quote 단계인 것 찾기
+                    quote_opportunities = schedule.followup.opportunities.filter(
+                        current_stage='quote'
+                    ).order_by('-created_at')
+                    if quote_opportunities.exists():
+                        quote_opportunities.first().update_stage('lost')
+            
             # 기존 Opportunity 찾기 (같은 고객의 진행 중인 영업 기회)
             existing_opportunities = schedule.followup.opportunities.exclude(current_stage='lost').order_by('-created_at')
             has_existing_opportunity = existing_opportunities.exists()
@@ -2621,6 +2634,21 @@ def schedule_edit_view(request, pk):
             # 기존 OpportunityTracking이 있으면 해당 정보를 활용
             should_create_or_update_opportunity = False
             
+            # 견적 취소 시 영업기회를 실주(lost)로 처리
+            if updated_schedule.activity_type == 'quote' and updated_schedule.status == 'cancelled':
+                # 해당 일정에 연결된 영업기회 찾기
+                opp_to_lose = getattr(schedule, 'opportunity', None)
+                if opp_to_lose and opp_to_lose.current_stage not in ['won', 'lost']:
+                    opp_to_lose.update_stage('lost')
+                else:
+                    # FollowUp에 연결된 영업기회 중 quote 단계인 것 찾기
+                    quote_opps = OpportunityTracking.objects.filter(
+                        followup=updated_schedule.followup,
+                        current_stage='quote'
+                    ).order_by('-created_at')
+                    if quote_opps.exists():
+                        quote_opps.first().update_stage('lost')
+            
             # 기존 Opportunity가 있는지 먼저 확인
             existing_opportunity = None
             has_existing_opportunity = False
@@ -2637,8 +2665,11 @@ def schedule_edit_view(request, pk):
             
             # Opportunity 생성/업데이트 조건 판단
             if updated_schedule.activity_type != 'service':
-                # 견적 일정은 항상 새로운 영업 기회 생성
-                if updated_schedule.activity_type == 'quote':
+                # 견적 일정이 취소된 경우 실주 처리는 위에서 완료, 새로 생성 안함
+                if updated_schedule.activity_type == 'quote' and updated_schedule.status == 'cancelled':
+                    should_create_or_update_opportunity = False
+                # 견적 일정은 항상 새로운 영업 기회 생성 (취소 아닌 경우)
+                elif updated_schedule.activity_type == 'quote':
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = False  # 강제로 새로 생성
                 # 납품 완료이면서 기존 opportunity가 없는 경우만 새로 생성
