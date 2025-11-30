@@ -94,11 +94,19 @@ def sync_funnel_for_user(username):
                 print(f"  ⚠️ {followup.customer_name or followup.company.name}: 중복 영업기회 {deleted_count}개 삭제")
                 stats['deleted'] += deleted_count
             
-            # 영업기회 생성 또는 업데이트
+            # 기존 영업기회가 있는지 확인
             opp = existing_opps.first()
+            
+            # 리드/컨택은 기존 영업기회가 있을 때만 업데이트 (새로 생성 안함)
+            if opp is None and new_stage in ['lead', 'contact']:
+                stats['no_schedule'] += 1  # 영업기회 없음으로 카운트
+                continue
+            
+            # 영업기회 생성 또는 업데이트
             if opp:
                 created = False
             else:
+                # 견적/클로징 단계만 새로 생성
                 opp = OpportunityTracking.objects.create(
                     followup=followup,
                     current_stage=new_stage,
