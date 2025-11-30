@@ -2855,11 +2855,11 @@ def schedule_edit_view(request, pk):
     
     if delivery_items.exists():
         delivery_text_parts = []
-        total_amount = 0
+        total_amount = Decimal('0')
         
         for item in delivery_items:
             # VAT 포함 총액 계산 (DeliveryItem의 save()에서 자동 계산됨)
-            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+            item_total = item.total_price or (item.quantity * item.unit_price * Decimal('1.1'))
             total_amount += item_total
             
             # 텍스트 형태로 변환
