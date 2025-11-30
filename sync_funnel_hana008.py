@@ -85,15 +85,27 @@ def sync_funnel_for_user(username):
                     print(f"  🏆 {followup.customer_name or followup.company.name}: 수주 완료 → 영업기회 제외")
                 continue
             
+            # 중복 영업기회 정리 (1개만 남기고 삭제)
+            existing_opps = OpportunityTracking.objects.filter(followup=followup)
+            if existing_opps.count() > 1:
+                # 첫번째 것만 남기고 나머지 삭제
+                first_opp = existing_opps.first()
+                deleted_count = existing_opps.exclude(id=first_opp.id).delete()[0]
+                print(f"  ⚠️ {followup.customer_name or followup.company.name}: 중복 영업기회 {deleted_count}개 삭제")
+                stats['deleted'] += deleted_count
+            
             # 영업기회 생성 또는 업데이트
-            opp, created = OpportunityTracking.objects.get_or_create(
-                followup=followup,
-                defaults={
-                    'current_stage': new_stage,
-                    'expected_revenue': latest_schedule.expected_revenue or 0,
-                    'probability': get_default_probability(new_stage),
-                }
-            )
+            opp = existing_opps.first()
+            if opp:
+                created = False
+            else:
+                opp = OpportunityTracking.objects.create(
+                    followup=followup,
+                    current_stage=new_stage,
+                    expected_revenue=latest_schedule.expected_revenue or 0,
+                    probability=get_default_probability(new_stage),
+                )
+                created = True
             
             if created:
                 stats['created'] += 1
