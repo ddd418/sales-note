@@ -302,6 +302,74 @@
             margin-bottom: 0.5rem;
         }
     }
+    
+    /* 히스토리 마크다운 렌더링 스타일 */
+    .history-content {
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+    
+    .history-content h6 {
+        font-weight: 700;
+        color: #333;
+        margin-top: 0.8rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.3rem;
+    }
+    
+    .history-content h6:first-child {
+        margin-top: 0;
+    }
+    
+    .history-content ul {
+        list-style: none;
+        padding-left: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .history-content li {
+        position: relative;
+        padding-left: 1.2rem;
+        margin-bottom: 0.3rem;
+    }
+    
+    .history-content li::before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: #667eea;
+        font-weight: bold;
+    }
+    
+    .history-badge {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        margin-bottom: 0.3rem;
+    }
+    
+    .history-badge-blue {
+        background-color: #e3f2fd;
+        color: #1565c0;
+    }
+    
+    .history-badge-green {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+    }
+    
+    .history-badge-yellow {
+        background-color: #fff8e1;
+        color: #f57c00;
+    }
+    
+    .history-badge-purple {
+        background-color: #f3e5f5;
+        color: #7b1fa2;
+    }
 </style>
 {% endblock %}
 
@@ -967,13 +1035,16 @@ function createScheduleCard(schedule) {
     if (schedule.histories.length > 0) {
         historiesHTML = '<div class="mt-3"><h6 class="text-muted mb-2"><i class="fas fa-comment-dots"></i> 히스토리</h6>';
         schedule.histories.forEach(history => {
+            // 마크다운 내용을 HTML로 변환
+            const formattedContent = history.content ? formatMarkdown(history.content) : '';
+            
             historiesHTML += `
-                <div class="border-start border-3 border-secondary ps-3 mb-2">
-                    <div class="d-flex justify-content-between">
+                <div class="border-start border-3 border-secondary ps-3 mb-3">
+                    <div class="d-flex justify-content-between mb-2">
                         <strong>${history.action_type}</strong>
                         <small class="text-muted">${history.created_at} - ${history.created_by}</small>
                     </div>
-                    ${history.content ? `<p class="mb-1">${history.content}</p>` : ''}
+                    ${formattedContent ? `<div class="history-content">${formattedContent}</div>` : ''}
                     ${history.delivery_amount ? `<p class="mb-1"><strong>납품 금액:</strong> ${formatCurrency(history.delivery_amount)}원</p>` : ''}
                     ${history.delivery_items ? `<p class="mb-1"><strong>납품 품목:</strong> ${history.delivery_items}</p>` : ''}
                     ${history.delivery_date ? `<p class="mb-1"><strong>납품 날짜:</strong> ${history.delivery_date}</p>` : ''}
@@ -1006,6 +1077,34 @@ function createScheduleCard(schedule) {
     `;
     
     return card;
+}
+
+// 마크다운을 HTML로 변환
+function formatMarkdown(text) {
+    if (!text) return '';
+    
+    let html = text;
+    
+    // ## 헤더를 <h6>으로 변환
+    html = html.replace(/^## (.+)$/gm, '<h6 class="mt-3 mb-2 text-primary fw-bold">$1</h6>');
+    
+    // **굵은 글씨**를 <strong>으로 변환
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // - 리스트를 <ul><li>로 변환
+    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul class="mb-2 ps-3">$&</ul>');
+    
+    // 이모지가 있는 라인 강조 (💰, 📅, 👤, ⚠️, 🏢 등)
+    html = html.replace(/^(💰|📅|👤|⚠️|🏢|✅|❌|🎯|📋)(.+)$/gm, '<div class="d-flex align-items-start mb-1"><span class="me-2">$1</span><span>$2</span></div>');
+    
+    // 줄바꿈 처리
+    html = html.replace(/\n/g, '<br>');
+    
+    // 연속 <br> 정리
+    html = html.replace(/(<br>){3,}/g, '<br><br>');
+    
+    return html;
 }
 
 // 통화 형식 변환
