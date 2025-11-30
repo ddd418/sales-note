@@ -4,34 +4,50 @@
 
 {% block extra_css %}
 <style>
-/* 납품 품목 모달 z-index 조정 */
+/* ============================================
+   납품 품목 모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 숨김 */
+.modal-backdrop {
+  display: none !important;
+}
+
+/* 모달 자체 설정 */
 #deliveryItemsModal {
-  z-index: 100000 !important;
+  z-index: 1055 !important;
+  pointer-events: none !important;
+  background-color: rgba(0, 0, 0, 0.5);
 }
+
+/* 모달 다이얼로그 - 사이드바(250px) 피해서 오른쪽 배치 */
 #deliveryItemsModal .modal-dialog {
-  z-index: 100001 !important;
-  position: relative;
-}
-#deliveryItemsModal .modal-content {
-  z-index: 100002 !important;
-  position: relative;
+  z-index: 1056 !important;
   pointer-events: auto !important;
+  max-width: 900px !important;
+  margin-left: 280px;
+  margin-right: auto;
 }
-/* 모달 backdrop 설정 */
-.modal-backdrop.show {
-  opacity: 0.5;
-}
-div.modal-backdrop {
-  z-index: 99999 !important;
-}
-/* 모달이 열렸을 때 나머지 페이지 요소들의 z-index 낮추기 */
-body.modal-open .container,
-body.modal-open .card,
-body.modal-open form,
-body.modal-open .row,
-body.modal-open .col-md-10 {
+
+/* 모달 컨텐츠 */
+#deliveryItemsModal .modal-content {
   position: relative;
-  z-index: 1 !important;
+  z-index: 1057 !important;
+  pointer-events: auto !important;
+  background-color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.3);
+}
+
+/* 모달 내부 모든 요소 클릭 가능 */
+#deliveryItemsModal .modal-header,
+#deliveryItemsModal .modal-body,
+#deliveryItemsModal .modal-footer,
+#deliveryItemsModal .modal-header *,
+#deliveryItemsModal .modal-body *,
+#deliveryItemsModal .modal-footer * {
+  pointer-events: auto !important;
 }
 </style>
 {% endblock %}
