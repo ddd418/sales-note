@@ -146,9 +146,6 @@ urlpatterns = [
     
     # 펀넬 관리 URL들
     path('funnel/', views.funnel_dashboard_view, name='funnel_dashboard'),
-    path('funnel/pipeline/', views.funnel_pipeline_view, name='funnel_pipeline'),
-    path('funnel/analytics/', views.funnel_analytics_view, name='funnel_analytics'),
-    path('funnel/forecast/', views.funnel_forecast_view, name='funnel_forecast'),
     
     # 펀넬 API
     path('api/funnel/update-stage/<int:opportunity_id>/', views.update_opportunity_stage_api, name='update_opportunity_stage_api'),
