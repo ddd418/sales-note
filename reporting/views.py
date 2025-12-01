@@ -1042,6 +1042,7 @@ def followup_detail_view(request, pk):
         'followup_owner': followup_owner,  # 고객 담당자 (누가 추가했는지)
         'is_own_customer': is_own_customer,  # 본인이 추가한 고객인지
         'is_owner': is_own_customer,  # 템플릿 호환성을 위한 별칭
+        'can_modify': can_modify_user_data(request.user, followup.user),  # 수정/삭제 권한 (관리자 포함)
         'owner_info': {
             'username': followup_owner.username,
             'full_name': followup_owner.get_full_name() or followup_owner.username,
@@ -2208,6 +2209,9 @@ def schedule_detail_view(request, pk):
     # 이전 페이지 정보 (캘린더에서 온 경우)
     from_page = request.GET.get('from', 'list')  # 기본값은 'list'
     
+    # 본인 일정인지 확인 (수정/삭제 버튼 표시용)
+    is_owner = (request.user == schedule.user)
+    
     context = {
         'schedule': schedule,
         'related_histories': related_histories,
@@ -2216,6 +2220,8 @@ def schedule_detail_view(request, pk):
         'delivery_amount': delivery_amount,  # 납품 금액
         'email_threads': dict(email_threads),  # 이메일 스레드
         'from_page': from_page,
+        'is_owner': is_owner,  # 본인 일정 여부
+        'can_modify': can_modify_user_data(request.user, schedule.user),  # 수정/삭제 권한 (관리자 포함)
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }
     return render(request, 'reporting/schedule_detail.html', context)
@@ -3869,6 +3875,7 @@ def history_detail_view(request, pk):
         'related_histories': related_histories,
         'user_filter': user_filter,
         'can_add_memo': user_profile.is_manager(),
+        'can_modify': can_modify_user_data(request.user, history.user),  # 수정/삭제 권한 (관리자 포함)
         'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_detail.html', context)
