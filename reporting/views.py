@@ -860,25 +860,52 @@ def followup_detail_view(request, pk):
     # 고객의 담당자 정보 (누가 추가했는지)
     followup_owner = followup.user
     is_own_customer = (request.user == followup_owner)
+    user_profile = get_user_profile(request.user)
     
-    # 같은 업체-부서의 모든 팔로우업 찾기 (본인 것만)
-    same_department_followups = FollowUp.objects.filter(
-        company=followup.company,
-        department=followup.department,
-        user=request.user  # 본인이 추가한 고객만
-    ).values_list('id', flat=True)
+    # 히스토리 조회 권한 결정
+    # - 관리자: 해당 고객의 모든 히스토리
+    # - 매니저: 같은 회사 사용자의 히스토리
+    # - 일반 사용자: 본인 히스토리만
+    can_view_all_history = user_profile.is_admin() or user_profile.is_manager()
     
-    # 히스토리 조회 - 본인 것만 (같은 회사 동료의 히스토리는 안 보여줌)
+    # 같은 업체-부서의 모든 팔로우업 찾기
+    if can_view_all_history:
+        # 관리자/매니저: 해당 업체-부서의 모든 고객
+        same_department_followups = FollowUp.objects.filter(
+            company=followup.company,
+            department=followup.department
+        ).values_list('id', flat=True)
+    else:
+        # 일반 사용자: 본인이 추가한 고객만
+        same_department_followups = FollowUp.objects.filter(
+            company=followup.company,
+            department=followup.department,
+            user=request.user
+        ).values_list('id', flat=True)
+    
+    # 히스토리 조회
     from django.db.models import Case, When, F
-    related_histories = History.objects.filter(
-        followup_id__in=same_department_followups,
-        followup__user=request.user  # 본인이 추가한 고객의 히스토리만
-    ).select_related('followup', 'schedule').annotate(
-        sort_date=Case(
-            When(schedule__isnull=False, then=F('schedule__visit_date')),
-            default=F('created_at__date')
-        )
-    ).order_by('-sort_date', '-created_at')[:20]
+    if can_view_all_history:
+        # 관리자/매니저: 해당 고객의 모든 히스토리
+        related_histories = History.objects.filter(
+            followup_id__in=same_department_followups
+        ).select_related('followup', 'schedule').annotate(
+            sort_date=Case(
+                When(schedule__isnull=False, then=F('schedule__visit_date')),
+                default=F('created_at__date')
+            )
+        ).order_by('-sort_date', '-created_at')[:20]
+    else:
+        # 일반 사용자: 본인 히스토리만
+        related_histories = History.objects.filter(
+            followup_id__in=same_department_followups,
+            user=request.user
+        ).select_related('followup', 'schedule').annotate(
+            sort_date=Case(
+                When(schedule__isnull=False, then=F('schedule__visit_date')),
+                default=F('created_at__date')
+            )
+        ).order_by('-sort_date', '-created_at')[:20]
     
     # 서류 템플릿 조회 (견적서, 거래명세서 등)
     from reporting.models import DocumentTemplate
@@ -1043,6 +1070,7 @@ def followup_detail_view(request, pk):
         'is_own_customer': is_own_customer,  # 본인이 추가한 고객인지
         'is_owner': is_own_customer,  # 템플릿 호환성을 위한 별칭
         'can_modify': can_modify_user_data(request.user, followup.user),  # 수정/삭제 권한 (관리자 포함)
+        'can_view_history': is_own_customer or can_view_all_history,  # 히스토리 조회 권한 (관리자/매니저 포함)
         'owner_info': {
             'username': followup_owner.username,
             'full_name': followup_owner.get_full_name() or followup_owner.username,

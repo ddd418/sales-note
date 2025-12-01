@@ -557,7 +557,7 @@
           </div>
         </div>
         <div class="card-body">
-          {% if not is_owner %}
+          {% if not can_view_history %}
           <div class="alert alert-info mb-0">
             <i class="fas fa-info-circle me-2"></i>
             동료({{ owner_info.username }})의 고객입니다. 활동 히스토리와 일정은 담당자만 조회할 수 있습니다.
