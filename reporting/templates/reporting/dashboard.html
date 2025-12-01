@@ -2081,21 +2081,21 @@ document.addEventListener('DOMContentLoaded', function() {
     customerRecordsPlaceholder.style.display = 'none';
     customerRecordsContainer.style.display = 'block';
     
-    // 동료 고객인 경우 메시지 표시
-    if (data.is_colleague_customer) {
-      document.getElementById('deliveryCount').textContent = '-';
-      document.getElementById('totalDeliveryAmount').textContent = '-';
-      document.getElementById('quoteCount').textContent = '-';
-      document.getElementById('totalQuoteAmount').textContent = '-';
+    // 동료 고객이고 기록이 없는 경우 메시지 표시
+    if (!data.is_own_customer && data.delivery_count === 0 && data.quote_count === 0 && data.message) {
+      document.getElementById('deliveryCount').textContent = '0건';
+      document.getElementById('totalDeliveryAmount').textContent = '0원';
+      document.getElementById('quoteCount').textContent = '0건';
+      document.getElementById('totalQuoteAmount').textContent = '0원';
       
-      const colleagueMsg = `
+      const noRecordsMsg = `
         <div class="alert alert-info text-center py-4">
-          <i class="fas fa-user-friends fa-2x mb-2"></i>
+          <i class="fas fa-info-circle fa-2x mb-2"></i>
           <p class="mb-0">${data.message}</p>
         </div>
       `;
-      document.getElementById('deliveryRecords').innerHTML = colleagueMsg;
-      document.getElementById('quoteRecords').innerHTML = colleagueMsg;
+      document.getElementById('deliveryRecords').innerHTML = noRecordsMsg;
+      document.getElementById('quoteRecords').innerHTML = noRecordsMsg;
       return;
     }
     

@@ -13261,7 +13261,7 @@ def terms_of_service_view(request):
 
 @login_required
 def customer_records_api(request, followup_id):
-    """고객의 전체 납품기록 및 견적기록을 가져오는 API"""
+    """고객의 전체 납품기록 및 견적기록을 가져오는 API (본인 기록만)"""
     from decimal import Decimal
     
     try:
@@ -13277,29 +13277,10 @@ def customer_records_api(request, followup_id):
         # 본인 고객인지 확인
         is_own_customer = (request.user == followup.user)
         
-        # 동료 고객인 경우 납품/견적 정보를 보여주지 않음
-        if not is_own_customer:
-            return JsonResponse({
-                'success': True,
-                'customer': {
-                    'id': followup.id,
-                    'customer_name': followup.customer_name or '-',
-                    'company_name': followup.company.name if followup.company else '-',
-                    'department_name': followup.department.name if followup.department else '-',
-                },
-                'deliveries': [],
-                'delivery_count': 0,
-                'total_delivery_amount': 0,
-                'quotes': [],
-                'quote_count': 0,
-                'total_quote_amount': 0,
-                'is_colleague_customer': True,
-                'message': '동료가 담당하는 고객입니다. 납품/견적 기록은 담당자만 볼 수 있습니다.'
-            })
-        
-        # 납품 기록 조회 (완료된 납품)
+        # 납품 기록 조회 (본인 기록만 - user 필터 추가)
         delivery_schedules = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='delivery'
         ).select_related('opportunity').prefetch_related('delivery_items_set').order_by('-visit_date')
         
@@ -13344,10 +13325,11 @@ def customer_records_api(request, followup_id):
                 'notes': schedule.notes or '',
             })
         
-        # 견적 기록 조회 (Quote 모델을 통해 조회)
+        # 견적 기록 조회 (본인 기록만 - user 필터 추가)
         from reporting.models import Quote, QuoteItem
         quote_records = Quote.objects.filter(
-            followup=followup
+            followup=followup,
+            user=request.user  # 본인 기록만
         ).select_related('schedule').prefetch_related('items__product').order_by('-created_at')
         
         quotes = []
@@ -13391,7 +13373,8 @@ def customer_records_api(request, followup_id):
                 'notes': quote.notes or '',
             })
         
-        return JsonResponse({
+        # 응답 데이터 구성
+        response_data = {
             'success': True,
             'customer': {
                 'id': followup.id,
@@ -13405,7 +13388,14 @@ def customer_records_api(request, followup_id):
             'quotes': quotes,
             'quote_count': len(quotes),
             'total_quote_amount': float(total_quote_amount),
-        })
+            'is_own_customer': is_own_customer,
+        }
+        
+        # 동료 고객이고 기록이 없는 경우 안내 메시지 추가
+        if not is_own_customer and len(deliveries) == 0 and len(quotes) == 0:
+            response_data['message'] = '이 고객에 대한 본인의 납품/견적 기록이 없습니다.'
+        
+        return JsonResponse(response_data)
         
     except Exception as e:
         logger.error(f"Customer records API error: {e}")
