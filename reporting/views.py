@@ -9078,6 +9078,13 @@ def customer_detail_report_view_simple(request, followup_id):
             user=request.user
         ).order_by('-visit_date')
     
+    # 디버깅: 권한 및 데이터 확인
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[CUSTOMER_REPORT] User: {request.user.username}, Followup Owner: {followup.user.username}")
+    logger.info(f"[CUSTOMER_REPORT] is_own_customer: {is_own_customer}, can_view_all: {can_view_all}")
+    logger.info(f"[CUSTOMER_REPORT] histories count: {histories.count()}, schedule_deliveries count: {schedule_deliveries.count()}")
+    
     # 통합 납품 내역 생성 (템플릿 호환성을 위해)
     integrated_deliveries = []
     
