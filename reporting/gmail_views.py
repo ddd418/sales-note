@@ -721,9 +721,14 @@ def sync_received_emails(request):
 @login_required
 def delete_email(request, email_id):
     """이메일 삭제"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"delete_email called: email_id={email_id}, user={request.user.username}, method={request.method}")
+    
     if request.method == 'POST':
         try:
             email = get_object_or_404(EmailLog, id=email_id)
+            logger.info(f"Email found: id={email.id}, type={email.email_type}, sender={email.sender}, sender_email={email.sender_email}")
             
             # 권한 확인: 관리자, 본인이 보낸 메일, 또는 본인 팔로우업 관련 메일만 삭제 가능
             can_delete = False
@@ -731,27 +736,39 @@ def delete_email(request, email_id):
             # 관리자는 모든 메일 삭제 가능
             if request.user.is_staff or request.user.is_superuser:
                 can_delete = True
+                logger.info("Delete allowed: user is staff/superuser")
             # 보낸 메일: sender가 본인이거나 sender_email이 본인 이메일
             elif email.email_type == 'sent':
                 if email.sender == request.user:
                     can_delete = True
+                    logger.info("Delete allowed: sender matches user")
                 elif email.sender_email and request.user.email and email.sender_email == request.user.email:
                     can_delete = True
+                    logger.info("Delete allowed: sender_email matches user email")
+                else:
+                    logger.info(f"Delete denied: sent mail - sender={email.sender}, user={request.user}, sender_email={email.sender_email}, user_email={request.user.email}")
             # 받은 메일: followup 담당자가 본인
             elif email.email_type == 'received':
                 if email.followup and email.followup.user == request.user:
                     can_delete = True
+                    logger.info("Delete allowed: followup user matches")
                 elif not email.followup:
                     # followup이 없는 받은 메일은 삭제 가능
                     can_delete = True
+                    logger.info("Delete allowed: no followup")
+                else:
+                    logger.info(f"Delete denied: received mail - followup.user={email.followup.user if email.followup else None}, user={request.user}")
             
             if not can_delete:
+                logger.warning(f"Delete permission denied for email {email_id}")
                 return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'})
             
             email.delete()
+            logger.info(f"Email {email_id} deleted successfully")
             return JsonResponse({'success': True, 'message': '메일이 삭제되었습니다.'})
             
         except Exception as e:
+            logger.exception(f"Error deleting email {email_id}: {str(e)}")
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
