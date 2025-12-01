@@ -195,7 +195,7 @@ def ai_generate_customer_summary(request, followup_id):
         # 이메일 교환 (본인이 보낸 것만)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            user=request.user,  # 본인 이메일만
+            sender=request.user,  # 본인이 발신한 이메일만
             created_at__gte=twelve_months_ago
         ).count()
         
@@ -259,7 +259,7 @@ def ai_generate_customer_summary(request, followup_id):
         import re
         email_logs = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            user=request.user,  # 본인 이메일만
+            sender=request.user,  # 본인이 발신한 이메일만
             created_at__gte=twelve_months_ago
         ).order_by('-sent_at')[:10]
         
@@ -364,10 +364,10 @@ def ai_update_customer_grade(request, followup_id):
         ).count()
         logger.info(f"[AI 등급평가] 미팅 횟수: {meeting_count}건")
         
-        # 이메일 교환 (최근 12개월) - 본인 기록만
+        # 이메일 교환 (최근 12개월) - 본인 발신 기록만
         email_count = EmailLog.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 기록만
+            sender=request.user,  # 본인이 발신한 이메일만
             sent_at__gte=twelve_months_ago
         ).count()
         
@@ -667,10 +667,10 @@ def ai_suggest_follow_ups(request):
         
         # 이메일 일괄 조회 (고객별 최근 5개)
         emails_by_followup = {}
-        # 이메일 일괄 조회 (고객별 최근 5개) - 본인 기록만
+        # 이메일 일괄 조회 (고객별 최근 5개) - 본인 발신 기록만
         all_emails = EmailLog.objects.filter(
             Q(followup_id__in=followup_ids) | Q(schedule__followup_id__in=followup_ids),
-            user=request.user,  # 본인 이메일만
+            sender=request.user,  # 본인이 발신한 이메일만
             created_at__gte=period_ago
         ).order_by('-sent_at')
         
@@ -1592,10 +1592,10 @@ def ai_refresh_all_grades(request):
                                 created_at__gte=twelve_months_ago
                             ).count()
                             
-                            # 이메일 교환 (최근 12개월) - 본인 기록만
+                            # 이메일 교환 (최근 12개월) - 본인 발신 기록만
                             email_count = EmailLog.objects.filter(
                                 followup=followup,
-                                user=user,  # 본인 기록만
+                                sender=user,  # 본인이 발신한 이메일만
                                 created_at__gte=twelve_months_ago
                             ).count()
                             

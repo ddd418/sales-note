@@ -920,10 +920,10 @@ def followup_detail_view(request, pk):
             total=Sum('expected_revenue')
         )['total'] or 0
         
-        # 이메일 교환 (본인 기록만)
+        # 이메일 교환 (본인 발신 이메일만)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            user=request.user,  # 본인 이메일만
+            sender=request.user,  # 본인이 발신한 이메일만
             created_at__gte=twelve_months_ago
         ).count()
         
