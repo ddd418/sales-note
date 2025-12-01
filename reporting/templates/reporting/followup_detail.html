@@ -11,6 +11,11 @@
       >
         <h1 class="page-title mb-0">
           {{ followup.customer_name|default:"고객명 미정" }} 고객 정보
+          {% if not is_owner %}
+          <span class="badge bg-info ms-2" style="font-size: 0.6rem;">
+            <i class="fas fa-users me-1"></i>{{ owner_info.username }} 담당
+          </span>
+          {% endif %}
         </h1>
         <div>
           {% if followup.email and user.is_authenticated and user.userprofile.gmail_email %}
@@ -21,7 +26,7 @@
             <i class="fas fa-envelope me-1"></i>메일 보내기
           </a>
           {% endif %}
-          {% if user.is_authenticated and user.userprofile and user.userprofile.role != 'manager' %}
+          {% if user.is_authenticated and user.userprofile and user.userprofile.role != 'manager' and is_owner %}
           <a
             href="{% url 'reporting:followup_edit' followup.pk %}"
             class="btn btn-primary me-2"
@@ -104,9 +109,12 @@
 
               <div class="mb-3">
                 <label class="form-label text-muted">담당자</label>
-                <div class="p-2 bg-light rounded border">
+                <div class="p-2 {% if is_owner %}bg-light{% else %}bg-info bg-opacity-10{% endif %} rounded border">
                   <i class="fas fa-user me-1"></i>
                   {{followup.user.username}}
+                  {% if not is_owner %}
+                  <span class="badge bg-info ms-2">동료 고객</span>
+                  {% endif %}
                 </div>
               </div>
               
@@ -380,7 +388,8 @@
     </div>
   </div>
 
-  <!-- 납품 상품 목록 섹션 -->
+  <!-- 납품 상품 목록 섹션 (본인 고객만 표시) -->
+  {% if is_own_customer %}
   <div class="row mt-4">
     <div class="col-12">
       <div class="card">
@@ -457,11 +466,15 @@
                     {% endif %}
                   </td>
                   <td class="text-center">
+                    {% if is_owner %}
                     <a href="{% url 'reporting:schedule_detail' item.schedule.pk %}" 
                        class="btn btn-sm btn-outline-primary" 
                        title="일정 상세보기">
                       <i class="fas fa-calendar-alt"></i>
                     </a>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
@@ -519,6 +532,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
   <!-- 관련 히스토리 섹션 -->
   <div class="row mt-4">
@@ -531,17 +545,24 @@
               <small class="text-muted">({{ followup.company }} - {{ followup.department }})</small>
             </h5>
             <div>
+              {% if is_owner %}
               <a
                 href="{% url 'reporting:memo_create' %}?followup={{ followup.pk }}"
                 class="btn btn-outline-secondary btn-sm"
               >
                 <i class="fas fa-sticky-note me-1"></i>메모 추가
               </a>
+              {% endif %}
             </div>
           </div>
         </div>
         <div class="card-body">
-          {% if related_histories %}
+          {% if not is_owner %}
+          <div class="alert alert-info mb-0">
+            <i class="fas fa-info-circle me-2"></i>
+            동료({{ owner_info.username }})의 고객입니다. 활동 히스토리와 일정은 담당자만 조회할 수 있습니다.
+          </div>
+          {% elif related_histories %}
           <div class="timeline">
             {% for history in related_histories %}
             <div class="timeline-item">

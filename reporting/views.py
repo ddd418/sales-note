@@ -233,6 +233,48 @@ def can_modify_user_data(request_user, target_user):
     # Salesman은 자신의 데이터만 수정 가능
     return request_user == target_user
 
+
+def can_access_followup(request_user, followup):
+    """
+    고객(FollowUp) 접근 권한 확인
+    - 같은 회사(UserCompany) 소속이면 고객 정보 조회 가능
+    - 단, 스케줄/히스토리 기록은 본인 것만 접근 가능
+    """
+    user_profile = get_user_profile(request_user)
+    
+    # Admin은 모든 데이터 접근 가능
+    if user_profile.is_admin():
+        return True
+    
+    # 같은 회사 소속인지 확인
+    if user_profile.company and followup.user:
+        target_profile = get_user_profile(followup.user)
+        if target_profile.company and user_profile.company == target_profile.company:
+            return True
+    
+    # 자신이 추가한 고객은 당연히 접근 가능
+    return request_user == followup.user
+
+
+def get_same_company_users(request_user):
+    """같은 회사(UserCompany) 소속 사용자 목록 반환"""
+    user_profile = get_user_profile(request_user)
+    
+    # Admin은 모든 사용자
+    if user_profile.is_admin():
+        return User.objects.filter(is_active=True)
+    
+    # 회사가 있으면 같은 회사 사용자들
+    if user_profile.company:
+        return User.objects.filter(
+            is_active=True,
+            userprofile__company=user_profile.company
+        )
+    
+    # 회사가 없으면 자기 자신만
+    return User.objects.filter(id=request_user.id)
+
+
 def get_accessible_users(request_user, request=None):
     """
     현재 사용자가 접근할 수 있는 사용자 목록을 반환
@@ -596,7 +638,7 @@ class HistoryForm(forms.ModelForm):
 
 @login_required # 이 뷰는 로그인이 필요함을 명시
 def followup_list_view(request):
-    """팔로우업 목록 보기 (권한 기반 필터링 적용)"""
+    """팔로우업 목록 보기 (같은 회사 소속 고객 전체 조회 가능)"""
     user_profile = get_user_profile(request.user)
     
     # 매니저용 실무자 필터 (세션 기반)
@@ -615,6 +657,9 @@ def followup_list_view(request):
         if user_filter and user_profile.can_view_all_users():
             request.session['selected_user_id'] = str(user_filter)
     
+    # 같은 회사 소속 사용자들의 고객 전체 조회 가능
+    same_company_users = get_same_company_users(request.user)
+    
     # 권한에 따른 데이터 필터링
     if user_profile.can_view_all_users():
         # Admin이나 Manager는 모든 또는 접근 가능한 사용자의 데이터 조회
@@ -631,8 +676,8 @@ def followup_list_view(request):
             # 전체보기 또는 선택 안 함
             followups = FollowUp.objects.filter(user__in=accessible_users).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     else:
-        # Salesman은 자신의 데이터만 조회
-        followups = FollowUp.objects.filter(user=request.user).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
+        # Salesman은 같은 회사 소속 사용자들의 고객 전체 조회 가능
+        followups = FollowUp.objects.filter(user__in=same_company_users).select_related('user', 'company', 'department').prefetch_related('schedules', 'histories')
     
     # 고객명/업체명/책임자명 검색 기능 (다중 검색 지원: 쉼표로 구분)
     search_query = request.GET.get('search')
@@ -802,24 +847,30 @@ def followup_list_view(request):
 
 @login_required
 def followup_detail_view(request, pk):
-    """팔로우업 상세 보기 (Manager 권한 포함)"""
+    """팔로우업 상세 보기 (같은 회사 소속은 고객 정보 조회 가능, 스케줄/히스토리는 본인 것만)"""
     followup = get_object_or_404(FollowUp, pk=pk)
     
-    # 권한 체크 (Manager도 Salesman 데이터 접근 가능)
-    if not can_access_user_data(request.user, followup.user):
+    # 권한 체크 (같은 회사 소속이면 고객 정보 조회 가능)
+    if not can_access_followup(request.user, followup):
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:followup_list')
     
-    # 같은 업체-부서의 모든 팔로우업 찾기
+    # 고객의 담당자 정보 (누가 추가했는지)
+    followup_owner = followup.user
+    is_own_customer = (request.user == followup_owner)
+    
+    # 같은 업체-부서의 모든 팔로우업 찾기 (본인 것만)
     same_department_followups = FollowUp.objects.filter(
         company=followup.company,
-        department=followup.department
+        department=followup.department,
+        user=request.user  # 본인이 추가한 고객만
     ).values_list('id', flat=True)
     
-    # 같은 부서의 모든 히스토리 조회 (일정이 있는 경우 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
+    # 히스토리 조회 - 본인 것만 (같은 회사 동료의 히스토리는 안 보여줌)
     from django.db.models import Case, When, F
     related_histories = History.objects.filter(
-        followup_id__in=same_department_followups
+        followup_id__in=same_department_followups,
+        followup__user=request.user  # 본인이 추가한 고객의 히스토리만
     ).select_related('followup', 'schedule').annotate(
         sort_date=Case(
             When(schedule__isnull=False, then=F('schedule__visit_date')),
@@ -950,21 +1001,30 @@ def followup_detail_view(request, pk):
             'ready': True
         }
     
-    # 납품된 상품 목록 조회 (모든 사용자에게 표시)
+    # 납품된 상품 목록 조회 (본인 고객만 표시)
     from reporting.models import DeliveryItem
-    delivered_items = DeliveryItem.objects.filter(
-        schedule__followup=followup,
-        schedule__activity_type='delivery'
-    ).exclude(
-        schedule__status='cancelled'
-    ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
-    
-    # 납품 품목 통계
-    delivery_stats = {
-        'total_items': delivered_items.count(),
-        'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
-        'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
-    }
+    if is_own_customer:
+        delivered_items = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery'
+        ).exclude(
+            schedule__status='cancelled'
+        ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
+        
+        # 납품 품목 통계
+        delivery_stats = {
+            'total_items': delivered_items.count(),
+            'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
+            'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
+        }
+    else:
+        # 동료 고객인 경우 납품 정보 숨김
+        delivered_items = DeliveryItem.objects.none()
+        delivery_stats = {
+            'total_items': 0,
+            'total_revenue': 0,
+            'total_quantity': 0,
+        }
     
     context = {
         'followup': followup,
@@ -974,6 +1034,14 @@ def followup_detail_view(request, pk):
         'ai_analysis': ai_analysis,
         'delivered_items': delivered_items,
         'delivery_stats': delivery_stats,
+        'followup_owner': followup_owner,  # 고객 담당자 (누가 추가했는지)
+        'is_own_customer': is_own_customer,  # 본인이 추가한 고객인지
+        'is_owner': is_own_customer,  # 템플릿 호환성을 위한 별칭
+        'owner_info': {
+            'username': followup_owner.username,
+            'full_name': followup_owner.get_full_name() or followup_owner.username,
+            'email': followup_owner.email,
+        },
         'page_title': f'팔로우업 상세 - {followup.customer_name}'
     }
     return render(request, 'reporting/followup_detail.html', context)
@@ -13196,12 +13264,35 @@ def customer_records_api(request, followup_id):
     try:
         followup = get_object_or_404(FollowUp, pk=followup_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, followup.user):
+        # 권한 체크 (같은 회사 고객도 접근 가능)
+        if not can_access_followup(request.user, followup):
             return JsonResponse({
                 'success': False,
                 'error': '접근 권한이 없습니다.'
             }, status=403)
+        
+        # 본인 고객인지 확인
+        is_own_customer = (request.user == followup.user)
+        
+        # 동료 고객인 경우 납품/견적 정보를 보여주지 않음
+        if not is_own_customer:
+            return JsonResponse({
+                'success': True,
+                'customer': {
+                    'id': followup.id,
+                    'customer_name': followup.customer_name or '-',
+                    'company_name': followup.company.name if followup.company else '-',
+                    'department_name': followup.department.name if followup.department else '-',
+                },
+                'deliveries': [],
+                'delivery_count': 0,
+                'total_delivery_amount': 0,
+                'quotes': [],
+                'quote_count': 0,
+                'total_quote_amount': 0,
+                'is_colleague_customer': True,
+                'message': '동료가 담당하는 고객입니다. 납품/견적 기록은 담당자만 볼 수 있습니다.'
+            })
         
         # 납품 기록 조회 (완료된 납품)
         delivery_schedules = Schedule.objects.filter(
