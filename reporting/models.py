@@ -122,6 +122,7 @@ class FollowUp(models.Model):
         ('urgent', '긴급'),
         ('followup', '팔로업'),
         ('scheduled', '예정'),
+        ('long_term', '장기'),
     ]
     
     CUSTOMER_GRADE_CHOICES = [

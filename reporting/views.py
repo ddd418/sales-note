@@ -8689,8 +8689,8 @@ def customer_priority_update(request, followup_id):
         
         new_priority = request.POST.get('priority')
         
-        # 유효한 우선순위인지 확인
-        valid_priorities = ['one_month', 'three_months', 'long_term']
+        # 유효한 우선순위인지 확인 (모델의 PRIORITY_CHOICES 사용)
+        valid_priorities = [choice[0] for choice in FollowUp.PRIORITY_CHOICES]
         if new_priority not in valid_priorities:
             return JsonResponse({
                 'success': False,
@@ -8702,11 +8702,7 @@ def customer_priority_update(request, followup_id):
         followup.save()
         
         # 응답에 포함할 우선순위 표시명
-        priority_display = {
-            'one_month': '한달',
-            'three_months': '세달', 
-            'long_term': '장기'
-        }.get(new_priority, '장기')
+        priority_display = dict(FollowUp.PRIORITY_CHOICES).get(new_priority, new_priority)
         
         return JsonResponse({
             'success': True,
@@ -13190,3 +13186,124 @@ def privacy_policy_view(request):
 def terms_of_service_view(request):
     """서비스 이용약관 페이지"""
     return render(request, 'reporting/terms_of_service.html')
+
+
+@login_required
+def customer_records_api(request, followup_id):
+    """고객의 전체 납품기록 및 견적기록을 가져오는 API"""
+    from decimal import Decimal
+    
+    try:
+        followup = get_object_or_404(FollowUp, pk=followup_id)
+        
+        # 권한 체크
+        if not can_access_user_data(request.user, followup.user):
+            return JsonResponse({
+                'success': False,
+                'error': '접근 권한이 없습니다.'
+            }, status=403)
+        
+        # 납품 기록 조회 (완료된 납품)
+        delivery_schedules = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery'
+        ).select_related('opportunity').prefetch_related('delivery_items_set').order_by('-visit_date')
+        
+        deliveries = []
+        total_delivery_amount = Decimal('0')
+        for schedule in delivery_schedules:
+            items = []
+            schedule_total = Decimal('0')
+            for item in schedule.delivery_items_set.all():
+                if item.total_price:
+                    item_total = Decimal(str(item.total_price))
+                else:
+                    item_total = Decimal(str(item.quantity)) * Decimal(str(item.unit_price)) * Decimal('1.1')
+                items.append({
+                    'item_name': item.item_name,
+                    'quantity': item.quantity,
+                    'unit_price': float(item.unit_price),
+                    'total_price': float(item_total),
+                })
+                schedule_total += item_total
+            
+            total_delivery_amount += schedule_total
+            deliveries.append({
+                'id': schedule.id,
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'status': schedule.get_status_display(),
+                'status_code': schedule.status,
+                'items': items,
+                'total_amount': float(schedule_total),
+                'notes': schedule.notes or '',
+            })
+        
+        # 견적 기록 조회 (Quote 모델을 통해 조회)
+        from reporting.models import Quote, QuoteItem
+        quote_records = Quote.objects.filter(
+            followup=followup
+        ).select_related('schedule').prefetch_related('items__product').order_by('-created_at')
+        
+        quotes = []
+        total_quote_amount = Decimal('0')
+        for quote in quote_records:
+            items = []
+            quote_total = Decimal('0')
+            for item in quote.items.all():
+                if item.subtotal:
+                    item_total = Decimal(str(item.subtotal))
+                else:
+                    item_total = Decimal(str(item.quantity)) * Decimal(str(item.unit_price))
+                
+                # 제품명 가져오기
+                item_name = item.product.name if item.product else '제품명 없음'
+                
+                items.append({
+                    'item_name': item_name,
+                    'quantity': item.quantity,
+                    'unit_price': float(item.unit_price),
+                    'total_price': float(item_total),
+                })
+                quote_total += item_total
+            
+            total_quote_amount += quote_total
+            
+            # 견적 상태 결정
+            status_display = quote.get_status_display() if hasattr(quote, 'get_status_display') else '견적'
+            status_code = quote.status if hasattr(quote, 'status') else 'quote'
+            
+            # 날짜 결정 (schedule이 있으면 schedule의 날짜, 없으면 생성일)
+            visit_date = quote.schedule.visit_date.strftime('%Y-%m-%d') if quote.schedule else quote.created_at.strftime('%Y-%m-%d')
+            
+            quotes.append({
+                'id': quote.schedule.id if quote.schedule else quote.id,
+                'visit_date': visit_date,
+                'status': status_display,
+                'status_code': status_code,
+                'items': items,
+                'total_amount': float(quote_total),
+                'notes': quote.notes or '',
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'customer': {
+                'id': followup.id,
+                'customer_name': followup.customer_name or '-',
+                'company_name': followup.company.name if followup.company else '-',
+                'department_name': followup.department.name if followup.department else '-',
+            },
+            'deliveries': deliveries,
+            'delivery_count': len(deliveries),
+            'total_delivery_amount': float(total_delivery_amount),
+            'quotes': quotes,
+            'quote_count': len(quotes),
+            'total_quote_amount': float(total_quote_amount),
+        })
+        
+    except Exception as e:
+        logger.error(f"Customer records API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': '고객 기록을 가져오는 중 오류가 발생했습니다.'
+        }, status=500)

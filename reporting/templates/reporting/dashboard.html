@@ -983,6 +983,25 @@ html, body {
     box-sizing: border-box !important;
   }
 }
+
+/* 고객 기록 조회 섹션 스타일 */
+.customer-records-section .autocomplete-suggestions {
+  border: 1px solid #e5e7eb;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.customer-records-section .customer-search-item:hover {
+  background-color: #f0f9ff;
+}
+
+.customer-records-section .card {
+  transition: all 0.3s ease;
+}
+
+.customer-records-section .card:hover {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
 </style>
 {% endblock %}
 
@@ -1091,6 +1110,92 @@ html, body {
           <span>{{ prepayment_stats.monthly_count|default:"0" }}건</span>
         </div>
         <div class="timeline-stat-label">선결제 건수</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔍 고객 기록 조회 섹션 -->
+  <div class="customer-records-section card shadow-sm border-0 mb-4 mt-4" style="border-radius: 1rem;">
+    <div class="card-body p-4">
+      <h5 class="card-title mb-4 d-flex align-items-center">
+        <i class="fas fa-user-tag text-primary me-2"></i> 고객별 납품/견적 기록 조회
+      </h5>
+      
+      <!-- 고객 검색 -->
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="position-relative">
+            <input type="text" 
+                   id="customerSearchInput" 
+                   class="form-control form-control-lg" 
+                   placeholder="고객명, 업체명, 부서명으로 검색..." 
+                   autocomplete="off">
+            <div id="customerSearchResults" 
+                 class="autocomplete-suggestions position-absolute w-100 bg-white shadow-lg rounded-3 mt-1" 
+                 style="display: none; z-index: 1050; max-height: 300px; overflow-y: auto;">
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div id="selectedCustomerInfo" class="p-3 bg-light rounded-3" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <strong id="selectedCustomerName"></strong>
+                <small class="text-muted d-block" id="selectedCustomerCompany"></small>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-danger" id="clearCustomerBtn">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 기록 표시 영역 -->
+      <div id="customerRecordsContainer" style="display: none;">
+        <div class="row">
+          <!-- 납품 기록 -->
+          <div class="col-lg-6 mb-4">
+            <div class="card border-success h-100">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-truck me-2"></i>납품 기록</span>
+                <span class="badge bg-white text-success" id="deliveryCount">0건</span>
+              </div>
+              <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                <div id="deliveryRecords">
+                  <p class="text-muted text-center py-4">고객을 선택하세요</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <strong>총 납품액: <span id="totalDeliveryAmount" class="text-success">0원</span></strong>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 견적 기록 -->
+          <div class="col-lg-6 mb-4">
+            <div class="card border-primary h-100">
+              <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-file-invoice me-2"></i>견적 기록</span>
+                <span class="badge bg-white text-primary" id="quoteCount">0건</span>
+              </div>
+              <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                <div id="quoteRecords">
+                  <p class="text-muted text-center py-4">고객을 선택하세요</p>
+                </div>
+              </div>
+              <div class="card-footer bg-light">
+                <strong>총 견적액: <span id="totalQuoteAmount" class="text-primary">0원</span></strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 초기 안내 메시지 -->
+      <div id="customerRecordsPlaceholder" class="text-center py-5">
+        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+        <p class="text-muted">위 검색창에서 고객을 검색하고 선택하면<br>해당 고객의 전체 납품/견적 기록이 표시됩니다.</p>
       </div>
     </div>
   </div>
@@ -1851,5 +1956,231 @@ if (productData.labels && productData.labels.length > 0) {
   }
 }
 {% endif %}
+
+// ========================================
+// 고객 기록 조회 기능
+// ========================================
+document.addEventListener('DOMContentLoaded', function() {
+  const customerSearchInput = document.getElementById('customerSearchInput');
+  const customerSearchResults = document.getElementById('customerSearchResults');
+  const selectedCustomerInfo = document.getElementById('selectedCustomerInfo');
+  const selectedCustomerName = document.getElementById('selectedCustomerName');
+  const selectedCustomerCompany = document.getElementById('selectedCustomerCompany');
+  const clearCustomerBtn = document.getElementById('clearCustomerBtn');
+  const customerRecordsContainer = document.getElementById('customerRecordsContainer');
+  const customerRecordsPlaceholder = document.getElementById('customerRecordsPlaceholder');
+  
+  let searchTimeout = null;
+  let selectedFollowupId = null;
+  
+  // 고객 검색
+  if (customerSearchInput) {
+    customerSearchInput.addEventListener('input', function() {
+      const query = this.value.trim();
+      
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      if (query.length < 2) {
+        customerSearchResults.style.display = 'none';
+        return;
+      }
+      
+      searchTimeout = setTimeout(function() {
+        fetch(`/reporting/api/followups/autocomplete/?q=${encodeURIComponent(query)}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.results && data.results.length > 0) {
+              let html = '';
+              data.results.forEach(item => {
+                html += `
+                  <div class="p-3 border-bottom cursor-pointer customer-search-item" 
+                       data-id="${item.id}"
+                       data-name="${item.customer_name || '-'}"
+                       data-company="${item.company_name || ''} ${item.department_name || ''}"
+                       style="cursor: pointer;">
+                    <strong>${item.customer_name || '-'}</strong>
+                    <small class="text-muted d-block">${item.company_name || ''} / ${item.department_name || ''}</small>
+                  </div>
+                `;
+              });
+              customerSearchResults.innerHTML = html;
+              customerSearchResults.style.display = 'block';
+              
+              // 클릭 이벤트 추가
+              document.querySelectorAll('.customer-search-item').forEach(item => {
+                item.addEventListener('click', function() {
+                  selectCustomer(
+                    this.dataset.id,
+                    this.dataset.name,
+                    this.dataset.company
+                  );
+                });
+                item.addEventListener('mouseenter', function() {
+                  this.style.backgroundColor = '#f0f9ff';
+                });
+                item.addEventListener('mouseleave', function() {
+                  this.style.backgroundColor = '';
+                });
+              });
+            } else {
+              customerSearchResults.innerHTML = '<div class="p-3 text-muted">검색 결과가 없습니다</div>';
+              customerSearchResults.style.display = 'block';
+            }
+          })
+          .catch(err => {
+            console.error('Search error:', err);
+          });
+      }, 300);
+    });
+  }
+  
+  // 고객 선택
+  function selectCustomer(id, name, company) {
+    selectedFollowupId = id;
+    customerSearchInput.value = '';
+    customerSearchResults.style.display = 'none';
+    
+    selectedCustomerName.textContent = name;
+    selectedCustomerCompany.textContent = company;
+    selectedCustomerInfo.style.display = 'block';
+    
+    loadCustomerRecords(id);
+  }
+  
+  // 고객 선택 해제
+  if (clearCustomerBtn) {
+    clearCustomerBtn.addEventListener('click', function() {
+      selectedFollowupId = null;
+      selectedCustomerInfo.style.display = 'none';
+      customerRecordsContainer.style.display = 'none';
+      customerRecordsPlaceholder.style.display = 'block';
+    });
+  }
+  
+  // 고객 기록 로드
+  function loadCustomerRecords(followupId) {
+    fetch(`/reporting/api/followups/${followupId}/records/`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          displayCustomerRecords(data);
+        } else {
+          alert(data.error || '기록을 불러오는데 실패했습니다.');
+        }
+      })
+      .catch(err => {
+        console.error('Load records error:', err);
+        alert('기록을 불러오는데 오류가 발생했습니다.');
+      });
+  }
+  
+  // 기록 표시
+  function displayCustomerRecords(data) {
+    customerRecordsPlaceholder.style.display = 'none';
+    customerRecordsContainer.style.display = 'block';
+    
+    // 납품 기록
+    document.getElementById('deliveryCount').textContent = data.delivery_count + '건';
+    document.getElementById('totalDeliveryAmount').textContent = formatCurrency(data.total_delivery_amount);
+    
+    const deliveryRecords = document.getElementById('deliveryRecords');
+    if (data.deliveries.length > 0) {
+      let html = '';
+      data.deliveries.forEach(delivery => {
+        const statusBadge = getStatusBadge(delivery.status_code);
+        html += `
+          <div class="mb-3 p-3 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <strong>${delivery.visit_date}</strong>
+                ${statusBadge}
+              </div>
+              <span class="text-success fw-bold">${formatCurrency(delivery.total_amount)}</span>
+            </div>
+            <div class="small">
+              ${delivery.items.map(item => `
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                  <span>${item.item_name} x ${item.quantity}</span>
+                  <span>${formatCurrency(item.total_price)}</span>
+                </div>
+              `).join('')}
+            </div>
+            ${delivery.notes ? `<small class="text-muted mt-2 d-block"><i class="fas fa-sticky-note me-1"></i>${delivery.notes}</small>` : ''}
+            <a href="/reporting/schedules/${delivery.id}/" class="btn btn-sm btn-outline-success mt-2">
+              <i class="fas fa-external-link-alt me-1"></i>상세보기
+            </a>
+          </div>
+        `;
+      });
+      deliveryRecords.innerHTML = html;
+    } else {
+      deliveryRecords.innerHTML = '<p class="text-muted text-center py-4">납품 기록이 없습니다</p>';
+    }
+    
+    // 견적 기록
+    document.getElementById('quoteCount').textContent = data.quote_count + '건';
+    document.getElementById('totalQuoteAmount').textContent = formatCurrency(data.total_quote_amount);
+    
+    const quoteRecords = document.getElementById('quoteRecords');
+    if (data.quotes.length > 0) {
+      let html = '';
+      data.quotes.forEach(quote => {
+        const statusBadge = getStatusBadge(quote.status_code);
+        html += `
+          <div class="mb-3 p-3 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <strong>${quote.visit_date}</strong>
+                ${statusBadge}
+              </div>
+              <span class="text-primary fw-bold">${formatCurrency(quote.total_amount)}</span>
+            </div>
+            <div class="small">
+              ${quote.items.map(item => `
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                  <span>${item.item_name} x ${item.quantity}</span>
+                  <span>${formatCurrency(item.total_price)}</span>
+                </div>
+              `).join('')}
+            </div>
+            ${quote.notes ? `<small class="text-muted mt-2 d-block"><i class="fas fa-sticky-note me-1"></i>${quote.notes}</small>` : ''}
+            <a href="/reporting/schedules/${quote.id}/" class="btn btn-sm btn-outline-primary mt-2">
+              <i class="fas fa-external-link-alt me-1"></i>상세보기
+            </a>
+          </div>
+        `;
+      });
+      quoteRecords.innerHTML = html;
+    } else {
+      quoteRecords.innerHTML = '<p class="text-muted text-center py-4">견적 기록이 없습니다</p>';
+    }
+  }
+  
+  // 금액 포맷
+  function formatCurrency(amount) {
+    return Math.round(amount).toLocaleString('ko-KR') + '원';
+  }
+  
+  // 상태 뱃지
+  function getStatusBadge(status) {
+    const badges = {
+      'scheduled': '<span class="badge bg-warning">예정</span>',
+      'completed': '<span class="badge bg-success">완료</span>',
+      'cancelled': '<span class="badge bg-danger">취소</span>'
+    };
+    return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+  }
+  
+  // 검색결과 외부 클릭 시 닫기
+  document.addEventListener('click', function(e) {
+    if (customerSearchResults && 
+        !customerSearchResults.contains(e.target) && 
+        !customerSearchInput.contains(e.target)) {
+      customerSearchResults.style.display = 'none';
+    }
+  });
+});
 </script>
 {% endblock %}

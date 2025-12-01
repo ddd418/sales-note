@@ -892,9 +892,10 @@ div.modal-backdrop {
                 <label for="modal_priority" class="form-label">우선순위 *</label>
                 <select class="form-control" id="modal_priority" name="priority">
                   <option value="">선택하세요</option>
-                  <option value="one_month">한달</option>
-                  <option value="three_months">세달</option>
-                  <option value="long_term" selected>장기</option>
+                  <option value="urgent">긴급</option>
+                  <option value="followup">팔로업</option>
+                  <option value="scheduled" selected>예정</option>
+                  <option value="long_term">장기</option>
                 </select>
               </div>
             </div>
@@ -2141,6 +2142,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const visitDateBtn = document.getElementById('visit-date-picker-btn');
     const visitTimeBtn = document.getElementById('visit-time-picker-btn');
+
+    // 신규 생성 시 방문시간을 현재 한국시간으로 기본값 설정
+    if (visitTimeField && !visitTimeField.value) {
+        const now = new Date();
+        // 한국 시간으로 변환 (UTC+9)
+        const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+        const hours = String(koreaTime.getHours()).padStart(2, '0');
+        const minutes = String(koreaTime.getMinutes()).padStart(2, '0');
+        visitTimeField.value = `${hours}:${minutes}`;
+    }
 
     // 1) input은 키보드 입력 가능하게 (readonly 제거)
     if (visitDateField) {
@@ -4950,6 +4961,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const visitTimeField = document.querySelector('[name="visit_time"]');
     if (visitTimeField) {
         visitTimeField.setAttribute('type', 'time');
+        
+        // 새 일정 생성 시 현재 한국 시간을 기본값으로 설정
+        // 기존 값이 비어있을 때만 설정 (수정 시에는 기존 값 유지)
+        if (!visitTimeField.value) {
+            const now = new Date();
+            // 한국 시간(KST, UTC+9)으로 변환
+            const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+            const hours = String(koreaTime.getHours()).padStart(2, '0');
+            const minutes = String(koreaTime.getMinutes()).padStart(2, '0');
+            visitTimeField.value = `${hours}:${minutes}`;
+        }
     }
     
     // 예상 계약일 필드에 date 타입 적용
