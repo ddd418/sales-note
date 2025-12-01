@@ -3970,20 +3970,16 @@ function loadProductList(deliveryItem) {
     return Promise.reject('deliveryItem이 null입니다');
   }
   
-  console.log('제품 목록 로드 시작...');
   
   return fetch('/reporting/api/products/')
     .then(response => {
-      console.log('API 응답:', response.status);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       return response.json();
     })
     .then(data => {
-      console.log('받은 데이터:', data);
       const products = data.products || [];
-      console.log('제품 개수:', products.length);
       
       // 전체 제품 데이터를 deliveryItem에 저장
       deliveryItem.dataset.allProducts = JSON.stringify(products);
@@ -4019,18 +4015,15 @@ function searchProducts(searchInput) {
     
     // 제품 데이터가 없는 경우 - 처음 검색할 때만 로드
     if (allProducts.length === 0) {
-      console.log('제품 데이터 없음, 로드 시작');
       // 로딩 메시지 표시
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #666;"><i class="fas fa-spinner fa-spin"></i> 제품 목록을 불러오는 중...</div>';
       resultsDiv.style.display = 'block';
       
       // 제품 데이터 로드
       loadProductList(deliveryItem).then((products) => {
-        console.log('로드 완료, 제품 개수:', products.length);
         // 로드 완료 후 다시 검색
         searchProducts(searchInput);
       }).catch(error => {
-        console.error('제품 로드 에러:', error);
         resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
           <i class="fas fa-exclamation-triangle"></i> 제품 목록을 불러오는데 실패했습니다: ${error.message || error}
         </div>`;
@@ -4190,11 +4183,8 @@ function openProductSearchModal(button) {
     console.error('제품 데이터 파싱 실패:', e);
   }
   
-  console.log('모달 열기: 현재 제품 개수:', allProducts.length);
-  
   // 제품 데이터가 없으면 먼저 로드
   if (allProducts.length === 0) {
-    console.log('제품 데이터 없음, API 호출 시작');
     // 로딩 모달 표시
     const loadingModal = `
       <div class="modal fade" id="productSearchModal" tabindex="-1" style="z-index: 100200;">
@@ -4223,7 +4213,6 @@ function openProductSearchModal(button) {
     // API 호출하여 제품 데이터 로드
     loadProductList(deliveryItem)
       .then((products) => {
-        console.log('제품 로드 완료:', products.length, '개');
         // 로딩 모달 닫기
         loadingModalInstance.hide();
         loadingModalElement.remove();
@@ -4286,10 +4275,7 @@ function openProductSearchModal(button) {
   
   // 검색 함수
   function performSearch() {
-    console.log('🔍 performSearch 함수 호출됨');
     const searchQuery = searchInput.value.toLowerCase().trim();
-    console.log('모달 검색어:', searchQuery);
-    console.log('전체 제품 개수:', allProducts.length);
     
     // 검색어가 없으면 안내 메시지만 표시
     if (!searchQuery) {
@@ -4306,19 +4292,15 @@ function openProductSearchModal(button) {
         const codeMatch = p.product_code.toLowerCase().includes(searchQuery);
         const nameMatch = p.name && p.name.toLowerCase().includes(searchQuery);
         const descMatch = p.description && p.description.toLowerCase().includes(searchQuery);
-        console.log('모달 제품:', p.product_code, 'code:', codeMatch, 'name:', nameMatch, 'desc:', descMatch);
         return codeMatch || nameMatch || descMatch;
       });
     }
-    
-    console.log('모달 필터링 결과:', filteredProducts.length, '개');
-    
+        
     // 결과 표시
     if (filteredProducts.length === 0) {
       console.log('모달 검색 결과 없음');
       resultsList.innerHTML = '<div class="text-center text-muted p-4">검색 결과가 없습니다</div>';
     } else {
-      console.log('모달 검색 결과 표시');
       resultsList.innerHTML = filteredProducts.map(product => `
         <div class="border-bottom p-3 product-search-item" style="cursor: pointer;" 
              data-product-id="${product.id}"
@@ -4542,18 +4524,15 @@ function searchQuoteProducts(searchInput) {
     
     // 제품 데이터가 없는 경우 - 처음 검색할 때만 로드
     if (allProducts.length === 0) {
-      console.log('견적 제품 데이터 없음, 로드 시작');
       // 로딩 메시지 표시
       resultsDiv.innerHTML = '<div style="padding: 8px; color: #666;"><i class="fas fa-spinner fa-spin"></i> 제품 목록을 불러오는 중...</div>';
       resultsDiv.style.display = 'block';
       
       // 제품 데이터 로드
       loadQuoteProductList(itemRow).then((products) => {
-        console.log('견적 제품 로드 완료, 제품 개수:', products ? products.length : 0);
         // 로드 완료 후 다시 검색
         searchQuoteProducts(searchInput);
       }).catch(error => {
-        console.error('견적 제품 로드 에러:', error);
         resultsDiv.innerHTML = `<div style="padding: 8px; color: #dc2626; background: #fef2f2; border-radius: 4px;">
           <i class="fas fa-exclamation-triangle"></i> 제품 목록을 불러오는데 실패했습니다: ${error.message || error}
         </div>`;

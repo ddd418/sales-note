@@ -6530,6 +6530,7 @@
       // 각 활동기록을 카드 형태로 표시 (일정 상세 모달과 동일한 형식)
       data.histories.forEach((history, index) => {
         const badgeClass = history.action_type === 'delivery_schedule' ? 'bg-success' : 
+                          history.action_type === 'quote' ? 'bg-warning' :
                           history.action_type === 'customer_meeting' ? 'bg-primary' : 
                           history.action_type === 'service' ? 'bg-info' : 'bg-secondary';
         
@@ -6571,7 +6572,33 @@
                   </div>
                 ` : ''}
                 
-                <!-- 납품 품목은 스케줄 레벨에서 이미 표시되므로 히스토리에서는 제거 -->
+                ${history.delivery_items_list && history.delivery_items_list.length > 0 ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold"><i class="fas fa-box me-1"></i>납품 품목:</label>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                          <tr>
+                            <th>품목명</th>
+                            <th class="text-center">수량</th>
+                            <th class="text-end">단가</th>
+                            <th class="text-end">금액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${history.delivery_items_list.map(item => `
+                            <tr>
+                              <td>${item.item_name}</td>
+                              <td class="text-center">${item.quantity} ${item.unit}</td>
+                              <td class="text-end">${item.unit_price.toLocaleString()}원</td>
+                              <td class="text-end fw-bold">${item.total_price.toLocaleString()}원</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ` : ''}
                 
                 <div class="mb-2">
                   <label class="form-label fw-bold">세금계산서:</label>
@@ -6579,6 +6606,44 @@
                     ${history.tax_invoice_issued ? '발행완료' : '미발행'}
                   </span>
                 </div>
+              ` : ''}
+              
+              ${history.action_type === 'quote' ? `
+                ${history.quote_items_list && history.quote_items_list.length > 0 ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold"><i class="fas fa-file-invoice me-1"></i>견적 품목:</label>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                          <tr>
+                            <th>품목명</th>
+                            <th class="text-center">수량</th>
+                            <th class="text-end">단가</th>
+                            <th class="text-end">금액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${history.quote_items_list.map(item => `
+                            <tr>
+                              <td>${item.item_name}</td>
+                              <td class="text-center">${item.quantity}</td>
+                              <td class="text-end">${item.unit_price.toLocaleString()}원</td>
+                              <td class="text-end fw-bold">${item.subtotal.toLocaleString()}원</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                        ${history.total_quote_amount ? `
+                          <tfoot class="table-success">
+                            <tr>
+                              <td colspan="3" class="text-end fw-bold">견적 총액:</td>
+                              <td class="text-end fw-bold text-success">${history.total_quote_amount.toLocaleString()}원</td>
+                            </tr>
+                          </tfoot>
+                        ` : ''}
+                      </table>
+                    </div>
+                  </div>
+                ` : '<div class="text-muted"><i class="fas fa-info-circle me-1"></i>견적 품목 정보가 없습니다.</div>'}
               ` : ''}
               
               ${history.action_type === 'customer_meeting' && history.meeting_date ? `
@@ -6591,6 +6656,83 @@
           </div>
         `;
       });
+
+      // ===== 히스토리에 연결되지 않은 스케줄 품목도 표시 =====
+      if (data.schedules && data.schedules.length > 0) {
+        historiesHtml += `
+          <div class="mt-4 mb-2">
+            <h6 class="text-secondary">
+              <i class="fas fa-calendar-alt me-1"></i>일정 품목 (히스토리 미연결)
+            </h6>
+          </div>
+        `;
+        
+        data.schedules.forEach((schedule) => {
+          const badgeClass = schedule.action_type === 'delivery_schedule' ? 'bg-success' : 'bg-warning';
+          
+          historiesHtml += `
+            <div class="card mb-3 border-start border-${badgeClass.replace('bg-', '')} border-3">
+              <div class="card-header bg-light py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div class="d-flex align-items-center">
+                    <span class="badge ${badgeClass} me-2">${schedule.action_type_display}</span>
+                    <small class="text-muted">
+                      <i class="fas fa-user me-1"></i>${schedule.user}
+                    </small>
+                    <span class="badge bg-secondary ms-2">${schedule.status}</span>
+                  </div>
+                  <small class="text-muted">${schedule.created_at}</small>
+                </div>
+              </div>
+              <div class="card-body">
+                ${schedule.content ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">메모:</label>
+                    <div class="form-control-plaintext border rounded p-2 bg-light">${formatText(schedule.content)}</div>
+                  </div>
+                ` : ''}
+                
+                ${schedule.items_list && schedule.items_list.length > 0 ? `
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">
+                      <i class="fas fa-${schedule.action_type === 'delivery_schedule' ? 'box' : 'file-invoice'} me-1"></i>
+                      ${schedule.action_type === 'delivery_schedule' ? '납품' : '견적'} 품목:
+                    </label>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                          <tr>
+                            <th>품목명</th>
+                            <th class="text-center">수량</th>
+                            <th class="text-end">단가</th>
+                            <th class="text-end">금액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${schedule.items_list.map(item => `
+                            <tr>
+                              <td>${item.item_name}</td>
+                              <td class="text-center">${item.quantity} ${item.unit || ''}</td>
+                              <td class="text-end">${item.unit_price.toLocaleString()}원</td>
+                              <td class="text-end fw-bold">${item.total_price.toLocaleString()}원</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                        <tfoot class="table-${schedule.action_type === 'delivery_schedule' ? 'success' : 'warning'}">
+                          <tr>
+                            <td colspan="3" class="text-end fw-bold">총액:</td>
+                            <td class="text-end fw-bold">${schedule.total_amount.toLocaleString()}원</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        });
+      }
 
       content.innerHTML = historiesHtml;
     }

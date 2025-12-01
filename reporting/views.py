@@ -4173,7 +4173,7 @@ def followup_histories_api(request, followup_id):
                 return JsonResponse({'error': '권한이 없습니다.'}, status=403)
         
         # 해당 팔로우업의 모든 활동 기록 조회 (최신순)
-        histories = History.objects.filter(followup=followup).order_by('-created_at')
+        histories = History.objects.filter(followup=followup).select_related('schedule').order_by('-created_at')
         
         histories_data = []
         for history in histories:
@@ -4189,13 +4189,75 @@ def followup_histories_api(request, followup_id):
                     'created_by': history.created_by.username if history.created_by else (history.user.username if history.user else '사용자 미정'),
                 }
                 
-                # 납품 일정인 경우 추가 정보
+                # 납품 일정인 경우 추가 정보 (품목 포함)
                 if history.action_type == 'delivery_schedule':
+                    # 납품 품목 조회 (DeliveryItem)
+                    delivery_items_list = []
+                    for item in history.delivery_items_set.all():
+                        delivery_items_list.append({
+                            'item_name': item.item_name,
+                            'quantity': item.quantity,
+                            'unit': item.unit or 'EA',
+                            'unit_price': float(item.unit_price) if item.unit_price else 0,
+                            'total_price': float(item.total_price) if item.total_price else 0,
+                        })
+                    
                     history_data.update({
                         'delivery_amount': history.delivery_amount,
                         'delivery_items': history.delivery_items or '',
+                        'delivery_items_list': delivery_items_list,
                         'delivery_date': history.delivery_date.strftime('%Y-%m-%d') if history.delivery_date else '',
                         'tax_invoice_issued': history.tax_invoice_issued,
+                    })
+                
+                # 견적 일정인 경우 추가 정보 (품목 포함)
+                elif history.action_type == 'quote':
+                    quote_items_list = []
+                    total_quote_amount = 0
+                    
+                    # 디버깅: schedule 연결 상태
+                    has_schedule = history.schedule is not None
+                    schedule_id = history.schedule.id if history.schedule else None
+                    
+                    # 1. 연결된 스케줄의 견적 조회
+                    if history.schedule:
+                        # 스케줄에 연결된 DeliveryItem (견적용 품목)
+                        for item in history.schedule.delivery_items_set.all():
+                            quote_items_list.append({
+                                'item_name': item.item_name,
+                                'quantity': item.quantity,
+                                'unit_price': float(item.unit_price) if item.unit_price else 0,
+                                'subtotal': float(item.total_price) if item.total_price else 0,
+                            })
+                            total_quote_amount += float(item.total_price) if item.total_price else 0
+                        
+                        # 스케줄에 연결된 Quote 모델의 품목
+                        quotes = history.schedule.quotes.all().prefetch_related('items__product')
+                        for quote in quotes:
+                            for item in quote.items.all():
+                                quote_items_list.append({
+                                    'item_name': item.product.product_code if item.product else '품목명 없음',
+                                    'quantity': item.quantity,
+                                    'unit_price': float(item.unit_price) if item.unit_price else 0,
+                                    'subtotal': float(item.subtotal) if item.subtotal else 0,
+                                })
+                            total_quote_amount += float(quote.total_amount) if quote.total_amount else 0
+                    
+                    # 2. 히스토리에 직접 연결된 DeliveryItem도 확인
+                    for item in history.delivery_items_set.all():
+                        quote_items_list.append({
+                            'item_name': item.item_name,
+                            'quantity': item.quantity,
+                            'unit_price': float(item.unit_price) if item.unit_price else 0,
+                            'subtotal': float(item.total_price) if item.total_price else 0,
+                        })
+                        total_quote_amount += float(item.total_price) if item.total_price else 0
+                    
+                    history_data.update({
+                        'quote_items_list': quote_items_list,
+                        'total_quote_amount': total_quote_amount,
+                        'has_schedule': has_schedule,  # 디버깅용
+                        'schedule_id': schedule_id,  # 디버깅용
                     })
                 
                 # 고객 미팅인 경우 추가 정보
@@ -4210,12 +4272,61 @@ def followup_histories_api(request, followup_id):
                 # 개별 히스토리 처리 중 에러가 발생해도 계속 진행
                 continue
         
+        # ===== 스케줄에서 직접 품목 정보 가져오기 (히스토리와 중복되지 않도록) =====
+        # 히스토리에 연결되지 않은 스케줄의 품목도 표시
+        processed_schedule_ids = set()
+        for h in histories:
+            if h.schedule:
+                processed_schedule_ids.add(h.schedule.id)
+        
+        schedules_data = []
+        schedules = Schedule.objects.filter(
+            followup=followup,
+            activity_type__in=['quote', 'delivery']
+        ).prefetch_related('delivery_items_set').order_by('-visit_date')
+        
+        for schedule in schedules:
+            # 이미 히스토리에서 처리된 스케줄은 건너뛰기
+            if schedule.id in processed_schedule_ids:
+                continue
+            
+            items_list = []
+            total_amount = 0
+            
+            for item in schedule.delivery_items_set.all():
+                items_list.append({
+                    'item_name': item.item_name,
+                    'quantity': item.quantity,
+                    'unit': item.unit or 'EA',
+                    'unit_price': float(item.unit_price) if item.unit_price else 0,
+                    'total_price': float(item.total_price) if item.total_price else 0,
+                })
+                total_amount += float(item.total_price) if item.total_price else 0
+            
+            # 품목이 있는 경우만 추가
+            if items_list:
+                schedule_data = {
+                    'id': f'schedule_{schedule.id}',
+                    'type': 'schedule',
+                    'action_type': 'delivery_schedule' if schedule.activity_type == 'delivery' else 'quote',
+                    'action_type_display': '납품 일정' if schedule.activity_type == 'delivery' else '견적 제출',
+                    'content': schedule.notes or '',
+                    'created_at': schedule.visit_date.strftime('%Y-%m-%d'),
+                    'user': schedule.user.username if schedule.user else '사용자 미정',
+                    'items_list': items_list,
+                    'total_amount': total_amount,
+                    'schedule_id': schedule.id,
+                    'status': schedule.get_status_display(),
+                }
+                schedules_data.append(schedule_data)
+        
         return JsonResponse({
             'success': True,
             'customer_name': followup.customer_name or '고객명 미정',
             'company': followup.company.name if followup.company else '업체명 미정',
             'histories': histories_data,
-            'total_count': len(histories_data)
+            'schedules': schedules_data,  # 히스토리에 연결되지 않은 스케줄 품목
+            'total_count': len(histories_data) + len(schedules_data)
         })
         
     except Exception as e:
