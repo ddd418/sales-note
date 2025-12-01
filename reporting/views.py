@@ -13214,15 +13214,27 @@ def customer_records_api(request, followup_id):
         for schedule in delivery_schedules:
             items = []
             schedule_total = Decimal('0')
-            for item in schedule.delivery_items_set.all():
+            
+            # 1. 먼저 Schedule에 직접 연결된 delivery_items 확인
+            delivery_items = list(schedule.delivery_items_set.all())
+            
+            # 2. Schedule에 없으면 연결된 History에서 가져오기
+            if not delivery_items:
+                from reporting.models import History
+                related_history = History.objects.filter(schedule=schedule).first()
+                if related_history:
+                    delivery_items = list(related_history.delivery_items_set.all())
+            
+            for item in delivery_items:
                 if item.total_price:
                     item_total = Decimal(str(item.total_price))
                 else:
-                    item_total = Decimal(str(item.quantity)) * Decimal(str(item.unit_price)) * Decimal('1.1')
+                    unit_price = item.unit_price if item.unit_price else Decimal('0')
+                    item_total = Decimal(str(item.quantity)) * Decimal(str(unit_price)) * Decimal('1.1')
                 items.append({
                     'item_name': item.item_name,
                     'quantity': item.quantity,
-                    'unit_price': float(item.unit_price),
+                    'unit_price': float(item.unit_price) if item.unit_price else 0,
                     'total_price': float(item_total),
                 })
                 schedule_total += item_total
