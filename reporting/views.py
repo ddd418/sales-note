@@ -8350,27 +8350,10 @@ def customer_detail_report_view(request, followup_id):
     try:
         followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
         
-        # Admin 사용자는 모든 데이터에 접근 가능
-        if getattr(request, 'is_admin', False):
-            pass  # Admin은 권한 체크 없이 진행
-        else:
-            # 권한 체크
-            if not can_access_user_data(request.user, followup.user):
-                messages.error(request, '접근 권한이 없습니다.')
-                return redirect('reporting:customer_report')
-            
-            # Manager는 회사 체크를 건너뜀 (모든 데이터 조회 가능)
-            user_profile = get_user_profile(request.user)
-            if not user_profile.is_manager():
-                # 하나과학이 아닌 경우 같은 회사 체크
-                if not getattr(request, 'is_hanagwahak', False):
-                    user_profile_obj = getattr(request.user, 'userprofile', None)
-                    followup_user_profile = getattr(followup.user, 'userprofile', None)
-                    if (user_profile_obj and user_profile_obj.company and 
-                        followup_user_profile and followup_user_profile.company and
-                        user_profile_obj.company != followup_user_profile.company):
-                        messages.error(request, '접근 권한이 없습니다.')
-                        return redirect('reporting:customer_report')
+        # 권한 체크 (같은 회사 소속이면 접근 가능)
+        if not can_access_followup(request.user, followup):
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
@@ -9032,27 +9015,10 @@ def customer_detail_report_view_simple(request, followup_id):
     try:
         followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
         
-        # Admin 사용자는 모든 데이터에 접근 가능
-        if getattr(request, 'is_admin', False):
-            pass  # Admin은 권한 체크 없이 진행
-        else:
-            # 권한 체크
-            if not can_access_user_data(request.user, followup.user):
-                messages.error(request, '접근 권한이 없습니다.')
-                return redirect('reporting:customer_report')
-            
-            # Manager는 회사 체크를 건너뜀 (모든 데이터 조회 가능)
-            user_profile = get_user_profile(request.user)
-            if not user_profile.is_manager():
-                # 하나과학이 아닌 경우 같은 회사 체크
-                if not getattr(request, 'is_hanagwahak', False):
-                    user_profile_obj = getattr(request.user, 'userprofile', None)
-                    followup_user_profile = getattr(followup.user, 'userprofile', None)
-                    if (user_profile_obj and user_profile_obj.company and 
-                        followup_user_profile and followup_user_profile.company and
-                        user_profile_obj.company != followup_user_profile.company):
-                        messages.error(request, '접근 권한이 없습니다.')
-                        return redirect('reporting:customer_report')
+        # 권한 체크 (같은 회사 소속이면 접근 가능)
+        if not can_access_followup(request.user, followup):
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:customer_report')
             
     except FollowUp.DoesNotExist:
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
