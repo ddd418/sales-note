@@ -9145,8 +9145,12 @@ def customer_detail_report_view_simple(request, followup_id):
             schedule_amount = 0
             schedule_items = '일정 기반 (품목 미확정)'
             
-            # 이 Schedule을 참조하는 모든 History 검색 (delivery가 아닌 것도 포함)
-            all_related_histories = History.objects.filter(schedule=schedule)
+            # 이 Schedule을 참조하는 History 검색 (권한에 따라 필터링)
+            if can_view_all:
+                all_related_histories = History.objects.filter(schedule=schedule)
+            else:
+                # 동료 고객: 본인이 작성한 히스토리만
+                all_related_histories = History.objects.filter(schedule=schedule, user=request.user)
             
             for hist in all_related_histories:
                 if hist.delivery_amount:
