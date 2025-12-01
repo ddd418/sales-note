@@ -2257,28 +2257,67 @@ window.toggleSections = function() {
             deliveryLoadQuoteBtn.style.display = (selectedValue === 'delivery') ? 'inline-block' : 'none';
         }
         
-        // 견적 일정의 상태 필드 제어 (견적은 자동으로 완료 처리되므로 수동 변경 불가)
+        // 견적 일정의 상태 필드 제어
         const statusField = document.querySelector('[name="status"]');
+        const isEditMode = {{ schedule.pk|default:"0" }} > 0;  // 수정 모드 여부
+        
         if (statusField) {
             if (selectedValue === 'quote') {
-                // 견적 일정은 항상 예정(scheduled) 상태로 고정
-                statusField.value = 'scheduled';
-                statusField.disabled = true;
-                
-                // 도움말 추가
-                const statusWrapper = statusField.closest('.mb-3');
-                if (statusWrapper) {
-                    let helpText = statusWrapper.querySelector('.quote-status-help');
-                    if (!helpText) {
-                        helpText = document.createElement('small');
-                        helpText.className = 'form-text text-muted quote-status-help';
-                        helpText.innerHTML = '<i class="fas fa-info-circle me-1"></i>견적은 납품 생성 시 자동으로 완료 처리됩니다.';
-                        statusWrapper.appendChild(helpText);
+                if (isEditMode) {
+                    // 수정 모드: 견적은 예정/취소만 선택 가능 (완료 불가)
+                    statusField.disabled = false;
+                    
+                    // 옵션을 예정/취소만 남기기
+                    const currentValue = statusField.value;
+                    statusField.innerHTML = `
+                        <option value="scheduled" ${currentValue === 'scheduled' ? 'selected' : ''}>예정됨</option>
+                        <option value="cancelled" ${currentValue === 'cancelled' ? 'selected' : ''}>취소됨</option>
+                    `;
+                    
+                    // 도움말 추가
+                    const statusWrapper = statusField.closest('.mb-3');
+                    if (statusWrapper) {
+                        let helpText = statusWrapper.querySelector('.quote-status-help');
+                        if (!helpText) {
+                            helpText = document.createElement('small');
+                            helpText.className = 'form-text text-warning quote-status-help';
+                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 영업기회가 실주로 처리됩니다.';
+                            statusWrapper.appendChild(helpText);
+                        } else {
+                            helpText.className = 'form-text text-warning quote-status-help';
+                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 영업기회가 실주로 처리됩니다.';
+                        }
+                    }
+                } else {
+                    // 생성 모드: 견적은 항상 예정(scheduled) 상태로 고정
+                    statusField.value = 'scheduled';
+                    statusField.disabled = true;
+                    
+                    // 도움말 추가
+                    const statusWrapper = statusField.closest('.mb-3');
+                    if (statusWrapper) {
+                        let helpText = statusWrapper.querySelector('.quote-status-help');
+                        if (!helpText) {
+                            helpText = document.createElement('small');
+                            helpText.className = 'form-text text-muted quote-status-help';
+                            helpText.innerHTML = '<i class="fas fa-info-circle me-1"></i>견적은 납품 생성 시 자동으로 완료 처리됩니다.';
+                            statusWrapper.appendChild(helpText);
+                        }
                     }
                 }
             } else {
-                // 다른 활동 유형은 상태 변경 가능
+                // 다른 활동 유형은 상태 변경 가능 (전체 옵션 복원)
                 statusField.disabled = false;
+                
+                // 전체 옵션 복원
+                const currentValue = statusField.value;
+                if (statusField.options.length <= 2) {
+                    statusField.innerHTML = `
+                        <option value="scheduled" ${currentValue === 'scheduled' ? 'selected' : ''}>예정됨</option>
+                        <option value="completed" ${currentValue === 'completed' ? 'selected' : ''}>완료됨</option>
+                        <option value="cancelled" ${currentValue === 'cancelled' ? 'selected' : ''}>취소됨</option>
+                    `;
+                }
                 
                 // 도움말 제거
                 const statusWrapper = statusField.closest('.mb-3');

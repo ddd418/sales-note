@@ -480,6 +480,14 @@ class ScheduleForm(forms.ModelForm):
                 choice for choice in self.fields['activity_type'].choices 
                 if choice[0] != 'service'
             ]
+        
+        # 견적 일정 수정 시 상태 선택지 제한 (예정→완료 불가, 취소만 가능)
+        if self.instance.pk and self.instance.activity_type == 'quote':
+            # 견적은 예정됨, 취소만 선택 가능 (완료 제외)
+            self.fields['status'].choices = [
+                ('scheduled', '예정됨'),
+                ('cancelled', '취소됨'),
+            ]
 
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):

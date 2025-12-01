@@ -271,9 +271,9 @@ class FunnelAnalytics:
             priority_filter: 우선순위 필터 (urgent/followup/scheduled)
             level_filter: 종합 점수 레벨 필터 (critical/high/medium/low/minimal)
         """
-        # 진행 중인 영업기회만 조회 (수주, 견적실패 제외)
+        # 진행 중인 영업기회만 조회 (수주, 실주, 견적실패 제외)
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'quote_lost']
+            current_stage__in=['won', 'lost', 'quote_lost']
         ).select_related('followup', 'followup__company', 'followup__user')
         
         if user:
