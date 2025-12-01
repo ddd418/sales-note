@@ -1823,9 +1823,13 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     customer = schedule.followup
     
     logger.info(f"[미팅전략] 1단계: 히스토리 메모 수집 중...")
-    # 1. 고객의 전체 히스토리 (실무자 작성 글)
+    # 1. 고객의 전체 히스토리 (해당 사용자가 작성한 글만)
+    history_filter = {'followup': customer}
+    if user:
+        history_filter['user'] = user  # 본인 히스토리만 분석
+    
     history_notes = History.objects.filter(
-        followup=customer
+        **history_filter
     ).exclude(
         content__isnull=True
     ).exclude(
@@ -1841,8 +1845,14 @@ def generate_meeting_strategy(schedule_id: int, user=None) -> str:
     logger.info(f"[미팅전략] 히스토리 메모 수집 완료 - {len(history_records)}건")
     
     logger.info(f"[미팅전략] 2단계: 일정 컨텍스트 수집 중...")
-    # 2. 이 일정과 연결된 히스토리 찾기
-    schedule_histories = History.objects.filter(schedule=schedule).exclude(
+    # 2. 이 일정과 연결된 히스토리 찾기 (본인 히스토리만)
+    schedule_history_filter = {'schedule': schedule}
+    if user:
+        schedule_history_filter['user'] = user  # 본인 히스토리만 분석
+    
+    schedule_histories = History.objects.filter(
+        **schedule_history_filter
+    ).exclude(
         content__isnull=True
     ).exclude(content='').values('content', 'action_type', 'created_at').order_by('-created_at')
     

@@ -147,6 +147,7 @@ def ai_transform_email(request):
 def ai_generate_customer_summary(request, followup_id):
     """
     AI로 고객 요약 리포트 생성
+    - 동료 고객도 분석 가능하지만, 현재 로그인한 사용자가 남긴 기록만 분석
     """
     try:
         logger.info(f"[AI 인사이트] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
@@ -165,22 +166,24 @@ def ai_generate_customer_summary(request, followup_id):
         
         logger.info(f"[AI 인사이트] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
-        logger.info(f"[AI 인사이트] 고객명: {followup.customer_name}")
         
-        # 최근 6개월 데이터
-        six_months_ago = timezone.now() - timedelta(days=180)
+        logger.info(f"[AI 인사이트] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
         
-        logger.info(f"[AI 인사이트] 스케줄 데이터 수집 중...")
-        # 스케줄 통계
+        # 최근 12개월 데이터 (현재 로그인 사용자가 남긴 기록만)
+        twelve_months_ago = timezone.now() - timedelta(days=365)
+        
+        logger.info(f"[AI 인사이트] 스케줄 데이터 수집 중 (본인 기록만)...")
+        # 스케줄 통계 (본인이 생성한 것만)
         schedules = Schedule.objects.filter(
             followup=followup,
-            visit_date__gte=six_months_ago
+            user=request.user,  # 현재 로그인 사용자 기록만
+            visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
         logger.info(f"[AI 인사이트] 미팅: {meeting_count}건, 견적: {quote_count}건")
         
-        # 구매 내역 (납품 일정)
+        # 구매 내역 (납품 일정) - 본인 기록만
         delivery_schedules = schedules.filter(activity_type='delivery')
         purchase_count = delivery_schedules.count()
         
@@ -189,23 +192,25 @@ def ai_generate_customer_summary(request, followup_id):
             total=Sum('expected_revenue')
         )['total'] or 0
         
-        # 이메일 교환
+        # 이메일 교환 (본인이 보낸 것만)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            created_at__gte=six_months_ago
+            user=request.user,  # 본인 이메일만
+            created_at__gte=twelve_months_ago
         ).count()
         
-        # 마지막 연락일
+        # 마지막 연락일 (본인 기록 기준)
         last_contact = '정보 없음'
         last_schedule = schedules.order_by('-visit_date').first()
         if last_schedule:
             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
         
-        # 미팅 노트 수집 (최근 5개) - 히스토리에서
+        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (본인 기록만)
         from reporting.models import History
         histories = History.objects.filter(
             followup=followup,
-            created_at__gte=six_months_ago
+            user=request.user,  # 본인 히스토리만
+            created_at__gte=twelve_months_ago
         )
         meeting_notes = []
         recent_meetings = histories.filter(
@@ -250,11 +255,12 @@ def ai_generate_customer_summary(request, followup_id):
                 } for p in prepayments[:3]]  # 최근 3건만
             }
         
-        # 이메일 커뮤니케이션 내용 (최근 10건)
+        # 이메일 커뮤니케이션 내용 (최근 10건) - 본인이 보낸 것만
         import re
         email_logs = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            created_at__gte=six_months_ago
+            user=request.user,  # 본인 이메일만
+            created_at__gte=twelve_months_ago
         ).order_by('-sent_at')[:10]
         
         email_conversations = []
@@ -319,6 +325,7 @@ def ai_generate_customer_summary(request, followup_id):
 def ai_update_customer_grade(request, followup_id):
     """
     AI로 고객 등급 자동 업데이트
+    - 동료 고객도 분석 가능하지만, 현재 로그인한 사용자가 남긴 기록만 분석
     """
     try:
         logger.info(f"[AI 등급평가] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
@@ -341,42 +348,47 @@ def ai_update_customer_grade(request, followup_id):
         
         logger.info(f"[AI 등급평가] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
-        logger.info(f"[AI 등급평가] 고객명: {followup.customer_name}")
         
-        # 최근 6개월 데이터
-        six_months_ago = timezone.now() - timedelta(days=180)
+        logger.info(f"[AI 등급평가] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
         
-        logger.info(f"[AI 등급평가] 활동 데이터 수집 중...")
-        # 미팅 횟수 (최근 6개월)
+        # 최근 12개월 데이터 (현재 로그인 사용자가 남긴 기록만)
+        twelve_months_ago = timezone.now() - timedelta(days=365)
+        
+        logger.info(f"[AI 등급평가] 활동 데이터 수집 중 (본인 기록만)...")
+        # 미팅 횟수 (최근 12개월) - 본인 기록만
         meeting_count = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='meeting',
-            created_at__gte=six_months_ago
+            created_at__gte=twelve_months_ago
         ).count()
         logger.info(f"[AI 등급평가] 미팅 횟수: {meeting_count}건")
         
-        # 이메일 교환 (최근 6개월)
+        # 이메일 교환 (최근 12개월) - 본인 기록만
         email_count = EmailLog.objects.filter(
             followup=followup,
-            sent_at__gte=six_months_ago
+            user=request.user,  # 본인 기록만
+            sent_at__gte=twelve_months_ago
         ).count()
         
-        # 견적 횟수 (최근 6개월)
+        # 견적 횟수 (최근 12개월) - 본인 기록만
         quote_count = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='quote',
-            created_at__gte=six_months_ago
+            created_at__gte=twelve_months_ago
         ).count()
         
-        # 구매 횟수 및 금액 (전체 + 최근 6개월)
+        # 구매 횟수 및 금액 (전체 + 최근 12개월) - 본인 기록만
         # 납품 일정(delivery)만 카운트 (견적 일정 제외)
         all_deliveries = DeliveryItem.objects.filter(
             schedule__followup=followup,
+            schedule__user=request.user,  # 본인 기록만
             schedule__activity_type='delivery'
         )
         
         recent_deliveries = all_deliveries.filter(
-            schedule__created_at__gte=six_months_ago
+            schedule__created_at__gte=twelve_months_ago
         )
         
         purchase_count = all_deliveries.values('schedule').distinct().count()
@@ -558,6 +570,7 @@ def ai_suggest_follow_ups(request):
     - annotate로 집계 쿼리 통합 (N+1 문제 해결)
     - prefetch_related로 관련 데이터 일괄 로드
     - 필터 지원: 등급, 업체, 기간, 개수
+    - 현재 로그인 사용자가 남긴 기록만 분석
     """
     try:
         logger.info(f"[AI 팔로우업] 시작 - 사용자: {request.user.username}")
@@ -592,7 +605,7 @@ def ai_suggest_follow_ups(request):
         
         logger.info(f"[AI 팔로우업] 필터: 등급={grade_filter}, 업체={company_id_filter}, 기간={period_months}개월, TOP={top_count}")
         
-        # ✅ 1단계: 기본 쿼리셋
+        # ✅ 1단계: 기본 쿼리셋 (본인 고객만)
         base_queryset = FollowUp.objects.filter(user=request.user)
         
         # 등급 필터
@@ -604,26 +617,27 @@ def ai_suggest_follow_ups(request):
             base_queryset = base_queryset.filter(company_id=company_id_filter)
         
         # ✅ 2단계: annotate로 모든 집계를 한 번에 처리 (N+1 문제 해결)
+        # 중요: 스케줄, 히스토리, 이메일은 현재 로그인 사용자가 남긴 기록만 집계
         followups = base_queryset.annotate(
-            # 일정 통계
-            schedule_count=Count('schedules', distinct=True),
-            recent_schedule_count=Count('schedules', filter=Q(schedules__visit_date__gte=period_ago), distinct=True),
-            meeting_count=Count('schedules', filter=Q(schedules__activity_type='customer_meeting', schedules__visit_date__gte=period_ago), distinct=True),
-            quote_count=Count('schedules', filter=Q(schedules__activity_type='quote', schedules__visit_date__gte=period_ago), distinct=True),
-            purchase_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=period_ago), distinct=True),
+            # 일정 통계 (본인 기록만)
+            schedule_count=Count('schedules', filter=Q(schedules__user=request.user), distinct=True),
+            recent_schedule_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__visit_date__gte=period_ago), distinct=True),
+            meeting_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='customer_meeting', schedules__visit_date__gte=period_ago), distinct=True),
+            quote_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='quote', schedules__visit_date__gte=period_ago), distinct=True),
+            purchase_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='delivery', schedules__visit_date__gte=period_ago), distinct=True),
             total_purchase=Coalesce(
-                Sum('schedules__expected_revenue', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=period_ago)),
+                Sum('schedules__expected_revenue', filter=Q(schedules__user=request.user, schedules__activity_type='delivery', schedules__visit_date__gte=period_ago)),
                 Value(Decimal('0')),
                 output_field=DecimalField()
             ),
-            last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__visit_date__gte=period_ago)),
-            # 히스토리 통계
-            history_count=Count('histories', filter=Q(histories__created_at__gte=period_ago), distinct=True),
-            last_history_date=Max('histories__created_at', filter=Q(histories__created_at__gte=period_ago)),
-            # 진행 중인 기회 수
-            opportunity_count=Count('opportunities', filter=Q(opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
-            # 이메일 수
-            email_count=Count('emails', filter=Q(emails__created_at__gte=period_ago), distinct=True),
+            last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__user=request.user, schedules__visit_date__gte=period_ago)),
+            # 히스토리 통계 (본인 기록만)
+            history_count=Count('histories', filter=Q(histories__user=request.user, histories__created_at__gte=period_ago), distinct=True),
+            last_history_date=Max('histories__created_at', filter=Q(histories__user=request.user, histories__created_at__gte=period_ago)),
+            # 진행 중인 기회 수 (본인 기록만)
+            opportunity_count=Count('opportunities', filter=Q(opportunities__user=request.user, opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
+            # 이메일 수 (본인 기록만)
+            email_count=Count('emails', filter=Q(emails__user=request.user, emails__created_at__gte=period_ago), distinct=True),
         ).filter(
             Q(schedule_count__gt=0) | Q(history_count__gt=0)  # 일정 또는 히스토리가 있는 고객만
         ).select_related('company').prefetch_related(
@@ -633,13 +647,14 @@ def ai_suggest_follow_ups(request):
         
         logger.info(f"[AI 팔로우업] 대상 고객 수: {len(followups)}명 (최적화됨)")
         
-        # ✅ 3단계: 히스토리와 이메일은 ID 목록으로 한 번에 조회
+        # ✅ 3단계: 히스토리와 이메일은 ID 목록으로 한 번에 조회 (본인 기록만)
         followup_ids = [f.id for f in followups]
         
-        # 히스토리 일괄 조회 (고객별 최근 5개)
+        # 히스토리 일괄 조회 (고객별 최근 5개) - 본인 기록만
         histories_by_followup = {}
         all_histories = History.objects.filter(
             followup_id__in=followup_ids,
+            user=request.user,  # 본인 히스토리만
             created_at__gte=period_ago
         ).exclude(content__isnull=True).exclude(content='').order_by('followup_id', '-created_at')
         
@@ -652,8 +667,10 @@ def ai_suggest_follow_ups(request):
         
         # 이메일 일괄 조회 (고객별 최근 5개)
         emails_by_followup = {}
+        # 이메일 일괄 조회 (고객별 최근 5개) - 본인 기록만
         all_emails = EmailLog.objects.filter(
             Q(followup_id__in=followup_ids) | Q(schedule__followup_id__in=followup_ids),
+            user=request.user,  # 본인 이메일만
             created_at__gte=period_ago
         ).order_by('-sent_at')
         
@@ -868,15 +885,17 @@ def ai_recommend_products(request, followup_id):
         logger.info(f"[AI 상품추천] 고객 데이터 조회 중...")
         # 고객 정보 가져오기
         followup = get_object_or_404(FollowUp, id=followup_id)
-        logger.info(f"[AI 상품추천] 고객명: {followup.customer_name}")
         
-        # 구매 이력 가져오기 (최근 2년)
+        logger.info(f"[AI 상품추천] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
+        
+        # 구매 이력 가져오기 (최근 2년) - 본인 기록만
         from datetime import timedelta
         two_years_ago = timezone.now() - timedelta(days=730)
-        six_months_ago = timezone.now() - timedelta(days=180)
+        twelve_months_ago = timezone.now() - timedelta(days=365)
         
         delivery_items = DeliveryItem.objects.filter(
             schedule__followup=followup,
+            schedule__user=request.user,  # 본인 기록만
             schedule__activity_type='delivery',
             schedule__created_at__gte=two_years_ago
         ).select_related('product', 'schedule').order_by('-schedule__visit_date')
@@ -891,10 +910,11 @@ def ai_recommend_products(request, followup_id):
                 'specification': item.product.specification if item.product else ''
             })
         
-        # 견적 이력 가져오기 (최근 6개월)
+        # 견적 이력 가져오기 (최근 12개월) - 본인 기록만
         quote_items = QuoteItem.objects.filter(
             quote__followup=followup,
-            quote__created_at__gte=six_months_ago
+            quote__user=request.user,  # 본인 기록만
+            quote__created_at__gte=twelve_months_ago
         ).select_related('product', 'quote').order_by('-quote__quote_date')
         
         quote_history = []
@@ -907,9 +927,10 @@ def ai_recommend_products(request, followup_id):
                 'specification': item.product.specification if item.product else ''
             })
         
-        # 최근 미팅 노트 가져오기 (최근 10개)
+        # 최근 미팅 노트 가져오기 (최근 10개) - 본인 기록만
         meeting_schedules = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='customer_meeting'
         ).order_by('-visit_date')[:10]
         
@@ -918,10 +939,11 @@ def ai_recommend_products(request, followup_id):
             if schedule.notes:
                 meeting_notes += f"[{schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '날짜 미상'}] {schedule.notes}\n\n"
         
-        # 고객 히스토리 가져오기 (실무자가 작성한 내용)
+        # 고객 히스토리 가져오기 (본인이 작성한 내용만)
         from reporting.models import History
         customer_histories = History.objects.filter(
-            followup=followup
+            followup=followup,
+            user=request.user  # 본인 기록만
         ).order_by('-created_at')[:15]  # 최근 15개
         
         history_notes = ""
@@ -1550,10 +1572,10 @@ def ai_refresh_all_grades(request):
                 success_count = 0
                 failed_count = 0
                 grade_changes = []
-                six_months_ago = timezone.now() - timedelta(days=180)
+                twelve_months_ago = timezone.now() - timedelta(days=365)
                 
                 try:
-                    # 각 고객 처리
+                    # 각 고객 처리 (본인 기록만 분석)
                     for idx, followup in enumerate(queryset, 1):
                         try:
                             # 기존 등급 저장
@@ -1561,35 +1583,40 @@ def ai_refresh_all_grades(request):
                             old_grade_letter = followup.customer_grade
                             
                             # AI로 등급 업데이트 (내부 로직 직접 실행)
-                            # 미팅 횟수 (최근 6개월)
+                            # 본인(현재 사용자)이 남긴 기록만 분석
+                            # 미팅 횟수 (최근 12개월) - 본인 기록만
                             meeting_count = Schedule.objects.filter(
                                 followup=followup,
+                                user=user,  # 본인 기록만
                                 activity_type='meeting',
-                                created_at__gte=six_months_ago
+                                created_at__gte=twelve_months_ago
                             ).count()
                             
-                            # 이메일 교환 (최근 6개월)
+                            # 이메일 교환 (최근 12개월) - 본인 기록만
                             email_count = EmailLog.objects.filter(
                                 followup=followup,
-                                created_at__gte=six_months_ago
+                                user=user,  # 본인 기록만
+                                created_at__gte=twelve_months_ago
                             ).count()
                             
-                            # 견적 횟수 (최근 6개월)
+                            # 견적 횟수 (최근 12개월) - 본인 기록만
                             quote_count = Schedule.objects.filter(
                                 followup=followup,
+                                user=user,  # 본인 기록만
                                 activity_type='quote',
-                                created_at__gte=six_months_ago
+                                created_at__gte=twelve_months_ago
                             ).count()
                             
-                            # 구매 횟수 및 금액 (전체 + 최근 6개월)
+                            # 구매 횟수 및 금액 (전체 + 최근 12개월) - 본인 기록만
                             # 납품 일정(delivery)만 카운트 (견적 일정 제외)
                             all_deliveries = DeliveryItem.objects.filter(
                                 schedule__followup=followup,
+                                schedule__user=user,  # 본인 기록만
                                 schedule__activity_type='delivery'
                             )
                             
                             recent_deliveries = all_deliveries.filter(
-                                schedule__created_at__gte=six_months_ago
+                                schedule__created_at__gte=twelve_months_ago
                             )
                             
                             purchase_count = all_deliveries.values('schedule').distinct().count()
@@ -1603,7 +1630,7 @@ def ai_refresh_all_grades(request):
                                 total=Sum('total_price')
                             )['total'] or Decimal('0')
                             
-                            # 선결제 정보 (전체)
+                            # 선결제 정보 (전체) - 선결제는 공유 데이터이므로 필터 안 함
                             prepayments = Prepayment.objects.filter(
                                 customer=followup
                             )
@@ -1612,13 +1639,14 @@ def ai_refresh_all_grades(request):
                                 total=Sum('amount')
                             )['total'] or Decimal('0')
                             
-                            # 마지막 연락일 (최근 일정 기준)
-                            last_schedule = Schedule.objects.filter(followup=followup).order_by('-visit_date').first()
+                            # 마지막 연락일 (본인 기록 기준)
+                            last_schedule = Schedule.objects.filter(followup=followup, user=user).order_by('-visit_date').first()
                             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d') if last_schedule else '없음'
                             
-                            # 미팅 요약 (최근 3개)
+                            # 미팅 요약 (최근 3개) - 본인 기록만
                             recent_meetings = Schedule.objects.filter(
                                 followup=followup,
+                                user=user,  # 본인 기록만
                                 activity_type='meeting',
                                 notes__isnull=False
                             ).order_by('-visit_date')[:3]
@@ -1628,10 +1656,11 @@ def ai_refresh_all_grades(request):
                                 if meeting.notes:
                                     meeting_summary.append(f"[{meeting.visit_date.strftime('%Y-%m-%d')}] {meeting.notes[:100]}")
                             
-                            # 진행 중인 기회
+                            # 진행 중인 기회 (본인 기록만)
                             opportunities = []
                             active_opps = OpportunityTracking.objects.filter(
                                 followup=followup,
+                                user=user,  # 본인 기록만
                                 current_stage__in=['lead', 'contact', 'quote', 'closing']
                             )[:5]
                             for opp in active_opps:
@@ -1918,6 +1947,7 @@ def ai_schedule_detail(request, schedule_id):
 def ai_meeting_advice(request):
     """
     AI 미팅 조언 생성
+    - 현재 로그인 사용자가 남긴 기록만 분석
     """
     if not check_ai_permission(request.user):
         return JsonResponse({
@@ -1955,12 +1985,13 @@ def ai_meeting_advice(request):
         # 고객 정보 수집
         followup = schedule.followup
         
-        # 모든 히스토리 메모 수집
+        # 본인 히스토리 메모만 수집
         from datetime import timedelta
         from django.db.models import Sum
         
         histories = History.objects.filter(
-            followup=followup
+            followup=followup,
+            user=request.user  # 본인 히스토리만
         ).exclude(content__isnull=True).exclude(content='').order_by('-created_at')[:20]
         
         history_notes = [
@@ -1968,9 +1999,10 @@ def ai_meeting_advice(request):
             for h in histories
         ]
         
-        # 구매 이력 (스케줄 기반)
+        # 구매 이력 (본인 스케줄 기반)
         past_deliveries = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='delivery',
             status='completed'
         ).order_by('-visit_date')[:10]
@@ -1985,9 +2017,10 @@ def ai_meeting_advice(request):
                 'items_count': items.count()
             })
         
-        # 견적 이력
+        # 견적 이력 (본인 기록만)
         past_quotes = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='quote'
         ).order_by('-visit_date')[:10]
         
@@ -2001,9 +2034,10 @@ def ai_meeting_advice(request):
                 'items_count': items.count()
             })
         
-        # 과거 미팅 메모
+        # 과거 미팅 메모 (본인 기록만)
         past_meetings = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             activity_type='customer_meeting',
             notes__isnull=False
         ).exclude(notes='').order_by('-visit_date')[:5]

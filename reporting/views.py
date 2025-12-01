@@ -893,19 +893,19 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
-    # AI 분석 (AI 권한이 있는 사용자만)
+    # AI 분석 (AI 권한이 있는 사용자 + 본인 고객만)
     ai_analysis = None
-    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai and is_own_customer:
         from datetime import datetime, timedelta
         from django.utils import timezone
         
-        # 최근 6개월 데이터 수집
-        six_months_ago = timezone.now() - timedelta(days=180)
+        # 최근 12개월 데이터 수집
+        twelve_months_ago = timezone.now() - timedelta(days=365)
         
         # 스케줄 통계
         schedules = Schedule.objects.filter(
             followup=followup,
-            visit_date__gte=six_months_ago
+            visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
@@ -922,7 +922,7 @@ def followup_detail_view(request, pk):
         # 이메일 교환
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            created_at__gte=six_months_ago
+            created_at__gte=twelve_months_ago
         ).count()
         
         # 마지막 연락일
@@ -934,7 +934,7 @@ def followup_detail_view(request, pk):
         # 미팅 노트 수집 (최근 5개) - 히스토리에서
         histories = History.objects.filter(
             followup=followup,
-            created_at__gte=six_months_ago
+            created_at__gte=twelve_months_ago
         )
         meeting_notes = []
         recent_meetings = histories.filter(
