@@ -8362,7 +8362,8 @@ def customer_detail_report_view(request, followup_id):
     # 본인 고객인지 확인
     is_own_customer = (request.user == followup.user)
     user_profile = get_user_profile(request.user)
-    can_view_all = is_own_customer or user_profile.is_admin() or user_profile.is_manager()
+    # 관리자/매니저만 전체 데이터 조회 가능, 일반 사용자는 본인 작성 데이터만
+    can_view_all = user_profile.is_admin() or user_profile.is_manager()
     
     # 해당 고객의 활동 히스토리 (권한에 따라 필터링)
     if can_view_all:
@@ -9044,7 +9045,8 @@ def customer_detail_report_view_simple(request, followup_id):
     # 본인 고객인지 확인
     is_own_customer = (request.user == followup.user)
     user_profile = get_user_profile(request.user)
-    can_view_all = is_own_customer or user_profile.is_admin() or user_profile.is_manager()
+    # 관리자/매니저만 전체 데이터 조회 가능, 일반 사용자는 본인 작성 데이터만
+    can_view_all = user_profile.is_admin() or user_profile.is_manager()
     
     # 기본 History 데이터 조회
     if can_view_all:
