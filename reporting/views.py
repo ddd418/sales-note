@@ -893,24 +893,25 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
-    # AI 분석 (AI 권한이 있는 사용자 + 본인 고객만)
+    # AI 분석 (AI 권한이 있는 사용자 - 동료 고객도 분석 가능, 단 본인 기록만)
     ai_analysis = None
-    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai and is_own_customer:
+    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
         from datetime import datetime, timedelta
         from django.utils import timezone
         
         # 최근 12개월 데이터 수집
         twelve_months_ago = timezone.now() - timedelta(days=365)
         
-        # 스케줄 통계
+        # 스케줄 통계 (본인 기록만)
         schedules = Schedule.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 기록만
             visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
         
-        # 구매 내역 (납품 일정)
+        # 구매 내역 (납품 일정 - 본인 기록만)
         delivery_schedules = schedules.filter(activity_type='delivery')
         purchase_count = delivery_schedules.count()
         
@@ -919,21 +920,23 @@ def followup_detail_view(request, pk):
             total=Sum('expected_revenue')
         )['total'] or 0
         
-        # 이메일 교환
+        # 이메일 교환 (본인 기록만)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
+            user=request.user,  # 본인 이메일만
             created_at__gte=twelve_months_ago
         ).count()
         
-        # 마지막 연락일
+        # 마지막 연락일 (본인 기록 기준)
         last_contact = None
         last_schedule = schedules.order_by('-visit_date').first()
         if last_schedule:
             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
         
-        # 미팅 노트 수집 (최근 5개) - 히스토리에서
+        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (본인 기록만)
         histories = History.objects.filter(
             followup=followup,
+            user=request.user,  # 본인 히스토리만
             created_at__gte=twelve_months_ago
         )
         meeting_notes = []
