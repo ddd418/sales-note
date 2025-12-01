@@ -6461,7 +6461,7 @@ def department_autocomplete(request):
 
 @login_required
 def followup_autocomplete(request):
-    """팔로우업 자동완성 API (일정 생성용)"""
+    """팔로우업 자동완성 API (일정 생성용 + 고객별 기록 조회용)"""
     import logging
     logger = logging.getLogger(__name__)
     
@@ -6469,16 +6469,9 @@ def followup_autocomplete(request):
     if len(query) < 1:
         return JsonResponse({'results': []})
     
-    # 현재 사용자의 권한에 따른 팔로우업 필터링
-    user_profile = get_user_profile(request.user)
-    user_company = getattr(request, 'user_company', None)
-    is_admin = getattr(request, 'is_admin', False)
-    
-    if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user, request)
-        followups = FollowUp.objects.filter(user__in=accessible_users)
-    else:
-        followups = FollowUp.objects.filter(user=request.user)
+    # 같은 회사 사용자들의 고객 모두 검색 가능
+    same_company_users = get_same_company_users(request.user)
+    followups = FollowUp.objects.filter(user__in=same_company_users)
     
     # 검색어로 필터링 (고객명, 업체명, 부서명, 책임자명으로 검색)
     followups = followups.filter(
@@ -6497,8 +6490,8 @@ def followup_autocomplete(request):
         
         display_text = f"{company_name} - {department_name} | {customer_name}"
         
-        # 관리자/매니저인 경우 담당자 정보도 표시
-        if user_profile.can_view_all_users() and followup.user != request.user:
+        # 동료 고객인 경우 담당자 표시
+        if followup.user != request.user:
             display_text += f" ({followup.user.username})"
         
         results.append({
