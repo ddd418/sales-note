@@ -575,11 +575,13 @@ class HistoryForm(forms.ModelForm):
         request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         if user:
-            # 현재 사용자의 팔로우업만 선택할 수 있도록 필터링
+            # 같은 회사 사용자들의 팔로우업도 선택 가능하도록 필터링
             if user.is_staff or user.is_superuser:
                 self.fields['followup'].queryset = FollowUp.objects.all()
             else:
-                self.fields['followup'].queryset = FollowUp.objects.filter(user=user)
+                # 같은 회사 소속 모든 사용자의 고객 선택 가능
+                same_company_users = get_same_company_users(user)
+                self.fields['followup'].queryset = FollowUp.objects.filter(user__in=same_company_users)
             
             # 일정 필드를 빈 상태로 초기화 (JavaScript에서 동적으로 로드)
             self.fields['schedule'].queryset = Schedule.objects.none()
@@ -4086,10 +4088,12 @@ def api_followup_schedules(request, followup_pk):
     """특정 팔로우업의 일정 목록을 JSON으로 반환 (AJAX용)"""
     try:
         followup = get_object_or_404(FollowUp, pk=followup_pk)
-          # 권한 체크
-        if not (request.user.is_staff or request.user.is_superuser or followup.user == request.user):
+        
+        # 권한 체크 (같은 회사 소속이면 접근 가능)
+        if not can_access_followup(request.user, followup):
             return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
         
+        # 본인 일정만 조회 (동료 고객이어도 내가 만든 일정만)
         schedules = Schedule.objects.filter(followup=followup, user=request.user)
         schedule_list = []
         
