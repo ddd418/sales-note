@@ -1024,30 +1024,35 @@ def followup_detail_view(request, pk):
             'ready': True
         }
     
-    # 납품된 상품 목록 조회 (본인 고객만 표시)
+    # 납품된 상품 목록 조회
+    # - 본인 고객: 전체
+    # - 관리자/매니저: 전체
+    # - 동료 고객: 본인이 추가한 납품만
     from reporting.models import DeliveryItem
-    if is_own_customer:
+    if is_own_customer or can_view_all_history:
+        # 본인 고객이거나 관리자/매니저: 전체 납품 목록
         delivered_items = DeliveryItem.objects.filter(
             schedule__followup=followup,
             schedule__activity_type='delivery'
         ).exclude(
             schedule__status='cancelled'
         ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
-        
-        # 납품 품목 통계
-        delivery_stats = {
-            'total_items': delivered_items.count(),
-            'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
-            'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
-        }
     else:
-        # 동료 고객인 경우 납품 정보 숨김
-        delivered_items = DeliveryItem.objects.none()
-        delivery_stats = {
-            'total_items': 0,
-            'total_revenue': 0,
-            'total_quantity': 0,
-        }
+        # 동료 고객: 본인이 추가한 납품만
+        delivered_items = DeliveryItem.objects.filter(
+            schedule__followup=followup,
+            schedule__activity_type='delivery',
+            schedule__user=request.user  # 본인이 추가한 일정의 납품만
+        ).exclude(
+            schedule__status='cancelled'
+        ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
+    
+    # 납품 품목 통계
+    delivery_stats = {
+        'total_items': delivered_items.count(),
+        'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
+        'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
+    }
     
     context = {
         'followup': followup,

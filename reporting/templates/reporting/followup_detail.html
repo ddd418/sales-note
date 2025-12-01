@@ -388,8 +388,8 @@
     </div>
   </div>
 
-  <!-- 납품 상품 목록 섹션 (본인 고객만 표시) -->
-  {% if is_own_customer %}
+  <!-- 납품 상품 목록 섹션 (본인 고객, 관리자/매니저, 또는 본인이 추가한 납품이 있으면 표시) -->
+  {% if delivered_items %}
   <div class="row mt-4">
     <div class="col-12">
       <div class="card">
@@ -397,6 +397,7 @@
           <div class="d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">
               <i class="fas fa-box-open me-2"></i>납품 상품 목록
+              {% if not is_own_customer %}<small class="text-muted">(내가 추가한 납품)</small>{% endif %}
             </h5>
             <div>
               <span class="badge bg-primary me-2">총 {{ delivery_stats.total_items }}건</span>
