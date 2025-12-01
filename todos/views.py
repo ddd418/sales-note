@@ -1241,13 +1241,13 @@ def api_search_clients(request):
     results = [
         {
             'id': client.id,
-            'name': client.customer_name or '(이름 없음)',
-            'company': client.company.name if client.company else '',
+            'customer_name': client.customer_name or '(이름 없음)',
+            'company_name': client.company.name if client.company else '',
         }
         for client in clients
     ]
     
-    return JsonResponse({'clients': results})
+    return JsonResponse({'results': results})
 
 
 # ============================================
