@@ -10441,12 +10441,13 @@ def followup_quote_items_api(request, followup_id):
     """
     특정 팔로우업의 견적 품목을 가져오는 API
     납품 일정 생성 시 견적에서 품목을 불러오기 위해 사용
+    같은 회사 소속이면 동료 고객의 견적도 불러올 수 있음
     """
     try:
         followup = get_object_or_404(FollowUp, pk=followup_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, followup.user):
+        # 권한 체크 (같은 회사 소속이면 접근 가능)
+        if not can_access_followup(request.user, followup):
             return JsonResponse({
                 'error': '접근 권한이 없습니다.'
             }, status=403)
@@ -10543,12 +10544,13 @@ def followup_meetings_api(request, followup_id):
     """
     특정 팔로우업의 미팅 일정을 가져오는 API
     견적 일정 생성 시 미팅을 선택하여 펀넬을 연결하기 위해 사용
+    같은 회사 소속이면 동료 고객의 미팅도 불러올 수 있음
     """
     try:
         followup = get_object_or_404(FollowUp, pk=followup_id)
         
-        # 권한 체크
-        if not can_access_user_data(request.user, followup.user):
+        # 권한 체크 (같은 회사 소속이면 접근 가능)
+        if not can_access_followup(request.user, followup):
             return JsonResponse({
                 'error': '접근 권한이 없습니다.'
             }, status=403)
