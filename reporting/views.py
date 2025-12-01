@@ -8359,8 +8359,17 @@ def customer_detail_report_view(request, followup_id):
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
         return redirect('reporting:customer_report')
     
-    # 해당 고객의 모든 활동 히스토리
-    histories = History.objects.filter(followup=followup).order_by('-created_at')
+    # 본인 고객인지 확인
+    is_own_customer = (request.user == followup.user)
+    user_profile = get_user_profile(request.user)
+    can_view_all = is_own_customer or user_profile.is_admin() or user_profile.is_manager()
+    
+    # 해당 고객의 활동 히스토리 (권한에 따라 필터링)
+    if can_view_all:
+        histories = History.objects.filter(followup=followup).order_by('-created_at')
+    else:
+        # 동료 고객: 본인이 작성한 히스토리만
+        histories = History.objects.filter(followup=followup, user=request.user).order_by('-created_at')
     
     # 기본 통계 계산
     total_meetings = histories.filter(action_type='customer_meeting').count()
@@ -8371,12 +8380,20 @@ def customer_detail_report_view(request, followup_id):
         total=Sum('delivery_amount')
     )['total'] or 0
     
-    # Schedule DeliveryItem 총액 계산
+    # Schedule DeliveryItem 총액 계산 (권한에 따라 필터링)
     schedule_amount = 0
-    schedule_deliveries = Schedule.objects.filter(
-        followup=followup, 
-        activity_type='delivery'
-    ).prefetch_related('delivery_items_set')
+    if can_view_all:
+        schedule_deliveries = Schedule.objects.filter(
+            followup=followup, 
+            activity_type='delivery'
+        ).prefetch_related('delivery_items_set')
+    else:
+        # 동료 고객: 본인이 작성한 스케줄만
+        schedule_deliveries = Schedule.objects.filter(
+            followup=followup, 
+            activity_type='delivery',
+            user=request.user
+        ).prefetch_related('delivery_items_set')
     
     for schedule in schedule_deliveries:
         for item in schedule.delivery_items_set.all():
@@ -9024,8 +9041,18 @@ def customer_detail_report_view_simple(request, followup_id):
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
         return redirect('reporting:customer_report')
     
+    # 본인 고객인지 확인
+    is_own_customer = (request.user == followup.user)
+    user_profile = get_user_profile(request.user)
+    can_view_all = is_own_customer or user_profile.is_admin() or user_profile.is_manager()
+    
     # 기본 History 데이터 조회
-    histories = History.objects.filter(followup=followup).order_by('-created_at')
+    if can_view_all:
+        # 본인 고객이거나 관리자/매니저: 전체 히스토리
+        histories = History.objects.filter(followup=followup).order_by('-created_at')
+    else:
+        # 동료 고객: 본인이 작성한 히스토리만
+        histories = History.objects.filter(followup=followup, user=request.user).order_by('-created_at')
     
     # 기본 통계 계산
     delivery_histories = histories.filter(action_type='delivery_schedule')
@@ -9037,10 +9064,19 @@ def customer_detail_report_view_simple(request, followup_id):
             total_amount += float(history.delivery_amount)
     
     # Schedule 기반 납품 일정
-    schedule_deliveries = Schedule.objects.filter(
-        followup=followup,
-        activity_type='delivery'
-    ).order_by('-visit_date')
+    if can_view_all:
+        # 본인 고객이거나 관리자/매니저: 전체 스케줄
+        schedule_deliveries = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery'
+        ).order_by('-visit_date')
+    else:
+        # 동료 고객: 본인이 작성한 스케줄만
+        schedule_deliveries = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery',
+            user=request.user
+        ).order_by('-visit_date')
     
     # 통합 납품 내역 생성 (템플릿 호환성을 위해)
     integrated_deliveries = []
