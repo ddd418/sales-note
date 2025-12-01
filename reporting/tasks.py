@@ -13,6 +13,55 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, ignore_result=True)
+def refresh_gmail_tokens(self):
+    """
+    Gmail 연결된 사용자들의 토큰 자동 갱신 (매일 1회)
+    - 만료된 토큰 자동 갱신
+    - refresh_token이 있는 경우에만 갱신 시도
+    - 사용자가 다시 인증할 필요 없이 자동으로 토큰 유지
+    """
+    from .models import UserProfile
+    from .gmail_utils import GmailService
+    
+    refreshed_count = 0
+    failed_count = 0
+    
+    # Gmail 연결된 모든 사용자 조회
+    profiles = UserProfile.objects.filter(
+        gmail_token__isnull=False
+    ).select_related('user')
+    
+    for profile in profiles:
+        try:
+            # refresh_token 존재 확인
+            token_data = profile.gmail_token
+            if not token_data or not token_data.get('refresh_token'):
+                logger.warning(f'Gmail refresh_token 없음: {profile.user.username}')
+                continue
+            
+            # GmailService를 통해 토큰 갱신 시도
+            gmail_service = GmailService(profile)
+            creds = gmail_service.get_credentials()
+            
+            if creds:
+                # 갱신 성공 - 저장은 get_credentials에서 자동으로 됨
+                refreshed_count += 1
+                logger.info(f'Gmail 토큰 갱신 성공: {profile.user.username}')
+            else:
+                failed_count += 1
+                logger.warning(f'Gmail 토큰 갱신 실패 (재인증 필요): {profile.user.username}')
+                
+        except Exception as e:
+            failed_count += 1
+            logger.error(f'Gmail 토큰 갱신 오류 ({profile.user.username}): {str(e)}')
+            continue
+    
+    logger.info(f'Gmail 토큰 갱신 완료: 성공 {refreshed_count}명, 실패 {failed_count}명')
+    
+    return {'refreshed': refreshed_count, 'failed': failed_count}
+
+
+@shared_task(bind=True, ignore_result=True)
 def auto_sync_gmail(self):
     """
     모든 Gmail 연결된 사용자의 메일 자동 동기화 (10분마다)

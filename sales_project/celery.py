@@ -25,6 +25,11 @@ app.conf.beat_schedule = {
         'task': 'reporting.tasks.cleanup_old_files_task',
         'schedule': crontab(hour=3, minute=0),
     },
+    # 매일 새벽 4시에 Gmail 토큰 자동 갱신
+    'refresh-gmail-tokens-daily': {
+        'task': 'reporting.tasks.refresh_gmail_tokens',
+        'schedule': crontab(hour=4, minute=0),
+    },
 }
 
 @app.task(bind=True, ignore_result=True)

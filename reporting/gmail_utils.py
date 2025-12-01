@@ -71,25 +71,41 @@ class GmailService:
             return None
         
     def get_credentials(self):
-        """저장된 토큰으로 Credentials 객체 생성"""
+        """저장된 토큰으로 Credentials 객체 생성 (자동 갱신 포함)"""
         if not self.user_profile.gmail_token:
             return None
             
         token_data = self.user_profile.gmail_token
         
+        # refresh_token이 없으면 재인증 필요
+        if not token_data.get('refresh_token'):
+            return None
+        
         creds = Credentials(
             token=token_data.get('token'),
             refresh_token=token_data.get('refresh_token'),
-            token_uri=token_data.get('token_uri'),
+            token_uri=token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
             client_id=settings.GMAIL_CLIENT_ID,
             client_secret=settings.GMAIL_CLIENT_SECRET,
             scopes=self.SCOPES
         )
         
-        # 토큰 만료 시 자동 갱신
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            self.save_credentials(creds)
+        # 토큰 만료 시 자동 갱신 (예외 처리 강화)
+        try:
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                self.save_credentials(creds)
+        except Exception as e:
+            # 갱신 실패 시에도 refresh_token으로 재시도
+            try:
+                creds.refresh(Request())
+                self.save_credentials(creds)
+            except Exception as refresh_error:
+                # 로깅하고 None 반환 (재인증 필요)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f'Gmail 토큰 갱신 실패 ({self.user_profile.user.username}): {refresh_error}')
+                return None
             
         return creds
     
