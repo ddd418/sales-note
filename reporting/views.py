@@ -10452,15 +10452,17 @@ def followup_quote_items_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 모든 견적 일정 조회 (납품되지 않은 것만)
+        # 해당 팔로우업의 본인 견적 일정 조회 (납품되지 않은 것만)
+        # 동료 고객이라도 본인이 작성한 견적만 불러올 수 있음
         quote_schedules = Schedule.objects.filter(
             followup=followup,
-            activity_type='quote'
+            activity_type='quote',
+            user=request.user  # 본인이 작성한 견적만
         ).order_by('-visit_date', '-visit_time')
         
         if not quote_schedules.exists():
             return JsonResponse({
-                'error': '이 고객의 견적이 없습니다.'
+                'error': '이 고객에 대한 본인 작성 견적이 없습니다.'
             })
         
         # 모든 견적 정보 수집 (납품되지 않은 것만)
@@ -10555,8 +10557,9 @@ def followup_meetings_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 미팅 일정 조회
+        # 해당 팔로우업의 본인 미팅 일정 조회
         # 조건: OpportunityTracking이 있고, current_stage가 'contact'인 미팅만 (아직 견적과 연결되지 않은 미팅)
+        # 동료 고객이라도 본인이 작성한 미팅만 불러올 수 있음
         from reporting.models import OpportunityTracking
         
         # contact 단계의 OpportunityTracking 찾기
@@ -10565,16 +10568,17 @@ def followup_meetings_api(request, followup_id):
             current_stage='contact'
         ).values_list('id', flat=True)
         
-        # 해당 OpportunityTracking과 연결된 미팅 일정 조회
+        # 해당 OpportunityTracking과 연결된 본인 미팅 일정 조회
         meeting_schedules = Schedule.objects.filter(
             followup=followup,
             activity_type='customer_meeting',
-            opportunity_id__in=contact_opportunities
+            opportunity_id__in=contact_opportunities,
+            user=request.user  # 본인이 작성한 미팅만
         ).select_related('opportunity').order_by('-visit_date', '-visit_time')
         
         if not meeting_schedules.exists():
             return JsonResponse({
-                'error': '이 고객의 미팅 일정이 없습니다.'
+                'error': '이 고객에 대한 본인 작성 미팅 일정이 없습니다.'
             })
         
         # 모든 미팅 정보 수집

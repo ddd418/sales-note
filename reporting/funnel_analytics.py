@@ -18,7 +18,10 @@ class FunnelAnalytics:
         )
         
         if user:
-            qs = qs.filter(followup__user=user)
+            # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
+            qs = qs.filter(
+                Q(followup__user=user) | Q(schedules__user=user)
+            ).distinct()
         elif accessible_users is not None:
             qs = qs.filter(followup__user__in=accessible_users)
         
@@ -51,7 +54,10 @@ class FunnelAnalytics:
             )
             
             if user:
-                opps = opps.filter(followup__user=user)
+                # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
+                opps = opps.filter(
+                    Q(followup__user=user) | Q(schedules__user=user)
+                ).distinct()
             elif accessible_users is not None:
                 opps = opps.filter(followup__user__in=accessible_users)
             
@@ -277,7 +283,10 @@ class FunnelAnalytics:
         ).select_related('followup', 'followup__company', 'followup__user')
         
         if user:
-            qs = qs.filter(followup__user=user)
+            # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
+            qs = qs.filter(
+                Q(followup__user=user) | Q(schedules__user=user)
+            ).distinct()
         elif accessible_users is not None:
             qs = qs.filter(followup__user__in=accessible_users)
         
@@ -347,8 +356,13 @@ class FunnelAnalytics:
         lost_qs = OpportunityTracking.objects.filter(current_stage='lost')
         
         if user:
-            won_qs = won_qs.filter(followup__user=user)
-            lost_qs = lost_qs.filter(followup__user=user)
+            # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
+            won_qs = won_qs.filter(
+                Q(followup__user=user) | Q(schedules__user=user)
+            ).distinct()
+            lost_qs = lost_qs.filter(
+                Q(followup__user=user) | Q(schedules__user=user)
+            ).distinct()
         elif accessible_users is not None:
             won_qs = won_qs.filter(followup__user__in=accessible_users)
             lost_qs = lost_qs.filter(followup__user__in=accessible_users)
