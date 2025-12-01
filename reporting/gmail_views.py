@@ -591,7 +591,7 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
 
 @login_required
 def mailbox_inbox(request):
-    """받은편지함 (팔로우업 연결 메일만)"""
+    """받은편지함 (본인 담당 팔로우업 연결 메일만)"""
     profile = request.user.userprofile
     
     # Gmail 연결 확인
@@ -599,10 +599,11 @@ def mailbox_inbox(request):
         messages.warning(request, 'Gmail 계정을 연결해주세요.')
         return redirect('reporting:gmail_connect')
     
-    # DB에서 수신 메일 조회
+    # DB에서 수신 메일 조회 (본인 담당 팔로우업만)
     emails = EmailLog.objects.filter(
         email_type='received',
-        followup__isnull=False  # 팔로우업 연결된 메일만
+        followup__isnull=False,  # 팔로우업 연결된 메일만
+        followup__user=request.user  # 본인 담당 팔로우업만
     ).select_related('followup', 'sender', 'business_card').order_by('-sent_at')
     
     # 페이지네이션
