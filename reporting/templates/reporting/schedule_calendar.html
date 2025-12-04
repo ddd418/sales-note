@@ -2565,100 +2565,6 @@
       });
   }
 
-  // 펀넬 정보 수정 모드 토글
-  function toggleFunnelEdit(scheduleId) {
-    const viewDiv = document.getElementById(`funnel-view-${scheduleId}`);
-    const editDiv = document.getElementById(`funnel-edit-${scheduleId}`);
-    
-    if (viewDiv && editDiv) {
-      viewDiv.style.display = 'none';
-      editDiv.style.display = 'block';
-    }
-  }
-
-  // 펀넬 정보 수정 취소
-  function cancelFunnelEdit(scheduleId) {
-    const viewDiv = document.getElementById(`funnel-view-${scheduleId}`);
-    const editDiv = document.getElementById(`funnel-edit-${scheduleId}`);
-    
-    if (viewDiv && editDiv) {
-      viewDiv.style.display = 'block';
-      editDiv.style.display = 'none';
-    }
-  }
-
-  // 펀넬 정보 저장
-  function saveFunnelData(event, scheduleId) {
-    event.preventDefault();
-    
-    const form = document.getElementById(`funnel-form-${scheduleId}`);
-    const formData = new FormData(form);
-    
-    // CSRF 토큰 추가
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-      alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
-      return;
-    }
-    
-    // 로딩 표시
-    if (typeof GlobalLoader !== 'undefined') {
-      GlobalLoader.show();
-    }
-    
-    // API 호출
-    fetch(`/reporting/schedules/${scheduleId}/update-funnel/`, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': csrfToken,
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: formData,
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return response.json();
-    })
-    .then(data => {
-      if (data.success) {
-        // 성공 메시지
-        if (typeof showToast !== 'undefined') {
-          showToast(data.message || '펀넬 정보가 저장되었습니다.', 'success');
-        } else {
-          alert(data.message || '펀넬 정보가 저장되었습니다.');
-        }
-        
-        // 모달 닫기
-        const modal = bootstrap.Modal.getInstance(document.getElementById('scheduleDetailModal'));
-        if (modal) {
-          modal.hide();
-        }
-        
-        // 캘린더 다시 로드
-        loadSchedules();
-      } else {
-        throw new Error(data.error || '펀넬 정보 저장에 실패했습니다.');
-      }
-    })
-    .catch(error => {
-      
-      if (typeof showToast !== 'undefined') {
-        showToast('펀넬 정보 저장 중 오류가 발생했습니다: ' + error.message, 'error');
-      } else {
-        alert('펀넬 정보 저장 중 오류가 발생했습니다: ' + error.message);
-      }
-    })
-    .finally(() => {
-      if (typeof GlobalLoader !== 'undefined') {
-        GlobalLoader.hide();
-      }
-    });
-  }
-
   // 일정 이동 함수 - 전역 스코프로 이동
   function moveSchedule(scheduleId, targetDate, scheduleData) {
     // 로딩 표시
@@ -6080,105 +5986,6 @@
                   </div>
                   ` : ''}
                   
-                  ${schedule.activity_type !== 'service' ? `
-                  <!-- 펀넬 정보 섹션 -->
-                  <div class="col-12" id="funnel-info-section-${schedule.id}">
-                    <div class="card border-success">
-                      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">
-                          <i class="fas fa-chart-line me-2"></i>영업 기회 정보 (펀넬)
-                        </h6>
-                        ${currentUser.role !== 'manager' ? `
-                        <button type="button" class="btn btn-sm btn-light" onclick="toggleFunnelEdit(${schedule.id})">
-                          <i class="fas fa-edit me-1"></i>수정
-                        </button>
-                        ` : ''}
-                      </div>
-                      <div class="card-body">
-                        <!-- 읽기 모드 -->
-                        <div id="funnel-view-${schedule.id}">
-                          <div class="row g-3">
-                            <div class="col-md-4">
-                              <label class="form-label fw-bold">예상 매출</label>
-                              <p class="mb-0 text-success fw-bold">
-                                ${schedule.expected_revenue ? parseInt(schedule.expected_revenue).toLocaleString() + '원' : '미입력'}
-                              </p>
-                            </div>
-                            <div class="col-md-4">
-                              <label class="form-label fw-bold">성사 확률</label>
-                              <p class="mb-0">
-                                ${schedule.probability !== null && schedule.probability !== undefined ? schedule.probability + '%' : '미입력'}
-                              </p>
-                            </div>
-                            <div class="col-md-4">
-                              <label class="form-label fw-bold">예상 마감일</label>
-                              <p class="mb-0">
-                                ${schedule.expected_close_date || '미입력'}
-                              </p>
-                            </div>
-                            ${schedule.expected_revenue && schedule.probability ? `
-                            <div class="col-12">
-                              <div class="alert alert-info mb-0">
-                                <i class="fas fa-calculator me-2"></i>
-                                <strong>가중 매출:</strong> 
-                                ${Math.round(schedule.expected_revenue * schedule.probability / 100).toLocaleString()}원
-                                <small class="ms-2 text-muted">(예상 매출 × 성사 확률)</small>
-                              </div>
-                            </div>
-                            ` : ''}
-                          </div>
-                        </div>
-                        
-                        <!-- 편집 모드 -->
-                        ${currentUser.role !== 'manager' ? `
-                        <div id="funnel-edit-${schedule.id}" style="display: none;">
-                          <form id="funnel-form-${schedule.id}" onsubmit="saveFunnelData(event, ${schedule.id})">
-                            <div class="row g-3">
-                              <div class="col-md-4">
-                                <label class="form-label">예상 매출 (원)</label>
-                                <input type="number" class="form-control" name="expected_revenue" 
-                                       value="${schedule.expected_revenue || ''}" min="0" step="1000"
-                                       placeholder="1000000">
-                                <div class="form-text">예상되는 매출 금액을 입력하세요</div>
-                              </div>
-                              <div class="col-md-4">
-                                <label class="form-label">성사 확률 (%)</label>
-                                <input type="number" class="form-control" name="probability" 
-                                       value="${schedule.probability !== null ? schedule.probability : ''}" 
-                                       min="0" max="100" step="5" placeholder="50">
-                                <div class="form-text">0~100 사이의 값을 입력하세요</div>
-                              </div>
-                              <div class="col-md-4">
-                                <label class="form-label">예상 마감일</label>
-                                <input type="date" class="form-control" name="expected_close_date" 
-                                       value="${schedule.expected_close_date || ''}">
-                                <div class="form-text">계약 체결 예상일</div>
-                              </div>
-                              <div class="col-12">
-                                <div class="alert alert-warning mb-0">
-                                  <i class="fas fa-info-circle me-2"></i>
-                                  예상 매출과 성사 확률을 입력하면 영업 기회가 자동으로 펀넬 관리에 생성됩니다.
-                                  <br><small class="text-muted">(서비스 일정은 펀넬에서 제외됩니다)</small>
-                                </div>
-                              </div>
-                              <div class="col-12">
-                                <div class="d-flex gap-2">
-                                  <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-save me-1"></i>저장
-                                  </button>
-                                  <button type="button" class="btn btn-outline-secondary" onclick="cancelFunnelEdit(${schedule.id})">
-                                    <i class="fas fa-times me-1"></i>취소
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </form>
-                        </div>
-                        ` : ''}
-                      </div>
-                    </div>
-                  </div>
-                  ` : ''}
                   
                   <div class="col-12">
                     <label class="form-label fw-bold">관련 활동 기록</label>
@@ -6905,7 +6712,16 @@
       // 현재 날짜 파싱
       const [year, month, day] = currentDate.split('-').map(Number);
       
-      // 날짜 선택 모달 생성
+      // 현재 상태 확인
+      const currentStatus = scheduleData.status || 'scheduled';
+      const activityType = scheduleData.activity_type || '';
+      const isQuote = activityType === 'quote';
+      
+      // 상태 표시 텍스트
+      const statusText = currentStatus === 'completed' ? '완료' : 
+                         currentStatus === 'cancelled' ? '취소' : '예정';
+      
+      // 날짜 선택 모달 생성 (상태 변경 포함)
       const datePickerHtml = `
         <div class="modal fade" id="mobileDatePicker" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog modal-dialog-centered">
@@ -6928,10 +6744,24 @@
                   <label class="form-label fw-bold">변경할 날짜</label>
                   <input type="date" class="form-control" id="newScheduleDate" value="${currentDate}">
                 </div>
+                <div class="mb-3">
+                  <label class="form-label fw-bold">상태 변경</label>
+                  <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="mobileStatusChange" id="mobileStatusScheduled" value="scheduled" ${currentStatus === 'scheduled' ? 'checked' : ''}>
+                    <label class="btn btn-outline-primary" for="mobileStatusScheduled">예정</label>
+                    
+                    <input type="radio" class="btn-check" name="mobileStatusChange" id="mobileStatusCompleted" value="completed" ${currentStatus === 'completed' ? 'checked' : ''} ${isQuote ? 'disabled' : ''}>
+                    <label class="btn btn-outline-success ${isQuote ? 'disabled' : ''}" for="mobileStatusCompleted" ${isQuote ? 'title="견적 일정은 완료 처리할 수 없습니다"' : ''}>완료</label>
+                    
+                    <input type="radio" class="btn-check" name="mobileStatusChange" id="mobileStatusCancelled" value="cancelled" ${currentStatus === 'cancelled' ? 'checked' : ''}>
+                    <label class="btn btn-outline-danger" for="mobileStatusCancelled">취소</label>
+                  </div>
+                  ${isQuote ? '<small class="text-muted d-block mt-1"><i class="fas fa-info-circle me-1"></i>견적 일정은 완료 처리가 불가합니다.</small>' : ''}
+                </div>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                <button type="button" class="btn btn-primary" onclick="confirmDateChange(${scheduleId}, '${currentDate}', '${customerName ? customerName.replace(/'/g, "\\'") : ''}')">
+                <button type="button" class="btn btn-primary" onclick="confirmDateAndStatusChange(${scheduleId}, '${currentDate}', '${customerName ? customerName.replace(/'/g, "\\'") : ''}')">
                   <i class="fas fa-check me-1"></i>변경
                 </button>
               </div>
@@ -6954,23 +6784,37 @@
       datePicker.show();
     };
 
-    // 날짜 변경 확인 (전역 스코프)
-    window.confirmDateChange = function(scheduleId, originalDate, customerName) {
+    // 날짜 및 상태 변경 확인 (전역 스코프)
+    window.confirmDateAndStatusChange = function(scheduleId, originalDate, customerName) {
       const scheduleData = window.currentScheduleData || {};
       const newDate = document.getElementById('newScheduleDate').value;
+      const selectedStatus = document.querySelector('input[name="mobileStatusChange"]:checked');
+      const newStatus = selectedStatus ? selectedStatus.value : null;
+      const originalStatus = scheduleData.status || 'scheduled';
       
       if (!newDate) {
         alert('날짜를 선택해주세요.');
         return;
       }
       
-      if (newDate === originalDate) {
-        alert('같은 날짜입니다. 다른 날짜를 선택해주세요.');
+      const dateChanged = newDate !== originalDate;
+      const statusChanged = newStatus && newStatus !== originalStatus;
+      
+      if (!dateChanged && !statusChanged) {
+        alert('변경된 내용이 없습니다.');
         return;
       }
       
-      // 확인 메시지
-      const confirmMsg = `${customerName || scheduleData.customer || '고객'}님의 일정을 ${newDate}로 변경하시겠습니까?`;
+      // 확인 메시지 구성
+      let confirmMsg = `${customerName || scheduleData.customer || '고객'}님의 일정을 변경하시겠습니까?\n\n`;
+      if (dateChanged) {
+        confirmMsg += `📅 날짜: ${originalDate} → ${newDate}\n`;
+      }
+      if (statusChanged) {
+        const statusTextMap = { 'scheduled': '예정', 'completed': '완료', 'cancelled': '취소' };
+        confirmMsg += `📌 상태: ${statusTextMap[originalStatus] || originalStatus} → ${statusTextMap[newStatus] || newStatus}`;
+      }
+      
       if (!confirm(confirmMsg)) {
         return;
       }
@@ -6981,8 +6825,26 @@
         datePicker.hide();
       }
       
-      // 일정 이동 함수 호출
-      moveSchedule(scheduleId, newDate, originalDate, scheduleData);
+      // 상태 변경 먼저 처리
+      if (statusChanged) {
+        updateScheduleStatus(scheduleId, newStatus);
+      }
+      
+      // 날짜 변경 처리
+      if (dateChanged) {
+        moveSchedule(scheduleId, newDate, originalDate, scheduleData);
+      } else if (statusChanged) {
+        // 날짜 변경 없이 상태만 변경된 경우 캘린더 새로고침
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      }
+    };
+
+    // 기존 confirmDateChange는 호환성을 위해 유지
+    window.confirmDateChange = function(scheduleId, originalDate, customerName) {
+      // 새 함수로 리다이렉트
+      confirmDateAndStatusChange(scheduleId, originalDate, customerName);
     };
 
   });

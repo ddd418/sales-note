@@ -148,9 +148,19 @@ urlpatterns = [
     # 펀넬 관리 URL들
     path('funnel/', views.funnel_dashboard_view, name='funnel_dashboard'),
     
+    # 펀넬 라벨 관리
+    path('funnel/labels/', views.opportunity_label_list, name='opportunity_label_list'),
+    path('funnel/labels/create/', views.opportunity_label_create, name='opportunity_label_create'),
+    path('funnel/labels/<int:pk>/edit/', views.opportunity_label_edit, name='opportunity_label_edit'),
+    path('funnel/labels/<int:pk>/delete/', views.opportunity_label_delete, name='opportunity_label_delete'),
+    
     # 펀넬 API
     path('api/funnel/update-stage/<int:opportunity_id>/', views.update_opportunity_stage_api, name='update_opportunity_stage_api'),
+    path('funnel/opportunity/<int:opportunity_id>/change-stage/', views.update_opportunity_stage_api, name='change_opportunity_stage_api'),  # 단계 변경 (대시보드용)
     path('api/funnel/opportunity/<int:opportunity_id>/history/', views.opportunity_history_api, name='opportunity_history_api'),
+    path('api/funnel/opportunity/<int:opportunity_id>/update-label/', views.opportunity_update_label_api, name='opportunity_update_label_api'),
+    path('api/funnel/labels/', views.opportunity_labels_api, name='opportunity_labels_api'),
+    path('api/funnel/opportunities/', views.opportunities_filter_api, name='opportunities_filter_api'),
     
     # 선결제 URL들
     path('prepayment/', views.prepayment_list_view, name='prepayment_list'),

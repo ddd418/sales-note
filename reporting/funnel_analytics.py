@@ -44,7 +44,10 @@ class FunnelAnalytics:
         """단계별 분석 - Schedule 기준 카운트"""
         from .models import Schedule
         
-        stages = FunnelStage.objects.all().order_by('stage_order')
+        # 견적실패(quote_lost), 실주(lost), 수주(won) 단계 제외
+        stages = FunnelStage.objects.exclude(
+            name__in=['quote_lost', 'lost', 'won']
+        ).order_by('stage_order')
         breakdown = []
         
         for stage in stages:
@@ -258,7 +261,7 @@ class FunnelAnalytics:
         return sorted(bottlenecks, key=lambda x: x['count'], reverse=True)
     
     @staticmethod
-    def get_top_opportunities(limit=None, user=None, accessible_users=None, grade_filter=None, priority_filter=None, level_filter=None):
+    def get_top_opportunities(limit=None, user=None, accessible_users=None, grade_filter=None, priority_filter=None, level_filter=None, label_filter=None):
         """
         예측 매출 상위 영업 기회
         
@@ -276,11 +279,12 @@ class FunnelAnalytics:
             grade_filter: 고객 등급 필터 (VIP/A/B/C/D)
             priority_filter: 우선순위 필터 (urgent/followup/scheduled)
             level_filter: 종합 점수 레벨 필터 (critical/high/medium/low/minimal)
+            label_filter: 라벨 ID 필터
         """
         # 진행 중인 영업기회만 조회 (수주, 실주, 견적실패 제외)
         qs = OpportunityTracking.objects.exclude(
             current_stage__in=['won', 'lost', 'quote_lost']
-        ).select_related('followup', 'followup__company', 'followup__user')
+        ).select_related('followup', 'followup__company', 'followup__user', 'label')
         
         if user:
             # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
@@ -298,6 +302,10 @@ class FunnelAnalytics:
         if priority_filter:
             qs = qs.filter(followup__priority=priority_filter)
         
+        # 라벨 필터 추가
+        if label_filter:
+            qs = qs.filter(label_id=label_filter)
+        
         # limit이 지정되지 않으면 전체 조회
         if limit:
             top_opps = qs.order_by('-weighted_revenue')[:limit]
@@ -314,6 +322,15 @@ class FunnelAnalytics:
                 stage_display = opp.current_stage
                 stage_color = '#667eea'
             
+            # 라벨 정보
+            label_info = None
+            if opp.label:
+                label_info = {
+                    'id': opp.label.id,
+                    'name': opp.label.name,
+                    'color': opp.label.color,
+                }
+            
             result.append({
                 'id': opp.id,
                 'customer_name': opp.followup.customer_name or '고객명 미정',
@@ -323,6 +340,7 @@ class FunnelAnalytics:
                 'backlog_amount': opp.backlog_amount,
                 'probability': opp.probability,
                 'current_stage': stage_display,
+                'current_stage_code': opp.current_stage,  # 단계 코드 (lead, contact, quote 등)
                 'stage_color': stage_color,
                 'expected_close_date': opp.expected_close_date,
                 'user': opp.followup.user.username,
@@ -332,6 +350,7 @@ class FunnelAnalytics:
                 'priority_raw': opp.followup.priority,  # 우선순위 원본값
                 'combined_score': opp.followup.get_combined_score(),  # 종합 점수
                 'priority_level': opp.followup.get_priority_level(),  # 우선순위 레벨
+                'label': label_info,  # 라벨 정보 추가
             })
         
         # 종합 점수 레벨 필터링 (Python에서 처리)
@@ -351,9 +370,16 @@ class FunnelAnalytics:
     
     @staticmethod
     def get_won_lost_summary(user=None, accessible_users=None):
-        """수주/실주 요약"""
-        won_qs = OpportunityTracking.objects.filter(current_stage='won')
-        lost_qs = OpportunityTracking.objects.filter(current_stage='lost')
+        """수주/납품취소 요약
+        
+        수주 = closing 단계 (수주예정)
+        납품 취소 = quote_lost 단계 (견적실패)
+        """
+        # 수주 = closing 단계
+        won_qs = OpportunityTracking.objects.filter(current_stage='closing')
+        
+        # 납품 취소 = quote_lost 단계
+        lost_qs = OpportunityTracking.objects.filter(current_stage='quote_lost')
         
         if user:
             # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
@@ -367,27 +393,24 @@ class FunnelAnalytics:
             won_qs = won_qs.filter(followup__user__in=accessible_users)
             lost_qs = lost_qs.filter(followup__user__in=accessible_users)
         
-        # actual_revenue가 없으면 expected_revenue 사용
+        # 수주 요약 (expected_revenue 사용)
         won_summary = won_qs.aggregate(
             count=Count('id'),
-            total_actual=Sum('actual_revenue'),
             total_expected=Sum('expected_revenue')
         )
         
-        lost_summary = lost_qs.aggregate(
-            count=Count('id')
-        )
+        # 납품 취소 건수
+        lost_count = lost_qs.count()
         
-        total = won_summary['count'] + lost_summary['count']
+        total = won_summary['count'] + lost_count
         win_rate = (won_summary['count'] / total * 100) if total > 0 else 0
         
-        # actual_revenue가 있으면 그것 사용, 없으면 expected_revenue 사용
-        total_revenue = won_summary['total_actual'] or won_summary['total_expected'] or 0
+        total_revenue = won_summary['total_expected'] or 0
         
         return {
             'won_count': won_summary['count'],
             'won_revenue': total_revenue,
-            'lost_count': lost_summary['count'],
+            'lost_count': lost_count,  # 납품 취소 건수
             'win_rate': round(win_rate, 1)
         }
     

@@ -1,0 +1,95 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 헤더 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">
+                <i class="fas fa-tags text-primary"></i> 영업 기회 라벨 관리
+            </h4>
+            <p class="text-muted mb-0">영업 기회를 분류하고 필터링하기 위한 라벨을 관리합니다.</p>
+        </div>
+        <div>
+            <a href="{% url 'reporting:funnel_dashboard' %}" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left"></i> 대시보드로
+            </a>
+            {% if can_edit %}
+            <a href="{% url 'reporting:opportunity_label_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> 새 라벨
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 라벨 목록 -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            {% if labels %}
+            <div class="row g-3">
+                {% for label in labels %}
+                <div class="col-md-4 col-lg-3">
+                    <div class="card h-100" style="border-left: 5px solid {{ label.color }};">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="card-title mb-0">
+                                    <span class="badge me-2" style="background-color: {{ label.color }}; color: white;">
+                                        <i class="fas fa-tag"></i>
+                                    </span>
+                                    {{ label.name }}
+                                </h6>
+                                {% if can_edit %}
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-link text-muted p-0" data-bs-toggle="dropdown">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li>
+                                            <a class="dropdown-item" href="{% url 'reporting:opportunity_label_edit' label.pk %}">
+                                                <i class="fas fa-edit me-2"></i> 수정
+                                            </a>
+                                        </li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <a class="dropdown-item text-danger" href="{% url 'reporting:opportunity_label_delete' label.pk %}">
+                                                <i class="fas fa-trash me-2"></i> 삭제
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% if label.description %}
+                            <p class="card-text text-muted small mb-2">{{ label.description }}</p>
+                            {% endif %}
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-briefcase me-1"></i>
+                                    {{ label.opportunities.count }}개 영업기회
+                                </small>
+                                <a href="{% url 'reporting:funnel_dashboard' %}?label={{ label.pk }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-filter"></i> 필터
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-tags fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">등록된 라벨이 없습니다.</h5>
+                <p class="text-muted mb-3">영업 기회를 분류하기 위한 라벨을 만들어보세요.</p>
+                {% if can_edit %}
+                <a href="{% url 'reporting:opportunity_label_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> 첫 번째 라벨 만들기
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

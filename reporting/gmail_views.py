@@ -606,14 +606,15 @@ def mailbox_inbox(request):
         followup__user=request.user  # 본인 담당 팔로우업만
     ).select_related('followup', 'sender', 'business_card').order_by('-sent_at')
     
-    # 페이지네이션
-    paginator = Paginator(emails, 50)
+    # 페이지네이션 (20개씩)
+    paginator = Paginator(emails, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
     context = {
         'emails': page_obj,
-        'mailbox_type': 'inbox'
+        'mailbox_type': 'inbox',
+        'total_count': paginator.count
     }
     return render(request, 'reporting/gmail/mailbox.html', context)
 
@@ -626,14 +627,15 @@ def mailbox_sent(request):
         sender=request.user
     ).select_related('followup', 'schedule', 'business_card').order_by('-sent_at')
     
-    # 페이지네이션
-    paginator = Paginator(emails, 50)
+    # 페이지네이션 (20개씩)
+    paginator = Paginator(emails, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
     context = {
         'emails': page_obj,
-        'mailbox_type': 'sent'
+        'mailbox_type': 'sent',
+        'total_count': paginator.count
     }
     return render(request, 'reporting/gmail/mailbox.html', context)
 

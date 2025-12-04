@@ -1792,8 +1792,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 체크 시 현재 고객의 선결제 목록 로드
                 const followupField = document.getElementById('id_followup');
-                if (followupField && followupField.value) {
-                    updatePrepaymentList(followupField.value);
+                let followupId = null;
+                
+                // Select2 또는 일반 select에서 값 가져오기
+                if (followupField) {
+                    if (typeof jQuery !== 'undefined' && jQuery(followupField).data('select2')) {
+                        // Select2인 경우
+                        followupId = jQuery(followupField).val();
+                    } else {
+                        // 일반 select인 경우
+                        followupId = followupField.value;
+                    }
+                }
+                
+                if (followupId) {
+                    console.log('[선결제] 체크박스 클릭 - followupId:', followupId);
+                    updatePrepaymentList(followupId);
+                } else {
+                    console.warn('[선결제] followupId가 없습니다.');
                 }
             } else {
                 prepaymentDetails.style.display = 'none';
@@ -1816,9 +1832,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // 초기 로드 시 체크
+        // 초기 로드 시 체크 - 수정 모드에서 이미 체크되어 있으면 목록 로드
         if (usePrepaymentCheckbox.checked) {
             prepaymentDetails.style.display = 'block';
+            
+            // 선결제 목록 로드
+            const followupField = document.getElementById('id_followup');
+            let followupId = null;
+            if (followupField) {
+                if (typeof jQuery !== 'undefined' && jQuery(followupField).data('select2')) {
+                    followupId = jQuery(followupField).val();
+                } else {
+                    followupId = followupField.value;
+                }
+            }
+            if (followupId) {
+                console.log('[선결제] 초기 로드 - followupId:', followupId);
+                updatePrepaymentList(followupId);
+            }
         }
     }
     
@@ -1923,12 +1954,13 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function() {
         const hiddenFollowupField = document.getElementById('id_followup');
-        
         const checkboxContainer = document.getElementById('prepayment-checkboxes');
         
         if (hiddenFollowupField && hiddenFollowupField.value) {
+            console.log('[선결제] 수정 모드 자동 로드 - followupId:', hiddenFollowupField.value);
             updatePrepaymentList(hiddenFollowupField.value);
         } else {
+            console.warn('[선결제] 수정 모드에서 고객 ID를 찾을 수 없음', {
                 hasElement: !!hiddenFollowupField,
                 hasValue: hiddenFollowupField ? !!hiddenFollowupField.value : false
             });

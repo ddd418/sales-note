@@ -901,12 +901,37 @@ class FunnelStage(models.Model):
         ordering = ['stage_order']
 
 
+# 영업 기회 라벨 (OpportunityLabel) 모델
+class OpportunityLabel(models.Model):
+    """영업 기회를 분류하기 위한 라벨"""
+    name = models.CharField(max_length=50, verbose_name="라벨명")
+    color = models.CharField(max_length=7, default='#667eea', verbose_name="색상", help_text="HEX 색상 코드 (예: #667eea)")
+    description = models.CharField(max_length=200, blank=True, null=True, verbose_name="설명")
+    user_company = models.ForeignKey('UserCompany', on_delete=models.CASCADE, related_name='opportunity_labels', verbose_name="소속 회사", null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="생성자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+    is_active = models.BooleanField(default=True, verbose_name="활성화")
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "영업 기회 라벨"
+        verbose_name_plural = "영업 기회 라벨 목록"
+        ordering = ['name']
+        unique_together = ['name', 'user_company']
+
+
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")
     
     # 영업 기회 제목 (구분용)
     title = models.CharField(max_length=200, blank=True, null=True, verbose_name="영업 기회 제목", help_text="예: '장비 A 구매', '소모품 정기 공급' 등")
+    
+    # 라벨 (분류용)
+    label = models.ForeignKey(OpportunityLabel, on_delete=models.SET_NULL, null=True, blank=True, related_name='opportunities', verbose_name="라벨")
     
     # 현재 상태
     current_stage = models.CharField(max_length=20, choices=FunnelStage.STAGE_CHOICES, default='lead', verbose_name="현재 단계")
@@ -962,8 +987,8 @@ class OpportunityTracking(models.Model):
         """단계 업데이트 및 이력 기록 (중간 단계 자동 채움)"""
         from datetime import date
         
-        # 단계 순서 정의 (협상 단계 제거)
-        stage_order = ['lead', 'contact', 'quote', 'closing', 'won', 'quote_lost']
+        # 단계 순서 정의 (협상 단계 제거, lost 추가)
+        stage_order = ['lead', 'contact', 'quote', 'closing', 'won', 'lost', 'quote_lost']
         
         try:
             current_index = stage_order.index(self.current_stage)
@@ -980,17 +1005,18 @@ class OpportunityTracking(models.Model):
                     history['exited'] = date.today().isoformat()
                     break
         
-        # 중간 단계를 건너뛰는 경우, 자동으로 중간 단계 추가
+        # 중간 단계를 건너뛰는 경우 (정방향만), 자동으로 중간 단계 추가
         if current_index != -1 and new_index != -1 and new_index > current_index + 1:
-            # 건너뛴 중간 단계들을 모두 추가
+            # 건너뛴 중간 단계들을 모두 추가 (won, lost, quote_lost 제외)
             for i in range(current_index + 1, new_index):
                 skipped_stage = stage_order[i]
-                self.stage_history.append({
-                    'stage': skipped_stage,
-                    'entered': date.today().isoformat(),
-                    'exited': date.today().isoformat(),
-                    'note': '자동 추가됨 (단계 건너뛰기)'
-                })
+                if skipped_stage not in ['won', 'lost', 'quote_lost']:  # 종료 단계는 건너뛰지 않음
+                    self.stage_history.append({
+                        'stage': skipped_stage,
+                        'entered': date.today().isoformat(),
+                        'exited': date.today().isoformat(),
+                        'note': '자동 추가됨 (단계 건너뛰기)'
+                    })
         
         # 새 단계 추가
         self.stage_history.append({

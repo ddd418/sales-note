@@ -445,9 +445,24 @@
                     </select>
                 </div>
                 
+                <!-- 라벨 필터 -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-tag"></i> 라벨
+                    </label>
+                    <select name="label" class="form-select">
+                        <option value="">전체</option>
+                        {% for lbl in labels %}
+                        <option value="{{ lbl.pk }}" {% if label_filter == lbl.pk|stringformat:"s" %}selected{% endif %} style="color: {{ lbl.color }};">
+                            ● {{ lbl.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
                 {% if request.user.userprofile.can_use_ai %}
                 <!-- AI 사용자: 종합 점수 레벨 필터 표시 -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label fw-bold">
                         <i class="fas fa-chart-line"></i> 종합 우선순위
                     </label>
@@ -469,7 +484,7 @@
                     </button>
                 </div>
                 
-                {% if grade_filter or priority_filter or level_filter %}
+                {% if grade_filter or priority_filter or level_filter or label_filter %}
                 <div class="col-12">
                     <a href="?" class="btn btn-outline-secondary">
                         <i class="fas fa-times"></i> 필터 초기화
@@ -478,6 +493,7 @@
                         {% if grade_filter %}등급: <strong>{{ grade_filter }}</strong>{% endif %}
                         {% if priority_filter %} | 우선순위: <strong>{% for pv, pd in priority_choices %}{% if pv == priority_filter %}{{ pd }}{% endif %}{% endfor %}</strong>{% endif %}
                         {% if level_filter %} | 종합: <strong>{% for lv, ld in level_choices %}{% if lv == level_filter %}{{ ld }}{% endif %}{% endfor %}</strong>{% endif %}
+                        {% if label_filter %} | 라벨: <strong>{% for lbl in labels %}{% if lbl.pk|stringformat:"s" == label_filter %}{{ lbl.name }}{% endif %}{% endfor %}</strong>{% endif %}
                     </small>
                 </div>
                 {% endif %}
@@ -504,27 +520,27 @@
                 <i class="fas fa-bolt"></i> 종합 우선순위 빠른 필터
             </h6>
             <div class="btn-group" role="group" style="flex-wrap: wrap; gap: 8px; width: 100%;">
-                <a href="?{% if grade_filter %}grade={{ grade_filter }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}{% endif %}" 
+                <a href="?{% if grade_filter %}grade={{ grade_filter }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if label_filter %}label={{ label_filter }}{% endif %}" 
                    class="btn {% if not level_filter %}btn-primary{% else %}btn-outline-primary{% endif %}" style="border-radius: 12px;">
                     전체
                 </a>
-                <a href="?level=critical{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}" 
+                <a href="?level=critical{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if label_filter %}&label={{ label_filter }}{% endif %}" 
                    class="btn {% if level_filter == 'critical' %}btn-danger{% else %}btn-outline-danger{% endif %}" style="border-radius: 12px;">
                     🔥 최우선 (85+)
                 </a>
-                <a href="?level=high{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}" 
+                <a href="?level=high{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if label_filter %}&label={{ label_filter }}{% endif %}" 
                    class="btn {% if level_filter == 'high' %}btn-warning{% else %}btn-outline-warning{% endif %}" style="border-radius: 12px;">
                     ⚡ 높음 (70-84)
                 </a>
-                <a href="?level=medium{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}" 
+                <a href="?level=medium{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if label_filter %}&label={{ label_filter }}{% endif %}" 
                    class="btn {% if level_filter == 'medium' %}btn-info{% else %}btn-outline-info{% endif %}" style="border-radius: 12px;">
                     ⭐ 중간 (50-69)
                 </a>
-                <a href="?level=low{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}" 
+                <a href="?level=low{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if label_filter %}&label={{ label_filter }}{% endif %}" 
                    class="btn {% if level_filter == 'low' %}btn-success{% else %}btn-outline-success{% endif %}" style="border-radius: 12px;">
                     📋 낮음 (30-49)
                 </a>
-                <a href="?level=minimal{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}" 
+                <a href="?level=minimal{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if label_filter %}&label={{ label_filter }}{% endif %}" 
                    class="btn {% if level_filter == 'minimal' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" style="border-radius: 12px;">
                     📌 최소 (30-)
                 </a>
@@ -533,75 +549,39 @@
     </div>
     {% endif %}
 
-    <!-- 주요 지표 -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card funnel-card border-0" style="border-left: 4px solid #667eea !important;">
-                <div class="card-body">
+    <!-- 핵심 지표 카드 -->
+    <div class="row mb-4 g-3">
+        <!-- 활성화된 영업 기회 -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px; overflow: hidden;">
+                <div class="card-body p-4">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
-                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">총 영업 기회</small>
-                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.total_opportunities }}
-                            </h3>
-                            <small class="text-muted">개</small>
+                            <p class="text-muted mb-1 fw-semibold" style="font-size: 0.85rem;">활성화된 영업 기회</p>
+                            <h2 class="mb-0 fw-bold" style="font-size: 2.5rem; color: #667eea;">
+                                {{ pipeline_summary.total_opportunities }}<small class="text-muted fs-6 fw-normal ms-1">개</small>
+                            </h2>
                         </div>
-                        <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-chart-line" style="font-size: 1.8rem; color: white;"></i>
+                        <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-chart-line text-white" style="font-size: 1.5rem;"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card funnel-card border-0" style="border-left: 4px solid #28a745 !important;">
-                <div class="card-body">
+        <!-- 예상 매출 -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px; overflow: hidden;">
+                <div class="card-body p-4">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
-                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">예상 매출</small>
-                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #28a745 0%, #218838 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.total_expected|currency_format }}
-                            </h3>
-                            <small class="text-muted">원</small>
+                            <p class="text-muted mb-1 fw-semibold" style="font-size: 0.85rem;">예상 매출</p>
+                            <h2 class="mb-0 fw-bold" style="font-size: 2.5rem; color: #10b981;">
+                                {{ pipeline_summary.total_expected|currency_format }}<small class="text-muted fs-6 fw-normal ms-1">원</small>
+                            </h2>
                         </div>
-                        <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #28a745 0%, #218838 100%); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-won-sign" style="font-size: 1.8rem; color: white;"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card funnel-card border-0" style="border-left: 4px solid #17a2b8 !important;">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">가중 예상</small>
-                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.total_weighted|currency_format }}
-                            </h3>
-                            <small class="text-muted">원</small>
-                        </div>
-                        <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-percentage" style="font-size: 1.8rem; color: white;"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card funnel-card border-0" style="border-left: 4px solid #ffc107 !important;">
-                <div class="card-body">
-                    <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                            <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">평균 확률</small>
-                            <h3 class="mb-0 mt-2" style="font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ pipeline_summary.avg_probability|floatformat:1 }}%
-                            </h3>
-                            <small class="text-muted">성공 가능성</small>
-                        </div>
-                        <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); border-radius: 15px; display: flex; align-items: center; justify-content: center;">
-                            <i class="fas fa-dollar-sign" style="font-size: 1.8rem; color: white;"></i>
+                        <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                            <i class="fas fa-won-sign text-white" style="font-size: 1.5rem;"></i>
                         </div>
                     </div>
                 </div>
@@ -609,135 +589,160 @@
         </div>
     </div>
 
-    <!-- 수주/실주 요약 -->
-    <div class="row mb-4">
+    <!-- 영업기회 전환 & 견적 승패 현황 -->
+    <div class="row mb-4 g-3">
+        <!-- 영업기회 전환 현황 -->
         <div class="col-md-6">
-            <div class="card funnel-card border-0">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-trophy"></i> 수주 현황
-                    </h5>
-                    <div class="row text-center mt-4">
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #28a745 0%, #218838 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ won_lost_summary.won_count }}
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">수주</small>
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+                            <i class="fas fa-exchange-alt text-white" style="font-size: 0.9rem;"></i>
                         </div>
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ won_lost_summary.lost_count }}
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">실주</small>
-                        </div>
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ won_lost_summary.win_rate }}%
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">승률</small>
-                        </div>
+                        <h6 class="mb-0 fw-bold" style="color: #1e293b;">영업기회 전환 현황</h6>
                     </div>
-                    <div class="mt-4 p-3" style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 12px; border-left: 4px solid #667eea;">
-                        <strong style="color: #2d3748;">총 수주 금액:</strong> 
-                        <span style="font-size: 1.3rem; font-weight: 700; color: #28a745;">{{ won_lost_summary.won_revenue|currency_format }}원</span>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="p-3 rounded-3" style="background: #f8fafc;">
+                                <h3 class="mb-1 fw-bold" style="color: #64748b;">{{ total_opportunities_count }}</h3>
+                                <small class="text-muted fw-semibold">전체</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-3 rounded-3" style="background: rgba(16, 185, 129, 0.1);">
+                                <h3 class="mb-1 fw-bold" style="color: #10b981;">{{ won_opportunities_count }}</h3>
+                                <small class="text-muted fw-semibold">수주</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-3 rounded-3" style="background: rgba(139, 92, 246, 0.1);">
+                                <h3 class="mb-1 fw-bold" style="color: #8b5cf6;">{{ avg_win_rate }}%</h3>
+                                <small class="text-muted fw-semibold">승률</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+        <!-- 견적 승패 현황 -->
         <div class="col-md-6">
-            <div class="card funnel-card border-0">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-file-invoice"></i> 견적 승패 현황 ({{ current_year }}년)
-                    </h5>
-                    <div class="row text-center mt-4">
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ quote_total }}
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">전체</small>
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                            <i class="fas fa-file-invoice text-white" style="font-size: 0.9rem;"></i>
                         </div>
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #10b981 0%, #059669 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ quote_won }}
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">승</small>
+                        <h6 class="mb-0 fw-bold" style="color: #1e293b;">견적 승패 현황 <span class="text-muted fw-normal">({{ current_year }}년)</span></h6>
+                    </div>
+                    <div class="row text-center g-2">
+                        <div class="col-3">
+                            <div class="p-2 rounded-3" style="background: #f8fafc;">
+                                <h4 class="mb-0 fw-bold" style="color: #64748b; font-size: 1.5rem;">{{ quote_total }}</h4>
+                                <small class="text-muted fw-semibold" style="font-size: 0.7rem;">전체</small>
+                            </div>
                         </div>
-                        <div class="col-4">
-                            <h3 class="mb-2" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                {{ quote_lost }}
-                            </h3>
-                            <small class="text-muted text-uppercase fw-bold" style="letter-spacing: 1px;">패</small>
+                        <div class="col-3">
+                            <div class="p-2 rounded-3" style="background: rgba(16, 185, 129, 0.1);">
+                                <h4 class="mb-0 fw-bold" style="color: #10b981; font-size: 1.5rem;">{{ quote_won }}</h4>
+                                <small class="text-muted fw-semibold" style="font-size: 0.7rem;">승</small>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="p-2 rounded-3" style="background: rgba(239, 68, 68, 0.1);">
+                                <h4 class="mb-0 fw-bold" style="color: #ef4444; font-size: 1.5rem;">{{ quote_lost }}</h4>
+                                <small class="text-muted fw-semibold" style="font-size: 0.7rem;">패</small>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="p-2 rounded-3" style="background: rgba(99, 102, 241, 0.1);">
+                                <h4 class="mb-0 fw-bold" style="color: #6366f1; font-size: 1.5rem;">{{ quote_win_rate }}%</h4>
+                                <small class="text-muted fw-semibold" style="font-size: 0.7rem;">승률</small>
+                            </div>
                         </div>
                     </div>
-                    <div class="mt-4 p-3" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(251, 146, 60, 0.1) 100%); border-radius: 12px; border-left: 4px solid #f59e0b; cursor: pointer; transition: all 0.3s;" onclick="location.href='{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled'">
-                        <strong style="color: #2d3748;">처리 대기 중:</strong> 
-                        <span style="font-size: 1.3rem; font-weight: 700; color: #f59e0b;">{{ quote_pending }}건</span>
-                        <i class="fas fa-arrow-right" style="float: right; color: #f59e0b; margin-top: 0.5rem;"></i>
+                    <div class="mt-3 p-2 d-flex align-items-center justify-content-between rounded-3" style="background: rgba(245, 158, 11, 0.1); cursor: pointer;" onclick="location.href='{% url 'reporting:schedule_list' %}?activity_type=quote&status=scheduled'">
+                        <span class="fw-semibold" style="color: #92400e; font-size: 0.85rem;">
+                            <i class="fas fa-clock me-1"></i>처리 대기: <strong>{{ quote_pending }}건</strong>
+                        </span>
+                        <i class="fas fa-chevron-right" style="color: #f59e0b;"></i>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 단계별 분석 & 차트 -->
+    <!-- 단계별 현황 -->
     <div class="row mb-4">
-        <div class="col-lg-8">
-            <div class="card funnel-card border-0">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-chart-bar"></i> 단계별 현황
-                    </h5>
+        <div class="col-12">
+            <div class="card border-0 shadow-sm" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
+                            <i class="fas fa-chart-bar text-white" style="font-size: 0.9rem;"></i>
+                        </div>
+                        <h6 class="mb-0 fw-bold" style="color: #1e293b;">단계별 현황</h6>
+                    </div>
                     <div class="chart-container">
                         <canvas id="stageChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card funnel-card border-0">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-layer-group"></i> 단계별 통계
-                    </h5>
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr style="border-bottom: 2px solid #667eea;">
-                                    <th style="font-weight: 700; color: #2d3748;">단계</th>
-                                    <th class="text-end" style="font-weight: 700; color: #2d3748;">건수</th>
-                                    <th class="text-end" style="font-weight: 700; color: #2d3748;">가중 금액</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for stage in stage_breakdown %}
-                                <tr style="transition: all 0.2s;">
-                                    <td>
-                                        <span class="stage-badge" style="background-color: {{ stage.color }}20; color: {{ stage.color }}; border: 2px solid {{ stage.color }}40;">
-                                            <i class="{{ stage.icon }}"></i> {{ stage.stage }}
-                                        </span>
-                                    </td>
-                                    <td class="text-end">{{ stage.count }}</td>
-                                    <td class="text-end">{{ stage.weighted_value|currency_format }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+    </div>
+
+    <!-- 라벨 빠른 필터 -->
+    {% if labels %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card" style="border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-radius: 12px;">
+                <div class="card-body py-2">
+                    <div class="d-flex align-items-center flex-wrap gap-2" id="labelFilterButtons">
+                        <span class="text-muted fw-bold me-2" style="font-size: 0.85rem;">
+                            <i class="fas fa-tags"></i> 라벨 필터:
+                        </span>
+                        <button type="button" 
+                           class="btn btn-sm label-filter-btn {% if not label_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}" 
+                           data-label=""
+                           style="border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
+                            전체
+                        </button>
+                        {% for lbl in labels %}
+                        <button type="button"
+                           class="btn btn-sm label-filter-btn {% if label_filter == lbl.pk|stringformat:'s' %}text-white{% else %}btn-outline-secondary{% endif %}" 
+                           data-label="{{ lbl.pk }}"
+                           data-color="{{ lbl.color }}"
+                           style="border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem; {% if label_filter == lbl.pk|stringformat:'s' %}background-color: {{ lbl.color }}; border-color: {{ lbl.color }};{% endif %}">
+                            <i class="fas fa-tag me-1"></i>{{ lbl.name }}
+                        </button>
+                        {% endfor %}
+                        <a href="{% url 'reporting:opportunity_label_list' %}" class="btn btn-sm btn-outline-primary ms-2" style="border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem;">
+                            <i class="fas fa-cog"></i> 라벨 관리
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- 상위 영업 기회 -->
     <div class="row">
         <div class="col-12">
             <div class="card funnel-card border-0">
                 <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="fas fa-star"></i> 상위 영업 기회
+                    <h5 class="card-title d-flex align-items-center justify-content-between">
+                        <span><i class="fas fa-star"></i> 상위 영업 기회</span>
+                        <span id="opportunityCount" class="badge bg-secondary" style="font-size: 0.8rem;">{{ top_opportunities|length }}개</span>
                     </h5>
-                    <div class="mt-3">
+                    <div class="mt-3" id="opportunitiesList">
+                        <!-- 로딩 인디케이터 (숨김) -->
+                        <div id="opportunitiesLoading" class="text-center py-4" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                        <!-- 영업 기회 목록 -->
+                        <div id="opportunitiesContent">
                         {% for opp in top_opportunities %}
                         <div class="opportunity-item" style="border-left-color: {{ opp.stage_color }}; border-left-width: 5px; cursor: pointer;" 
                              onclick="showOpportunityHistory({{ opp.id }})">
@@ -745,8 +750,25 @@
                                 <div class="col-md-3 col-12 mb-2 mb-md-0">
                                     <div class="d-flex align-items-center gap-2">
                                         <div style="flex-grow: 1;">
-                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                            <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                                 <strong style="font-size: 1.1rem; color: #2d3748;">{{ opp.customer_name }}</strong>
+                                                {% if opp.label %}
+                                                <!-- 라벨 표시 -->
+                                                <span class="badge label-badge" 
+                                                      style="background-color: {{ opp.label.color }}; color: white; font-size: 0.7rem; padding: 0.25rem 0.5rem; cursor: pointer;"
+                                                      onclick="event.stopPropagation(); showLabelSelector({{ opp.id }}, '{{ opp.label.id }}')"
+                                                      title="클릭하여 라벨 변경">
+                                                    <i class="fas fa-tag me-1"></i>{{ opp.label.name }}
+                                                </span>
+                                                {% else %}
+                                                <!-- 라벨 없음 - 추가 버튼 -->
+                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1" 
+                                                        style="font-size: 0.65rem; border-radius: 10px;"
+                                                        onclick="event.stopPropagation(); showLabelSelector({{ opp.id }}, null)"
+                                                        title="라벨 추가">
+                                                    <i class="fas fa-tag"></i>+
+                                                </button>
+                                                {% endif %}
                                                 {% if request.user.userprofile.can_use_ai %}
                                                 <!-- AI 사용자: 종합 우선순위 레벨 배지 -->
                                                 <span class="badge" style="background-color: {{ opp.priority_level.color }}; color: white; font-size: 0.75rem; padding: 0.3rem 0.6rem;">
@@ -755,7 +777,7 @@
                                                 {% endif %}
                                             </div>
                                             <small class="text-muted fw-semibold d-block">{{ opp.company_name }}</small>
-                                            <div class="d-flex gap-2 mt-1">
+                                            <div class="d-flex gap-2 mt-1 flex-wrap">
                                                 {% if request.user.userprofile.can_use_ai %}
                                                 <!-- AI 사용자: 고객 등급 배지 -->
                                                 <span class="badge" style="
@@ -785,8 +807,11 @@
                                     </div>
                                 </div>
                                 <div class="col-md-2 col-6 mb-2 mb-md-0">
-                                    <span class="stage-badge" style="background-color: {{ opp.stage_color }}20; color: {{ opp.stage_color }}; border: 2px solid {{ opp.stage_color }}40;">
-                                        {{ opp.current_stage }}
+                                    <span class="stage-badge stage-clickable" 
+                                          style="background-color: {{ opp.stage_color }}20; color: {{ opp.stage_color }}; border: 2px solid {{ opp.stage_color }}40; cursor: pointer;"
+                                          onclick="event.stopPropagation(); showStageSelector({{ opp.id }}, '{{ opp.current_stage_code }}')"
+                                          title="클릭하여 단계 변경">
+                                        {{ opp.current_stage }} <i class="fas fa-exchange-alt ms-1" style="font-size: 0.7rem;"></i>
                                     </span>
                                 </div>
                                 <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
@@ -797,22 +822,7 @@
                                     <strong style="font-size: 1.15rem; color: #007bff; white-space: nowrap;">{{ opp.backlog_amount|currency_format }}원</strong><br>
                                     <small class="text-muted fw-semibold">수주</small>
                                 </div>
-                                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
-                                    <strong style="font-size: 1.15rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; white-space: nowrap;">
-                                        {{ opp.weighted_revenue|currency_format }}원
-                                    </strong><br>
-                                    <small class="text-muted fw-semibold">가중 매출</small>
-                                </div>
-                                <div class="col-md-1 col-6 text-center mb-2 mb-md-0">
-                                    <div class="progress" style="height: 22px; border-radius: 11px;">
-                                        <div class="progress-bar" role="progressbar" 
-                                             style="width: {{ opp.probability }}%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-weight: 700;"
-                                             aria-valuenow="{{ opp.probability }}" aria-valuemin="0" aria-valuemax="100">
-                                            {{ opp.probability }}%
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-1 col-6 text-end">
+                                <div class="col-md-2 col-6 text-end">
                                     <small class="text-muted">{{ opp.expected_close_date|date:"m/d" }}</small>
                                 </div>
                             </div>
@@ -820,12 +830,30 @@
                         {% empty %}
                         <p class="text-center text-muted py-4">영업 기회가 없습니다.</p>
                         {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+</div>
+
+<!-- 단계 변경 모달 -->
+<div class="modal fade" id="stageChangeModal" tabindex="-1" aria-labelledby="stageChangeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h6 class="modal-title" id="stageChangeModalLabel">
+                    <i class="fas fa-exchange-alt me-2"></i>단계 변경
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-2" id="stageChangeOptions">
+                <!-- 단계 옵션이 여기에 동적으로 추가됨 -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- 영업 기회 히스토리 모달 -->
@@ -904,7 +932,7 @@
 </div>
 
 <script>
-// 단계별 차트
+// 단계별 차트 (건수 + 예상 매출 이중 축)
 const stageData = {{ stage_chart_data|safe }};
 
 const stageCtx = document.getElementById('stageChart').getContext('2d');
@@ -912,29 +940,93 @@ new Chart(stageCtx, {
     type: 'bar',
     data: {
         labels: stageData.labels,
-        datasets: [{
-            label: '가중 매출 (원)',
-            data: stageData.values,
-            backgroundColor: stageData.colors.map(color => color + '80'),
-            borderColor: stageData.colors,
-            borderWidth: 2
-        }]
+        datasets: [
+            {
+                label: '건수',
+                data: stageData.counts,
+                backgroundColor: stageData.colors.map(color => color + 'CC'),
+                borderColor: stageData.colors,
+                borderWidth: 2,
+                yAxisID: 'y',
+                order: 2
+            },
+            {
+                label: '예상 매출 (원)',
+                data: stageData.values,
+                type: 'line',
+                borderColor: '#f59e0b',
+                backgroundColor: '#f59e0b33',
+                borderWidth: 3,
+                pointRadius: 6,
+                pointBackgroundColor: '#f59e0b',
+                fill: false,
+                yAxisID: 'y1',
+                order: 1
+            }
+        ]
     },
     options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
         plugins: {
             legend: {
-                display: false
+                display: true,
+                position: 'top'
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        if (context.dataset.label === '건수') {
+                            return context.dataset.label + ': ' + context.parsed.y + '건';
+                        } else {
+                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '원';
+                        }
+                    }
+                }
             }
         },
         scales: {
             y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
                 beginAtZero: true,
+                title: {
+                    display: true,
+                    text: '건수'
+                },
+                ticks: {
+                    stepSize: 1,
+                    callback: function(value) {
+                        return value + '건';
+                    }
+                }
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: '예상 매출'
+                },
                 ticks: {
                     callback: function(value) {
+                        if (value >= 1000000) {
+                            return (value / 1000000).toFixed(1) + 'M';
+                        } else if (value >= 1000) {
+                            return (value / 1000).toFixed(0) + 'K';
+                        }
                         return value.toLocaleString() + '원';
                     }
+                },
+                grid: {
+                    drawOnChartArea: false
                 }
             }
         }
@@ -1191,7 +1283,7 @@ function showFunnelAnalysisModal(analysis, summary) {
                     <div class="modal-body" style="background-color: #f8f9fa;">
                         <!-- 요약 정보 -->
                         <div class="row mb-4">
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card text-center" style="border: 2px solid #667eea;">
                                     <div class="card-body">
                                         <h6 class="text-muted mb-2">총 기회</h6>
@@ -1199,7 +1291,7 @@ function showFunnelAnalysisModal(analysis, summary) {
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card text-center" style="border: 2px solid #10b981;">
                                     <div class="card-body">
                                         <h6 class="text-muted mb-2">예상 매출</h6>
@@ -1207,15 +1299,7 @@ function showFunnelAnalysisModal(analysis, summary) {
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3">
-                                <div class="card text-center" style="border: 2px solid #f59e0b;">
-                                    <div class="card-body">
-                                        <h6 class="text-muted mb-2">가용 매출</h6>
-                                        <h3 class="mb-0" style="color: #f59e0b; font-weight: 800;">${formatCurrency(summary.total_weighted_revenue)}원</h3>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <div class="card text-center" style="border: 2px solid #8b5cf6;">
                                     <div class="card-body">
                                         <h6 class="text-muted mb-2">승률</h6>
@@ -1251,6 +1335,132 @@ function showFunnelAnalysisModal(analysis, summary) {
     document.getElementById('funnelAnalysisModal').addEventListener('hidden.bs.modal', function() {
         this.remove();
     });
+}
+
+// ============================================
+// 라벨 선택 기능
+// ============================================
+
+// 라벨 데이터 (서버에서 전달)
+const labelsData = [
+    {% for lbl in labels %}
+    { id: {{ lbl.pk }}, name: '{{ lbl.name }}', color: '{{ lbl.color }}' }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+// 라벨 선택 모달 표시
+function showLabelSelector(opportunityId, currentLabelId) {
+    // 기존 모달 제거
+    const existingModal = document.getElementById('labelSelectorModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    let labelsHtml = '';
+    
+    // "라벨 없음" 옵션
+    labelsHtml += `
+        <div class="label-option p-2 rounded mb-2 ${!currentLabelId ? 'selected' : ''}" 
+             data-label-id="" 
+             onclick="selectLabel(${opportunityId}, null)"
+             style="cursor: pointer; border: 2px solid ${!currentLabelId ? '#667eea' : '#e5e7eb'}; transition: all 0.2s;">
+            <i class="fas fa-times-circle text-muted me-2"></i>
+            <span class="text-muted">라벨 없음</span>
+        </div>
+    `;
+    
+    // 라벨 목록
+    labelsData.forEach(label => {
+        const isSelected = currentLabelId && parseInt(currentLabelId) === label.id;
+        labelsHtml += `
+            <div class="label-option p-2 rounded mb-2 ${isSelected ? 'selected' : ''}" 
+                 data-label-id="${label.id}" 
+                 onclick="selectLabel(${opportunityId}, ${label.id})"
+                 style="cursor: pointer; border: 2px solid ${isSelected ? label.color : '#e5e7eb'}; transition: all 0.2s;">
+                <span class="badge me-2" style="background-color: ${label.color}; color: white;">
+                    <i class="fas fa-tag"></i>
+                </span>
+                <span style="color: ${label.color}; font-weight: 600;">${label.name}</span>
+            </div>
+        `;
+    });
+    
+    // 라벨이 없는 경우
+    if (labelsData.length === 0) {
+        labelsHtml = `
+            <div class="text-center py-4">
+                <i class="fas fa-tags fa-2x text-muted mb-3"></i>
+                <p class="text-muted mb-3">등록된 라벨이 없습니다.</p>
+                <a href="{% url 'reporting:opportunity_label_create' %}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i> 라벨 만들기
+                </a>
+            </div>
+        `;
+    }
+    
+    const modalHtml = `
+        <div class="modal fade" id="labelSelectorModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-sm">
+                <div class="modal-content">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <h6 class="modal-title">
+                            <i class="fas fa-tag me-2"></i>라벨 선택
+                        </h6>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        ${labelsHtml}
+                    </div>
+                    <div class="modal-footer border-0 pt-0">
+                        <a href="{% url 'reporting:opportunity_label_list' %}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-cog me-1"></i> 라벨 관리
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('labelSelectorModal'));
+    modal.show();
+    
+    // 모달 닫힐 때 DOM에서 제거
+    document.getElementById('labelSelectorModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+// 라벨 선택 처리
+async function selectLabel(opportunityId, labelId) {
+    try {
+        const response = await fetch(`/reporting/api/funnel/opportunity/${opportunityId}/update-label/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ label_id: labelId })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 모달 닫기
+            const modal = bootstrap.Modal.getInstance(document.getElementById('labelSelectorModal'));
+            if (modal) {
+                modal.hide();
+            }
+            
+            // 페이지 새로고침
+            window.location.reload();
+        } else {
+            alert('라벨 변경에 실패했습니다: ' + (result.error || '알 수 없는 오류'));
+        }
+    } catch (error) {
+        console.error('라벨 변경 오류:', error);
+        alert('라벨 변경 중 오류가 발생했습니다.');
+    }
 }
 
 // 간단한 마크다운 렌더링 (기본 형식만 지원)
@@ -1323,5 +1533,332 @@ function renderMarkdown(text) {
     return '<p style="line-height: 1.8;">' + html + '</p>';
 }
 
+// 라벨 필터 AJAX 기능
+let currentLabelFilter = '{{ label_filter|default:"" }}';
+const canUseAI = {{ request.user.userprofile.can_use_ai|yesno:"true,false" }};
+
+// labelsData는 이미 위에서 선언됨
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 라벨 필터 버튼 이벤트 바인딩
+    document.querySelectorAll('.label-filter-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const labelId = this.dataset.label;
+            filterByLabel(labelId);
+        });
+    });
+});
+
+function filterByLabel(labelId) {
+    currentLabelFilter = labelId;
+    
+    // 버튼 스타일 업데이트
+    document.querySelectorAll('.label-filter-btn').forEach(btn => {
+        const btnLabelId = btn.dataset.label;
+        const btnColor = btn.dataset.color;
+        
+        if (btnLabelId === labelId) {
+            if (btnLabelId === '') {
+                btn.className = 'btn btn-sm label-filter-btn btn-primary';
+                btn.style.backgroundColor = '';
+                btn.style.borderColor = '';
+            } else {
+                btn.className = 'btn btn-sm label-filter-btn text-white';
+                btn.style.backgroundColor = btnColor;
+                btn.style.borderColor = btnColor;
+            }
+        } else {
+            btn.className = 'btn btn-sm label-filter-btn btn-outline-secondary';
+            btn.style.backgroundColor = '';
+            btn.style.borderColor = '';
+        }
+    });
+    
+    // 로딩 표시
+    document.getElementById('opportunitiesLoading').style.display = 'block';
+    document.getElementById('opportunitiesContent').style.opacity = '0.5';
+    
+    // API 호출
+    const params = new URLSearchParams();
+    if (labelId) params.set('label', labelId);
+    {% if grade_filter %}params.set('grade', '{{ grade_filter }}');{% endif %}
+    {% if priority_filter %}params.set('priority', '{{ priority_filter }}');{% endif %}
+    {% if level_filter %}params.set('level', '{{ level_filter }}');{% endif %}
+    
+    fetch(`/reporting/api/funnel/opportunities/?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderOpportunities(data.opportunities);
+                document.getElementById('opportunityCount').textContent = data.count + '개';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('필터링 중 오류가 발생했습니다.');
+        })
+        .finally(() => {
+            document.getElementById('opportunitiesLoading').style.display = 'none';
+            document.getElementById('opportunitiesContent').style.opacity = '1';
+        });
+}
+
+function renderOpportunities(opportunities) {
+    const container = document.getElementById('opportunitiesContent');
+    
+    if (opportunities.length === 0) {
+        container.innerHTML = '<p class="text-center text-muted py-4">영업 기회가 없습니다.</p>';
+        return;
+    }
+    
+    let html = '';
+    opportunities.forEach(opp => {
+        const gradeGradients = {
+            'VIP': 'linear-gradient(135deg, #ffd700, #ffed4e)',
+            'A': 'linear-gradient(135deg, #667eea, #764ba2)',
+            'B': 'linear-gradient(135deg, #10b981, #059669)',
+            'C': 'linear-gradient(135deg, #64748b, #475569)',
+            'D': 'linear-gradient(135deg, #94a3b8, #64748b)'
+        };
+        
+        const priorityColors = {
+            'urgent': '#dc3545',
+            'followup': '#ffc107',
+            'scheduled': '#17a2b8'
+        };
+        
+        // 라벨 HTML
+        let labelHtml = '';
+        if (opp.label) {
+            labelHtml = `<span class="badge label-badge" 
+                style="background-color: ${opp.label.color}; color: white; font-size: 0.7rem; padding: 0.25rem 0.5rem; cursor: pointer;"
+                onclick="event.stopPropagation(); showLabelSelector(${opp.id}, '${opp.label.id}')"
+                title="클릭하여 라벨 변경">
+                <i class="fas fa-tag me-1"></i>${opp.label.name}
+            </span>`;
+        } else {
+            labelHtml = `<button class="btn btn-outline-secondary btn-sm py-0 px-1" 
+                style="font-size: 0.65rem; border-radius: 10px;"
+                onclick="event.stopPropagation(); showLabelSelector(${opp.id}, null)"
+                title="라벨 추가">
+                <i class="fas fa-tag"></i>+
+            </button>`;
+        }
+        
+        // AI 사용자 전용 배지
+        let aiBadgesHtml = '';
+        if (canUseAI) {
+            const priorityLevel = opp.priority_level || {};
+            aiBadgesHtml = `
+                <span class="badge" style="background-color: ${priorityLevel.color || '#6c757d'}; color: white; font-size: 0.75rem; padding: 0.3rem 0.6rem;">
+                    ${priorityLevel.icon || ''} ${priorityLevel.label || ''}
+                </span>
+            `;
+        }
+        
+        // 고객 등급/점수 배지 (AI 사용자)
+        let gradeScoreHtml = '';
+        if (canUseAI) {
+            gradeScoreHtml = `
+                <span class="badge" style="background: ${gradeGradients[opp.customer_grade] || gradeGradients['C']}; color: white; font-size: 0.65rem; padding: 0.2rem 0.4rem;">
+                    ${opp.customer_grade || '-'}
+                </span>
+                <span class="badge bg-secondary" style="font-size: 0.65rem; padding: 0.2rem 0.4rem;">
+                    점수: ${opp.combined_score || 0}
+                </span>
+            `;
+        }
+        
+        html += `
+        <div class="opportunity-item" style="border-left-color: ${opp.stage_color}; border-left-width: 5px; cursor: pointer;" 
+             onclick="showOpportunityHistory(${opp.id})">
+            <div class="row align-items-center g-2">
+                <div class="col-md-3 col-12 mb-2 mb-md-0">
+                    <div class="d-flex align-items-center gap-2">
+                        <div style="flex-grow: 1;">
+                            <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                                <strong style="font-size: 1.1rem; color: #2d3748;">${opp.customer_name}</strong>
+                                ${labelHtml}
+                                ${aiBadgesHtml}
+                            </div>
+                            <small class="text-muted fw-semibold d-block">${opp.company_name}</small>
+                            <div class="d-flex gap-2 mt-1 flex-wrap">
+                                ${gradeScoreHtml}
+                                <span class="badge" style="background-color: ${priorityColors[opp.priority_raw] || '#6c757d'}; ${opp.priority_raw === 'followup' ? 'color: #333;' : ''} font-size: 0.65rem; padding: 0.2rem 0.4rem;">
+                                    ${opp.priority}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 col-6 mb-2 mb-md-0">
+                    <span class="stage-badge stage-clickable" 
+                          style="background-color: ${opp.stage_color}20; color: ${opp.stage_color}; border: 2px solid ${opp.stage_color}40; cursor: pointer;"
+                          onclick="event.stopPropagation(); showStageSelector(${opp.id}, '${opp.current_stage_code}')"
+                          title="클릭하여 단계 변경">
+                        ${opp.current_stage} <i class="fas fa-exchange-alt ms-1" style="font-size: 0.7rem;"></i>
+                    </span>
+                </div>
+                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
+                    <strong style="font-size: 1.15rem; color: #28a745; white-space: nowrap;">${formatCurrency(opp.expected_revenue)}원</strong><br>
+                    <small class="text-muted fw-semibold">예상 매출</small>
+                </div>
+                <div class="col-md-2 col-6 text-end mb-2 mb-md-0">
+                    <strong style="font-size: 1.15rem; color: #007bff; white-space: nowrap;">${formatCurrency(opp.backlog_amount)}원</strong><br>
+                    <small class="text-muted fw-semibold">수주</small>
+                </div>
+                <div class="col-md-2 col-6 text-end">
+                    <small class="text-muted">${opp.expected_close_date || ''}</small>
+                </div>
+            </div>
+        </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function formatCurrency(amount) {
+    if (!amount) return '0';
+    return Math.round(amount).toLocaleString('ko-KR');
+}
+
+// ===== 단계 변경 기능 =====
+let currentChangeOppId = null;
+
+function showStageSelector(oppId, currentStage) {
+    currentChangeOppId = oppId;
+    
+    // 단계별 전환 옵션 정의
+    const stageTransitions = {
+        'lead': [
+            { stage: 'contact', label: '컨텍으로 변경', icon: 'fa-phone', description: '미팅 완료 처리됨', color: '#60a5fa' }
+        ],
+        'contact': [
+            { stage: 'lead', label: '리드로 변경', icon: 'fa-user-plus', description: '미팅 예정으로 복원', color: '#94a3b8' }
+        ],
+        'quote': [
+            { stage: 'lost', label: '실주 처리', icon: 'fa-times-circle', description: '견적 취소됨', color: '#ef4444' }
+        ],
+        'closing': [
+            { stage: 'won', label: '수주 완료', icon: 'fa-trophy', description: '거래 성사', color: '#22c55e' },
+            { stage: 'lost', label: '실주 처리', icon: 'fa-times-circle', description: '거래 무산', color: '#ef4444' }
+        ]
+    };
+    
+    const stageNames = {
+        'lead': '리드',
+        'contact': '컨텍',
+        'quote': '견적',
+        'closing': '수주예정',
+        'won': '수주',
+        'lost': '실주'
+    };
+    
+    const transitions = stageTransitions[currentStage] || [];
+    
+    // 전환 옵션 렌더링
+    const optionsContainer = document.getElementById('stageChangeOptions');
+    
+    if (transitions.length === 0) {
+        optionsContainer.innerHTML = `
+            <div class="text-center py-3">
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    '${stageNames[currentStage] || currentStage}' 단계에서는 변경할 수 없습니다.
+                </p>
+            </div>`;
+    } else {
+        let html = `<p class="text-muted small mb-2 px-2">현재: <strong>${stageNames[currentStage] || currentStage}</strong></p>`;
+        html += transitions.map(t => `
+            <button type="button" class="btn btn-outline-secondary w-100 mb-2 text-start stage-option-btn"
+                    onclick="changeOpportunityStage('${t.stage}')"
+                    style="border-left: 4px solid ${t.color};">
+                <i class="fas ${t.icon} me-2" style="color: ${t.color};"></i>
+                <span>${t.label}</span>
+                <small class="d-block text-muted ms-4">${t.description}</small>
+            </button>
+        `).join('');
+        optionsContainer.innerHTML = html;
+    }
+    
+    // 모달 표시
+    const modal = new bootstrap.Modal(document.getElementById('stageChangeModal'));
+    modal.show();
+}
+
+function changeOpportunityStage(newStage) {
+    if (!currentChangeOppId) return;
+    
+    const stageNames = {
+        'lead': '리드',
+        'contact': '컨텍',
+        'quote': '견적',
+        'closing': '수주예정',
+        'won': '수주',
+        'lost': '실주'
+    };
+    
+    if (!confirm(`'${stageNames[newStage]}' 단계로 변경하시겠습니까?`)) {
+        return;
+    }
+    
+    // 모달 닫기
+    const modalEl = document.getElementById('stageChangeModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+    
+    // API 호출
+    fetch(`/reporting/funnel/opportunity/${currentChangeOppId}/change-stage/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ new_stage: newStage })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message || '단계가 변경되었습니다.');
+            // 페이지 새로고침
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showAlert('danger', data.error || '단계 변경에 실패했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Stage change error:', error);
+        showAlert('danger', '서버 통신 중 오류가 발생했습니다.');
+    });
+}
+
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show position-fixed" 
+             style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', alertHtml);
+    setTimeout(() => {
+        const alert = document.querySelector('.alert');
+        if (alert) alert.remove();
+    }, 3000);
+}
+
 </script>
+
+<style>
+/* 라벨 옵션 hover 효과 */
+.label-option:hover {
+    background-color: #f8f9fa;
+    transform: translateX(5px);
+}
+.label-option.selected {
+    background-color: #f0f0ff;
+}
+</style>
 {% endblock %}
