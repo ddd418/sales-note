@@ -11576,13 +11576,16 @@ def prepayment_customer_excel(request, customer_id):
     ws2.column_dimensions['D'].width = 18
     
     # 품목별 집계 데이터 수집
+    # 중복 방지: 동일 schedule의 품목이 여러 선결제 usage에서 중복 집계되지 않도록 처리
     from collections import defaultdict
     item_stats = defaultdict(lambda: {'quantity': 0, 'amount': 0, 'count': 0, 'unit_prices': []})
+    processed_schedules = set()  # 이미 처리한 schedule ID 추적
     
     for prepayment in prepayments:
         usages = prepayment.usages.all()
         for usage in usages:
-            if usage.schedule:
+            if usage.schedule and usage.schedule.id not in processed_schedules:
+                processed_schedules.add(usage.schedule.id)  # 중복 방지
                 delivery_items = usage.schedule.delivery_items_set.all()
                 if delivery_items.exists():
                     for item in delivery_items:
