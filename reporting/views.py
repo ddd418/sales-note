@@ -3015,19 +3015,82 @@ def schedule_edit_view(request, pk):
                 if created_count > 0:
                     messages.success(request, f'{created_count}개의 품목이 저장되었습니다.')
             
-            # 선결제 사용 시 PrepaymentUsage에 품목 정보 업데이트
+            # 선결제 사용 시 품목 금액 변경에 따라 PrepaymentUsage 금액도 업데이트
             if updated_schedule.use_prepayment:
                 from reporting.models import PrepaymentUsage, DeliveryItem
-                usages = PrepaymentUsage.objects.filter(schedule=updated_schedule)
+                from decimal import Decimal
+                
+                usages = PrepaymentUsage.objects.filter(schedule=updated_schedule).order_by('id')
                 delivery_items = DeliveryItem.objects.filter(schedule=updated_schedule).order_by('id')
                 
                 if usages.exists() and delivery_items.exists():
-                    # 첫 번째 품목 정보를 모든 usage에 저장
+                    # 새로운 품목 총액 계산
+                    new_total = sum(item.total_price or Decimal('0') for item in delivery_items)
+                    
+                    # 기존 선결제 사용 총액
+                    old_total = sum(usage.amount for usage in usages)
+                    
+                    # 금액 차이 계산
+                    diff = new_total - old_total
+                    
+                    if diff != 0:
+                        # 선결제 사용 금액 조정 (비례 배분)
+                        # 단일 선결제인 경우 해당 선결제에 전체 차액 적용
+                        # 복수 선결제인 경우 비례 배분
+                        
+                        for usage in usages:
+                            if old_total > 0:
+                                # 비례 배분: 기존 비율에 맞게 새 금액 계산
+                                ratio = usage.amount / old_total
+                                new_usage_amount = new_total * ratio
+                            else:
+                                # 기존 총액이 0이면 균등 배분
+                                new_usage_amount = new_total / usages.count()
+                            
+                            # 금액 차이 계산
+                            usage_diff = new_usage_amount - usage.amount
+                            
+                            # 선결제 잔액 조정
+                            prepayment = usage.prepayment
+                            prepayment.balance -= usage_diff  # 증가분은 잔액에서 차감, 감소분은 잔액에 추가
+                            
+                            # 잔액이 음수가 되지 않도록
+                            if prepayment.balance < 0:
+                                # 잔액 부족 시 가능한 만큼만 차감
+                                possible_amount = usage.amount + prepayment.balance  # 현재 잔액까지만
+                                prepayment.balance = Decimal('0')
+                                new_usage_amount = possible_amount
+                                messages.warning(request, f'선결제 {prepayment.payer_name or "미지정"}의 잔액이 부족하여 일부만 적용되었습니다.')
+                            
+                            # 상태 업데이트
+                            if prepayment.balance <= 0:
+                                prepayment.status = 'depleted'
+                            elif prepayment.status == 'depleted':
+                                prepayment.status = 'active'
+                            
+                            prepayment.save()
+                            
+                            # Usage 금액 업데이트
+                            usage.amount = new_usage_amount
+                            usage.remaining_balance = prepayment.balance
+                            usage.save()
+                        
+                        # Schedule의 선결제 금액도 업데이트
+                        updated_schedule.prepayment_amount = sum(u.amount for u in usages)
+                        updated_schedule.save()
+                        
+                        if diff > 0:
+                            messages.info(request, f'품목 금액 증가로 선결제 {abs(diff):,.0f}원이 추가 차감되었습니다.')
+                        else:
+                            messages.info(request, f'품목 금액 감소로 선결제 {abs(diff):,.0f}원이 잔액으로 복구되었습니다.')
+                    
+                    # 첫 번째 품목 정보를 usage에 저장 (품목명 업데이트)
                     first_item = delivery_items.first()
                     for usage in usages:
                         usage.product_name = first_item.item_name
                         usage.quantity = first_item.quantity
                         usage.save()
+                        break  # 첫 번째 usage만 업데이트
 
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
