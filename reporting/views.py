@@ -8352,10 +8352,17 @@ def customer_report_view(request):
         history_only_deliveries = sum(1 for h in delivery_histories if h.schedule_id is None)
         unique_deliveries_count = len(history_schedule_ids | schedule_ids) + history_only_deliveries
         
-        # 통합 통계
+        # 통합 통계 (중복 제거)
+        # - Schedule에 연결되지 않은 History의 delivery_amount만 합산
+        # - Schedule의 DeliveryItem은 모두 합산 (History 연결 여부 무관)
+        history_only_amount = sum(
+            h.delivery_amount or Decimal('0') 
+            for h in delivery_histories 
+            if h.schedule_id is None
+        )
         total_meetings_count = meetings
         total_deliveries_count = unique_deliveries_count
-        total_amount = history_amount + schedule_amount
+        total_amount = history_only_amount + schedule_amount  # 중복 제거된 금액
         last_contact = max((h.created_at for h in all_histories), default=None)  # Prefetch된 데이터 사용
         
         # 선결제 통계 계산 - target_user가 등록한 선결제만
