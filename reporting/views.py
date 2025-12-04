@@ -8352,17 +8352,43 @@ def customer_report_view(request):
         history_only_deliveries = sum(1 for h in delivery_histories if h.schedule_id is None)
         unique_deliveries_count = len(history_schedule_ids | schedule_ids) + history_only_deliveries
         
-        # 통합 통계 (중복 제거)
-        # - Schedule에 연결되지 않은 History의 delivery_amount만 합산
-        # - Schedule의 DeliveryItem은 모두 합산 (History 연결 여부 무관)
-        history_only_amount = sum(
-            h.delivery_amount or Decimal('0') 
-            for h in delivery_histories 
-            if h.schedule_id is None
-        )
+        # 통합 통계 (중복 제거) - 고객 상세 페이지 방식과 동일하게 수정
+        # 1. Schedule에 연결되지 않은 History의 delivery_amount 합산
+        # 2. Schedule에 연결된 History: DeliveryItem이 있으면 DeliveryItem 금액, 없으면 History 금액
+        # 3. History에 연결되지 않은 Schedule의 DeliveryItem 금액
+        
+        # Schedule ID별 DeliveryItem 금액 맵 생성
+        schedule_item_amounts = {}
+        for schedule in schedule_deliveries:
+            items = list(schedule.delivery_items_set.all())
+            schedule_item_amounts[schedule.id] = sum(item.total_price or Decimal('0') for item in items)
+        
+        # History 처리된 Schedule ID 추적
+        processed_schedule_ids = set()
+        
+        total_amount = Decimal('0')
+        for h in delivery_histories:
+            if h.schedule_id is None:
+                # Schedule에 연결 안된 History - History 금액 사용
+                total_amount += h.delivery_amount or Decimal('0')
+            else:
+                # Schedule에 연결된 History
+                processed_schedule_ids.add(h.schedule_id)
+                schedule_item_amount = schedule_item_amounts.get(h.schedule_id, Decimal('0'))
+                if schedule_item_amount > 0:
+                    # DeliveryItem이 있으면 DeliveryItem 금액 사용
+                    total_amount += schedule_item_amount
+                else:
+                    # DeliveryItem이 없으면 History 금액 사용
+                    total_amount += h.delivery_amount or Decimal('0')
+        
+        # History에 연결되지 않은 Schedule의 DeliveryItem 금액 추가
+        for schedule in schedule_deliveries:
+            if schedule.id not in processed_schedule_ids:
+                total_amount += schedule_item_amounts.get(schedule.id, Decimal('0'))
+        
         total_meetings_count = meetings
         total_deliveries_count = unique_deliveries_count
-        total_amount = history_only_amount + schedule_amount  # 중복 제거된 금액
         last_contact = max((h.created_at for h in all_histories), default=None)  # Prefetch된 데이터 사용
         
         # 선결제 통계 계산 - target_user가 등록한 선결제만
