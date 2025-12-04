@@ -2478,7 +2478,8 @@ def schedule_create_view(request):
                         quote_opportunities.first().update_stage('quote_lost')
             
             # 기존 Opportunity 찾기 (같은 고객의 진행 중인 영업 기회)
-            existing_opportunities = schedule.followup.opportunities.exclude(current_stage__in=['lost', 'quote_lost']).order_by('-created_at')
+            # won, lost, quote_lost는 완료된 영업기회이므로 제외 → 새 일정은 새 영업기회 생성
+            existing_opportunities = schedule.followup.opportunities.exclude(current_stage__in=['won', 'lost', 'quote_lost']).order_by('-created_at')
             has_existing_opportunity = existing_opportunities.exists()
             
             # Opportunity 생성/업데이트 조건 판단
@@ -2849,10 +2850,11 @@ def schedule_edit_view(request, pk):
                 existing_opportunity = schedule.opportunity
                 has_existing_opportunity = True
             else:
-                # FollowUp에 연결된 OpportunityTracking 중 진행 중인 항목 조회 (lost 제외)
+                # FollowUp에 연결된 OpportunityTracking 중 진행 중인 항목 조회
+                # won, lost는 완료된 영업기회이므로 제외
                 existing_opportunity = OpportunityTracking.objects.filter(
                     followup=updated_schedule.followup
-                ).exclude(current_stage='lost').order_by('-created_at').first()
+                ).exclude(current_stage__in=['won', 'lost', 'quote_lost']).order_by('-created_at').first()
                 has_existing_opportunity = existing_opportunity is not None
             
             # Opportunity 생성/업데이트 조건 판단
