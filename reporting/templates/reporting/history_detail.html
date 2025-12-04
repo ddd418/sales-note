@@ -9,6 +9,11 @@
       >
         <h1 class="page-title mb-0">
           <i class="fas fa-history me-2"></i>활동 기록 상세
+          {% if not is_owner %}
+          <span class="badge bg-warning text-dark ms-2" style="font-size: 0.5em; vertical-align: middle;">
+            <i class="fas fa-eye me-1"></i>{{ history.user.username }} 데이터 (조회 전용)
+          </span>
+          {% endif %}
         </h1>
         <div>
           {% if history.followup %}

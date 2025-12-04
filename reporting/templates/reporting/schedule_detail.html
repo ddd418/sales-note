@@ -63,6 +63,11 @@
         <h1 class="page-title mb-0">
           <i class="fas fa-calendar-alt me-2"></i>
           {{ schedule.followup.customer_name|default:"고객명 미정" }} 일정
+          {% if not can_modify %}
+          <span class="badge bg-warning text-dark ms-2" style="font-size: 0.5em; vertical-align: middle;">
+            <i class="fas fa-eye me-1"></i>{{ schedule.user.username }} 데이터 (조회 전용)
+          </span>
+          {% endif %}
         </h1>
         <div>
           <a

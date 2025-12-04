@@ -150,24 +150,23 @@ def get_user_profile(user):
 
 def can_access_user_data(request_user, target_user):
     """현재 사용자가 대상 사용자의 데이터에 접근할 수 있는지 확인"""
+    # 자기 자신의 데이터는 항상 접근 가능
+    if request_user == target_user:
+        return True
+    
     user_profile = get_user_profile(request_user)
+    target_profile = get_user_profile(target_user)
     
     # Admin은 모든 데이터 접근 가능
     if user_profile.is_admin():
         return True
     
-    # Manager는 같은 회사의 Salesman과 Manager의 데이터만 접근 가능 (읽기 권한)
-    if user_profile.is_manager():
-        target_profile = get_user_profile(target_user)
-        # 같은 회사인지 확인
-        if user_profile.company and target_profile.company:
-            if user_profile.company != target_profile.company:
-                return False
-        # 같은 회사의 Salesman과 Manager의 데이터만 볼 수 있음
-        return target_profile.is_salesman() or target_profile.is_manager()
+    # 같은 회사 소속이면 조회 가능 (Salesman, Manager 모두)
+    if user_profile.company and target_profile.company:
+        if user_profile.company == target_profile.company:
+            return True
     
-    # Salesman은 자신의 데이터만 접근 가능
-    return request_user == target_user
+    return False
 
 # 파일 업로드 관련 헬퍼 함수들
 def validate_file_upload(file):
@@ -908,13 +907,14 @@ def followup_detail_view(request, pk):
     is_own_customer = (request.user == followup_owner)
     user_profile = get_user_profile(request.user)
     
-    # 같은 회사 사용자 목록 조회 (필터용)
+    # 같은 회사 사용자 목록 조회 (필터용) - 매니저 제외
     company_users = []
     if user_profile.company:
         company_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role__in=['salesman', 'manager']
-        ).exclude(id=request.user.id).select_related('userprofile')
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
     # 데이터 필터 처리 (나, 전체, 특정 직원)
     data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
@@ -922,11 +922,11 @@ def followup_detail_view(request, pk):
     
     # 필터에 따른 사용자 목록 결정
     if data_filter == 'all':
-        # 전체: 같은 회사 모든 사용자
+        # 전체: 같은 회사 모든 사용자 (salesman만)
         if user_profile.company:
             filter_users = User.objects.filter(
                 userprofile__company=user_profile.company,
-                userprofile__role__in=['salesman', 'manager']
+                userprofile__role='salesman'
             )
         else:
             filter_users = User.objects.filter(id=request.user.id)
@@ -3919,12 +3919,16 @@ def history_detail_view(request, pk):
         'reply_memos__user'
     ).get(pk=pk)
     
+    # 본인 히스토리인지 여부
+    is_owner = (request.user == history.user)
+    
     context = {
         'history': history,
         'related_histories': related_histories,
         'user_filter': user_filter,
         'can_add_memo': user_profile.is_manager(),
         'can_modify': can_modify_user_data(request.user, history.user),  # 수정/삭제 권한 (관리자 포함)
+        'is_owner': is_owner,  # 본인 데이터 여부
         'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_detail.html', context)
@@ -5781,6 +5785,13 @@ def toggle_tax_invoice(request, history_id):
         # 토글 실행
         history.tax_invoice_issued = not history.tax_invoice_issued
         history.save()
+        
+        # 연결된 Schedule의 DeliveryItem들도 동기화
+        if history.schedule:
+            from reporting.models import DeliveryItem
+            DeliveryItem.objects.filter(schedule=history.schedule).update(
+                tax_invoice_issued=history.tax_invoice_issued
+            )
         
         return JsonResponse({
             'success': True,
@@ -10308,7 +10319,7 @@ def funnel_dashboard_view(request):
     }
     
     # 영업기회 전환 현황 계산
-    # 전체 = 올해 등록된 영업기회 중 종료된 것 (won + lost)
+    # 전체 = 올해 등록된 영업기회 중 종료된 것 (won + lost + quote_lost)
     # 수주 = 그 중 won 상태인 것
     
     # 올해 등록된 모든 영업기회 (created_at 기준)
@@ -10320,14 +10331,14 @@ def funnel_dashboard_view(request):
     elif accessible_users_list is not None:
         all_opportunities_this_year = all_opportunities_this_year.filter(followup__user__in=accessible_users_list)
     
-    # 올해 등록된 것 중 현재 진행 중인 영업기회 (won, lost 제외)
+    # 올해 등록된 것 중 현재 진행 중인 영업기회 (won, lost, quote_lost 제외)
     active_opportunities_this_year = all_opportunities_this_year.exclude(
-        current_stage__in=['won', 'lost']
+        current_stage__in=['won', 'lost', 'quote_lost']
     ).count()
     
-    # 전체 = 올해 등록된 영업기회 - 현재 진행 중인 영업기회 = 종료된 영업기회 (won + lost)
+    # 전체 = 올해 등록된 영업기회 중 종료된 영업기회 (won + lost + quote_lost)
     total_opportunities_count = all_opportunities_this_year.filter(
-        current_stage__in=['won', 'lost']
+        current_stage__in=['won', 'lost', 'quote_lost']
     ).count()
     
     # 수주 = 종료된 영업기회 중 won 상태인 것
@@ -10353,6 +10364,7 @@ def funnel_dashboard_view(request):
         'avg_win_rate': avg_win_rate,  # 평균 승률 (전체 영업기회 -> won)
         'total_opportunities_count': total_opportunities_count,
         'won_opportunities_count': won_opportunities_count,
+        'active_opportunities_count': active_opportunities_this_year,  # 진행 중인 영업기회
         'current_year': current_year,
         'stage_chart_data': json.dumps(stage_chart_data, cls=DjangoJSONEncoder),
         'quote_chart_data': json.dumps(quote_chart_data, cls=DjangoJSONEncoder),
