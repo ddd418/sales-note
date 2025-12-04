@@ -2247,15 +2247,23 @@ def ai_analyze_funnel(request):
         
         # FunnelAnalytics로 펀넬 데이터 수집
         from reporting.funnel_analytics import FunnelAnalytics
-        from reporting.views import get_accessible_users
+        from reporting.views import get_accessible_users, get_user_profile
+        from django.contrib.auth.models import User
         
         analytics = FunnelAnalytics()
         
         # 접근 가능한 사용자 결정
+        # AI 분석은 해당 실무자의 고객 데이터만 분석해야 함
         if request.user.is_superuser:
             accessible_users = None  # 모든 사용자
         else:
-            accessible_users = get_accessible_users(request.user, request)
+            user_profile = get_user_profile(request.user)
+            if user_profile.is_admin():
+                # 관리자는 전체 또는 필터된 사용자
+                accessible_users = get_accessible_users(request.user, request)
+            else:
+                # 일반 실무자(salesman, manager)는 자기 자신의 데이터만 분석
+                accessible_users = User.objects.filter(id=request.user.id)
         
         # 펀넬 데이터 수집
         pipeline_summary = analytics.get_pipeline_summary(
