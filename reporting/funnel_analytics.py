@@ -14,7 +14,7 @@ class FunnelAnalytics:
     def get_pipeline_summary(user=None, accessible_users=None):
         """파이프라인 전체 요약"""
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'lost']
+            current_stage__in=['won', 'lost', 'quote_lost']
         )
         
         if user:

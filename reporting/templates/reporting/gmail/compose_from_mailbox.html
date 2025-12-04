@@ -192,6 +192,20 @@
                     <div class="signature-preview" id="signature-preview"></div>
                 </div>
                 
+                <!-- 일정 자동 생성 옵션 (팔로우업이 선택된 경우에만 표시) -->
+                <div class="mb-3" id="create_schedule_container" {% if not followup %}style="display: none;"{% endif %}>
+                    <div class="form-check" style="background: #e7f3ff; padding: 12px 16px; border-radius: 8px; border: 1px solid #b6d4fe;">
+                        <input class="form-check-input" type="checkbox" id="create_schedule" name="create_schedule" value="1">
+                        <label class="form-check-label" for="create_schedule">
+                            <i class="bi bi-calendar-plus text-primary"></i> <strong>메일 발송 시 일정 자동 생성</strong>
+                            <small class="text-muted d-block mt-1">체크하면 오늘 날짜로 미팅 일정이 생성되고 이 메일이 해당 일정에 연결됩니다</small>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- 선택된 팔로우업 ID (동적으로 변경됨) -->
+                <input type="hidden" id="selected_followup_id" name="selected_followup_id" value="{% if followup %}{{ followup.id }}{% endif %}">
+                
                 <!-- 버튼 -->
                 <div class="d-flex justify-content-between">
                     <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-secondary">
@@ -394,6 +408,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const followupSearch = document.getElementById('followup_search');
     const followupSelect = document.getElementById('followup_select');
     const toEmailInput = document.getElementById('to_email');
+    const createScheduleContainer = document.getElementById('create_schedule_container');
+    const selectedFollowupIdInput = document.getElementById('selected_followup_id');
     
     if (followupSearch && followupSelect) {
         followupSearch.addEventListener('input', function() {
@@ -416,8 +432,19 @@ document.addEventListener('DOMContentLoaded', function() {
         followupSelect.addEventListener('change', function() {
             const selectedOption = this.options[this.selectedIndex];
             const email = selectedOption.getAttribute('data-email');
+            const followupId = selectedOption.value;
+            
             if (email) {
                 toEmailInput.value = email;
+            }
+            
+            // 팔로우업이 선택되면 일정 자동 생성 옵션 표시
+            if (followupId) {
+                createScheduleContainer.style.display = 'block';
+                selectedFollowupIdInput.value = followupId;
+            } else {
+                createScheduleContainer.style.display = 'none';
+                selectedFollowupIdInput.value = '';
             }
         });
     }

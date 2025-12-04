@@ -15,7 +15,7 @@ from django.db import transaction
 from django.core.paginator import Paginator
 import json
 
-from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp
+from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp, History
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
 
 
@@ -351,6 +351,17 @@ def send_email_from_mailbox(request, followup_id=None):
     
     if request.method == 'POST':
         logger.info(f"POST request received, calling _handle_email_send")
+        
+        # 팔로우업 검색으로 선택한 경우 처리
+        if not followup:
+            selected_followup_id = request.POST.get('selected_followup_id')
+            if selected_followup_id:
+                try:
+                    followup = FollowUp.objects.get(id=selected_followup_id, user=request.user)
+                    logger.info(f"Followup selected from search: {followup.id}")
+                except FollowUp.DoesNotExist:
+                    pass
+        
         result = _handle_email_send(request, followup=followup)
         logger.info(f"_handle_email_send result type: {type(result)}, is_dict: {isinstance(result, dict)}")
         
@@ -529,7 +540,33 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
         
         # EmailLog 생성
         from django.utils import timezone
+        
+        # 일정 자동 생성 옵션 확인
+        create_schedule_option = request.POST.get('create_schedule') == '1'
+        created_schedule = None
+        
         with transaction.atomic():
+            # 일정 자동 생성 (팔로우업이 있고, 기존 일정이 없고, 옵션이 선택된 경우)
+            if followup and not schedule and create_schedule_option:
+                from datetime import datetime, time
+                today = timezone.now().date()
+                current_time = timezone.now().time()
+                
+                # 새 일정 생성
+                created_schedule = Schedule.objects.create(
+                    user=request.user,
+                    company=request.user.userprofile.company,
+                    followup=followup,
+                    visit_date=today,
+                    visit_time=current_time.replace(second=0, microsecond=0),
+                    location='이메일',
+                    status='completed',  # 이메일 발송은 완료 상태로
+                    activity_type='customer_meeting',
+                    notes=f'이메일 발송: {subject}'
+                )
+                schedule = created_schedule
+                logger.info(f"Schedule auto-created: id={created_schedule.id} for followup={followup.id}")
+            
             email_log = EmailLog.objects.create(
                 email_type='sent',
                 sender=request.user,
@@ -550,8 +587,23 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
                 sent_at=timezone.now(),
                 attachments_info=attachments_info  # 첨부파일 정보 저장
             )
+            
+            # 자동 생성된 일정에 히스토리 추가
+            if created_schedule:
+                History.objects.create(
+                    user=request.user,
+                    company=request.user.userprofile.company,
+                    followup=followup,
+                    schedule=created_schedule,
+                    action_type='customer_meeting',
+                    content=f'📧 이메일 발송\n\n받는 사람: {to_email}\n제목: {subject}',
+                    meeting_date=today
+                )
         
-        messages.success(request, '이메일이 발송되었습니다.')
+        if created_schedule:
+            messages.success(request, f'이메일이 발송되었고, 일정이 자동 생성되었습니다.')
+        else:
+            messages.success(request, '이메일이 발송되었습니다.')
         
         # 리다이렉트 경로 결정
         if schedule:
