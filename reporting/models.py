@@ -521,7 +521,7 @@ class History(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
-    schedule = models.ForeignKey(Schedule, on_delete=models.SET_NULL, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
+    schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     personal_schedule = models.ForeignKey('PersonalSchedule', on_delete=models.CASCADE, blank=True, null=True, related_name='histories', verbose_name="관련 개인 일정", help_text="개인 일정에 대한 댓글")
     parent_history = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, 
                                      related_name='reply_memos', verbose_name="부모 히스토리",
