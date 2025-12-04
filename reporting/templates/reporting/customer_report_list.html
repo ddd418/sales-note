@@ -9,7 +9,67 @@
       <div class="page-header d-flex justify-content-between align-items-center mb-4">
         <h1 class="page-title mb-0">
           <i class="fas fa-chart-bar me-2"></i>{{ page_title }}
+          {% if is_viewing_others %}
+            <span class="badge bg-warning text-dark ms-2" style="font-size: 0.5em; vertical-align: middle;">
+              <i class="fas fa-eye me-1"></i>조회 전용
+            </span>
+          {% endif %}
         </h1>
+      </div>
+
+      <!-- 데이터 필터 섹션 -->
+      <div class="row mb-4" style="position: relative; z-index: 1050;">
+        <div class="col-12">
+          <div class="card border-primary" style="overflow: visible;">
+            <div class="card-body py-2" style="overflow: visible;">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center">
+                  <span class="me-3"><i class="fas fa-users me-1"></i>데이터 범위:</span>
+                  <div class="btn-group" role="group">
+                    <a href="?data_filter=me{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}" 
+                       class="btn btn-sm {% if data_filter == 'me' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                      <i class="fas fa-user me-1"></i>나
+                    </a>
+                    <a href="?data_filter=all{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}" 
+                       class="btn btn-sm {% if data_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                      <i class="fas fa-users me-1"></i>전체
+                    </a>
+                  </div>
+                  {% if company_users %}
+                  <div class="dropdown ms-2">
+                    <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                      {% if selected_filter_user %}
+                        {{ selected_filter_user.username }}
+                      {% else %}
+                        직원 선택
+                      {% endif %}
+                    </button>
+                    <ul class="dropdown-menu">
+                      {% for user_item in company_users %}
+                      <li>
+                        <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
+                           href="?data_filter=user&filter_user={{ user_item.id }}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}">
+                          {{ user_item.username }}
+                        </a>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  {% endif %}
+                </div>
+                <div>
+                  {% if data_filter == 'all' %}
+                    <span class="badge bg-info"><i class="fas fa-building me-1"></i>회사 전체 데이터</span>
+                  {% elif selected_filter_user %}
+                    <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.username }} 데이터</span>
+                  {% else %}
+                    <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>내 데이터</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 전체 통계 카드 -->
@@ -80,11 +140,7 @@
               <form method="GET" action="{% url 'reporting:customer_report' %}">
                 <div class="row g-3">
                   <!-- 검색어 -->
-                  {% if user.userprofile.role in 'admin,manager' %}
-                  <div class="col-md-6">
-                  {% else %}
                   <div class="col-md-8">
-                  {% endif %}
                     <label for="search" class="form-label">검색어</label>
                     <input 
                       type="text" 
@@ -96,21 +152,6 @@
                     >
                   </div>
                   
-                  <!-- 담당자 필터 (매니저/어드민만) -->
-                  {% if user.userprofile.role in 'admin,manager' %}
-                  <div class="col-md-2">
-                    <label for="user" class="form-label">담당자</label>
-                    <select class="form-control" id="user" name="user">
-                      <option value="">전체</option>
-                      {% for user_option in users %}
-                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
-                        {{ user_option.username }}
-                      </option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  {% endif %}
-                  
                   <!-- 버튼들 -->
                   <div class="col-md-4">
                     <label class="form-label">&nbsp;</label>
@@ -118,20 +159,25 @@
                       <button type="submit" class="btn btn-primary">
                         <i class="fas fa-search"></i> 검색
                       </button>
-                      <a href="{% url 'reporting:customer_report' %}" class="btn btn-outline-secondary">
+                      <a href="{% url 'reporting:customer_report' %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="btn btn-outline-secondary">
                         <i class="fas fa-times"></i> 초기화
                       </a>
                     </div>
                   </div>
                 </div>
                 
+                <!-- 현재 필터 유지 -->
+                <input type="hidden" name="data_filter" value="{{ data_filter }}">
+                {% if filter_user_id %}
+                <input type="hidden" name="filter_user" value="{{ filter_user_id }}">
+                {% endif %}
+                
                 <!-- 검색 결과 정보 -->
-                {% if search_query or user_filter %}
+                {% if search_query %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_customers }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
-                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
                   </small>
                 </div>
                 {% endif %}

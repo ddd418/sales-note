@@ -15,6 +15,11 @@
             >- {{ selected_followup.customer_name|default:"고객명 미정" }}</small
           >
           {% endif %}
+          {% if is_viewing_others %}
+            <span class="badge bg-warning text-dark ms-2" style="font-size: 0.5em; vertical-align: middle;">
+              <i class="fas fa-eye me-1"></i>조회 전용
+            </span>
+          {% endif %}
         </h1>        <div>
           {% if selected_followup %}
           <a
@@ -23,8 +28,7 @@
           >
             <i class="fas fa-arrow-left me-1"></i>팔로우업으로
           </a>
-          {% endif %}          {% if user.is_authenticated %}
-          {% if user.userprofile.role != 'manager' %}
+          {% endif %}          {% if user.is_authenticated and not is_viewing_others %}
           <!-- 메모 추가 버튼만 유지 -->
           <a
             href="{% url 'reporting:memo_create' %}"
@@ -33,7 +37,61 @@
             <i class="fas fa-sticky-note me-1"></i>메모 추가
           </a>
           {% endif %}
-          {% endif %}
+        </div>
+      </div>
+
+      <!-- 데이터 필터 섹션 -->
+      <div class="row mb-4" style="position: relative; z-index: 1050;">
+        <div class="col-12">
+          <div class="card border-primary" style="overflow: visible;">
+            <div class="card-body py-2" style="overflow: visible;">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center">
+                  <span class="me-3"><i class="fas fa-users me-1"></i>데이터 범위:</span>
+                  <div class="btn-group" role="group">
+                    <a href="?data_filter=me{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                       class="btn btn-sm {% if data_filter == 'me' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                      <i class="fas fa-user me-1"></i>나
+                    </a>
+                    <a href="?data_filter=all{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                       class="btn btn-sm {% if data_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                      <i class="fas fa-users me-1"></i>전체
+                    </a>
+                  </div>
+                  {% if company_users %}
+                  <div class="dropdown ms-2">
+                    <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                      {% if selected_filter_user %}
+                        {{ selected_filter_user.username }}
+                      {% else %}
+                        직원 선택
+                      {% endif %}
+                    </button>
+                    <ul class="dropdown-menu">
+                      {% for user_item in company_users %}
+                      <li>
+                        <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
+                           href="?data_filter=user&filter_user={{ user_item.id }}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">
+                          {{ user_item.username }}
+                        </a>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  {% endif %}
+                </div>
+                <div>
+                  {% if data_filter == 'all' %}
+                    <span class="badge bg-info"><i class="fas fa-building me-1"></i>회사 전체 데이터</span>
+                  {% elif selected_filter_user %}
+                    <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.username }} 데이터</span>
+                  {% else %}
+                    <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>내 데이터</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -59,43 +117,43 @@
               </h6>
               <div class="btn-group" role="group" aria-label="활동 유형 필터">
                 <a
-                  href="{% url 'reporting:history_list' %}{% if user_filter %}?user={{ user_filter }}{% endif %}{% if month_filter %}{% if user_filter %}&{% else %}?{% endif %}months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if not action_type_filter %}btn-primary{% else %}btn-outline-primary{% endif %}"
                 >
                   <i class="fas fa-list me-1"></i>전체 ({{ total_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=customer_meeting&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'customer_meeting' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
                   <i class="fas fa-handshake me-1"></i>고객 미팅 ({{meeting_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=quote{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=quote&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'quote' %}btn-primary{% else %}btn-outline-primary{% endif %}"
                 >
                   <i class="fas fa-file-invoice-dollar me-1"></i>견적 ({{ quote_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=delivery_schedule&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'delivery_schedule' %}btn-success{% else %}btn-outline-success{% endif %}"
                 >
                   <i class="fas fa-truck me-1"></i>납품 일정 ({{ delivery_count}})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=service{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=service&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'service' %}btn-warning{% else %}btn-outline-warning{% endif %}"
                 >
                   <i class="fas fa-cogs me-1"></i>서비스 ({{ service_count }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=memo{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=memo&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'memo' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
                   <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=personal_schedule{% if user_filter %}&user={{ user_filter }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=personal_schedule&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'personal_schedule' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
                 >
                   <i class="fas fa-calendar-day me-1"></i>개인 일정 ({{ personal_schedule_count|default:0 }})
@@ -119,11 +177,7 @@
               <form method="GET" action="{% url 'reporting:history_list' %}">
                 <div class="row g-3">
                   <!-- 검색어 -->
-                  {% if user.userprofile.role in 'admin,manager' %}
-                  <div class="col-md-6">
-                  {% else %}
                   <div class="col-md-8">
-                  {% endif %}
                     <label for="search" class="form-label">검색어</label>
                     <input 
                       type="text" 
@@ -135,21 +189,6 @@
                     >
                   </div>
                   
-                  <!-- 담당자 필터 (매니저/어드민만) -->
-                  {% if user.userprofile.role in 'admin,manager' %}
-                  <div class="col-md-2">
-                    <label for="user" class="form-label">담당자</label>
-                    <select class="form-control" id="user" name="user">
-                      <option value="">전체</option>
-                      {% for user_option in users %}
-                      <option value="{{ user_option.id }}" {% if user_filter == user_option.id|stringformat:"s" %}selected{% endif %}>
-                        {{ user_option.username }}
-                      </option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  {% endif %}
-                  
                   <!-- 버튼들 -->
                   <div class="col-md-4">
                     <label class="form-label">&nbsp;</label> <!-- 빈 라벨로 높이 맞춤 -->
@@ -157,7 +196,7 @@
                       <button type="submit" class="btn btn-primary">
                         <i class="fas fa-search"></i> 검색
                       </button>
-                      <a href="{% url 'reporting:history_list' %}" class="btn btn-outline-secondary">
+                      <a href="{% url 'reporting:history_list' %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="btn btn-outline-secondary">
                         <i class="fas fa-times"></i> 초기화
                       </a>
                     </div>
@@ -168,14 +207,17 @@
                 {% if action_type_filter %}
                 <input type="hidden" name="action_type" value="{{ action_type_filter }}">
                 {% endif %}
+                <input type="hidden" name="data_filter" value="{{ data_filter }}">
+                {% if filter_user_id %}
+                <input type="hidden" name="filter_user" value="{{ filter_user_id }}">
+                {% endif %}
                 
                 <!-- 검색 결과 정보 -->
-                {% if search_query or user_filter %}
+                {% if search_query %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_count }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
-                    {% if selected_user %} | 담당자: <strong>{{ selected_user.username }}</strong>{% endif %}
                   </small>
                 </div>
                 {% endif %}
@@ -221,6 +263,11 @@
                         >
                           {{ history.get_action_type_display }}
                         </a>
+                        {% endif %}
+                        {% if is_viewing_others and history.user != request.user %}
+                        <span class="badge bg-warning text-dark ms-2" style="font-size: 0.8em;">
+                          <i class="fas fa-user me-1"></i>{{ history.user.username }}
+                        </span>
                         {% endif %}
                       </h6>
                       <small class="text-muted">

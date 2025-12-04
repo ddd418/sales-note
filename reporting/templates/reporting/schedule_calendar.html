@@ -1064,6 +1064,11 @@
       <div>
         <h1>
           <i class="fas fa-calendar-alt me-3"></i>일정 캘린더
+          {% if is_viewing_others %}
+            <span class="badge bg-warning text-dark ms-2" style="font-size: 0.5em; vertical-align: middle;">
+              <i class="fas fa-eye me-1"></i>조회 전용
+            </span>
+          {% endif %}
         </h1>
         <div class="subtitle">
           <i class="fas fa-info-circle me-2"></i>날짜를 더블클릭하면 해당 날짜에 일정을 추가할 수 있습니다<br>
@@ -1071,8 +1076,38 @@
         </div>
       </div>
       <div>
-        {% if user.is_authenticated %}
-        {% endif %}
+        <!-- 데이터 필터 UI -->
+        <div class="d-flex align-items-center gap-2" style="position: relative; z-index: 1050;">
+          <div class="btn-group" role="group">
+            <a href="?data_filter=me" class="btn btn-premium-white {% if data_filter == 'me' %}active{% endif %}">
+              <i class="fas fa-user me-1"></i>나
+            </a>
+            <a href="?data_filter=all" class="btn btn-premium-white {% if data_filter == 'all' %}active{% endif %}">
+              <i class="fas fa-users me-1"></i>전체
+            </a>
+          </div>
+          {% if company_users %}
+          <div class="dropdown">
+            <button class="btn btn-premium-white dropdown-toggle {% if data_filter == 'user' %}active{% endif %}" type="button" data-bs-toggle="dropdown">
+              {% if selected_filter_user %}
+                {{ selected_filter_user.username }}
+              {% else %}
+                직원 선택
+              {% endif %}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              {% for user in company_users %}
+              <li>
+                <a class="dropdown-item {% if selected_filter_user.id == user.id %}active{% endif %}" 
+                   href="?data_filter=user&filter_user={{ user.id }}">
+                  {{ user.username }}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
@@ -1736,8 +1771,11 @@
   // 전역 변수와 URL 패턴 정의
   const scheduleDetailUrl = "{% url 'reporting:schedule_detail' 999 %}".replace("999", "{id}");
   const scheduleEditUrl = "{% url 'reporting:schedule_edit' 999 %}".replace("999", "{id}");
-  const scheduleDeleteUrl = "{% url 'reporting:schedule_delete' 999 %}".replace("999", "{id}") + "?from=calendar{% if user_filter %}&user={{ user_filter }}{% endif %}";
+  const scheduleDeleteUrl = "{% url 'reporting:schedule_delete' 999 %}".replace("999", "{id}") + "?from=calendar&data_filter={{ data_filter|default:'me' }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}";
   const historyCreateUrl = "{% url 'reporting:history_create_from_schedule' 999 %}".replace("999", "{id}");
+  
+  // 데이터 필터 정보
+  const isViewingOthers = {{ is_viewing_others|yesno:"true,false" }};
   
   // 사용자 정보 전역 변수
   const currentUser = {
@@ -2302,25 +2340,16 @@
   function loadSchedules() {
     let apiUrl = "{% url 'reporting:schedule_api' %}";
     
-    // URL 파라미터 처리
-    const urlParams = new URLSearchParams(window.location.search);
+    // 새로운 데이터 필터 파라미터 처리
     const params = new URLSearchParams();
     
-    // view_all 파라미터 확인
-    if (urlParams.get('view_all') === 'true') {
-      params.append('view_all', 'true');
-    }
-    // user 파라미터 확인 (view_all이 없을 때만)
-    else {
-      {% if user_filter %}
-      params.append('user', '{{ user_filter }}');
-      {% else %}
-      const userParam = urlParams.get('user');
-      if (userParam) {
-        params.append('user', userParam);
-      }
-      {% endif %}
-    }
+    // data_filter 파라미터
+    params.append('data_filter', '{{ data_filter|default:"me" }}');
+    
+    // 특정 직원 선택 시 filter_user 추가
+    {% if filter_user_id %}
+    params.append('filter_user', '{{ filter_user_id }}');
+    {% endif %}
     
     // 파라미터가 있으면 URL에 추가
     if (params.toString()) {
@@ -3170,9 +3199,9 @@
   // 스케줄 데이터 새로고침 함수
   async function refreshScheduleData() {
     try {
-      let apiUrl = "{% url 'reporting:schedule_api' %}";
-      {% if user_filter %}
-      apiUrl += "?user={{ user_filter }}";
+      let apiUrl = "{% url 'reporting:schedule_api' %}?data_filter={{ data_filter|default:'me' }}";
+      {% if filter_user_id %}
+      apiUrl += "&filter_user={{ filter_user_id }}";
       {% endif %}
       
       const response = await fetch(apiUrl);
@@ -4328,9 +4357,9 @@
   function forceUpdateScheduleModal(scheduleId) {
     
     // API에서 최신 스케줄 데이터 가져오기
-    let apiUrl = "{% url 'reporting:schedule_api' %}";
-    {% if user_filter %}
-    apiUrl += "?user={{ user_filter }}";
+    let apiUrl = "{% url 'reporting:schedule_api' %}?data_filter={{ data_filter|default:'me' }}";
+    {% if filter_user_id %}
+    apiUrl += "&filter_user={{ filter_user_id }}";
     {% endif %}
     
     fetch(apiUrl)
@@ -4468,9 +4497,9 @@
   function refreshScheduleData(scheduleId) {
     
     // API에서 최신 스케줄 데이터 가져오기
-    let apiUrl = "{% url 'reporting:schedule_api' %}";
-    {% if user_filter %}
-    apiUrl += "?user={{ user_filter }}";
+    let apiUrl = "{% url 'reporting:schedule_api' %}?data_filter={{ data_filter|default:'me' }}";
+    {% if filter_user_id %}
+    apiUrl += "&filter_user={{ filter_user_id }}";
     {% endif %}
     
     fetch(apiUrl)
@@ -5319,17 +5348,19 @@
               
               // 🔥 개인 일정 구분
               const isPersonalSchedule = schedule.type === 'personal';
+              const isOwnSchedule = schedule.user_name === currentUser.username;
               
               if (isMobile) {
                 scheduleElement.className = `schedule-event ${schedule.status}`;
-                // 모바일에서도 드래그 가능하도록 설정
+                // 모바일에서도 본인 일정만 드래그 가능
                 scheduleElement.dataset.scheduleId = schedule.id;
                 scheduleElement.dataset.originalDate = `${cellYear}-${String(
                   cellMonth + 1
                 ).padStart(2, "0")}-${String(cellDate).padStart(2, "0")}`;
               } else {
                 scheduleElement.className = `schedule-item ${schedule.status}`;
-                scheduleElement.draggable = true;
+                // 본인 일정만 드래그 가능
+                scheduleElement.draggable = isOwnSchedule;
                 scheduleElement.dataset.scheduleId = schedule.id;
                 scheduleElement.dataset.originalDate = `${cellYear}-${String(
                   cellMonth + 1
@@ -5343,6 +5374,12 @@
                 scheduleElement.style.borderLeft = '3px solid #5a6268';
               }
               
+              // 타인 일정 표시 (테두리 표시)
+              if (!isOwnSchedule) {
+                scheduleElement.style.borderRight = '3px solid #ffc107';
+                scheduleElement.title += ` [${schedule.user_name}]`;
+              }
+              
               // 개인 일정은 회사명 제외, 일반 일정은 회사명 포함
               const displayName = isPersonalSchedule ? schedule.customer :
                 (schedule.company && schedule.department ?
@@ -5350,7 +5387,9 @@
                 schedule.company ? `${schedule.company} ${schedule.customer}` :
                 schedule.department ? `${schedule.department} ${schedule.customer}` :
                 schedule.customer);
-              const fullScheduleText = `${schedule.time} ${displayName}`;
+              // 타인 일정인 경우 사용자명 표시
+              const userPrefix = !isOwnSchedule ? `[${schedule.user_name}] ` : '';
+              const fullScheduleText = `${schedule.time} ${userPrefix}${displayName}`;
               scheduleElement.textContent = fullScheduleText;
               scheduleElement.title = fullScheduleText;
 
@@ -6115,7 +6154,7 @@
                   `}
                 </div>
               </div>              <div class="modal-footer">
-                ${currentUser.role !== 'manager' ? `
+                ${schedule.user_name === currentUser.username ? `
                 <div class="d-flex gap-2 w-100">
                   <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-primary flex-fill">
                     <i class="fas fa-edit me-1"></i>상세 보기 / 수정
@@ -6124,8 +6163,16 @@
                     <i class="fas fa-trash-alt me-1"></i>일정 삭제
                   </button>
                 </div>
-                ` : ''}
-                <button type="button" class="btn btn-secondary ${currentUser.role !== 'manager' ? 'mt-2' : ''} w-100" data-bs-dismiss="modal">닫기</button>
+                ` : `
+                <div class="alert alert-info mb-2 w-100 py-2 text-center">
+                  <i class="fas fa-info-circle me-1"></i>
+                  타 직원(${schedule.user_name})의 일정입니다. 조회만 가능합니다.
+                </div>
+                <a href="${scheduleDetailUrl.replace("{id}", schedule.id)}?from=calendar" class="btn btn-secondary w-100">
+                  <i class="fas fa-eye me-1"></i>상세 보기
+                </a>
+                `}
+                <button type="button" class="btn btn-secondary ${schedule.user_name === currentUser.username ? 'mt-2' : 'mt-2'} w-100" data-bs-dismiss="modal">닫기</button>
               </div>
             </div>
           </div>

@@ -895,7 +895,7 @@ def followup_list_view(request):
 
 @login_required
 def followup_detail_view(request, pk):
-    """팔로우업 상세 보기 (같은 회사 소속은 고객 정보 조회 가능, 스케줄/히스토리는 본인 것만)"""
+    """팔로우업 상세 보기 (같은 회사 소속은 고객 정보 조회 가능, 필터로 데이터 범위 선택)"""
     followup = get_object_or_404(FollowUp, pk=pk)
     
     # 권한 체크 (같은 회사 소속이면 고객 정보 조회 가능)
@@ -908,11 +908,34 @@ def followup_detail_view(request, pk):
     is_own_customer = (request.user == followup_owner)
     user_profile = get_user_profile(request.user)
     
-    # 히스토리 조회 권한 결정
-    # - 관리자: 해당 고객의 모든 히스토리
-    # - 매니저: 같은 회사 사용자의 히스토리
-    # - 일반 사용자: 본인 히스토리만 (동료 고객이라도 내가 남긴 기록은 볼 수 있음)
-    can_view_all_history = user_profile.is_admin() or user_profile.is_manager()
+    # 같은 회사 사용자 목록 조회 (필터용)
+    company_users = []
+    if user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role__in=['salesman', 'manager']
+        ).exclude(id=request.user.id).select_related('userprofile')
+    
+    # 데이터 필터 처리 (나, 전체, 특정 직원)
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')
+    
+    # 필터에 따른 사용자 목록 결정
+    if data_filter == 'all':
+        # 전체: 같은 회사 모든 사용자
+        if user_profile.company:
+            filter_users = User.objects.filter(
+                userprofile__company=user_profile.company,
+                userprofile__role__in=['salesman', 'manager']
+            )
+        else:
+            filter_users = User.objects.filter(id=request.user.id)
+    elif data_filter == 'user' and filter_user_id:
+        # 특정 직원
+        filter_users = User.objects.filter(id=filter_user_id)
+    else:
+        # 나 (기본값)
+        filter_users = User.objects.filter(id=request.user.id)
     
     # 같은 업체-부서의 모든 팔로우업 찾기
     same_department_followups = FollowUp.objects.filter(
@@ -920,29 +943,17 @@ def followup_detail_view(request, pk):
         department=followup.department
     ).values_list('id', flat=True)
     
-    # 히스토리 조회
+    # 히스토리 조회 (필터 적용)
     from django.db.models import Case, When, F
-    if can_view_all_history:
-        # 관리자/매니저: 해당 고객의 모든 히스토리
-        related_histories = History.objects.filter(
-            followup_id__in=same_department_followups
-        ).select_related('followup', 'schedule').annotate(
-            sort_date=Case(
-                When(schedule__isnull=False, then=F('schedule__visit_date')),
-                default=F('created_at__date')
-            )
-        ).order_by('-sort_date', '-created_at')[:20]
-    else:
-        # 일반 사용자: 해당 부서에 대한 본인 히스토리만 (동료 고객이라도 내가 남긴 기록은 볼 수 있음)
-        related_histories = History.objects.filter(
-            followup_id__in=same_department_followups,
-            user=request.user
-        ).select_related('followup', 'schedule').annotate(
-            sort_date=Case(
-                When(schedule__isnull=False, then=F('schedule__visit_date')),
-                default=F('created_at__date')
-            )
-        ).order_by('-sort_date', '-created_at')[:20]
+    related_histories = History.objects.filter(
+        followup_id__in=same_department_followups,
+        user__in=filter_users
+    ).select_related('followup', 'schedule', 'user').annotate(
+        sort_date=Case(
+            When(schedule__isnull=False, then=F('schedule__visit_date')),
+            default=F('created_at__date')
+        )
+    ).order_by('-sort_date', '-created_at')[:20]
     
     # 서류 템플릿 조회 (견적서, 거래명세서 등)
     from reporting.models import DocumentTemplate
@@ -959,7 +970,7 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
-    # AI 분석 (AI 권한이 있는 사용자 - 동료 고객도 분석 가능, 단 본인 기록만)
+    # AI 분석 (AI 권한이 있는 사용자 - 필터에 따라 데이터 범위 결정)
     ai_analysis = None
     if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
         from datetime import datetime, timedelta
@@ -968,16 +979,16 @@ def followup_detail_view(request, pk):
         # 최근 12개월 데이터 수집
         twelve_months_ago = timezone.now() - timedelta(days=365)
         
-        # 스케줄 통계 (본인 기록만)
+        # 스케줄 통계 (필터에 따른 사용자 범위)
         schedules = Schedule.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 기록만
+            user__in=filter_users,  # 필터에 따른 사용자
             visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
         
-        # 구매 내역 (납품 일정 - 본인 기록만)
+        # 구매 내역 (납품 일정 - 필터에 따른 사용자)
         delivery_schedules = schedules.filter(activity_type='delivery')
         purchase_count = delivery_schedules.count()
         
@@ -986,23 +997,23 @@ def followup_detail_view(request, pk):
             total=Sum('expected_revenue')
         )['total'] or 0
         
-        # 이메일 교환 (본인 발신 이메일만)
+        # 이메일 교환 (필터에 따른 사용자)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            sender=request.user,  # 본인이 발신한 이메일만
+            sender__in=filter_users,  # 필터에 따른 사용자
             created_at__gte=twelve_months_ago
         ).count()
         
-        # 마지막 연락일 (본인 기록 기준)
+        # 마지막 연락일 (필터에 따른 기록)
         last_contact = None
         last_schedule = schedules.order_by('-visit_date').first()
         if last_schedule:
             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
         
-        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (본인 기록만)
+        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (필터에 따른 사용자)
         histories = History.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 히스토리만
+            user__in=filter_users,  # 필터에 따른 사용자
             created_at__gte=twelve_months_ago
         )
         meeting_notes = []
@@ -1070,28 +1081,15 @@ def followup_detail_view(request, pk):
             'ready': True
         }
     
-    # 납품된 상품 목록 조회
-    # - 본인 고객: 전체
-    # - 관리자/매니저: 전체
-    # - 동료 고객: 본인이 추가한 납품만
+    # 납품된 상품 목록 조회 (필터 적용)
     from reporting.models import DeliveryItem
-    if is_own_customer or can_view_all_history:
-        # 본인 고객이거나 관리자/매니저: 전체 납품 목록
-        delivered_items = DeliveryItem.objects.filter(
-            schedule__followup=followup,
-            schedule__activity_type='delivery'
-        ).exclude(
-            schedule__status='cancelled'
-        ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
-    else:
-        # 동료 고객: 본인이 추가한 납품만
-        delivered_items = DeliveryItem.objects.filter(
-            schedule__followup=followup,
-            schedule__activity_type='delivery',
-            schedule__user=request.user  # 본인이 추가한 일정의 납품만
-        ).exclude(
-            schedule__status='cancelled'
-        ).select_related('product', 'schedule').order_by('-schedule__visit_date', '-created_at')
+    delivered_items = DeliveryItem.objects.filter(
+        schedule__followup=followup,
+        schedule__activity_type='delivery',
+        schedule__user__in=filter_users
+    ).exclude(
+        schedule__status='cancelled'
+    ).select_related('product', 'schedule', 'schedule__user').order_by('-schedule__visit_date', '-created_at')
     
     # 납품 품목 통계
     delivery_stats = {
@@ -1099,6 +1097,14 @@ def followup_detail_view(request, pk):
         'total_revenue': delivered_items.aggregate(total=Sum('total_price'))['total'] or 0,
         'total_quantity': delivered_items.aggregate(total=Sum('quantity'))['total'] or 0,
     }
+    
+    # 필터에 사용된 사용자 정보
+    selected_filter_user = None
+    if data_filter == 'user' and filter_user_id:
+        try:
+            selected_filter_user = User.objects.get(id=filter_user_id)
+        except User.DoesNotExist:
+            pass
     
     context = {
         'followup': followup,
@@ -1112,7 +1118,12 @@ def followup_detail_view(request, pk):
         'is_own_customer': is_own_customer,  # 본인이 추가한 고객인지
         'is_owner': is_own_customer,  # 템플릿 호환성을 위한 별칭
         'can_modify': can_modify_user_data(request.user, followup.user),  # 수정/삭제 권한 (관리자 포함)
-        'can_view_history': is_own_customer or can_view_all_history or related_histories.exists(),  # 히스토리 조회 권한 (본인 고객, 관리자/매니저, 또는 내가 남긴 기록이 있으면)
+        'can_view_history': True,  # 필터로 조회하므로 항상 True
+        # 필터 관련 컨텍스트
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'selected_filter_user': selected_filter_user,
+        'company_users': company_users,
         'owner_info': {
             'username': followup_owner.username,
             'full_name': followup_owner.get_full_name() or followup_owner.username,
@@ -2037,46 +2048,52 @@ def dashboard_view(request):
 
 @login_required
 def schedule_list_view(request):
-    """일정 목록 보기 (권한 기반 필터링 적용)"""
+    """일정 목록 보기 (같은 회사 직원 데이터 필터 지원)"""
     from django.utils import timezone
     from datetime import datetime, timedelta
     
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터 (세션 기반)
-    view_all = request.GET.get('view_all') == 'true'
+    # 같은 회사 사용자 목록 조회 (필터용) - 매니저 제외
+    company_users = []
+    if user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
-    # 전체 팀원 선택 시 세션 초기화
-    if view_all and user_profile.can_view_all_users():
-        if 'selected_user_id' in request.session:
-            del request.session['selected_user_id']
-        user_filter = None
-    else:
-        user_filter = request.GET.get('user')
-        if not user_filter:
-            user_filter = request.session.get('selected_user_id')
-        
-        if user_filter and user_profile.can_view_all_users():
-            request.session['selected_user_id'] = str(user_filter)
+    # 데이터 필터 처리 (나, 전체, 특정 직원)
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')
     
-    # 권한에 따른 데이터 필터링
-    if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user, request)
-        
-        # 매니저가 특정 실무자를 선택한 경우
-        if user_filter and not view_all:
-            try:
-                selected_user = accessible_users.get(id=user_filter)
-                schedules = Schedule.objects.filter(user=selected_user)
-            except (User.DoesNotExist, ValueError):
-                schedules = Schedule.objects.filter(user__in=accessible_users)
+    # 필터에 따른 사용자 목록 결정
+    if data_filter == 'all':
+        # 전체: 같은 회사 모든 사용자 (salesman만)
+        if user_profile.company:
+            filter_users = User.objects.filter(
+                userprofile__company=user_profile.company,
+                userprofile__role='salesman'
+            )
         else:
-            # 전체보기 또는 선택 안 함
-            schedules = Schedule.objects.filter(user__in=accessible_users)
+            filter_users = User.objects.filter(id=request.user.id)
+    elif data_filter == 'user' and filter_user_id:
+        # 특정 직원
+        filter_users = User.objects.filter(id=filter_user_id)
     else:
-        # Salesman은 자신의 데이터만 조회
-        schedules = Schedule.objects.filter(user=request.user)
+        # 나 (기본값)
+        filter_users = User.objects.filter(id=request.user.id)
+    
+    # 선택된 필터 사용자 정보
+    selected_filter_user = None
+    if data_filter == 'user' and filter_user_id:
+        try:
+            selected_filter_user = User.objects.get(id=filter_user_id)
+        except User.DoesNotExist:
+            pass
+    
+    # 기본 쿼리셋: 필터에 따른 사용자의 일정
+    schedules = Schedule.objects.filter(user__in=filter_users).select_related('user')
     
     # 검색 기능
     search_query = request.GET.get('search')
@@ -2097,11 +2114,6 @@ def schedule_list_view(request):
             Q(delivery_items_set__product__product_code__icontains=product_search) |
             Q(delivery_items_set__product__description__icontains=product_search)
         ).distinct()
-    
-    # 담당자 필터링
-    user_filter = request.GET.get('user')
-    if user_filter:
-        schedules = schedules.filter(user_id=user_filter)
     
     # 날짜 범위 필터링
     date_from = request.GET.get('date_from') or request.GET.get('start_date')
@@ -2185,19 +2197,7 @@ def schedule_list_view(request):
             default=4,
             output_field=IntegerField()
         )
-    ).order_by('status_priority', '-visit_date', '-visit_time')  # 상태 우선순위 → 최신 날짜순 → 최신 시간순    # 담당자 목록 (필터용)
-    if request.user.is_staff or request.user.is_superuser:
-        users = User.objects.filter(schedule__isnull=False).distinct()
-    else:
-        users = [request.user]
-    
-    # 선택된 사용자 정보
-    selected_user = None
-    if user_filter:
-        try:
-            selected_user = User.objects.get(id=user_filter)
-        except (User.DoesNotExist, ValueError):
-            pass
+    ).order_by('status_priority', '-visit_date', '-visit_time')  # 상태 우선순위 → 최신 날짜순 → 최신 시간순
     
     # 페이지네이션 추가
     from django.core.paginator import Paginator
@@ -2223,23 +2223,40 @@ def schedule_list_view(request):
         'service_count': service_count,
         'search_query': search_query,
         'product_search': product_search,  # 제품 검색 추가
-        'user_filter': user_filter,
-        'selected_user': selected_user,
         'date_from': date_from,
         'date_to': date_to,
-        'users': users,
+        # 데이터 필터 관련
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'selected_filter_user': selected_filter_user,
+        'company_users': company_users,
+        'is_viewing_others': data_filter != 'me',  # 타인 데이터 조회 중인지
     }
     return render(request, 'reporting/schedule_list.html', context)
 
 @login_required
 def schedule_detail_view(request, pk):
-    """일정 상세 보기 (Manager 권한 포함)"""
+    """일정 상세 보기 (같은 회사 직원 데이터 조회 가능, 수정은 본인만)"""
     schedule = get_object_or_404(Schedule, pk=pk)
     
-    # 권한 체크 (Manager도 Salesman 데이터 접근 가능)
-    if not can_access_user_data(request.user, schedule.user):
+    user_profile = get_user_profile(request.user)
+    
+    # 권한 체크: 같은 회사 소속이면 조회 가능
+    can_view = False
+    if schedule.user == request.user:
+        can_view = True
+    elif user_profile.company:
+        # 같은 회사 소속인지 확인
+        schedule_user_profile = get_user_profile(schedule.user)
+        if schedule_user_profile.company == user_profile.company:
+            can_view = True
+    
+    if not can_view:
         messages.error(request, '접근 권한이 없습니다.')
         return redirect('reporting:schedule_list')
+    
+    # 본인 일정인지 여부 (수정/삭제 권한)
+    is_own_schedule = (schedule.user == request.user)
     
     # 관련 히스토리 조회 (최신순)
     related_histories_all = History.objects.filter(schedule=schedule).order_by('-created_at')
@@ -2282,9 +2299,6 @@ def schedule_detail_view(request, pk):
     # 이전 페이지 정보 (캘린더에서 온 경우)
     from_page = request.GET.get('from', 'list')  # 기본값은 'list'
     
-    # 본인 일정인지 확인 (수정/삭제 버튼 표시용)
-    is_owner = (request.user == schedule.user)
-    
     context = {
         'schedule': schedule,
         'related_histories': related_histories,
@@ -2293,8 +2307,9 @@ def schedule_detail_view(request, pk):
         'delivery_amount': delivery_amount,  # 납품 금액
         'email_threads': dict(email_threads),  # 이메일 스레드
         'from_page': from_page,
-        'is_owner': is_owner,  # 본인 일정 여부
-        'can_modify': can_modify_user_data(request.user, schedule.user),  # 수정/삭제 권한 (관리자 포함)
+        'is_owner': is_own_schedule,  # 본인 일정 여부
+        'can_modify': is_own_schedule,  # 수정/삭제 권한 (본인만)
+        'schedule_owner': schedule.user,  # 일정 담당자
         'page_title': f'일정 상세 - {schedule.followup.customer_name}'
     }
     return render(request, 'reporting/schedule_detail.html', context)
@@ -2664,14 +2679,14 @@ def schedule_create_view(request):
 
 @login_required
 def schedule_edit_view(request, pk):
-    """일정 수정"""
+    """일정 수정 (본인 일정만 수정 가능)"""
     from reporting.models import OpportunityTracking, FunnelStage
     
     schedule = get_object_or_404(Schedule, pk=pk)
     
-    # 권한 체크: 수정 권한이 있는 경우만 수정 가능 (Manager는 읽기 전용)
-    if not can_modify_user_data(request.user, schedule.user):
-        messages.error(request, '수정 권한이 없습니다. Manager는 읽기 전용입니다.')
+    # 권한 체크: 본인 일정만 수정 가능
+    if schedule.user != request.user:
+        messages.error(request, '본인의 일정만 수정할 수 있습니다.')
         return redirect('reporting:schedule_list')
     
     if request.method == 'POST':
@@ -3137,20 +3152,21 @@ def schedule_edit_view(request, pk):
 
 @login_required
 def schedule_delete_view(request, pk):
-    """일정 삭제"""
+    """일정 삭제 (본인 일정만 삭제 가능)"""
     import traceback
     import logging
     logger = logging.getLogger(__name__)
     
     try:
         schedule = get_object_or_404(Schedule, pk=pk)
-          # 권한 체크: 삭제 권한이 있는 경우만 허용 (Manager는 읽기 전용)
-        if not can_modify_user_data(request.user, schedule.user):
+        
+        # 권한 체크: 본인 일정만 삭제 가능
+        if schedule.user != request.user:
             # AJAX 요청 감지 - X-Requested-With 헤더 확인
             is_ajax = request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest'
             if is_ajax:
-                return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다. Manager는 읽기 전용입니다.'}, status=403)
-            messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
+                return JsonResponse({'success': False, 'error': '본인의 일정만 삭제할 수 있습니다.'}, status=403)
+            messages.error(request, '본인의 일정만 삭제할 수 있습니다.')
             return redirect('reporting:schedule_list')
         
         if request.method == 'POST':
@@ -3444,35 +3460,51 @@ def schedule_update_delivery_items(request, pk):
 
 @login_required
 def schedule_calendar_view(request):
-    """일정 캘린더 뷰 (권한 기반 필터링 적용)"""
+    """일정 캘린더 뷰 (같은 회사 직원 데이터 필터링)"""
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터
-    selected_user_id = request.GET.get('user_id')
-    view_all = request.GET.get('view_all') == 'true'
+    # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    # URL 파라미터로 특정 사용자 필터링 (기존 호환성)
-    user_filter = request.GET.get('user') or selected_user_id
-    selected_user = None
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    company_users = []
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
-    if user_filter and user_profile.can_view_all_users():
+    # 필터에 따른 대상 사용자 결정
+    selected_filter_user = None
+    is_viewing_others = False
+    
+    if data_filter == 'all':
+        # 같은 회사 전체
+        is_viewing_others = True
+    elif data_filter == 'user' and filter_user_id:
+        # 특정 직원
         try:
-            selected_user = User.objects.get(id=user_filter)
-        except (User.DoesNotExist, ValueError):
-            pass
+            selected_filter_user = company_users.get(id=filter_user_id)
+            is_viewing_others = True
+        except User.DoesNotExist:
+            data_filter = 'me'  # 유효하지 않은 경우 기본값
+    # else: 'me' - 본인 데이터만
     
     context = {
         'page_title': '일정 캘린더',
-        'selected_user': selected_user,
-        'user_filter': user_filter,
-        'view_all': view_all,
-        'selected_user_id': selected_user_id,
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'company_users': company_users,
+        'selected_filter_user': selected_filter_user,
+        'is_viewing_others': is_viewing_others,
     }
     return render(request, 'reporting/schedule_calendar.html', context)
 
 @login_required
 def schedule_api_view(request):
-    """일정 데이터 API (JSON 응답) - 권한 기반 필터링 적용 + PersonalSchedule 포함"""
+    """일정 데이터 API (JSON 응답) - 같은 회사 직원 데이터 필터링 + PersonalSchedule 포함"""
     try:
         from .models import PersonalSchedule
         from django.db.models import Prefetch
@@ -3480,39 +3512,34 @@ def schedule_api_view(request):
         
         user_profile = get_user_profile(request.user)
         
-        # 매니저용 실무자 필터 (세션 기반)
-        view_all = request.GET.get('view_all') == 'true'
+        # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+        data_filter = request.GET.get('data_filter', 'me')
+        filter_user_id = request.GET.get('filter_user')
         
-        # 전체 팀원 선택 시 세션 초기화
-        if view_all and user_profile.can_view_all_users():
-            if 'selected_user_id' in request.session:
-                del request.session['selected_user_id']
-            user_filter = None
+        # 필터에 따른 대상 사용자 결정
+        if data_filter == 'all' and user_profile and user_profile.company:
+            # 같은 회사 전체
+            filter_users = User.objects.filter(
+                userprofile__company=user_profile.company,
+                is_active=True
+            )
+        elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+            # 특정 직원 (같은 회사 확인)
+            try:
+                target_user = User.objects.get(
+                    id=filter_user_id,
+                    userprofile__company=user_profile.company,
+                    is_active=True
+                )
+                filter_users = User.objects.filter(id=target_user.id)
+            except User.DoesNotExist:
+                filter_users = User.objects.filter(id=request.user.id)
         else:
-            user_filter = request.GET.get('user')
-            if not user_filter:
-                user_filter = request.session.get('selected_user_id')
-            
-            if user_filter and user_profile.can_view_all_users():
-                request.session['selected_user_id'] = str(user_filter)
+            # 'me' - 본인만
+            filter_users = User.objects.filter(id=request.user.id)
         
-        # 권한에 따른 데이터 필터링 (최적화: select_related, prefetch_related 추가)
-        if user_profile.can_view_all_users():
-            # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-            accessible_users = get_accessible_users(request.user, request)
-            
-            # 매니저가 특정 실무자를 선택한 경우
-            if user_filter and not view_all:
-                try:
-                    selected_user = accessible_users.get(id=user_filter)
-                    schedules = Schedule.objects.filter(user=selected_user)
-                except User.DoesNotExist:
-                    schedules = Schedule.objects.filter(user__in=accessible_users)
-            else:
-                schedules = Schedule.objects.filter(user__in=accessible_users)
-        else:
-            # Salesman은 자신의 데이터만 조회
-            schedules = Schedule.objects.filter(user=request.user)
+        # 스케줄 쿼리
+        schedules = Schedule.objects.filter(user__in=filter_users)
         
         # 🔥 최적화: 관련 데이터를 한 번에 가져오기
         schedules = schedules.select_related(
@@ -3623,19 +3650,8 @@ def schedule_api_view(request):
             schedule_data.append(schedule_item)
         
         # ====== PersonalSchedule 데이터 추가 ======
-        # 권한에 따른 개인 일정 필터링
-        if user_profile.can_view_all_users():
-            accessible_users = get_accessible_users(request.user, request)
-            if user_filter and not view_all:
-                try:
-                    selected_user = accessible_users.get(id=user_filter)
-                    personal_schedules = PersonalSchedule.objects.filter(user=selected_user)
-                except User.DoesNotExist:
-                    personal_schedules = PersonalSchedule.objects.filter(user__in=accessible_users)
-            else:
-                personal_schedules = PersonalSchedule.objects.filter(user__in=accessible_users)
-        else:
-            personal_schedules = PersonalSchedule.objects.filter(user=request.user)
+        # 같은 필터 적용
+        personal_schedules = PersonalSchedule.objects.filter(user__in=filter_users)
         
         personal_schedules = personal_schedules.select_related('user', 'company').only(
             'id', 'title', 'content', 'schedule_date', 'schedule_time',
@@ -3678,47 +3694,57 @@ def schedule_api_view(request):
 
 @login_required
 def history_list_view(request):
-    """히스토리 목록 보기 (권한 기반 필터링 적용)"""
+    """히스토리 목록 보기 (같은 회사 직원 데이터 필터링)"""
     from django.utils import timezone
     from datetime import datetime, timedelta
     from django.db.models import Q
     
     user_profile = get_user_profile(request.user)
     
-    # 매니저용 실무자 필터 (세션 기반)
-    view_all = request.GET.get('view_all') == 'true'
+    # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    # 전체 팀원 선택 시 세션 초기화
-    if view_all and user_profile.can_view_all_users():
-        if 'selected_user_id' in request.session:
-            del request.session['selected_user_id']
-        user_filter = None
-    else:
-        user_filter = request.GET.get('user')
-        if not user_filter:
-            user_filter = request.session.get('selected_user_id')
-        
-        if user_filter and user_profile.can_view_all_users():
-            request.session['selected_user_id'] = str(user_filter)
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    company_users = []
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
-    # 권한에 따른 데이터 필터링 (매니저 메모 제외)
-    if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자의 데이터 조회
-        accessible_users = get_accessible_users(request.user, request)
-        
-        # 매니저가 특정 실무자를 선택한 경우
-        if user_filter and not view_all:
-            try:
-                selected_user = accessible_users.get(id=user_filter)
-                histories = History.objects.filter(user=selected_user, parent_history__isnull=True)  # 매니저 메모 제외
-            except (User.DoesNotExist, ValueError):
-                histories = History.objects.filter(user__in=accessible_users, parent_history__isnull=True)  # 매니저 메모 제외
-        else:
-            # 전체보기 또는 선택 안 함
-            histories = History.objects.filter(user__in=accessible_users, parent_history__isnull=True)  # 매니저 메모 제외
+    # 필터에 따른 대상 사용자 결정
+    selected_filter_user = None
+    is_viewing_others = False
+    
+    if data_filter == 'all' and user_profile and user_profile.company:
+        # 같은 회사 전체 (salesman만)
+        filter_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        )
+        is_viewing_others = True
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        # 특정 직원 (같은 회사 확인)
+        try:
+            selected_filter_user = User.objects.get(
+                id=filter_user_id,
+                userprofile__company=user_profile.company,
+                is_active=True
+            )
+            filter_users = User.objects.filter(id=selected_filter_user.id)
+            is_viewing_others = True
+        except User.DoesNotExist:
+            filter_users = User.objects.filter(id=request.user.id)
+            data_filter = 'me'
     else:
-        # Salesman은 자신의 데이터만 조회
-        histories = History.objects.filter(user=request.user, parent_history__isnull=True)  # 매니저 메모 제외
+        # 'me' - 본인만
+        filter_users = User.objects.filter(id=request.user.id)
+    
+    # 히스토리 쿼리 (매니저 메모 제외)
+    histories = History.objects.filter(user__in=filter_users, parent_history__isnull=True)
     
     # 관련 객체들을 미리 로드하여 성능 최적화 (답글 메모도 포함)
     histories = histories.select_related(
@@ -3735,34 +3761,10 @@ def history_list_view(request):
             Q(followup__manager__icontains=search_query)
         )
     
-    # 담당자 필터링 (매니저/어드민만 사용 가능)
-    user_filter = request.GET.get('user')
-    user_profile = get_user_profile(request.user)
-    if user_filter and user_profile.can_view_all_users():
-        histories = histories.filter(user_id=user_filter)
-    
     # 팔로우업 필터링 (특정 팔로우업의 모든 히스토리 보기)
     followup_filter = request.GET.get('followup')
     if followup_filter:
         histories = histories.filter(followup_id=followup_filter)
-    
-    # 날짜 범위 필터링 제거
-    # date_from = request.GET.get('date_from')
-    # date_to = request.GET.get('date_to')
-    
-    # if date_from:
-    #     try:
-    #         from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-    #         histories = histories.filter(created_at__date__gte=from_date)
-    #     except ValueError:
-    #         pass
-    
-    # if date_to:
-    #     try:
-    #         to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-    #         histories = histories.filter(created_at__date__lte=to_date)
-    #     except ValueError:
-    #         pass
     
     # 활동 유형별 카운트 계산
     base_queryset_for_counts = histories
@@ -3818,34 +3820,17 @@ def history_list_view(request):
             default=F('created_at__date')
         )
     ).order_by('-sort_date', '-created_at')
-    # 담당자 목록 (매니저/어드민용 필터)
-    users = []
-    selected_user = None
-    user_profile = get_user_profile(request.user)
-    
-    if user_profile.can_view_all_users():
-        # Admin이나 Manager는 접근 가능한 사용자 목록
-        accessible_users = get_accessible_users(request.user, request)
-        users = accessible_users.filter(history__isnull=False).distinct()
-        
-        # 선택된 사용자 정보 - 권한 체크 추가
-        if user_filter:
-            try:
-                candidate_user = User.objects.get(id=user_filter)
-                # 접근 권한이 있는 사용자인지 확인
-                if candidate_user in accessible_users:
-                    selected_user = candidate_user
-            except (User.DoesNotExist, ValueError):
-                pass
     
     # 선택된 팔로우업 정보
     selected_followup = None
     if followup_filter:
         try:
             candidate_followup = FollowUp.objects.get(id=followup_filter)
-            # 접근 권한이 있는지 확인
-            if can_access_user_data(request.user, candidate_followup.user):
-                selected_followup = candidate_followup
+            # 같은 회사인지 확인
+            if user_profile and user_profile.company:
+                followup_profile = get_user_profile(candidate_followup.user)
+                if followup_profile and followup_profile.company == user_profile.company:
+                    selected_followup = candidate_followup
         except (FollowUp.DoesNotExist, ValueError):
             pass
     
@@ -3875,11 +3860,14 @@ def history_list_view(request):
         'memo_count': memo_count,
         'personal_schedule_count': personal_schedule_count,  # 개인 일정 카운트 추가
         'search_query': search_query,
-        'user_filter': user_filter,
-        'selected_user': selected_user,
         'followup_filter': followup_filter,
         'selected_followup': selected_followup,
-        'users': users,
+        # 새로운 필터 관련 컨텍스트
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'company_users': company_users,
+        'selected_filter_user': selected_filter_user,
+        'is_viewing_others': is_viewing_others,
     }
     return render(request, 'reporting/history_list.html', context)
 
@@ -8097,64 +8085,62 @@ from .file_views import (
 
 @login_required
 def customer_report_view(request):
-    """고객별 활동 요약 리포트 목록 - Schedule DeliveryItem도 포함"""
+    """고객별 활동 요약 리포트 목록 - Schedule DeliveryItem도 포함 (같은 회사 직원 데이터 필터링)"""
     from django.db.models import Count, Sum, Max, Q
     from django.contrib.auth.models import User
     from decimal import Decimal
     
     user_profile = get_user_profile(request.user)
     
-    # 담당자 필터링 (Manager만)
-    view_all = request.GET.get('view_all') == 'true'
-    users = []
-    selected_user = None
-    target_user = request.user  # 기본은 본인
-    user_filter = None  # 초기화
+    # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    if user_profile.can_view_all_users():
-        accessible_users = get_accessible_users(request.user, request)
-        # 전체 팀원 선택 시 세션 초기화
-        if view_all:
-            if 'selected_user_id' in request.session:
-                del request.session['selected_user_id']
-            target_user = None  # 전체 팀원 데이터
-            user_filter = None
-        else:
-            user_filter = request.GET.get('user')
-            # user_filter가 없으면 세션에서 가져오기
-            if not user_filter:
-                user_filter = request.session.get('selected_user_id')
-        
-            if user_filter:
-                # Manager가 특정 팀원을 선택한 경우
-                try:
-                    selected_user = accessible_users.get(id=user_filter)
-                    target_user = selected_user
-                    # 세션에 저장
-                    request.session['selected_user_id'] = str(user_filter)
-                except User.DoesNotExist:
-                    target_user = None  # 전체 팀원 데이터
-                    # 잘못된 세션 값 제거
-                    if 'selected_user_id' in request.session:
-                        del request.session['selected_user_id']
-            else:
-                target_user = None  # 전체 팀원 데이터
-                # user_filter가 명시적으로 없으면(초기화) 세션도 제거
-                if 'selected_user_id' in request.session:
-                    del request.session['selected_user_id']
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    company_users = []
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
-    # 모든 고객 조회 (담당자 무관)
+    # 필터에 따른 대상 사용자 결정
+    selected_filter_user = None
+    is_viewing_others = False
+    target_user = request.user  # 기본값
+    
+    if data_filter == 'all' and user_profile and user_profile.company:
+        # 같은 회사 전체 (salesman만)
+        filter_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        )
+        target_user = None  # 전체
+        is_viewing_others = True
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        # 특정 직원 (같은 회사 확인)
+        try:
+            selected_filter_user = User.objects.get(
+                id=filter_user_id,
+                userprofile__company=user_profile.company,
+                is_active=True
+            )
+            filter_users = User.objects.filter(id=selected_filter_user.id)
+            target_user = selected_filter_user
+            is_viewing_others = True
+        except User.DoesNotExist:
+            filter_users = User.objects.filter(id=request.user.id)
+            target_user = request.user
+            data_filter = 'me'
+    else:
+        # 'me' - 본인만
+        filter_users = User.objects.filter(id=request.user.id)
+        target_user = request.user
+    
+    # 모든 고객 조회
     followups = FollowUp.objects.all()
-    
-    # Manager용 팀원 목록
-    if user_profile.can_view_all_users():
-        accessible_users_list = get_accessible_users(request.user, request)
-        if not getattr(request, 'is_hanagwahak', False):
-            user_profile_obj = getattr(request.user, 'userprofile', None)
-            if user_profile_obj and user_profile_obj.company:
-                same_company_users = User.objects.filter(userprofile__company=user_profile_obj.company)
-                accessible_users_list = accessible_users_list.filter(id__in=same_company_users.values_list('id', flat=True))
-        users = accessible_users_list.filter(followup__isnull=False).distinct()
     
     # 검색 기능
     search_query = request.GET.get('search')
@@ -8169,8 +8155,8 @@ def customer_report_view(request):
     from django.db.models import Prefetch
     
     # 사용자 필터 설정
-    if target_user is None and user_profile.can_view_all_users():
-        user_filter_q = Q(user__in=accessible_users)
+    if target_user is None:
+        user_filter_q = Q(user__in=filter_users)
     else:
         user_filter_q = Q(user=target_user)
     
@@ -8312,11 +8298,18 @@ def customer_report_view(request):
         total_deliveries_count = unique_deliveries_count
         last_contact = max((h.created_at for h in all_histories), default=None)  # Prefetch된 데이터 사용
         
-        # 선결제 통계 계산 - target_user가 등록한 선결제만
-        prepayments = Prepayment.objects.filter(
-            customer=followup,
-            created_by=target_user
-        ).select_related('created_by')
+        # 선결제 통계 계산 - 필터 사용자가 등록한 선결제
+        if target_user is None:
+            # 전체 필터: 같은 회사 사용자들의 선결제
+            prepayments = Prepayment.objects.filter(
+                customer=followup,
+                created_by__in=filter_users
+            ).select_related('created_by')
+        else:
+            prepayments = Prepayment.objects.filter(
+                customer=followup,
+                created_by=target_user
+            ).select_related('created_by')
         
         prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or Decimal('0')
         prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or Decimal('0')
@@ -8396,10 +8389,13 @@ def customer_report_view(request):
         'sort_by': sort_by,
         'sort_order': sort_order,
         'search_query': search_query,
-        'user_filter': user_filter,
-        'selected_user': selected_user,
-        'users': users,
         'page_title': '고객 리포트',
+        # 새로운 필터 관련 컨텍스트
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'company_users': company_users,
+        'selected_filter_user': selected_filter_user,
+        'is_viewing_others': is_viewing_others,
     }
     
     return render(request, 'reporting/customer_report_list.html', context)
@@ -10197,13 +10193,9 @@ def funnel_dashboard_view(request):
     # 라벨 필터 추가
     label_filter = request.GET.get('label', '')
     
-    # 라벨 목록 조회
+    # 라벨 목록 조회 - 본인이 만든 라벨만 표시
     from .models import OpportunityLabel
-    user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-    if user_company:
-        labels = OpportunityLabel.objects.filter(user_company=user_company, is_active=True)
-    else:
-        labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
+    labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
     
     # 필터: 사용자별
     filter_user = None
@@ -10632,20 +10624,13 @@ def opportunity_label_list(request):
     
     user_profile = get_user_profile(request.user)
     
-    # 같은 회사의 라벨만 조회
-    try:
-        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-        if user_company:
-            labels = OpportunityLabel.objects.filter(user_company=user_company, is_active=True)
-        else:
-            labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
-    except:
-        labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
+    # 본인이 만든 라벨만 조회
+    labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
     
     context = {
         'page_title': '영업 기회 라벨 관리',
         'labels': labels,
-        'can_edit': user_profile.is_salesman(),  # 실무자만 편집 가능
+        'can_edit': True,  # 본인 라벨이므로 항상 편집 가능
     }
     
     return render(request, 'reporting/funnel/label_list.html', context)
@@ -10656,13 +10641,6 @@ def opportunity_label_create(request):
     """영업 기회 라벨 생성"""
     from .models import OpportunityLabel
     
-    user_profile = get_user_profile(request.user)
-    
-    # 실무자만 라벨 생성 가능
-    if not user_profile.is_salesman():
-        messages.error(request, '라벨 생성은 실무자만 가능합니다.')
-        return redirect('reporting:opportunity_label_list')
-    
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         color = request.POST.get('color', '#667eea')
@@ -10672,12 +10650,12 @@ def opportunity_label_create(request):
             messages.error(request, '라벨명을 입력해주세요.')
             return redirect('reporting:opportunity_label_create')
         
-        # 같은 회사 라벨 중복 체크
-        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-        
-        if OpportunityLabel.objects.filter(name=name, user_company=user_company).exists():
+        # 본인 라벨 중복 체크
+        if OpportunityLabel.objects.filter(name=name, created_by=request.user, is_active=True).exists():
             messages.error(request, '이미 같은 이름의 라벨이 있습니다.')
             return redirect('reporting:opportunity_label_create')
+        
+        user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
         
         OpportunityLabel.objects.create(
             name=name,
@@ -10702,19 +10680,11 @@ def opportunity_label_edit(request, pk):
     """영업 기회 라벨 수정"""
     from .models import OpportunityLabel
     
-    user_profile = get_user_profile(request.user)
-    
-    # 실무자만 라벨 수정 가능
-    if not user_profile.is_salesman():
-        messages.error(request, '라벨 수정은 실무자만 가능합니다.')
-        return redirect('reporting:opportunity_label_list')
-    
     label = get_object_or_404(OpportunityLabel, pk=pk)
     
-    # 같은 회사인지 확인
-    user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-    if label.user_company != user_company:
-        messages.error(request, '접근 권한이 없습니다.')
+    # 본인이 만든 라벨인지 확인
+    if label.created_by != request.user:
+        messages.error(request, '본인이 만든 라벨만 수정할 수 있습니다.')
         return redirect('reporting:opportunity_label_list')
     
     if request.method == 'POST':
@@ -10726,8 +10696,8 @@ def opportunity_label_edit(request, pk):
             messages.error(request, '라벨명을 입력해주세요.')
             return redirect('reporting:opportunity_label_edit', pk=pk)
         
-        # 중복 체크 (자기 자신 제외)
-        if OpportunityLabel.objects.filter(name=name, user_company=user_company).exclude(pk=pk).exists():
+        # 중복 체크 (자기 자신 제외, 본인 라벨 내에서)
+        if OpportunityLabel.objects.filter(name=name, created_by=request.user, is_active=True).exclude(pk=pk).exists():
             messages.error(request, '이미 같은 이름의 라벨이 있습니다.')
             return redirect('reporting:opportunity_label_edit', pk=pk)
         
@@ -10752,19 +10722,11 @@ def opportunity_label_delete(request, pk):
     """영업 기회 라벨 삭제"""
     from .models import OpportunityLabel
     
-    user_profile = get_user_profile(request.user)
-    
-    # 실무자만 라벨 삭제 가능
-    if not user_profile.is_salesman():
-        messages.error(request, '라벨 삭제는 실무자만 가능합니다.')
-        return redirect('reporting:opportunity_label_list')
-    
     label = get_object_or_404(OpportunityLabel, pk=pk)
     
-    # 같은 회사인지 확인
-    user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-    if label.user_company != user_company:
-        messages.error(request, '접근 권한이 없습니다.')
+    # 본인이 만든 라벨인지 확인
+    if label.created_by != request.user:
+        messages.error(request, '본인이 만든 라벨만 삭제할 수 있습니다.')
         return redirect('reporting:opportunity_label_list')
     
     if request.method == 'POST':
@@ -10788,12 +10750,8 @@ def opportunity_labels_api(request):
     """영업 기회 라벨 목록 API"""
     from .models import OpportunityLabel
     
-    user_company = request.user.userprofile.company if hasattr(request.user, 'userprofile') else None
-    
-    if user_company:
-        labels = OpportunityLabel.objects.filter(user_company=user_company, is_active=True)
-    else:
-        labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
+    # 본인이 만든 라벨만 조회
+    labels = OpportunityLabel.objects.filter(created_by=request.user, is_active=True)
     
     labels_data = [{
         'id': label.id,
@@ -11105,7 +11063,7 @@ def followup_meetings_api(request, followup_id):
 
 @login_required
 def prepayment_list_view(request):
-    """선결제 목록 뷰"""
+    """선결제 목록 뷰 (같은 회사 직원 데이터 필터링)"""
     from reporting.models import Prepayment
     from django.db.models import Q, Sum
     from django.contrib.auth.models import User
@@ -11113,48 +11071,47 @@ def prepayment_list_view(request):
     user_profile = get_user_profile(request.user)
     base_queryset = Prepayment.objects.select_related('customer', 'company', 'created_by')
     
-    # 매니저 세션 기반 필터 적용
-    view_all = request.GET.get('view_all') == 'true'
-    selected_user = None
+    # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    if user_profile.can_view_all_users():
-        # 전체 팀원 선택 시 세션 초기화
-        if view_all:
-            if 'selected_user_id' in request.session:
-                del request.session['selected_user_id']
-            # 접근 가능한 모든 사용자의 선결제 조회
-            accessible_users = get_accessible_users(request.user, request)
-            base_queryset = base_queryset.filter(created_by__in=accessible_users)
-        else:
-            user_filter = request.GET.get('user')
-            # user_filter가 없으면 세션에서 가져오기
-            if not user_filter:
-                user_filter = request.session.get('selected_user_id')
-            
-            if user_filter:
-                try:
-                    accessible_users = get_accessible_users(request.user, request)
-                    selected_user = accessible_users.get(id=user_filter)
-                    # 세션에 저장
-                    request.session['selected_user_id'] = str(user_filter)
-                    # 선택된 사용자의 선결제만 조회
-                    base_queryset = base_queryset.filter(created_by=selected_user)
-                except User.DoesNotExist:
-                    # 잘못된 세션 값 제거
-                    if 'selected_user_id' in request.session:
-                        del request.session['selected_user_id']
-                    # 접근 가능한 모든 사용자의 선결제 조회
-                    accessible_users = get_accessible_users(request.user, request)
-                    base_queryset = base_queryset.filter(created_by__in=accessible_users)
-            else:
-                # 접근 가능한 모든 사용자의 선결제 조회
-                accessible_users = get_accessible_users(request.user, request)
-                base_queryset = base_queryset.filter(created_by__in=accessible_users)
-    elif user_profile.role == 'admin':
-        # Admin은 모든 선결제 조회 가능
-        pass
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    company_users = []
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
+    
+    # 필터에 따른 대상 사용자 결정
+    selected_filter_user = None
+    is_viewing_others = False
+    
+    if data_filter == 'all' and user_profile and user_profile.company:
+        # 같은 회사 전체 (salesman만)
+        filter_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        )
+        base_queryset = base_queryset.filter(created_by__in=filter_users)
+        is_viewing_others = True
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        # 특정 직원 (같은 회사 확인)
+        try:
+            selected_filter_user = User.objects.get(
+                id=filter_user_id,
+                userprofile__company=user_profile.company,
+                is_active=True
+            )
+            base_queryset = base_queryset.filter(created_by=selected_filter_user)
+            is_viewing_others = True
+        except User.DoesNotExist:
+            base_queryset = base_queryset.filter(created_by=request.user)
+            data_filter = 'me'
     else:
-        # 일반 사용자는 본인이 등록한 선결제만 조회
+        # 'me' - 본인만
         base_queryset = base_queryset.filter(created_by=request.user)
     
     # 검색 필터
@@ -11198,6 +11155,12 @@ def prepayment_list_view(request):
         'search_query': search_query,
         'status_filter': status_filter,
         'stats': stats,
+        # 새로운 필터 관련 컨텍스트
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'company_users': company_users,
+        'selected_filter_user': selected_filter_user,
+        'is_viewing_others': is_viewing_others,
     }
     
     return render(request, 'reporting/prepayment/list.html', context)
@@ -11273,14 +11236,23 @@ def prepayment_create_view(request):
 @login_required
 def prepayment_detail_view(request, pk):
     """선결제 상세 뷰"""
-    from reporting.models import Prepayment
+    from reporting.models import Prepayment, UserProfile
     
     prepayment = get_object_or_404(Prepayment, pk=pk)
     
-    # 권한 체크 - 선결제를 등록한 사용자의 데이터에 접근 가능한지 확인
-    if not can_access_user_data(request.user, prepayment.created_by):
-        messages.error(request, '접근 권한이 없습니다.')
-        return redirect('reporting:prepayment_list')
+    # 권한 체크 - 같은 회사 사용자만 조회 가능
+    user_profile = get_user_profile(request.user)
+    if user_profile and user_profile.company:
+        same_company_users = UserProfile.objects.filter(
+            company=user_profile.company
+        ).values_list('user_id', flat=True)
+        
+        if prepayment.created_by_id not in same_company_users:
+            messages.error(request, '접근 권한이 없습니다.')
+            return redirect('reporting:prepayment_list')
+    
+    # 본인 데이터 여부
+    is_owner = (prepayment.created_by == request.user)
     
     # 사용 내역
     usages = prepayment.usages.select_related(
@@ -11314,6 +11286,7 @@ def prepayment_detail_view(request, pk):
         'total_used': total_used,
         'usage_percent': usage_percent,
         'balance_percent': balance_percent,
+        'is_owner': is_owner,
     }
     
     return render(request, 'reporting/prepayment/detail.html', context)
@@ -11327,17 +11300,10 @@ def prepayment_edit_view(request, pk):
     
     prepayment = get_object_or_404(Prepayment, pk=pk)
     
-    # 권한 체크
-    user_profile = get_user_profile(request.user)
-    if user_profile and user_profile.role != 'admin':
-        from reporting.models import UserProfile
-        same_company_users = UserProfile.objects.filter(
-            company=user_profile.company
-        ).values_list('user_id', flat=True)
-        
-        if prepayment.created_by_id not in same_company_users:
-            messages.error(request, '접근 권한이 없습니다.')
-            return redirect('reporting:prepayment_list')
+    # 권한 체크 - 본인 데이터만 수정 가능
+    if prepayment.created_by != request.user:
+        messages.error(request, '본인이 등록한 선결제만 수정할 수 있습니다.')
+        return redirect('reporting:prepayment_list')
     
     # Tailwind CSS 클래스
     input_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
@@ -11399,17 +11365,10 @@ def prepayment_delete_view(request, pk):
     
     prepayment = get_object_or_404(Prepayment, pk=pk)
     
-    # 권한 체크
-    user_profile = get_user_profile(request.user)
-    if user_profile and user_profile.role != 'admin':
-        from reporting.models import UserProfile
-        same_company_users = UserProfile.objects.filter(
-            company=user_profile.company
-        ).values_list('user_id', flat=True)
-        
-        if prepayment.created_by_id not in same_company_users:
-            messages.error(request, '접근 권한이 없습니다.')
-            return redirect('reporting:prepayment_list')
+    # 권한 체크 - 본인 데이터만 삭제 가능
+    if prepayment.created_by != request.user:
+        messages.error(request, '본인이 등록한 선결제만 삭제할 수 있습니다.')
+        return redirect('reporting:prepayment_list')
     
     if request.method == 'POST':
         # 사용 내역 개수 확인

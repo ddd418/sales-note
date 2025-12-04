@@ -388,7 +388,84 @@
     </div>
   </div>
 
-  <!-- 납품 상품 목록 섹션 (본인 고객, 관리자/매니저, 또는 본인이 추가한 납품이 있으면 표시) -->
+  <!-- 데이터 필터 섹션 -->
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card border-primary">
+        <div class="card-header bg-primary bg-opacity-10">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-filter me-2"></i>데이터 필터
+          </h5>
+        </div>
+        <div class="card-body">
+          <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-bold">데이터 범위</label>
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="data_filter" id="filter_me" value="me" 
+                       {% if data_filter == 'me' or not data_filter %}checked{% endif %} onchange="this.form.submit()">
+                <label class="btn btn-outline-primary" for="filter_me">
+                  <i class="fas fa-user me-1"></i>나
+                </label>
+                
+                <input type="radio" class="btn-check" name="data_filter" id="filter_all" value="all"
+                       {% if data_filter == 'all' %}checked{% endif %} onchange="this.form.submit()">
+                <label class="btn btn-outline-primary" for="filter_all">
+                  <i class="fas fa-users me-1"></i>전체
+                </label>
+              </div>
+            </div>
+            
+            {% if company_users %}
+            <div class="col-md-4">
+              <label class="form-label fw-bold">특정 직원 선택</label>
+              <select name="filter_user" class="form-select" onchange="document.querySelector('#filter_user_radio').checked = true; this.form.submit();">
+                <option value="">-- 직원 선택 --</option>
+                {% for user in company_users %}
+                <option value="{{ user.id }}" {% if filter_user_id == user.id|stringformat:"s" %}selected{% endif %}>
+                  {{ user.get_full_name|default:user.username }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <div class="form-check">
+                <input type="radio" class="btn-check" name="data_filter" id="filter_user_radio" value="user"
+                       {% if data_filter == 'user' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary btn-sm" for="filter_user_radio">
+                  <i class="fas fa-user-check me-1"></i>선택 적용
+                </label>
+              </div>
+            </div>
+            {% endif %}
+            
+            <div class="col-md-2">
+              <a href="{% url 'reporting:followup_detail' followup.pk %}" class="btn btn-outline-secondary w-100">
+                <i class="fas fa-undo me-1"></i>초기화
+              </a>
+            </div>
+          </form>
+          
+          <!-- 현재 필터 상태 표시 -->
+          <div class="mt-3">
+            <span class="badge bg-info fs-6">
+              <i class="fas fa-eye me-1"></i>
+              현재 보기: 
+              {% if data_filter == 'all' %}
+                전체 직원 데이터
+              {% elif data_filter == 'user' and selected_filter_user %}
+                {{ selected_filter_user.get_full_name|default:selected_filter_user.username }} 데이터
+              {% else %}
+                나의 데이터
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 납품 상품 목록 섹션 -->
   {% if delivered_items %}
   <div class="row mt-4">
     <div class="col-12">
@@ -397,7 +474,9 @@
           <div class="d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">
               <i class="fas fa-box-open me-2"></i>납품 상품 목록
-              {% if not is_own_customer %}<small class="text-muted">(내가 추가한 납품)</small>{% endif %}
+              {% if data_filter == 'all' %}<small class="text-muted">(전체)</small>
+              {% elif data_filter == 'user' and selected_filter_user %}<small class="text-muted">({{ selected_filter_user.username }})</small>
+              {% else %}<small class="text-muted">(나)</small>{% endif %}
             </h5>
             <div>
               <span class="badge bg-primary me-2">총 {{ delivery_stats.total_items }}건</span>
@@ -544,6 +623,9 @@
             <h5 class="card-title mb-0">
               <i class="fas fa-history me-2"></i>같은 부서 활동 히스토리
               <small class="text-muted">({{ followup.company }} - {{ followup.department }})</small>
+              {% if data_filter == 'all' %}<span class="badge bg-info ms-2">전체</span>
+              {% elif data_filter == 'user' and selected_filter_user %}<span class="badge bg-info ms-2">{{ selected_filter_user.username }}</span>
+              {% else %}<span class="badge bg-primary ms-2">나</span>{% endif %}
             </h5>
             <div>
               {% if is_owner %}
@@ -558,12 +640,7 @@
           </div>
         </div>
         <div class="card-body">
-          {% if not can_view_history %}
-          <div class="alert alert-info mb-0">
-            <i class="fas fa-info-circle me-2"></i>
-            동료({{ owner_info.username }})의 고객입니다. 활동 히스토리와 일정은 담당자만 조회할 수 있습니다.
-          </div>
-          {% elif related_histories %}
+          {% if related_histories %}
           <div class="timeline">
             {% for history in related_histories %}
             <div class="timeline-item">
@@ -582,6 +659,9 @@
                     <h6 class="mb-0">
                       {{ history.get_action_type_display }}
                       <small class="text-muted">- {{ history.followup.customer_name }}</small>
+                      {% if history.user != request.user %}
+                      <span class="badge bg-secondary ms-1">{{ history.user.username }}</span>
+                      {% endif %}
                     </h6>
                   </div>
                   <small class="text-muted"
