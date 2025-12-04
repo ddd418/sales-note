@@ -1076,7 +1076,7 @@ function displayOpportunityHistory(data) {
     document.getElementById('oppProbability').textContent = opp.probability + '%';
     
     // 고객 상세 버튼 설정
-    document.getElementById('customerDetailBtn').href = `/reporting/followup/${opp.followup_id}/`;
+    document.getElementById('customerDetailBtn').href = `/reporting/followups/${opp.followup_id}/`;
     
     // 이메일 요약 표시
     const emailSection = document.getElementById('emailSummarySection');

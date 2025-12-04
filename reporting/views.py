@@ -2876,11 +2876,22 @@ def schedule_edit_view(request, pk):
                 # 미팅 일정인 경우: register_funnel 체크 시에만 새로운 Opportunity 생성 (예상 매출 0)
                 elif updated_schedule.activity_type == 'customer_meeting':
                     funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - has_existing_opportunity: {has_existing_opportunity}")
-                    # 미팅 일정에서 펀넬 등록은 register_funnel 필드로 제어
-                    # 미팅 일정은 기존 opportunity 무시하고 항상 새로 생성 (예상 매출 0)
-                    # 수정 시에는 펀넬 관련 변경 없음 (생성 시에만 register_funnel로 처리)
-                    should_create_or_update_opportunity = False
-                    funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - No Opportunity action (edit mode)")
+                    # 폼에서 register_funnel 체크 여부 확인
+                    register_funnel = request.POST.get('register_funnel') == 'on'
+                    funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - register_funnel: {register_funnel}")
+                    
+                    if register_funnel and not has_existing_opportunity:
+                        # register_funnel 체크되어 있고 기존 영업기회가 없으면 새로 생성
+                        should_create_or_update_opportunity = True
+                        has_existing_opportunity = False  # 강제로 새로 생성
+                        funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - Creating new Opportunity (register_funnel checked)")
+                    elif has_existing_opportunity:
+                        # 기존 영업기회가 있으면 업데이트
+                        should_create_or_update_opportunity = True
+                        funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - Updating existing Opportunity")
+                    else:
+                        should_create_or_update_opportunity = False
+                        funnel_logger.info(f"[SCHEDULE_EDIT_FUNNEL] Meeting - No Opportunity action")
                 # 기타 활동 유형 (미팅 제외)
                 elif has_existing_opportunity:
                     # 기존 Opportunity가 있으면 항상 업데이트
