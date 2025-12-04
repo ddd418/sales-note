@@ -10340,20 +10340,32 @@ def funnel_dashboard_view(request):
         'pending': [s['pending'] for s in monthly_quote_stats],
     }
     
-    # 평균 승률 계산 (종료된 영업기회 중 won 비율)
-    # 전체 = 총 영업기회 - 활성화된 상위영업기회 (즉, won + lost만)
-    # 단, 연결된 일정 중 하나라도 completed인 경우만 인정
-    all_opportunities = OpportunityTracking.objects.filter(
-        current_stage__in=['won', 'lost'],
-        schedules__status='completed'  # 완료된 일정이 있는 영업기회만
-    ).distinct()
-    if filter_user:
-        all_opportunities = all_opportunities.filter(followup__user=filter_user)
-    elif accessible_users_list is not None:
-        all_opportunities = all_opportunities.filter(followup__user__in=accessible_users_list)
+    # 영업기회 전환 현황 계산
+    # 전체 = 올해 등록된 영업기회 중 종료된 것 (won + lost)
+    # 수주 = 그 중 won 상태인 것
     
-    total_opportunities_count = all_opportunities.count()  # 종료된 영업기회 (won + lost, 완료된 일정 필수)
-    won_opportunities_count = all_opportunities.filter(current_stage='won').count()
+    # 올해 등록된 모든 영업기회 (created_at 기준)
+    all_opportunities_this_year = OpportunityTracking.objects.filter(
+        created_at__year=current_year
+    )
+    if filter_user:
+        all_opportunities_this_year = all_opportunities_this_year.filter(followup__user=filter_user)
+    elif accessible_users_list is not None:
+        all_opportunities_this_year = all_opportunities_this_year.filter(followup__user__in=accessible_users_list)
+    
+    # 올해 등록된 것 중 현재 진행 중인 영업기회 (won, lost 제외)
+    active_opportunities_this_year = all_opportunities_this_year.exclude(
+        current_stage__in=['won', 'lost']
+    ).count()
+    
+    # 전체 = 올해 등록된 영업기회 - 현재 진행 중인 영업기회 = 종료된 영업기회 (won + lost)
+    total_opportunities_count = all_opportunities_this_year.filter(
+        current_stage__in=['won', 'lost']
+    ).count()
+    
+    # 수주 = 종료된 영업기회 중 won 상태인 것
+    won_opportunities_count = all_opportunities_this_year.filter(current_stage='won').count()
+    
     avg_win_rate = round((won_opportunities_count / total_opportunities_count * 100), 1) if total_opportunities_count > 0 else 0
     
     # 사용자 목록 (Admin/Manager용)
