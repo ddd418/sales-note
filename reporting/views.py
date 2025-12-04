@@ -2702,27 +2702,54 @@ def schedule_edit_view(request, pk):
             updated_schedule = form.save()
             
             # 복수 선결제 처리 로직 (수정 시에도 적용)
+            import json
+            from reporting.models import Prepayment, PrepaymentUsage
+            from decimal import Decimal
+            
             selected_prepayments_json = request.POST.get('selected_prepayments')
             prepayment_amounts_json = request.POST.get('prepayment_amounts')
+            use_prepayment_checkbox = request.POST.get('use_prepayment')
             
-            if selected_prepayments_json and prepayment_amounts_json:
-                import json
-                from reporting.models import Prepayment, PrepaymentUsage
-                from decimal import Decimal
+            # 기존 선결제 사용 내역 확인
+            existing_usages = PrepaymentUsage.objects.filter(schedule=updated_schedule)
+            had_prepayment = existing_usages.exists()
+            
+            # 선결제 사용 체크가 해제되었거나, 선결제 데이터가 없는 경우 → 기존 내역 복구
+            if had_prepayment and (not use_prepayment_checkbox or not selected_prepayments_json or not prepayment_amounts_json):
+                # 기존 선결제 사용 내역 복구 (잔액 되돌리기)
+                restored_amount = Decimal('0')
+                for usage in existing_usages:
+                    prepayment = usage.prepayment
+                    prepayment.balance += usage.amount
+                    if prepayment.status == 'depleted' and prepayment.balance > 0:
+                        prepayment.status = 'active'
+                    prepayment.save()
+                    restored_amount += usage.amount
                 
+                # 기존 사용 내역 삭제
+                existing_usages.delete()
+                
+                # Schedule의 선결제 관련 필드 초기화
+                updated_schedule.use_prepayment = False
+                updated_schedule.prepayment = None
+                updated_schedule.prepayment_amount = 0
+                updated_schedule.save()
+                
+                if restored_amount > 0:
+                    messages.info(request, f'선결제 사용이 취소되어 {restored_amount:,}원이 잔액으로 복구되었습니다.')
+            
+            # 선결제 사용 체크되고 데이터가 있는 경우 → 새로 적용
+            elif use_prepayment_checkbox and selected_prepayments_json and prepayment_amounts_json:
                 try:
-                    # 기존 선결제 사용 내역 복구 (수정 전 상태로 롤백)
-                    existing_usages = PrepaymentUsage.objects.filter(schedule=updated_schedule)
-                    for usage in existing_usages:
-                        # 선결제 잔액 복구
-                        prepayment = usage.prepayment
-                        prepayment.balance += usage.amount
-                        if prepayment.status == 'depleted' and prepayment.balance > 0:
-                            prepayment.status = 'active'
-                        prepayment.save()
-                    
-                    # 기존 사용 내역 삭제
-                    existing_usages.delete()
+                    # 기존 선결제 사용 내역이 있으면 먼저 복구
+                    if had_prepayment:
+                        for usage in existing_usages:
+                            prepayment = usage.prepayment
+                            prepayment.balance += usage.amount
+                            if prepayment.status == 'depleted' and prepayment.balance > 0:
+                                prepayment.status = 'active'
+                            prepayment.save()
+                        existing_usages.delete()
                     
                     # 새로운 선결제 적용
                     selected_prepayments = json.loads(selected_prepayments_json)
@@ -2778,6 +2805,12 @@ def schedule_edit_view(request, pk):
                         updated_schedule.save()
                         
                         messages.info(request, f'총 선결제 사용 금액: {total_prepayment_used:,}원')
+                    else:
+                        # 선결제 금액이 0이면 플래그 해제
+                        updated_schedule.use_prepayment = False
+                        updated_schedule.prepayment = None
+                        updated_schedule.prepayment_amount = 0
+                        updated_schedule.save()
                 
                 except json.JSONDecodeError:
                     messages.error(request, '선결제 데이터 형식이 올바르지 않습니다.')
