@@ -924,7 +924,10 @@
                     <div id="schedulesContainer"></div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer justify-content-between">
+                <a id="customerDetailBtn" href="#" class="btn btn-primary" target="_blank">
+                    <i class="fas fa-user-circle me-1"></i> 고객 상세 보기
+                </a>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
             </div>
         </div>
@@ -1071,6 +1074,9 @@ function displayOpportunityHistory(data) {
     document.getElementById('oppCurrentStage').textContent = opp.current_stage;
     document.getElementById('oppExpectedRevenue').textContent = formatCurrency(opp.expected_revenue) + '원';
     document.getElementById('oppProbability').textContent = opp.probability + '%';
+    
+    // 고객 상세 버튼 설정
+    document.getElementById('customerDetailBtn').href = `/reporting/followup/${opp.followup_id}/`;
     
     // 이메일 요약 표시
     const emailSection = document.getElementById('emailSummarySection');
