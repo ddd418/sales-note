@@ -1563,19 +1563,45 @@ def dashboard_view(request):
         visit_date__lt=month_end.date()
     ).count()
     
-    # 이번 달 매출 (납품 일정의 DeliveryItem 총액 합산, 취소된 일정 제외)
+    # 이번 달 매출 (납품 일정의 DeliveryItem 총액 + 선결제 사용 금액)
     monthly_delivery_schedules = schedules.filter(
         activity_type='delivery',
         status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         visit_date__gte=month_start.date(),
         visit_date__lt=month_end.date()
     )
-    monthly_revenue = DeliveryItem.objects.filter(
-        schedule__in=monthly_delivery_schedules
+    
+    # 1. 납품 일정의 DeliveryItem 총액 (선결제 미사용 납품)
+    delivery_revenue = DeliveryItem.objects.filter(
+        schedule__in=monthly_delivery_schedules,
+        schedule__use_prepayment=False  # 선결제 미사용 납품만
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
-    # Prepayment 모델 명시적 import
-    from .models import Prepayment
+    # 2. 선결제 사용 금액 (PrepaymentUsage 기준, 차감 시점 기준)
+    from .models import Prepayment, PrepaymentUsage
+    
+    # 이번 달 선결제 사용 내역 (used_at 기준)
+    if user_profile.is_admin() and not selected_user:
+        prepayment_usage_revenue = PrepaymentUsage.objects.filter(
+            used_at__year=current_year,
+            used_at__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+    elif user_profile.can_view_all_users() and target_user is None:
+        accessible_users_for_prepay = get_accessible_users(request.user, request)
+        prepayment_usage_revenue = PrepaymentUsage.objects.filter(
+            prepayment__created_by__in=accessible_users_for_prepay,
+            used_at__year=current_year,
+            used_at__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+    else:
+        prepayment_usage_revenue = PrepaymentUsage.objects.filter(
+            prepayment__created_by=target_user,
+            used_at__year=current_year,
+            used_at__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+    
+    # 총 매출 = 일반 납품 + 선결제 사용 금액
+    monthly_revenue = delivery_revenue + prepayment_usage_revenue
     
     # 이번 달 선결제 건수 (결제일 기준) - 권한에 따라 필터링
     if user_profile.is_admin() and not selected_user:

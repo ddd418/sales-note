@@ -474,14 +474,21 @@ class FunnelAnalytics:
     
     @staticmethod
     def get_product_sales_distribution(user=None, accessible_users=None):
-        """제품별 매출 비중"""
-        from .models import DeliveryItem, Product
+        """제품별 매출 비중 (납품 + 선결제 사용 품목 포함)"""
+        from .models import DeliveryItem, Product, PrepaymentUsage
         
-        # 납품된 품목들의 제품별 집계 (취소된 일정만 제외)
+        # 제품별로 그룹화하여 매출 집계
+        product_sales = {}
+        total_revenue = Decimal('0')
+        processed_schedules = set()  # 중복 방지용
+        
+        # 1. 일반 납품 품목 (선결제 미사용)
         delivery_items = DeliveryItem.objects.select_related('product', 'schedule').filter(
-            schedule__isnull=False,  # Schedule이 있는 것만
+            schedule__isnull=False,
+            schedule__activity_type='delivery',  # 납품 일정만
+            schedule__use_prepayment=False,  # 선결제 미사용
         ).exclude(
-            schedule__status='cancelled'  # 취소된 일정만 제외
+            schedule__status='cancelled'
         )
         
         if user:
@@ -489,16 +496,11 @@ class FunnelAnalytics:
         elif accessible_users is not None:
             delivery_items = delivery_items.filter(schedule__user__in=accessible_users)
         
-        # 제품별로 그룹화하여 매출 집계
-        product_sales = {}
-        total_revenue = Decimal('0')
-        
         for item in delivery_items:
-            # product 또는 item_name 사용
             product_name = item.product.product_code if item.product else item.item_name
             product_desc = item.product.description if item.product else ''
             
-            if not product_name:  # 제품명이 없으면 스킵
+            if not product_name:
                 continue
             
             item_total = item.total_price or Decimal('0')
@@ -516,6 +518,48 @@ class FunnelAnalytics:
             product_sales[product_name]['quantity'] += item.quantity or 0
             product_sales[product_name]['order_count'] += 1
             total_revenue += item_total
+        
+        # 2. 선결제 사용 품목 (PrepaymentUsage의 schedule에 연결된 DeliveryItem)
+        prepayment_usages = PrepaymentUsage.objects.select_related(
+            'schedule', 'prepayment'
+        ).filter(
+            schedule__isnull=False
+        )
+        
+        if user:
+            prepayment_usages = prepayment_usages.filter(prepayment__created_by=user)
+        elif accessible_users is not None:
+            prepayment_usages = prepayment_usages.filter(prepayment__created_by__in=accessible_users)
+        
+        for usage in prepayment_usages:
+            if usage.schedule_id in processed_schedules:
+                continue  # 같은 schedule은 한 번만 처리
+            processed_schedules.add(usage.schedule_id)
+            
+            # schedule에 연결된 DeliveryItem 가져오기
+            schedule_items = DeliveryItem.objects.filter(schedule=usage.schedule)
+            for item in schedule_items:
+                product_name = item.product.product_code if item.product else item.item_name
+                product_desc = item.product.description if item.product else ''
+                
+                if not product_name:
+                    continue
+                
+                item_total = item.total_price or Decimal('0')
+                
+                if product_name not in product_sales:
+                    product_sales[product_name] = {
+                        'product_name': product_name,
+                        'product_description': product_desc,
+                        'total_revenue': Decimal('0'),
+                        'quantity': 0,
+                        'order_count': 0,
+                    }
+                
+                product_sales[product_name]['total_revenue'] += item_total
+                product_sales[product_name]['quantity'] += item.quantity or 0
+                product_sales[product_name]['order_count'] += 1
+                total_revenue += item_total
         
         # 비중 계산 및 정렬
         product_list = []
