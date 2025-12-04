@@ -1329,7 +1329,8 @@ def dashboard_view(request):
         schedules = Schedule.objects.filter(user=target_user)
         followups = FollowUp.objects.filter(user=target_user)
 
-    # 올해 매출 통계 (Schedule의 DeliveryItem 기준, 취소된 일정 제외)
+    # 올해 매출 통계 (Schedule의 DeliveryItem 기준 + History의 schedule 미연결 납품 기록)
+    # 1. DeliveryItem 기반 매출 (Schedule에 연결된 납품)
     if user_profile.is_admin() and not selected_user:
         # Admin은 필터링된 데이터
         if hasattr(request, 'admin_filter_user') and request.admin_filter_user:
@@ -1343,6 +1344,16 @@ def dashboard_view(request):
             ).aggregate(
                 total_amount=Sum('total_price'),
                 delivery_count=Count('schedule', distinct=True)
+            )
+            # History에서 schedule 미연결 납품 기록
+            history_delivery_stats = History.objects.filter(
+                user__in=accessible_users,
+                action_type='delivery_schedule',
+                schedule__isnull=True,
+                created_at__year=current_year
+            ).aggregate(
+                total_amount=Sum('delivery_amount'),
+                delivery_count=Count('id')
             )
         elif hasattr(request, 'admin_filter_company') and request.admin_filter_company:
             accessible_users = User.objects.filter(
@@ -1359,6 +1370,16 @@ def dashboard_view(request):
                 total_amount=Sum('total_price'),
                 delivery_count=Count('schedule', distinct=True)
             )
+            # History에서 schedule 미연결 납품 기록
+            history_delivery_stats = History.objects.filter(
+                user__in=accessible_users,
+                action_type='delivery_schedule',
+                schedule__isnull=True,
+                created_at__year=current_year
+            ).aggregate(
+                total_amount=Sum('delivery_amount'),
+                delivery_count=Count('id')
+            )
         else:
             schedule_delivery_stats = DeliveryItem.objects.filter(
                 schedule__visit_date__year=current_year,
@@ -1368,6 +1389,15 @@ def dashboard_view(request):
             ).aggregate(
                 total_amount=Sum('total_price'),
                 delivery_count=Count('schedule', distinct=True)
+            )
+            # History에서 schedule 미연결 납품 기록
+            history_delivery_stats = History.objects.filter(
+                action_type='delivery_schedule',
+                schedule__isnull=True,
+                created_at__year=current_year
+            ).aggregate(
+                total_amount=Sum('delivery_amount'),
+                delivery_count=Count('id')
             )
     elif user_profile.can_view_all_users() and target_user is None:
         # Manager가 전체 팀원을 선택한 경우 - 접근 가능한 모든 사용자의 데이터
@@ -1382,6 +1412,16 @@ def dashboard_view(request):
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
         )
+        # History에서 schedule 미연결 납품 기록
+        history_delivery_stats = History.objects.filter(
+            user__in=accessible_users,
+            action_type='delivery_schedule',
+            schedule__isnull=True,
+            created_at__year=current_year
+        ).aggregate(
+            total_amount=Sum('delivery_amount'),
+            delivery_count=Count('id')
+        )
     else:
         # 특정 사용자 데이터만
         schedule_delivery_stats = DeliveryItem.objects.filter(
@@ -1394,9 +1434,25 @@ def dashboard_view(request):
             total_amount=Sum('total_price'),
             delivery_count=Count('schedule', distinct=True)
         )
+        # History에서 schedule 미연결 납품 기록
+        history_delivery_stats = History.objects.filter(
+            user=target_user,
+            action_type='delivery_schedule',
+            schedule__isnull=True,
+            created_at__year=current_year
+        ).aggregate(
+            total_amount=Sum('delivery_amount'),
+            delivery_count=Count('id')
+        )
     
-    total_delivery_amount = schedule_delivery_stats['total_amount'] or 0
-    delivery_count = schedule_delivery_stats['delivery_count'] or 0
+    # DeliveryItem + History 합산
+    schedule_amount = schedule_delivery_stats['total_amount'] or 0
+    schedule_count = schedule_delivery_stats['delivery_count'] or 0
+    history_amount = history_delivery_stats['total_amount'] or 0
+    history_count = history_delivery_stats['delivery_count'] or 0
+    
+    total_delivery_amount = schedule_amount + history_amount
+    delivery_count = schedule_count + history_count
     
     # 활동 유형별 통계 (Schedule 기준, 현재 연도)
     schedules_current_year_filter = schedules.filter(visit_date__year=current_year)
