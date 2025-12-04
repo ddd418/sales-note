@@ -2828,20 +2828,6 @@
             </div>
           </div>
         </div>
-        <div class="col-6">
-          <label class="form-label fw-bold">세금계산서</label>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="editTaxInvoice-${history.id}" ${finalTaxInvoiceStatus ? 'checked' : ''}>
-            <label class="form-check-label" for="editTaxInvoice-${history.id}">
-              발행 완료
-            </label>
-          </div>
-          ${scheduleDeliveryItems.length > 0 ? `
-          <div class="form-text text-info">
-            <i class="fas fa-info-circle me-1"></i>연결된 일정의 납품 품목과 동기화됩니다.
-          </div>
-          ` : ''}
-        </div>
       `;
     } else if (history.action_type === 'customer_meeting') {
       editFormHtml += `
