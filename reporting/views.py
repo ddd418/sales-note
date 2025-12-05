@@ -9343,7 +9343,7 @@ def customer_detail_report_view_simple(request, followup_id):
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"[DEPT_REPORT] User: {request.user.username}, Department: {department.name if department else 'None'}")
-    logger.info(f"[DEPT_REPORT] can_view_all: {can_view_all}, customers in dept: {len(department_customers)}")
+    logger.info(f"[DEPT_REPORT] can_view_all: {user_profile.can_view_all_users()}, customers in dept: {len(department_customers)}")
     logger.info(f"[DEPT_REPORT] histories count: {histories.count()}, schedule_deliveries count: {schedule_deliveries.count()}")
     
     # 통합 납품 내역 생성 (템플릿 호환성을 위해)

@@ -575,7 +575,7 @@
           <div class="dropdown ms-2">
             <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" type="button" data-bs-toggle="dropdown">
               {% if selected_filter_user %}
-                {{ selected_filter_user.username }}
+                {{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }}
               {% else %}
                 직원 선택
               {% endif %}
@@ -585,7 +585,7 @@
               <li>
                 <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
                    href="?data_filter=user&filter_user={{ user_item.id }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
-                  {{ user_item.username }}
+                  {{ user_item.last_name }}{{ user_item.first_name }}
                 </a>
               </li>
               {% endfor %}
@@ -597,7 +597,7 @@
           {% if data_filter == 'all' %}
             <span class="badge bg-info"><i class="fas fa-building me-1"></i>회사 전체 데이터</span>
           {% elif selected_filter_user %}
-            <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.username }} 데이터</span>
+            <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }} 데이터</span>
           {% else %}
             <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>내 데이터</span>
           {% endif %}
