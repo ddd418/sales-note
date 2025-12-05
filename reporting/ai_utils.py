@@ -419,19 +419,46 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
     logger.info(f"[인사이트] 프롬프트 생성 중... (미팅: {customer_data.get('meeting_count', 0)}건, 견적: {customer_data.get('quote_count', 0)}건)")
     
     system_prompt = """당신은 B2B 과학실험실 장비 영업 분석 전문가입니다.
-10년 이상의 영업 경력을 바탕으로 고객 데이터를 분석하여 실질적이고 구체적인 인사이트를 제공합니다.
+10년 이상의 영업 경력과 화학/생명과학 분야 전문 지식을 바탕으로 고객 데이터를 분석하여 실질적이고 구체적인 인사이트를 제공합니다.
 
 다음 항목을 포함한 요약 리포트를 작성해주세요:
-1. 고객 개요
-2. 최근 활동 요약
-3. 구매 가능성 평가 (구체적인 근거 포함)
-4. 주요 장애 요인 또는 리스크
-5. 추천 팔로우업 액션 (실전 영업 전략)
+
+## 1. 고객 개요
+
+## 2. 최근 활동 요약
+
+## 3. 🧪 실험/연구 분야 분석 및 제품 추천
+고객의 부서명, 연구실명, 히스토리 내용을 분석하여:
+
+### 예상 연구 분야 및 실험 유형
+- 부서/연구실명에서 추론되는 연구 분야
+- 기록된 내용에서 파악된 실험 유형
+
+### 사용 가능성 있는 용매/시약 분석
+- 해당 연구 분야에서 일반적으로 사용하는 용매 종류
+- 히스토리에 기록된 용매가 있다면 해당 정보 활용
+- 용매별 특성과 취급 시 주의사항
+
+### 🎯 맞춤 제품 추천
+각 제품에 대해:
+- **적합한 이유**: 왜 이 고객의 연구/실험에 적합한지
+- **제품 특징과 연구 매칭**: 어떤 기능이 어떤 실험에 도움이 되는지
+- **주의사항**: 이 고객의 용도에서 고려해야 할 점
+
+### ⚠️ 비추천 제품/기능
+- 고객의 연구 특성상 불필요하거나 맞지 않는 제품/기능
+- 그 이유 설명
+
+## 4. 구매 가능성 평가 (구체적인 근거 포함)
+
+## 5. 주요 장애 요인 또는 리스크
+
+## 6. 추천 팔로우업 액션 (실전 영업 전략)
 
 **추천 팔로우업 액션 작성 시 주의사항:**
 - 뻔한 조언(이메일 보내기, 정기 미팅 등)은 피하세요
 - 고객의 구매 패턴과 업종 특성을 반영한 타이밍 전략을 제시하세요
-- 구체적인 상품/서비스 제안이나 프로모션 아이디어를 포함하세요
+- 위에서 분석한 제품 추천을 바탕으로 구체적인 상품/서비스 제안을 포함하세요
 - 경쟁사 대비 우위를 점할 수 있는 차별화된 접근법을 제안하세요
 - 고객의 예산 주기(학교/연구소는 회계연도 등)를 고려한 전략을 제시하세요
 - 실제 영업 현장에서 바로 실행 가능한 구체적인 액션을 3-4개로 압축하세요
@@ -441,11 +468,16 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
     user_prompt = f"""
 다음 고객 정보를 분석해주세요:
 
+## 기본 정보
 고객명: {customer_data.get('name', '')}
 회사: {customer_data.get('company', '')}
+부서/연구실: {customer_data.get('department', '정보 없음')}
 업종: {customer_data.get('industry', '')} (대학/연구소는 회계연도 예산 특성 고려 필요)
 
-최근 6개월 활동:
+## 고객 상세 정보 (영업담당자 메모)
+{customer_data.get('customer_notes', '상세 정보 없음')}
+
+## 최근 12개월 활동
 - 미팅 횟수: {customer_data.get('meeting_count', 0)}회
 - 견적 횟수: {customer_data.get('quote_count', 0)}회  
 - 구매 횟수: {customer_data.get('purchase_count', 0)}회
@@ -453,10 +485,16 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
 - 마지막 연락일: {customer_data.get('last_contact', '정보 없음')}
 - 이메일 교환: {customer_data.get('email_count', 0)}건
 
-견적 내역: {customer_data.get('quotes', [])}
-미팅 노트: {customer_data.get('meeting_notes', [])}
+## 견적 내역
+{customer_data.get('quotes', [])}
 
-이메일 커뮤니케이션 내용:
+## 히스토리 기록 (용매, 실험 정보 포함 가능)
+{customer_data.get('history_text', '히스토리 기록 없음')}
+
+## 미팅 노트
+{customer_data.get('meeting_notes', [])}
+
+## 이메일 커뮤니케이션 내용
 {customer_data.get('email_conversations', '이메일 기록 없음')}
 
 현재 고객 등급: {customer_data.get('customer_grade', '미분류')}
@@ -486,6 +524,39 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
     
     if prepayment:
         user_prompt += "\n- 선결제 잔액 활용 전략 (잔액 소진 유도, 추가 입금 제안 등)"
+    
+    # 추천 제품 목록이 있는 경우 프롬프트에 추가
+    recommended_products = customer_data.get('recommended_products', [])
+    if recommended_products:
+        products_str = ', '.join(recommended_products)
+        user_prompt += f"""
+
+---
+## 🎯 영업담당자가 추천하고 싶은 제품
+{products_str}
+
+**위 제품들에 대해 반드시 다음 내용을 포함해서 분석해주세요:**
+
+각 제품별로:
+1. **이 고객에게 적합한 이유**: 고객의 부서/연구실 특성, 사용 가능한 용매/시약, 예상 실험 유형을 고려하여 왜 이 제품이 필요한지
+2. **추천 사양/특징**: 이 고객의 용도에 맞는 구체적인 제품 사양 또는 기능 (예: 피펫이면 용량 범위, 팁이면 로우리텐션/필터팁/롱팁 등)
+3. **주의사항**: 이 고객이 사용하는 용매나 실험 특성상 주의해야 할 점
+4. **영업 포인트**: 고객에게 어필할 수 있는 핵심 장점
+
+예시 형식:
+### 피펫
+- **적합한 이유**: 유기합성 연구실에서 정밀한 용매 분주가 필요하며...
+- **추천 사양**: 10-100μL 범위, 내화학성 소재, 오토클레이브 가능
+- **주의사항**: DCM 사용 시 일반 플라스틱 팁은 부식될 수 있으므로...
+- **영업 포인트**: 경쟁사 대비 정확도가 높고, A/S가 빠름
+"""
+    else:
+        user_prompt += """
+
+---
+**추가 분석 요청:**
+고객의 부서/연구실 특성을 바탕으로 AI가 적합하다고 판단되는 제품을 자유롭게 추천해주세요.
+"""
 
     
     # 고객 리포트는 외부 공유 가능성이 있으므로 고품질 모델 사용

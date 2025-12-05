@@ -9363,6 +9363,62 @@ def customer_detail_report_view_simple(request, followup_id):
     prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or 0
     prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or 0
     prepayment_count = prepayments.count()
+    
+    # 월별 활동 트렌드 데이터 계산 (최근 12개월)
+    from dateutil.relativedelta import relativedelta
+    from django.utils import timezone
+    
+    chart_labels = []
+    chart_meetings = []
+    chart_deliveries = []
+    chart_amounts = []
+    
+    today = timezone.now().date()
+    
+    for i in range(11, -1, -1):
+        # 해당 월의 시작일과 종료일 계산
+        target_date = today - relativedelta(months=i)
+        month_start = target_date.replace(day=1)
+        if i == 0:
+            month_end = today
+        else:
+            month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
+        
+        chart_labels.append(f"{target_date.month}월")
+        
+        # 해당 월의 미팅 횟수 (History 기반)
+        if can_view_all:
+            month_meetings = History.objects.filter(
+                followup=followup,
+                action_type='customer_meeting',
+                created_at__date__gte=month_start,
+                created_at__date__lte=month_end
+            ).count()
+        else:
+            month_meetings = History.objects.filter(
+                followup=followup,
+                action_type='customer_meeting',
+                user=request.user,
+                created_at__date__gte=month_start,
+                created_at__date__lte=month_end
+            ).count()
+        chart_meetings.append(month_meetings)
+        
+        # 해당 월의 납품 건수와 금액
+        month_delivery_count = 0
+        month_delivery_amount = 0
+        
+        for delivery in integrated_deliveries:
+            try:
+                delivery_date = datetime.strptime(delivery['date'], '%Y-%m-%d').date()
+                if month_start <= delivery_date <= month_end:
+                    month_delivery_count += 1
+                    month_delivery_amount += delivery.get('amount', 0) or 0
+            except (ValueError, TypeError):
+                continue
+        
+        chart_deliveries.append(month_delivery_count)
+        chart_amounts.append(int(month_delivery_amount))
 
     context = {
         'followup': followup,
@@ -9375,19 +9431,19 @@ def customer_detail_report_view_simple(request, followup_id):
         'prepayment_total': prepayment_total,  # 선결제 총액
         'prepayment_balance': prepayment_balance,  # 선결제 잔액
         'prepayment_count': prepayment_count,  # 선결제 건수
-        'chart_labels': json.dumps([], ensure_ascii=False),
-        'chart_meetings': json.dumps([], ensure_ascii=False),
-        'chart_deliveries': json.dumps([], ensure_ascii=False),
-        'chart_amounts': json.dumps([], ensure_ascii=False),
+        'chart_labels': json.dumps(chart_labels, ensure_ascii=False),
+        'chart_meetings': json.dumps(chart_meetings, ensure_ascii=False),
+        'chart_deliveries': json.dumps(chart_deliveries, ensure_ascii=False),
+        'chart_amounts': json.dumps(chart_amounts, ensure_ascii=False),
         'delivery_histories': delivery_histories,
         'schedule_deliveries': schedule_deliveries,
         'integrated_deliveries': integrated_deliveries,
         'meeting_histories': meeting_histories,
         'chart_data': {
-            'labels': json.dumps([], ensure_ascii=False),
-            'meetings': json.dumps([], ensure_ascii=False),
-            'deliveries': json.dumps([], ensure_ascii=False),
-            'amounts': json.dumps([], ensure_ascii=False),
+            'labels': json.dumps(chart_labels, ensure_ascii=False),
+            'meetings': json.dumps(chart_meetings, ensure_ascii=False),
+            'deliveries': json.dumps(chart_deliveries, ensure_ascii=False),
+            'amounts': json.dumps(chart_amounts, ensure_ascii=False),
         },
         'page_title': f'{followup.company.name} - {followup.customer_name if followup.customer_name else "담당자 미정"}'
     }

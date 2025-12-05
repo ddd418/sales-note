@@ -169,6 +169,16 @@ def ai_generate_customer_summary(request, followup_id):
         
         logger.info(f"[AI 인사이트] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
         
+        # 추천 제품 목록 받기 (POST body에서)
+        import json
+        try:
+            body = json.loads(request.body) if request.body else {}
+            recommended_products = body.get('recommended_products', [])
+        except json.JSONDecodeError:
+            recommended_products = []
+        
+        logger.info(f"[AI 인사이트] 추천 제품: {recommended_products}")
+        
         # 최근 12개월 데이터 (현재 로그인 사용자가 남긴 기록만)
         twelve_months_ago = timezone.now() - timedelta(days=365)
         
@@ -278,9 +288,28 @@ def ai_generate_customer_summary(request, followup_id):
         
         email_conversations_text = '\n'.join(email_conversations) if email_conversations else '이메일 기록 없음'
         
+        # 부서 정보 (연구실/실험실 특성 파악용)
+        department_name = ''
+        if followup.department:
+            department_name = followup.department.name if hasattr(followup.department, 'name') else str(followup.department)
+        
+        # 고객 상세 정보 (용매, 실험 종류 등 기록된 정보)
+        customer_notes = followup.notes or ''
+        
+        # 히스토리에서 용매, 실험 관련 키워드 추출
+        all_history_content = []
+        all_histories = histories.order_by('-created_at')[:20]  # 최근 20개 히스토리
+        for h in all_histories:
+            if h.content:
+                all_history_content.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:300]}")
+        history_text = '\n'.join(all_history_content) if all_history_content else '히스토리 기록 없음'
+        
         customer_data = {
             'name': followup.customer_name or '고객명 미정',
             'company': followup.company or '업체명 미정',
+            'department': department_name,  # 부서/연구실 정보 추가
+            'customer_notes': customer_notes,  # 고객 상세 정보 추가
+            'history_text': history_text,  # 전체 히스토리 텍스트 추가
             'industry': '과학/실험실',
             'meeting_count': meeting_count,
             'quote_count': quote_count,
@@ -293,6 +322,7 @@ def ai_generate_customer_summary(request, followup_id):
             'customer_grade': customer_grade,
             'prepayment': prepayment_info,  # 선결제 정보 추가
             'email_conversations': email_conversations_text,  # 이메일 내용 추가
+            'recommended_products': recommended_products,  # 추천 제품 목록 추가
         }
         
         logger.info(f"[AI 인사이트] AI 요약 생성 시작...")

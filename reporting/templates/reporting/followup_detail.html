@@ -711,6 +711,50 @@
   </div>
 </div>
 
+<!-- AI 제품 입력 모달 -->
+<div class="modal fade" id="aiProductInputModal" tabindex="-1" aria-labelledby="aiProductInputModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="aiProductInputModalLabel">
+          <i class="fas fa-box me-2"></i>추천 제품 입력 (선택사항)
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="recommendedProducts" class="form-label">
+            <i class="fas fa-lightbulb text-warning me-1"></i>추천하고 싶은 제품을 입력하세요
+          </label>
+          <input type="text" class="form-control" id="recommendedProducts" 
+                 placeholder="예: 피펫, 팁, 원심분리기, 진공펼프">
+          <div class="form-text">
+            <i class="fas fa-info-circle me-1"></i>여러 제품은 <strong>쉼표(,)</strong>로 구분해서 입력하세요.
+            <br><span class="text-muted">비워두면 AI가 고객 정보를 바탕으로 자동 추천합니다.</span>
+          </div>
+        </div>
+        <div class="alert alert-info small mb-0">
+          <i class="fas fa-robot me-1"></i>
+          <strong>입력한 제품에 대해 AI가 분석합니다:</strong>
+          <ul class="mb-0 mt-2">
+            <li>고객의 연구 분야/실험에 왜 적합한지</li>
+            <li>어떤 특징/사양이 좋은지</li>
+            <li>주의해야 할 점은 무엇인지</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i>취소
+        </button>
+        <button type="button" class="btn btn-primary" id="startAiAnalysisBtn">
+          <i class="fas fa-magic me-1"></i>AI 분석 시작
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- AI 분석 결과 모달 -->
 <div class="modal fade" id="aiSummaryModal" tabindex="-1" aria-labelledby="aiSummaryModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -978,14 +1022,29 @@ document.addEventListener('DOMContentLoaded', function() {
         return '<div class="ai-summary-content">' + html + '</div>';
     }
 
-    // AI 요약 생성
-    document.getElementById('generate-summary-btn')?.addEventListener('click', async function() {
+    // AI 요약 생성 - 제품 입력 모달 먼저 표시
+    document.getElementById('generate-summary-btn')?.addEventListener('click', function() {
+        // 제품 입력 모달 열기
+        const productInputModal = new bootstrap.Modal(document.getElementById('aiProductInputModal'));
+        document.getElementById('recommendedProducts').value = ''; // 초기화
+        productInputModal.show();
+    });
+    
+    // AI 분석 시작 버튼 클릭 (제품 입력 후)
+    document.getElementById('startAiAnalysisBtn')?.addEventListener('click', async function() {
+        const productInput = document.getElementById('recommendedProducts').value.trim();
         const container = document.getElementById('ai-summary-container');
+        
+        // 제품 입력 모달 닫기
+        bootstrap.Modal.getInstance(document.getElementById('aiProductInputModal')).hide();
+        
+        // 제품 목록 파싱 (,로 구분)
+        const recommendedProducts = productInput ? productInput.split(',').map(p => p.trim()).filter(p => p) : [];
         
         await runAITaskWithDetails(
             '고객 인사이트',
             `/reporting/ai/customer-summary/${followupId}/`,
-            {},
+            { recommended_products: recommendedProducts },
             // 상세 로그 콜백
             async function() {
                 addAILog('━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
