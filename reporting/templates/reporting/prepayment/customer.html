@@ -309,15 +309,29 @@
 
 {% block content %}
 <div class="container-fluid">
-    <!-- 고객 헤더 -->
+    <!-- 부서 헤더 (부서 중심으로 변경) -->
     <div class="customer-header">
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <div class="customer-name">
+                    {% if department %}
+                    <i class="fas fa-building me-2"></i>{{ company.name|default:"업체 정보 없음" }} - {{ department.name }}
+                    {% else %}
                     <i class="fas fa-user-circle me-2"></i>{{ customer.customer_name }}
+                    {% endif %}
                 </div>
                 <div class="customer-company">
+                    {% if department %}
+                    <i class="fas fa-users me-2"></i>
+                    고객: 
+                    {% for followup in department_followups %}
+                        <span class="badge bg-secondary me-1">{{ followup.customer_name }}</span>
+                    {% empty %}
+                        <span class="text-muted">고객 정보 없음</span>
+                    {% endfor %}
+                    {% else %}
                     <i class="fas fa-building me-2"></i>{{ customer.company.name|default:"업체 정보 없음" }}
+                    {% endif %}
                 </div>
             </div>
             <div class="no-print">
@@ -407,6 +421,9 @@
         <div class="card-header">
             <h5 class="mb-0">
                 <i class="fas fa-list-ul me-2"></i>선결제 내역
+                {% if department %}
+                <small class="text-muted ms-2">({{ department.name }} 부서 전체)</small>
+                {% endif %}
             </h5>
         </div>
         <div class="card-body">
@@ -417,13 +434,16 @@
                         <tr>
                             <th style="width: 5%;">No</th>
                             <th style="width: 10%;">결제일</th>
-                            <th style="width: 12%;">지불자</th>
-                            <th style="width: 10%;">결제방법</th>
-                            <th style="width: 13%;" class="text-end">선결제금액</th>
-                            <th style="width: 13%;" class="text-end">사용금액</th>
-                            <th style="width: 13%;" class="text-end">남은잔액</th>
+                            {% if department %}
+                            <th style="width: 10%;">고객</th>
+                            {% endif %}
+                            <th style="width: {% if department %}10{% else %}12{% endif %}%;">지불자</th>
+                            <th style="width: {% if department %}8{% else %}10{% endif %}%;">결제방법</th>
+                            <th style="width: 12%;" class="text-end">선결제금액</th>
+                            <th style="width: 12%;" class="text-end">사용금액</th>
+                            <th style="width: 12%;" class="text-end">남은잔액</th>
                             <th style="width: 8%;" class="text-center">상태</th>
-                            <th style="width: 10%;">등록자</th>
+                            <th style="width: {% if department %}8{% else %}10{% endif %}%;">등록자</th>
                             <th style="width: 6%;" class="text-center no-print">작업</th>
                         </tr>
                     </thead>
@@ -432,6 +452,11 @@
                         <tr>
                             <td class="text-center">{{ forloop.counter }}</td>
                             <td>{{ prepayment.payment_date|date:"Y-m-d" }}</td>
+                            {% if department %}
+                            <td>
+                                <span class="badge bg-light text-dark">{{ prepayment.customer.customer_name|default:"-" }}</span>
+                            </td>
+                            {% endif %}
                             <td>{{ prepayment.payer_name|default:"-" }}</td>
                             <td>
                                 {% if prepayment.payment_method == 'cash' %}
@@ -469,7 +494,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="table-light fw-bold">
-                            <td colspan="4" class="text-center">합계</td>
+                            <td colspan="{% if department %}5{% else %}4{% endif %}" class="text-center">합계</td>
                             <td class="text-end">{{ stats.total_amount|default:0|intcomma }}원</td>
                             <td class="text-end text-danger">{{ stats.total_used|default:0|intcomma }}원</td>
                             <td class="text-end text-primary">{{ stats.total_balance|default:0|intcomma }}원</td>

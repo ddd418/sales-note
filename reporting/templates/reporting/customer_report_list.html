@@ -39,7 +39,7 @@
                   <div class="dropdown ms-2">
                     <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" type="button" data-bs-toggle="dropdown">
                       {% if selected_filter_user %}
-                        {{ selected_filter_user.username }}
+                        {{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }}{% if not selected_filter_user.last_name and not selected_filter_user.first_name %}{{ selected_filter_user.username }}{% endif %}
                       {% else %}
                         직원 선택
                       {% endif %}
@@ -49,7 +49,7 @@
                       <li>
                         <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
                            href="?data_filter=user&filter_user={{ user_item.id }}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}">
-                          {{ user_item.username }}
+                          {{ user_item.last_name }}{{ user_item.first_name }}{% if not user_item.last_name and not user_item.first_name %}{{ user_item.username }}{% endif %}
                         </a>
                       </li>
                       {% endfor %}
@@ -61,7 +61,7 @@
                   {% if data_filter == 'all' %}
                     <span class="badge bg-info"><i class="fas fa-building me-1"></i>회사 전체 데이터</span>
                   {% elif selected_filter_user %}
-                    <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.username }} 데이터</span>
+                    <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }}{% if not selected_filter_user.last_name and not selected_filter_user.first_name %}{{ selected_filter_user.username }}{% endif %} 데이터</span>
                   {% else %}
                     <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>내 데이터</span>
                   {% endif %}
@@ -347,7 +347,7 @@
                       </td>
                       <td class="text-center">
                         {% with first_customer=dept.customers.0 %}
-                        <a href="{% url 'reporting:customer_detail_report' first_customer.id %}" 
+                        <a href="{% url 'reporting:customer_detail_report' first_customer.id %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" 
                            class="btn btn-sm btn-outline-primary" title="부서 상세 리포트">
                           <i class="fas fa-chart-line"></i>
                         </a>

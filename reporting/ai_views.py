@@ -147,7 +147,8 @@ def ai_transform_email(request):
 def ai_generate_customer_summary(request, followup_id):
     """
     AI로 고객 요약 리포트 생성
-    - 동료 고객도 분석 가능하지만, 현재 로그인한 사용자가 남긴 기록만 분석
+    - 부서 단위로 그룹화된 데이터 분석
+    - 해당 고객이 속한 부서의 모든 고객 정보를 조회하여 분석
     """
     try:
         logger.info(f"[AI 인사이트] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
@@ -167,7 +168,20 @@ def ai_generate_customer_summary(request, followup_id):
         logger.info(f"[AI 인사이트] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
         
-        logger.info(f"[AI 인사이트] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
+        # 부서 기반 데이터 수집 - 해당 고객이 속한 부서의 모든 고객 조회
+        department = followup.department
+        company = followup.company
+        
+        if department:
+            # 같은 부서의 모든 고객 조회
+            department_followups = FollowUp.objects.filter(department=department).select_related('company', 'department')
+            logger.info(f"[AI 인사이트] 부서 '{department.name}'의 전체 고객 {department_followups.count()}명 데이터 분석")
+        else:
+            # 부서가 없으면 해당 고객만
+            department_followups = FollowUp.objects.filter(id=followup_id)
+            logger.info(f"[AI 인사이트] 단일 고객 분석 (부서 미지정)")
+        
+        logger.info(f"[AI 인사이트] 대상 고객명: {followup.customer_name}, 요청자: {request.user.username}")
         
         # 추천 제품 목록 받기 (POST body에서)
         import json
@@ -182,16 +196,44 @@ def ai_generate_customer_summary(request, followup_id):
         # 최근 12개월 데이터 (현재 로그인 사용자가 남긴 기록만)
         twelve_months_ago = timezone.now() - timedelta(days=365)
         
-        logger.info(f"[AI 인사이트] 스케줄 데이터 수집 중 (본인 기록만)...")
-        # 스케줄 통계 (본인이 생성한 것만)
+        # ===== 부서 전체 통계 수집 =====
+        logger.info(f"[AI 인사이트] 부서 전체 스케줄 데이터 수집 중...")
+        
+        # 부서 전체 스케줄 (본인이 생성한 것만)
+        dept_schedules = Schedule.objects.filter(
+            followup__in=department_followups,
+            user=request.user,
+            visit_date__gte=twelve_months_ago
+        )
+        dept_meeting_count = dept_schedules.filter(activity_type='customer_meeting').count()
+        dept_quote_count = dept_schedules.filter(activity_type='quote').count()
+        
+        # 부서 전체 납품 내역
+        dept_delivery_schedules = dept_schedules.filter(activity_type='delivery')
+        dept_purchase_count = dept_delivery_schedules.count()
+        dept_total_purchase = dept_delivery_schedules.aggregate(
+            total=Sum('expected_revenue')
+        )['total'] or 0
+        
+        # 부서 전체 이메일 수
+        dept_email_count = EmailLog.objects.filter(
+            Q(schedule__followup__in=department_followups) | Q(followup__in=department_followups),
+            sender=request.user,
+            created_at__gte=twelve_months_ago
+        ).count()
+        
+        logger.info(f"[AI 인사이트] 부서 전체 - 미팅: {dept_meeting_count}건, 견적: {dept_quote_count}건, 납품: {dept_purchase_count}건")
+        
+        # ===== 대상 고객(followup) 개별 통계 =====
+        logger.info(f"[AI 인사이트] 대상 고객 스케줄 데이터 수집 중...")
         schedules = Schedule.objects.filter(
             followup=followup,
-            user=request.user,  # 현재 로그인 사용자 기록만
+            user=request.user,
             visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
-        logger.info(f"[AI 인사이트] 미팅: {meeting_count}건, 견적: {quote_count}건")
+        logger.info(f"[AI 인사이트] 대상 고객 - 미팅: {meeting_count}건, 견적: {quote_count}건")
         
         # 구매 내역 (납품 일정) - 본인 기록만
         delivery_schedules = schedules.filter(activity_type='delivery')
@@ -205,7 +247,7 @@ def ai_generate_customer_summary(request, followup_id):
         # 이메일 교환 (본인이 보낸 것만)
         email_count = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            sender=request.user,  # 본인이 발신한 이메일만
+            sender=request.user,
             created_at__gte=twelve_months_ago
         ).count()
         
@@ -215,11 +257,34 @@ def ai_generate_customer_summary(request, followup_id):
         if last_schedule:
             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
         
+        # ===== 부서 내 다른 고객 정보 수집 =====
+        department_customers_info = []
+        for dept_followup in department_followups:
+            if dept_followup.id != followup.id:  # 현재 분석 대상 제외
+                dept_cust_schedules = Schedule.objects.filter(
+                    followup=dept_followup,
+                    user=request.user,
+                    visit_date__gte=twelve_months_ago
+                )
+                dept_cust_meeting = dept_cust_schedules.filter(activity_type='customer_meeting').count()
+                dept_cust_delivery = dept_cust_schedules.filter(activity_type='delivery').count()
+                dept_cust_purchase = dept_cust_schedules.filter(activity_type='delivery').aggregate(
+                    total=Sum('expected_revenue')
+                )['total'] or 0
+                
+                department_customers_info.append({
+                    'name': dept_followup.customer_name or '미지정',
+                    'meeting_count': dept_cust_meeting,
+                    'delivery_count': dept_cust_delivery,
+                    'total_purchase': dept_cust_purchase,
+                    'grade': dept_followup.get_priority_display() if hasattr(dept_followup, 'get_priority_display') else '보통'
+                })
+        
         # 미팅 노트 수집 (최근 5개) - 히스토리에서 (본인 기록만)
         from reporting.models import History
         histories = History.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 히스토리만
+            user=request.user,
             created_at__gte=twelve_months_ago
         )
         meeting_notes = []
@@ -229,6 +294,21 @@ def ai_generate_customer_summary(request, followup_id):
         for h in recent_meetings:
             if h.content:
                 meeting_notes.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:200]}")
+        
+        # 부서 전체 미팅 노트 (최근 10개)
+        dept_histories = History.objects.filter(
+            followup__in=department_followups,
+            user=request.user,
+            created_at__gte=twelve_months_ago
+        )
+        dept_meeting_notes = []
+        dept_recent_meetings = dept_histories.filter(
+            action_type='customer_meeting'
+        ).order_by('-created_at')[:10]
+        for h in dept_recent_meetings:
+            if h.content:
+                customer_name = h.followup.customer_name if h.followup else '미지정'
+                dept_meeting_notes.append(f"[{h.created_at.strftime('%Y-%m-%d')}] [{customer_name}] {h.content[:200]}")
         
         # 견적 내역
         quotes = []
@@ -241,45 +321,44 @@ def ai_generate_customer_summary(request, followup_id):
         
         # 고객 등급
         customer_grade = '미분류'
-        if hasattr(followup, 'customer_grade') and followup.customer_grade:
-            customer_grade = followup.get_customer_grade_display()
+        if hasattr(followup, 'priority') and followup.priority:
+            customer_grade = followup.get_priority_display()
         
-        # 선결제 정보 (있는 경우만)
+        # 선결제 정보 (부서 전체)
         from reporting.models import Prepayment
-        prepayments = Prepayment.objects.filter(
-            customer=followup,
+        dept_prepayments = Prepayment.objects.filter(
+            customer__in=department_followups,
             status='active'
         ).order_by('-payment_date')
         
         prepayment_info = None
-        if prepayments.exists():
-            total_balance = sum(p.balance for p in prepayments)
+        if dept_prepayments.exists():
+            total_balance = sum(p.balance for p in dept_prepayments)
             prepayment_info = {
                 'total_balance': total_balance,
-                'count': prepayments.count(),
+                'count': dept_prepayments.count(),
                 'details': [{
+                    'customer': p.customer.customer_name if p.customer else '미지정',
                     'date': p.payment_date.strftime('%Y-%m-%d'),
                     'amount': p.amount,
                     'balance': p.balance,
                     'memo': p.memo
-                } for p in prepayments[:3]]  # 최근 3건만
+                } for p in dept_prepayments[:5]]  # 최근 5건
             }
         
         # 이메일 커뮤니케이션 내용 (최근 10건) - 본인이 보낸 것만
         import re
         email_logs = EmailLog.objects.filter(
             Q(schedule__followup=followup) | Q(followup=followup),
-            sender=request.user,  # 본인이 발신한 이메일만
+            sender=request.user,
             created_at__gte=twelve_months_ago
         ).order_by('-sent_at')[:10]
         
         email_conversations = []
         for email in email_logs:
             email_type = '발신' if email.email_type == 'sent' else '수신'
-            # HTML 태그 제거
             body_text = re.sub(r'<[^>]+>', '', email.body or '')
             body_preview = body_text[:200].strip() + '...' if len(body_text) > 200 else body_text.strip()
-            # sent_at이 None인 경우 created_at 사용
             email_date = email.sent_at or email.created_at
             date_str = email_date.strftime('%Y-%m-%d') if email_date else '날짜 없음'
             email_conversations.append(
@@ -298,18 +377,27 @@ def ai_generate_customer_summary(request, followup_id):
         
         # 히스토리에서 용매, 실험 관련 키워드 추출
         all_history_content = []
-        all_histories = histories.order_by('-created_at')[:20]  # 최근 20개 히스토리
+        all_histories = histories.order_by('-created_at')[:20]
         for h in all_histories:
             if h.content:
                 all_history_content.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:300]}")
         history_text = '\n'.join(all_history_content) if all_history_content else '히스토리 기록 없음'
         
+        # 부서 전체 히스토리 텍스트
+        dept_all_histories = dept_histories.order_by('-created_at')[:30]
+        dept_history_content = []
+        for h in dept_all_histories:
+            if h.content:
+                customer_name = h.followup.customer_name if h.followup else '미지정'
+                dept_history_content.append(f"[{h.created_at.strftime('%Y-%m-%d')}] [{customer_name}] {h.content[:200]}")
+        dept_history_text = '\n'.join(dept_history_content) if dept_history_content else '부서 히스토리 없음'
+        
         customer_data = {
             'name': followup.customer_name or '고객명 미정',
-            'company': followup.company or '업체명 미정',
-            'department': department_name,  # 부서/연구실 정보 추가
-            'customer_notes': customer_notes,  # 고객 상세 정보 추가
-            'history_text': history_text,  # 전체 히스토리 텍스트 추가
+            'company': followup.company.name if followup.company else '업체명 미정',
+            'department': department_name,
+            'customer_notes': customer_notes,
+            'history_text': history_text,
             'industry': '과학/실험실',
             'meeting_count': meeting_count,
             'quote_count': quote_count,
@@ -320,9 +408,21 @@ def ai_generate_customer_summary(request, followup_id):
             'meeting_notes': meeting_notes,
             'email_count': email_count,
             'customer_grade': customer_grade,
-            'prepayment': prepayment_info,  # 선결제 정보 추가
-            'email_conversations': email_conversations_text,  # 이메일 내용 추가
-            'recommended_products': recommended_products,  # 추천 제품 목록 추가
+            'prepayment': prepayment_info,
+            'email_conversations': email_conversations_text,
+            'recommended_products': recommended_products,
+            # 부서 전체 데이터 추가
+            'department_summary': {
+                'total_customers': department_followups.count(),
+                'other_customers': department_customers_info,
+                'total_meeting_count': dept_meeting_count,
+                'total_quote_count': dept_quote_count,
+                'total_purchase_count': dept_purchase_count,
+                'total_purchase_amount': dept_total_purchase,
+                'total_email_count': dept_email_count,
+                'meeting_notes': dept_meeting_notes,
+                'history_text': dept_history_text,
+            }
         }
         
         logger.info(f"[AI 인사이트] AI 요약 생성 시작...")
@@ -355,7 +455,8 @@ def ai_generate_customer_summary(request, followup_id):
 def ai_update_customer_grade(request, followup_id):
     """
     AI로 고객 등급 자동 업데이트
-    - 동료 고객도 분석 가능하지만, 현재 로그인한 사용자가 남긴 기록만 분석
+    - 부서 단위로 그룹화된 데이터도 함께 분석
+    - 현재 로그인한 사용자가 남긴 기록만 분석
     """
     try:
         logger.info(f"[AI 등급평가] 시작 - 고객 ID: {followup_id}, 사용자: {request.user.username}")
@@ -379,6 +480,15 @@ def ai_update_customer_grade(request, followup_id):
         logger.info(f"[AI 등급평가] 고객 데이터 조회 중...")
         followup = FollowUp.objects.get(id=followup_id)
         
+        # 부서 기반 데이터 수집 - 해당 고객이 속한 부서의 모든 고객 조회
+        department = followup.department
+        if department:
+            department_followups = FollowUp.objects.filter(department=department)
+            logger.info(f"[AI 등급평가] 부서 '{department.name}'의 전체 고객 {department_followups.count()}명 데이터 분석")
+        else:
+            department_followups = FollowUp.objects.filter(id=followup_id)
+            logger.info(f"[AI 등급평가] 단일 고객 분석 (부서 미지정)")
+        
         logger.info(f"[AI 등급평가] 고객명: {followup.customer_name}, 요청자: {request.user.username}")
         
         # 최근 12개월 데이터 (현재 로그인 사용자가 남긴 기록만)
@@ -388,7 +498,7 @@ def ai_update_customer_grade(request, followup_id):
         # 미팅 횟수 (최근 12개월) - 본인 기록만
         meeting_count = Schedule.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 기록만
+            user=request.user,
             activity_type='meeting',
             created_at__gte=twelve_months_ago
         ).count()
@@ -397,23 +507,22 @@ def ai_update_customer_grade(request, followup_id):
         # 이메일 교환 (최근 12개월) - 본인 발신 기록만
         email_count = EmailLog.objects.filter(
             followup=followup,
-            sender=request.user,  # 본인이 발신한 이메일만
+            sender=request.user,
             sent_at__gte=twelve_months_ago
         ).count()
         
         # 견적 횟수 (최근 12개월) - 본인 기록만
         quote_count = Schedule.objects.filter(
             followup=followup,
-            user=request.user,  # 본인 기록만
+            user=request.user,
             activity_type='quote',
             created_at__gte=twelve_months_ago
         ).count()
         
         # 구매 횟수 및 금액 (전체 + 최근 12개월) - 본인 기록만
-        # 납품 일정(delivery)만 카운트 (견적 일정 제외)
         all_deliveries = DeliveryItem.objects.filter(
             schedule__followup=followup,
-            schedule__user=request.user,  # 본인 기록만
+            schedule__user=request.user,
             schedule__activity_type='delivery'
         )
         
@@ -469,9 +578,26 @@ def ai_update_customer_grade(request, followup_id):
                 'content': opp.title or '영업 기회'
             })
         
+        # 부서 전체 통계 수집
+        dept_total_purchase = Decimal('0')
+        dept_purchase_count = 0
+        dept_customer_count = department_followups.count()
+        
+        if dept_customer_count > 1:
+            dept_all_deliveries = DeliveryItem.objects.filter(
+                schedule__followup__in=department_followups,
+                schedule__user=request.user,
+                schedule__activity_type='delivery'
+            )
+            dept_purchase_count = dept_all_deliveries.values('schedule').distinct().count()
+            dept_total_purchase = dept_all_deliveries.aggregate(
+                total=Sum('total_price')
+            )['total'] or Decimal('0')
+        
         customer_data = {
             'name': followup.customer_name or '고객명 미정',
-            'company': followup.company or '업체명 미정',
+            'company': followup.company.name if followup.company else '업체명 미정',
+            'department': department.name if department else '미지정',
             'meeting_count': meeting_count,
             'email_count': email_count,
             'quote_count': quote_count,
@@ -486,6 +612,12 @@ def ai_update_customer_grade(request, followup_id):
             'email_sentiment': '중립',
             'meeting_summary': meeting_summary,
             'opportunities': opportunities,
+            # 부서 전체 데이터 추가
+            'department_summary': {
+                'total_customers': dept_customer_count,
+                'total_purchase_count': dept_purchase_count,
+                'total_purchase_amount': float(dept_total_purchase),
+            } if dept_customer_count > 1 else None
         }
         
         logger.info(f"[AI 등급평가] AI 분석 시작...")

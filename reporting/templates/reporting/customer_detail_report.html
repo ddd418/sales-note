@@ -11,14 +11,55 @@
         <h1 class="page-title mb-0">
           <i class="fas fa-building me-2"></i>{{ page_title }}
         </h1>
-        <div class="header-actions">
+        <div class="header-actions d-flex align-items-center gap-2">
+          <!-- 데이터 범위 필터 -->
+          <div class="btn-group">
+            <a href="?data_filter=me" class="btn btn-sm {% if data_filter == 'me' or not data_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
+              <i class="fas fa-user me-1"></i>나
+            </a>
+            <a href="?data_filter=all" class="btn btn-sm {% if data_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+              <i class="fas fa-users me-1"></i>전체
+            </a>
+          </div>
+          {% if company_users %}
+          <div class="dropdown">
+            <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle" type="button" data-bs-toggle="dropdown">
+              {% if selected_filter_user %}
+                {{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }}{% if not selected_filter_user.last_name and not selected_filter_user.first_name %}{{ selected_filter_user.username }}{% endif %}
+              {% else %}
+                직원 선택
+              {% endif %}
+            </button>
+            <ul class="dropdown-menu">
+              {% for user_item in company_users %}
+              <li>
+                <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
+                   href="?data_filter=user&filter_user={{ user_item.id }}">
+                  {{ user_item.last_name }}{{ user_item.first_name }}{% if not user_item.last_name and not user_item.first_name %}{{ user_item.username }}{% endif %}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
           <a
-            href="{% url 'reporting:customer_report' %}"
+            href="{% url 'reporting:customer_report' %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}"
             class="btn btn-outline-secondary"
           >
             <i class="fas fa-arrow-left me-2"></i>목록으로
           </a>
         </div>
+      </div>
+
+      <!-- 현재 필터 상태 표시 -->
+      <div class="mb-3">
+        {% if data_filter == 'all' %}
+          <span class="badge bg-info"><i class="fas fa-building me-1"></i>회사 전체 데이터</span>
+        {% elif selected_filter_user %}
+          <span class="badge bg-info"><i class="fas fa-user me-1"></i>{{ selected_filter_user.last_name }}{{ selected_filter_user.first_name }}{% if not selected_filter_user.last_name and not selected_filter_user.first_name %}{{ selected_filter_user.username }}{% endif %} 데이터</span>
+        {% else %}
+          <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>내 데이터</span>
+        {% endif %}
       </div>
 
       <!-- JSON 데이터 전달을 위한 스크립트 엘리먼트 -->

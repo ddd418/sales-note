@@ -894,7 +894,7 @@ def followup_list_view(request):
 
 @login_required
 def followup_detail_view(request, pk):
-    """팔로우업 상세 보기 (같은 회사 소속은 고객 정보 조회 가능, 필터로 데이터 범위 선택)"""
+    """팔로우업 상세 보기 (부서 중심 - 같은 부서의 모든 고객 데이터 통합 조회)"""
     followup = get_object_or_404(FollowUp, pk=pk)
     
     # 권한 체크 (같은 회사 소속이면 고객 정보 조회 가능)
@@ -906,6 +906,21 @@ def followup_detail_view(request, pk):
     followup_owner = followup.user
     is_own_customer = (request.user == followup_owner)
     user_profile = get_user_profile(request.user)
+    
+    # 부서 정보 가져오기
+    department = followup.department
+    company = followup.company
+    
+    # 같은 부서의 모든 팔로우업 (부서 중심 조회용)
+    if department:
+        department_followups = FollowUp.objects.filter(
+            company=company,
+            department=department
+        ).select_related('user', 'company', 'department')
+        same_department_followup_ids = list(department_followups.values_list('id', flat=True))
+    else:
+        department_followups = FollowUp.objects.filter(id=followup.id)
+        same_department_followup_ids = [followup.id]
     
     # 같은 회사 사용자 목록 조회 (필터용) - 매니저 제외
     company_users = []
@@ -937,16 +952,10 @@ def followup_detail_view(request, pk):
         # 나 (기본값)
         filter_users = User.objects.filter(id=request.user.id)
     
-    # 같은 업체-부서의 모든 팔로우업 찾기
-    same_department_followups = FollowUp.objects.filter(
-        company=followup.company,
-        department=followup.department
-    ).values_list('id', flat=True)
-    
-    # 히스토리 조회 (필터 적용)
+    # 히스토리 조회 (부서 기준 + 필터 적용)
     from django.db.models import Case, When, F
     related_histories = History.objects.filter(
-        followup_id__in=same_department_followups,
+        followup_id__in=same_department_followup_ids,
         user__in=filter_users
     ).select_related('followup', 'schedule', 'user').annotate(
         sort_date=Case(
@@ -970,7 +979,7 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
-    # AI 분석 (AI 권한이 있는 사용자 - 필터에 따라 데이터 범위 결정)
+    # AI 분석 (AI 권한이 있는 사용자 - 부서 기준 데이터 범위)
     ai_analysis = None
     if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
         from datetime import datetime, timedelta
@@ -979,16 +988,16 @@ def followup_detail_view(request, pk):
         # 최근 12개월 데이터 수집
         twelve_months_ago = timezone.now() - timedelta(days=365)
         
-        # 스케줄 통계 (필터에 따른 사용자 범위)
+        # 스케줄 통계 (부서 기준 + 필터에 따른 사용자 범위)
         schedules = Schedule.objects.filter(
-            followup=followup,
+            followup_id__in=same_department_followup_ids,  # 부서 기준
             user__in=filter_users,  # 필터에 따른 사용자
             visit_date__gte=twelve_months_ago
         )
         meeting_count = schedules.filter(activity_type='customer_meeting').count()
         quote_count = schedules.filter(activity_type='quote').count()
         
-        # 구매 내역 (납품 일정 - 필터에 따른 사용자)
+        # 구매 내역 (납품 일정 - 부서 기준 + 필터에 따른 사용자)
         delivery_schedules = schedules.filter(activity_type='delivery')
         purchase_count = delivery_schedules.count()
         
@@ -997,9 +1006,9 @@ def followup_detail_view(request, pk):
             total=Sum('expected_revenue')
         )['total'] or 0
         
-        # 이메일 교환 (필터에 따른 사용자)
+        # 이메일 교환 (부서 기준 + 필터에 따른 사용자)
         email_count = EmailLog.objects.filter(
-            Q(schedule__followup=followup) | Q(followup=followup),
+            Q(schedule__followup_id__in=same_department_followup_ids) | Q(followup_id__in=same_department_followup_ids),
             sender__in=filter_users,  # 필터에 따른 사용자
             created_at__gte=twelve_months_ago
         ).count()
@@ -1010,9 +1019,9 @@ def followup_detail_view(request, pk):
         if last_schedule:
             last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
         
-        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (필터에 따른 사용자)
+        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (부서 기준 + 필터에 따른 사용자)
         histories = History.objects.filter(
-            followup=followup,
+            followup_id__in=same_department_followup_ids,  # 부서 기준
             user__in=filter_users,  # 필터에 따른 사용자
             created_at__gte=twelve_months_ago
         )
@@ -1024,10 +1033,10 @@ def followup_detail_view(request, pk):
             if h.content:
                 meeting_notes.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:200]}")
         
-        # 진행 중인 기회
+        # 진행 중인 기회 (부서 기준)
         opportunities = []
         active_opps = OpportunityTracking.objects.filter(
-            followup=followup,
+            followup_id__in=same_department_followup_ids,  # 부서 기준
             current_stage__in=['lead', 'contact', 'quote', 'closing']
         )[:5]
         for opp in active_opps:
@@ -1037,10 +1046,10 @@ def followup_detail_view(request, pk):
                 'value': opp.expected_revenue or 0
             })
         
-        # 선결제 정보 (있는 경우만)
+        # 선결제 정보 (부서 기준 - 있는 경우만)
         from reporting.models import Prepayment
         prepayments = Prepayment.objects.filter(
-            customer=followup,
+            customer_id__in=same_department_followup_ids,  # 부서 기준
             status='active'
         ).order_by('-payment_date')
         
@@ -1081,15 +1090,15 @@ def followup_detail_view(request, pk):
             'ready': True
         }
     
-    # 납품된 상품 목록 조회 (필터 적용)
+    # 납품된 상품 목록 조회 (부서 기준 + 필터 적용)
     from reporting.models import DeliveryItem
     delivered_items = DeliveryItem.objects.filter(
-        schedule__followup=followup,
+        schedule__followup_id__in=same_department_followup_ids,  # 부서 기준
         schedule__activity_type='delivery',
         schedule__user__in=filter_users
     ).exclude(
         schedule__status='cancelled'
-    ).select_related('product', 'schedule', 'schedule__user').order_by('-schedule__visit_date', '-created_at')
+    ).select_related('product', 'schedule', 'schedule__user', 'schedule__followup').order_by('-schedule__visit_date', '-created_at')
     
     # 납품 품목 통계
     delivery_stats = {
@@ -1106,8 +1115,17 @@ def followup_detail_view(request, pk):
         except User.DoesNotExist:
             pass
     
+    # 페이지 제목 구성 (부서 중심)
+    if department:
+        page_title = f'{company.name if company else ""} - {department.name} 고객 상세'
+    else:
+        page_title = f'팔로우업 상세 - {followup.customer_name}'
+    
     context = {
         'followup': followup,
+        'department': department,
+        'company': company,
+        'department_followups': department_followups,  # 부서 내 모든 고객 목록
         'related_histories': related_histories,
         'quotation_templates': quotation_templates,
         'transaction_templates': transaction_templates,
@@ -1129,7 +1147,7 @@ def followup_detail_view(request, pk):
             'full_name': followup_owner.get_full_name() or followup_owner.username,
             'email': followup_owner.email,
         },
-        'page_title': f'팔로우업 상세 - {followup.customer_name}'
+        'page_title': page_title
     }
     return render(request, 'reporting/followup_detail.html', context)
 
@@ -7614,7 +7632,7 @@ def history_update_memo(request, pk):
 
 @login_required
 def followup_excel_download(request):
-    """팔로우업 전체 정보 엑셀 다운로드 (권한 체크)"""
+    """팔로우업 전체 정보 엑셀 다운로드 (부서별 그룹화)"""
     user_profile = get_user_profile(request.user)
     
     # 엑셀 다운로드 권한 체크
@@ -7627,6 +7645,7 @@ def followup_excel_download(request):
     from openpyxl.utils import get_column_letter
     from django.http import HttpResponse
     from decimal import Decimal
+    from collections import defaultdict
     import io
     from datetime import datetime
     
@@ -7659,6 +7678,22 @@ def followup_excel_download(request):
     if priority_filter:
         followups = followups.filter(priority=priority_filter)
     
+    # 부서별로 그룹화
+    departments_data = defaultdict(lambda: {
+        'company_name': '',
+        'department_name': '',
+        'followups': []
+    })
+    
+    for followup in followups.order_by('company__name', 'department__name', 'customer_name'):
+        company_name = followup.company.name if followup.company else '업체 미지정'
+        department_name = followup.department.name if followup.department else '부서 미지정'
+        dept_key = f"{company_name}||{department_name}"
+        
+        departments_data[dept_key]['company_name'] = company_name
+        departments_data[dept_key]['department_name'] = department_name
+        departments_data[dept_key]['followups'].append(followup)
+    
     # 엑셀 파일 생성
     wb = Workbook()
     ws = wb.active
@@ -7667,6 +7702,8 @@ def followup_excel_download(request):
     # 스타일 정의
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="2F5F8F", end_color="2F5F8F", fill_type="solid")
+    dept_header_font = Font(bold=True, color="FFFFFF", size=12)
+    dept_header_fill = PatternFill(start_color="4A7C4E", end_color="4A7C4E", fill_type="solid")  # 녹색 계열
     border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -7682,9 +7719,9 @@ def followup_excel_download(request):
         history_count = followup.histories.count()
         max_histories = max(max_histories, history_count)
     
-    # 헤더 생성
+    # 헤더 정의
     headers = [
-        '고객명', '업체/학교명', '부서/연구실명', '책임자', '핸드폰 번호', 
+        '고객명', '책임자', '핸드폰 번호', 
         '메일 주소', '상세 주소', '고객 등급', '납품 품목', '총 납품 금액', '상세 내용'
     ]
     
@@ -7692,218 +7729,236 @@ def followup_excel_download(request):
     for i in range(1, max_histories + 1):
         headers.append(f'관련 활동 히스토리 {i}')
     
-    # 헤더 스타일 적용
-    for col_num, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_num, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.border = border
-        cell.alignment = center_alignment
+    current_row = 1
     
-        # 데이터 입력
-    for row_num, followup in enumerate(followups, 2):
-        # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
-        manager_name = followup.manager or ''
+    # 부서별로 데이터 작성
+    for dept_key in sorted(departments_data.keys()):
+        dept_info = departments_data[dept_key]
+        company_name = dept_info['company_name']
+        department_name = dept_info['department_name']
+        dept_followups = dept_info['followups']
         
-        # 고객 등급 (우선순위)
-        priority_display = followup.get_priority_display() or '보통'
+        # 부서 구분 행 (회사명 - 부서명)
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=len(headers))
+        dept_cell = ws.cell(row=current_row, column=1, value=f"📁 {company_name} - {department_name} ({len(dept_followups)}명)")
+        dept_cell.font = dept_header_font
+        dept_cell.fill = dept_header_fill
+        dept_cell.alignment = center_alignment
+        dept_cell.border = border
+        current_row += 1
         
-        # 납품 관련 정보 집계
-        delivery_histories = followup.histories.filter(action_type='delivery_schedule')
+        # 헤더 행
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=current_row, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = center_alignment
+        current_row += 1
         
-        # 납품 품목별 수량 집계용 딕셔너리
-        item_quantities = {}
-        total_delivery_amount = 0
-        
-        # 중복 방지를 위해 처리된 Schedule ID들을 추적
-        processed_schedule_ids = set()
-        
-        for history in delivery_histories:
-            # 납품 금액 집계 - History 우선
-            if history.delivery_amount:
-                total_delivery_amount += history.delivery_amount
+        # 해당 부서의 고객 데이터 입력
+        for followup in dept_followups:
+            # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
+            manager_name = followup.manager or ''
             
-            # History에 실제 납품 품목 정보가 있는 경우만 Schedule ID 기록
-            # (품목 정보가 없으면 Schedule에서 가져와야 함)
-            if history.schedule_id and history.delivery_items:
-                processed_schedule_ids.add(history.schedule_id)
+            # 고객 등급 (우선순위)
+            priority_display = followup.get_priority_display() or '보통'
             
-            # 납품 품목 집계 - History 텍스트에서만 처리 (Schedule DeliveryItem은 나중에 별도 처리)
-            if history.delivery_items:
-                # 다양한 줄바꿈 문자 처리
-                processed_items = history.delivery_items
-                processed_items = processed_items.replace('\\n', '\n')
-                processed_items = processed_items.replace('\\r\\n', '\n')
-                processed_items = processed_items.replace('\\r', '\n')
-                processed_items = processed_items.replace('\r\n', '\n')
-                processed_items = processed_items.replace('\r', '\n')
-                processed_items = processed_items.strip()
+            # 납품 관련 정보 집계
+            delivery_histories = followup.histories.filter(action_type='delivery_schedule')
+            
+            # 납품 품목별 수량 집계용 딕셔너리
+            item_quantities = {}
+            total_delivery_amount = 0
+            
+            # 중복 방지를 위해 처리된 Schedule ID들을 추적
+            processed_schedule_ids = set()
+            
+            for history in delivery_histories:
+                # 납품 금액 집계 - History 우선
+                if history.delivery_amount:
+                    total_delivery_amount += history.delivery_amount
                 
-                # 다양한 구분자로 분할 시도
-                lines = []
-                # 먼저 줄바꿈으로 분할
-                for line in processed_items.split('\n'):
-                    line = line.strip()
-                    if line:
-                        # 쉼표로도 분할해보기
-                        if ',' in line and ':' in line:
-                            sub_lines = [sub.strip() for sub in line.split(',') if sub.strip()]
-                            lines.extend(sub_lines)
-                        else:
-                            lines.append(line)
+                # History에 실제 납품 품목 정보가 있는 경우만 Schedule ID 기록
+                # (품목 정보가 없으면 Schedule에서 가져와야 함)
+                if history.schedule_id and history.delivery_items:
+                    processed_schedule_ids.add(history.schedule_id)
                 
-                for line in lines:
-                    # 다양한 패턴 시도
-                    import re
+                # 납품 품목 집계 - History 텍스트에서만 처리 (Schedule DeliveryItem은 나중에 별도 처리)
+                if history.delivery_items:
+                    # 다양한 줄바꿈 문자 처리
+                    processed_items = history.delivery_items
+                    processed_items = processed_items.replace('\\n', '\n')
+                    processed_items = processed_items.replace('\\r\\n', '\n')
+                    processed_items = processed_items.replace('\\r', '\n')
+                    processed_items = processed_items.replace('\r\n', '\n')
+                    processed_items = processed_items.replace('\r', '\n')
+                    processed_items = processed_items.strip()
                     
-                    # 패턴 1: "품목명: 수량개 금액원 횟수회" 또는 "품목명 수량개 금액원 횟수회"
-                    pattern1 = r'(.+?)[\s:]*([\d,]+)개[\s,]*([\d,]+)원[\s,]*([\d]+)회'
-                    match1 = re.search(pattern1, line)
-                    
-                    if match1:
-                        item_name = match1.group(1).replace(':', '').strip()
-                        quantity = float(match1.group(2).replace(',', ''))
+                    # 다양한 구분자로 분할 시도
+                    lines = []
+                    # 먼저 줄바꿈으로 분할
+                    for line in processed_items.split('\n'):
+                        line = line.strip()
+                        if line:
+                            # 쉼표로도 분할해보기
+                            if ',' in line and ':' in line:
+                                sub_lines = [sub.strip() for sub in line.split(',') if sub.strip()]
+                                lines.extend(sub_lines)
+                            else:
+                                lines.append(line)
+                
+                    for line in lines:
+                        # 다양한 패턴 시도
+                        import re
                         
-                        if item_name in item_quantities:
-                            item_quantities[item_name] += quantity
-                        else:
-                            item_quantities[item_name] = quantity
-                        continue
-                    
-                    # 패턴 2: "품목명: 수량개" 또는 "품목명 수량개"
-                    pattern2 = r'(.+?)[\s:]*([\d,]+(?:\.\d+)?)개'
-                    match2 = re.search(pattern2, line)
-                    
-                    if match2:
-                        item_name = match2.group(1).replace(':', '').strip()
-                        quantity = float(match2.group(2).replace(',', ''))
+                        # 패턴 1: "품목명: 수량개 금액원 횟수회" 또는 "품목명 수량개 금액원 횟수회"
+                        pattern1 = r'(.+?)[\s:]*([\d,]+)개[\s,]*([\d,]+)원[\s,]*([\d]+)회'
+                        match1 = re.search(pattern1, line)
                         
-                        if item_name in item_quantities:
-                            item_quantities[item_name] += quantity
-                        else:
-                            item_quantities[item_name] = quantity
-                        continue
-                    
-                    # 패턴 3: 단순 품목명만 있는 경우
-                    if line and not any(char in line for char in [':', '개', '원', '회']):
-                        item_name = line.strip()
+                        if match1:
+                            item_name = match1.group(1).replace(':', '').strip()
+                            quantity = float(match1.group(2).replace(',', ''))
+                            
+                            if item_name in item_quantities:
+                                item_quantities[item_name] += quantity
+                            else:
+                                item_quantities[item_name] = quantity
+                            continue
                         
-                        if item_name in item_quantities:
-                            item_quantities[item_name] += 1
-                        else:
-                            item_quantities[item_name] = 1
-        
-        # Schedule 기반 DeliveryItem도 포함 (모든 Schedule 처리)
-        all_schedule_deliveries = followup.schedules.filter(
-            delivery_items_set__isnull=False
-        ).distinct()
-        
-        # 모든 Schedule 처리 (History에 품목 정보가 없으면 Schedule에서 가져옴)
-        for schedule in all_schedule_deliveries:
-            # History에서 이미 품목 정보를 처리한 Schedule은 금액만 확인
-            if schedule.id in processed_schedule_ids:
-                # 금액만 추가 확인 (History에 없었을 수 있음)
+                        # 패턴 2: "품목명: 수량개" 또는 "품목명 수량개"
+                        pattern2 = r'(.+?)[\s:]*([\d,]+(?:\.\d+)?)개'
+                        match2 = re.search(pattern2, line)
+                        
+                        if match2:
+                            item_name = match2.group(1).replace(':', '').strip()
+                            quantity = float(match2.group(2).replace(',', ''))
+                            
+                            if item_name in item_quantities:
+                                item_quantities[item_name] += quantity
+                            else:
+                                item_quantities[item_name] = quantity
+                            continue
+                        
+                        # 패턴 3: 단순 품목명만 있는 경우
+                        if line and not any(char in line for char in [':', '개', '원', '회']):
+                            item_name = line.strip()
+                            
+                            if item_name in item_quantities:
+                                item_quantities[item_name] += 1
+                            else:
+                                item_quantities[item_name] = 1
+            
+            # Schedule 기반 DeliveryItem도 포함 (모든 Schedule 처리)
+            all_schedule_deliveries = followup.schedules.filter(
+                delivery_items_set__isnull=False
+            ).distinct()
+            
+            # 모든 Schedule 처리 (History에 품목 정보가 없으면 Schedule에서 가져옴)
+            for schedule in all_schedule_deliveries:
+                # History에서 이미 품목 정보를 처리한 Schedule은 금액만 확인
+                if schedule.id in processed_schedule_ids:
+                    # 금액만 추가 확인 (History에 없었을 수 있음)
+                    schedule_total = 0
+                    for item in schedule.delivery_items_set.all():
+                        if item.total_price:
+                            schedule_total += Decimal(str(item.total_price))
+                    
+                    if schedule_total > 0:
+                        total_delivery_amount += schedule_total
+                    continue
+                
+                # Schedule별 총액 계산 및 품목 집계
                 schedule_total = 0
+                schedule_items = []
+                
                 for item in schedule.delivery_items_set.all():
+                    # Schedule 기반 품목의 금액 포함
                     if item.total_price:
                         schedule_total += Decimal(str(item.total_price))
+                    
+                    # 품목 정보 저장
+                    schedule_items.append({
+                        'name': item.item_name,
+                        'quantity': float(item.quantity)
+                    })
                 
-                if schedule_total > 0:
+                # Schedule 총액을 전체 납품 금액에 추가 (이미 processed된 경우 위에서 처리됨)
+                if schedule.id not in processed_schedule_ids and schedule_total > 0:
                     total_delivery_amount += schedule_total
-                continue
-            
-            # Schedule별 총액 계산 및 품목 집계
-            schedule_total = 0
-            schedule_items = []
-            
-            for item in schedule.delivery_items_set.all():
-                # Schedule 기반 품목의 금액 포함
-                if item.total_price:
-                    schedule_total += Decimal(str(item.total_price))
                 
-                # 품목 정보 저장
-                schedule_items.append({
-                    'name': item.item_name,
-                    'quantity': float(item.quantity)
-                })
-            
-            # Schedule 총액을 전체 납품 금액에 추가 (이미 processed된 경우 위에서 처리됨)
-            if schedule.id not in processed_schedule_ids and schedule_total > 0:
-                total_delivery_amount += schedule_total
-            
-            # Schedule 품목 집계 (모든 Schedule에서)
-            for item_info in schedule_items:
-                item_name = item_info['name']
-                quantity = item_info['quantity']
-                
-                # 품목별 수량 누적 (원본 이름 그대로 사용)
-                if item_name in item_quantities:
-                    item_quantities[item_name] += quantity
-                else:
-                    item_quantities[item_name] = quantity
+                # Schedule 품목 집계 (모든 Schedule에서)
+                for item_info in schedule_items:
+                    item_name = item_info['name']
+                    quantity = item_info['quantity']
+                    
+                    # 품목별 수량 누적 (원본 이름 그대로 사용)
+                    if item_name in item_quantities:
+                        item_quantities[item_name] += quantity
+                    else:
+                        item_quantities[item_name] = quantity
 
-        
-        # 품목 텍스트 생성 (품목명과 총 수량 표시)
-        if item_quantities:
-            items_list = []
-            for item_name, total_qty in sorted(item_quantities.items()):
-                # 소수점이 있으면 그대로, 정수면 정수로 표시
-                if total_qty == int(total_qty):
-                    qty_str = str(int(total_qty))
-                else:
-                    qty_str = str(total_qty)
-                items_list.append(f"{item_name}: {qty_str}개")
             
-            # 모든 품목 표시 (제한 제거)
-            items_text = ', '.join(items_list)
-        else:
-            items_text = '납품 기록 없음'
-        
-        # 기본 정보
-        data = [
-            followup.customer_name or '',
-            followup.company.name if followup.company else '',
-            followup.department.name if followup.department else '',
-            manager_name,  # FollowUp의 책임자 필드에서 가져오기
-            followup.phone_number or '',
-            followup.email or '',
-            followup.address or '',
-            priority_display,  # 고객 등급
-            items_text,  # 납품 품목
-            f"{total_delivery_amount:,}원" if total_delivery_amount > 0 else '납품 기록 없음',  # 총 납품 금액
-            followup.notes or ''
-        ]
-        
-        # 히스토리 정보 추가
-        histories = list(followup.histories.all().order_by('-created_at'))
-        for i in range(max_histories):
-            if i < len(histories):
-                history = histories[i]
-                history_text = f"[{history.created_at.strftime('%Y-%m-%d')}] {history.get_action_type_display()}: {history.content or ''}"
-                data.append(history_text)
+            # 품목 텍스트 생성 (품목명과 총 수량 표시)
+            if item_quantities:
+                items_list = []
+                for item_name, total_qty in sorted(item_quantities.items()):
+                    # 소수점이 있으면 그대로, 정수면 정수로 표시
+                    if total_qty == int(total_qty):
+                        qty_str = str(int(total_qty))
+                    else:
+                        qty_str = str(total_qty)
+                    items_list.append(f"{item_name}: {qty_str}개")
+                
+                # 모든 품목 표시 (제한 제거)
+                items_text = ', '.join(items_list)
             else:
-                data.append('')
+                items_text = '납품 기록 없음'
+            
+            # 기본 정보 (부서별 그룹화이므로 업체/부서 컬럼 제외)
+            data = [
+                followup.customer_name or '',
+                manager_name,  # FollowUp의 책임자 필드에서 가져오기
+                followup.phone_number or '',
+                followup.email or '',
+                followup.address or '',
+                priority_display,  # 고객 등급
+                items_text,  # 납품 품목
+                f"{total_delivery_amount:,}원" if total_delivery_amount > 0 else '납품 기록 없음',  # 총 납품 금액
+                followup.notes or ''
+            ]
+            
+            # 히스토리 정보 추가
+            histories = list(followup.histories.all().order_by('-created_at'))
+            for i in range(max_histories):
+                if i < len(histories):
+                    history = histories[i]
+                    history_text = f"[{history.created_at.strftime('%Y-%m-%d')}] {history.get_action_type_display()}: {history.content or ''}"
+                    data.append(history_text)
+                else:
+                    data.append('')
+            
+            # 데이터 셀에 값 입력 및 스타일 적용
+            for col_num, value in enumerate(data, 1):
+                cell = ws.cell(row=current_row, column=col_num, value=value)
+                cell.border = border
+                cell.alignment = wrap_alignment
+            current_row += 1
         
-        # 데이터 셀에 값 입력 및 스타일 적용
-        for col_num, value in enumerate(data, 1):
-            cell = ws.cell(row=row_num, column=col_num, value=value)
-            cell.border = border
-            cell.alignment = wrap_alignment
+        # 부서 사이에 빈 행 추가
+        current_row += 1
     
-    # 컬럼 너비 자동 조정 (개선된 버전)
-    # 각 컬럼별 최적 너비 설정
+    # 컬럼 너비 자동 조정 (부서별 그룹화에 맞게 수정)
     column_widths = {
         1: 15,   # 고객명
-        2: 20,   # 업체/학교명
-        3: 20,   # 부서/연구실명
-        4: 12,   # 책임자
-        5: 15,   # 핸드폰 번호
-        6: 25,   # 메일 주소
-        7: 30,   # 상세 주소
-        8: 10,   # 고객 등급
-        9: 60,   # 납품 품목 (더 넓게 - 모든 품목 표시를 위해)
-        10: 15,  # 총 납품 금액
-        11: 30,  # 상세 내용
+        2: 12,   # 책임자
+        3: 15,   # 핸드폰 번호
+        4: 25,   # 메일 주소
+        5: 30,   # 상세 주소
+        6: 10,   # 고객 등급
+        7: 60,   # 납품 품목 (더 넓게 - 모든 품목 표시를 위해)
+        8: 15,   # 총 납품 금액
+        9: 30,   # 상세 내용
     }
     
     for column in ws.columns:
@@ -7936,7 +7991,7 @@ def followup_excel_download(request):
     # 응답 생성
     today = datetime.now().strftime('%Y%m%d')
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    filename = f"전체정보_{today}.xlsx"
+    filename = f"팔로우업_전체정보_부서별_{today}.xlsx"
     
     # 한글 파일명을 올바르게 인코딩
     from urllib.parse import quote
@@ -8006,6 +8061,7 @@ def followup_basic_excel_download(request):
     # 스타일 정의
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="2F5F8F", end_color="2F5F8F", fill_type="solid")
+    department_fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
     border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -8015,8 +8071,8 @@ def followup_basic_excel_download(request):
     center_alignment = Alignment(horizontal='center', vertical='center')
     left_alignment = Alignment(horizontal='left', vertical='center')
     
-    # 헤더 생성
-    headers = ['고객명', '업체/학교명', '부서/연구실명', '책임자', '핸드폰 번호', '메일 주소']
+    # 헤더 생성 (업체/부서는 그룹 구분행에 표시)
+    headers = ['고객명', '책임자', '핸드폰 번호', '메일 주소']
     
     # 헤더 스타일 적용
     for col_num, header in enumerate(headers, 1):
@@ -8026,25 +8082,51 @@ def followup_basic_excel_download(request):
         cell.border = border
         cell.alignment = center_alignment
     
-    # 데이터 입력
-    for row_num, followup in enumerate(followups, 2):
-        # 책임자 정보 가져오기 (FollowUp 모델의 manager 필드)
-        manager_name = followup.manager or ''
+    # 부서별로 그룹화
+    from collections import defaultdict
+    department_groups = defaultdict(list)
+    for followup in followups:
+        company_name = followup.company.name if followup.company else '미지정 업체'
+        department_name = followup.department.name if followup.department else '미지정 부서'
+        group_key = f"{company_name} / {department_name}"
+        department_groups[group_key].append(followup)
+    
+    # 데이터 입력 (부서별 그룹화)
+    current_row = 2
+    for group_key, group_followups in sorted(department_groups.items()):
+        # 부서 구분 행 추가
+        cell = ws.cell(row=current_row, column=1, value=group_key)
+        cell.font = Font(bold=True)
+        cell.fill = department_fill
+        cell.border = border
+        cell.alignment = left_alignment
         
-        data = [
-            followup.customer_name or '',
-            followup.company.name if followup.company else '',
-            followup.department.name if followup.department else '',
-            manager_name,  # FollowUp의 책임자 필드에서 가져오기
-            followup.phone_number or '',
-            followup.email or ''
-        ]
-        
-        # 데이터 셀에 값 입력 및 스타일 적용
-        for col_num, value in enumerate(data, 1):
-            cell = ws.cell(row=row_num, column=col_num, value=value)
+        # 나머지 열도 스타일 적용 및 병합
+        for col in range(2, 5):
+            cell = ws.cell(row=current_row, column=col, value='')
+            cell.fill = department_fill
             cell.border = border
-            cell.alignment = left_alignment
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=4)
+        current_row += 1
+        
+        # 해당 부서의 팔로우업 데이터 입력
+        for followup in group_followups:
+            manager_name = followup.manager or ''
+            
+            data = [
+                followup.customer_name or '',
+                manager_name,
+                followup.phone_number or '',
+                followup.email or ''
+            ]
+            
+            # 데이터 셀에 값 입력 및 스타일 적용
+            for col_num, value in enumerate(data, 1):
+                cell = ws.cell(row=current_row, column=col_num, value=value)
+                cell.border = border
+                cell.alignment = left_alignment
+            
+            current_row += 1
     
     # 컬럼 너비 자동 조정 (개선된 버전)
     for column in ws.columns:
@@ -9146,6 +9228,7 @@ def customer_detail_report_view_simple(request, followup_id):
     """부서 기준 상세 활동 리포트 (고객 클릭 시 해당 부서 전체 기록 표시)"""
     from django.db.models import Count, Sum, Q
     from datetime import datetime, timedelta
+    from django.contrib.auth.models import User
     import json
     
     # 권한 확인 및 팔로우업 조회
@@ -9172,20 +9255,63 @@ def customer_detail_report_view_simple(request, followup_id):
     # 본인 고객인지 확인
     is_own_customer = (request.user == followup.user)
     user_profile = get_user_profile(request.user)
-    # 관리자/매니저만 전체 데이터 조회 가능, 일반 사용자는 본인 작성 데이터만
-    can_view_all = user_profile.is_admin() or user_profile.is_manager()
     
-    # 부서 전체 History 데이터 조회
-    if can_view_all:
-        # 관리자/매니저: 해당 부서의 전체 히스토리
-        histories = History.objects.filter(
-            followup__department=department
-        ).select_related('followup', 'user').order_by('-created_at')
+    # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
+    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
+    
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    company_users = []
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
+    
+    # 필터에 따른 대상 사용자 결정
+    selected_filter_user = None
+    target_user = request.user  # 기본값
+    
+    if data_filter == 'all' and user_profile and user_profile.company:
+        # 같은 회사 전체 (salesman만)
+        filter_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True
+        )
+        target_user = None  # 전체
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        # 특정 직원 (같은 회사 확인)
+        try:
+            selected_filter_user = User.objects.get(
+                id=filter_user_id,
+                userprofile__company=user_profile.company,
+                is_active=True
+            )
+            filter_users = User.objects.filter(id=selected_filter_user.id)
+            target_user = selected_filter_user
+        except User.DoesNotExist:
+            filter_users = User.objects.filter(id=request.user.id)
+            target_user = request.user
+            data_filter = 'me'
     else:
-        # 일반 사용자: 해당 부서에서 본인이 작성한 히스토리만
+        # 'me' - 본인만
+        filter_users = User.objects.filter(id=request.user.id)
+        target_user = request.user
+    
+    # 부서 전체 History 데이터 조회 (필터 적용)
+    if target_user is None:
+        # 전체: 같은 회사 모든 salesman
         histories = History.objects.filter(
             followup__department=department,
-            user=request.user
+            user__in=filter_users
+        ).select_related('followup', 'user').order_by('-created_at')
+    else:
+        # 특정 사용자 (본인 또는 선택된 직원)
+        histories = History.objects.filter(
+            followup__department=department,
+            user=target_user
         ).select_related('followup', 'user').order_by('-created_at')
     
     # 기본 통계 계산
@@ -9197,25 +9323,26 @@ def customer_detail_report_view_simple(request, followup_id):
         if history.delivery_amount:
             total_amount += float(history.delivery_amount)
     
-    # 부서 전체 Schedule 기반 납품 일정
-    if can_view_all:
-        # 관리자/매니저: 해당 부서의 전체 스케줄
-        schedule_deliveries = Schedule.objects.filter(
-            followup__department=department,
-            activity_type='delivery'
-        ).select_related('followup', 'user').order_by('-visit_date')
-    else:
-        # 일반 사용자: 해당 부서에서 본인이 작성한 스케줄만
+    # 부서 전체 Schedule 기반 납품 일정 (필터 적용)
+    if target_user is None:
+        # 전체: 같은 회사 모든 salesman
         schedule_deliveries = Schedule.objects.filter(
             followup__department=department,
             activity_type='delivery',
-            user=request.user
+            user__in=filter_users
+        ).select_related('followup', 'user').order_by('-visit_date')
+    else:
+        # 특정 사용자 (본인 또는 선택된 직원)
+        schedule_deliveries = Schedule.objects.filter(
+            followup__department=department,
+            activity_type='delivery',
+            user=target_user
         ).select_related('followup', 'user').order_by('-visit_date')
     
     # 디버깅: 권한 및 데이터 확인
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"[DEPT_REPORT] User: {request.user.username}, Department: {department.name}")
+    logger.info(f"[DEPT_REPORT] User: {request.user.username}, Department: {department.name if department else 'None'}")
     logger.info(f"[DEPT_REPORT] can_view_all: {can_view_all}, customers in dept: {len(department_customers)}")
     logger.info(f"[DEPT_REPORT] histories count: {histories.count()}, schedule_deliveries count: {schedule_deliveries.count()}")
     
@@ -9429,7 +9556,7 @@ def customer_detail_report_view_simple(request, followup_id):
     prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or 0
     prepayment_count = prepayments.count()
     
-    # 월별 활동 트렌드 데이터 계산 (최근 12개월) - 부서 기준
+    # 월별 활동 트렌드 데이터 계산 (최근 12개월) - 부서 기준 + 필터 적용
     from dateutil.relativedelta import relativedelta
     from django.utils import timezone
     
@@ -9451,11 +9578,12 @@ def customer_detail_report_view_simple(request, followup_id):
         
         chart_labels.append(f"{target_date.month}월")
         
-        # 해당 월의 미팅 횟수 (History 기반) - 부서 전체
-        if can_view_all:
+        # 해당 월의 미팅 횟수 (History 기반) - 부서 전체 + 필터 적용
+        if target_user is None:
             month_meetings = History.objects.filter(
                 followup__department=department,
                 action_type='customer_meeting',
+                user__in=filter_users,
                 created_at__date__gte=month_start,
                 created_at__date__lte=month_end
             ).count()
@@ -9463,7 +9591,7 @@ def customer_detail_report_view_simple(request, followup_id):
             month_meetings = History.objects.filter(
                 followup__department=department,
                 action_type='customer_meeting',
-                user=request.user,
+                user=target_user,
                 created_at__date__gte=month_start,
                 created_at__date__lte=month_end
             ).count()
@@ -9513,6 +9641,11 @@ def customer_detail_report_view_simple(request, followup_id):
             'deliveries': json.dumps(chart_deliveries, ensure_ascii=False),
             'amounts': json.dumps(chart_amounts, ensure_ascii=False),
         },
+        # 필터 관련 컨텍스트
+        'data_filter': data_filter,
+        'filter_user_id': filter_user_id,
+        'selected_filter_user': selected_filter_user,
+        'company_users': company_users,
         'page_title': f'{company.name} - {department.name}'  # 회사명 - 부서명으로 변경
     }
     
@@ -11539,12 +11672,16 @@ def prepayment_delete_view(request, pk):
 
 @login_required
 def prepayment_customer_view(request, customer_id):
-    """고객별 선결제 관리 뷰"""
-    from reporting.models import Prepayment, FollowUp
+    """부서별 선결제 관리 뷰 (부서 중심 - 동일 부서 내 모든 고객의 선결제 표시)"""
+    from reporting.models import Prepayment, FollowUp, Department
     from django.db.models import Sum, Q, Count
     
-    # 고객 정보 가져오기
+    # 고객 정보 가져오기 (URL에서 전달받은 customer_id 기준)
     customer = get_object_or_404(FollowUp, pk=customer_id)
+    
+    # 부서 정보 가져오기
+    department = customer.department
+    company = customer.company
     
     # 권한 체크 - 고객의 담당자 또는 해당 고객에게 선결제를 등록한 사용자가 접근 가능
     user_profile = get_user_profile(request.user)
@@ -11577,11 +11714,23 @@ def prepayment_customer_view(request, customer_id):
             except User.DoesNotExist:
                 target_user = request.user
     
-    # 해당 고객의 선결제 조회 - target_user가 등록한 것만
-    prepayments = Prepayment.objects.filter(
-        customer=customer,
-        created_by=target_user
-    ).select_related('company', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
+    # 부서 기준 조회: 동일 부서 내 모든 고객의 선결제 조회
+    if department:
+        # 부서 내 모든 고객(FollowUp) 조회
+        department_followups = FollowUp.objects.filter(department=department).select_related('company', 'department')
+        
+        # 부서 내 모든 고객의 선결제 조회
+        prepayments = Prepayment.objects.filter(
+            customer__department=department,
+            created_by=target_user
+        ).select_related('company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
+    else:
+        # 부서 정보가 없는 경우 기존 고객 기준 조회
+        department_followups = [customer]
+        prepayments = Prepayment.objects.filter(
+            customer=customer,
+            created_by=target_user
+        ).select_related('company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     
     # 각 선결제의 사용금액 계산
     for prepayment in prepayments:
@@ -11603,9 +11752,20 @@ def prepayment_customer_view(request, customer_id):
     depleted_count = prepayments.filter(status='depleted').count()
     cancelled_count = prepayments.filter(status='cancelled').count()
     
+    # 페이지 제목 구성
+    if department and company:
+        page_title = f'{company.name} - {department.name} 선결제 관리'
+    elif company:
+        page_title = f'{company.name} - 선결제 관리'
+    else:
+        page_title = f'{customer.customer_name} - 선결제 관리'
+    
     context = {
-        'page_title': f'{customer.customer_name} - 선결제 관리',
+        'page_title': page_title,
         'customer': customer,
+        'company': company,
+        'department': department,
+        'department_followups': department_followups,
         'prepayments': prepayments,
         'stats': stats,
         'active_count': active_count,
@@ -11618,8 +11778,8 @@ def prepayment_customer_view(request, customer_id):
 
 @login_required
 def prepayment_customer_excel(request, customer_id):
-    """고객별 선결제 엑셀 다운로드 (2개 시트 + 피벗 테이블)"""
-    from reporting.models import Prepayment, FollowUp, PrepaymentUsage
+    """부서별 선결제 엑셀 다운로드 (부서 중심 - 동일 부서 내 모든 고객의 선결제 포함)"""
+    from reporting.models import Prepayment, FollowUp, PrepaymentUsage, Department
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from openpyxl.utils import get_column_letter
@@ -11628,6 +11788,10 @@ def prepayment_customer_excel(request, customer_id):
     
     # 고객 정보 가져오기
     customer = get_object_or_404(FollowUp, pk=customer_id)
+    
+    # 부서 정보 가져오기
+    department = customer.department
+    company = customer.company
     
     # 권한 체크 - 고객의 담당자 또는 해당 고객에게 선결제를 등록한 사용자가 접근 가능
     user_profile = get_user_profile(request.user)
@@ -11658,13 +11822,33 @@ def prepayment_customer_excel(request, customer_id):
             except User.DoesNotExist:
                 target_user = request.user
     
-    # 해당 고객의 선결제 조회 - target_user가 등록한 것만
-    prepayments = Prepayment.objects.filter(
-        customer=customer,
-        created_by=target_user
-    ).select_related('company', 'created_by').prefetch_related(
-        'usages__schedule__delivery_items_set'
-    ).order_by('payment_date', 'id')
+    # 부서 기준 조회: 동일 부서 내 모든 고객의 선결제 조회
+    if department:
+        prepayments = Prepayment.objects.filter(
+            customer__department=department,
+            created_by=target_user
+        ).select_related('company', 'customer', 'created_by').prefetch_related(
+            'usages__schedule__delivery_items_set'
+        ).order_by('payment_date', 'id')
+    else:
+        # 부서 정보가 없는 경우 기존 고객 기준 조회
+        prepayments = Prepayment.objects.filter(
+            customer=customer,
+            created_by=target_user
+        ).select_related('company', 'customer', 'created_by').prefetch_related(
+            'usages__schedule__delivery_items_set'
+        ).order_by('payment_date', 'id')
+    
+    # 엑셀 제목 구성
+    if department and company:
+        excel_title = f"{company.name} {department.name} 선결제 요약"
+        filename_prefix = f"{company.name}_{department.name}"
+    elif company:
+        excel_title = f"{company.name} 선결제 요약"
+        filename_prefix = company.name
+    else:
+        excel_title = f"{customer.customer_name} 선결제 요약"
+        filename_prefix = customer.customer_name
     
     # 엑셀 생성
     wb = Workbook()
@@ -11690,16 +11874,16 @@ def prepayment_customer_excel(request, customer_id):
     ws1 = wb.active
     ws1.title = "선결제 요약"
     
-    # 제목
-    ws1.merge_cells('A1:H1')
+    # 제목 (부서 중심으로 변경)
+    ws1.merge_cells('A1:I1')
     title_cell = ws1['A1']
-    title_cell.value = f"{customer.customer_name} 선결제 요약"
+    title_cell.value = excel_title
     title_cell.font = Font(bold=True, size=14)
     title_cell.alignment = center_alignment
     ws1.row_dimensions[1].height = 30
     
-    # 헤더
-    headers1 = ['번호', '결제일', '지불자', '결제방법', '선결제금액', '사용금액', '남은잔액', '상태']
+    # 헤더 (고객명 컬럼 추가)
+    headers1 = ['번호', '결제일', '고객명', '지불자', '결제방법', '선결제금액', '사용금액', '남은잔액', '상태']
     for col_num, header in enumerate(headers1, 1):
         cell = ws1.cell(row=3, column=col_num)
         cell.value = header
@@ -11711,12 +11895,13 @@ def prepayment_customer_excel(request, customer_id):
     # 컬럼 너비 설정
     ws1.column_dimensions['A'].width = 8
     ws1.column_dimensions['B'].width = 12
-    ws1.column_dimensions['C'].width = 12
+    ws1.column_dimensions['C'].width = 15   # 고객명
     ws1.column_dimensions['D'].width = 12
-    ws1.column_dimensions['E'].width = 15
+    ws1.column_dimensions['E'].width = 12
     ws1.column_dimensions['F'].width = 15
     ws1.column_dimensions['G'].width = 15
-    ws1.column_dimensions['H'].width = 12
+    ws1.column_dimensions['H'].width = 15
+    ws1.column_dimensions['I'].width = 12
     
     # 데이터 행
     total_amount = 0
@@ -11731,10 +11916,11 @@ def prepayment_customer_excel(request, customer_id):
         total_used += used_amount
         total_balance += prepayment.balance
         
-        # 데이터
+        # 데이터 (고객명 컬럼 추가)
         data = [
             idx,
             prepayment.payment_date.strftime('%Y-%m-%d'),
+            prepayment.customer.customer_name if prepayment.customer else '-',  # 고객명 추가
             prepayment.payer_name or '-',
             prepayment.get_payment_method_display(),
             float(prepayment.amount),  # Decimal을 float으로 변환
@@ -11749,14 +11935,14 @@ def prepayment_customer_excel(request, customer_id):
             cell.border = border
             
             # 정렬 및 서식
-            if col_num == 1 or col_num == 8:  # No, 상태
+            if col_num == 1 or col_num == 9:  # No, 상태
                 cell.alignment = center_alignment
-            elif col_num >= 5 and col_num <= 7:  # 금액
+            elif col_num >= 6 and col_num <= 8:  # 금액 (컬럼 위치 조정)
                 cell.alignment = right_alignment
                 cell.number_format = '#,##0'
             
             # 상태별 배경색
-            if col_num == 8:
+            if col_num == 9:  # 상태 (컬럼 위치 조정)
                 if prepayment.status == 'active':
                     cell.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
                 elif prepayment.status == 'depleted':
@@ -11765,15 +11951,15 @@ def prepayment_customer_excel(request, customer_id):
                     cell.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
             
             # 잔액에 따른 배경색
-            if col_num == 7:  # 남은잔액
+            if col_num == 8:  # 남은잔액 (컬럼 위치 조정)
                 if prepayment.balance > 0:
                     cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
                 else:
                     cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
     
-    # 합계 행
+    # 합계 행 (컬럼 위치 조정)
     summary_row = len(prepayments) + 4
-    ws1.merge_cells(f'A{summary_row}:D{summary_row}')
+    ws1.merge_cells(f'A{summary_row}:E{summary_row}')  # 5컬럼으로 확장
     summary_cell = ws1.cell(row=summary_row, column=1)
     summary_cell.value = "합계"
     summary_cell.font = Font(bold=True, size=11)
@@ -11781,12 +11967,12 @@ def prepayment_customer_excel(request, customer_id):
     summary_cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     summary_cell.border = border
     
-    for col in range(2, 5):
+    for col in range(2, 6):  # 2~5열까지
         ws1.cell(row=summary_row, column=col).border = border
         ws1.cell(row=summary_row, column=col).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     
-    # 합계 금액
-    for col_num, value in [(5, float(total_amount)), (6, float(total_used)), (7, float(total_balance))]:
+    # 합계 금액 (컬럼 위치 조정: 6, 7, 8열)
+    for col_num, value in [(6, float(total_amount)), (7, float(total_used)), (8, float(total_balance))]:
         cell = ws1.cell(row=summary_row, column=col_num)
         cell.value = value
         cell.font = Font(bold=True, size=11)
@@ -11795,8 +11981,8 @@ def prepayment_customer_excel(request, customer_id):
         cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
         cell.border = border
     
-    ws1.cell(row=summary_row, column=8).border = border
-    ws1.cell(row=summary_row, column=8).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    ws1.cell(row=summary_row, column=9).border = border
+    ws1.cell(row=summary_row, column=9).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     
     # ========================================
     # 시트 2: 품목별 집계
@@ -11948,11 +12134,11 @@ def prepayment_customer_excel(request, customer_id):
         no_data_cell.alignment = center_alignment
         no_data_cell.font = Font(italic=True, color="999999")
     
-    # HTTP 응답
+    # HTTP 응답 (부서 중심 파일명 사용)
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    filename = f"{customer.customer_name}_선결제내역_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"{filename_prefix}_선결제내역_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{filename}'
     
     wb.save(response)

@@ -500,17 +500,64 @@ def generate_customer_summary(customer_data: Dict, user=None) -> str:
 현재 고객 등급: {customer_data.get('customer_grade', '미분류')}
 """
     
+    # 부서 전체 정보 추가 (있는 경우)
+    department_summary = customer_data.get('department_summary')
+    if department_summary and department_summary.get('total_customers', 0) > 1:
+        user_prompt += f"""
+
+---
+## 📊 부서/연구실 전체 현황 (같은 부서 내 모든 고객 종합)
+- 부서 내 총 고객 수: {department_summary.get('total_customers', 0)}명
+- 부서 전체 미팅: {department_summary.get('total_meeting_count', 0)}회
+- 부서 전체 견적: {department_summary.get('total_quote_count', 0)}회
+- 부서 전체 구매: {department_summary.get('total_purchase_count', 0)}회
+- 부서 전체 구매액: {department_summary.get('total_purchase_amount', 0):,}원
+- 부서 전체 이메일: {department_summary.get('total_email_count', 0)}건
+
+### 같은 부서 내 다른 고객들
+"""
+        other_customers = department_summary.get('other_customers', [])
+        if other_customers:
+            for cust in other_customers[:5]:  # 최대 5명까지만 표시
+                user_prompt += f"""- **{cust['name']}** (등급: {cust['grade']})
+  - 미팅 {cust['meeting_count']}회, 납품 {cust['delivery_count']}회, 구매액 {cust['total_purchase']:,}원
+"""
+        else:
+            user_prompt += "  (다른 고객 정보 없음)\n"
+        
+        user_prompt += f"""
+### 부서 전체 미팅 노트 (최근 활동)
+{chr(10).join(department_summary.get('meeting_notes', [])) or '미팅 기록 없음'}
+
+### 부서 전체 히스토리
+{department_summary.get('history_text', '부서 히스토리 없음')}
+
+**[부서 분석 요청]**
+위 부서 전체 데이터를 바탕으로:
+1. 부서 내 고객 간 구매 패턴 비교
+2. 부서 전체 예산/구매력 추정
+3. 부서 내 크로스셀링/레퍼런스 활용 전략
+4. 핵심 의사결정자/인플루언서 식별
+"""
+    
     # 선결제 정보 추가 (있는 경우만)
     prepayment = customer_data.get('prepayment')
     if prepayment:
         user_prompt += f"""
-선결제 현황:
+## 선결제 현황"""
+        if department_summary and department_summary.get('total_customers', 0) > 1:
+            user_prompt += " (부서 전체)"
+        user_prompt += f"""
 - 총 잔액: {prepayment['total_balance']:,}원
 - 선결제 건수: {prepayment['count']}건
 - 최근 내역:
 """
         for detail in prepayment['details']:
-            user_prompt += f"  * {detail['date']}: {detail['amount']:,}원 입금, 잔액 {detail['balance']:,}원"
+            customer_name = detail.get('customer', '')
+            user_prompt += f"  * {detail['date']}: "
+            if customer_name:
+                user_prompt += f"[{customer_name}] "
+            user_prompt += f"{detail['amount']:,}원 입금, 잔액 {detail['balance']:,}원"
             if detail['memo']:
                 user_prompt += f" ({detail['memo']})"
             user_prompt += "\n"
@@ -1652,6 +1699,7 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
 
 고객명: {customer_data.get('name', '')}
 회사: {customer_data.get('company', '')}
+부서/연구실: {customer_data.get('department', '미지정')}
 {previous_grade_info}
 📊 전체 활동 내역:
 - 총 구매 횟수: {customer_data.get('purchase_count', 0)}회
@@ -1676,7 +1724,21 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
 
 🎯 현재 진행 중인 영업 기회:
 {json.dumps(customer_data.get('opportunities', []), ensure_ascii=False, indent=2) if customer_data.get('opportunities') else '없음'}
+"""
 
+    # 부서 전체 정보 추가 (있는 경우)
+    department_summary = customer_data.get('department_summary')
+    if department_summary and department_summary.get('total_customers', 0) > 1:
+        user_prompt += f"""
+📊 부서/연구실 전체 현황 (같은 부서 내 모든 고객 종합):
+- 부서 내 총 고객 수: {department_summary.get('total_customers', 0)}명
+- 부서 전체 구매 횟수: {department_summary.get('total_purchase_count', 0)}회
+- 부서 전체 구매 금액: {department_summary.get('total_purchase_amount', 0):,.0f}원
+
+※ 부서 전체 구매력을 고려하여 개별 고객의 잠재 가치를 평가하세요.
+"""
+
+    user_prompt += """
 ⚠️ 중요: 
 - 전체 구매 이력과 선결제는 고객의 신뢰도와 장기 관계를 나타냅니다
 - 최근 6개월 활동은 현재 참여도를 나타냅니다
@@ -1684,6 +1746,7 @@ def update_customer_grade_with_ai(customer_data: Dict, user=None) -> Dict:
 - 구매 실적이 있는 고객은 최소 60점(B등급) 이상이어야 합니다
 - 선결제가 있는 고객은 신뢰도가 높으므로 가산점을 주세요
 - 활동이 거의 없는 고객은 39점 이하(D등급)로 평가하세요
+- 같은 부서 내 구매력이 높은 경우 개별 고객도 잠재 가치가 높습니다
 
 응답 형식 (JSON):
 {{

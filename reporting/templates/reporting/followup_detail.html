@@ -5,6 +5,33 @@
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-md-10">
+      <!-- 부서 정보 배너 (부서가 있는 경우) -->
+      {% if department %}
+      <div class="alert alert-light border mb-3" style="border-radius: 12px;">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="mb-1">
+              <i class="fas fa-building me-2 text-primary"></i>
+              {{ company.name|default:"업체명 미정" }} - {{ department.name }}
+            </h5>
+            <small class="text-muted">
+              <i class="fas fa-users me-1"></i>소속 고객:
+              {% for f in department_followups %}
+                <span class="badge {% if f.id == followup.id %}bg-primary{% else %}bg-secondary{% endif %} me-1">
+                  {% if f.id != followup.id %}
+                  <a href="{% url 'reporting:followup_detail' f.id %}" class="text-white text-decoration-none">{{ f.customer_name }}</a>
+                  {% else %}
+                  {{ f.customer_name }}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </small>
+          </div>
+          <span class="badge bg-info">부서 통합 보기</span>
+        </div>
+      </div>
+      {% endif %}
+      
       <!-- 헤더 섹션 -->
       <div
         class="page-header d-flex justify-content-between align-items-center mb-4"
@@ -491,11 +518,14 @@
             <table class="table table-hover table-sm">
               <thead class="table-light">
                 <tr>
-                  <th style="width: 15%;">납품일</th>
-                  <th style="width: 30%;">품목명</th>
-                  <th style="width: 10%;" class="text-end">수량</th>
+                  <th style="width: 12%;">납품일</th>
+                  {% if department %}
+                  <th style="width: 12%;">고객</th>
+                  {% endif %}
+                  <th style="width: {% if department %}25{% else %}30{% endif %}%;">품목명</th>
+                  <th style="width: 8%;" class="text-end">수량</th>
                   <th style="width: 10%;" class="text-end">단가</th>
-                  <th style="width: 15%;" class="text-end">총액</th>
+                  <th style="width: 13%;" class="text-end">총액</th>
                   <th style="width: 10%;" class="text-center">세금계산서</th>
                   <th style="width: 10%;" class="text-center">일정</th>
                 </tr>
@@ -510,6 +540,13 @@
                       <span class="text-muted">날짜 미정</span>
                     {% endif %}
                   </td>
+                  {% if department %}
+                  <td>
+                    <span class="badge {% if item.schedule.followup.id == followup.id %}bg-primary{% else %}bg-secondary{% endif %}">
+                      {{ item.schedule.followup.customer_name|default:"-" }}
+                    </span>
+                  </td>
+                  {% endif %}
                   <td>
                     <strong>{{ item.item_name }}</strong>
                     {% if item.product %}
@@ -561,7 +598,7 @@
               </tbody>
               <tfoot class="table-light">
                 <tr>
-                  <td colspan="2" class="text-end"><strong>합계</strong></td>
+                  <td colspan="{% if department %}3{% else %}2{% endif %}" class="text-end"><strong>합계</strong></td>
                   <td class="text-end"><strong>{{ delivery_stats.total_quantity|floatformat:0 }}</strong></td>
                   <td></td>
                   <td class="text-end">
