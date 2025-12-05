@@ -284,7 +284,7 @@ class FunnelAnalytics:
         # 진행 중인 영업기회만 조회 (수주, 실주, 견적실패 제외)
         qs = OpportunityTracking.objects.exclude(
             current_stage__in=['won', 'lost', 'quote_lost']
-        ).select_related('followup', 'followup__company', 'followup__user', 'label')
+        ).select_related('followup', 'followup__company', 'followup__department', 'followup__user', 'label')
         
         if user:
             # 본인 고객의 영업기회 + 본인이 스케줄을 생성한 영업기회
@@ -335,6 +335,7 @@ class FunnelAnalytics:
                 'id': opp.id,
                 'customer_name': opp.followup.customer_name or '고객명 미정',
                 'company_name': opp.followup.company.name if opp.followup.company else '업체명 미정',
+                'department_name': opp.followup.department.name if opp.followup.department else '',
                 'expected_revenue': opp.expected_revenue,
                 'weighted_revenue': opp.weighted_revenue,
                 'backlog_amount': opp.backlog_amount,
@@ -351,6 +352,7 @@ class FunnelAnalytics:
                 'combined_score': opp.followup.get_combined_score(),  # 종합 점수
                 'priority_level': opp.followup.get_priority_level(),  # 우선순위 레벨
                 'label': label_info,  # 라벨 정보 추가
+                'followup_id': opp.followup.id,  # 고객 ID 추가
             })
         
         # 종합 점수 레벨 필터링 (Python에서 처리)

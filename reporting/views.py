@@ -8354,44 +8354,86 @@ def customer_report_view(request):
             if prepayment_count > 0:
                 prepayment_customers.add(followup.id)  # 선결제가 있는 고객 추가
     
+    # === 부서별 그룹화 ===
+    from collections import defaultdict
+    
+    departments_data = defaultdict(lambda: {
+        'company': None,
+        'department': None,
+        'customers': [],
+        'total_amount': Decimal('0'),
+        'total_meetings': 0,
+        'total_deliveries': 0,
+        'tax_invoices_issued': 0,
+        'tax_invoices_pending': 0,
+        'prepayment_total': Decimal('0'),
+        'prepayment_balance': Decimal('0'),
+        'last_contact': None,
+    })
+    
+    for followup in followups_with_stats:
+        # 부서 키 생성 (company_id-department_id)
+        dept_key = f"{followup.company_id}-{followup.department_id}"
+        
+        dept_data = departments_data[dept_key]
+        dept_data['company'] = followup.company
+        dept_data['department'] = followup.department
+        dept_data['customers'].append(followup)
+        dept_data['total_amount'] += followup.total_amount
+        dept_data['total_meetings'] += followup.total_meetings
+        dept_data['total_deliveries'] += followup.total_deliveries
+        dept_data['tax_invoices_issued'] += followup.tax_invoices_issued
+        dept_data['tax_invoices_pending'] += followup.tax_invoices_pending
+        dept_data['prepayment_total'] += followup.prepayment_total
+        dept_data['prepayment_balance'] += followup.prepayment_balance
+        
+        # 최근 연락일 갱신
+        if followup.last_contact:
+            if dept_data['last_contact'] is None or followup.last_contact > dept_data['last_contact']:
+                dept_data['last_contact'] = followup.last_contact
+    
+    # 부서 데이터를 리스트로 변환
+    departments_list = list(departments_data.values())
+    
     # 정렬 처리 - 기본값: 총 납품 금액 내림차순
     sort_by = request.GET.get('sort', 'amount')
     sort_order = request.GET.get('order', 'desc')
     
     from django.utils import timezone
     
-    # 정렬 키 매핑
+    # 부서별 정렬 키 매핑
     sort_key_map = {
-        'customer_name': lambda x: (x.customer_name or '').lower(),
-        'company': lambda x: (x.company.name if x.company else '').lower(),
-        'meetings': lambda x: x.total_meetings,
-        'deliveries': lambda x: x.total_deliveries,
-        'amount': lambda x: x.total_amount,
-        'prepayment': lambda x: x.prepayment_balance,
-        'unpaid': lambda x: x.unpaid_count,
-        'last_contact': lambda x: x.last_contact or timezone.now().replace(year=1900),
+        'company': lambda x: (x['company'].name if x['company'] else '').lower(),
+        'department': lambda x: (x['department'].name if x['department'] else '').lower(),
+        'meetings': lambda x: x['total_meetings'],
+        'deliveries': lambda x: x['total_deliveries'],
+        'amount': lambda x: x['total_amount'],
+        'prepayment': lambda x: x['prepayment_balance'],
+        'unpaid': lambda x: x['tax_invoices_pending'],
+        'last_contact': lambda x: x['last_contact'] or timezone.now().replace(year=1900),
     }
     
     # 정렬 키가 유효한지 확인
     if sort_by in sort_key_map:
-        followups_with_stats.sort(
+        departments_list.sort(
             key=sort_key_map[sort_by],
             reverse=(sort_order == 'desc')
         )
     else:
         # 기본 정렬: 총 납품 금액 기준
-        followups_with_stats.sort(key=lambda x: x.total_amount, reverse=True)
+        departments_list.sort(key=lambda x: x['total_amount'], reverse=True)
     
     # 페이지네이션 추가
     from django.core.paginator import Paginator
-    paginator = Paginator(followups_with_stats, 30)  # 페이지당 30개
+    paginator = Paginator(departments_list, 30)  # 페이지당 30개 부서
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
     
     context = {
-        'followups': page_obj,
+        'departments': page_obj,  # 부서별 그룹화된 데이터
         'page_obj': page_obj,
-        'total_customers': len(followups_with_stats),
+        'total_departments': len(departments_list),  # 총 부서 수
+        'total_customers': len(followups_with_stats),  # 총 고객 수
         'total_amount_sum': total_amount_sum,
         'total_meetings_sum': total_meetings_sum,
         'total_deliveries_sum': total_deliveries_sum,
@@ -8400,7 +8442,7 @@ def customer_report_view(request):
         'sort_by': sort_by,
         'sort_order': sort_order,
         'search_query': search_query,
-        'page_title': '고객 리포트',
+        'page_title': '부서별 리포트',  # 제목 변경
         # 새로운 필터 관련 컨텍스트
         'data_filter': data_filter,
         'filter_user_id': filter_user_id,
@@ -9101,7 +9143,7 @@ def history_delivery_items_api(request, history_id):
 
 @login_required
 def customer_detail_report_view_simple(request, followup_id):
-    """특정 고객의 상세 활동 리포트 - 단순화된 버전"""
+    """부서 기준 상세 활동 리포트 (고객 클릭 시 해당 부서 전체 기록 표시)"""
     from django.db.models import Count, Sum, Q
     from datetime import datetime, timedelta
     import json
@@ -9119,19 +9161,32 @@ def customer_detail_report_view_simple(request, followup_id):
         messages.error(request, '해당 고객 정보를 찾을 수 없습니다.')
         return redirect('reporting:customer_report')
     
+    # 부서 정보 가져오기 (이제 부서 기준으로 조회)
+    department = followup.department
+    company = followup.company
+    
+    # 해당 부서의 모든 고객(팔로우업) 목록
+    department_followups = FollowUp.objects.filter(department=department)
+    department_customers = list(department_followups.values_list('id', flat=True))
+    
     # 본인 고객인지 확인
     is_own_customer = (request.user == followup.user)
     user_profile = get_user_profile(request.user)
     # 관리자/매니저만 전체 데이터 조회 가능, 일반 사용자는 본인 작성 데이터만
     can_view_all = user_profile.is_admin() or user_profile.is_manager()
     
-    # 기본 History 데이터 조회
+    # 부서 전체 History 데이터 조회
     if can_view_all:
-        # 본인 고객이거나 관리자/매니저: 전체 히스토리
-        histories = History.objects.filter(followup=followup).order_by('-created_at')
+        # 관리자/매니저: 해당 부서의 전체 히스토리
+        histories = History.objects.filter(
+            followup__department=department
+        ).select_related('followup', 'user').order_by('-created_at')
     else:
-        # 동료 고객: 본인이 작성한 히스토리만
-        histories = History.objects.filter(followup=followup, user=request.user).order_by('-created_at')
+        # 일반 사용자: 해당 부서에서 본인이 작성한 히스토리만
+        histories = History.objects.filter(
+            followup__department=department,
+            user=request.user
+        ).select_related('followup', 'user').order_by('-created_at')
     
     # 기본 통계 계산
     delivery_histories = histories.filter(action_type='delivery_schedule')
@@ -9142,27 +9197,27 @@ def customer_detail_report_view_simple(request, followup_id):
         if history.delivery_amount:
             total_amount += float(history.delivery_amount)
     
-    # Schedule 기반 납품 일정
+    # 부서 전체 Schedule 기반 납품 일정
     if can_view_all:
-        # 본인 고객이거나 관리자/매니저: 전체 스케줄
+        # 관리자/매니저: 해당 부서의 전체 스케줄
         schedule_deliveries = Schedule.objects.filter(
-            followup=followup,
+            followup__department=department,
             activity_type='delivery'
-        ).order_by('-visit_date')
+        ).select_related('followup', 'user').order_by('-visit_date')
     else:
-        # 동료 고객: 본인이 작성한 스케줄만
+        # 일반 사용자: 해당 부서에서 본인이 작성한 스케줄만
         schedule_deliveries = Schedule.objects.filter(
-            followup=followup,
+            followup__department=department,
             activity_type='delivery',
             user=request.user
-        ).order_by('-visit_date')
+        ).select_related('followup', 'user').order_by('-visit_date')
     
     # 디버깅: 권한 및 데이터 확인
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"[CUSTOMER_REPORT] User: {request.user.username}, Followup Owner: {followup.user.username}")
-    logger.info(f"[CUSTOMER_REPORT] is_own_customer: {is_own_customer}, can_view_all: {can_view_all}")
-    logger.info(f"[CUSTOMER_REPORT] histories count: {histories.count()}, schedule_deliveries count: {schedule_deliveries.count()}")
+    logger.info(f"[DEPT_REPORT] User: {request.user.username}, Department: {department.name}")
+    logger.info(f"[DEPT_REPORT] can_view_all: {can_view_all}, customers in dept: {len(department_customers)}")
+    logger.info(f"[DEPT_REPORT] histories count: {histories.count()}, schedule_deliveries count: {schedule_deliveries.count()}")
     
     # 통합 납품 내역 생성 (템플릿 호환성을 위해)
     integrated_deliveries = []
@@ -9200,6 +9255,9 @@ def customer_detail_report_view_simple(request, followup_id):
         else:
             final_amount = float(history.delivery_amount) if history.delivery_amount else 0
         
+        # 고객 정보 추가 (부서 기준 조회이므로 어떤 고객인지 표시)
+        customer_name = history.followup.customer_name if history.followup else '미정'
+        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -9212,6 +9270,8 @@ def customer_detail_report_view_simple(request, followup_id):
             'tax_invoice_issued': history.tax_invoice_issued,
             'content': history.content or '',
             'user': history.user.username,
+            'customer_name': customer_name,  # 고객명 추가
+            'followup_id': history.followup.id if history.followup else None,  # 고객 ID 추가
             'has_schedule_items': has_schedule_items,
             'history_tax_status': history_tax_status,  # 세금계산서 상태 정보 추가
         }
@@ -9274,6 +9334,9 @@ def customer_detail_report_view_simple(request, followup_id):
             schedule_tax_status['none_issued'] = (schedule_tax_status['total_count'] > 0 and 
                                                 schedule_tax_status['issued_count'] == 0)
             
+            # 고객 정보 추가 (부서 기준 조회이므로 어떤 고객인지 표시)
+            customer_name = schedule.followup.customer_name if schedule.followup else '미정'
+            
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
@@ -9287,6 +9350,8 @@ def customer_detail_report_view_simple(request, followup_id):
                 'tax_invoice_issued': False,
                 'content': schedule.notes or '예정된 납품 일정',
                 'user': schedule.user.username,
+                'customer_name': customer_name,  # 고객명 추가
+                'followup_id': schedule.followup.id if schedule.followup else None,  # 고객 ID 추가
                 'has_schedule_items': True,
                 'schedule_tax_status': schedule_tax_status,  # 세금계산서 상태 정보 추가
             }
@@ -9355,16 +9420,16 @@ def customer_detail_report_view_simple(request, followup_id):
         elif delivery_has_pending_items:
             integrated_tax_pending += 1
 
-    # 선결제 통계 계산 - 해당 고객에 등록된 모든 선결제
+    # 선결제 통계 계산 - 해당 부서의 모든 고객에 등록된 선결제
     prepayments = Prepayment.objects.filter(
-        customer=followup
+        customer__department=department
     )
     
     prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or 0
     prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or 0
     prepayment_count = prepayments.count()
     
-    # 월별 활동 트렌드 데이터 계산 (최근 12개월)
+    # 월별 활동 트렌드 데이터 계산 (최근 12개월) - 부서 기준
     from dateutil.relativedelta import relativedelta
     from django.utils import timezone
     
@@ -9386,17 +9451,17 @@ def customer_detail_report_view_simple(request, followup_id):
         
         chart_labels.append(f"{target_date.month}월")
         
-        # 해당 월의 미팅 횟수 (History 기반)
+        # 해당 월의 미팅 횟수 (History 기반) - 부서 전체
         if can_view_all:
             month_meetings = History.objects.filter(
-                followup=followup,
+                followup__department=department,
                 action_type='customer_meeting',
                 created_at__date__gte=month_start,
                 created_at__date__lte=month_end
             ).count()
         else:
             month_meetings = History.objects.filter(
-                followup=followup,
+                followup__department=department,
                 action_type='customer_meeting',
                 user=request.user,
                 created_at__date__gte=month_start,
@@ -9421,7 +9486,10 @@ def customer_detail_report_view_simple(request, followup_id):
         chart_amounts.append(int(month_delivery_amount))
 
     context = {
-        'followup': followup,
+        'followup': followup,  # 클릭한 고객 (참조용)
+        'department': department,  # 부서 정보
+        'company': company,  # 회사 정보
+        'department_followups': department_followups,  # 해당 부서의 모든 고객 목록
         'histories': histories,
         'total_amount': integrated_total_amount,
         'total_meetings': meeting_histories.count(),
@@ -9445,7 +9513,7 @@ def customer_detail_report_view_simple(request, followup_id):
             'deliveries': json.dumps(chart_deliveries, ensure_ascii=False),
             'amounts': json.dumps(chart_amounts, ensure_ascii=False),
         },
-        'page_title': f'{followup.company.name} - {followup.customer_name if followup.customer_name else "담당자 미정"}'
+        'page_title': f'{company.name} - {department.name}'  # 회사명 - 부서명으로 변경
     }
     
     return render(request, 'reporting/customer_detail_report.html', context)

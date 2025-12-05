@@ -9,7 +9,7 @@
         class="page-header d-flex justify-content-between align-items-center mb-4"
       >
         <h1 class="page-title mb-0">
-          <i class="fas fa-chart-line me-2"></i>{{ page_title }}
+          <i class="fas fa-building me-2"></i>{{ page_title }}
         </h1>
         <div class="header-actions">
           <a
@@ -18,19 +18,13 @@
           >
             <i class="fas fa-arrow-left me-2"></i>목록으로
           </a>
-          <a
-            href="{% url 'reporting:followup_detail' followup.id %}"
-            class="btn btn-outline-info"
-          >
-            <i class="fas fa-user me-2"></i>고객 정보
-          </a>
         </div>
       </div>
 
       <!-- JSON 데이터 전달을 위한 스크립트 엘리먼트 -->
       {{ integrated_deliveries|json_script:"integrated-deliveries-data" }}
 
-      <!-- 고객 기본 정보 -->
+      <!-- 부서 기본 정보 -->
       <div class="row mb-4">
         <div class="col-12">
           <div class="card">
@@ -38,33 +32,31 @@
               <div class="row">
                 <div class="col-md-6">
                   <h5 class="card-title text-primary">
-                    <i class="fas fa-user me-2"></i>{{followup.customer_name|default:"고객명 미정" }}
+                    <i class="fas fa-building me-2"></i>{{ company.name }}
                   </h5>
                   <p class="mb-2">
-                    <strong>업체:</strong> {{ followup.company.name }}
-                    {% if followup.department %} / {{ followup.department.name }}{% endif %}
+                    <strong>부서/연구실:</strong> {{ department.name }}
                   </p>
-                  {% if followup.manager %}
-                  <p class="mb-2">
-                    <strong>책임자:</strong> {{ followup.manager }}
-                  </p>
-                  {% endif %}
                   <p class="mb-0">
-                    <strong>담당자:</strong> {{ followup.user.username }}
+                    <strong>등록 고객 수:</strong> 
+                    <span class="badge bg-info">{{ department_followups.count }}명</span>
                   </p>
                 </div>
                 <div class="col-md-6">
-                  {% if followup.phone_number or followup.email %}
-                  <h6 class="text-muted">연락처 정보</h6>
-                  {% if followup.phone_number %}
-                  <p class="mb-2">
-                    <i class="fas fa-phone me-2"></i>{{ followup.phone_number }}
-                  </p>
-                  {% endif %} {% if followup.email %}
-                  <p class="mb-0">
-                    <i class="fas fa-envelope me-2"></i>{{ followup.email }}
-                  </p>
-                  {% endif %} {% endif %}
+                  <h6 class="text-muted mb-2">
+                    <i class="fas fa-users me-2"></i>소속 고객 목록
+                  </h6>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for customer in department_followups %}
+                    <a href="{% url 'reporting:followup_detail' customer.id %}" 
+                       class="badge {% if customer.id == followup.id %}bg-primary{% else %}bg-secondary{% endif %} text-decoration-none"
+                       title="{{ customer.user.username }} 담당">
+                      {{ customer.customer_name|default:"미정" }}
+                    </a>
+                    {% empty %}
+                    <span class="text-muted">등록된 고객이 없습니다.</span>
+                    {% endfor %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -216,6 +208,7 @@
                       <thead class="table-light">
                         <tr>
                           <th>납품일</th>
+                          <th>고객</th>
                           <th>품목</th>
                           <th class="text-end">금액</th>
                           <th class="text-center">세금계산서</th>
@@ -226,6 +219,9 @@
                         {% for delivery in integrated_deliveries %}
                         <tr>
                           <td>{{delivery.date}}</td>
+                          <td>
+                            <span class="badge bg-secondary">{{ delivery.customer_name|default:"미정" }}</span>
+                          </td>
                           <td>
                             {% if delivery.items_display or delivery.has_schedule_items %}
                               {% if delivery.has_schedule_items %}
@@ -417,6 +413,7 @@
                       <thead class="table-light">
                         <tr>
                           <th>미팅일</th>
+                          <th>고객</th>
                           <th>내용</th>
                           <th>등록일</th>
                         </tr>
@@ -428,6 +425,9 @@
                             {% if history.meeting_date %} {{history.meeting_date }} {% else %}
                             <span class="text-muted">미정</span>
                             {% endif %}
+                          </td>
+                          <td>
+                            <span class="badge bg-secondary">{{ history.followup.customer_name|default:"미정" }}</span>
                           </td>
                           <td>
                             {% if history.content %} {{history.content|truncatechars:100 }} {% else %}
@@ -479,6 +479,7 @@
                           <div class="card-body">
                             <h6 class="card-title">
                               {{ history.get_action_type_display }}
+                              <span class="badge bg-secondary ms-2">{{ history.followup.customer_name|default:"미정" }}</span>
                               <small class="text-muted ms-2"
                                 >{{ history.created_at|date:"Y-m-d H:i"}}</small
                               >

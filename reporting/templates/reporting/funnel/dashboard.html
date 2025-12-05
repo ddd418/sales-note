@@ -751,7 +751,9 @@
                                     <div class="d-flex align-items-center gap-2">
                                         <div style="flex-grow: 1;">
                                             <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                                                <strong style="font-size: 1.1rem; color: #2d3748;">{{ opp.customer_name }}</strong>
+                                                <strong style="font-size: 1.1rem; color: #2d3748;">
+                                                    {{ opp.company_name }}{% if opp.department_name %} / {{ opp.department_name }}{% endif %}
+                                                </strong>
                                                 {% if opp.label %}
                                                 <!-- 라벨 표시 -->
                                                 <span class="badge label-badge" 
@@ -776,7 +778,9 @@
                                                 </span>
                                                 {% endif %}
                                             </div>
-                                            <small class="text-muted fw-semibold d-block">{{ opp.company_name }}</small>
+                                            <small class="text-muted fw-semibold d-block">
+                                                <i class="fas fa-user me-1"></i>{{ opp.customer_name }}
+                                            </small>
                                             <div class="d-flex gap-2 mt-1 flex-wrap">
                                                 {% if request.user.userprofile.can_use_ai %}
                                                 <!-- AI 사용자: 고객 등급 배지 -->

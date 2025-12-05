@@ -691,9 +691,9 @@
             <table class="table table-hover align-middle">
                 <thead>
                     <tr>
-                        <th>고객명</th>
+                        <th>부서</th>
                         <th>업체</th>
-                        <th>지불자</th>
+                        <th>고객 (지불자)</th>
                         <th>결제일</th>
                         <th class="text-end">선결제 금액</th>
                         <th class="text-end">잔액</th>
@@ -708,14 +708,19 @@
                         <td>
                             <a href="{% url 'reporting:prepayment_customer' prepayment.customer.id %}" 
                                class="text-decoration-none fw-semibold text-primary">
-                                <i class="fas fa-user me-1"></i>{{ prepayment.customer.customer_name }}
+                                <i class="fas fa-flask me-1"></i>{{ prepayment.customer.department.name|default:"-" }}
                             </a>
                         </td>
                         <td>
                             <span class="text-muted">{{ prepayment.company.name }}</span>
                         </td>
                         <td>
-                            <span class="text-muted">{{ prepayment.payer_name|default:"-" }}</span>
+                            <span class="text-muted">
+                                <i class="fas fa-user me-1"></i>{{ prepayment.customer.customer_name|default:"-" }}
+                                {% if prepayment.payer_name and prepayment.payer_name != prepayment.customer.customer_name %}
+                                <br><small class="text-secondary">(지불: {{ prepayment.payer_name }})</small>
+                                {% endif %}
+                            </span>
                         </td>
                         <td>
                             <span class="text-muted">{{ prepayment.payment_date|date:"Y-m-d" }}</span>
