@@ -7678,11 +7678,20 @@ def followup_excel_download(request):
     if priority_filter:
         followups = followups.filter(priority=priority_filter)
     
+    # 우선순위 정렬을 위한 순서 정의 (낮을수록 높은 우선순위)
+    PRIORITY_ORDER = {
+        'urgent': 1,      # 긴급 - 가장 높음
+        'followup': 2,    # 팔로업
+        'scheduled': 3,   # 예정
+        'long_term': 4,   # 장기 - 가장 낮음
+    }
+    
     # 부서별로 그룹화
     departments_data = defaultdict(lambda: {
         'company_name': '',
         'department_name': '',
-        'followups': []
+        'followups': [],
+        'highest_priority': 99  # 부서 내 가장 높은 우선순위 (낮은 숫자가 높은 우선순위)
     })
     
     for followup in followups.order_by('company__name', 'department__name', 'customer_name'):
@@ -7693,6 +7702,11 @@ def followup_excel_download(request):
         departments_data[dept_key]['company_name'] = company_name
         departments_data[dept_key]['department_name'] = department_name
         departments_data[dept_key]['followups'].append(followup)
+        
+        # 해당 부서 내 가장 높은 우선순위 업데이트
+        priority_value = PRIORITY_ORDER.get(followup.priority, 99)
+        if priority_value < departments_data[dept_key]['highest_priority']:
+            departments_data[dept_key]['highest_priority'] = priority_value
     
     # 엑셀 파일 생성
     wb = Workbook()
@@ -7731,8 +7745,13 @@ def followup_excel_download(request):
     
     current_row = 1
     
-    # 부서별로 데이터 작성
-    for dept_key in sorted(departments_data.keys()):
+    # 부서별로 데이터 작성 (우선순위 높은 부서가 먼저, 그 다음 회사명/부서명 순)
+    sorted_dept_keys = sorted(
+        departments_data.keys(),
+        key=lambda k: (departments_data[k]['highest_priority'], departments_data[k]['company_name'], departments_data[k]['department_name'])
+    )
+    
+    for dept_key in sorted_dept_keys:
         dept_info = departments_data[dept_key]
         company_name = dept_info['company_name']
         department_name = dept_info['department_name']
@@ -8082,18 +8101,37 @@ def followup_basic_excel_download(request):
         cell.border = border
         cell.alignment = center_alignment
     
+    # 우선순위 정렬을 위한 순서 정의 (낮을수록 높은 우선순위)
+    PRIORITY_ORDER = {
+        'urgent': 1,      # 긴급 - 가장 높음
+        'followup': 2,    # 팔로업
+        'scheduled': 3,   # 예정
+        'long_term': 4,   # 장기 - 가장 낮음
+    }
+    
     # 부서별로 그룹화
     from collections import defaultdict
-    department_groups = defaultdict(list)
+    department_groups = defaultdict(lambda: {'followups': [], 'highest_priority': 99})
     for followup in followups:
         company_name = followup.company.name if followup.company else '미지정 업체'
         department_name = followup.department.name if followup.department else '미지정 부서'
         group_key = f"{company_name} / {department_name}"
-        department_groups[group_key].append(followup)
+        department_groups[group_key]['followups'].append(followup)
+        
+        # 해당 부서 내 가장 높은 우선순위 업데이트
+        priority_value = PRIORITY_ORDER.get(followup.priority, 99)
+        if priority_value < department_groups[group_key]['highest_priority']:
+            department_groups[group_key]['highest_priority'] = priority_value
     
-    # 데이터 입력 (부서별 그룹화)
+    # 데이터 입력 (우선순위 높은 부서가 먼저, 그 다음 회사명/부서명 순)
+    sorted_groups = sorted(
+        department_groups.items(),
+        key=lambda x: (x[1]['highest_priority'], x[0])
+    )
+    
     current_row = 2
-    for group_key, group_followups in sorted(department_groups.items()):
+    for group_key, group_data in sorted_groups:
+        group_followups = group_data['followups']
         # 부서 구분 행 추가
         cell = ws.cell(row=current_row, column=1, value=group_key)
         cell.font = Font(bold=True)
