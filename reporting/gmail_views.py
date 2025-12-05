@@ -15,7 +15,7 @@ from django.db import transaction
 from django.core.paginator import Paginator
 import json
 
-from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp, History
+from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
 
 
@@ -587,18 +587,6 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
                 sent_at=timezone.now(),
                 attachments_info=attachments_info  # 첨부파일 정보 저장
             )
-            
-            # 자동 생성된 일정에 히스토리 추가
-            if created_schedule:
-                History.objects.create(
-                    user=request.user,
-                    company=request.user.userprofile.company,
-                    followup=followup,
-                    schedule=created_schedule,
-                    action_type='customer_meeting',
-                    content=f'📧 이메일 발송\n\n받는 사람: {to_email}\n제목: {subject}',
-                    meeting_date=today
-                )
         
         if created_schedule:
             messages.success(request, f'이메일이 발송되었고, 일정이 자동 생성되었습니다.')
