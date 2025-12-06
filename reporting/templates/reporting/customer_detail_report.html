@@ -300,7 +300,7 @@
                             {% if delivery.type == 'history' %}
                               {% if delivery.history_tax_status.has_items %}
                                 {% if delivery.history_tax_status.all_issued %}
-                                  {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'manager' %}
+                                  {% if not can_modify_tax_invoice %}
                                     <span class="badge bg-primary">발행완료</span>
                                   {% else %}
                                     <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
@@ -309,7 +309,7 @@
                                     <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
                                   {% endif %}
                                 {% elif delivery.history_tax_status.none_issued %}
-                                  {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'manager' %}
+                                  {% if not can_modify_tax_invoice %}
                                     <span class="badge bg-secondary">미발행</span>
                                   {% else %}
                                     <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
@@ -320,7 +320,7 @@
                                 {% else %}
                                   <span class="badge bg-primary">발행완료</span>
                                   <span class="badge bg-secondary">미발행</span>
-                                  {% if user.is_authenticated and user.userprofile and user.userprofile.role != 'manager' %}
+                                  {% if can_modify_tax_invoice %}
                                     <br />
                                     <button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')">
                                       <i class="fas fa-edit me-1"></i>개별 편집
@@ -328,7 +328,7 @@
                                   {% endif %}
                                 {% endif %}
                               {% else %}
-                                {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'manager' %}
+                                {% if not can_modify_tax_invoice %}
                                   <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
                                     {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
                                   </span>
@@ -346,7 +346,7 @@
                               {% if delivery.schedule_tax_status.total_count == 0 %}
                                 <span class="text-muted">품목 없음</span>
                               {% else %}
-                                {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'manager' %}
+                                {% if not can_modify_tax_invoice %}
                                   {% if delivery.schedule_tax_status.issued_count > 0 %}
                                     <span class="badge bg-primary">발행완료</span>
                                   {% endif %}

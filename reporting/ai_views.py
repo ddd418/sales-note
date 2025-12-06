@@ -208,12 +208,16 @@ def ai_generate_customer_summary(request, followup_id):
         dept_meeting_count = dept_schedules.filter(activity_type='customer_meeting').count()
         dept_quote_count = dept_schedules.filter(activity_type='quote').count()
         
-        # 부서 전체 납품 내역
-        dept_delivery_schedules = dept_schedules.filter(activity_type='delivery')
-        dept_purchase_count = dept_delivery_schedules.count()
-        dept_total_purchase = dept_delivery_schedules.aggregate(
-            total=Sum('expected_revenue')
-        )['total'] or 0
+        # 부서 전체 납품 내역 - DeliveryItem 기반으로 계산 (모든 사용자 기록 포함)
+        from reporting.models import DeliveryItem
+        dept_purchase_count = Schedule.objects.filter(
+            followup__in=department_followups,
+            activity_type='delivery',
+            delivery_items_set__isnull=False
+        ).distinct().count()
+        dept_total_purchase = DeliveryItem.objects.filter(
+            schedule__followup__in=department_followups
+        ).aggregate(total=Sum('total_price'))['total'] or 0
         
         # 부서 전체 이메일 수
         dept_email_count = EmailLog.objects.filter(
@@ -235,14 +239,22 @@ def ai_generate_customer_summary(request, followup_id):
         quote_count = schedules.filter(activity_type='quote').count()
         logger.info(f"[AI 인사이트] 대상 고객 - 미팅: {meeting_count}건, 견적: {quote_count}건")
         
-        # 구매 내역 (납품 일정) - 본인 기록만
-        delivery_schedules = schedules.filter(activity_type='delivery')
-        purchase_count = delivery_schedules.count()
+        # 구매 내역 - DeliveryItem 기반으로 계산 (모든 사용자 기록 포함)
+        from reporting.models import DeliveryItem
         
-        # 납품 금액 합계
-        total_purchase = delivery_schedules.aggregate(
-            total=Sum('expected_revenue')
-        )['total'] or 0
+        # 구매 횟수: 납품 품목이 있는 일정의 수 (중복 제거)
+        purchase_count = Schedule.objects.filter(
+            followup=followup,
+            activity_type='delivery',
+            delivery_items_set__isnull=False
+        ).distinct().count()
+        
+        # 납품 금액 합계 - DeliveryItem에서 실제 구매 금액 가져오기 (모든 사용자 기록 포함)
+        total_purchase = DeliveryItem.objects.filter(
+            schedule__followup=followup
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+        
+        logger.info(f"[AI 인사이트] 고객 {followup.customer_name} - 구매 횟수: {purchase_count}건, 납품 품목 합계: {total_purchase:,}원")
         
         # 이메일 교환 (본인이 보낸 것만)
         email_count = EmailLog.objects.filter(
@@ -267,10 +279,16 @@ def ai_generate_customer_summary(request, followup_id):
                     visit_date__gte=twelve_months_ago
                 )
                 dept_cust_meeting = dept_cust_schedules.filter(activity_type='customer_meeting').count()
-                dept_cust_delivery = dept_cust_schedules.filter(activity_type='delivery').count()
-                dept_cust_purchase = dept_cust_schedules.filter(activity_type='delivery').aggregate(
-                    total=Sum('expected_revenue')
-                )['total'] or 0
+                # 부서 고객 구매 횟수 - DeliveryItem 기반 (모든 사용자 기록 포함)
+                dept_cust_delivery = Schedule.objects.filter(
+                    followup=dept_followup,
+                    activity_type='delivery',
+                    delivery_items_set__isnull=False
+                ).distinct().count()
+                # DeliveryItem에서 실제 구매 금액 가져오기 (모든 사용자 기록 포함)
+                dept_cust_purchase = DeliveryItem.objects.filter(
+                    schedule__followup=dept_followup
+                ).aggregate(total=Sum('total_price'))['total'] or 0
                 
                 department_customers_info.append({
                     'name': dept_followup.customer_name or '미지정',
@@ -780,6 +798,15 @@ def ai_suggest_follow_ups(request):
         
         # ✅ 2단계: annotate로 모든 집계를 한 번에 처리 (N+1 문제 해결)
         # 중요: 스케줄, 히스토리, 이메일은 현재 로그인 사용자가 남긴 기록만 집계
+        from reporting.models import DeliveryItem
+        
+        # DeliveryItem에서 구매 금액 서브쿼리 (모든 사용자 납품 품목 포함)
+        delivery_total_subquery = DeliveryItem.objects.filter(
+            schedule__followup=OuterRef('pk')
+        ).values('schedule__followup').annotate(
+            total=Sum('total_price')
+        ).values('total')[:1]
+        
         followups = base_queryset.annotate(
             # 일정 통계 (본인 기록만)
             schedule_count=Count('schedules', filter=Q(schedules__user=request.user), distinct=True),
@@ -787,8 +814,9 @@ def ai_suggest_follow_ups(request):
             meeting_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='customer_meeting', schedules__visit_date__gte=period_ago), distinct=True),
             quote_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='quote', schedules__visit_date__gte=period_ago), distinct=True),
             purchase_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='delivery', schedules__visit_date__gte=period_ago), distinct=True),
+            # DeliveryItem에서 실제 구매 금액 가져오기
             total_purchase=Coalesce(
-                Sum('schedules__expected_revenue', filter=Q(schedules__user=request.user, schedules__activity_type='delivery', schedules__visit_date__gte=period_ago)),
+                Subquery(delivery_total_subquery),
                 Value(Decimal('0')),
                 output_field=DecimalField()
             ),

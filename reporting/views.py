@@ -7226,13 +7226,15 @@ def history_detail_api(request, history_id):
     try:
         history = get_object_or_404(History, id=history_id)
         
-        # 접근 권한 확인
-        user_profile = get_user_profile(request.user)
-        if user_profile.role == 'salesman' and history.user != request.user:
+        # 조회 권한 확인 (같은 회사면 조회 가능)
+        if history.followup and not can_access_followup(request.user, history.followup):
             return JsonResponse({
                 'success': False,
                 'error': '이 기록에 접근할 권한이 없습니다.'
-            })
+            }, status=403)
+        
+        # 수정 권한 여부도 함께 전달
+        can_modify = can_modify_user_data(request.user, history.user)
         
         # 히스토리 데이터 직렬화
         history_data = {
@@ -7243,6 +7245,7 @@ def history_detail_api(request, history_id):
             'created_at': history.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             'user': history.user.get_full_name() or history.user.username,
             'created_by': history.created_by.username if history.created_by else '',
+            'can_modify': can_modify,  # 수정 권한 정보 추가
             'followup_id': history.followup.id if history.followup else None,
             'schedule_id': history.schedule.id if history.schedule else None,
             
@@ -7299,13 +7302,12 @@ def history_update_api(request, history_id):
     try:
         history = get_object_or_404(History, id=history_id)
         
-        # 접근 권한 확인
-        user_profile = get_user_profile(request.user)
-        if user_profile.role == 'salesman' and history.user != request.user:
+        # 수정 권한 확인 (본인 데이터만 수정 가능, Manager는 읽기 전용)
+        if not can_modify_user_data(request.user, history.user):
             return JsonResponse({
                 'success': False,
-                'error': '이 기록을 수정할 권한이 없습니다.'
-            })
+                'error': '이 기록을 수정할 권한이 없습니다. 본인의 기록만 수정할 수 있습니다.'
+            }, status=403)
         
         # 폼 데이터 처리
         content = request.POST.get('content', '').strip()
@@ -8805,6 +8807,9 @@ def customer_detail_report_view(request, followup_id):
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
     
+    # 세금계산서 수정 권한: 본인 고객 데이터만 수정 가능 (Admin 제외하고 Manager도 불가)
+    can_modify_tax_invoice = can_modify_user_data(request.user, followup.user)
+    
     context = {
         'followup': followup,
         'histories': histories,
@@ -8818,6 +8823,7 @@ def customer_detail_report_view(request, followup_id):
         'integrated_deliveries': integrated_deliveries,
         'integrated_deliveries_json': json.dumps(integrated_deliveries, ensure_ascii=False, cls=DjangoJSONEncoder),
         'meeting_histories': meeting_histories,
+        'can_modify_tax_invoice': can_modify_tax_invoice,  # 세금계산서 수정 권한
         'chart_data': {
             'labels': json.dumps(chart_labels),
             'meetings': json.dumps(chart_meetings),
@@ -10696,18 +10702,18 @@ def update_opportunity_stage_api(request, opportunity_id):
     try:
         opportunity = OpportunityTracking.objects.select_related('followup', 'followup__user').get(id=opportunity_id)
         
-        # 권한 체크 - 담당자, 일정 생성자, 또는 관리자만 수정 가능
+        # 권한 체크 - 본인 데이터만 수정 가능 (Admin은 모든 데이터 수정 가능, Manager는 읽기 전용)
         user_profile = get_user_profile(request.user)
         is_owner = request.user == opportunity.followup.user
         is_schedule_creator = Schedule.objects.filter(opportunity=opportunity, user=request.user).exists()
-        is_admin = request.user.is_staff or request.user.is_superuser
-        can_view_all = user_profile.can_view_all_users() if user_profile else False
         
-        if not (is_owner or is_schedule_creator or is_admin or can_view_all):
-            return JsonResponse({
-                'success': False,
-                'error': '권한이 없습니다.'
-            }, status=403)
+        # can_modify_user_data 로직 적용: Admin만 타인 데이터 수정 가능, Manager는 읽기 전용
+        if not (is_owner or is_schedule_creator):
+            if not user_profile.is_admin():
+                return JsonResponse({
+                    'success': False,
+                    'error': '본인의 영업기회만 수정할 수 있습니다.'
+                }, status=403)
         
         # 요청에서 새로운 단계 가져오기
         import json as json_module
@@ -11082,13 +11088,12 @@ def opportunity_update_label_api(request, opportunity_id):
     try:
         opportunity = OpportunityTracking.objects.get(id=opportunity_id)
         
-        # 권한 체크
+        # 권한 체크 - 본인 데이터만 수정 가능 (Admin은 모든 데이터 수정 가능, Manager는 읽기 전용)
         user_profile = get_user_profile(request.user)
-        if not (request.user == opportunity.followup.user or 
-                user_profile.is_admin() or user_profile.is_manager()):
+        if not (request.user == opportunity.followup.user or user_profile.is_admin()):
             return JsonResponse({
                 'success': False,
-                'error': '권한이 없습니다.'
+                'error': '본인의 영업기회만 수정할 수 있습니다.'
             }, status=403)
         
         import json as json_module
