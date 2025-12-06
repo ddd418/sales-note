@@ -25,11 +25,12 @@
     }
     
     .stats-card {
+        background-color: var(--surface);
         border-radius: 15px;
         padding: 1.5rem;
         margin-bottom: 1.5rem;
         transition: all 0.3s ease;
-        border: none;
+        border: 1px solid var(--border);
         box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         height: 100%;
     }
@@ -57,10 +58,11 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: var(--text-primary);
     }
     
     .stats-label {
-        color: #6c757d;
+        color: var(--text-secondary);
         font-size: 0.9rem;
     }
     
@@ -82,7 +84,8 @@
     
     .table-card {
         border-radius: 15px;
-        border: none;
+        border: 1px solid var(--border);
+        background-color: var(--surface);
         box-shadow: 0 5px 15px rgba(0,0,0,0.08);
     }
     
@@ -95,26 +98,29 @@
     
     .table-card .card-body {
         padding: 0;
+        background-color: var(--surface);
     }
     
     .prepayment-table {
         margin-bottom: 0;
+        color: var(--text-primary);
     }
     
     .prepayment-table thead th {
-        background-color: #f8f9fa;
+        background-color: var(--table-header-bg);
         font-weight: 600;
-        color: #495057;
-        border-bottom: 2px solid #dee2e6;
+        color: var(--text-primary);
+        border-bottom: 2px solid var(--border);
         padding: 1rem;
     }
     
     .prepayment-table tbody tr {
         transition: all 0.2s ease;
+        background-color: var(--surface);
     }
     
     .prepayment-table tbody tr:hover {
-        background-color: #f8f9fa;
+        background-color: var(--hover-bg);
         transform: scale(1.01);
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
@@ -123,6 +129,16 @@
         vertical-align: middle;
         padding: 1rem;
         white-space: nowrap;
+        border-color: var(--border);
+    }
+    
+    .prepayment-table tfoot tr {
+        background-color: var(--table-header-bg);
+        color: var(--text-primary);
+    }
+    
+    .prepayment-table tfoot td {
+        border-color: var(--border);
     }
     
     .btn-excel {
@@ -168,13 +184,26 @@
     .empty-state {
         text-align: center;
         padding: 3rem 1rem;
-        color: #6c757d;
+        color: var(--text-secondary);
     }
     
     .empty-state i {
         font-size: 4rem;
         margin-bottom: 1rem;
         opacity: 0.3;
+    }
+    
+    .empty-state h5 {
+        color: var(--text-primary);
+    }
+    
+    .alert-light {
+        background-color: var(--surface) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .alert-light .text-muted {
+        color: var(--text-secondary) !important;
     }
     
     /* 모바일 및 태블릿 반응형 (1200px 이하) */
