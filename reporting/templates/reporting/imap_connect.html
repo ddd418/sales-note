@@ -13,7 +13,7 @@
                         <i class="bi bi-envelope-at"></i> 이메일 연동 설정 (IMAP/SMTP)
                     </h4>
                     <p class="text-muted mb-0 mt-2">
-                        @inside.com 등 커스텀 도메인 이메일을 연동할 수 있습니다.
+                        회사 이메일 등 커스텀 도메인 이메일을 연동할 수 있습니다.
                     </p>
                 </div>
                 <div class="card-body">
@@ -67,7 +67,7 @@
                                 <label class="form-label required">이메일 주소</label>
                                 <input type="email" class="form-control" name="imap_email" 
                                        value="{{ form_data.imap_email|default:user_profile.imap_email }}" 
-                                       placeholder="your@inside.com" required>
+                                       placeholder="user@company.com" required>
                                 <small class="text-muted">연동할 이메일 주소를 입력하세요.</small>
                             </div>
                         </div>
@@ -98,7 +98,7 @@
                                 <label class="form-label required">IMAP 사용자명</label>
                                 <input type="text" class="form-control" name="imap_username" 
                                        value="{{ form_data.imap_username|default:user_profile.imap_username }}" 
-                                       placeholder="your@inside.com" required>
+                                       placeholder="user@company.com" required>
                                 <small class="text-muted">보통 이메일 주소와 동일합니다.</small>
                             </div>
                             
@@ -152,7 +152,7 @@
                                 <label class="form-label required">SMTP 사용자명</label>
                                 <input type="text" class="form-control" name="smtp_username" 
                                        value="{{ form_data.smtp_username|default:user_profile.smtp_username }}" 
-                                       placeholder="your@inside.com" required>
+                                       placeholder="user@company.com" required>
                             </div>
                             
                             <div class="col-md-6 mb-3">
