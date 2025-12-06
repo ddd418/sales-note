@@ -11,10 +11,14 @@
         min-height: 200px;
         font-family: 'Courier New', monospace;
         resize: vertical;
+        background-color: var(--surface);
+        color: var(--text-primary);
+        border-color: var(--border);
     }
     
     .paste-section {
-        background-color: #f8f9fa;
+        background-color: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 8px;
         padding: 1.5rem;
         margin-bottom: 2rem;
@@ -27,6 +31,61 @@
     
     .preview-table table {
         font-size: 0.9rem;
+        color: var(--text-primary);
+    }
+    
+    .preview-table thead th {
+        background-color: var(--table-header-bg);
+        color: var(--text-primary);
+        border-color: var(--border);
+    }
+    
+    .preview-table tbody td {
+        background-color: var(--surface);
+        border-color: var(--border);
+    }
+    
+    .card {
+        background-color: var(--surface);
+        border-color: var(--border);
+    }
+    
+    .card-header {
+        background-color: var(--surface);
+        border-bottom-color: var(--border);
+        color: var(--text-primary);
+    }
+    
+    .card-body {
+        background-color: var(--surface);
+        color: var(--text-primary);
+    }
+    
+    .form-label {
+        color: var(--text-primary);
+    }
+    
+    .form-control,
+    .form-select {
+        background-color: var(--input-bg);
+        color: var(--text-primary);
+        border-color: var(--border);
+    }
+    
+    .form-control:focus,
+    .form-select:focus {
+        background-color: var(--input-bg);
+        color: var(--text-primary);
+        border-color: var(--primary);
+    }
+    
+    .text-muted {
+        color: var(--text-secondary) !important;
+    }
+    
+    hr {
+        border-color: var(--border);
+        opacity: 0.3;
     }
     
     /* 모바일 및 태블릿 반응형 (1200px 이하) */
@@ -134,17 +193,17 @@
                             엑셀에서 일괄 등록
                         </h5>
                         <p class="text-muted mb-3">
-                            엑셀에서 <strong>품목코드 / 품목명 / 규격 / 단위 / 출고단가</strong> 형식으로 복사하여 붙여넣으세요. (탭 또는 공백으로 구분)
+                            엑셀에서 <strong>품목코드 / 규격 / 단위 / 출고단가</strong> 형식으로 복사하여 붙여넣으세요. (탭 또는 공백으로 구분)
                         </p>
                         <div class="mb-3">
                             <label class="form-label">엑셀 데이터 붙여넣기</label>
                             <textarea id="excelPasteArea" class="form-control" rows="8" 
                                       placeholder="예:
-PROD-001    제품명1    규격1    EA    10000
-PROD-002    제품명2    규격2    SET   20000
-PROD-003    제품명3    규격3    BOX   30000"></textarea>
+PROD-001    규격1    EA    10000
+PROD-002    규격2    SET   20000
+PROD-003    규격3    BOX   30000"></textarea>
                             <small class="text-muted">
-                                각 행은 엔터로 구분하고, 품목코드/품목명/규격/단위/출고단가는 탭으로 구분합니다.
+                                각 행은 엔터로 구분하고, 품목코드/규격/단위/출고단가는 탭으로 구분합니다.
                             </small>
                         </div>
                         <button type="button" class="btn btn-success" onclick="parseExcelData()">
@@ -161,11 +220,10 @@ PROD-003    제품명3    규격3    BOX   30000"></textarea>
                                 <table class="table table-sm table-bordered">
                                     <thead class="table-light">
                                         <tr>
-                                            <th width="20%">품목코드</th>
-                                            <th width="25%">품목명</th>
-                                            <th width="20%">규격</th>
-                                            <th width="10%">단위</th>
-                                            <th width="25%">출고단가</th>
+                                            <th width="30%">품목코드</th>
+                                            <th width="25%">규격</th>
+                                            <th width="15%">단위</th>
+                                            <th width="30%">출고단가</th>
                                         </tr>
                                     </thead>
                                     <tbody id="previewTableBody">
@@ -194,13 +252,6 @@ PROD-003    제품명3    규격3    BOX   30000"></textarea>
                                    value="{{ product.product_code }}" required
                                    placeholder="예: PROD-001">
                             <small class="text-muted">고유한 제품 코드를 입력하세요</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">품목명</label>
-                            <input type="text" name="product_name" class="form-control" 
-                                   value="{{ product.product_name|default:'' }}"
-                                   placeholder="제품명을 입력하세요">
                         </div>
 
                         <div class="row mb-3">
@@ -350,18 +401,16 @@ function parseExcelData() {
             parts = line.split(/\s{2,}/).map(p => p.trim());
         }
         
-        // 품목코드, 품목명, 규격, 단위, 출고단가 (5개)
-        if (parts.length >= 5) {
+        // 품목코드, 규격, 단위, 출고단가 (4개)
+        if (parts.length >= 4) {
             const productCode = parts[0];
-            const productName = parts[1];
-            const specification = parts[2];
-            const unit = parts[3];
-            const price = parts[4].replace(/[,원]/g, ''); // 쉼표와 '원' 제거
+            const specification = parts[1];
+            const unit = parts[2];
+            const price = parts[3].replace(/[,원]/g, ''); // 쉼표와 '원' 제거
             
             if (productCode && price && !isNaN(price)) {
                 parsedProducts.push({
                     product_code: productCode,
-                    product_name: productName || '',
                     specification: specification || '',
                     unit: unit || 'EA',
                     standard_price: parseInt(price)
@@ -371,7 +420,7 @@ function parseExcelData() {
     });
     
     if (parsedProducts.length === 0) {
-        alert('올바른 형식의 데이터가 없습니다.\n\n형식: 품목코드[탭]품목명[탭]규격[탭]단위[탭]출고단가');
+        alert('올바른 형식의 데이터가 없습니다.\n\n형식: 품목코드[탭]규격[탭]단위[탭]출고단가');
         return;
     }
     
@@ -389,7 +438,6 @@ function displayPreview() {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${product.product_code}</td>
-            <td>${product.product_name || ''}</td>
             <td>${product.specification || ''}</td>
             <td>${product.unit || 'EA'}</td>
             <td class="text-end">${product.standard_price.toLocaleString()}원</td>
