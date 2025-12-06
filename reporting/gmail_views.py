@@ -640,11 +640,15 @@ def mailbox_inbox(request):
         return redirect('reporting:gmail_connect')
     
     # DB에서 수신 메일 조회 (본인 담당 팔로우업만)
+    # 최신순 정렬: received_at이 null이면 created_at 사용
+    from django.db.models.functions import Coalesce
     emails = EmailLog.objects.filter(
         email_type='received',
         followup__isnull=False,  # 팔로우업 연결된 메일만
         followup__user=request.user  # 본인 담당 팔로우업만
-    ).select_related('followup', 'sender', 'business_card').order_by('-sent_at')
+    ).select_related('followup', 'sender', 'business_card').order_by(
+        Coalesce('received_at', 'created_at').desc()
+    )
     
     # 페이지네이션 (20개씩)
     paginator = Paginator(emails, 20)
