@@ -270,6 +270,58 @@
       opacity: 1;
     }
 
+    /* ============================================
+       태블릿 최적화 (768px ~ 1024px) - 갤럭시 탭 등
+       ============================================ */
+    @media (min-width: 768px) and (max-width: 1024px) {
+      /* 전역 텍스트 줄바꿈 방지 */
+      .table th,
+      .table td {
+        white-space: nowrap;
+        font-size: 0.85rem;
+      }
+      
+      /* 금액 표시 줄바꿈 방지 */
+      .text-success,
+      .text-primary,
+      .text-info,
+      .text-warning,
+      .text-danger {
+        white-space: nowrap;
+      }
+      
+      /* 날짜/시간 표시 줄바꿈 방지 */
+      .text-muted {
+        white-space: nowrap;
+      }
+      
+      /* 배지 줄바꿈 방지 */
+      .badge {
+        white-space: nowrap;
+      }
+      
+      /* 카드 제목 줄바꿈 방지 */
+      .card-title,
+      .card h3,
+      .card h5,
+      .card h6 {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      /* 버튼 텍스트 줄바꿈 방지 */
+      .btn {
+        white-space: nowrap;
+      }
+      
+      /* 폼 레이블 줄바꿈 방지 */
+      .form-label,
+      label {
+        white-space: nowrap;
+      }
+    }
+
     @media (max-width: 1200px) {
       /* 🔥 전체 페이지 너비 제한 해제 */
       html, body {

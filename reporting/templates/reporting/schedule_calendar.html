@@ -348,6 +348,69 @@
   }
 
   /* ============================================
+     태블릿 최적화 (768px ~ 1024px) - 갤럭시 탭 등
+     ============================================ */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    /* 헤더 태블릿 최적화 */
+    .schedule-calendar-header h1 {
+      font-size: 1.5rem;
+    }
+    
+    /* 캘린더 셀 태블릿 최적화 */
+    .calendar-table th,
+    .calendar-table td {
+      padding: 0.3rem;
+      font-size: 0.85rem;
+    }
+    
+    .calendar-day {
+      min-height: 80px;
+      height: 80px;
+    }
+    
+    .day-number {
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    
+    /* 일정 아이템 태블릿 최적화 */
+    .schedule-item,
+    .schedule-event {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.3rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    /* 선택된 날짜 카드 태블릿 최적화 */
+    .selected-date-card .card-title {
+      font-size: 1rem;
+      white-space: nowrap;
+    }
+    
+    /* 테이블 내 텍스트 줄바꿈 방지 */
+    .table th,
+    .table td {
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+    
+    /* 금액/날짜 표시 줄바꿈 방지 */
+    .text-success,
+    .text-primary,
+    .text-muted,
+    .badge {
+      white-space: nowrap;
+    }
+    
+    /* 모달 태블릿 최적화 */
+    .modal-dialog {
+      max-width: 85%;
+    }
+  }
+
+  /* ============================================
      모바일 최적화 (768px 이하)
      ============================================ */
   @media (max-width: 768px) {

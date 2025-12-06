@@ -263,6 +263,61 @@
         }
     }
     
+    /* 태블릿 (768px ~ 1024px) - 갤럭시 탭 등 */
+    @media (min-width: 768px) and (max-width: 1024px) {
+        .funnel-card h3,
+        .metric-value {
+            font-size: 1.5rem !important;
+            white-space: nowrap !important;
+        }
+        
+        .funnel-card .card-body {
+            padding: 1rem;
+        }
+        
+        /* 기회 아이템 금액 줄바꿈 방지 */
+        .opportunity-item strong {
+            white-space: nowrap !important;
+        }
+        
+        /* 테이블 셀 줄바꿈 방지 */
+        .table th,
+        .table td {
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+        
+        /* 날짜/금액 표시 줄바꿈 방지 */
+        .text-success,
+        .text-primary,
+        .text-muted {
+            white-space: nowrap;
+        }
+        
+        .stage-badge {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        
+        /* 영업기회 전환 현황 / 견적 승패 현황 카드 */
+        .row.text-center h3,
+        .row.text-center h4 {
+            font-size: 1.25rem !important;
+            white-space: nowrap !important;
+        }
+        
+        .row.text-center small {
+            font-size: 0.65rem !important;
+            white-space: nowrap !important;
+        }
+        
+        .row.text-center .p-3,
+        .row.text-center .p-2 {
+            padding: 0.5rem !important;
+        }
+    }
+    
     /* 소형 모바일 (480px 이하) */
     @media (max-width: 480px) {
         .page-header-gradient {

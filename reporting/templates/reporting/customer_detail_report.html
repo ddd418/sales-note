@@ -767,6 +767,45 @@
     }
   }
   
+  /* 태블릿 (768px ~ 1024px) - 갤럭시 탭 등 */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    .col-md-2-4 {
+      flex: 0 0 33.33%;
+      max-width: 33.33%;
+    }
+    
+    .card-body h3 {
+      font-size: 1.35rem;
+      white-space: nowrap;
+    }
+    
+    .card-body h6 {
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    
+    /* 테이블 셀 줄바꿈 방지 */
+    .table th,
+    .table td {
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+    
+    /* 금액 표시 줄바꿈 방지 */
+    .text-success,
+    .text-primary,
+    .text-info,
+    .text-warning,
+    .text-danger {
+      white-space: nowrap;
+    }
+    
+    /* 날짜/시간 표시 줄바꿈 방지 */
+    .text-muted {
+      white-space: nowrap;
+    }
+  }
+  
   /* 소형 모바일 (480px 이하) */
   @media (max-width: 480px) {
     .page-title {

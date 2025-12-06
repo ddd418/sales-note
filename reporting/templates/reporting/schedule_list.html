@@ -564,6 +564,46 @@
     font-size: 0.75rem;
   }
 
+  /* 태블릿 최적화 (768px ~ 1024px) - 갤럭시 탭 등 */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    /* 테이블 셀 줄바꿈 방지 */
+    .table th,
+    .table td {
+      white-space: nowrap;
+      font-size: 0.85rem;
+      padding: 0.5rem;
+    }
+    
+    /* 금액/날짜 표시 줄바꿈 방지 */
+    .text-success,
+    .text-primary,
+    .text-muted {
+      white-space: nowrap;
+    }
+    
+    /* 일정 카드 내 텍스트 */
+    .schedule-card .card-body {
+      font-size: 0.9rem;
+    }
+    
+    .schedule-card h6 {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    /* 배지 줄바꿈 방지 */
+    .badge {
+      white-space: nowrap;
+    }
+    
+    /* 버튼 그룹 */
+    .btn-group .btn {
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+  }
+
   /* 일정 목록 모바일 최적화 */
 @media (max-width: 768px) {
   /* 헤더 모바일 최적화 */
