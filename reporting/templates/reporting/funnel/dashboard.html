@@ -1354,13 +1354,19 @@ new Chart(stageCtx, {
                 beginAtZero: true,
                 title: {
                     display: true,
-                    text: '건수'
+                    text: '건수',
+                    color: 'hsl(215, 20%, 65%)'
                 },
                 ticks: {
                     stepSize: 1,
+                    color: 'hsl(215, 20%, 65%)',
                     callback: function(value) {
                         return value + '건';
                     }
+                },
+                grid: {
+                    color: 'hsl(217, 33%, 28%)',
+                    borderColor: 'hsl(217, 33%, 28%)'
                 }
             },
             y1: {
@@ -1370,9 +1376,11 @@ new Chart(stageCtx, {
                 beginAtZero: true,
                 title: {
                     display: true,
-                    text: '예상 매출'
+                    text: '예상 매출',
+                    color: 'hsl(215, 20%, 65%)'
                 },
                 ticks: {
+                    color: 'hsl(215, 20%, 65%)',
                     callback: function(value) {
                         if (value >= 1000000) {
                             return (value / 1000000).toFixed(1) + 'M';
@@ -1383,7 +1391,18 @@ new Chart(stageCtx, {
                     }
                 },
                 grid: {
-                    drawOnChartArea: false
+                    drawOnChartArea: false,
+                    color: 'hsl(217, 33%, 28%)',
+                    borderColor: 'hsl(217, 33%, 28%)'
+                }
+            },
+            x: {
+                grid: {
+                    color: 'hsl(217, 33%, 28%)',
+                    borderColor: 'hsl(217, 33%, 28%)'
+                },
+                ticks: {
+                    color: 'hsl(215, 20%, 65%)'
                 }
             }
         }

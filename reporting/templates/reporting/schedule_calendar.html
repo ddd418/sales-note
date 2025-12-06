@@ -1104,6 +1104,89 @@
     max-height: none !important;
     overflow: visible !important;
   }
+  
+  /* ============================================
+     🌙 관련 활동 기록 다크모드
+     ============================================ */
+  
+  /* 활동 기록 카드 다크모드 */
+  #scheduleHistories-\\31 .card,
+  #scheduleHistories- .card,
+  [id^="scheduleHistories-"] .card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .card-header {
+    background: var(--surface-hover) !important;
+    border-bottom-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .card-header.bg-light {
+    background: var(--surface-hover) !important;
+  }
+  
+  [id^="scheduleHistories-"] .card-body {
+    background: var(--surface) !important;
+  }
+  
+  /* 활동 내용 표시 영역 */
+  [id^="scheduleHistories-"] .content-display {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  [id^="scheduleHistories-"] .content-display.bg-light {
+    background: var(--surface-hover) !important;
+  }
+  
+  /* form-control-plaintext 다크모드 */
+  [id^="scheduleHistories-"] .form-control-plaintext {
+    color: var(--text-primary) !important;
+  }
+  
+  /* 납품 품목 표시 다크모드 */
+  [id^="scheduleHistories-"] .delivery-items-display {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* 첨부파일 목록 다크모드 */
+  [id^="scheduleHistories-"] .attachments-list .bg-light {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .attachments-list a {
+    color: var(--primary) !important;
+  }
+  
+  /* 댓글(답글) 목록 다크모드 */
+  [id^="scheduleHistories-"] .reply-memos-list .bg-light {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .reply-memos-list .content-display {
+    color: var(--text-primary) !important;
+  }
+  
+  /* 활동 기록 없을 때 빈 상태 */
+  [id^="scheduleHistories-"] .text-center.text-muted {
+    color: var(--text-muted) !important;
+  }
+  
+  /* 라벨 텍스트 */
+  [id^="scheduleHistories-"] .form-label {
+    color: var(--text-primary) !important;
+  }
+  
+  /* 작은 텍스트 */
+  [id^="scheduleHistories-"] small.text-muted {
+    color: var(--text-muted) !important;
+  }
 
   /* 일정 캘린더 모바일 최적화 */
   @media (max-width: 768px) {
