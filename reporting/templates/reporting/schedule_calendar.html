@@ -1115,11 +1115,13 @@
   [id^="scheduleHistories-"] .card {
     background: var(--surface) !important;
     border-color: var(--border) !important;
+    color: var(--text-primary) !important;
   }
   
   [id^="scheduleHistories-"] .card-header {
     background: var(--surface-hover) !important;
     border-bottom-color: var(--border) !important;
+    color: var(--text-primary) !important;
   }
   
   [id^="scheduleHistories-"] .card-header.bg-light {
@@ -1128,6 +1130,16 @@
   
   [id^="scheduleHistories-"] .card-body {
     background: var(--surface) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* border 클래스 다크모드 */
+  [id^="scheduleHistories-"] .border {
+    border-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .border.rounded {
+    border-color: var(--border) !important;
   }
   
   /* 활동 내용 표시 영역 */
@@ -1159,6 +1171,10 @@
     border-color: var(--border) !important;
   }
   
+  [id^="scheduleHistories-"] .attachments-list .border {
+    border-color: var(--border) !important;
+  }
+  
   [id^="scheduleHistories-"] .attachments-list a {
     color: var(--primary) !important;
   }
@@ -1166,6 +1182,10 @@
   /* 댓글(답글) 목록 다크모드 */
   [id^="scheduleHistories-"] .reply-memos-list .bg-light {
     background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+  }
+  
+  [id^="scheduleHistories-"] .reply-memos-list .border {
     border-color: var(--border) !important;
   }
   
