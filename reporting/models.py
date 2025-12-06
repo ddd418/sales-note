@@ -874,6 +874,7 @@ class FunnelStage(models.Model):
         ('closing', '클로징'),
         ('won', '수주'),
         ('quote_lost', '견적실패'),
+        ('excluded', '펀넬제외'),
     ]
     
     name = models.CharField(max_length=20, choices=STAGE_CHOICES, unique=True, verbose_name="단계 코드")

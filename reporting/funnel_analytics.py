@@ -14,7 +14,7 @@ class FunnelAnalytics:
     def get_pipeline_summary(user=None, accessible_users=None):
         """파이프라인 전체 요약"""
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'lost', 'quote_lost']
+            current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
         )
         
         if user:
@@ -44,9 +44,9 @@ class FunnelAnalytics:
         """단계별 분석 - Schedule 기준 카운트"""
         from .models import Schedule
         
-        # 견적실패(quote_lost), 실주(lost), 수주(won) 단계 제외
+        # 견적실패(quote_lost), 실주(lost), 수주(won), 펀넬제외(excluded) 단계 제외
         stages = FunnelStage.objects.exclude(
-            name__in=['quote_lost', 'lost', 'won']
+            name__in=['quote_lost', 'lost', 'won', 'excluded']
         ).order_by('stage_order')
         breakdown = []
         
@@ -274,6 +274,7 @@ class FunnelAnalytics:
         제외 단계:
         - won (수주)
         - quote_lost (견적실패)
+        - excluded (펀넬제외)
         
         Args:
             grade_filter: 고객 등급 필터 (VIP/A/B/C/D)
@@ -281,9 +282,9 @@ class FunnelAnalytics:
             level_filter: 종합 점수 레벨 필터 (critical/high/medium/low/minimal)
             label_filter: 라벨 ID 필터
         """
-        # 진행 중인 영업기회만 조회 (수주, 실주, 견적실패 제외)
+        # 진행 중인 영업기회만 조회 (수주, 실주, 견적실패, 펀넬제외 제외)
         qs = OpportunityTracking.objects.exclude(
-            current_stage__in=['won', 'lost', 'quote_lost']
+            current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
         ).select_related('followup', 'followup__company', 'followup__department', 'followup__user', 'label')
         
         if user:

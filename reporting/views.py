@@ -1854,9 +1854,10 @@ def dashboard_view(request):
     # TODO: Company 모델에 customer_type 필드 추가 후 활성화
     # 현재는 company name으로 간단히 분류 (예: 대학교 포함 여부 등)
     
-    # Schedule 기반 통계
+    # Schedule 기반 통계 (납품 일정만 카운트 - 견적 제외)
     schedule_company_stats = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__activity_type='delivery',  # 납품만 카운트 (견적 제외)
         schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
@@ -1882,9 +1883,10 @@ def dashboard_view(request):
             customer_type_stats['revenue'][1] += revenue
             customer_type_stats['count'][1] += cnt
     
-    # History 기반 통계
+    # History 기반 통계 (납품 이력만 카운트 - 견적 제외)
     history_company_stats = DeliveryItem.objects.filter(
         history__in=histories_current_year,
+        history__activity_type='delivery',  # 납품만 카운트 (견적 제외)
         history__followup__isnull=False,
         history__followup__company__isnull=False
     ).values('history__followup__company__name').annotate(
@@ -5501,9 +5503,10 @@ def manager_dashboard(request):
         'count': [0, 0, 0]
     }
     
-    # Schedule 기반 통계
+    # Schedule 기반 통계 (납품 일정만 카운트 - 견적 제외)
     schedule_company_stats = DeliveryItem.objects.filter(
         schedule__in=schedules_current_year,
+        schedule__activity_type='delivery',  # 납품만 카운트 (견적 제외)
         schedule__status__in=['scheduled', 'completed'],  # 취소된 일정 제외
         schedule__followup__isnull=False,
         schedule__followup__company__isnull=False
@@ -5527,9 +5530,10 @@ def manager_dashboard(request):
             customer_type_stats['revenue'][1] += revenue
             customer_type_stats['count'][1] += cnt
     
-    # History 기반 통계
+    # History 기반 통계 (납품 이력만 카운트 - 견적 제외)
     history_company_stats = DeliveryItem.objects.filter(
         history__in=histories_current_year,
+        history__activity_type='delivery',  # 납품만 카운트 (견적 제외)
         history__followup__isnull=False,
         history__followup__company__isnull=False
     ).values('history__followup__company__name').annotate(
@@ -10632,14 +10636,14 @@ def funnel_dashboard_view(request):
     elif accessible_users_list is not None:
         all_opportunities_this_year = all_opportunities_this_year.filter(followup__user__in=accessible_users_list)
     
-    # 올해 등록된 것 중 현재 진행 중인 영업기회 (won, lost, quote_lost 제외)
+    # 올해 등록된 것 중 현재 진행 중인 영업기회 (won, lost, quote_lost, excluded 제외)
     active_opportunities_this_year = all_opportunities_this_year.exclude(
-        current_stage__in=['won', 'lost', 'quote_lost']
+        current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
     ).count()
     
-    # 전체 = 올해 등록된 영업기회 중 종료된 영업기회 (won + lost + quote_lost)
+    # 전체 = 올해 등록된 영업기회 중 종료된 영업기회 (won + lost + quote_lost + excluded)
     total_opportunities_count = all_opportunities_this_year.filter(
-        current_stage__in=['won', 'lost', 'quote_lost']
+        current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
     ).count()
     
     # 수주 = 종료된 영업기회 중 won 상태인 것
@@ -10736,7 +10740,8 @@ def update_opportunity_stage_api(request, opportunity_id):
             'quote': '견적',
             'closing': '수주예정',
             'won': '수주',
-            'lost': '실주'
+            'lost': '실주',
+            'excluded': '펀넬제외'
         }
         
         # 관련 일정 찾기
@@ -10769,6 +10774,11 @@ def update_opportunity_stage_api(request, opportunity_id):
             scheduled_items = related_schedules.filter(status='scheduled')
             scheduled_items.update(status='completed')
             schedule_updates.append(f"예정 일정 {scheduled_items.count()}건 완료 처리")
+        
+        elif new_stage == 'excluded':
+            # 펀넬 제외: 일정은 그대로 유지, 단지 펀넬에서만 제외됨
+            # 영업기회 전환 현황의 '전체'에는 포함됨
+            schedule_updates.append("펀넬에서 제외됨 (일정은 유지)")
         
         # OpportunityTracking 단계 업데이트
         opportunity.update_stage(new_stage)

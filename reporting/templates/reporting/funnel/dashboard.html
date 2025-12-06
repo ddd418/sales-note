@@ -1798,10 +1798,12 @@ function showStageSelector(oppId, currentStage) {
     // 단계별 전환 옵션 정의
     const stageTransitions = {
         'lead': [
-            { stage: 'contact', label: '컨텍으로 변경', icon: 'fa-phone', description: '미팅 완료 처리됨', color: '#60a5fa' }
+            { stage: 'contact', label: '컨텍으로 변경', icon: 'fa-phone', description: '미팅 완료 처리됨', color: '#60a5fa' },
+            { stage: 'excluded', label: '펀넬에서 제외', icon: 'fa-ban', description: '일정은 유지, 펀넬에서만 제외', color: '#9ca3af' }
         ],
         'contact': [
-            { stage: 'lead', label: '리드로 변경', icon: 'fa-user-plus', description: '미팅 예정으로 복원', color: '#94a3b8' }
+            { stage: 'lead', label: '리드로 변경', icon: 'fa-user-plus', description: '미팅 예정으로 복원', color: '#94a3b8' },
+            { stage: 'excluded', label: '펀넬에서 제외', icon: 'fa-ban', description: '일정은 유지, 펀넬에서만 제외', color: '#9ca3af' }
         ],
         'quote': [
             { stage: 'lost', label: '실주 처리', icon: 'fa-times-circle', description: '견적 취소됨', color: '#ef4444' }
@@ -1818,7 +1820,8 @@ function showStageSelector(oppId, currentStage) {
         'quote': '견적',
         'closing': '수주예정',
         'won': '수주',
-        'lost': '실주'
+        'lost': '실주',
+        'excluded': '펀넬제외'
     };
     
     const transitions = stageTransitions[currentStage] || [];
@@ -1862,10 +1865,11 @@ function changeOpportunityStage(newStage) {
         'quote': '견적',
         'closing': '수주예정',
         'won': '수주',
-        'lost': '실주'
+        'lost': '실주',
+        'excluded': '펀넬제외'
     };
     
-    if (!confirm(`'${stageNames[newStage]}' 단계로 변경하시겠습니까?`)) {
+    if (!confirm(`'${stageNames[newStage] || newStage}' 단계로 변경하시겠습니까?`)) {
         return;
     }
     
