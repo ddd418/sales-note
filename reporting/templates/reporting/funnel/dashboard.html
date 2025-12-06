@@ -1104,6 +1104,14 @@
                                                 <strong style="font-size: 1.1rem; color: #2d3748;">
                                                     {{ opp.company_name }}{% if opp.department_name %} / {{ opp.department_name }}{% endif %}
                                                 </strong>
+                                                {% if request.user.userprofile.can_use_ai %}
+                                                <!-- AI 사용자: 종합 우선순위 레벨 배지 -->
+                                                <span class="badge" style="background-color: {{ opp.priority_level.color }}; color: white; font-size: 0.75rem; padding: 0.3rem 0.6rem;">
+                                                    {{ opp.priority_level.icon }} {{ opp.priority_level.label }}
+                                                </span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2 mb-1">
                                                 {% if opp.label %}
                                                 <!-- 라벨 표시 -->
                                                 <span class="badge label-badge" 
@@ -1120,12 +1128,6 @@
                                                         title="라벨 추가">
                                                     <i class="fas fa-tag"></i>+
                                                 </button>
-                                                {% endif %}
-                                                {% if request.user.userprofile.can_use_ai %}
-                                                <!-- AI 사용자: 종합 우선순위 레벨 배지 -->
-                                                <span class="badge" style="background-color: {{ opp.priority_level.color }}; color: white; font-size: 0.75rem; padding: 0.3rem 0.6rem;">
-                                                    {{ opp.priority_level.icon }} {{ opp.priority_level.label }}
-                                                </span>
                                                 {% endif %}
                                             </div>
                                             <small class="text-muted fw-semibold d-block">
@@ -2058,8 +2060,10 @@ function renderOpportunities(opportunities) {
                         <div style="flex-grow: 1;">
                             <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                 <strong style="font-size: 1.1rem; color: #2d3748;">${opp.company_name}${opp.department_name ? ' / ' + opp.department_name : ''}</strong>
-                                ${labelHtml}
                                 ${aiBadgesHtml}
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                ${labelHtml}
                             </div>
                             <small class="text-muted fw-semibold d-block"><i class="fas fa-user me-1"></i>${opp.customer_name}</small>
                             <div class="d-flex gap-2 mt-1 flex-wrap">
