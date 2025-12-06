@@ -2113,18 +2113,20 @@ function showStageSelector(oppId, currentStage) {
     const stageTransitions = {
         'lead': [
             { stage: 'contact', label: '컨텍으로 변경', icon: 'fa-phone', description: '미팅 완료 처리됨', color: '#60a5fa' },
-            { stage: 'excluded', label: '펀넬에서 제외', icon: 'fa-ban', description: '일정은 유지, 펀넬에서만 제외', color: '#9ca3af' }
+            { stage: 'excluded', label: '취소 (제외)', icon: 'fa-ban', description: '영업 기회 취소됨', color: '#9ca3af' }
         ],
         'contact': [
-            { stage: 'lead', label: '리드로 변경', icon: 'fa-user-plus', description: '미팅 예정으로 복원', color: '#94a3b8' },
-            { stage: 'excluded', label: '펀넬에서 제외', icon: 'fa-ban', description: '일정은 유지, 펀넬에서만 제외', color: '#9ca3af' }
+            { stage: 'lead', label: '리드로 변경 (이전)', icon: 'fa-arrow-left', description: '미팅 예정으로 복원', color: '#94a3b8' },
+            { stage: 'excluded', label: '취소 (제외)', icon: 'fa-ban', description: '영업 기회 취소됨', color: '#9ca3af' }
         ],
         'quote': [
-            { stage: 'lost', label: '실주 처리', icon: 'fa-times-circle', description: '견적 취소됨', color: '#ef4444' }
+            { stage: 'lost', label: '실주 처리 (취소)', icon: 'fa-times-circle', description: '견적 취소됨', color: '#ef4444' }
         ],
         'closing': [
-            { stage: 'won', label: '수주 완료', icon: 'fa-trophy', description: '거래 성사', color: '#22c55e' },
-            { stage: 'lost', label: '실주 처리', icon: 'fa-times-circle', description: '거래 무산', color: '#ef4444' }
+            { stage: 'lost', label: '실주 처리 (취소)', icon: 'fa-times-circle', description: '거래 무산', color: '#ef4444' }
+        ],
+        'won': [
+            { stage: 'lost', label: '실주 처리 (취소)', icon: 'fa-times-circle', description: '수주 취소됨', color: '#ef4444' }
         ]
     };
     

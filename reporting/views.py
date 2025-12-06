@@ -2500,18 +2500,16 @@ def schedule_create_view(request):
                 if selected_opportunity:
                     should_create_or_update_opportunity = True
                     has_existing_opportunity = True
-                # 견적 일정이고 기존 opportunity가 없으면 새로 생성
-                elif schedule.activity_type == 'quote' and not has_existing_opportunity:
+                # 견적 일정: 항상 펀넬 생성 (기존 opportunity 있으면 업데이트, 없으면 신규 생성)
+                elif schedule.activity_type == 'quote':
                     should_create_or_update_opportunity = True
-                    has_existing_opportunity = False
-                # 납품 일정이고 기존 opportunity가 있으면 업데이트
-                elif schedule.activity_type == 'delivery' and has_existing_opportunity:
+                    # 기존 opportunity가 있으면 업데이트, 없으면 신규 생성
+                    has_existing_opportunity = has_existing_opportunity
+                # 납품 일정: 항상 펀넬 생성 (기존 opportunity 있으면 업데이트, 없으면 신규 생성)
+                elif schedule.activity_type == 'delivery':
                     should_create_or_update_opportunity = True
-                    has_existing_opportunity = True
-                # 납품 일정이고 기존 opportunity가 없으면 새로 생성
-                elif schedule.activity_type == 'delivery' and not has_existing_opportunity:
-                    should_create_or_update_opportunity = True
-                    has_existing_opportunity = False
+                    # 기존 opportunity가 있으면 업데이트, 없으면 신규 생성
+                    has_existing_opportunity = has_existing_opportunity
                 # 미팅 일정인 경우: register_funnel 체크된 경우에만 새로운 Opportunity 생성 (예상매출 0)
                 elif schedule.activity_type == 'customer_meeting':
                     if register_funnel:
@@ -6286,6 +6284,43 @@ def schedule_status_update_api(request, schedule_id):
                         'note': f'완료 철회 후 납품 예정으로 클로징 (일정 ID: {schedule.id})'
                     }
                     opportunity.stage_history.append(closing_entry)
+                    
+                    opportunity.save()
+                    opportunity.update_revenue_amounts()
+        
+        # 견적 예정 처리 시 추가 작업 (펀넬을 quote로 변경)
+        if new_status == 'scheduled' and schedule.activity_type == 'quote':
+            from datetime import date
+            
+            # 펀넬을 quote로 변경
+            if schedule.opportunity:
+                opportunity = schedule.opportunity
+                
+                # lost나 quote_lost 상태에서 quote로 변경
+                if opportunity.current_stage in ['lost', 'quote_lost']:
+                    opportunity.current_stage = 'quote'
+                    opportunity.lost_date = None  # 실주 날짜 제거
+                    opportunity.lost_reason = None  # 실주 사유 제거
+                    
+                    # 단계 이력에 quote 추가
+                    if not opportunity.stage_history:
+                        opportunity.stage_history = []
+                    
+                    # 현재 lost/quote_lost 단계 종료 처리
+                    for history in reversed(opportunity.stage_history):
+                        if history.get('stage') in ['lost', 'quote_lost'] and not history.get('exited'):
+                            history['exited'] = date.today().isoformat()
+                            history['note'] = f"{history.get('note', '')} → 취소 철회로 복구"
+                            break
+                    
+                    # quote 단계 추가
+                    quote_entry = {
+                        'stage': 'quote',
+                        'entered': date.today().isoformat(),
+                        'exited': None,
+                        'note': f'취소 철회 후 견적 예정으로 복구 (일정 ID: {schedule.id})'
+                    }
+                    opportunity.stage_history.append(quote_entry)
                     
                     opportunity.save()
                     opportunity.update_revenue_amounts()
@@ -10624,8 +10659,34 @@ def funnel_dashboard_view(request):
     }
     
     # 영업기회 전환 현황 계산
-    # 전체 = 올해 등록된 영업기회 중 종료된 것 (won + lost + quote_lost)
+    # 전체 = 올해 종료된 영업기회 (won + lost + quote_lost + excluded)
     # 수주 = 그 중 won 상태인 것
+    
+    # 올해 종료된 모든 영업기회 (updated_at 기준 - 단계 변경 시점)
+    from django.db.models import Q
+    
+    # 종료 상태인 영업기회 중 올해 업데이트된 것
+    ended_opportunities_this_year = OpportunityTracking.objects.filter(
+        current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
+    )
+    
+    if filter_user:
+        ended_opportunities_this_year = ended_opportunities_this_year.filter(followup__user=filter_user)
+    elif accessible_users_list is not None:
+        ended_opportunities_this_year = ended_opportunities_this_year.filter(followup__user__in=accessible_users_list)
+    
+    # 올해 업데이트된 종료 영업기회만 필터링
+    ended_opportunities_this_year = ended_opportunities_this_year.filter(
+        updated_at__year=current_year
+    )
+    
+    # 전체 종료 영업기회 수
+    total_opportunities_count = ended_opportunities_this_year.count()
+    
+    # 수주 = 종료된 영업기회 중 won 상태인 것
+    won_opportunities_count = ended_opportunities_this_year.filter(current_stage='won').count()
+    
+    avg_win_rate = round((won_opportunities_count / total_opportunities_count * 100), 1) if total_opportunities_count > 0 else 0
     
     # 올해 등록된 모든 영업기회 (created_at 기준)
     all_opportunities_this_year = OpportunityTracking.objects.filter(
@@ -10640,16 +10701,6 @@ def funnel_dashboard_view(request):
     active_opportunities_this_year = all_opportunities_this_year.exclude(
         current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
     ).count()
-    
-    # 전체 = 올해 등록된 영업기회 중 종료된 영업기회 (won + lost + quote_lost + excluded)
-    total_opportunities_count = all_opportunities_this_year.filter(
-        current_stage__in=['won', 'lost', 'quote_lost', 'excluded']
-    ).count()
-    
-    # 수주 = 종료된 영업기회 중 won 상태인 것
-    won_opportunities_count = all_opportunities_this_year.filter(current_stage='won').count()
-    
-    avg_win_rate = round((won_opportunities_count / total_opportunities_count * 100), 1) if total_opportunities_count > 0 else 0
     
     # 사용자 목록 (Admin/Manager용)
     accessible_users = get_accessible_users(request.user, request) if user_profile.can_view_all_users() else []
@@ -11186,6 +11237,7 @@ def opportunities_filter_api(request):
             'backlog_amount': float(opp['backlog_amount']) if opp['backlog_amount'] else 0,
             'probability': opp['probability'],
             'current_stage': opp['current_stage'],
+            'current_stage_code': opp.get('current_stage_code', ''),
             'stage_color': opp['stage_color'],
             'expected_close_date': opp['expected_close_date'].strftime('%m/%d') if opp['expected_close_date'] else '',
             'customer_grade': opp.get('customer_grade', ''),
