@@ -1536,13 +1536,14 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================
   Chart.defaults.color = 'hsl(215, 20%, 65%)';
   Chart.defaults.borderColor = 'hsl(217, 33%, 22%)';
-  Chart.defaults.backgroundColor = 'hsla(217, 91%, 60%, 0.1)';
+  // backgroundColor는 개별 차트에서 지정 (글로벌 설정 제거)
   
-  // Grid lines
-  Chart.defaults.scale.grid = {
-    color: 'hsl(217, 33%, 22%)',
-    borderColor: 'hsl(217, 33%, 22%)'
-  };
+  // Grid lines - 다크모드에 맞게 수정
+  if (Chart.defaults.scales && Chart.defaults.scales.linear) {
+    Chart.defaults.scales.linear.grid = {
+      color: 'hsl(217, 33%, 25%)',
+    };
+  }
   
   // Tooltip dark theme
   Chart.defaults.plugins.tooltip.backgroundColor = 'hsl(222, 47%, 14%)';
@@ -1616,9 +1617,9 @@ document.addEventListener('DOMContentLoaded', function() {
             type: 'bar',
             label: '납품 금액 (백만원)',
             data: deliveryAmounts.map(v => v / 1000000),
-            backgroundColor: 'rgba(99, 102, 241, 0.7)',
-            borderColor: 'rgba(99, 102, 241, 1)',
-            borderWidth: 1,
+            backgroundColor: 'rgba(129, 140, 248, 0.9)',
+            borderColor: 'rgba(129, 140, 248, 1)',
+            borderWidth: 2,
             borderRadius: 6,
             yAxisID: 'y-amount'
           },
@@ -1626,14 +1627,14 @@ document.addEventListener('DOMContentLoaded', function() {
             type: 'line',
             label: '납품 건수',
             data: deliveryCounts,
-            borderColor: 'rgba(16, 185, 129, 1)',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderColor: 'rgba(52, 211, 153, 1)',
+            backgroundColor: 'rgba(52, 211, 153, 0.1)',
             borderWidth: 3,
             tension: 0.4,
             fill: false,
             yAxisID: 'y-count',
             pointRadius: 5,
-            pointBackgroundColor: '#10b981'
+            pointBackgroundColor: '#34d399'
           }
         ]
       },
@@ -1689,7 +1690,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const funnelData = {{ sales_funnel|safe }};
     const funnelStages = funnelData.stages;
     const funnelValues = funnelData.values;
-    const funnelColors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b'];
+    const funnelColors = ['rgba(129, 140, 248, 0.9)', 'rgba(167, 139, 250, 0.9)', 'rgba(52, 211, 153, 0.9)', 'rgba(251, 191, 36, 0.9)'];
 
     new Chart(salesFunnelCtx, {
       type: 'bar',
@@ -1699,6 +1700,8 @@ document.addEventListener('DOMContentLoaded', function() {
           label: '건수',
           data: funnelValues,
           backgroundColor: funnelColors,
+          borderColor: ['#818cf8', '#a78bfa', '#34d399', '#fbbf24'],
+          borderWidth: 2,
           borderRadius: 8
         }]
       },
@@ -1868,17 +1871,17 @@ document.addEventListener('DOMContentLoaded', function() {
             {
               label: '매출 (백만원)',
               data: revenues,
-              backgroundColor: 'rgba(99, 102, 241, 0.7)',
-              borderColor: 'rgba(99, 102, 241, 1)',
-              borderWidth: 1,
+              backgroundColor: 'rgba(129, 140, 248, 0.9)',
+              borderColor: 'rgba(129, 140, 248, 1)',
+              borderWidth: 2,
               borderRadius: 6
             },
             {
               label: '거래 건수',
               data: counts,
-              backgroundColor: 'rgba(16, 185, 129, 0.7)',
-              borderColor: 'rgba(16, 185, 129, 1)',
-              borderWidth: 1,
+              backgroundColor: 'rgba(52, 211, 153, 0.9)',
+              borderColor: 'rgba(52, 211, 153, 1)',
+              borderWidth: 2,
               borderRadius: 6
             }
           ]
@@ -1887,10 +1890,32 @@ document.addEventListener('DOMContentLoaded', function() {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: true, position: 'top' }
+            legend: { 
+              display: true, 
+              position: 'top',
+              labels: {
+                color: 'hsl(210, 40%, 98%)'
+              }
+            }
           },
           scales: {
-            y: { beginAtZero: true }
+            y: { 
+              beginAtZero: true,
+              grid: {
+                color: 'hsl(217, 33%, 25%)'
+              },
+              ticks: {
+                color: 'hsl(210, 40%, 98%)'
+              }
+            },
+            x: {
+              grid: {
+                color: 'hsl(217, 33%, 25%)'
+              },
+              ticks: {
+                color: 'hsl(210, 40%, 98%)'
+              }
+            }
           }
         }
       });

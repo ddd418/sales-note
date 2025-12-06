@@ -825,9 +825,9 @@ def ai_suggest_follow_ups(request):
             history_count=Count('histories', filter=Q(histories__user=request.user, histories__created_at__gte=period_ago), distinct=True),
             last_history_date=Max('histories__created_at', filter=Q(histories__user=request.user, histories__created_at__gte=period_ago)),
             # 진행 중인 기회 수 (본인 기록만)
-            opportunity_count=Count('opportunities', filter=Q(opportunities__user=request.user, opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
-            # 이메일 수 (본인 기록만)
-            email_count=Count('emails', filter=Q(emails__user=request.user, emails__created_at__gte=period_ago), distinct=True),
+            opportunity_count=Count('opportunities', filter=Q(opportunities__followup__user=request.user, opportunities__current_stage__in=['lead', 'contact', 'quote', 'closing']), distinct=True),
+            # 이메일 수 (본인 발신 기록만)
+            email_count=Count('emails', filter=Q(emails__sender=request.user, emails__created_at__gte=period_ago), distinct=True),
         ).filter(
             Q(schedule_count__gt=0) | Q(history_count__gt=0)  # 일정 또는 히스토리가 있는 고객만
         ).select_related('company').prefetch_related(
