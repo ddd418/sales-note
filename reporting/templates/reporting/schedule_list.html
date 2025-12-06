@@ -41,6 +41,25 @@
     padding: 8px 12px;
   }
 
+  /* 필터 카드 내 btn-group 태블릿 최적화 - 박스 벗어남 방지 */
+  .card .card-body .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .card .card-body .btn-group .btn {
+    flex: 0 1 auto;
+    min-width: auto;
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 32px;
+    text-align: center;
+    white-space: nowrap;
+    border-radius: 4px !important;
+  }
+
   /* 상태별 필터 모바일 최적화 */
   .filter-box .btn-group {
     display: flex;
@@ -104,6 +123,22 @@
     font-size: 12px;
     padding: 8px 6px;
     white-space: nowrap;
+  }
+}
+
+/* 태블릿 세로 모드 (768px~1024px) 추가 최적화 */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* 필터 카드 2개를 세로로 배치 */
+  .row.mb-4 > .col-md-6 {
+    flex: 0 0 100%;
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+
+  /* 버튼 그룹 더 작게 */
+  .card .card-body .btn-group .btn {
+    padding: 5px 8px;
+    font-size: 10px;
   }
 }
 </style>
