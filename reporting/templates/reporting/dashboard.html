@@ -1330,7 +1330,7 @@ html, body {
           <hr>
           
           <h6 class="mb-3">리드 타임 상위 5건</h6>
-          <div class="flex-grow-1" style="max-height: 250px; overflow-y: auto;">
+          <div class="flex-grow-1" style="max-height: 350px; overflow-y: auto;">
             {% for detail in lead_time_analysis.details|slice:":5" %}
             <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded">
               <div>
