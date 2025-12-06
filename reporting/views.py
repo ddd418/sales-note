@@ -11947,7 +11947,7 @@ def prepayment_customer_excel(request, customer_id):
     
     # 엑셀 제목 구성
     if department and company:
-        excel_title = f"{company.name} {department.name} 선결제 요약"
+        excel_title = f"{company.name} - {department.name} 선결제 요약"
         filename_prefix = f"{company.name}_{department.name}"
     elif company:
         excel_title = f"{company.name} 선결제 요약"
