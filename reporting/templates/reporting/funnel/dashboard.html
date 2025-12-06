@@ -2057,11 +2057,11 @@ function renderOpportunities(opportunities) {
                     <div class="d-flex align-items-center gap-2">
                         <div style="flex-grow: 1;">
                             <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                                <strong style="font-size: 1.1rem; color: #2d3748;">${opp.customer_name}</strong>
+                                <strong style="font-size: 1.1rem; color: #2d3748;">${opp.company_name}${opp.department_name ? ' / ' + opp.department_name : ''}</strong>
                                 ${labelHtml}
                                 ${aiBadgesHtml}
                             </div>
-                            <small class="text-muted fw-semibold d-block">${opp.company_name}</small>
+                            <small class="text-muted fw-semibold d-block"><i class="fas fa-user me-1"></i>${opp.customer_name}</small>
                             <div class="d-flex gap-2 mt-1 flex-wrap">
                                 ${gradeScoreHtml}
                                 <span class="badge" style="background-color: ${priorityColors[opp.priority_raw] || '#6c757d'}; ${opp.priority_raw === 'followup' ? 'color: #333;' : ''} font-size: 0.65rem; padding: 0.2rem 0.4rem;">

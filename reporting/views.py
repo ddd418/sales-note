@@ -11232,6 +11232,7 @@ def opportunities_filter_api(request):
             'id': opp['id'],
             'customer_name': opp['customer_name'],
             'company_name': opp['company_name'],
+            'department_name': opp.get('department_name', ''),
             'expected_revenue': float(opp['expected_revenue']) if opp['expected_revenue'] else 0,
             'weighted_revenue': float(opp['weighted_revenue']) if opp['weighted_revenue'] else 0,
             'backlog_amount': float(opp['backlog_amount']) if opp['backlog_amount'] else 0,
