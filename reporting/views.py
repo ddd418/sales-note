@@ -1886,7 +1886,7 @@ def dashboard_view(request):
     # History 기반 통계 (납품 이력만 카운트 - 견적 제외)
     history_company_stats = DeliveryItem.objects.filter(
         history__in=histories_current_year,
-        history__activity_type='delivery',  # 납품만 카운트 (견적 제외)
+        history__action_type='delivery_schedule',  # 납품만 카운트 (History는 action_type 필드 사용)
         history__followup__isnull=False,
         history__followup__company__isnull=False
     ).values('history__followup__company__name').annotate(
@@ -5533,7 +5533,7 @@ def manager_dashboard(request):
     # History 기반 통계 (납품 이력만 카운트 - 견적 제외)
     history_company_stats = DeliveryItem.objects.filter(
         history__in=histories_current_year,
-        history__activity_type='delivery',  # 납품만 카운트 (견적 제외)
+        history__action_type='delivery_schedule',  # 납품만 카운트 (History는 action_type 필드 사용)
         history__followup__isnull=False,
         history__followup__company__isnull=False
     ).values('history__followup__company__name').annotate(
