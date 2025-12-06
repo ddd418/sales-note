@@ -5,38 +5,34 @@
 {% block content %}
 <style>
 /* ============================================
-   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   🎨 LOVABLE FOLLOWUP LIST STYLES
    ============================================ */
 
-/* backdrop을 완전히 투명하게 (배경 없음) */
+/* 모달 Z-INDEX 및 오버레이 수정 */
 .modal-backdrop {
-  display: none !important; /* backdrop 자체를 숨김 */
+  display: none !important;
 }
 
-/* 모달 자체는 backdrop보다 높게 */
 .modal {
   z-index: 1055 !important;
-  pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+  pointer-events: none !important;
 }
 
-/* 모달 다이얼로그만 클릭 가능하게 */
 .modal-dialog {
   z-index: 1056 !important;
-  pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+  pointer-events: auto !important;
 }
 
-/* 모달 컨텐츠를 확실히 클릭 가능하게 */
 .modal-content {
   position: relative;
   z-index: 1057 !important;
-  pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
-  background-color: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 0.3rem;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+  pointer-events: auto !important;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
 
-/* 모달 내부의 모든 요소가 클릭 가능하도록 */
 .modal-header,
 .modal-body,
 .modal-footer,
@@ -46,14 +42,14 @@
   pointer-events: auto !important;
 }
 
-/* 프리미엄 팔로우업 페이지 스타일 */
+/* 프리미엄 페이지 헤더 - Lovable Style */
 .followup-page-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     padding: 2.5rem 2rem;
     margin: -2rem -2rem 2rem 0;
-    border-radius: 0 0 20px 20px;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
 }
 
 .followup-page-header h1 {
@@ -75,27 +71,27 @@
 }
 
 .btn-premium-white {
-    background: white;
-    color: #667eea;
+    background: var(--surface);
+    color: var(--primary);
     border: none;
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 0.75rem 1.5rem;
     font-weight: 600;
     transition: all 0.3s ease;
 }
 
 .btn-premium-white:hover {
-    background: #f8f9fa;
-    color: #5568d3;
+    background: var(--surface-hover);
+    color: var(--primary);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px hsla(217, 91%, 60%, 0.3);
 }
 
 .btn-premium-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
     color: white;
     border: none;
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 0.75rem 1.5rem;
     font-weight: 600;
     transition: all 0.3s ease;
@@ -103,28 +99,34 @@
 
 .btn-premium-success:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
     color: white;
 }
 
+/* 프리미엄 검색 카드 - Lovable Style */
 .premium-search-card {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: none;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
     margin-bottom: 2rem;
+    transition: all 0.3s ease;
+}
+
+.premium-search-card:hover {
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
 }
 
 .premium-search-card .card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 2px solid #667eea;
-    border-radius: 16px 16px 0 0 !important;
+    background: linear-gradient(135deg, var(--surface-hover) 0%, var(--border-light) 100%);
+    border-bottom: 2px solid var(--primary);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
     padding: 1.25rem 1.5rem;
 }
 
 .premium-search-card .card-title {
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     margin: 0;
 }
 
@@ -132,65 +134,67 @@
     padding: 1.5rem;
 }
 
+/* 필터 박스 - Lovable Style */
 .filter-box-premium {
-    background: #f8f9fa;
-    border-radius: 12px;
+    background: var(--surface-hover);
+    border-radius: var(--radius);
     padding: 1rem;
     margin-bottom: 1.5rem;
 }
 
 .filter-box-premium .btn-group .btn {
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     margin: 0 0.25rem;
     transition: all 0.2s ease;
 }
 
 .filter-box-premium .btn-outline-primary {
-    border-color: #667eea;
-    color: #667eea;
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .filter-box-premium .btn-outline-primary:hover,
 .filter-box-premium .btn-outline-primary.active {
-    background: #667eea;
-    border-color: #667eea;
+    background: var(--primary);
+    border-color: var(--primary);
     color: white;
 }
 
-/* Premium Followup Cards */
+/* Premium Followup Cards - Lovable Style */
 .followup-card {
-    border: none;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
     overflow: hidden;
-    background: white;
+    background: var(--surface);
 }
 
 .followup-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(102, 126, 234, 0.15);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    border-color: var(--primary);
 }
 
 .followup-card .card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 2px solid #e9ecef;
+    background: linear-gradient(135deg, var(--surface-hover) 0%, var(--border-light) 100%);
+    border-bottom: 2px solid var(--border);
     padding: 1rem 1.25rem;
 }
 
 .followup-card .card-header h6 {
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     margin: 0;
 }
 
 .followup-card .card-header h6 a {
-    color: #2d3748;
+    color: var(--text-primary);
     transition: color 0.2s;
 }
 
 .followup-card .card-header h6 a:hover {
-    color: #667eea;
+    color: var(--primary);
 }
 
 .followup-card .badge {
@@ -207,11 +211,11 @@
 .followup-card .card-text {
     font-size: 0.9rem;
     line-height: 1.8;
-    color: #4a5568;
+    color: var(--text-secondary);
 }
 
 .followup-card .card-text strong {
-    color: #2d3748;
+    color: var(--text-primary);
     font-weight: 600;
     min-width: 70px;
     display: inline-block;
@@ -260,8 +264,8 @@
 .empty-state-card {
     border: none;
     border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    background: white;
+    box-shadow: var(--shadow-md);
+    background: var(--surface);
 }
 
 .empty-state-card .card-body {
@@ -269,17 +273,17 @@
 }
 
 .empty-state-card i {
-    color: #cbd5e0;
+    color: var(--text-muted);
 }
 
 .empty-state-card h5 {
-    color: #2d3748;
+    color: var(--text-primary);
     font-weight: 700;
     margin-top: 1rem;
 }
 
 .empty-state-card .card-text {
-    color: #718096;
+    color: var(--text-muted);
 }
 
 /* Premium Pagination */
@@ -288,9 +292,10 @@
 }
 
 .pagination-premium .page-item .page-link {
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--border);
     border-radius: 10px;
-    color: #4a5568;
+    color: var(--text-secondary);
+    background: var(--surface);
     font-weight: 600;
     padding: 0.5rem 0.9rem;
     transition: all 0.2s;
@@ -312,13 +317,13 @@
 }
 
 .pagination-premium .page-item.disabled .page-link {
-    background: #f8f9fa;
-    border-color: #e9ecef;
-    color: #cbd5e0;
+    background: var(--surface-hover);
+    border-color: var(--border);
+    color: var(--text-muted);
 }
 
 .pagination-info {
-    color: #718096;
+    color: var(--text-muted);
     font-size: 0.9rem;
     font-weight: 500;
 }
@@ -475,13 +480,21 @@
     min-height: 44px;
     font-size: 16px;
     border-radius: 8px;
-    border: 1px solid #e3e2e0;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+  }
+
+  .form-control::placeholder {
+    color: var(--text-muted);
   }
 
   .form-control:focus,
   .form-select:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: var(--surface);
+    color: var(--text-primary);
   }
 
   /* 버튼 모바일 최적화 */
@@ -639,12 +652,12 @@
   }
 
   .mobile-card {
-    background: white;
+    background: var(--surface);
     border-radius: 8px;
     padding: 15px;
     margin-bottom: 15px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e9ecef;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
   }
 
   .mobile-card-header {
@@ -657,12 +670,12 @@
   .mobile-card-title {
     font-weight: 600;
     font-size: 16px;
-    color: #1f1e1c;
+    color: var(--text-primary);
     margin: 0;
   }
 
   .mobile-card-subtitle {
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 14px;
     margin: 2px 0 0 0;
   }
@@ -685,12 +698,12 @@
 
   .mobile-card-label {
     font-weight: 500;
-    color: #5c5a53;
+    color: var(--text-muted);
     font-size: 13px;
   }
 
   .mobile-card-value {
-    color: #37352f;
+    color: var(--text-primary);
     font-size: 14px;
     text-align: right;
   }
@@ -723,8 +736,9 @@
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 2px solid #e9ecef;
-  color: #4a5568;
+  border: 2px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--surface);
   font-weight: 600;
   transition: all 0.2s;
 }
@@ -744,9 +758,9 @@
 }
 
 .modal-body .pagination .page-item.disabled .page-link {
-  background: #f8f9fa;
-  border-color: #e9ecef;
-  color: #cbd5e0;
+  background: var(--surface-hover);
+  border-color: var(--border);
+  color: var(--text-muted);
 }
 
 /* Premium Modal Styles */
@@ -899,19 +913,19 @@
               
               {% if request.user.userprofile.can_use_ai %}
               <!-- AI 팔로우업 우선순위 제안 -->
-              <div class="mb-3 p-3 bg-gradient rounded border border-primary">
+              <div class="mb-3 p-3 rounded border border-primary" style="background: var(--surface-hover);">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <div class="d-flex align-items-center">
                     <i class="fas fa-brain text-primary me-2"></i>
-                    <strong>AI 팔로우업 우선순위 제안</strong>
+                    <strong style="color: var(--text-primary);">AI 팔로우업 우선순위 제안</strong>
                     <span class="badge bg-primary ms-2">NEW</span>
                   </div>
                   <button class="btn btn-sm btn-primary" type="button" id="suggest-followups-btn">
                     <i class="fas fa-magic me-1"></i>우선순위 분석
                   </button>
                 </div>
-                <small class="text-muted d-block">
-                  💡 AI가 고객 히스토리/이메일을 분석하여 <strong>중요한 내용이 있는 고객</strong>을 우선 추천합니다.
+                <small style="color: var(--text-muted);" class="d-block">
+                  💡 AI가 고객 히스토리/이메일을 분석하여 <strong style="color: var(--text-primary);"><span style="color: #60a5fa;">중요한 내용이 있는 고객</span></strong>을 우선 추천합니다.
                 </small>
               </div>
               
@@ -919,10 +933,10 @@
               <div id="ai-followup-suggestions" class="mb-3" style="display: none;"></div>
               
               <!-- AI 자연어 검색 -->
-              <div class="mb-3 p-3 bg-light rounded border">
+              <div class="mb-3 p-3 rounded border" style="background: var(--surface-hover); border-color: var(--border) !important;">
                 <div class="d-flex align-items-center mb-2">
                   <i class="fas fa-magic text-primary me-2"></i>
-                  <strong>AI 자연어 검색</strong>
+                  <strong style="color: var(--text-primary);">AI 자연어 검색</strong>
                   <span class="badge bg-primary ms-2">Beta</span>
                 </div>
                 <div class="input-group">
@@ -937,7 +951,7 @@
                     <i class="fas fa-search me-1"></i>AI 검색
                   </button>
                 </div>
-                <small class="text-muted d-block mt-1">
+                <small style="color: var(--text-muted);" class="d-block mt-1">
                   💡 자연스러운 말로 검색해보세요. AI가 조건을 이해하고 결과를 찾아드립니다.
                 </small>
               </div>
@@ -1059,7 +1073,7 @@
         <div class="col-12">
           <div class="card filter-box-premium">
             <div class="card-body">
-              <h6 class="mb-3" style="font-weight: 700; color: #2d3748;">
+              <h6 class="mb-3" style="font-weight: 700; color: var(--text-primary);">
                 <i class="fas fa-building me-2"></i>업체/학교별 빠른 필터
               </h6>
               

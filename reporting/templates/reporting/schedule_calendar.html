@@ -2,39 +2,190 @@
 시스템{% endblock %} {% block content %}
 <style>
   /* ============================================
-     프리미엄 캘린더 스타일
+     🎨 LOVABLE CALENDAR STYLES
      ============================================ */
 
-  /* ============================================
-     모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
-     ============================================ */
-  
-  /* backdrop을 반투명하게 유지하면서 클릭만 불가능하게 */
+  /* 모달 Z-INDEX 및 오버레이 수정 */
   .modal-backdrop {
     z-index: 1040 !important;
     pointer-events: none !important;
-    opacity: 0.5 !important; /* 원하는 투명도 */
+    opacity: 0.5 !important;
     background-color: rgba(0, 0, 0, 0.5) !important;
   }
   
-  /* 모달은 backdrop보다 높게 */
   .modal {
     z-index: 1055 !important;
   }
   
-  /* 모달 다이얼로그 */
   .modal-dialog {
     z-index: 1056 !important;
   }
   
-  /* 모달 컨텐츠 */
   .modal-content {
     position: relative;
     z-index: 1057 !important;
-    background-color: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.2);
-    border-radius: 0.3rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+  
+  /* ============================================
+     🌙 모달 다크모드 스타일
+     ============================================ */
+  .modal-header {
+    background: var(--surface-hover) !important;
+    border-bottom-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-body {
+    background: var(--surface) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-footer {
+    background: var(--surface) !important;
+    border-top-color: var(--border) !important;
+  }
+  
+  .modal-body .form-label {
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-body p {
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-body .form-control,
+  .modal-body textarea {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-body .form-control::placeholder,
+  .modal-body textarea::placeholder {
+    color: var(--text-muted) !important;
+  }
+  
+  /* 모달 내 카드 다크모드 */
+  .modal-body .card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+  }
+  
+  .modal-body .card-header {
+    background: var(--surface-hover) !important;
+    border-bottom-color: var(--border) !important;
+  }
+  
+  .modal-body .card-header.bg-light {
+    background: var(--surface-hover) !important;
+  }
+  
+  .modal-body .card-body {
+    background: var(--surface) !important;
+  }
+  
+  .modal-body .card-title {
+    color: var(--text-primary) !important;
+  }
+  
+  /* bg-light 다크모드 */
+  .modal-body .bg-light {
+    background: var(--surface-hover) !important;
+  }
+  
+  /* 버튼 그룹 active 상태 다크모드 */
+  .modal-body .btn-group .btn-outline-primary.active,
+  .modal-body .btn-group .btn-outline-success.active,
+  .modal-body .btn-group .btn-outline-danger.active,
+  .modal-body .btn-group .btn-outline-warning.active,
+  .modal-body .btn-group .btn-outline-secondary.active {
+    color: white !important;
+  }
+  
+  .modal-body .btn-group .btn-outline-primary:not(.active),
+  .modal-body .btn-group .btn-outline-success:not(.active),
+  .modal-body .btn-group .btn-outline-danger:not(.active),
+  .modal-body .btn-group .btn-outline-warning:not(.active),
+  .modal-body .btn-group .btn-outline-secondary:not(.active) {
+    background: var(--surface) !important;
+  }
+  
+  /* 빈 상태 텍스트 */
+  .modal-body .text-muted {
+    color: var(--text-muted) !important;
+  }
+  
+  /* 납품 품목 표시 영역 */
+  .modal-body .delivery-items-display {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* 파일 input 다크모드 */
+  .modal-body input[type="file"] {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .modal-body input[type="file"]::file-selector-button {
+    background: var(--surface-hover) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-primary) !important;
+    padding: 0.5rem 1rem;
+    margin-right: 1rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .modal-body input[type="file"]::file-selector-button:hover {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: white !important;
+  }
+  
+  /* form-text 다크모드 */
+  .modal-body .form-text {
+    color: var(--text-muted) !important;
+  }
+  
+  /* 일정 선택 모달 리스트 카드 다크모드 */
+  #dateSchedulesList .card {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+  }
+  
+  #dateSchedulesList .card:hover {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+  }
+  
+  #dateSchedulesList .card-body {
+    background: transparent !important;
+  }
+  
+  #dateSchedulesList .card strong,
+  #dateSchedulesList .card .text-primary {
+    color: var(--text-primary) !important;
+  }
+  
+  #dateSchedulesList .card:hover strong,
+  #dateSchedulesList .card:hover .text-primary {
+    color: white !important;
+  }
+  
+  #dateSchedulesList .card .text-muted {
+    color: var(--text-muted) !important;
+  }
+  
+  #dateSchedulesList .card:hover .text-muted {
+    color: rgba(255, 255, 255, 0.8) !important;
   }
 
   /* 제품 검색 드롭다운 z-index 설정 */
@@ -42,34 +193,31 @@
   .calendar-main-search-results {
     z-index: 999999 !important;
     position: absolute !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-    border-radius: 4px !important;
-    background: white !important;
-    border: 1px solid #ccc !important;
+    box-shadow: var(--shadow-lg) !important;
+    border-radius: var(--radius-sm) !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
     max-height: 200px !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
   }
   
-  /* 모달 내에서 드롭다운이 다른 요소들보다 위에 오도록 */
   .modal-body .calendar-search-results,
   .modal-body .calendar-main-search-results {
     z-index: 999999 !important;
   }
   
-  /* 소계 박스의 z-index를 낮춰서 드롭다운이 위에 오도록 */
   .modal-body .card.bg-light {
     z-index: 1 !important;
     position: relative !important;
   }
   
-  /* 드롭다운이 있는 행의 position 설정 */
   .delivery-item {
     position: relative !important;
     z-index: 2 !important;
   }
   
-  /* 드롭다운 스크롤바 스타일링 */
+  /* 드롭다운 스크롤바 - Lovable Style */
   .calendar-search-results::-webkit-scrollbar,
   .calendar-main-search-results::-webkit-scrollbar {
     width: 6px;
@@ -77,27 +225,27 @@
   
   .calendar-search-results::-webkit-scrollbar-track,
   .calendar-main-search-results::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--border-light);
     border-radius: 3px;
   }
   
   .calendar-search-results::-webkit-scrollbar-thumb,
   .calendar-main-search-results::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: var(--text-muted);
     border-radius: 3px;
   }
   
   .calendar-search-results::-webkit-scrollbar-thumb:hover,
   .calendar-main-search-results::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: var(--text-secondary);
   }
   
-  /* 페이지 헤더 */
+  /* 페이지 헤더 - Lovable Style */
   .schedule-calendar-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     padding: 2.5rem 2rem;
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
     margin-bottom: 2rem;
     box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
   }
@@ -117,127 +265,359 @@
   
   /* 프리미엄 버튼 */
   .btn-premium-white {
-    background: white;
-    color: #667eea;
-    border: 2px solid white;
+    background: var(--surface);
+    color: var(--primary);
+    border: 2px solid var(--surface);
     font-weight: 600;
     padding: 0.625rem 1.5rem;
-    border-radius: 10px;
+    border-radius: var(--radius);
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
   }
   
   .btn-premium-white:hover {
     background: rgba(255, 255, 255, 0.9);
-    color: #764ba2;
+    color: #8b5cf6;
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .btn-premium-white.active {
+    background: var(--primary);
+    color: var(--surface);
+    border-color: var(--primary);
   }
   
   .btn-premium-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     border: none;
     font-weight: 600;
     padding: 0.625rem 1.5rem;
-    border-radius: 10px;
+    border-radius: var(--radius);
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
   }
   
   .btn-premium-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
     color: white;
   }
   
-  /* 캘린더 네비게이션 카드 */
+  /* 캘린더 네비게이션 카드 - Lovable glass-card 스타일 */
   .calendar-nav-card {
-    background: white;
-    border-radius: 16px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
     padding: 1.5rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-md);
     margin-bottom: 2rem;
+    border: 1px solid var(--border);
   }
   
   .calendar-month-title {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     margin: 0;
   }
   
   .btn-calendar-nav {
-    background: white;
-    border: 2px solid #e2e8f0;
-    color: #4a5568;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    color: var(--text-secondary);
     font-weight: 600;
     padding: 0.5rem 1rem;
-    border-radius: 10px;
+    border-radius: var(--radius);
     transition: all 0.3s ease;
   }
   
   .btn-calendar-nav:hover {
-    background: #f7fafc;
-    border-color: #667eea;
-    color: #667eea;
+    background: var(--surface-hover);
+    border-color: var(--primary);
+    color: var(--primary);
     transform: translateY(-1px);
   }
   
   .btn-calendar-today {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     border: none;
     font-weight: 600;
     padding: 0.5rem 1.25rem;
-    border-radius: 10px;
+    border-radius: var(--radius);
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
   }
   
   .btn-calendar-today:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
     color: white;
   }
   
-  /* 캘린더 메인 카드 */
+  /* 캘린더 메인 카드 - Lovable glass-card 스타일 */
   .calendar-main-card {
-    background: white;
-    border-radius: 16px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
   }
   
-  /* 선택된 날짜 카드 */
-  .selected-date-card {
-    background: white;
-    border-radius: 16px;
+  /* ============================================
+     🎨 LOVABLE 캘린더 그리드 스타일
+     ============================================ */
+  
+  /* 캘린더 테이블 - Lovable 스타일 */
+  .calendar-table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 4px;
+    padding: 0.5rem;
+  }
+  
+  /* 요일 헤더 - Lovable 스타일 */
+  .calendar-header {
+    width: 14.28571429%;
+    font-weight: 500;
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 0.75rem 0.5rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none !important;
+  }
+  
+  /* 일요일은 빨간색 */
+  .calendar-header.sunday,
+  .calendar-table th:first-child {
+    color: #ef4444 !important;
+  }
+  
+  /* 토요일은 파란색 */
+  .calendar-header.saturday,
+  .calendar-table th:last-child {
+    color: var(--primary) !important;
+  }
+  
+  /* 날짜 셀 - Lovable 스타일 */
+  .calendar-day {
+    width: 14.28571429%;
+    min-width: 100px;
+    min-height: 100px;
+    height: 100px;
+    vertical-align: top;
+    padding: 0.5rem;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    text-align: left;
+    box-sizing: border-box;
+    background: var(--surface);
+  }
+  
+  .calendar-day:hover {
+    background-color: var(--surface-hover);
+    border-color: var(--border) !important;
+  }
+  
+  /* 오늘 날짜 강조 - Lovable 스타일 */
+  .calendar-day.today {
+    background-color: var(--surface);
+    border: 2px solid var(--primary) !important;
+    box-shadow: inset 0 0 0 1px var(--primary);
+  }
+  
+  .calendar-day.today:hover {
+    background-color: var(--surface-hover);
+  }
+  
+  /* 선택된 날짜 */
+  .calendar-day.selected {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-color: var(--primary) !important;
+  }
+  
+  /* 다른 달 날짜 - Lovable 스타일 */
+  .calendar-day.other-month {
+    background-color: transparent;
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+  
+  .calendar-day.other-month:hover {
+    background-color: var(--surface-hover);
+    opacity: 0.8;
+  }
+  
+  /* 날짜 숫자 - Lovable 스타일 */
+  .day-number {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+  }
+  
+  /* 일요일 날짜 숫자 */
+  .calendar-table td:first-child .day-number {
+    color: #ef4444;
+  }
+  
+  /* 토요일 날짜 숫자 */
+  .calendar-table td:last-child .day-number {
+    color: var(--primary);
+  }
+  
+  /* 오늘 날짜 숫자 - Lovable 스타일 (원형 강조) */
+  .calendar-day.today .day-number {
+    background: var(--primary);
+    color: white !important;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+  }
+  
+  /* 일정 아이템 - Lovable 스타일 */
+  .schedule-item {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    text-overflow: ellipsis;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    background: var(--primary);
+    color: white;
+  }
+  
+  .schedule-item:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+  
+  /* 일정 상태별 색상 - Lovable chart colors */
+  .schedule-item.scheduled {
+    background: var(--primary);
+    color: white;
+  }
+  
+  .schedule-item.completed {
+    background: #22c55e; /* success green */
+    color: white;
+  }
+  
+  .schedule-item.cancelled {
+    background: #f59e0b; /* warning orange */
+    color: white;
+  }
+  
+  /* 더보기 버튼 - Lovable 스타일 */
+  .more-schedules {
+    background-color: var(--surface-hover) !important;
+    color: var(--text-secondary) !important;
+    border: none !important;
+    padding: 0.125rem 0.5rem !important;
+    border-radius: 4px !important;
+    font-size: 0.75rem !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    margin-top: 0.125rem !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .more-schedules:hover {
+    background-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* ============================================
+     🎨 LOVABLE 범례(Legend) 스타일
+     ============================================ */
+  .calendar-legend {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+  }
+  
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+  }
+  
+  .legend-color.meeting {
+    background: var(--primary);
+  }
+  
+  .legend-color.completed {
+    background: #22c55e;
+  }
+  
+  .legend-color.cancelled {
+    background: #f59e0b;
+  }
+  
+  .legend-color.personal {
+    background: #6b7280;
+  }
+  
+  .legend-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+  }
+  
+  /* 선택된 날짜 카드 - Lovable 스타일 */
+  .selected-date-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
     margin-top: 2rem;
+    border: 1px solid var(--border);
   }
   
   .selected-date-card .card-header {
-    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-    border-bottom: 2px solid #e2e8f0;
+    background: var(--surface-hover);
+    border-bottom: 1px solid var(--border);
     padding: 1.25rem 1.5rem;
   }
   
   .selected-date-card .card-title {
-    color: #2d3748;
-    font-weight: 700;
-    font-size: 1.1rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 1rem;
     margin: 0;
   }
   
   /* 보라색 테마 */
   .bg-purple {
-    background-color: #6f42c1 !important;
+    background-color: #8b5cf6 !important;
   }
   
   .text-purple {
-    color: #6f42c1 !important;
+    color: #8b5cf6 !important;
   }
   
   /* ============================================
@@ -359,18 +739,69 @@
     /* 캘린더 셀 태블릿 최적화 */
     .calendar-table th,
     .calendar-table td {
-      padding: 0.3rem;
-      font-size: 0.85rem;
+      padding: 0.25rem;
+      font-size: 0.8rem;
     }
     
     .calendar-day {
-      min-height: 80px;
-      height: 80px;
+      min-height: 90px !important;
+      height: 90px !important;
+      max-height: 90px !important;
+      padding: 0.25rem !important;
+      overflow: hidden !important;
+      vertical-align: top !important;
     }
     
     .day-number {
       font-size: 0.85rem;
       white-space: nowrap;
+      margin-bottom: 0.15rem;
+      display: block !important;
+    }
+    
+    /* 일정 컨테이너 영역 */
+    .calendar-day .schedule-items {
+      display: block !important;
+      overflow: hidden !important;
+    }
+    
+    /* 태블릿에서 일정 아이템 숨김 (JS에서 더보기로 대체) */
+    .calendar-day .schedule-item,
+    .calendar-day .schedule-event {
+      display: none !important;
+    }
+    
+    /* 태블릿 전용 더보기 버튼 - 높이 최소화 */
+    .calendar-day .tablet-more-btn {
+      display: block !important;
+      font-size: 0.65rem !important;
+      padding: 0.1rem 0.25rem !important;
+      margin-top: 0.1rem !important;
+      background: var(--primary-bg) !important;
+      color: var(--primary) !important;
+      border: 1px solid var(--primary) !important;
+      border-radius: 3px !important;
+      cursor: pointer !important;
+      text-align: center !important;
+      white-space: nowrap !important;
+      line-height: 1.1 !important;
+    }
+    
+    .calendar-day .tablet-more-btn:hover {
+      background: var(--primary) !important;
+      color: white !important;
+    }
+    
+    /* 일정 개수 표시 뱃지 */
+    .calendar-day .schedule-count-badge {
+      display: inline-block !important;
+      font-size: 0.65rem !important;
+      padding: 0.1rem 0.35rem !important;
+      background: var(--primary) !important;
+      color: white !important;
+      border-radius: 10px !important;
+      margin-left: 0.25rem !important;
+      vertical-align: middle !important;
     }
     
     /* 일정 아이템 태블릿 최적화 */
@@ -1219,6 +1650,26 @@
     </div>
   </div>
 
+  <!-- 범례 (Legend) - Lovable 스타일 -->
+  <div class="calendar-legend">
+    <div class="legend-item">
+      <div class="legend-color meeting"></div>
+      <span class="legend-label">미팅 예정</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color completed"></div>
+      <span class="legend-label">완료</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color cancelled"></div>
+      <span class="legend-label">취소</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color personal"></div>
+      <span class="legend-label">개인 일정</span>
+    </div>
+  </div>
+
   <!-- 선택된 날짜의 일정 -->
   <div class="selected-date-card">
     <div class="card-header">
@@ -1516,7 +1967,7 @@
   }
 
   .schedule-item[title] {
-    cursor: help;
+    cursor: pointer;
   }
 
   .schedule-item[title]:hover {
@@ -1524,40 +1975,16 @@
     z-index: 999;
   }
 
-  /* 더보기 버튼 스타일 */
-  .more-schedules {
-    background-color: #f8f9fa !important;
-    color: #007bff !important;
-    border: 1px solid #dee2e6 !important;
-    padding: 2px 4px !important;
-    border-radius: 3px !important;
-    font-size: 10px !important;
-    text-align: center !important;
-    cursor: pointer !important;
-    margin-top: 2px !important;
-    transition: all 0.2s ease !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-  }
-
-  .more-schedules:hover {
-    background-color: #e9ecef !important;
-    color: #0056b3 !important;
-    border-color: #adb5bd !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-  }
-
+  /* 드래그 앤 드롭 스타일 - Lovable 스타일 */
   .calendar-day.drag-over {
-    background-color: #e3f2fd !important;
-    border: 2px dashed #2196f3 !important;
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border: 2px dashed var(--primary) !important;
     transform: scale(1.02);
   }
 
   .calendar-day.drag-target {
-    background-color: #c8e6c9 !important;
-    border: 2px solid #4caf50 !important;
+    background-color: rgba(34, 197, 94, 0.1) !important;
+    border: 2px solid #22c55e !important;
   }
   @media (max-width: 768px) {
     /* 헤더 모바일 최적화 */
@@ -4811,10 +5238,10 @@
                  value="${itemData.product_code || ''}"
                  onfocus="searchCalendarProducts(this)"
                  oninput="searchCalendarProducts(this)">
-          <div class="calendar-search-results" style="display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-bottom: none; max-height: 200px; overflow-y: auto; z-index: 1060; box-shadow: 0 -4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-bottom: 2px;"></div>
+          <div class="calendar-search-results" style="display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-bottom: none; max-height: 200px; overflow-y: auto; z-index: 1060; box-shadow: var(--shadow-lg); border-radius: 4px; margin-bottom: 2px;"></div>
           <input type="hidden" class="calendar-product-id" value="${itemData.product_id || ''}">
         </div>
-        <input type="text" class="form-control mt-2 calendar-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: #f8f9fa;">
+        <input type="text" class="form-control mt-2 calendar-item-name" value="${itemData.item_name || ''}" placeholder="품목명" readonly style="background-color: var(--surface-hover);">
       </div>
       <div class="col-6 col-md-2 col-lg-2 mb-2 mb-md-0">
         <label class="form-label fw-bold">수량 <span class="text-danger">*</span></label>
@@ -5391,23 +5818,42 @@
           const dayNumber = document.createElement("div");
           dayNumber.className = "day-number";
           dayNumber.textContent = cellDate;
-          cell.appendChild(dayNumber);          // 해당 날짜의 일정들 (모든 달에 대해 표시)
+          cell.appendChild(dayNumber);
+          
+          // 일정 컨테이너 생성 (태블릿에서 레이아웃 고정용)
+          const scheduleContainer = document.createElement("div");
+          scheduleContainer.className = "schedule-items";
+          cell.appendChild(scheduleContainer);
+          
+          // 해당 날짜의 일정들 (모든 달에 대해 표시)
           const daySchedules = getSchedulesForDate(
             cellYear,
             cellMonth,
             cellDate
           );
           
-          // 모바일과 데스크톱 모두 최대 3개까지만 표시
-          const maxVisibleSchedules = 3;
+          // 태블릿 감지 (768px ~ 1024px)
+          const isTablet = window.innerWidth >= 768 && window.innerWidth <= 1024;
+          const isMobile = window.innerWidth < 768;
           
-          if (daySchedules.length > 0) {
-            // 표시할 일정들 (최대 3개)
+          // 태블릿에서는 일정이 있으면 "N개 일정" 버튼만 표시
+          if (isTablet && daySchedules.length > 0) {
+            const tabletMoreBtn = document.createElement("div");
+            tabletMoreBtn.className = "tablet-more-btn";
+            tabletMoreBtn.textContent = `${daySchedules.length}개 일정`;
+            tabletMoreBtn.onclick = (e) => {
+              e.stopPropagation();
+              const clickedDate = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
+              showDateSchedulesModal(clickedDate);
+            };
+            scheduleContainer.appendChild(tabletMoreBtn);
+          } else if (daySchedules.length > 0) {
+            // 모바일/데스크톱: 기존 로직 유지
+            const maxVisibleSchedules = isMobile ? 2 : 3;
             const visibleSchedules = daySchedules.slice(0, maxVisibleSchedules);
             
             visibleSchedules.forEach((schedule) => {
               const scheduleElement = document.createElement("div");
-              const isMobile = window.innerWidth <= 768;
               
               // 🔥 개인 일정 구분
               const isPersonalSchedule = schedule.type === 'personal';
@@ -5543,7 +5989,7 @@
                 }, { passive: false });
               }
 
-              cell.appendChild(scheduleElement);
+              scheduleContainer.appendChild(scheduleElement);
             });
             
             // 추가 일정이 있는 경우 "+N개 더보기" 표시
@@ -5567,17 +6013,19 @@
                 showDateSchedulesModal(clickedDate);
               };
               
-              cell.appendChild(moreElement);
+              scheduleContainer.appendChild(moreElement);
             }
-          } // 날짜 클릭 이벤트
+          } // end of else if (daySchedules.length > 0) - 모바일/데스크톱
+          
+          // 날짜 클릭 이벤트
           cell.onclick = (e) => {
             // 일정 클릭이 아닌 경우에만 처리
-            if (e.target === cell || e.target.classList.contains('date-number')) {
+            if (e.target === cell || e.target.classList.contains('date-number') || e.target.classList.contains('day-number')) {
               e.stopPropagation();
               const clickedDate = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
               
-              // 모바일에서는 날짜 일정 모달 표시
-              if (window.innerWidth <= 768) {
+              // 태블릿/모바일에서는 날짜 일정 모달 표시
+              if (window.innerWidth <= 1024) {
                 showDateSchedulesModal(clickedDate);
               } else {
                 // 데스크톱에서는 기존 방식 (직접 날짜 선택)
@@ -5591,7 +6039,8 @@
             // 일정 요소를 클릭한 경우 더블클릭 무시
             if (e.target.classList.contains('schedule-item') || 
                 e.target.classList.contains('schedule-event') ||
-                e.target.classList.contains('more-schedules')) {
+                e.target.classList.contains('more-schedules') ||
+                e.target.classList.contains('tablet-more-btn')) {
               e.preventDefault();
               e.stopPropagation();
               return false;
@@ -5600,7 +6049,7 @@
             e.preventDefault();
             e.stopPropagation();
             {% if user.userprofile.role != 'manager' %}
-            if (window.innerWidth > 768) { // 데스크톱에서만
+            if (window.innerWidth > 1024) { // 데스크톱에서만 (태블릿 제외)
               const dateString = `${cellYear}-${String(cellMonth + 1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
               const dateDisplay = `${cellYear}년 ${cellMonth + 1}월 ${cellDate}일`;
               

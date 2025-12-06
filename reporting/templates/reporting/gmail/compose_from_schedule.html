@@ -27,27 +27,36 @@
     }
     
     .signature-preview {
-        border: 1px solid #dee2e6;
+        border: 1px solid var(--border);
         padding: 15px;
-        background-color: #f8f9fa;
+        background-color: var(--surface);
         border-radius: 4px;
         margin-top: 10px;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .signature-preview * {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .signature-preview a {
+        color: #60a5fa !important;
     }
     
     /* Quill 에디터 스타일 */
     #editor-container {
         height: 350px;
-        background: white;
+        background: var(--surface);
     }
     
     .ql-toolbar {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6 !important;
+        background: var(--surface-hover);
+        border: 1px solid var(--border) !important;
         border-radius: 4px 4px 0 0;
     }
     
     .ql-container {
-        border: 1px solid #dee2e6 !important;
+        border: 1px solid var(--border) !important;
         border-top: none !important;
         border-radius: 0 0 4px 4px;
         font-size: 14px;

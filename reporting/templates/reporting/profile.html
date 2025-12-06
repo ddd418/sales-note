@@ -2,6 +2,70 @@
 
 {% block page_title %}프로필 정보{% endblock %}
 
+{% block extra_css %}
+<style>
+/* 🌙 프로필 페이지 다크 모드 */
+.card {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-header {
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-body {
+    background: hsl(222, 47%, 14%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.card-body h4 {
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-label {
+    color: hsl(210, 40%, 98%) !important;
+}
+
+/* bg-light 필드 다크 모드 */
+.form-control-plaintext.bg-light {
+    background-color: hsl(222, 47%, 17%) !important;
+    color: hsl(210, 40%, 98%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+/* Gmail 연동 카드 */
+.card.border-info {
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card.border-info .card-body {
+    background: hsl(222, 47%, 14%) !important;
+}
+
+/* alert 다크 모드 */
+.alert-success {
+    background: rgba(16, 185, 129, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    color: #10b981 !important;
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    color: #f59e0b !important;
+}
+
+.text-muted {
+    color: hsl(215, 20%, 65%) !important;
+}
+
+ul.text-muted li {
+    color: hsl(215, 20%, 65%) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
   <div class="row justify-content-center">

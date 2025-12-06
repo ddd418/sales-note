@@ -5,48 +5,158 @@
 
 {% block extra_css %}
 <style>
-    /* 모달 스타일 수정 */
+    /* 모달 스타일 - 다크 모드 */
     .modal-backdrop { display: none !important; }
     .modal { z-index: 1055 !important; pointer-events: none !important; }
     .modal.show { display: flex !important; align-items: center; justify-content: center; }
     .modal-dialog { z-index: 1056 !important; pointer-events: auto !important; }
     .modal-content { 
         position: relative; z-index: 1057 !important; pointer-events: auto !important;
-        background-color: #fff; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 0.5rem;
-        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.3);
+        background-color: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem;
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.5);
     }
+    .modal-header { border-bottom-color: var(--border); }
+    .modal-footer { border-top-color: var(--border); }
     .modal-header, .modal-body, .modal-footer,
     .modal-header *, .modal-body *, .modal-footer * { pointer-events: auto !important; }
     
-    /* 검색 결과 리스트 */
-    .client-search-results { max-height: 300px; overflow-y: auto; }
+    /* 검색 결과 리스트 - 다크 모드 */
+    .client-search-results { 
+        max-height: 300px; 
+        overflow-y: auto; 
+        background: var(--surface-hover);
+        border-color: var(--border) !important;
+    }
     .client-search-item {
-        cursor: pointer; padding: 0.75rem 1rem; border-bottom: 1px solid #eee;
+        cursor: pointer; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
         transition: background 0.15s;
     }
-    .client-search-item:hover { background: #f8f9fa; }
+    .client-search-item:hover { background: var(--surface); }
     .client-search-item:last-child { border-bottom: none; }
-    .client-search-item .company-name { font-weight: 600; color: #333; }
-    .client-search-item .customer-name { font-size: 0.875rem; color: #666; }
+    .client-search-item .company-name { font-weight: 600; color: var(--text-primary); }
+    .client-search-item .customer-name { font-size: 0.875rem; color: var(--text-muted); }
     
-    /* 선택된 고객 표시 */
+    /* 선택된 고객 표시 - 다크 모드 */
     .selected-client-badge {
         display: inline-flex;
         align-items: center;
-        background: #e7f1ff;
-        border: 1px solid #b6d4fe;
+        background: hsla(217, 91%, 60%, 0.15);
+        border: 1px solid hsla(217, 91%, 60%, 0.3);
         border-radius: 0.375rem;
         padding: 0.375rem 0.75rem;
-        color: #0d6efd;
+        color: var(--primary);
         font-weight: 500;
     }
     .selected-client-badge .remove-btn {
         margin-left: 0.5rem;
-        color: #dc3545;
+        color: var(--danger);
         cursor: pointer;
     }
     .selected-client-badge .remove-btn:hover {
-        color: #bb2d3b;
+        color: #f87171;
+    }
+    
+    /* 카드 헤더 - 다크 모드 */
+    .card-header.bg-white {
+        background: var(--surface) !important;
+        border-bottom-color: var(--border) !important;
+    }
+    
+    /* 파일 선택 인풋 - 프리미엄 스타일 */
+    .file-input-wrapper {
+        position: relative;
+    }
+    
+    .file-input-wrapper input[type="file"] {
+        display: none;
+    }
+    
+    .file-input-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 2rem;
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-hover);
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .file-input-label:hover {
+        border-color: var(--primary);
+        background: hsla(217, 91%, 60%, 0.05);
+        color: var(--primary);
+    }
+    
+    .file-input-label.dragover {
+        border-color: var(--primary);
+        background: hsla(217, 91%, 60%, 0.1);
+        color: var(--primary);
+    }
+    
+    .file-input-label i {
+        font-size: 2rem;
+    }
+    
+    .file-input-info {
+        text-align: center;
+    }
+    
+    .file-input-info .main-text {
+        font-weight: 600;
+        font-size: 1rem;
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    
+    .file-input-info .sub-text {
+        font-size: 0.85rem;
+        opacity: 0.8;
+    }
+    
+    /* 선택된 파일 목록 */
+    .selected-files {
+        margin-top: 1rem;
+    }
+    
+    .selected-file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        margin-bottom: 0.5rem;
+    }
+    
+    .selected-file-item .file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--text-primary);
+    }
+    
+    .selected-file-item .file-info i {
+        color: var(--primary);
+    }
+    
+    .selected-file-item .file-size {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+    
+    .selected-file-item .remove-file {
+        color: var(--danger);
+        cursor: pointer;
+        padding: 0.25rem;
+    }
+    
+    .selected-file-item .remove-file:hover {
+        color: #f87171;
     }
 </style>
 {% endblock %}
@@ -115,11 +225,20 @@
                         </div>
                         
                         {% if not edit_mode %}
-                        <!-- 첨부파일 (새 TODO일 때만) -->
+                        <!-- 첨부파일 (새 TODO일 때만) - 프리미엄 스타일 -->
                         <div class="mb-3">
-                            <label for="attachments" class="form-label">첨부파일</label>
-                            <input type="file" class="form-control" id="attachments" name="attachments" multiple>
-                            <div class="form-text">여러 파일을 동시에 선택할 수 있습니다.</div>
+                            <label class="form-label">첨부파일</label>
+                            <div class="file-input-wrapper">
+                                <input type="file" class="form-control" id="attachments" name="attachments" multiple>
+                                <label for="attachments" class="file-input-label" id="fileDropZone">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <div class="file-input-info">
+                                        <span class="main-text">파일을 드래그하거나 클릭하여 선택</span>
+                                        <span class="sub-text">여러 파일을 동시에 선택할 수 있습니다</span>
+                                    </div>
+                                </label>
+                            </div>
+                            <div class="selected-files" id="selectedFilesList"></div>
                         </div>
                         {% endif %}
                         
@@ -255,6 +374,84 @@ document.addEventListener('DOMContentLoaded', function() {
         searchInput.value = '';
         resultsContainer.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle me-1"></i>검색어를 입력하세요</div>';
     });
+    
+    // 파일 선택 기능
+    const fileInput = document.getElementById('attachments');
+    const fileDropZone = document.getElementById('fileDropZone');
+    const filesList = document.getElementById('selectedFilesList');
+    
+    if (fileInput && fileDropZone) {
+        // 파일 선택 시 목록 표시
+        fileInput.addEventListener('change', function() {
+            updateFilesList(this.files);
+        });
+        
+        // 드래그 앤 드롭
+        fileDropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('dragover');
+        });
+        
+        fileDropZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+        });
+        
+        fileDropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+            fileInput.files = e.dataTransfer.files;
+            updateFilesList(e.dataTransfer.files);
+        });
+    }
+    
+    function updateFilesList(files) {
+        if (!filesList) return;
+        
+        if (files.length === 0) {
+            filesList.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const size = formatFileSize(file.size);
+            const icon = getFileIcon(file.name);
+            html += `
+                <div class="selected-file-item">
+                    <div class="file-info">
+                        <i class="fas ${icon}"></i>
+                        <span>${file.name}</span>
+                        <span class="file-size">(${size})</span>
+                    </div>
+                </div>
+            `;
+        }
+        filesList.innerHTML = html;
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    function getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const icons = {
+            'pdf': 'fa-file-pdf',
+            'doc': 'fa-file-word', 'docx': 'fa-file-word',
+            'xls': 'fa-file-excel', 'xlsx': 'fa-file-excel',
+            'ppt': 'fa-file-powerpoint', 'pptx': 'fa-file-powerpoint',
+            'jpg': 'fa-file-image', 'jpeg': 'fa-file-image', 'png': 'fa-file-image', 'gif': 'fa-file-image',
+            'zip': 'fa-file-archive', 'rar': 'fa-file-archive',
+            'txt': 'fa-file-alt',
+        };
+        return icons[ext] || 'fa-file';
+    }
 });
 </script>
 {% endblock %}

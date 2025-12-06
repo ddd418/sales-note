@@ -11,7 +11,7 @@
     }
     
     .thread-header {
-        background-color: #f8f9fa;
+        background-color: var(--surface-hover);
         padding: 20px;
         margin-bottom: 20px;
         border-radius: 8px;
@@ -25,28 +25,22 @@
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
     
-    .thread-header {
-        background-color: #f8f9fa;
-        padding: 20px;
-        margin-bottom: 20px;
-        border-radius: 8px;
-    }
-    
     .email-message {
-        border: 1px solid #dee2e6;
+        border: 1px solid var(--border);
         border-radius: 8px;
         margin-bottom: 20px;
         overflow: hidden;
+        background: var(--surface);
     }
     
     .email-message-header {
-        background-color: #f8f9fa;
+        background-color: var(--surface-hover);
         padding: 15px;
-        border-bottom: 1px solid #dee2e6;
+        border-bottom: 1px solid var(--border);
     }
     
     .email-message-header.sent {
-        background-color: #e7f3ff;
+        background-color: rgba(59, 130, 246, 0.15);
     }
     
     .email-message-body {
@@ -55,8 +49,9 @@
         word-wrap: break-word;
         overflow-wrap: break-word;
         font-size: 14px;
-        color: #202124;
+        color: var(--text-primary);
         max-width: 100%;
+        background: var(--surface);
     }
     
     .email-message-body p {
@@ -110,7 +105,7 @@
     }
     
     .email-message-body a {
-        color: #1a73e8;
+        color: var(--primary);
         text-decoration: none;
     }
     
@@ -121,8 +116,18 @@
     /* 이메일 시그니처 스타일 정리 */
     .email-message-body #txc-signature {
         margin-top: 20px;
-        border-top: 1px solid #dee2e6;
+        border-top: 1px solid var(--border);
         padding-top: 20px;
+    }
+    
+    /* 이메일 본문 텍스트 다크모드 강제 */
+    .email-body-content,
+    .email-body-content * {
+        color: var(--text-primary) !important;
+    }
+    
+    .email-body-content a {
+        color: var(--primary) !important;
     }
     
     /* Gmail 스타일 메일 본문 */
@@ -134,7 +139,50 @@
     
     .email-meta {
         font-size: 0.9rem;
-        color: #6c757d;
+        color: var(--text-muted);
+    }
+    
+    /* AI 분석 카드 다크모드 */
+    .card {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .card-body {
+        color: var(--text-primary);
+    }
+    
+    .alert-info {
+        background: var(--surface-hover) !important;
+        border-color: var(--border) !important;
+        color: var(--text-primary) !important;
+    }
+    
+    /* AI 분석 카드 다크모드 배경 */
+    .card[style*="background: linear-gradient"] {
+        background: linear-gradient(hsl(222, 47%, 14%), hsl(222, 47%, 14%)) padding-box, 
+                    linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box !important;
+    }
+    
+    .card-text.text-muted {
+        color: hsl(215, 20%, 65%) !important;
+    }
+    
+    #threadAnalysisResults {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    #threadAnalysisResults * {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    #threadAnalysisResults h4,
+    #threadAnalysisResults h5 {
+        color: #60a5fa !important;
+    }
+    
+    #threadAnalysisResults strong {
+        color: #fbbf24 !important;
     }
     
     .reply-btn {
@@ -149,34 +197,31 @@
 <div class="container-fluid mt-4 thread-container">
     <!-- 스레드 헤더 -->
     <div class="thread-header">
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h3 class="mb-2">{{ emails.first.subject }}</h3>
-                <div class="d-flex gap-2 flex-wrap">
-                    {% if emails.first.schedule %}
-                    <span class="badge bg-success">
-                        <i class="fas fa-calendar-check"></i> 일정과 연결됨
-                    </span>
-                    <a href="{% url 'reporting:schedule_detail' emails.first.schedule.id %}" class="btn btn-sm btn-outline-success">
-                        <i class="fas fa-calendar-alt"></i> 일정 상세보기
-                    </a>
-                    {% endif %}
-                    {% if followup %}
-                    <span class="badge bg-primary">
-                        <i class="bi bi-person"></i> {{ followup.customer_name }}
-                    </span>
-                    <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-link"></i> 팔로우업 상세보기
-                    </a>
-                    {% endif %}
-                </div>
-                <small class="text-muted d-block mt-2">{{ emails.count }}개의 메시지</small>
-            </div>
-            <div>
-                <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> 목록
-                </a>
-            </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0">{{ emails.first.subject }}</h3>
+            <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> 목록
+            </a>
+        </div>
+        
+        <!-- 연결된 정보 및 버튼들 -->
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            {% if emails.first.schedule %}
+            <a href="{% url 'reporting:schedule_detail' emails.first.schedule.id %}" class="btn btn-outline-success btn-sm">
+                <i class="fas fa-calendar-check me-1"></i> 일정 상세보기
+            </a>
+            {% endif %}
+            
+            {% if followup %}
+            <span class="badge bg-dark px-3 py-2">
+                <i class="bi bi-person me-1"></i> {{ followup.customer_name }}
+            </span>
+            <a href="{% url 'reporting:followup_detail' followup.id %}" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-link me-1"></i> 팔로우업 상세보기
+            </a>
+            {% endif %}
+            
+            <span class="text-muted ms-auto">{{ emails.count }}개의 메시지</span>
         </div>
     </div>
     

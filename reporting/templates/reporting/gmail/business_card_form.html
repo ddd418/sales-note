@@ -3,6 +3,33 @@
 
 {% block title %}{% if card %}명함 수정{% else %}명함 추가{% endif %}{% endblock %}
 
+{% block extra_css %}
+<style>
+/* 🌙 서명 미리보기 다크 모드 */
+#signature-preview {
+    border: 1px solid hsl(217, 33%, 22%) !important;
+    padding: 15px;
+    background-color: hsl(222, 47%, 14%) !important;
+    min-height: 100px;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+#signature-preview * {
+    color: hsl(210, 40%, 98%) !important;
+}
+
+#signature-preview a {
+    color: #60a5fa !important;
+}
+
+.alert-info {
+    background: hsl(222, 47%, 17%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="card" style="max-width: 800px; margin: 0 auto;">

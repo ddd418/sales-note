@@ -26,7 +26,7 @@
 }
 
 .premium-form-card {
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     border: none;
@@ -35,15 +35,15 @@
 }
 
 .premium-form-card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: linear-gradient(135deg, var(--surface-hover) 0%, var(--surface) 100%);
     padding: 1.25rem 1.5rem;
-    border-bottom: 2px solid #667eea;
+    border-bottom: 2px solid var(--primary);
 }
 
 .premium-form-card-header h5 {
     margin: 0;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -59,7 +59,7 @@
 
 .form-group-premium label {
     font-weight: 600;
-    color: #2d3748;
+    color: var(--text-primary);
     margin-bottom: 0.5rem;
     display: block;
 }
@@ -67,21 +67,21 @@
 .form-group-premium .form-control {
     border-radius: 12px;
     padding: 0.875rem 1.25rem;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--border);
     transition: all 0.3s ease;
     font-size: 1rem;
 }
 
 .form-group-premium .form-control:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px hsla(217, 91%, 60%, 0.1);
     outline: none;
 }
 
 .form-group-premium small {
     display: block;
     margin-top: 0.5rem;
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 0.875rem;
 }
 
@@ -94,24 +94,24 @@
 }
 
 .btn-premium-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%);
     color: white;
 }
 
 .btn-premium-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px hsla(217, 91%, 60%, 0.4);
     color: white;
 }
 
 .btn-premium-secondary {
-    background: white;
-    color: #667eea;
-    border: 2px solid #667eea;
+    background: var(--surface);
+    color: var(--primary);
+    border: 2px solid var(--primary);
 }
 
 .btn-premium-secondary:hover {
-    background: #667eea;
+    background: var(--primary);
     color: white;
 }
 
@@ -121,11 +121,11 @@
     justify-content: center;
     margin-top: 2rem;
     padding-top: 2rem;
-    border-top: 2px solid #f1f3f5;
+    border-top: 2px solid var(--border);
 }
 
 .info-card {
-    background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%);
+    background: linear-gradient(135deg, hsla(217, 91%, 60%, 0.15) 0%, hsla(217, 91%, 60%, 0.25) 100%);
     border: none;
     border-radius: 12px;
     padding: 1.25rem;

@@ -6,40 +6,36 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
     /* ============================================
-       모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+       🎨 LOVABLE FUNNEL DASHBOARD STYLES
        ============================================ */
     
-    /* backdrop을 완전히 투명하게 (배경 없음) */
+    /* 모달 Z-INDEX 및 오버레이 수정 */
     .modal-backdrop {
-        display: none !important; /* backdrop 자체를 숨김 */
+        display: none !important;
     }
     
-    /* 모달 자체는 backdrop보다 높게 */
     .modal {
         z-index: 10001 !important;
-        pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+        pointer-events: none !important;
     }
     
-    /* 모달 다이얼로그만 클릭 가능하게 */
     .modal-dialog {
         z-index: 10002 !important;
-        pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
-        margin-left: 280px !important; /* 사이드바(250px) + 여유공간(30px) */
+        pointer-events: auto !important;
+        margin-left: 280px !important;
         margin-right: 30px !important;
     }
     
-    /* 모달 컨텐츠를 확실히 클릭 가능하게 */
     .modal-content {
         position: relative;
         z-index: 10003 !important;
-        pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
-        background-color: #fff;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 0.3rem;
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+        pointer-events: auto !important;
+        background-color: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
     }
     
-    /* 모달 내부의 모든 요소가 클릭 가능하도록 */
     .modal-header,
     .modal-body,
     .modal-footer,
@@ -49,14 +45,14 @@
         pointer-events: auto !important;
     }
 
-    /* 프리미엄 그라디언트 헤더 */
+    /* 프리미엄 그라디언트 헤더 - Lovable Style */
     .page-header-gradient {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
         color: white;
         padding: 2.5rem;
-        border-radius: 20px;
+        border-radius: var(--radius-lg);
         margin-bottom: 2rem;
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
         animation: fadeInDown 0.6s ease-out;
     }
     
@@ -72,11 +68,11 @@
     }
     
     .funnel-card {
-        border-radius: 20px;
-        border: 2px solid #f0f0f0;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        background: white;
+        background: var(--surface);
         overflow: hidden;
         position: relative;
     }
@@ -88,19 +84,19 @@
         left: 0;
         width: 100%;
         height: 4px;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, var(--primary) 0%, #8b5cf6 100%);
     }
     
     .funnel-card:hover {
         transform: translateY(-8px) scale(1.02);
-        box-shadow: 0 12px 35px rgba(102, 126, 234, 0.25);
-        border-color: #667eea;
+        box-shadow: var(--shadow-lg), var(--shadow-glow);
+        border-color: var(--primary);
     }
     
     .metric-value {
         font-size: 2.5rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -116,13 +112,13 @@
         font-weight: 700;
         font-size: 0.85rem;
         display: inline-block;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-sm);
         transition: all 0.3s;
     }
     
     .stage-badge:hover {
         transform: scale(1.1);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        box-shadow: var(--shadow-md);
     }
     
     .chart-container {
@@ -135,49 +131,49 @@
         border-left: 5px solid;
         padding: 18px;
         margin-bottom: 12px;
-        background: white;
-        border-radius: 12px;
+        background: var(--surface);
+        border-radius: var(--radius);
         transition: all 0.3s;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f0;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border);
     }
     
     .opportunity-item:hover {
         transform: translateX(8px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
+        box-shadow: var(--shadow-lg), var(--shadow-glow);
         border-color: transparent;
     }
     
     .filter-btn-group {
-        background: white;
-        border-radius: 15px;
+        background: var(--surface);
+        border-radius: var(--radius);
         padding: 0.5rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-md);
     }
     
     .card-title {
         font-weight: 700;
         font-size: 1.2rem;
-        color: #2d3748;
+        color: var(--text-primary);
         margin-bottom: 1.5rem;
     }
     
     .card-title i {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
     
     .progress {
-        border-radius: 10px;
+        border-radius: var(--radius-sm);
         overflow: hidden;
         box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
     }
     
     .progress-bar {
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+        border-radius: var(--radius-sm);
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
     }
     
     /* 모바일 및 태블릿 반응형 (1200px 이하) */
@@ -424,6 +420,220 @@
     .history-badge-purple {
         background-color: #f3e5f5;
         color: #7b1fa2;
+    }
+    
+    /* ============================================
+       🌙 DARK MODE OVERRIDES
+       ============================================ */
+    
+    /* 필터 카드 다크 모드 */
+    .card {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .card-header {
+        background: var(--surface-hover) !important;
+        border-bottom-color: var(--primary) !important;
+    }
+    
+    .card-header h5,
+    .card-header h6 {
+        color: var(--text-primary) !important;
+    }
+    
+    .card-body h6 {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 폼 컨트롤 다크 모드 */
+    .form-select,
+    .form-control {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+        color: var(--text-primary) !important;
+    }
+    
+    .form-select:focus,
+    .form-control:focus {
+        background: var(--surface) !important;
+        border-color: var(--primary) !important;
+        color: var(--text-primary) !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    }
+    
+    .form-label {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 종합 점수 안내 박스 다크 모드 */
+    .card-body > .mt-3.p-3[style*="background: #f8f9fa"],
+    .card-body > div[style*="background: #f8f9fa"] {
+        background: var(--surface-hover) !important;
+        border-left-color: var(--primary) !important;
+    }
+    
+    .card-body > .mt-3.p-3 small,
+    .card-body > div[style*="background: #f8f9fa"] small {
+        color: var(--text-muted) !important;
+    }
+    
+    .card-body > .mt-3.p-3 strong,
+    .card-body > div[style*="background: #f8f9fa"] strong {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 핵심 지표 카드 내부 박스 다크 모드 */
+    .row.text-center .rounded-3[style*="background: #f8fafc"],
+    div[style*="background: #f8fafc"] {
+        background: var(--surface-hover) !important;
+    }
+    
+    .row.text-center .rounded-3 h3,
+    .row.text-center .rounded-3 h4 {
+        color: var(--text-primary) !important;
+    }
+    
+    .row.text-center .rounded-3 small {
+        color: var(--text-muted) !important;
+    }
+    
+    /* 통계 값 색상 유지 */
+    .row.text-center .rounded-3[style*="rgba(16, 185, 129"] h3,
+    .row.text-center .rounded-3[style*="rgba(16, 185, 129"] h4 {
+        color: #10b981 !important;
+    }
+    
+    .row.text-center .rounded-3[style*="rgba(139, 92, 246"] h3,
+    .row.text-center .rounded-3[style*="rgba(139, 92, 246"] h4 {
+        color: #8b5cf6 !important;
+    }
+    
+    /* text-muted 다크 모드 */
+    .text-muted {
+        color: var(--text-muted) !important;
+    }
+    
+    /* 카드 내 제목 다크 모드 */
+    h6[style*="color: #1e293b"],
+    h6[style*="color: #2d3748"] {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 버튼 outline 스타일 다크 모드 */
+    .btn-outline-secondary {
+        color: var(--text-muted) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .btn-outline-secondary:hover {
+        background: var(--surface-hover) !important;
+        color: var(--text-primary) !important;
+    }
+    
+    .btn-outline-primary,
+    .btn-outline-danger,
+    .btn-outline-warning,
+    .btn-outline-info,
+    .btn-outline-success {
+        background: transparent !important;
+    }
+    
+    .btn-outline-primary:hover,
+    .btn-outline-danger:hover,
+    .btn-outline-warning:hover,
+    .btn-outline-info:hover,
+    .btn-outline-success:hover {
+        color: white !important;
+    }
+    
+    /* 라벨 필터 버튼 다크 모드 */
+    .label-filter-btn.btn-outline-secondary {
+        color: var(--text-muted) !important;
+        border-color: var(--border) !important;
+        background: transparent !important;
+    }
+    
+    .label-filter-btn.btn-outline-secondary:hover {
+        background: var(--surface-hover) !important;
+        color: var(--text-primary) !important;
+    }
+    
+    /* 상위 영업 기회 아이템 다크 모드 */
+    .opportunity-item strong[style*="color: #2d3748"] {
+        color: var(--text-primary) !important;
+    }
+    
+    .opportunity-item {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .opportunity-item:hover {
+        background: var(--surface-hover) !important;
+    }
+    
+    /* 카드 제목 다크 모드 */
+    .card-title {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 모달 다크 모드 */
+    .modal-body {
+        background: var(--surface) !important;
+        color: var(--text-primary) !important;
+    }
+    
+    .modal-footer {
+        background: var(--surface) !important;
+        border-top-color: var(--border) !important;
+    }
+    
+    .modal-body .card {
+        background: var(--surface-hover) !important;
+        border-color: var(--border) !important;
+    }
+    
+    .modal-body .card-title,
+    .modal-body strong {
+        color: var(--text-primary) !important;
+    }
+    
+    /* 히스토리 컨텐츠 다크 모드 */
+    .history-content h6 {
+        color: var(--text-primary) !important;
+        border-bottom-color: var(--border) !important;
+    }
+    
+    .history-badge-blue {
+        background-color: rgba(59, 130, 246, 0.2) !important;
+        color: #60a5fa !important;
+    }
+    
+    .history-badge-green {
+        background-color: rgba(16, 185, 129, 0.2) !important;
+        color: #34d399 !important;
+    }
+    
+    .history-badge-yellow {
+        background-color: rgba(245, 158, 11, 0.2) !important;
+        color: #fbbf24 !important;
+    }
+    
+    .history-badge-purple {
+        background-color: rgba(139, 92, 246, 0.2) !important;
+        color: #a78bfa !important;
+    }
+    
+    /* 처리 대기 박스 다크 모드 */
+    div[style*="background: rgba(245, 158, 11, 0.1)"] span {
+        color: #fbbf24 !important;
+    }
+    
+    /* 기회 없음 텍스트 */
+    .opportunity-item + p.text-center.text-muted,
+    #opportunitiesContent > p.text-center.text-muted {
+        color: var(--text-muted) !important;
     }
 </style>
 {% endblock %}
@@ -1542,12 +1752,12 @@ function renderMarkdown(text) {
             row.split('|').filter(cell => cell.trim()).map(cell => cell.trim())
         );
         
-        let tableHTML = '<div class="table-responsive mt-3 mb-3"><table class="table table-hover table-bordered" style="background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">';
-        tableHTML += '<thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;"><tr>';
+        let tableHTML = '<div class="table-responsive mt-3 mb-3"><table class="table table-hover table-bordered" style="background: var(--surface); box-shadow: var(--shadow-md);">';
+        tableHTML += '<thead style="background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%); color: white;"><tr>';
         headers.forEach(h => tableHTML += `<th style="font-weight: 700; padding: 1rem;">${h}</th>`);
         tableHTML += '</tr></thead><tbody>';
         rowsArray.forEach((row, idx) => {
-            const rowClass = idx % 2 === 0 ? 'table-light' : '';
+            const rowClass = idx % 2 === 0 ? '' : '';
             tableHTML += `<tr class="${rowClass}">`;
             row.forEach(cell => tableHTML += `<td style="padding: 0.75rem;">${cell}</td>`);
             tableHTML += '</tr>';

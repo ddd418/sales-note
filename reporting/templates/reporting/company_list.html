@@ -3,14 +3,14 @@
 
 {% block content %}
 <style>
-/* 프리미엄 업체관리 페이지 스타일 */
+/* 🎨 LOVABLE 업체관리 페이지 스타일 */
 .company-page-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     padding: 2.5rem 2rem;
     margin: -2rem -2rem 2rem 0;
-    border-radius: 0 0 20px 20px;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
 }
 
 .company-page-header h1 {
@@ -26,15 +26,15 @@
 }
 
 .search-premium-card {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: none;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
     transition: all 0.3s ease;
 }
 
 .search-premium-card:hover {
-    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.15);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
     transform: translateY(-2px);
 }
 
@@ -43,15 +43,15 @@
 }
 
 .search-input-group input {
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 0.75rem 1rem 0.75rem 3rem;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--border);
     transition: all 0.3s ease;
 }
 
 .search-input-group input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
 .search-input-group .search-icon {
@@ -59,7 +59,7 @@
     left: 1rem;
     top: 50%;
     transform: translateY(-50%);
-    color: #adb5bd;
+    color: var(--text-muted);
     z-index: 10;
 }
 
@@ -71,11 +71,11 @@
 }
 
 .company-card {
-    background: white;
-    border-radius: 16px;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
     padding: 1.5rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    border: 1px solid #f1f3f5;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -88,15 +88,15 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, var(--primary) 0%, #8b5cf6 100%);
     transform: scaleX(0);
     transition: transform 0.3s ease;
 }
 
 .company-card:hover {
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
     transform: translateY(-4px);
-    border-color: #667eea;
+    border-color: var(--primary);
 }
 
 .company-card:hover::before {
@@ -113,7 +113,7 @@
 .company-name {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     margin-bottom: 0.25rem;
     display: flex;
     align-items: center;
@@ -123,7 +123,7 @@
 .company-name-icon {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -138,8 +138,9 @@
     gap: 1rem;
     margin: 1rem 0;
     padding: 1rem;
-    background: #f8f9fa;
+    background: var(--surface-hover);
     border-radius: 12px;
+    border: 1px solid var(--border);
 }
 
 .stat-item {
@@ -152,22 +153,22 @@
 }
 
 .stat-item:hover {
-    background: white;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
 }
 
 .stat-value {
     display: block;
     font-size: 1.5rem;
     font-weight: 700;
-    color: #667eea;
+    color: var(--primary);
     margin-bottom: 0.25rem;
 }
 
 .stat-label {
     display: block;
     font-size: 0.75rem;
-    color: #6c757d;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -177,19 +178,19 @@
     flex-direction: column;
     gap: 0.5rem;
     padding-top: 1rem;
-    border-top: 1px solid #e9ecef;
+    border-top: 1px solid var(--border);
 }
 
 .meta-row {
     display: flex;
     align-items: center;
     font-size: 0.875rem;
-    color: #6c757d;
+    color: var(--text-muted);
 }
 
 .meta-row i {
     width: 20px;
-    color: #adb5bd;
+    color: var(--text-muted);
 }
 
 .company-actions {
@@ -208,30 +209,30 @@
 }
 
 .btn-view {
-    background: #667eea;
+    background: var(--primary);
     color: white;
     border: none;
 }
 
 .btn-view:hover {
-    background: #5568d3;
+    background: hsl(217, 91%, 55%);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 12px hsla(217, 91%, 60%, 0.3);
 }
 
 .btn-edit {
-    background: white;
-    color: #667eea;
-    border: 2px solid #667eea;
+    background: var(--surface);
+    color: var(--primary);
+    border: 2px solid var(--primary);
 }
 
 .btn-edit:hover {
-    background: #667eea;
+    background: var(--primary);
     color: white;
 }
 
 .btn-delete {
-    background: white;
+    background: var(--surface);
     color: #dc3545;
     border: 2px solid #dc3545;
 }
@@ -244,15 +245,15 @@
 .empty-state {
     text-align: center;
     padding: 4rem 2rem;
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    box-shadow: var(--shadow-md);
 }
 
 .empty-state-icon {
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+    background: linear-gradient(135deg, hsla(217, 91%, 60%, 0.2) 0%, hsla(263, 70%, 50%, 0.2) 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -262,17 +263,17 @@
 
 .empty-state-icon i {
     font-size: 3rem;
-    color: #667eea;
+    color: var(--primary);
 }
 
 .empty-state h3 {
-    color: #2d3748;
+    color: var(--text-primary);
     font-weight: 700;
     margin-bottom: 0.5rem;
 }
 
 .empty-state p {
-    color: #6c757d;
+    color: var(--text-muted);
     margin-bottom: 1.5rem;
 }
 
@@ -285,24 +286,25 @@
 
 .pagination-premium .page-link {
     border-radius: 8px;
-    border: 2px solid #e9ecef;
-    color: #667eea;
+    border: 2px solid var(--border);
+    color: var(--primary);
+    background: var(--surface);
     padding: 0.5rem 1rem;
     transition: all 0.2s ease;
 }
 
 .pagination-premium .page-link:hover {
-    background: #667eea;
+    background: var(--primary);
     color: white;
-    border-color: #667eea;
+    border-color: var(--primary);
     transform: translateY(-2px);
 }
 
 .pagination-premium .page-item.active .page-link {
-    background: #667eea;
-    border-color: #667eea;
+    background: var(--primary);
+    border-color: var(--primary);
     color: white;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 12px hsla(217, 91%, 60%, 0.3);
 }
 
 /* 모달 스타일 */
@@ -350,8 +352,9 @@
     z-index: 1057 !important;
     pointer-events: auto !important;
     border-radius: 16px;
-    border: none;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 
 /* 모달 내부 요소 클릭 가능 */
@@ -365,7 +368,7 @@
 }
 
 .modal-premium .modal-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
     color: white;
     border-radius: 16px 16px 0 0;
     padding: 1.5rem;
@@ -407,7 +410,7 @@
 
 .skeleton {
     animation: shimmer 2s infinite linear;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface) 50%, var(--surface-hover) 75%);
     background-size: 1000px 100%;
 }
 </style>
@@ -437,13 +440,13 @@
                                     <i class="fas fa-search me-2"></i>업체 검색
                                 </label>
                                 <div class="search-input-group">
-                                    <i class="fas fa-search search-icon"></i>
                                     <input type="text" 
                                            class="form-control" 
                                            name="search" 
                                            value="{{ search_query|default:'' }}" 
                                            placeholder="업체명 또는 학교명을 입력하세요..." 
-                                           autocomplete="off">
+                                           autocomplete="off"
+                                           style="padding-left: 1rem;">
                                 </div>
                             </div>
                             <div class="col-lg-4 mt-3 mt-lg-0">
@@ -484,7 +487,7 @@
                     </div>
                     <div>
                         <a href="{% if is_readonly %}{% url 'reporting:manager_company_detail' company.pk %}{% else %}{% url 'reporting:company_detail' company.pk %}{% endif %}" 
-                           class="text-decoration-none text-dark">
+                           class="text-decoration-none" style="color: var(--text-primary);">
                             {{ company.name }}
                         </a>
                     </div>

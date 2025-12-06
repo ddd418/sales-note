@@ -26,7 +26,7 @@
 }
 
 .premium-delete-card {
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     border: none;
@@ -39,7 +39,7 @@
 }
 
 .warning-alert-premium {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    background: linear-gradient(135deg, hsla(45, 100%, 51%, 0.2) 0%, hsla(45, 100%, 51%, 0.3) 100%);
     border: none;
     border-left: 4px solid #ffc107;
     border-radius: 12px;
@@ -57,7 +57,7 @@
 }
 
 .warning-alert-premium .content strong {
-    color: #856404;
+    color: #ffc107;
     display: block;
     margin-bottom: 0.25rem;
     font-size: 1.1rem;
@@ -65,11 +65,11 @@
 
 .warning-alert-premium .content p {
     margin: 0;
-    color: #856404;
+    color: var(--text-muted);
 }
 
 .danger-alert-premium {
-    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    background: linear-gradient(135deg, hsla(0, 84%, 60%, 0.2) 0%, hsla(0, 84%, 60%, 0.25) 100%);
     border: none;
     border-left: 4px solid #dc3545;
     border-radius: 12px;
@@ -192,15 +192,15 @@
 }
 
 .btn-premium-secondary {
-    background: white;
-    color: #6c757d;
-    border: 2px solid #dee2e6;
+    background: var(--surface);
+    color: var(--text-muted);
+    border: 2px solid var(--border);
 }
 
 .btn-premium-secondary:hover {
-    background: #f8f9fa;
-    border-color: #adb5bd;
-    color: #495057;
+    background: var(--surface-hover);
+    border-color: var(--border);
+    color: var(--text-primary);
 }
 
 .form-actions {

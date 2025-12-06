@@ -1,5 +1,157 @@
 {% extends "reporting/base.html" %} {% block title %}히스토리 상세 - 영업 보고
-시스템{% endblock %} {% block content %}
+시스템{% endblock %} 
+
+{% block extra_css %}
+<style>
+/* 🌙 다크 모드 스타일 */
+
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header.bg-white {
+  background: var(--surface-hover) !important;
+}
+
+.card-header .card-title {
+  color: var(--text-primary) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 정보 박스 */
+.bg-light {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.bg-light.rounded,
+.p-3.bg-light.rounded {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.p-3.border.rounded.bg-light {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+/* 텍스트 색상 */
+h6.text-muted {
+  color: var(--text-muted) !important;
+}
+
+p.text-muted,
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+p.mb-0,
+p.mb-2,
+p.mb-3 {
+  color: var(--text-primary) !important;
+}
+
+strong {
+  color: var(--text-primary) !important;
+}
+
+/* 폼 컨트롤 */
+.form-control {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control:focus {
+  background: var(--surface) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 테이블 */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 테두리 */
+.border {
+  border-color: var(--border) !important;
+}
+
+.border.rounded {
+  border-color: var(--border) !important;
+}
+
+/* 버튼 스타일 */
+.btn-outline-primary {
+  color: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 배지 스타일 - bg-light text-dark 수정 */
+.badge.bg-light.text-dark {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* whitespace 스타일 */
+.whitespace-pre-line {
+  white-space: pre-line;
+}
+
+/* 첨부파일 영역 */
+#attached-files {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* font-monospace */
+.font-monospace {
+  color: var(--text-primary) !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
 <div class="container">
   <div class="row">
     <div class="col-12">

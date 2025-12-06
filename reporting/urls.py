@@ -227,9 +227,14 @@ urlpatterns = [
     # 메일함
     path('mailbox/inbox/', gmail_views.mailbox_inbox, name='mailbox_inbox'),
     path('mailbox/sent/', gmail_views.mailbox_sent, name='mailbox_sent'),
+    path('mailbox/starred/', gmail_views.mailbox_starred, name='mailbox_starred'),
+    path('mailbox/trash/', gmail_views.mailbox_trash, name='mailbox_trash'),
     path('mailbox/thread/<str:thread_id>/', gmail_views.mailbox_thread, name='mailbox_thread'),
     path('mailbox/sync/', gmail_views.sync_received_emails, name='sync_received_emails'),
     path('mailbox/delete/<int:email_id>/', gmail_views.delete_email, name='delete_email'),
+    path('mailbox/toggle-star/<int:email_id>/', gmail_views.toggle_star_email, name='toggle_star_email'),
+    path('mailbox/move-to-trash/<int:email_id>/', gmail_views.move_to_trash_email, name='move_to_trash_email'),
+    path('mailbox/restore/<int:email_id>/', gmail_views.restore_email, name='restore_email'),
     
     # 명함 관리
     path('business-cards/', gmail_views.business_card_list, name='business_card_list'),

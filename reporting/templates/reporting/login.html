@@ -21,6 +21,21 @@
   box-sizing: border-box;
 }
 
+/* CSS 변수 - Lovable Style */
+:root {
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --primary-dark: #1e40af;
+  --surface: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
 html, body {
   height: 100%;
   width: 100%;
@@ -30,7 +45,7 @@ html, body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* 🎨 프리미엄 로그인 페이지 디자인 */
+/* 🎨 LOVABLE 로그인 페이지 디자인 */
 .login-page {
   position: fixed;
   top: 0;
@@ -40,7 +55,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
   overflow: hidden;
   padding: 1.5rem;
   z-index: 9999;
@@ -102,8 +117,8 @@ html, body {
 }
 
 .login-card {
-  background: white;
-  border-radius: 1.5rem;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   padding: 3rem;
   max-width: 460px;
@@ -133,12 +148,12 @@ html, body {
   width: 72px;
   height: 72px;
   margin: 0 auto 1rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-radius: 1rem;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
   animation: logoFloat 3s ease-in-out infinite;
 }
 
@@ -155,13 +170,13 @@ html, body {
 .login-title {
   font-size: 28px;
   font-weight: 800;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 0.25rem;
 }
 
 .login-subtitle {
   font-size: 15px;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 

@@ -8,9 +8,9 @@
   .delete-card {
     max-width: 600px;
     margin: 3rem auto;
-    background: white;
+    background: var(--surface);
     border-radius: 1rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
@@ -41,21 +41,21 @@
     display: flex;
     justify-content: space-between;
     padding: 0.75rem 0;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--border);
   }
 
   .info-label {
-    color: #6b7280;
+    color: var(--text-muted);
     font-weight: 600;
   }
 
   .info-value {
-    color: #111827;
+    color: var(--text-primary);
     font-weight: 500;
   }
 
   .warning-box {
-    background: #fef3c7;
+    background: hsla(38, 92%, 50%, 0.2);
     border-left: 4px solid #f59e0b;
     padding: 1rem;
     border-radius: 0.5rem;
@@ -81,9 +81,9 @@
   }
 
   .btn-cancel {
-    background: white;
-    color: #6b7280;
-    border: 1px solid #d1d5db;
+    background: var(--surface);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
     padding: 0.875rem 2rem;
     border-radius: 0.75rem;
     font-weight: 600;
@@ -94,8 +94,8 @@
   }
 
   .btn-cancel:hover {
-    background: #f9fafb;
-    color: #6b7280;
+    background: var(--surface-hover);
+    color: var(--text-muted);
   }
 </style>
 {% endblock %}

@@ -1,5 +1,180 @@
 {% extends "reporting/base.html" %}
 {% block title %}{{ page_title }} - 영업 보고 시스템{% endblock %}
+
+{% block extra_css %}
+<style>
+/* 🌙 다크 모드 스타일 */
+
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-title {
+  color: var(--text-primary) !important;
+}
+
+/* 통계 카드 제목 색상 유지 */
+.card-title.text-success {
+  color: #10b981 !important;
+}
+
+.card-title.text-info {
+  color: #3b82f6 !important;
+}
+
+.card-title.text-warning {
+  color: #f59e0b !important;
+}
+
+.card-title.text-danger {
+  color: #ef4444 !important;
+}
+
+.card-title.text-primary {
+  color: var(--primary) !important;
+}
+
+/* 폼 컨트롤 */
+.form-control,
+.form-select {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background: var(--surface) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-label {
+  color: var(--text-primary) !important;
+}
+
+/* 텍스트 색상 */
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 드롭다운 */
+.dropdown-menu {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.dropdown-item {
+  color: var(--text-primary) !important;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-hover) !important;
+}
+
+.dropdown-item.active {
+  background: var(--primary) !important;
+  color: white !important;
+}
+
+/* 테이블 */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table-hover tbody tr:hover td {
+  background: var(--surface-hover) !important;
+}
+
+/* 버튼 스타일 */
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 링크 색상 */
+a.text-decoration-none {
+  color: var(--primary) !important;
+}
+
+/* 고객 이름 뱃지 흰색 텍스트 */
+.badge.bg-secondary.text-decoration-none {
+  color: #ffffff !important;
+}
+
+/* 아코디언/컬랩스 */
+.accordion-item {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.accordion-button {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.accordion-button:not(.collapsed) {
+  background: var(--surface-hover) !important;
+  color: var(--primary) !important;
+}
+
+.accordion-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* progress bar 배경 */
+.progress {
+  background: var(--surface-hover) !important;
+}
+
+/* 리스트 그룹 */
+.list-group-item {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="container-fluid">

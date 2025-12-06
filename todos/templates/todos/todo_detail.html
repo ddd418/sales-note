@@ -6,15 +6,67 @@
 {% block extra_css %}
 <style>
 /* ============================================
-   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   TODO 상세 페이지 다크 모드 스타일
    ============================================ */
 
-/* backdrop을 완전히 투명하게 (배경 없음) */
+/* 카드 헤더 */
+.card-header.bg-white {
+    background: var(--surface) !important;
+    border-bottom-color: var(--border) !important;
+    color: var(--text-primary);
+}
+
+/* 정보 박스 */
+.border.rounded.p-3 {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+}
+
+.border.rounded.p-3 .text-muted {
+    color: var(--text-muted) !important;
+}
+
+.border.rounded.p-3 .fw-bold {
+    color: var(--text-primary) !important;
+}
+
+/* 리스트 그룹 */
+.list-group-item {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+}
+
+.list-group-item .text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* 활동 로그 아이콘 배경 */
+.rounded-circle.bg-light {
+    background: var(--surface-hover) !important;
+}
+
+/* 타임라인 텍스트 */
+.timeline .fw-medium {
+    color: var(--text-primary);
+}
+
+.timeline .text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* 알림 박스 */
+.alert-light {
+    background: var(--surface-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+}
+
+/* 모달 스타일 - 다크 모드 */
 .modal-backdrop {
     display: none !important;
 }
 
-/* 모달 자체는 backdrop보다 높게 */
 #delegateModal,
 #rejectModal {
     z-index: 1055 !important;
@@ -22,26 +74,31 @@
     background-color: rgba(0, 0, 0, 0.5);
 }
 
-/* 모달 다이얼로그만 클릭 가능하게 */
 #delegateModal .modal-dialog,
 #rejectModal .modal-dialog {
     z-index: 1056 !important;
     pointer-events: auto !important;
 }
 
-/* 모달 컨텐츠를 확실히 클릭 가능하게 */
 #delegateModal .modal-content,
 #rejectModal .modal-content {
     position: relative;
     z-index: 1057 !important;
     pointer-events: auto !important;
-    background-color: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.2);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 0.5rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.5);
 }
 
-/* 모달 내부의 모든 요소가 클릭 가능하도록 */
+.modal-header {
+    border-bottom-color: var(--border);
+}
+
+.modal-footer {
+    border-top-color: var(--border);
+}
+
 #delegateModal .modal-header,
 #delegateModal .modal-body,
 #delegateModal .modal-footer,
@@ -55,6 +112,38 @@
 #rejectModal .modal-body *,
 #rejectModal .modal-footer * {
     pointer-events: auto !important;
+}
+
+/* 드롭다운 메뉴 */
+.dropdown-menu {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
+.dropdown-item {
+    color: var(--text-primary) !important;
+}
+
+.dropdown-item:hover {
+    background: var(--surface-hover) !important;
+}
+
+.dropdown-divider {
+    border-color: var(--border) !important;
+}
+
+/* 카드 제목 */
+.card-title {
+    color: var(--text-primary);
+}
+
+.card-text {
+    color: var(--text-secondary);
+}
+
+/* 상세 내용 제목 */
+h6.text-muted {
+    color: var(--text-muted) !important;
 }
 </style>
 {% endblock %}

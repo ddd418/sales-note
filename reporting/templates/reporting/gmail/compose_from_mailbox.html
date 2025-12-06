@@ -11,14 +11,26 @@
         margin: 0 auto;
     }
     
+    /* 🌙 다크 모드 카드 스타일 */
+    .card {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+    }
+    
     .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 2px solid #dee2e6;
+        background-color: hsl(222, 47%, 17%) !important;
+        border-bottom: 2px solid hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .card-body {
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
     }
     
     .form-label {
         font-weight: 600;
-        color: #495057;
+        color: hsl(210, 40%, 98%) !important;
     }
     
     .required:after {
@@ -26,28 +38,56 @@
         color: #dc3545;
     }
     
+    /* 폼 필드 다크 모드 */
+    .form-control,
+    .form-select {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .form-control:focus,
+    .form-select:focus {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 91%, 60%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .form-control::placeholder {
+        color: hsl(215, 20%, 50%) !important;
+    }
+    
     .signature-preview {
-        border: 1px solid #dee2e6;
+        border: 1px solid var(--border);
         padding: 15px;
-        background-color: #f8f9fa;
+        background-color: var(--surface);
         border-radius: 4px;
         margin-top: 10px;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .signature-preview * {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .signature-preview a {
+        color: #60a5fa !important;
     }
     
     /* Quill 에디터 스타일 */
     #editor-container {
         height: 350px;
-        background: white;
+        background: var(--surface);
     }
     
     .ql-toolbar {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6 !important;
+        background: var(--surface-hover);
+        border: 1px solid var(--border) !important;
         border-radius: 4px 4px 0 0;
     }
     
     .ql-container {
-        border: 1px solid #dee2e6 !important;
+        border: 1px solid var(--border) !important;
         border-top: none !important;
         border-radius: 0 0 4px 4px;
         font-size: 14px;

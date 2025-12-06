@@ -2,6 +2,8 @@
 보고 시스템{% endblock %} {% block content %}
 {% csrf_token %}
 <style>
+/* 🎨 LOVABLE SCHEDULE LIST STYLES */
+
 /* 페이지 상단 여백 */
 .container {
   padding-top: 1.5rem;
@@ -20,11 +22,11 @@
     gap: 15px;
     position: sticky;
     top: 60px;
-    background: #fcfcfc;
+    background: var(--background);
     z-index: 98;
     padding: 15px 0;
     margin-bottom: 15px;
-    border-bottom: 1px solid #edecec;
+    border-bottom: 1px solid var(--border);
   }
 
   .page-header .btn-group {
@@ -41,7 +43,7 @@
     padding: 8px 12px;
   }
 
-  /* 필터 카드 내 btn-group 태블릿 최적화 - 박스 벗어남 방지 */
+  /* 필터 카드 내 btn-group 태블릿 최적화 */
   .card .card-body .btn-group {
     display: flex;
     flex-wrap: wrap;
@@ -57,7 +59,7 @@
     min-height: 32px;
     text-align: center;
     white-space: nowrap;
-    border-radius: 4px !important;
+    border-radius: var(--radius-sm) !important;
   }
 
   /* 상태별 필터 모바일 최적화 */
@@ -79,11 +81,18 @@
     text-overflow: ellipsis;
   }
 
-  /* 일정 카드 모바일 최적화 */
+  /* 일정 카드 모바일 최적화 - Lovable Style */
   .schedule-card {
     margin-bottom: 10px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+  }
+
+  .schedule-card:hover {
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    border-color: var(--primary);
   }
 
   .schedule-card .card-header {
@@ -114,8 +123,9 @@
 
   /* 테이블 모바일 최적화 */
   .table-responsive {
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
   }
 
   .table th,
@@ -128,18 +138,119 @@
 
 /* 태블릿 세로 모드 (768px~1024px) 추가 최적화 */
 @media (min-width: 768px) and (max-width: 1024px) {
-  /* 필터 카드 2개를 세로로 배치 */
   .row.mb-4 > .col-md-6 {
     flex: 0 0 100%;
     max-width: 100%;
     margin-bottom: 12px;
   }
 
-  /* 버튼 그룹 더 작게 */
   .card .card-body .btn-group .btn {
     padding: 5px 8px;
     font-size: 10px;
   }
+}
+
+/* 🌙 다크 모드 스타일 */
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-header h6,
+.card-header a {
+  color: var(--text-primary) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-body .card-text {
+  color: var(--text-secondary) !important;
+}
+
+.card-body .card-text strong {
+  color: var(--text-primary) !important;
+}
+
+.card-title {
+  color: var(--text-primary) !important;
+}
+
+.card-footer {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* 폼 컨트롤 */
+.form-control,
+.form-select {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background: var(--surface) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+/* 날짜 입력 필드 */
+input[type="date"] {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+/* 폼 라벨 */
+.form-label {
+  color: var(--text-primary) !important;
+}
+
+/* 텍스트 색상 */
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 빈 상태 메시지 */
+.card-body.text-center h5.text-muted,
+.card-body.text-center p.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 버튼 outline 스타일 */
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
 }
 </style>
 <div class="container">
@@ -580,13 +691,13 @@
 
 <style>
   .page-title {
-    color: #37352f;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
   .card {
-    border: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
     border-radius: 8px;
     transition: transform 0.2s ease-in-out;
   }
@@ -648,11 +759,11 @@
     gap: 15px;
     position: sticky;
     top: 60px;
-    background: #fcfcfc;
+    background: var(--background);
     z-index: 98;
     padding: 15px 0;
     margin-bottom: 15px;
-    border-bottom: 1px solid #edecec;
+    border-bottom: 1px solid var(--border);
   }
 
   .page-header .btn-group {

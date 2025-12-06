@@ -5,6 +5,8 @@
 
 {% block extra_css %}
 <style>
+    /* 🎨 LOVABLE PRODUCT LIST STYLES */
+    
     /* 모바일 및 태블릿 반응형 (1200px 이하) */
     @media (max-width: 1200px) {
         .container-fluid {
@@ -22,6 +24,13 @@
         
         .card {
             margin-bottom: 1rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
         
         .card-body {
@@ -30,6 +39,8 @@
         
         .table-responsive {
             font-size: 0.875rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
         }
         
         .table th,

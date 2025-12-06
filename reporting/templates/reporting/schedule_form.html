@@ -4,6 +4,70 @@
 {% block extra_css %}
 <style>
 /* ============================================
+   Select2 다크모드 스타일 - 최대 우선순위
+   ============================================ */
+.select2-container--default .select2-selection--single {
+  background-color: hsl(222, 47%, 14%) !important;
+  border-color: hsl(217, 33%, 22%) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: hsl(210, 40%, 98%) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow b {
+  border-color: hsl(215, 20%, 65%) transparent transparent transparent !important;
+}
+
+.select2-dropdown {
+  background-color: hsl(222, 47%, 14%) !important;
+  border-color: hsl(217, 33%, 22%) !important;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+  background-color: hsl(222, 47%, 14%) !important;
+  border-color: hsl(217, 33%, 22%) !important;
+  color: hsl(210, 40%, 98%) !important;
+}
+
+.select2-results {
+  background-color: hsl(222, 47%, 14%) !important;
+}
+
+.select2-results__options {
+  background-color: hsl(222, 47%, 14%) !important;
+}
+
+.select2-container--default .select2-results__option {
+  background-color: hsl(222, 47%, 14%) !important;
+  color: hsl(210, 40%, 98%) !important;
+}
+
+.select2-container--default .select2-results__option--highlighted,
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.select2-container--default .select2-results__option:hover,
+.select2-results__option--highlighted {
+  background-color: hsl(217, 91%, 60%) !important;
+  color: #000000 !important;
+}
+
+.select2-container--default .select2-results__option[aria-selected=true] {
+  background-color: hsl(217, 91%, 60%) !important;
+  color: white !important;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected=true] {
+  background-color: hsl(217, 91%, 50%) !important;
+  color: white !important;
+}
+
+/* Select2 메시지 */
+.select2-results__message {
+  background-color: hsl(222, 47%, 14%) !important;
+  color: hsl(215, 20%, 65%) !important;
+}
+
+/* ============================================
    모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
    ============================================ */
 
@@ -297,6 +361,300 @@ div.modal-backdrop {
 .quote-search-results::-webkit-scrollbar-thumb:hover {
   background: #a0aec0;
 }
+
+/* ============================================
+   🌙 다크 모드 스타일
+   ============================================ */
+
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-title {
+  color: var(--text-primary) !important;
+}
+
+.card-footer {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* 폼 컨트롤 */
+.form-control,
+.form-select {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.form-control::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background: var(--surface) !important;
+  border-color: var(--primary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+/* 날짜/시간 입력 필드 */
+input[type="date"],
+input[type="time"] {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+/* 폼 라벨 */
+.form-label,
+label {
+  color: var(--text-primary) !important;
+}
+
+/* 텍스트 색상 */
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+.text-secondary {
+  color: var(--text-secondary) !important;
+}
+
+/* 모달 다크 모드 */
+.modal-content {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-header .modal-title {
+  color: var(--text-primary) !important;
+}
+
+.modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-footer {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* 리스트 그룹 */
+.list-group-item {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.list-group-item:hover {
+  background: var(--surface-hover) !important;
+}
+
+/* alert 스타일 */
+.alert-info {
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.alert-warning {
+  background: rgba(245, 158, 11, 0.1) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 테이블 */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table-hover tbody tr:hover td {
+  background: var(--surface-hover) !important;
+}
+
+/* 버튼 outline 스타일 */
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 제품 검색 결과 다크 모드 */
+.product-search-results,
+.quote-search-results {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.product-search-results .list-group-item,
+.quote-search-results .list-group-item {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.product-search-results .list-group-item:hover,
+.quote-search-results .list-group-item:hover {
+  background: var(--surface-hover) !important;
+}
+
+/* 배경색 오버라이드 */
+.bg-light {
+  background: var(--surface-hover) !important;
+}
+
+.bg-white {
+  background: var(--surface) !important;
+}
+
+/* 구분선 */
+hr {
+  border-color: var(--border) !important;
+  opacity: 1;
+}
+
+/* 품목 행 스타일 */
+.delivery-item,
+.item-row {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* 스크롤바 다크 모드 */
+.product-search-results::-webkit-scrollbar-track,
+.quote-search-results::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+.product-search-results::-webkit-scrollbar-thumb,
+.quote-search-results::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+/* 추가 텍스트 스타일 */
+strong {
+  color: var(--text-primary);
+}
+
+small.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 체크박스 스타일 개선 */
+.form-check-input {
+  width: 1.25em !important;
+  height: 1.25em !important;
+  background-color: var(--surface) !important;
+  border: 2px solid var(--primary) !important;
+  cursor: pointer;
+}
+
+.form-check-input:checked {
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.form-check-input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+}
+
+.form-check-label {
+  color: var(--text-primary) !important;
+  cursor: pointer;
+  padding-left: 0.25rem;
+}
+
+/* 펀넬 등록 체크박스 강조 */
+#funnel-register-section .form-check {
+  padding: 1rem;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: var(--radius);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+#funnel-register-section .form-check-input {
+  width: 1.5em !important;
+  height: 1.5em !important;
+  border: 2px solid var(--primary) !important;
+  margin-top: 0.15em;
+}
+
+#funnel-register-section .form-check-label strong {
+  color: var(--primary) !important;
+  font-size: 1.1rem;
+}
+
+#funnel-register-section .form-text {
+  color: var(--text-muted) !important;
+  margin-top: 0.5rem;
+  margin-left: 2rem;
+}
+
+/* 선결제 체크박스 강조 */
+#prepayment-section .form-check-input {
+  width: 1.5em !important;
+  height: 1.5em !important;
+}
 </style>
 {% endblock %}
 
@@ -384,7 +742,7 @@ div.modal-backdrop {
                         {% endfor %}
                       </select>
                       <div id="followup_results" 
-                           style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-top: none; max-height: 300px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                           style="position: absolute; top: 100%; left: 0; right: 0; background: hsl(222, 47%, 14%); border: 1px solid hsl(217, 33%, 22%); border-top: none; max-height: 300px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);"
                            onclick="window.selectFollowupItem(event)"></div>
                     </div>
                     <button type="button" class="btn btn-outline-primary" id="addFollowupBtn" data-bs-toggle="modal" data-bs-target="#followupModal">
@@ -450,10 +808,10 @@ div.modal-backdrop {
                         ).slice(0, 30);
                         
                         if (filtered.length === 0) {
-                            resultsDiv.innerHTML = '<div style="padding:10px;color:#999;">결과 없음</div>';
+                            resultsDiv.innerHTML = '<div style="padding:10px;color:var(--text-muted);">결과 없음</div>';
                         } else {
                             resultsDiv.innerHTML = filtered.map(item => 
-                                '<div style="padding:10px;cursor:pointer;border-bottom:1px solid #eee;" onmouseover="this.style.backgroundColor=\'#f0f0f0\'" onmouseout="this.style.backgroundColor=\'white\'" data-id="' + item.id + '">' + 
+                                '<div class="followup-result-item" style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--surface);color:var(--text-primary);" onmouseover="this.style.backgroundColor=\'hsl(217, 91%, 60%)\';this.style.color=\'#000\'" onmouseout="this.style.backgroundColor=\'hsl(222, 47%, 14%)\';this.style.color=\'hsl(210, 40%, 98%)\'" data-id="' + item.id + '">' + 
                                 item.text + 
                                 '</div>'
                             ).join('');
@@ -2009,8 +2367,8 @@ document.addEventListener('DOMContentLoaded', function() {
     top: 100%;
     left: 0;
     right: 0;
-    background: white;
-    border: 1px solid #e3e2e0;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-top: none;
     border-radius: 0 0 6px 6px;
     max-height: 300px;
@@ -2027,13 +2385,15 @@ document.addEventListener('DOMContentLoaded', function() {
   .autocomplete-item {
     padding: 12px 16px;
     cursor: pointer;
-    border-bottom: 1px solid #f5f5f5;
+    border-bottom: 1px solid var(--border);
     transition: background-color 0.2s;
+    color: var(--text-primary);
   }
 
   .autocomplete-item:hover,
   .autocomplete-item.active {
-    background-color: #f8f9fa;
+    background-color: var(--surface-hover);
+    color: var(--text-primary);
   }
 
   .autocomplete-item:last-child {
@@ -2042,7 +2402,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   .autocomplete-no-results {
     padding: 12px 16px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-style: italic;
   }
 
@@ -2486,7 +2846,7 @@ window.addItem = function(itemData = {}) {
                 </button>
             </div>
             <!-- 검색 결과 드롭다운 -->
-            <div class="quote-search-results" style="display: none; position: absolute; z-index: 100010; background: white; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; width: 100%; left: 0; top: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.15); border-radius: 4px; margin-top: 2px;"></div>
+            <div class="quote-search-results" style="display: none; position: absolute; z-index: 100010; background: var(--surface); border: 1px solid var(--border); max-height: 200px; overflow-y: auto; width: 100%; left: 0; top: 100%; box-shadow: var(--shadow-lg); border-radius: 4px; margin-top: 2px;"></div>
             <input type="hidden" name="items[${itemIndex}][product_id]" class="quote-product-id" value="${productId}">
         </div>
         <div class="col-md-4">
@@ -4821,13 +5181,13 @@ document.addEventListener('DOMContentLoaded', function() {
     top: 100%;
     left: 0;
     right: 0;
-    background-color: white;
-    border: 1px solid #ccc;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
     border-top: none;
     max-height: 200px;
     overflow-y: auto;
     z-index: 100060;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-lg);
 }
 
 #followupModal .autocomplete-suggestions {
@@ -4837,12 +5197,15 @@ document.addEventListener('DOMContentLoaded', function() {
 .autocomplete-suggestion {
     padding: 10px;
     cursor: pointer;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border);
     font-size: 14px;
+    color: var(--text-primary);
+    background: var(--surface);
 }
 
 .autocomplete-suggestion:hover {
-    background-color: #f0f0f0;
+    background-color: var(--surface-hover);
+    color: var(--text-primary);
 }
 
 .autocomplete-suggestion:last-child {

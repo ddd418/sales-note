@@ -2,6 +2,66 @@
 {% load humanize %}
 {% block title %}{{ page_title }} - 영업 보고
 시스템{% endblock %}{% block content %}
+<style>
+/* Followup Detail Dark Mode Styles */
+.alert-light {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+.alert-light h5 {
+  color: var(--text-primary) !important;
+}
+
+.alert-light .text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Info Display Boxes */
+.bg-light.rounded.border,
+.p-2.bg-light.rounded.border,
+.p-3.bg-light.rounded.border {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Card Body Text */
+.card-body {
+  color: var(--text-primary);
+}
+
+.card-body h3 {
+  color: var(--primary) !important;
+}
+
+.card-body .form-label {
+  color: var(--text-muted) !important;
+}
+
+.card-body a {
+  color: var(--primary);
+}
+
+.card-body a:hover {
+  color: var(--primary-hover);
+}
+
+/* Nested cards inside card-body */
+.card-body .card {
+  background: var(--surface-hover) !important;
+}
+
+.card-body .card-body {
+  background: transparent !important;
+}
+
+/* Card header bg-white override */
+.card-header.bg-white {
+  background: var(--surface) !important;
+}
+</style>
 <div class="container">
   <div class="row justify-content-center">
     <div class="col-md-10">
@@ -107,22 +167,21 @@
               {% endif %} {% if followup.email %}
               <div class="mb-3">
                 <label class="form-label text-muted">메일 주소</label>
-                <div class="p-2 bg-light rounded border d-flex justify-content-between align-items-center">
-                  <div>
-                    <i class="fas fa-envelope me-1"></i>
-                    <a
-                      href="mailto:{{ followup.email }}"
-                      class="text-decoration-none"
-                      >{{ followup.email }}</a
-                    >
-                  </div>
-                  {% if user.userprofile.gmail_email %}
-                  <a href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}" 
-                     class="btn btn-sm btn-success">
-                    <i class="fas fa-paper-plane me-1"></i>메일 보내기
-                  </a>
-                  {% endif %}
+                <div class="p-2 bg-light rounded border">
+                  <i class="fas fa-envelope me-1"></i>
+                  <a
+                    href="mailto:{{ followup.email }}"
+                    class="text-decoration-none"
+                    >{{ followup.email }}</a
+                  >
                 </div>
+                {% if user.userprofile.gmail_email %}
+                <a href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}" 
+                   class="btn btn-sm btn-success mt-2" style="color: white !important;">
+                  <i class="fas fa-paper-plane me-1"></i>메일 보내기
+                </a>
+                {% endif %}
+              </div>
               </div>
               {% endif %} {% if followup.manager %}
               <div class="mb-3">
@@ -844,10 +903,10 @@
     position: relative;
     z-index: 1057 !important;
     pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
-    background-color: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.2);
+    background-color: hsl(222, 47%, 14%) !important;
+    border: 1px solid hsl(217, 33%, 22%) !important;
     border-radius: 0.3rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5) !important;
   }
 
   /* 모달 내부의 모든 요소가 클릭 가능하도록 */
@@ -858,6 +917,41 @@
   .modal-body *,
   .modal-footer * {
     pointer-events: auto !important;
+  }
+
+  /* 🌙 AI 분석 모달 다크모드 */
+  #aiSummaryModal .modal-header {
+    background: hsl(217, 91%, 50%) !important;
+  }
+  
+  #aiSummaryModal .modal-body {
+    background: hsl(222, 47%, 14%) !important;
+    color: hsl(210, 40%, 98%) !important;
+  }
+  
+  #aiSummaryModal .modal-footer {
+    background: hsl(222, 47%, 14%) !important;
+    border-top: 1px solid hsl(217, 33%, 22%) !important;
+  }
+  
+  /* AI 분석 콘텐츠 스타일 */
+  .ai-summary-content h3,
+  .ai-summary-content h4,
+  .ai-summary-content h5 {
+    color: #60a5fa !important; /* 밝은 파란색 헤더 */
+  }
+  
+  .ai-summary-content p,
+  .ai-summary-content li {
+    color: hsl(210, 40%, 98%) !important;
+  }
+  
+  .ai-summary-content strong {
+    color: #fbbf24 !important; /* 황금색 강조 라벨 */
+  }
+  
+  .ai-summary-content ul {
+    color: hsl(210, 40%, 98%) !important;
   }
 
   .page-title {

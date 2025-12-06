@@ -33,11 +33,11 @@
 }
 
 .stat-card {
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
     padding: 1.5rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    border: 1px solid #f1f3f5;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -50,18 +50,18 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, var(--primary) 0%, #764ba2 100%);
 }
 
 .stat-card:hover {
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 8px 30px hsla(217, 91%, 60%, 0.15);
     transform: translateY(-4px);
 }
 
 .stat-card-icon {
     width: 50px;
     height: 50px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%);
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -74,36 +74,36 @@
 .stat-card-value {
     font-size: 2rem;
     font-weight: 700;
-    color: #667eea;
+    color: var(--primary);
     margin-bottom: 0.25rem;
 }
 
 .stat-card-label {
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .premium-card {
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    border: 1px solid #f1f3f5;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
     overflow: hidden;
     margin-bottom: 2rem;
 }
 
 .premium-card-header {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: linear-gradient(135deg, var(--surface-hover) 0%, var(--surface) 100%);
     padding: 1.25rem 1.5rem;
-    border-bottom: 2px solid #667eea;
+    border-bottom: 2px solid var(--primary);
 }
 
 .premium-card-header h5 {
     margin: 0;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -120,23 +120,23 @@
 }
 
 .salesman-card {
-    background: #f8f9fa;
+    background: var(--surface-hover);
     border-radius: 12px;
     padding: 1.25rem;
-    border: 1px solid #e9ecef;
+    border: 1px solid var(--border);
     transition: all 0.3s ease;
 }
 
 .salesman-card:hover {
-    background: white;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
     transform: translateY(-2px);
 }
 
 .salesman-avatar {
     width: 50px;
     height: 50px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -151,13 +151,13 @@
 .salesman-info h6 {
     margin: 0;
     font-weight: 600;
-    color: #2d3748;
+    color: var(--text-primary);
 }
 
 .salesman-stats {
     margin-top: 0.75rem;
     padding-top: 0.75rem;
-    border-top: 1px solid #e9ecef;
+    border-top: 1px solid var(--border);
 }
 
 .salesman-stats div {
@@ -165,17 +165,17 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: #6c757d;
+    color: var(--text-muted);
     margin-bottom: 0.25rem;
 }
 
 .salesman-stats i {
-    color: #667eea;
+    color: var(--primary);
     width: 16px;
 }
 
 .search-premium-card {
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     border: none;
@@ -184,7 +184,7 @@
 }
 
 .search-premium-card:hover {
-    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 6px 30px hsla(217, 91%, 60%, 0.15);
 }
 
 .search-input-group {
@@ -194,13 +194,13 @@
 .search-input-group input {
     border-radius: 12px;
     padding: 0.75rem 1rem 0.75rem 3rem;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--border);
     transition: all 0.3s ease;
 }
 
 .search-input-group input:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px hsla(217, 91%, 60%, 0.1);
 }
 
 .search-input-group .search-icon {
@@ -208,7 +208,7 @@
     left: 1rem;
     top: 50%;
     transform: translateY(-50%);
-    color: #adb5bd;
+    color: var(--text-muted);
     z-index: 10;
 }
 
@@ -219,11 +219,11 @@
 }
 
 .department-card {
-    background: white;
+    background: var(--surface);
     border-radius: 12px;
     padding: 1.25rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    border: 1px solid #e9ecef;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -236,15 +236,15 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, var(--primary) 0%, #764ba2 100%);
     transform: scaleX(0);
     transition: transform 0.3s ease;
 }
 
 .department-card:hover {
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 6px 20px hsla(217, 91%, 60%, 0.15);
     transform: translateY(-3px);
-    border-color: #667eea;
+    border-color: var(--primary);
 }
 
 .department-card:hover::before {
@@ -254,7 +254,7 @@
 .department-name {
     font-size: 1.125rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     margin-bottom: 0.75rem;
     display: flex;
     align-items: center;
@@ -262,7 +262,7 @@
 }
 
 .department-name i {
-    color: #667eea;
+    color: var(--primary);
 }
 
 .department-stats {
@@ -271,7 +271,7 @@
     gap: 1rem;
     margin-bottom: 1rem;
     padding: 0.75rem;
-    background: #f8f9fa;
+    background: var(--surface-hover);
     border-radius: 8px;
 }
 
@@ -298,15 +298,15 @@
 .empty-state {
     text-align: center;
     padding: 4rem 2rem;
-    background: white;
+    background: var(--surface);
     border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    box-shadow: var(--shadow-md);
 }
 
 .empty-state-icon {
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+    background: linear-gradient(135deg, hsla(217, 91%, 60%, 0.2) 0%, hsla(263, 70%, 50%, 0.2) 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -316,17 +316,17 @@
 
 .empty-state-icon i {
     font-size: 3rem;
-    color: #667eea;
+    color: var(--primary);
 }
 
 .empty-state h5 {
-    color: #2d3748;
+    color: var(--text-primary);
     font-weight: 700;
     margin-bottom: 0.5rem;
 }
 
 .empty-state p {
-    color: #6c757d;
+    color: var(--text-muted);
     margin-bottom: 1.5rem;
 }
 
@@ -345,29 +345,29 @@
 }
 
 .btn-premium-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%);
     color: white;
 }
 
 .btn-premium-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px hsla(217, 91%, 60%, 0.4);
     color: white;
 }
 
 .btn-premium-secondary {
-    background: white;
-    color: #667eea;
-    border: 2px solid #667eea;
+    background: var(--surface);
+    color: var(--primary);
+    border: 2px solid var(--primary);
 }
 
 .btn-premium-secondary:hover {
-    background: #667eea;
+    background: var(--primary);
     color: white;
 }
 
 .btn-premium-danger {
-    background: white;
+    background: var(--surface);
     color: #dc3545;
     border: 2px solid #dc3545;
 }
@@ -531,10 +531,10 @@
                 <div class="row g-3">
                     <div class="col-lg-8">
                         <div class="search-input-group">
-                            <i class="fas fa-search search-icon"></i>
                             <input type="text" class="form-control" name="dept_search" 
                                    value="{{ dept_search|default:'' }}" 
-                                   placeholder="부서/연구실명을 입력하세요..." autocomplete="off">
+                                   placeholder="부서/연구실명을 입력하세요..." autocomplete="off"
+                                   style="padding-left: 1rem;">
                         </div>
                     </div>
                     <div class="col-lg-4">

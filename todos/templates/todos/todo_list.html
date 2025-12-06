@@ -5,22 +5,22 @@
 
 {% block extra_css %}
 <style>
-    /* 탭 스타일 - 기본 검은색, 선택 시 파란색 */
+    /* 탭 스타일 - 다크 모드 대응 */
     #todoTabs .nav-link {
-        color: #333 !important;
+        color: var(--text-secondary) !important;
         font-weight: 500;
         border: none;
         border-bottom: 2px solid transparent;
         background: transparent;
     }
     #todoTabs .nav-link:hover {
-        color: #1e40af !important;
-        border-bottom-color: #ddd;
+        color: var(--primary) !important;
+        border-bottom-color: var(--border);
     }
     #todoTabs .nav-link.active {
-        color: #1e40af !important;
+        color: var(--primary) !important;
         font-weight: 600;
-        border-bottom: 2px solid #1e40af !important;
+        border-bottom: 2px solid var(--primary) !important;
         background: transparent;
     }
     
@@ -57,10 +57,19 @@
         position: relative;
         z-index: 1057 !important;
         pointer-events: auto !important;
-        background-color: #fff;
-        border: 1px solid rgba(0, 0, 0, 0.2);
+        background-color: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 0.5rem;
-        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.3);
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-header {
+        border-bottom-color: var(--border);
+        color: var(--text-primary);
+    }
+    
+    .modal-footer {
+        border-top-color: var(--border);
     }
     
     /* 모달 내부의 모든 요소가 클릭 가능하도록 */

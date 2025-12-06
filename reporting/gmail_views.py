@@ -639,13 +639,15 @@ def mailbox_inbox(request):
         messages.warning(request, 'Gmail 계정을 연결해주세요.')
         return redirect('reporting:gmail_connect')
     
-    # DB에서 수신 메일 조회 (본인 담당 팔로우업만)
+    # DB에서 수신 메일 조회 (본인 담당 팔로우업만, 휴지통 제외)
     # 최신순 정렬: received_at이 null이면 created_at 사용
     from django.db.models.functions import Coalesce
     emails = EmailLog.objects.filter(
         email_type='received',
         followup__isnull=False,  # 팔로우업 연결된 메일만
-        followup__user=request.user  # 본인 담당 팔로우업만
+        followup__user=request.user,  # 본인 담당 팔로우업만
+        is_trashed=False,  # 휴지통 제외
+        is_archived=False  # 보관함 제외
     ).select_related('followup', 'sender', 'business_card').order_by(
         Coalesce('received_at', 'created_at').desc()
     )
@@ -655,10 +657,18 @@ def mailbox_inbox(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
+    # 중요편지 개수
+    starred_count = EmailLog.objects.filter(
+        followup__user=request.user,
+        is_starred=True,
+        is_trashed=False
+    ).count()
+    
     context = {
         'emails': page_obj,
         'mailbox_type': 'inbox',
-        'total_count': paginator.count
+        'total_count': paginator.count,
+        'starred_count': starred_count
     }
     return render(request, 'reporting/gmail/mailbox.html', context)
 
@@ -668,7 +678,8 @@ def mailbox_sent(request):
     """보낸편지함"""
     emails = EmailLog.objects.filter(
         email_type='sent',
-        sender=request.user
+        sender=request.user,
+        is_trashed=False
     ).select_related('followup', 'schedule', 'business_card').order_by('-sent_at')
     
     # 페이지네이션 (20개씩)
@@ -682,6 +693,201 @@ def mailbox_sent(request):
         'total_count': paginator.count
     }
     return render(request, 'reporting/gmail/mailbox.html', context)
+
+
+@login_required
+def mailbox_starred(request):
+    """중요편지함"""
+    from django.db.models import Q
+    from django.db.models.functions import Coalesce
+    
+    emails = EmailLog.objects.filter(
+        Q(sender=request.user) | Q(followup__user=request.user),
+        is_starred=True,
+        is_trashed=False
+    ).select_related('followup', 'schedule', 'business_card').order_by(
+        Coalesce('received_at', 'sent_at').desc()
+    )
+    
+    paginator = Paginator(emails, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'emails': page_obj,
+        'mailbox_type': 'starred',
+        'total_count': paginator.count
+    }
+    return render(request, 'reporting/gmail/mailbox.html', context)
+
+
+@login_required
+def mailbox_archived(request):
+    """보관함"""
+    from django.db.models import Q
+    from django.db.models.functions import Coalesce
+    
+    emails = EmailLog.objects.filter(
+        Q(sender=request.user) | Q(followup__user=request.user),
+        is_archived=True,
+        is_trashed=False
+    ).select_related('followup', 'schedule', 'business_card').order_by(
+        Coalesce('received_at', 'sent_at').desc()
+    )
+    
+    paginator = Paginator(emails, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'emails': page_obj,
+        'mailbox_type': 'archived',
+        'total_count': paginator.count
+    }
+    return render(request, 'reporting/gmail/mailbox.html', context)
+
+
+@login_required
+def mailbox_trash(request):
+    """휴지통"""
+    from django.db.models import Q
+    from django.db.models.functions import Coalesce
+    
+    emails = EmailLog.objects.filter(
+        Q(sender=request.user) | Q(followup__user=request.user),
+        is_trashed=True
+    ).select_related('followup', 'schedule', 'business_card').order_by(
+        '-trashed_at'
+    )
+    
+    paginator = Paginator(emails, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'emails': page_obj,
+        'mailbox_type': 'trash',
+        'total_count': paginator.count
+    }
+    return render(request, 'reporting/gmail/mailbox.html', context)
+
+
+@login_required
+def toggle_star_email(request, email_id):
+    """이메일 중요 표시 토글"""
+    from django.db.models import Q
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
+    
+    try:
+        email = EmailLog.objects.filter(
+            Q(sender=request.user) | Q(followup__user=request.user),
+            id=email_id
+        ).first()
+        
+        if not email:
+            return JsonResponse({'success': False, 'error': '이메일을 찾을 수 없습니다.'})
+        
+        email.is_starred = not email.is_starred
+        email.save(update_fields=['is_starred'])
+        
+        return JsonResponse({
+            'success': True,
+            'is_starred': email.is_starred,
+            'message': '중요 표시됨' if email.is_starred else '중요 표시 해제됨'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def archive_email(request, email_id):
+    """이메일 보관"""
+    from django.db.models import Q
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
+    
+    try:
+        email = EmailLog.objects.filter(
+            Q(sender=request.user) | Q(followup__user=request.user),
+            id=email_id
+        ).first()
+        
+        if not email:
+            return JsonResponse({'success': False, 'error': '이메일을 찾을 수 없습니다.'})
+        
+        email.is_archived = not email.is_archived
+        email.save(update_fields=['is_archived'])
+        
+        return JsonResponse({
+            'success': True,
+            'is_archived': email.is_archived,
+            'message': '보관함으로 이동됨' if email.is_archived else '보관 해제됨'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def move_to_trash_email(request, email_id):
+    """이메일 휴지통으로 이동"""
+    from django.db.models import Q
+    from django.utils import timezone
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
+    
+    try:
+        email = EmailLog.objects.filter(
+            Q(sender=request.user) | Q(followup__user=request.user),
+            id=email_id
+        ).first()
+        
+        if not email:
+            return JsonResponse({'success': False, 'error': '이메일을 찾을 수 없습니다.'})
+        
+        email.is_trashed = True
+        email.trashed_at = timezone.now()
+        email.save(update_fields=['is_trashed', 'trashed_at'])
+        
+        return JsonResponse({
+            'success': True,
+            'message': '휴지통으로 이동되었습니다.'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def restore_email(request, email_id):
+    """이메일 복원 (휴지통에서)"""
+    from django.db.models import Q
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'})
+    
+    try:
+        email = EmailLog.objects.filter(
+            Q(sender=request.user) | Q(followup__user=request.user),
+            id=email_id,
+            is_trashed=True
+        ).first()
+        
+        if not email:
+            return JsonResponse({'success': False, 'error': '이메일을 찾을 수 없습니다.'})
+        
+        email.is_trashed = False
+        email.trashed_at = None
+        email.save(update_fields=['is_trashed', 'trashed_at'])
+        
+        return JsonResponse({
+            'success': True,
+            'message': '이메일이 복원되었습니다.'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 @login_required

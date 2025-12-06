@@ -1407,6 +1407,12 @@ class EmailLog(models.Model):
     # 읽음 여부 (수신 메일의 경우)
     is_read = models.BooleanField(default=False, verbose_name="읽음 여부")
     
+    # 메일 상태 플래그
+    is_starred = models.BooleanField(default=False, verbose_name="중요 표시", db_index=True)
+    is_archived = models.BooleanField(default=False, verbose_name="보관됨", db_index=True)
+    is_trashed = models.BooleanField(default=False, verbose_name="휴지통", db_index=True)
+    trashed_at = models.DateTimeField(null=True, blank=True, verbose_name="삭제 일시")
+    
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     

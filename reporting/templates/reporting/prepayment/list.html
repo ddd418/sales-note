@@ -22,10 +22,10 @@
   }
 
   .stats-card {
-    background: white;
+    background: var(--surface);
     border-radius: 1rem;
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
     transition: transform 0.3s, box-shadow 0.3s;
     height: 100%;
     display: flex;
@@ -35,7 +35,7 @@
 
   .stats-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-lg);
   }
 
   .stats-icon {
@@ -61,18 +61,18 @@
   }
 
   .filter-card {
-    background: white;
+    background: var(--surface);
     border-radius: 1rem;
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
     margin-bottom: 2rem;
     overflow: hidden;
   }
 
   .table-card {
-    background: white;
+    background: var(--surface);
     border-radius: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
   }
 
@@ -89,13 +89,13 @@
   }
 
   .badge-active {
-    background: #d1fae5;
-    color: #065f46;
+    background: hsla(152, 76%, 36%, 0.2);
+    color: #10b981;
   }
 
   .badge-depleted {
-    background: #e5e7eb;
-    color: #374151;
+    background: hsla(220, 13%, 45%, 0.2);
+    color: var(--text-muted);
   }
 
   .badge-cancelled {
@@ -179,13 +179,13 @@
 
   .btn-search:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 12px hsla(217, 91%, 60%, 0.3);
   }
 
   .btn-reset {
-    background: white;
-    color: #6b7280;
-    border: 1px solid #d1d5db;
+    background: var(--surface);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
     padding: 0.625rem 2rem;
     border-radius: 0.5rem;
     font-weight: 600;
@@ -196,15 +196,15 @@
   }
 
   .btn-reset:hover {
-    background: #f9fafb;
-    border-color: #9ca3af;
-    color: #6b7280;
+    background: var(--surface-hover);
+    border-color: var(--border);
+    color: var(--text-muted);
   }
 
   .empty-state {
     text-align: center;
     padding: 4rem 2rem;
-    color: #6b7280;
+    color: var(--text-muted);
   }
 
   .empty-state i {

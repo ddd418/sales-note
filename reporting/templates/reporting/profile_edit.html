@@ -2,6 +2,69 @@
 
 {% block page_title %}프로필 수정{% endblock %}
 
+{% block extra_css %}
+<style>
+/* 🌙 프로필 수정 페이지 다크 모드 */
+.card {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-header {
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-body {
+    background: hsl(222, 47%, 14%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-label {
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control {
+    background: hsl(222, 47%, 17%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control:focus {
+    background: hsl(222, 47%, 17%) !important;
+    border-color: hsl(217, 91%, 60%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control::placeholder {
+    color: hsl(215, 20%, 50%) !important;
+}
+
+/* alert 다크 모드 */
+.alert-info {
+    background: hsl(222, 47%, 17%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.alert-info ul li {
+    color: hsl(215, 20%, 65%) !important;
+}
+
+.alert-warning {
+    background: rgba(245, 158, 11, 0.15) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    color: #f59e0b !important;
+}
+
+/* bg-light 필드 다크 모드 (계정 정보) */
+.form-control-plaintext.bg-light {
+    background-color: hsl(222, 47%, 17%) !important;
+    color: hsl(210, 40%, 98%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
   <div class="row justify-content-center">

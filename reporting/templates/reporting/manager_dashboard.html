@@ -3,6 +3,8 @@
 
 {% block content %}
 <style>
+/* 🎨 LOVABLE MANAGER DASHBOARD STYLES */
+
 /* 매니저 대시보드 모바일 최적화 */
 @media (max-width: 768px) {
   /* 사이드바 모바일 최적화 */
@@ -15,7 +17,9 @@
 
   .card.sticky-top {
     position: static;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
   }
 
   /* Salesman 목록 가로 스크롤 */
@@ -31,8 +35,14 @@
   .list-group-item {
     flex: 0 0 250px;
     margin-right: 10px;
-    border-radius: 8px !important;
-    border: 1px solid #dee2e6;
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+  }
+
+  .list-group-item:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
   }
 
   .list-group-item:last-child {
@@ -46,8 +56,16 @@
   }
 
   .card-hover {
-    transition: transform 0.1s ease;
+    transition: all 0.2s ease;
     -webkit-tap-highlight-color: transparent;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    border-color: var(--primary);
   }
 
   .card-hover:active {
@@ -66,6 +84,9 @@
     right: 0;
     left: auto;
     transform: translateX(0);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
   }
 
   /* 차트 컨테이너 모바일 최적화 */
@@ -79,8 +100,10 @@
 
   /* 테이블 모바일 최적화 */
   .table-responsive {
-    border-radius: 8px;
+    border-radius: var(--radius);
     margin-bottom: 15px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
   }
 
   .table th,
@@ -93,11 +116,11 @@
   .page-header {
     position: sticky;
     top: 60px;
-    background: #fcfcfc;
+    background: var(--background);
     z-index: 99;
     padding: 15px 0;
     margin-bottom: 15px;
-    border-bottom: 1px solid #edecec;
+    border-bottom: 1px solid var(--border);
   }
 
   .page-title {

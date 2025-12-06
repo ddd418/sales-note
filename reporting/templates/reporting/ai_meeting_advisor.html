@@ -105,45 +105,88 @@
 </div>
 
 <style>
+/* 🌙 다크 모드 스타일 */
+.card {
+  background: hsl(222, 47%, 14%) !important;
+  border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-header {
+  border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-body {
+  background: hsl(222, 47%, 14%) !important;
+  color: hsl(210, 40%, 98%) !important;
+}
+
+.list-group-item {
+  background: hsl(222, 47%, 14%) !important;
+  border-color: hsl(217, 33%, 22%) !important;
+  color: hsl(210, 40%, 98%) !important;
+}
+
+/* 일정 목록 아이템 */
 .schedule-item {
   cursor: pointer;
   transition: all 0.3s ease;
   border-left: 4px solid transparent !important;
+  background: hsl(222, 47%, 14%) !important;
 }
 
 .schedule-item:hover {
-  background-color: #f8f9fa !important;
+  background-color: hsl(222, 47%, 18%) !important;
   border-left-color: #0d6efd !important;
 }
 
 .schedule-item.active {
-  background-color: #e7f1ff !important;
+  background-color: hsl(222, 47%, 20%) !important;
   border-left-color: #0d6efd !important;
 }
 
-/* 일정 목록 텍스트 색상 명시 */
-.schedule-item h6,
-.schedule-item small,
-.schedule-item .text-muted {
-  color: #212529 !important;
+/* 일정 목록 텍스트 색상 - 다크모드 */
+.schedule-item h6 {
+  color: hsl(210, 40%, 98%) !important;
+}
+
+.schedule-item small {
+  color: hsl(215, 20%, 65%) !important;
 }
 
 .schedule-item.active h6,
 .schedule-item.active small {
-  color: #212529 !important;
+  color: hsl(210, 40%, 98%) !important;
 }
 
 .schedule-item .badge {
   font-size: 0.75rem;
 }
 
+/* 선택된 일정 정보 카드 */
+#schedule-info .card-body p,
+#schedule-info .card-body strong,
+#schedule-info .card-body span {
+  color: hsl(210, 40%, 98%) !important;
+}
+
+#schedule-info #schedule-notes {
+  color: hsl(215, 20%, 65%) !important;
+}
+
+/* 전략 추천 영역 */
+#strategy-button-area .card-body p {
+  color: hsl(210, 40%, 98%) !important;
+}
+
+/* AI 응답 영역 */
 #ai-response-content {
   line-height: 1.8;
   font-size: 1.05rem;
+  color: hsl(210, 40%, 98%) !important;
 }
 
 #ai-response-content h4 {
-  color: #667eea;
+  color: #60a5fa !important;
   margin-top: 1.5rem;
   margin-bottom: 1rem;
   font-weight: 600;
@@ -155,15 +198,31 @@
 
 #ai-response-content li {
   margin-bottom: 0.75rem;
+  color: hsl(210, 40%, 98%) !important;
 }
 
 #ai-response-content strong {
-  color: #764ba2;
+  color: #fbbf24 !important;
+}
+
+/* 초기 메시지 */
+#initial-message .card-body {
+  background: hsl(222, 47%, 14%) !important;
+}
+
+#initial-message h5,
+#initial-message p {
+  color: hsl(215, 20%, 65%) !important;
 }
 
 .spinner-border-sm {
   width: 1rem;
   height: 1rem;
+}
+
+/* 로딩 스피너 영역 */
+#upcoming-schedules .text-muted {
+  color: hsl(215, 20%, 65%) !important;
 }
 </style>
 

@@ -49,6 +49,215 @@
 #deliveryItemsModal .modal-footer * {
   pointer-events: auto !important;
 }
+
+/* ============================================
+   🌙 다크 모드 스타일
+   ============================================ */
+
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 정보 박스 (bg-light) 다크 모드 */
+.bg-light {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.bg-light.rounded.border,
+.p-2.bg-light.rounded.border {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 라벨 스타일 */
+.form-label {
+  color: var(--text-primary) !important;
+}
+
+.form-label.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 텍스트 색상 */
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 섹션 제목 색상 유지 */
+h3.text-primary {
+  color: var(--primary) !important;
+}
+
+h3.text-success {
+  color: #10b981 !important;
+}
+
+/* 테이블 스타일 */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table-hover tbody tr:hover td {
+  background: var(--surface-hover) !important;
+}
+
+/* 링크 색상 */
+a.text-decoration-none {
+  color: var(--primary) !important;
+}
+
+/* 알림 박스 */
+.alert-info {
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.alert-warning {
+  background: rgba(245, 158, 11, 0.1) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 모달 다크 모드 */
+.modal-content,
+#deliveryItemsModal .modal-content {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-header,
+#deliveryItemsModal .modal-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.modal-header .modal-title {
+  color: var(--text-primary) !important;
+}
+
+.modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-body,
+#deliveryItemsModal .modal-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-footer,
+#deliveryItemsModal .modal-footer {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* 아이콘 색상 */
+.fas {
+  color: inherit;
+}
+
+/* 메모/노트 영역 */
+.notes-section,
+.memo-section {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 버튼 스타일 */
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 이메일 스레드 섹션 */
+.email-thread {
+  border-color: var(--border) !important;
+}
+
+.email-message-preview {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.email-message-preview.bg-light,
+.email-message-preview.bg-white {
+  background: var(--surface-hover) !important;
+}
+
+.email-message-preview.border-success {
+  border-color: #10b981 !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+}
+
+.email-message-preview p.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 카드 헤더 bg-white 오버라이드 */
+.card-header.bg-white {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header .card-title {
+  color: var(--text-primary) !important;
+}
+
+/* 타임라인 스타일 */
+.timeline-content {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 테두리 색상 */
+.border-bottom {
+  border-color: var(--border) !important;
+}
+
+.border {
+  border-color: var(--border) !important;
+}
 </style>
 {% endblock %}
 

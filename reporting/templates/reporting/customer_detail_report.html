@@ -1,5 +1,244 @@
 {% extends "reporting/base.html" %} {% block title %}{{ page_title }} - 영업
-보고 시스템{% endblock %} {% block content %}
+보고 시스템{% endblock %} 
+
+{% block extra_css %}
+<style>
+/* 🌙 다크 모드 스타일 */
+
+/* 페이지 타이틀 */
+.page-title {
+  color: var(--text-primary) !important;
+}
+
+/* 카드 스타일 */
+.card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.card-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+}
+
+.card-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.card-title {
+  color: var(--text-primary) !important;
+}
+
+.card-title.text-primary {
+  color: var(--primary) !important;
+}
+
+/* 텍스트 */
+p, strong {
+  color: var(--text-primary);
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+h5, h6 {
+  color: var(--text-primary);
+}
+
+h6.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* 드롭다운 */
+.dropdown-menu {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.dropdown-item {
+  color: var(--text-primary) !important;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-hover) !important;
+}
+
+.dropdown-item.active {
+  background: var(--primary) !important;
+  color: white !important;
+}
+
+/* 버튼 스타일 */
+.btn-outline-secondary {
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.btn-outline-secondary:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 테이블 */
+.table {
+  color: var(--text-primary) !important;
+}
+
+.table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.table-hover tbody tr:hover td {
+  background: var(--surface-hover) !important;
+}
+
+/* 탭 스타일 */
+.nav-tabs {
+  border-color: var(--border) !important;
+}
+
+.nav-tabs .nav-link {
+  color: var(--text-secondary) !important;
+  border-color: transparent !important;
+}
+
+.nav-tabs .nav-link:hover {
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.nav-tabs .nav-link.active {
+  background: var(--surface) !important;
+  border-color: var(--border) var(--border) var(--surface) !important;
+  color: var(--primary) !important;
+}
+
+.tab-content {
+  background: var(--surface) !important;
+}
+
+/* 타임라인 */
+.timeline-item {
+  color: var(--text-primary) !important;
+}
+
+.timeline-content {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 리스트 그룹 */
+.list-group-item {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 폼 컨트롤 */
+.form-control,
+.form-select {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 모달 */
+.modal-content {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.modal-header {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-body {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-footer {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* bg-light 오버라이드 */
+.bg-light {
+  background: var(--surface-hover) !important;
+}
+
+/* 링크 */
+a.text-decoration-none {
+  color: var(--primary) !important;
+}
+
+/* 모달 테이블 다크 모드 */
+.modal-body .table {
+  color: var(--text-primary) !important;
+}
+
+.modal-body .table thead th {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-body .table thead.table-primary th {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+.modal-body .table tbody td {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-body .table tfoot td {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 모달 alert */
+.modal-body .alert-light {
+  background: var(--surface-hover) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-body .alert-warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.modal-body .alert-info {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
 
 <div class="container">
   <div class="row">
