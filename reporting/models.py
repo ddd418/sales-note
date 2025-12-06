@@ -71,6 +71,29 @@ class UserProfile(models.Model):
     gmail_connected_at = models.DateTimeField(null=True, blank=True, verbose_name="Gmail 연결 일시")
     gmail_last_sync_at = models.DateTimeField(null=True, blank=True, verbose_name="마지막 동기화 일시")
     
+    # IMAP/SMTP 연동 정보 (커스텀 도메인 지원)
+    EMAIL_PROVIDER_CHOICES = [
+        ('gmail', 'Gmail'),
+        ('outlook', 'Outlook/Office365'),
+        ('imap', 'Custom IMAP/SMTP'),
+    ]
+    email_provider = models.CharField(max_length=20, choices=EMAIL_PROVIDER_CHOICES, default='gmail', verbose_name="이메일 제공업체")
+    imap_email = models.EmailField(blank=True, verbose_name="IMAP 이메일 주소")
+    imap_host = models.CharField(max_length=255, blank=True, verbose_name="IMAP 서버", help_text="예: imap.gmail.com")
+    imap_port = models.IntegerField(default=993, verbose_name="IMAP 포트")
+    imap_username = models.CharField(max_length=255, blank=True, verbose_name="IMAP 사용자명")
+    imap_password = models.CharField(max_length=255, blank=True, verbose_name="IMAP 비밀번호", help_text="암호화 저장")
+    imap_use_ssl = models.BooleanField(default=True, verbose_name="IMAP SSL 사용")
+    
+    smtp_host = models.CharField(max_length=255, blank=True, verbose_name="SMTP 서버", help_text="예: smtp.gmail.com")
+    smtp_port = models.IntegerField(default=587, verbose_name="SMTP 포트")
+    smtp_username = models.CharField(max_length=255, blank=True, verbose_name="SMTP 사용자명")
+    smtp_password = models.CharField(max_length=255, blank=True, verbose_name="SMTP 비밀번호", help_text="암호화 저장")
+    smtp_use_tls = models.BooleanField(default=True, verbose_name="SMTP TLS 사용")
+    
+    imap_connected_at = models.DateTimeField(null=True, blank=True, verbose_name="IMAP 연결 일시")
+    imap_last_sync_at = models.DateTimeField(null=True, blank=True, verbose_name="IMAP 마지막 동기화 일시")
+    
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                    related_name='created_users', verbose_name="계정 생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
@@ -1293,7 +1316,7 @@ class DocumentTemplate(models.Model):
 class EmailLog(models.Model):
     """
     이메일 발송/수신 기록
-    - Gmail API를 통한 이메일 발송/수신 기록
+    - Gmail API 또는 IMAP/SMTP를 통한 이메일 발송/수신 기록
     - 일정 또는 팔로우업과 연결
     - 스레드 추적 기능
     """
@@ -1309,23 +1332,45 @@ class EmailLog(models.Model):
         ('received', '수신'),
     ]
     
-    # Gmail 정보
+    PROVIDER_CHOICES = [
+        ('gmail', 'Gmail API'),
+        ('imap', 'IMAP'),
+        ('smtp', 'SMTP'),
+    ]
+    
+    # 기본 정보
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="사용자", db_index=True)
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='gmail', verbose_name="이메일 제공자")
+    
+    # 메시지 ID (Gmail 또는 IMAP)
+    message_id = models.CharField(max_length=500, blank=True, verbose_name="메시지 ID", db_index=True, help_text="Gmail Message-ID 또는 IMAP Message-ID")
+    thread_id = models.CharField(max_length=500, blank=True, verbose_name="스레드 ID", db_index=True, help_text="이메일 스레드 추적용")
+    
+    # Gmail 전용 (하위 호환성)
     gmail_message_id = models.CharField(max_length=255, blank=True, verbose_name="Gmail 메시지 ID", db_index=True)
     gmail_thread_id = models.CharField(max_length=255, blank=True, verbose_name="Gmail 스레드 ID", db_index=True)
     
     email_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='sent', verbose_name="메일 타입")
+    is_sent = models.BooleanField(default=False, verbose_name="발신 여부", help_text="True=발신, False=수신")
     
+    # 발신/수신 정보
+    from_email = models.EmailField(blank=True, verbose_name="발신자 이메일")
+    from_name = models.CharField(max_length=200, blank=True, verbose_name="발신자명")
+    to_email = models.EmailField(blank=True, verbose_name="수신자 이메일")
+    to_name = models.CharField(max_length=200, blank=True, verbose_name="수신자명")
+    
+    # 하위 호환성 (기존 필드 유지)
     sender = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name='sent_emails',
         verbose_name="발신자 (CRM 사용자)"
     )
-    sender_email = models.EmailField(blank=True, verbose_name="발신자 이메일 주소")
-    
-    recipient_email = models.EmailField(verbose_name="수신자 이메일")
-    recipient_name = models.CharField(max_length=100, blank=True, verbose_name="수신자명")
+    sender_email = models.EmailField(blank=True, verbose_name="발신자 이메일 주소 (deprecated)")
+    recipient_email = models.EmailField(blank=True, verbose_name="수신자 이메일 (deprecated)")
+    recipient_name = models.CharField(max_length=100, blank=True, verbose_name="수신자명 (deprecated)")
     
     # CC, BCC
     cc_emails = models.TextField(blank=True, verbose_name="참조 (CC)", help_text="쉼표로 구분")

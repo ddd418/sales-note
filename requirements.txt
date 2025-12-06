@@ -29,6 +29,9 @@ google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
 google-api-python-client==2.147.0
 
+# IMAP/SMTP 이메일 암호화
+cryptography==43.0.3
+
 # Celery (비동기 작업 및 주기적 작업)
 celery==5.4.0
 redis==5.2.0

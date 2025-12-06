@@ -4,6 +4,7 @@ from . import views
 from . import backup_api
 from . import personal_schedule_views
 from . import gmail_views
+from . import imap_views
 from . import ai_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
@@ -223,6 +224,20 @@ urlpatterns = [
     path('gmail/send/mailbox/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox'),
     path('gmail/send/mailbox/<int:followup_id>/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox_with_followup'),
     path('gmail/reply/<int:email_log_id>/', gmail_views.reply_email, name='reply_email'),
+    
+    # ============================================
+    # IMAP/SMTP 연동 URL들 (커스텀 도메인 지원)
+    # ============================================
+    
+    # IMAP/SMTP 연결 설정
+    path('imap/connect/', imap_views.imap_connect, name='imap_connect'),
+    path('imap/disconnect/', imap_views.imap_disconnect, name='imap_disconnect'),
+    
+    # IMAP 이메일 동기화
+    path('imap/sync/', imap_views.sync_imap_emails, name='sync_imap_emails'),
+    
+    # SMTP 이메일 발송
+    path('imap/send/', imap_views.send_email_imap, name='send_email_imap'),
     
     # 메일함
     path('mailbox/inbox/', gmail_views.mailbox_inbox, name='mailbox_inbox'),

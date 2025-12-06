@@ -125,6 +125,9 @@ GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
 
+# 이메일 비밀번호 암호화 키 (IMAP/SMTP)
+EMAIL_ENCRYPTION_KEY = os.environ.get('EMAIL_ENCRYPTION_KEY', 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()  # Base64 encoded key
+
 # OpenAI API 설정
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 OPENAI_MODEL_MINI = os.environ.get('OPENAI_MODEL_MINI', 'gpt-4o-mini')  # 빠르고 저렴 (내부용)

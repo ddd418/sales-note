@@ -231,3 +231,6 @@ else:
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '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')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'https://your-domain.com/reporting/gmail/callback/')
+
+# 이메일 비밀번호 암호화 키 (IMAP/SMTP)
+EMAIL_ENCRYPTION_KEY = os.environ.get('EMAIL_ENCRYPTION_KEY', 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()  # Base64 encoded key
