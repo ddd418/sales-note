@@ -353,6 +353,7 @@
     .main-content {
       position: relative;
       margin-left: 260px !important;
+      width: calc(100% - 260px) !important;
       margin-top: 0 !important;
       margin-right: 0 !important;
       margin-bottom: 0 !important;
@@ -360,13 +361,14 @@
       padding: 0 !important;
       z-index: 1;
       background: var(--background);
-      transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     /* 사이드바 접힌 상태일 때 메인 컨텐츠 */
     .sidebar.collapsed ~ .main-content,
     body.sidebar-collapsed .main-content {
       margin-left: 72px !important;
+      width: calc(100% - 72px) !important;
     }
     
     .main-content::before {
