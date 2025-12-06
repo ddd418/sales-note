@@ -562,7 +562,8 @@ a.text-decoration-none {
                     {% endif %}
                     
                     {% if schedule.activity_type == 'delivery' %}
-                    <div class="col-md-12 mb-3">
+                    <!-- 거래명세서 -->
+                    <div class="col-md-6 mb-3">
                       <h6 class="text-muted mb-3">
                         <i class="fas fa-file-alt"></i> 거래명세서
                       </h6>
@@ -574,6 +575,22 @@ a.text-decoration-none {
                       </button>
                       <small class="text-muted d-block">
                         납품 완료된 품목의 거래명세서를 생성합니다.
+                      </small>
+                    </div>
+                    
+                    <!-- 납품서 -->
+                    <div class="col-md-6 mb-3">
+                      <h6 class="text-muted mb-3">
+                        <i class="fas fa-truck"></i> 납품서
+                      </h6>
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100 mb-2" onclick="generateDocument('delivery_note', '{{ schedule.pk }}', 'pdf')">
+                        <i class="fas fa-file-pdf me-1"></i> PDF 다운로드
+                      </button>
+                      <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('delivery_note', '{{ schedule.pk }}', 'xlsx')">
+                        <i class="fas fa-file-excel me-1"></i> Excel 다운로드
+                      </button>
+                      <small class="text-muted d-block">
+                        납품 완료된 품목의 납품서를 생성합니다.
                       </small>
                     </div>
                     {% endif %}
@@ -1851,7 +1868,8 @@ async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx')
       a.href = url;
       
       // 파일명 설정 - X-Filename 커스텀 헤더에서 가져오기
-      let filename = documentType === 'quotation' ? '견적서' : '거래명세서';
+      let filename = documentType === 'quotation' ? '견적서' : 
+                     documentType === 'delivery_note' ? '납품서' : '거래명세서';
       filename += outputFormat === 'pdf' ? '.pdf' : '.xlsx';
       
       const customFilename = response.headers.get('X-Filename');
