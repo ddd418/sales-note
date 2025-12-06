@@ -14173,7 +14173,7 @@ def terms_of_service_view(request):
 
 @login_required
 def customer_records_api(request, followup_id):
-    """고객의 전체 납품기록 및 견적기록을 가져오는 API (본인 기록만)"""
+    """고객 부서의 전체 납품기록 및 견적기록을 가져오는 API (본인 기록만, 부서 기준)"""
     from decimal import Decimal
     
     try:
@@ -14189,12 +14189,23 @@ def customer_records_api(request, followup_id):
         # 본인 고객인지 확인
         is_own_customer = (request.user == followup.user)
         
-        # 납품 기록 조회 (본인 기록만 - user 필터 추가)
-        delivery_schedules = Schedule.objects.filter(
-            followup=followup,
-            user=request.user,  # 본인 기록만
-            activity_type='delivery'
-        ).select_related('opportunity').prefetch_related('delivery_items_set').order_by('-visit_date')
+        # 부서가 있는 경우 부서 내 모든 고객, 없으면 해당 고객만
+        if followup.department:
+            # 같은 부서의 모든 고객
+            department_followups = FollowUp.objects.filter(department=followup.department)
+            # 납품 기록 조회 (본인 기록만 - user 필터 + 부서 기준)
+            delivery_schedules = Schedule.objects.filter(
+                followup__in=department_followups,
+                user=request.user,  # 본인 기록만
+                activity_type='delivery'
+            ).select_related('opportunity', 'followup').prefetch_related('delivery_items_set').order_by('-visit_date')
+        else:
+            # 부서 정보가 없으면 해당 고객만
+            delivery_schedules = Schedule.objects.filter(
+                followup=followup,
+                user=request.user,  # 본인 기록만
+                activity_type='delivery'
+            ).select_related('opportunity', 'followup').prefetch_related('delivery_items_set').order_by('-visit_date')
         
         deliveries = []
         total_delivery_amount = Decimal('0')
@@ -14230,6 +14241,7 @@ def customer_records_api(request, followup_id):
             deliveries.append({
                 'id': schedule.id,
                 'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'customer_name': schedule.followup.customer_name if schedule.followup else '-',  # 고객명 추가
                 'status': schedule.get_status_display(),
                 'status_code': schedule.status,
                 'items': items,
@@ -14237,12 +14249,20 @@ def customer_records_api(request, followup_id):
                 'notes': schedule.notes or '',
             })
         
-        # 견적 기록 조회 (본인 기록만 - user 필터 추가)
+        # 견적 기록 조회 (본인 기록만 - user 필터 + 부서 기준)
         from reporting.models import Quote, QuoteItem
-        quote_records = Quote.objects.filter(
-            followup=followup,
-            user=request.user  # 본인 기록만
-        ).select_related('schedule').prefetch_related('items__product').order_by('-created_at')
+        if followup.department:
+            # 같은 부서의 모든 고객
+            quote_records = Quote.objects.filter(
+                followup__in=department_followups,
+                user=request.user  # 본인 기록만
+            ).select_related('schedule', 'followup').prefetch_related('items__product').order_by('-created_at')
+        else:
+            # 부서 정보가 없으면 해당 고객만
+            quote_records = Quote.objects.filter(
+                followup=followup,
+                user=request.user  # 본인 기록만
+            ).select_related('schedule', 'followup').prefetch_related('items__product').order_by('-created_at')
         
         quotes = []
         total_quote_amount = Decimal('0')
@@ -14278,6 +14298,7 @@ def customer_records_api(request, followup_id):
             quotes.append({
                 'id': quote.schedule.id if quote.schedule else quote.id,
                 'visit_date': visit_date,
+                'customer_name': quote.followup.customer_name if quote.followup else '-',  # 고객명 추가
                 'status': status_display,
                 'status_code': status_code,
                 'items': items,
