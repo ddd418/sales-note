@@ -10,10 +10,10 @@
             <div class="card">
                 <div class="card-header">
                     <h4 class="mb-0">
-                        <i class="bi bi-envelope-at"></i> 이메일 연동 설정 (IMAP/SMTP)
+                        <i class="bi bi-envelope-at"></i> 이메일 연동 설정
                     </h4>
                     <p class="text-muted mb-0 mt-2">
-                        회사 이메일 등 커스텀 도메인 이메일을 연동할 수 있습니다.
+                        Gmail IMAP/SMTP를 통해 모든 이메일을 연동할 수 있습니다. (회사 이메일, 네이버, 기타 도메인)
                     </p>
                 </div>
                 <div class="card-body">
@@ -30,42 +30,28 @@
                     <form method="post" id="imapForm">
                         {% csrf_token %}
                         
-                        <!-- 이메일 제공업체 선택 -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <h5 class="mb-3">1. 이메일 제공업체 선택</h5>
-                                <div class="btn-group" role="group">
-                                    <input type="radio" class="btn-check" name="provider" id="provider_gmail" value="gmail" 
-                                           {% if not form_data or form_data.provider == 'gmail' %}checked{% endif %}>
-                                    <label class="btn btn-outline-primary" for="provider_gmail">
-                                        <i class="bi bi-google"></i> Gmail
-                                    </label>
-                                    
-                                    <input type="radio" class="btn-check" name="provider" id="provider_outlook" value="outlook"
-                                           {% if form_data.provider == 'outlook' %}checked{% endif %}>
-                                    <label class="btn btn-outline-primary" for="provider_outlook">
-                                        <i class="bi bi-microsoft"></i> Outlook/Office365
-                                    </label>
-                                    
-                                    <input type="radio" class="btn-check" name="provider" id="provider_imap" value="imap"
-                                           {% if form_data.provider == 'imap' %}checked{% endif %}>
-                                    <label class="btn btn-outline-primary" for="provider_imap">
-                                        <i class="bi bi-server"></i> 커스텀 IMAP/SMTP
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <hr>
+                        <!-- Gmail 고정 설정 (숨김) -->
+                        <input type="hidden" name="provider" value="gmail">
+                        <input type="hidden" name="imap_host" value="imap.gmail.com">
+                        <input type="hidden" name="imap_port" value="993">
+                        <input type="hidden" name="imap_use_ssl" value="on">
+                        <input type="hidden" name="smtp_host" value="smtp.gmail.com">
+                        <input type="hidden" name="smtp_port" value="587">
+                        <input type="hidden" name="smtp_use_tls" value="on">
                         
                         <!-- 기본 정보 -->
                         <div class="row mb-4">
                             <div class="col-12">
-                                <h5 class="mb-3">2. 기본 정보</h5>
+                                <h5 class="mb-3">1. 기본 정보</h5>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i>
+                                    <strong>Gmail 서버를 통해 모든 이메일이 연동됩니다.</strong><br>
+                                    회사 이메일도(user@company.com) Gmail의 IMAP/SMTP 서버 설정으로 사용할 수 있습니다.
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label required">이메일 주소</label>
-                                <input type="email" class="form-control" name="imap_email" 
+                                <input type="email" class="form-control" name="imap_email" id="imap_email"
                                        value="{{ form_data.imap_email|default:user_profile.imap_email }}" 
                                        placeholder="user@company.com" required>
                                 <small class="text-muted">연동할 이메일 주소를 입력하세요.</small>
@@ -74,108 +60,59 @@
                         
                         <hr>
                         
-                        <!-- IMAP 설정 -->
+                        <!-- 계정 정보 -->
                         <div class="row mb-4">
                             <div class="col-12">
-                                <h5 class="mb-3">3. IMAP 설정 (이메일 수신)</h5>
+                                <h5 class="mb-3">2. 계정 정보 입력</h5>
+                                <p class="text-muted mb-3">
+                                    <i class="bi bi-info-circle"></i> Gmail 서버 정보는 자동으로 설정됩니다. 
+                                    <strong>이메일 주소와 비밀번호(또는 앱 비밀번호)만 입력</strong>하면 됩니다.
+                                </p>
                             </div>
                             
                             <div class="col-md-6 mb-3">
-                                <label class="form-label required">IMAP 서버</label>
-                                <input type="text" class="form-control imap-field" name="imap_host" 
-                                       value="{{ form_data.imap_host|default:user_profile.imap_host }}" 
-                                       placeholder="imap.example.com" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">IMAP 포트</label>
-                                <input type="number" class="form-control imap-field" name="imap_port" 
-                                       value="{{ form_data.imap_port|default:user_profile.imap_port|default:993 }}" 
-                                       placeholder="993" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">IMAP 사용자명</label>
-                                <input type="text" class="form-control" name="imap_username" 
+                                <label class="form-label required">이메일 사용자명</label>
+                                <input type="text" class="form-control" name="imap_username" id="imap_username"
                                        value="{{ form_data.imap_username|default:user_profile.imap_username }}" 
                                        placeholder="user@company.com" required>
-                                <small class="text-muted">보통 이메일 주소와 동일합니다.</small>
+                                <small class="text-muted">대부분 이메일 주소와 동일</small>
                             </div>
                             
                             <div class="col-md-6 mb-3">
-                                <label class="form-label required">IMAP 비밀번호</label>
-                                <input type="password" class="form-control" name="imap_password" 
-                                       placeholder="비밀번호 입력" required>
-                                <small class="text-muted">암호화되어 안전하게 저장됩니다.</small>
-                            </div>
-                            
-                            <div class="col-12 mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="imap_use_ssl" id="imap_use_ssl" 
-                                           {% if not form_data or form_data.imap_use_ssl == 'on' or user_profile.imap_use_ssl %}checked{% endif %}>
-                                    <label class="form-check-label" for="imap_use_ssl">
-                                        SSL 사용 (권장, 포트 993)
-                                    </label>
+                                <label class="form-label required">이메일 비밀번호</label>
+                                <input type="password" class="form-control" name="imap_password" id="imap_password"
+                                       placeholder="앱 비밀번호 16자리 입력" required>
+                                <small class="text-muted">암호화되어 안전하게 저장됩니다</small>
+                                
+                                <div class="alert alert-warning mt-2 mb-0">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    <strong>Gmail 사용자는 반드시 앱 비밀번호를 사용하세요!</strong><br>
+                                    <small>
+                                        1. <a href="https://myaccount.google.com/apppasswords" target="_blank" class="alert-link">Google 앱 비밀번호 페이지</a>에서 16자리 앱 비밀번호 생성<br>
+                                        2. 2단계 인증이 활성화되어 있어야 합니다<br>
+                                        3. 일반 계정 비밀번호는 보안상 사용할 수 없습니다
+                                    </small>
                                 </div>
-                            </div>
-                            
-                            <div class="col-12">
-                                <button type="submit" name="test_connection" value="imap" class="btn btn-secondary">
-                                    <i class="bi bi-plug"></i> IMAP 연결 테스트
-                                </button>
                             </div>
                         </div>
                         
                         <hr>
                         
-                        <!-- SMTP 설정 -->
+                        <!-- 연결 테스트 버튼 -->
                         <div class="row mb-4">
                             <div class="col-12">
-                                <h5 class="mb-3">4. SMTP 설정 (이메일 발송)</h5>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">SMTP 서버</label>
-                                <input type="text" class="form-control smtp-field" name="smtp_host" 
-                                       value="{{ form_data.smtp_host|default:user_profile.smtp_host }}" 
-                                       placeholder="smtp.example.com" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">SMTP 포트</label>
-                                <input type="number" class="form-control smtp-field" name="smtp_port" 
-                                       value="{{ form_data.smtp_port|default:user_profile.smtp_port|default:587 }}" 
-                                       placeholder="587" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">SMTP 사용자명</label>
-                                <input type="text" class="form-control" name="smtp_username" 
-                                       value="{{ form_data.smtp_username|default:user_profile.smtp_username }}" 
-                                       placeholder="user@company.com" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label required">SMTP 비밀번호</label>
-                                <input type="password" class="form-control" name="smtp_password" 
-                                       placeholder="비밀번호 입력" required>
-                                <small class="text-muted">IMAP와 같은 비밀번호인 경우가 많습니다.</small>
-                            </div>
-                            
-                            <div class="col-12 mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="smtp_use_tls" id="smtp_use_tls" 
-                                           {% if not form_data or form_data.smtp_use_tls == 'on' or user_profile.smtp_use_tls %}checked{% endif %}>
-                                    <label class="form-check-label" for="smtp_use_tls">
-                                        TLS 사용 (권장, 포트 587)
-                                    </label>
+                                <h5 class="mb-3">3. 연결 테스트 (선택사항)</h5>
+                                <p class="text-muted mb-3">
+                                    <i class="bi bi-info-circle"></i> 저장하기 전에 연결을 테스트할 수 있습니다.
+                                </p>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" name="test_connection" value="imap" class="btn btn-outline-primary">
+                                        <i class="bi bi-plug"></i> 수신 서버 테스트
+                                    </button>
+                                    <button type="submit" name="test_connection" value="smtp" class="btn btn-outline-primary">
+                                        <i class="bi bi-plug"></i> 발송 서버 테스트
+                                    </button>
                                 </div>
-                            </div>
-                            
-                            <div class="col-12">
-                                <button type="submit" name="test_connection" value="smtp" class="btn btn-secondary">
-                                    <i class="bi bi-plug"></i> SMTP 연결 테스트
-                                </button>
                             </div>
                         </div>
                         
@@ -184,10 +121,10 @@
                         <!-- 저장 -->
                         <div class="row">
                             <div class="col-12">
-                                <button type="submit" class="btn btn-primary btn-lg">
+                                <button type="submit" name="action" value="save" class="btn btn-primary btn-lg">
                                     <i class="bi bi-check-circle"></i> 연동 완료
                                 </button>
-                                <a href="{% url 'profile' %}" class="btn btn-secondary btn-lg">
+                                <a href="{% url 'reporting:profile' %}" class="btn btn-secondary btn-lg">
                                     <i class="bi bi-x-circle"></i> 취소
                                 </a>
                             </div>
@@ -196,13 +133,19 @@
                     
                     <!-- 참고 정보 -->
                     <div class="alert alert-info mt-4">
-                        <h6><i class="bi bi-info-circle"></i> 연동 가이드</h6>
-                        <ul class="mb-0">
-                            <li><strong>Gmail:</strong> IMAP/SMTP를 활성화하고 앱 비밀번호를 생성해야 합니다.</li>
-                            <li><strong>Outlook/Office365:</strong> 계정 설정에서 IMAP/SMTP를 활성화하세요.</li>
-                            <li><strong>커스텀 도메인:</strong> 이메일 관리자에게 IMAP/SMTP 서버 정보를 문의하세요.</li>
-                            <li>2단계 인증을 사용하는 경우 앱 전용 비밀번호를 생성해야 할 수 있습니다.</li>
-                        </ul>
+                        <h6><i class="bi bi-info-circle"></i> 간편 연동 가이드</h6>
+                        <ol class="mb-0">
+                            <li><strong>1단계:</strong> 이메일 주소 입력 (Gmail, 회사 이메일, 네이버 등 모두 가능)</li>
+                            <li><strong>2단계:</strong> 사용자명과 비밀번호 입력 (대부분 이메일 주소와 동일)</li>
+                            <li><strong>3단계:</strong> "연동 완료" 버튼 클릭</li>
+                        </ol>
+                        <hr class="my-2">
+                        <small class="text-muted">
+                            <strong>중요:</strong><br>
+                            • 2단계 인증 사용 중이면 <strong>앱 비밀번호</strong>를 생성하여 입력하세요.<br>
+                            • Gmail 앱 비밀번호: <a href="https://myaccount.google.com/apppasswords" target="_blank">Google 계정 &gt; 앱 비밀번호</a><br>
+                            • 모든 이메일이 Gmail의 안전한 IMAP/SMTP 서버를 통해 연동됩니다.
+                        </small>
                     </div>
                     
                 </div>
@@ -213,63 +156,17 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const presets = {{ presets|safe }};
-    const providerRadios = document.querySelectorAll('input[name="provider"]');
+    // 이메일 주소 입력 시 사용자명 자동 채우기
+    const emailInput = document.getElementById('imap_email');
+    const usernameInput = document.getElementById('imap_username');
     
-    // 제공업체 변경 시 프리셋 적용
-    providerRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            const provider = this.value;
-            const preset = {
-                'gmail': {
-                    'imap_host': 'imap.gmail.com',
-                    'imap_port': 993,
-                    'smtp_host': 'smtp.gmail.com',
-                    'smtp_port': 587
-                },
-                'outlook': {
-                    'imap_host': 'outlook.office365.com',
-                    'imap_port': 993,
-                    'smtp_host': 'smtp.office365.com',
-                    'smtp_port': 587
-                },
-                'imap': {
-                    'imap_host': '',
-                    'imap_port': 993,
-                    'smtp_host': '',
-                    'smtp_port': 587
-                }
-            };
-            
-            if (preset[provider]) {
-                document.querySelector('input[name="imap_host"]').value = preset[provider].imap_host;
-                document.querySelector('input[name="imap_port"]').value = preset[provider].imap_port;
-                document.querySelector('input[name="smtp_host"]').value = preset[provider].smtp_host;
-                document.querySelector('input[name="smtp_port"]').value = preset[provider].smtp_port;
+    if (emailInput && usernameInput) {
+        emailInput.addEventListener('input', function() {
+            if (this.value && !usernameInput.value) {
+                usernameInput.value = this.value;
             }
         });
-    });
-    
-    // IMAP/SMTP 필드 활성화/비활성화 (Gmail/Outlook은 자동 설정)
-    function updateFieldsState() {
-        const provider = document.querySelector('input[name="provider"]:checked').value;
-        const imapFields = document.querySelectorAll('.imap-field');
-        const smtpFields = document.querySelectorAll('.smtp-field');
-        
-        if (provider === 'imap') {
-            imapFields.forEach(f => f.removeAttribute('readonly'));
-            smtpFields.forEach(f => f.removeAttribute('readonly'));
-        } else {
-            imapFields.forEach(f => f.setAttribute('readonly', 'readonly'));
-            smtpFields.forEach(f => f.setAttribute('readonly', 'readonly'));
-        }
     }
-    
-    providerRadios.forEach(radio => {
-        radio.addEventListener('change', updateFieldsState);
-    });
-    
-    updateFieldsState();
 });
 </script>
 

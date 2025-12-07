@@ -7,6 +7,10 @@ import smtplib
 import email
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email.mime.audio import MIMEAudio
+from email import encoders
 from email.header import decode_header
 from datetime import datetime, timedelta
 import logging
@@ -337,7 +341,8 @@ class SMTPEmailService:
         self.user_profile = user_profile
     
     def send_email(self, to_email: str, subject: str, body: str, 
-                   cc_emails: List[str] = None, html_body: str = None,
+                   cc_emails: List[str] = None, bcc_emails: List[str] = None,
+                   html_body: str = None, attachments: List[dict] = None,
                    in_reply_to: str = None, references: str = None) -> bool:
         """이메일 발송
         
@@ -346,7 +351,9 @@ class SMTPEmailService:
             subject: 제목
             body: 본문 (텍스트)
             cc_emails: 참조 이메일 리스트
+            bcc_emails: 숨은 참조 이메일 리스트
             html_body: HTML 본문
+            attachments: 첨부파일 리스트 [{'filename': str, 'content': bytes, 'content_type': str}]
             in_reply_to: 답장 대상 Message-ID
             references: 참조 Message-ID들
         
@@ -365,8 +372,41 @@ class SMTPEmailService:
                 logger.error("SMTP 설정 정보가 불완전합니다.")
                 return False
             
-            # 메시지 생성
-            if html_body:
+            # 메시지 생성 (첨부파일이 있으면 multipart/mixed 사용)
+            if attachments:
+                msg = MIMEMultipart('mixed')
+                # 본문 파트 생성
+                if html_body:
+                    msg_alternative = MIMEMultipart('alternative')
+                    msg_alternative.attach(MIMEText(body, 'plain', 'utf-8'))
+                    msg_alternative.attach(MIMEText(html_body, 'html', 'utf-8'))
+                    msg.attach(msg_alternative)
+                else:
+                    msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                
+                # 첨부파일 추가
+                for attachment in attachments:
+                    filename = attachment.get('filename', 'attachment')
+                    content = attachment.get('content', b'')
+                    content_type = attachment.get('content_type', 'application/octet-stream')
+                    
+                    # MIME 타입 파싱
+                    maintype, subtype = content_type.split('/', 1) if '/' in content_type else ('application', 'octet-stream')
+                    
+                    if maintype == 'text':
+                        part = MIMEText(content.decode('utf-8'), _subtype=subtype)
+                    elif maintype == 'image':
+                        part = MIMEImage(content, _subtype=subtype)
+                    elif maintype == 'audio':
+                        part = MIMEAudio(content, _subtype=subtype)
+                    else:
+                        part = MIMEBase(maintype, subtype)
+                        part.set_payload(content)
+                        encoders.encode_base64(part)
+                    
+                    part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+                    msg.attach(part)
+            elif html_body:
                 msg = MIMEMultipart('alternative')
                 msg.attach(MIMEText(body, 'plain', 'utf-8'))
                 msg.attach(MIMEText(html_body, 'html', 'utf-8'))
@@ -380,6 +420,9 @@ class SMTPEmailService:
             
             if cc_emails:
                 msg['Cc'] = ', '.join(cc_emails)
+            
+            if bcc_emails:
+                msg['Bcc'] = ', '.join(bcc_emails)
             
             # 스레드 헤더 (답장인 경우)
             if in_reply_to:
@@ -396,10 +439,12 @@ class SMTPEmailService:
             
             smtp.login(username, password)
             
-            # 수신자 목록
+            # 수신자 목록 (To, Cc, Bcc 모두 포함)
             recipients = [to_email]
             if cc_emails:
                 recipients.extend(cc_emails)
+            if bcc_emails:
+                recipients.extend(bcc_emails)
             
             smtp.sendmail(from_email, recipients, msg.as_string())
             smtp.quit()

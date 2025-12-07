@@ -11,19 +11,83 @@
         margin: 0 auto;
     }
     
+    /* 🌙 다크 모드 카드 스타일 */
+    .card {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+    }
+    
     .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 2px solid #dee2e6;
+        background-color: hsl(222, 47%, 17%) !important;
+        border-bottom: 2px solid hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .card-body {
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
     }
     
     .form-label {
         font-weight: 600;
-        color: #495057;
+        color: hsl(210, 40%, 98%) !important;
     }
     
     .required:after {
         content: " *";
         color: #dc3545;
+    }
+    
+    /* 폼 필드 다크 모드 */
+    .form-control,
+    .form-select {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .form-control:focus,
+    .form-select:focus {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 91%, 60%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .form-control::placeholder {
+        color: hsl(215, 20%, 50%) !important;
+    }
+    
+    /* 파일 선택 필드 */
+    input[type="file"].form-control {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    input[type="file"].form-control::-webkit-file-upload-button {
+        background: hsl(217, 33%, 35%) !important;
+        border: 1px solid hsl(217, 33%, 45%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    input[type="file"].form-control::-webkit-file-upload-button:hover {
+        background: hsl(217, 33%, 45%) !important;
+    }
+    
+    input[type="file"].form-control::file-selector-button {
+        background: hsl(217, 33%, 35%) !important;
+        border: 1px solid hsl(217, 33%, 45%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    input[type="file"].form-control::file-selector-button:hover {
+        background: hsl(217, 33%, 45%) !important;
     }
     
     .signature-preview {
@@ -46,21 +110,82 @@
     /* Quill 에디터 스타일 */
     #editor-container {
         height: 350px;
-        background: var(--surface);
+        background: hsl(222, 47%, 14%) !important;
     }
     
     .ql-toolbar {
-        background: var(--surface-hover);
-        border: 1px solid var(--border) !important;
+        background: hsl(222, 47%, 17%) !important;
+        border: 1px solid hsl(217, 33%, 22%) !important;
         border-radius: 4px 4px 0 0;
     }
     
     .ql-container {
-        border: 1px solid var(--border) !important;
+        border: 1px solid hsl(217, 33%, 22%) !important;
         border-top: none !important;
         border-radius: 0 0 4px 4px;
         font-size: 14px;
         font-family: Arial, sans-serif;
+        background: hsl(222, 47%, 14%) !important;
+    }
+    
+    /* Quill 에디터 내부 텍스트 */
+    .ql-editor {
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-editor.ql-blank::before {
+        color: hsl(215, 20%, 50%) !important;
+    }
+    
+    /* Quill 툴바 버튼 아이콘 */
+    .ql-toolbar button,
+    .ql-toolbar .ql-picker-label {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar button:hover,
+    .ql-toolbar .ql-picker-label:hover {
+        color: hsl(217, 91%, 60%) !important;
+    }
+    
+    .ql-toolbar button.ql-active,
+    .ql-toolbar .ql-picker-label.ql-active {
+        color: hsl(217, 91%, 60%) !important;
+    }
+    
+    /* Quill 툴바 아이콘 SVG */
+    .ql-toolbar .ql-stroke {
+        stroke: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar .ql-fill {
+        fill: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar button:hover .ql-stroke,
+    .ql-toolbar button.ql-active .ql-stroke {
+        stroke: hsl(217, 91%, 60%) !important;
+    }
+    
+    .ql-toolbar button:hover .ql-fill,
+    .ql-toolbar button.ql-active .ql-fill {
+        fill: hsl(217, 91%, 60%) !important;
+    }
+    
+    /* Quill 드롭다운 */
+    .ql-picker-options {
+        background: hsl(222, 47%, 17%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+    }
+    
+    .ql-picker-item {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-picker-item:hover {
+        background: hsl(217, 33%, 22%) !important;
+        color: hsl(217, 91%, 60%) !important;
     }
     
     /* Gmail 스타일 줄바꿈 간격 */
@@ -77,11 +202,64 @@
         height: 350px;
         font-family: 'Courier New', monospace;
         font-size: 13px;
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
     }
     
     .editor-mode-toggle {
         margin-bottom: 8px;
         font-size: 13px;
+    }
+    
+    /* 텍스트 색상 */
+    .text-muted {
+        color: hsl(215, 20%, 65%) !important;
+    }
+    
+    /* 버튼 스타일 */
+    .btn-primary {
+        background-color: hsl(217, 91%, 60%) !important;
+        border-color: hsl(217, 91%, 60%) !important;
+    }
+    
+    .btn-primary:hover {
+        background-color: hsl(217, 91%, 50%) !important;
+        border-color: hsl(217, 91%, 50%) !important;
+    }
+    
+    .btn-secondary {
+        background-color: hsl(217, 33%, 35%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+    }
+    
+    .btn-secondary:hover {
+        background-color: hsl(217, 33%, 45%) !important;
+        border-color: hsl(217, 33%, 45%) !important;
+    }
+    
+    .btn-outline-secondary {
+        color: hsl(210, 40%, 98%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+    }
+    
+    .btn-outline-secondary:hover {
+        background-color: hsl(217, 33%, 35%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    /* Alert 스타일 */
+    .alert-danger {
+        background-color: hsl(0, 70%, 25%) !important;
+        border-color: hsl(0, 70%, 35%) !important;
+        color: hsl(0, 80%, 90%) !important;
+    }
+    
+    /* 명함 서명 미리보기 */
+    .signature-preview {
+        background-color: hsl(222, 47%, 17%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
     }
 </style>
 {% endblock %}

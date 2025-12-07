@@ -57,6 +57,39 @@
         color: hsl(215, 20%, 50%) !important;
     }
     
+    /* 파일 선택 필드 */
+    input[type="file"].form-control {
+        background: hsl(222, 47%, 14%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    input[type="file"].form-control::-webkit-file-upload-button {
+        background: hsl(217, 33%, 35%) !important;
+        border: 1px solid hsl(217, 33%, 45%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    input[type="file"].form-control::-webkit-file-upload-button:hover {
+        background: hsl(217, 33%, 45%) !important;
+    }
+    
+    input[type="file"].form-control::file-selector-button {
+        background: hsl(217, 33%, 35%) !important;
+        border: 1px solid hsl(217, 33%, 45%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    input[type="file"].form-control::file-selector-button:hover {
+        background: hsl(217, 33%, 45%) !important;
+    }
+    
     .signature-preview {
         border: 1px solid var(--border);
         padding: 15px;
@@ -77,21 +110,82 @@
     /* Quill 에디터 스타일 */
     #editor-container {
         height: 350px;
-        background: var(--surface);
+        background: hsl(222, 47%, 14%) !important;
     }
     
     .ql-toolbar {
-        background: var(--surface-hover);
-        border: 1px solid var(--border) !important;
+        background: hsl(222, 47%, 17%) !important;
+        border: 1px solid hsl(217, 33%, 22%) !important;
         border-radius: 4px 4px 0 0;
     }
     
     .ql-container {
-        border: 1px solid var(--border) !important;
+        border: 1px solid hsl(217, 33%, 22%) !important;
         border-top: none !important;
         border-radius: 0 0 4px 4px;
         font-size: 14px;
         font-family: Arial, sans-serif;
+        background: hsl(222, 47%, 14%) !important;
+    }
+    
+    /* Quill 에디터 내부 텍스트 */
+    .ql-editor {
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-editor.ql-blank::before {
+        color: hsl(215, 20%, 50%) !important;
+    }
+    
+    /* Quill 툴바 버튼 아이콘 */
+    .ql-toolbar button,
+    .ql-toolbar .ql-picker-label {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar button:hover,
+    .ql-toolbar .ql-picker-label:hover {
+        color: hsl(217, 91%, 60%) !important;
+    }
+    
+    .ql-toolbar button.ql-active,
+    .ql-toolbar .ql-picker-label.ql-active {
+        color: hsl(217, 91%, 60%) !important;
+    }
+    
+    /* Quill 툴바 아이콘 SVG */
+    .ql-toolbar .ql-stroke {
+        stroke: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar .ql-fill {
+        fill: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-toolbar button:hover .ql-stroke,
+    .ql-toolbar button.ql-active .ql-stroke {
+        stroke: hsl(217, 91%, 60%) !important;
+    }
+    
+    .ql-toolbar button:hover .ql-fill,
+    .ql-toolbar button.ql-active .ql-fill {
+        fill: hsl(217, 91%, 60%) !important;
+    }
+    
+    /* Quill 드롭다운 */
+    .ql-picker-options {
+        background: hsl(222, 47%, 17%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
+    }
+    
+    .ql-picker-item {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    .ql-picker-item:hover {
+        background: hsl(217, 33%, 22%) !important;
+        color: hsl(217, 91%, 60%) !important;
     }
     
     /* Gmail 스타일 줄바꿈 간격 */
@@ -108,11 +202,82 @@
         height: 350px;
         font-family: 'Courier New', monospace;
         font-size: 13px;
+        background: hsl(222, 47%, 14%) !important;
+        color: hsl(210, 40%, 98%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
     }
     
     .editor-mode-toggle {
         margin-bottom: 8px;
         font-size: 13px;
+    }
+    
+    /* 텍스트 색상 */
+    .text-muted {
+        color: hsl(215, 20%, 65%) !important;
+    }
+    
+    /* 버튼 스타일 */
+    .btn-primary {
+        background-color: hsl(217, 91%, 60%) !important;
+        border-color: hsl(217, 91%, 60%) !important;
+    }
+    
+    .btn-primary:hover {
+        background-color: hsl(217, 91%, 50%) !important;
+        border-color: hsl(217, 91%, 50%) !important;
+    }
+    
+    .btn-secondary {
+        background-color: hsl(217, 33%, 35%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+    }
+    
+    .btn-secondary:hover {
+        background-color: hsl(217, 33%, 45%) !important;
+        border-color: hsl(217, 33%, 45%) !important;
+    }
+    
+    .btn-outline-secondary {
+        color: hsl(210, 40%, 98%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+    }
+    
+    .btn-outline-secondary:hover {
+        background-color: hsl(217, 33%, 35%) !important;
+        border-color: hsl(217, 33%, 35%) !important;
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    /* Alert 스타일 */
+    .alert-danger {
+        background-color: hsl(0, 70%, 25%) !important;
+        border-color: hsl(0, 70%, 35%) !important;
+        color: hsl(0, 80%, 90%) !important;
+    }
+    
+    .alert-info {
+        background-color: hsl(217, 91%, 25%) !important;
+        border-color: hsl(217, 91%, 35%) !important;
+        color: hsl(217, 91%, 90%) !important;
+    }
+    
+    /* 일정 자동 생성 옵션 박스 */
+    .form-check {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    #create_schedule_container .form-check {
+        background: hsl(217, 91%, 20%) !important;
+        border-color: hsl(217, 91%, 35%) !important;
+    }
+    
+    #create_schedule_container .form-check-label {
+        color: hsl(210, 40%, 98%) !important;
+    }
+    
+    #create_schedule_container .form-check-label small {
+        color: hsl(215, 20%, 65%) !important;
     }
 </style>
 {% endblock %}
@@ -140,14 +305,15 @@
                 <div class="mb-3">
                     <label for="followup_search" class="form-label">팔로우업 검색 (선택)</label>
                     <input type="text" class="form-control" id="followup_search" 
-                           placeholder="고객명 또는 회사명 입력">
+                           placeholder="고객명, 회사명, 담당자명 입력">
                     <select class="form-select mt-2" id="followup_select" size="5" style="display: none;">
                         {% for fu in all_followups %}
                         <option value="{{ fu.id }}" data-email="{{ fu.email }}">
-                            {{ fu.customer_name }} - {{ fu.company }}
+                            {{ fu.customer_name }} - {{ fu.company }} (담당: {{ fu.user.get_full_name|default:fu.user.username }})
                         </option>
                         {% endfor %}
                     </select>
+                    <small class="text-muted">같은 회사 내 모든 고객에게 메일을 발송할 수 있습니다.</small>
                 </div>
                 {% endif %}
                 
@@ -234,11 +400,11 @@
                 
                 <!-- 일정 자동 생성 옵션 (팔로우업이 선택된 경우에만 표시) -->
                 <div class="mb-3" id="create_schedule_container" {% if not followup %}style="display: none;"{% endif %}>
-                    <div class="form-check" style="background: #e7f3ff; padding: 12px 16px; border-radius: 8px; border: 1px solid #b6d4fe;">
+                    <div class="form-check" style="background: hsl(217, 91%, 20%); padding: 12px 16px; border-radius: 8px; border: 1px solid hsl(217, 91%, 35%);">
                         <input class="form-check-input" type="checkbox" id="create_schedule" name="create_schedule" value="1">
-                        <label class="form-check-label" for="create_schedule">
-                            <i class="bi bi-calendar-plus text-primary"></i> <strong>메일 발송 시 일정 자동 생성</strong>
-                            <small class="text-muted d-block mt-1">체크하면 오늘 날짜로 미팅 일정이 생성되고 이 메일이 해당 일정에 연결됩니다</small>
+                        <label class="form-check-label" for="create_schedule" style="color: hsl(210, 40%, 98%);">
+                            <i class="bi bi-calendar-plus" style="color: hsl(217, 91%, 60%);"></i> <strong>메일 발송 시 일정 자동 생성</strong>
+                            <small class="d-block mt-1" style="color: hsl(215, 20%, 65%);">체크하면 오늘 날짜로 미팅 일정이 생성되고 이 메일이 해당 일정에 연결됩니다</small>
                         </label>
                     </div>
                 </div>

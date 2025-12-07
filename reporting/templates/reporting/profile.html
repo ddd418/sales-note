@@ -159,98 +159,121 @@ ul.text-muted li {
         </div>
         {% endif %}
 
-        <!-- Gmail 연결 상태 (매니저 제외) -->
+        <!-- 이메일 연동 상태 (매니저 제외) -->
         {% if user.userprofile.role != 'manager' %}
         <div class="row mt-4">
           <div class="col-12">
             <div class="card border-info">
               <div class="card-header bg-info text-white">
                 <h6 class="mb-0">
-                  <i class="fas fa-envelope me-2"></i>Gmail 연동
+                  <i class="fas fa-envelope me-2"></i>이메일 연동
                 </h6>
               </div>
               <div class="card-body">
-                <!-- Gmail 연동 상태 -->
-                {% if user.userprofile.gmail_token %}
-                  <div class="alert alert-success mb-3">
-                    <i class="fas fa-check-circle me-2"></i>
-                    <strong>Gmail 연결됨:</strong> {{ user.userprofile.gmail_email }}
-                    {% if user.userprofile.gmail_connected_at %}
-                    <br>
-                    <small class="text-muted">연결 시간: {{ user.userprofile.gmail_connected_at|date:"Y-m-d H:i" }}</small>
-                    {% endif %}
-                  </div>
-                  <div class="d-flex gap-2 mb-3">
-                    <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-primary btn-sm">
-                      <i class="fas fa-inbox me-1"></i>메일함 보기
-                    </a>
-                    <a href="{% url 'reporting:business_card_list' %}" class="btn btn-secondary btn-sm">
-                      <i class="fas fa-address-card me-1"></i>명함 관리
-                    </a>
-                    <form method="post" action="{% url 'reporting:gmail_disconnect' %}" class="d-inline" 
-                          onsubmit="return confirm('Gmail 계정 연결을 해제하시겠습니까?');">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-danger btn-sm">
-                        <i class="fas fa-unlink me-1"></i>연결 해제
-                      </button>
-                    </form>
-                  </div>
+                {% if user.userprofile.gmail_token or user.userprofile.imap_connected_at %}
+                  <!-- 연동된 이메일 표시 -->
+                  {% if user.userprofile.gmail_token %}
+                    <div class="alert alert-success mb-3">
+                      <i class="fas fa-check-circle me-2"></i>
+                      <strong>Gmail 연결됨:</strong> {{ user.userprofile.gmail_email }}
+                      <br>
+                      <small class="text-muted">연결 시간: {{ user.userprofile.gmail_connected_at|date:"Y-m-d H:i" }}</small>
+                    </div>
+                    <div class="d-flex gap-2">
+                      <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-inbox me-1"></i>메일함 보기
+                      </a>
+                      <a href="{% url 'reporting:business_card_list' %}" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-address-card me-1"></i>명함 관리
+                      </a>
+                      <form method="post" action="{% url 'reporting:gmail_disconnect' %}" class="d-inline" 
+                            onsubmit="return confirm('Gmail 연결을 해제하시겠습니까?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm">
+                          <i class="fas fa-unlink me-1"></i>연결 해제
+                        </button>
+                      </form>
+                    </div>
+                  {% elif user.userprofile.imap_connected_at %}
+                    <div class="alert alert-success mb-3">
+                      <i class="fas fa-check-circle me-2"></i>
+                      <strong>{{ user.userprofile.get_email_provider_display }} 연결됨:</strong> {{ user.userprofile.imap_email }}
+                      <br>
+                      <small class="text-muted">연결 시간: {{ user.userprofile.imap_connected_at|date:"Y-m-d H:i" }}</small>
+                      {% if user.userprofile.imap_last_sync_at %}
+                      <br>
+                      <small class="text-muted">마지막 동기화: {{ user.userprofile.imap_last_sync_at|date:"Y-m-d H:i" }}</small>
+                      {% endif %}
+                    </div>
+                    <div class="d-flex gap-2">
+                      <a href="{% url 'reporting:mailbox_inbox' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-inbox me-1"></i>메일함 보기
+                      </a>
+                      <a href="{% url 'reporting:sync_imap_emails' %}" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-sync me-1"></i>동기화
+                      </a>
+                      <a href="{% url 'reporting:imap_connect' %}" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-cog me-1"></i>설정
+                      </a>
+                      <form method="post" action="{% url 'reporting:imap_disconnect' %}" class="d-inline" 
+                            onsubmit="return confirm('이메일 연동을 해제하시겠습니까?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm">
+                          <i class="fas fa-unlink me-1"></i>연결 해제
+                        </button>
+                      </form>
+                    </div>
+                  {% endif %}
                 {% else %}
+                  <!-- 연동 안 된 상태 -->
                   <div class="alert alert-info mb-3">
                     <i class="fas fa-info-circle me-2"></i>
-                    Gmail 계정이 연결되어 있지 않습니다.
+                    이메일 계정을 연동하여 메일 발송 및 수신 기능을 사용하세요.
                   </div>
-                  <a href="{% url 'reporting:gmail_connect' %}" class="btn btn-success btn-sm mb-3">
-                    <i class="fab fa-google me-1"></i>Gmail 계정 연결
-                  </a>
-                {% endif %}
-                
-                <hr>
-                
-                <!-- IMAP/SMTP 연동 상태 -->
-                {% if user.userprofile.imap_connected_at %}
-                  <div class="alert alert-success mb-3">
-                    <i class="fas fa-check-circle me-2"></i>
-                    <strong>{{ user.userprofile.get_email_provider_display }} 연결됨:</strong> {{ user.userprofile.imap_email }}
-                    <br>
-                    <small class="text-muted">연결 시간: {{ user.userprofile.imap_connected_at|date:"Y-m-d H:i" }}</small>
-                    {% if user.userprofile.imap_last_sync_at %}
-                    <br>
-                    <small class="text-muted">마지막 동기화: {{ user.userprofile.imap_last_sync_at|date:"Y-m-d H:i" }}</small>
-                    {% endif %}
+                  
+                  <h6 class="mb-2">연동할 이메일 제공업체를 선택하세요:</h6>
+                  
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <div class="card border h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">
+                            <i class="fab fa-google text-danger"></i> Gmail
+                          </h6>
+                          <p class="card-text small text-muted">
+                            Google 계정으로 간편하게 연동
+                          </p>
+                          <a href="{% url 'reporting:gmail_connect' %}" class="btn btn-success btn-sm w-100">
+                            <i class="fab fa-google me-1"></i>Gmail 연결
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                      <div class="card border h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">
+                            <i class="fas fa-server text-primary"></i> 기타 이메일
+                          </h6>
+                          <p class="card-text small text-muted">
+                            회사 이메일(user@company.com)
+                          </p>
+                          <a href="{% url 'reporting:imap_connect' %}" class="btn btn-primary btn-sm w-100">
+                            <i class="fas fa-envelope me-1"></i>이메일 연동
+                          </a>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="d-flex gap-2">
-                    <a href="{% url 'reporting:sync_imap_emails' %}" class="btn btn-primary btn-sm">
-                      <i class="fas fa-sync me-1"></i>이메일 동기화
-                    </a>
-                    <a href="{% url 'reporting:imap_connect' %}" class="btn btn-secondary btn-sm">
-                      <i class="fas fa-cog me-1"></i>설정 변경
-                    </a>
-                    <form method="post" action="{% url 'reporting:imap_disconnect' %}" class="d-inline" 
-                          onsubmit="return confirm('이메일 연동을 해제하시겠습니까?');">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-danger btn-sm">
-                        <i class="fas fa-unlink me-1"></i>연결 해제
-                      </button>
-                    </form>
+                  
+                  <div class="mt-3">
+                    <small class="text-muted">
+                      <i class="bi bi-info-circle"></i>
+                      <strong>Gmail:</strong> OAuth 인증으로 간편하게 연동<br>
+                      <strong>기타 이메일:</strong> IMAP/SMTP 설정으로 회사 이메일 지원
+                    </small>
                   </div>
-                {% else %}
-                  <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle me-2"></i>
-                    회사 이메일 등 커스텀 도메인 이메일을 연동하세요.
-                  </div>
-                  <p class="text-muted mb-3">
-                    IMAP/SMTP를 지원하는 모든 이메일을 연동할 수 있습니다:
-                  </p>
-                  <ul class="text-muted mb-3">
-                    <li>회사 이메일 (@company.com)</li>
-                    <li>Outlook/Office365</li>
-                    <li>네이버 메일</li>
-                    <li>기타 IMAP/SMTP 지원 이메일</li>
-                  </ul>
-                  <a href="{% url 'reporting:imap_connect' %}" class="btn btn-success btn-sm">
-                    <i class="fas fa-envelope me-1"></i>이메일 연동하기
-                  </a>
                 {% endif %}
               </div>
             </div>

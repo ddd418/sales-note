@@ -40,15 +40,20 @@ def imap_connect(request):
         imap_password = request.POST.get('imap_password', '').strip()
         imap_use_ssl = request.POST.get('imap_use_ssl', 'on') == 'on'
         
-        smtp_host = request.POST.get('smtp_host', preset.get('smtp_host', '')).strip()
+        # SMTP는 IMAP과 동일하게 자동 설정 (Gmail 고정)
+        smtp_host = request.POST.get('smtp_host', preset.get('smtp_host', 'smtp.gmail.com')).strip()
         smtp_port = int(request.POST.get('smtp_port', preset.get('smtp_port', 587)))
-        smtp_username = request.POST.get('smtp_username', imap_username).strip()
-        smtp_password = request.POST.get('smtp_password', imap_password).strip()
+        smtp_username = imap_username  # IMAP 사용자명과 동일
+        smtp_password = imap_password  # IMAP 비밀번호와 동일
         smtp_use_tls = request.POST.get('smtp_use_tls', 'on') == 'on'
         
-        # 연결 테스트
-        test_type = request.POST.get('test_connection')
+        # 액션 타입 확인
+        action = request.POST.get('action', '')
+        test_type = request.POST.get('test_connection', '')
         
+        logger.info(f"IMAP Connect - action: {action}, test_type: {test_type}")
+        
+        # 연결 테스트
         if test_type == 'imap':
             # IMAP 테스트
             success, message = test_imap_connection(
@@ -86,28 +91,7 @@ def imap_connect(request):
             return render(request, 'reporting/imap_connect.html', context)
         
         else:
-            # 저장
-            # 먼저 연결 테스트
-            imap_ok, imap_msg = test_imap_connection(
-                imap_host, imap_port, imap_username, imap_password, imap_use_ssl
-            )
-            smtp_ok, smtp_msg = test_smtp_connection(
-                smtp_host, smtp_port, smtp_username, smtp_password, smtp_use_tls
-            )
-            
-            if not (imap_ok and smtp_ok):
-                if not imap_ok:
-                    messages.error(request, f"IMAP 연결 실패: {imap_msg}")
-                if not smtp_ok:
-                    messages.error(request, f"SMTP 연결 실패: {smtp_msg}")
-                
-                context = {
-                    'user_profile': user_profile,
-                    'form_data': request.POST,
-                    'presets': EMAIL_PRESETS,
-                }
-                return render(request, 'reporting/imap_connect.html', context)
-            
+            # 기본 동작: 연동 완료 (action='save' 또는 기타)
             # 비밀번호 암호화
             encrypted_imap_password = EmailEncryption.encrypt_password(imap_password)
             encrypted_smtp_password = EmailEncryption.encrypt_password(smtp_password)
@@ -131,7 +115,7 @@ def imap_connect(request):
             user_profile.save()
             
             messages.success(request, f"✓ 이메일 연동 완료: {imap_email}")
-            return redirect('profile')
+            return redirect('reporting:profile')
     
     # GET 요청
     context = {
@@ -161,7 +145,7 @@ def imap_disconnect(request):
     user_profile.save()
     
     messages.success(request, "이메일 연동이 해제되었습니다.")
-    return redirect('profile')
+    return redirect('reporting:profile')
 
 
 @login_required
@@ -171,7 +155,7 @@ def sync_imap_emails(request):
     
     if not user_profile.imap_email:
         messages.error(request, "먼저 이메일을 연동해주세요.")
-        return redirect('profile')
+        return redirect('reporting:profile')
     
     try:
         # 대상 이메일 목록 가져오기
@@ -259,7 +243,7 @@ def sync_imap_emails(request):
         logger.error(f"IMAP 동기화 실패: {e}")
         messages.error(request, f"이메일 동기화 중 오류가 발생했습니다: {str(e)}")
     
-    return redirect('mailbox')
+    return redirect('reporting:mailbox_inbox')
 
 
 @login_required

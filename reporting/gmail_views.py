@@ -288,11 +288,11 @@ def send_email_from_schedule(request, schedule_id):
         messages.error(request, '권한이 없습니다.')
         return redirect('reporting:schedule_detail', pk=schedule_id)
     
-    # Gmail 연결 확인
+    # Gmail 또는 IMAP 연결 확인
     profile = request.user.userprofile
-    if not profile.gmail_token:
-        messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
-        return redirect('reporting:gmail_connect')
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.error(request, '이메일 계정을 먼저 연결해주세요.')
+        return redirect('reporting:profile')
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
@@ -335,18 +335,20 @@ def send_email_from_mailbox(request, followup_id=None):
             messages.error(request, '권한이 없습니다.')
             return redirect('reporting:mailbox_inbox')
     
-    # Gmail 연결 확인
+    # Gmail 또는 IMAP 연결 확인
     profile = request.user.userprofile
-    if not profile.gmail_token:
-        messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
-        return redirect('reporting:gmail_connect')
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.error(request, '이메일 계정을 먼저 연결해주세요.')
+        return redirect('reporting:profile')
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'followup': followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
-        'all_followups': FollowUp.objects.filter(user=request.user).order_by('-created_at')[:100],
+        'all_followups': FollowUp.objects.filter(
+            user__userprofile__company=request.user.userprofile.company
+        ).select_related('user', 'company').order_by('-created_at')[:100],
     }
     
     if request.method == 'POST':
@@ -357,7 +359,11 @@ def send_email_from_mailbox(request, followup_id=None):
             selected_followup_id = request.POST.get('selected_followup_id')
             if selected_followup_id:
                 try:
-                    followup = FollowUp.objects.get(id=selected_followup_id, user=request.user)
+                    # 같은 회사 내 팔로우업이면 허용
+                    followup = FollowUp.objects.get(
+                        id=selected_followup_id,
+                        user__userprofile__company=request.user.userprofile.company
+                    )
                     logger.info(f"Followup selected from search: {followup.id}")
                 except FollowUp.DoesNotExist:
                     pass
@@ -391,11 +397,11 @@ def reply_email(request, email_log_id):
             return redirect('reporting:mailbox_inbox')
     # 수신 메일은 권한 체크 없이 누구나 답장 가능
     
-    # Gmail 연결 확인
+    # Gmail 또는 IMAP 연결 확인
     profile = request.user.userprofile
-    if not profile.gmail_token:
-        messages.error(request, 'Gmail 계정을 먼저 연결해주세요.')
-        return redirect('reporting:gmail_connect')
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.error(request, '이메일 계정을 먼저 연결해주세요.')
+        return redirect('reporting:profile')
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
@@ -491,52 +497,103 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             else:
                 full_body_html = signature_html
         
-        # Gmail 서비스 생성
-        gmail_service = GmailService(request.user.userprofile)
+        # Gmail 또는 IMAP/SMTP로 이메일 발송
+        profile = request.user.userprofile
         
-        # 첨부파일 처리
-        attachments = []
-        attachments_info = []  # 첨부파일 정보 저장용
-        files = request.FILES.getlist('attachments')
-        for uploaded_file in files:
-            attachments.append({
-                'filename': uploaded_file.name,
-                'content': uploaded_file.read(),
-                'mimetype': uploaded_file.content_type
-            })
-            # 첨부파일 정보 저장
-            attachments_info.append({
-                'filename': uploaded_file.name,
-                'size': uploaded_file.size,
-                'mimetype': uploaded_file.content_type
-            })
-        
-        # 답장 정보
-        in_reply_to = None
-        thread_id = None
-        if reply_to:
-            in_reply_to = reply_to.gmail_message_id
-            thread_id = reply_to.gmail_thread_id
-            if not followup:
-                followup = reply_to.followup
-            if not schedule:
-                schedule = reply_to.schedule
-        
-        # 이메일 발송
-        message_info = gmail_service.send_email(
-            to_email=to_email,
-            subject=subject,
-            body_text=body_text,
-            body_html=full_body_html,
-            cc=[email.strip() for email in cc_emails.split(',') if email.strip()],
-            bcc=[email.strip() for email in bcc_emails.split(',') if email.strip()],
-            attachments=attachments,
-            in_reply_to=in_reply_to,
-            thread_id=thread_id
-        )
-        
-        if not message_info:
-            raise Exception("이메일 발송에 실패했습니다.")
+        if profile.gmail_token:
+            # Gmail OAuth 사용
+            gmail_service = GmailService(profile)
+            
+            # 첨부파일 처리
+            attachments = []
+            attachments_info = []  # 첨부파일 정보 저장용
+            files = request.FILES.getlist('attachments')
+            for uploaded_file in files:
+                attachments.append({
+                    'filename': uploaded_file.name,
+                    'content': uploaded_file.read(),
+                    'mimetype': uploaded_file.content_type
+                })
+                # 첨부파일 정보 저장
+                attachments_info.append({
+                    'filename': uploaded_file.name,
+                    'size': uploaded_file.size,
+                    'mimetype': uploaded_file.content_type
+                })
+            
+            # 답장 정보
+            in_reply_to = None
+            thread_id = None
+            if reply_to:
+                in_reply_to = reply_to.gmail_message_id
+                thread_id = reply_to.gmail_thread_id
+                if not followup:
+                    followup = reply_to.followup
+                if not schedule:
+                    schedule = reply_to.schedule
+            
+            # 이메일 발송
+            message_info = gmail_service.send_email(
+                to_email=to_email,
+                subject=subject,
+                body_text=body_text,
+                body_html=full_body_html,
+                cc=[email.strip() for email in cc_emails.split(',') if email.strip()],
+                bcc=[email.strip() for email in bcc_emails.split(',') if email.strip()],
+                attachments=attachments,
+                in_reply_to=in_reply_to,
+                thread_id=thread_id
+            )
+            
+            if not message_info:
+                raise Exception("이메일 발송에 실패했습니다.")
+            
+            message_id = message_info['message_id']
+            thread_id_result = message_info['thread_id']
+            
+        elif profile.imap_connected_at:
+            # IMAP/SMTP 사용
+            from .imap_utils import SMTPEmailService
+            import uuid
+            
+            smtp_service = SMTPEmailService(profile)
+            
+            # 첨부파일 처리 (SMTP는 다른 형식)
+            attachments = []
+            attachments_info = []
+            files = request.FILES.getlist('attachments')
+            for uploaded_file in files:
+                attachments.append({
+                    'filename': uploaded_file.name,
+                    'content': uploaded_file.read(),
+                    'content_type': uploaded_file.content_type
+                })
+                attachments_info.append({
+                    'filename': uploaded_file.name,
+                    'size': uploaded_file.size,
+                    'mimetype': uploaded_file.content_type
+                })
+            
+            # SMTP로 이메일 발송
+            success = smtp_service.send_email(
+                to_email=to_email,
+                subject=subject,
+                body=body_text,
+                html_body=full_body_html,
+                cc_emails=[email.strip() for email in cc_emails.split(',') if email.strip()],
+                bcc_emails=[email.strip() for email in bcc_emails.split(',') if email.strip()],
+                attachments=attachments
+            )
+            
+            if not success:
+                raise Exception("이메일 발송에 실패했습니다.")
+            
+            # IMAP의 경우 message_id와 thread_id를 생성
+            message_id = f"<{uuid.uuid4()}@{profile.imap_email.split('@')[1]}>"
+            thread_id_result = message_id  # IMAP는 thread 개념이 없으므로 message_id 사용
+            
+        else:
+            raise Exception("이메일 계정이 연결되지 않았습니다.")
         
         # EmailLog 생성
         from django.utils import timezone
@@ -570,22 +627,24 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             email_log = EmailLog.objects.create(
                 email_type='sent',
                 sender=request.user,
-                sender_email=request.user.userprofile.gmail_email,
+                sender_email=profile.gmail_email or profile.imap_email,
                 recipient_email=to_email,
                 cc_emails=cc_emails,
                 bcc_emails=bcc_emails,
                 subject=subject,
                 body=body_html if body_html else body_text,
                 body_html=full_body_html,
-                gmail_message_id=message_info['message_id'],
-                gmail_thread_id=message_info['thread_id'],
+                gmail_message_id=message_id,
+                gmail_thread_id=thread_id_result,
                 followup=followup,
                 schedule=schedule,
                 business_card=business_card,
                 in_reply_to=reply_to,
                 status='sent',
                 sent_at=timezone.now(),
-                attachments_info=attachments_info  # 첨부파일 정보 저장
+                attachments_info=attachments_info,  # 첨부파일 정보 저장
+                user=request.user,  # IMAP용
+                provider=profile.email_provider or 'gmail'  # IMAP용
             )
         
         if created_schedule:
@@ -634,10 +693,10 @@ def mailbox_inbox(request):
     """받은편지함 (본인 담당 팔로우업 연결 메일만)"""
     profile = request.user.userprofile
     
-    # Gmail 연결 확인
-    if not profile.gmail_token:
-        messages.warning(request, 'Gmail 계정을 연결해주세요.')
-        return redirect('reporting:gmail_connect')
+    # Gmail 또는 IMAP 연결 확인
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.warning(request, '이메일 계정을 연결해주세요.')
+        return redirect('reporting:profile')
     
     # DB에서 수신 메일 조회 (본인 담당 팔로우업만, 휴지통 제외)
     # 최신순 정렬: received_at이 null이면 created_at 사용
@@ -676,6 +735,13 @@ def mailbox_inbox(request):
 @login_required
 def mailbox_sent(request):
     """보낸편지함"""
+    profile = request.user.userprofile
+    
+    # Gmail 또는 IMAP 연결 확인
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.warning(request, '이메일 계정을 연결해주세요.')
+        return redirect('reporting:profile')
+    
     emails = EmailLog.objects.filter(
         email_type='sent',
         sender=request.user,
@@ -700,6 +766,13 @@ def mailbox_starred(request):
     """중요편지함"""
     from django.db.models import Q
     from django.db.models.functions import Coalesce
+    
+    profile = request.user.userprofile
+    
+    # Gmail 또는 IMAP 연결 확인
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.warning(request, '이메일 계정을 연결해주세요.')
+        return redirect('reporting:profile')
     
     emails = EmailLog.objects.filter(
         Q(sender=request.user) | Q(followup__user=request.user),
@@ -895,10 +968,10 @@ def mailbox_thread(request, thread_id):
     """이메일 스레드 상세 (대화 전체)"""
     profile = request.user.userprofile
     
-    # Gmail 연결 확인
-    if not profile.gmail_token:
-        messages.warning(request, 'Gmail 계정을 연결해주세요.')
-        return redirect('reporting:gmail_connect')
+    # Gmail 또는 IMAP 연결 확인
+    if not profile.gmail_token and not profile.imap_connected_at:
+        messages.warning(request, '이메일 계정을 연결해주세요.')
+        return redirect('reporting:profile')
     
     # DB에서 스레드의 모든 메일 조회
     emails = EmailLog.objects.filter(
@@ -948,9 +1021,9 @@ def sync_received_emails(request):
     
     profile = request.user.userprofile
     
-    # Gmail 연결 확인
-    if not profile.gmail_token:
-        return JsonResponse({'success': False, 'error': 'Gmail 계정이 연결되지 않았습니다.'})
+    # Gmail 또는 IMAP 연결 확인
+    if not profile.gmail_token and not profile.imap_connected_at:
+        return JsonResponse({'success': False, 'error': '이메일 계정을 연결해주세요.'})
     
     try:
         # 마지막 동기화 시점 이후의 메일만 동기화

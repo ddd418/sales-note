@@ -5,6 +5,99 @@
 
 {% block extra_css %}
 <style>
+/* 🌙 다크 모드 전체 스타일 */
+.card {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.card-header {
+    background-color: hsl(222, 47%, 17%) !important;
+    border-bottom: 2px solid hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.card-body {
+    background: hsl(222, 47%, 14%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-label {
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control,
+.form-select,
+textarea.form-control {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+textarea.form-control:focus {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 91%, 60%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+.form-control::placeholder {
+    color: hsl(215, 20%, 50%) !important;
+}
+
+/* 파일 선택 필드 */
+input[type="file"].form-control {
+    background: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+    color: hsl(210, 40%, 98%) !important;
+}
+
+input[type="file"].form-control::-webkit-file-upload-button {
+    background: hsl(217, 33%, 35%) !important;
+    border: 1px solid hsl(217, 33%, 45%) !important;
+    color: hsl(210, 40%, 98%) !important;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+input[type="file"].form-control::-webkit-file-upload-button:hover {
+    background: hsl(217, 33%, 45%) !important;
+}
+
+input[type="file"].form-control::file-selector-button {
+    background: hsl(217, 33%, 35%) !important;
+    border: 1px solid hsl(217, 33%, 45%) !important;
+    color: hsl(210, 40%, 98%) !important;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+input[type="file"].form-control::file-selector-button:hover {
+    background: hsl(217, 33%, 45%) !important;
+}
+
+.text-muted {
+    color: hsl(215, 20%, 65%) !important;
+}
+
+/* 체크박스 */
+.form-check-input {
+    background-color: hsl(222, 47%, 14%) !important;
+    border-color: hsl(217, 33%, 22%) !important;
+}
+
+.form-check-input:checked {
+    background-color: hsl(217, 91%, 60%) !important;
+    border-color: hsl(217, 91%, 60%) !important;
+}
+
+.form-check-label {
+    color: hsl(210, 40%, 98%) !important;
+}
+
 /* 🌙 서명 미리보기 다크 모드 */
 #signature-preview {
     border: 1px solid hsl(217, 33%, 22%) !important;
@@ -23,9 +116,35 @@
 }
 
 .alert-info {
-    background: hsl(222, 47%, 17%) !important;
-    border-color: hsl(217, 33%, 22%) !important;
-    color: hsl(210, 40%, 98%) !important;
+    background: hsl(217, 91%, 25%) !important;
+    border-color: hsl(217, 91%, 35%) !important;
+    color: hsl(217, 91%, 90%) !important;
+}
+
+/* 로고 설정 카드 */
+.bg-light {
+    background-color: hsl(222, 47%, 17%) !important;
+}
+
+/* 버튼 */
+.btn-primary {
+    background-color: hsl(217, 91%, 60%) !important;
+    border-color: hsl(217, 91%, 60%) !important;
+}
+
+.btn-primary:hover {
+    background-color: hsl(217, 91%, 50%) !important;
+    border-color: hsl(217, 91%, 50%) !important;
+}
+
+.btn-secondary {
+    background-color: hsl(217, 33%, 35%) !important;
+    border-color: hsl(217, 33%, 35%) !important;
+}
+
+.btn-secondary:hover {
+    background-color: hsl(217, 33%, 45%) !important;
+    border-color: hsl(217, 33%, 45%) !important;
 }
 </style>
 {% endblock %}
