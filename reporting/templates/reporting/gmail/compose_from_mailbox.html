@@ -51,6 +51,16 @@
         background: hsl(222, 47%, 14%) !important;
         border-color: hsl(217, 91%, 60%) !important;
         color: hsl(210, 40%, 98%) !important;
+        box-shadow: 0 0 0 0.2rem rgba(99, 132, 255, 0.25) !important;
+    }
+    
+    /* Autofill 상태도 다크 모드 유지 */
+    .form-control:-webkit-autofill,
+    .form-control:-webkit-autofill:hover,
+    .form-control:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0px 1000px hsl(222, 47%, 14%) inset !important;
+        -webkit-text-fill-color: hsl(210, 40%, 98%) !important;
+        border-color: hsl(217, 33%, 22%) !important;
     }
     
     .form-control::placeholder {
