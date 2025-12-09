@@ -800,12 +800,22 @@ def ai_suggest_follow_ups(request):
         # 중요: 스케줄, 히스토리, 이메일은 현재 로그인 사용자가 남긴 기록만 집계
         from reporting.models import DeliveryItem
         
+        # 최근 30일 기준일 계산
+        recent_30_days = timezone.now() - timedelta(days=30)
+        
         # DeliveryItem에서 구매 금액 서브쿼리 (모든 사용자 납품 품목 포함)
         delivery_total_subquery = DeliveryItem.objects.filter(
             schedule__followup=OuterRef('pk')
         ).values('schedule__followup').annotate(
             total=Sum('total_price')
         ).values('total')[:1]
+        
+        # 최근 납품 날짜 서브쿼리 (가장 최근 납품 일정)
+        last_delivery_subquery = Schedule.objects.filter(
+            followup=OuterRef('pk'),
+            activity_type='delivery',
+            visit_date__isnull=False
+        ).order_by('-visit_date').values('visit_date')[:1]
         
         followups = base_queryset.annotate(
             # 일정 통계 (본인 기록만)
@@ -814,12 +824,16 @@ def ai_suggest_follow_ups(request):
             meeting_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='customer_meeting', schedules__visit_date__gte=period_ago), distinct=True),
             quote_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='quote', schedules__visit_date__gte=period_ago), distinct=True),
             purchase_count=Count('schedules', filter=Q(schedules__user=request.user, schedules__activity_type='delivery', schedules__visit_date__gte=period_ago), distinct=True),
+            # 최근 30일 이내 납품 횟수
+            recent_delivery_count=Count('schedules', filter=Q(schedules__activity_type='delivery', schedules__visit_date__gte=recent_30_days), distinct=True),
             # DeliveryItem에서 실제 구매 금액 가져오기
             total_purchase=Coalesce(
                 Subquery(delivery_total_subquery),
                 Value(Decimal('0')),
                 output_field=DecimalField()
             ),
+            # 가장 최근 납품 날짜
+            last_delivery_date=Subquery(last_delivery_subquery),
             last_schedule_date=Max('schedules__visit_date', filter=Q(schedules__user=request.user, schedules__visit_date__gte=period_ago)),
             # 히스토리 통계 (본인 기록만)
             history_count=Count('histories', filter=Q(histories__user=request.user, histories__created_at__gte=period_ago), distinct=True),
@@ -936,6 +950,11 @@ def ai_suggest_follow_ups(request):
                     else:
                         customer_type = '실무자'
             
+            # 최근 납품 여부 계산
+            days_since_delivery = None
+            if followup.last_delivery_date:
+                days_since_delivery = (timezone.now().date() - followup.last_delivery_date).days
+            
             customer_list.append({
                 'id': followup.id,
                 'name': followup.customer_name,
@@ -945,6 +964,8 @@ def ai_suggest_follow_ups(request):
                 'meeting_count': followup.meeting_count,
                 'quote_count': followup.quote_count,
                 'purchase_count': followup.purchase_count,
+                'recent_delivery_count': followup.recent_delivery_count,  # 최근 30일 납품 횟수
+                'days_since_last_delivery': days_since_delivery,  # 마지막 납품 이후 경과일
                 'total_purchase': float(followup.total_purchase),
                 'grade': followup.customer_grade if followup.customer_grade else 'D',
                 'opportunities': opportunities_by_followup.get(followup.id, []),

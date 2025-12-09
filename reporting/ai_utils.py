@@ -900,29 +900,66 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
     if user and not check_ai_permission(user):
         raise PermissionError("AI 기능 사용 권한이 없습니다.")
     
-    system_prompt = """당신은 영업 전략 컨설턴트입니다.
-고객 데이터를 분석하여 팔로우업 우선순위를 제안해주세요.
-다음 요소를 고려하세요:
-1. 마지막 접촉 이후 경과 시간
-2. 고객 등급 및 거래 규모
-3. 진행 중인 기회 단계
-4. 과거 구매 이력"""
+    system_prompt = """당신은 실전 영업 전략 컨설턴트입니다.
+고객 데이터를 분석하여 **지금 당장 만나야 할** 고객의 우선순위를 제안해주세요.
+
+🚨 **절대 규칙 (반드시 준수):**
+
+1. **최근 납품 완료 고객은 제외!**
+   - `recent_delivery_count > 0` 또는 `days_since_last_delivery < 30`: 우선순위 최하위
+   - 이유: 이미 납품했으면 당분간 연락할 이유가 없음
+
+2. **견적만 드리고 납품 안된 고객 = 최우선!**
+   - `quote_count > 0` AND `purchase_count == 0`: 우선순위 최상위
+   - 이유: 견적 드렸는데 구매 안했다 = 후속 조치 필요
+
+3. **진행 중인 기회 단계 고려:**
+   - `closing` 단계: 조용히 기다려야 함 (우선순위 낮음)
+   - `quote` 단계: 견적 후 follow-up 필요 (우선순위 높음)
+   - `contact` 단계: 관계 유지 중 (우선순위 중간)
+
+4. **마지막 접촉 경과 시간:**
+   - 30일 이상: 우선순위 상승
+   - 7일 이내: 우선순위 하락 (너무 자주 연락하면 부담)
+
+5. **고객 등급과 거래 규모:**
+   - A/B 등급 + 높은 거래액: 우선순위 상승
+   - C/D 등급 + 낮은 거래액: 우선순위 하락
+
+**분석 우선순위:**
+1순위: 견적 드렸는데 구매 안한 고객
+2순위: 오래 연락 안한 VIP 고객
+3순위: 진행 중인 기회가 있는 고객
+제외: 최근 납품 완료 고객, closing 대기 고객"""
 
     # 고객 정보를 간결하게 요약
     customer_summary = []
     for c in customer_list[:20]:  # 최대 20개만 분석
+        opportunity_stages = [opp['stage'] for opp in c.get('opportunities', [])]
         customer_summary.append({
             'name': c.get('name'),
+            'company': c.get('company'),
             'grade': c.get('grade'),
             'last_contact': c.get('last_contact'),
-            'stage': c.get('stage'),
-            'value': c.get('potential_value')
+            'meeting_count': c.get('meeting_count', 0),
+            'quote_count': c.get('quote_count', 0),
+            'purchase_count': c.get('purchase_count', 0),
+            'recent_delivery_count': c.get('recent_delivery_count', 0),
+            'days_since_last_delivery': c.get('days_since_last_delivery'),
+            'total_purchase': c.get('total_purchase', 0),
+            'opportunity_stages': opportunity_stages,
+            'prepayment_balance': c.get('prepayment_balance', 0)
         })
     
     user_prompt = f"""
-다음 고객들의 팔로우업 우선순위를 정해주세요:
+다음 고객들 중 **지금 당장 만나야 할 TOP 고객**을 선별해주세요:
 
 {json.dumps(customer_summary, ensure_ascii=False, indent=2)}
+
+⚠️ **주의사항:**
+- recent_delivery_count > 0 이거나 days_since_last_delivery < 30인 고객은 제외
+- quote_count > 0 AND purchase_count == 0인 고객은 최우선
+- opportunity_stages에 "Closing"만 있으면 제외 (기다려야 함)
 
 응답 형식 (JSON):
 {{
@@ -930,13 +967,15 @@ def suggest_follow_ups(customer_list: List[Dict], user=None) -> List[Dict]:
     {{
       "customer_name": "고객명",
       "priority": "high|medium|low",
-      "reason": "이유",
-      "recommended_action": "추천 액션",
-      "timing": "언제"
+      "reason": "우선순위 판단 근거 (구체적으로)",
+      "recommended_action": "추천 액션 (예: 견적 follow-up 전화, 신제품 소개 방문 등)",
+      "timing": "적절한 연락 시기"
     }},
     ...
   ]
 }}
+
+**최근 납품 완료 고객은 절대 추천하지 마세요!**
 """
     
     # 팔로우업 제안은 내부용이므로 빠른 mini 모델 사용

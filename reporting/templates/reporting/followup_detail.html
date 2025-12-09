@@ -555,14 +555,14 @@
   {% if delivered_items %}
   <div class="row mt-4">
     <div class="col-12">
-      <div class="card">
-        <div class="card-header bg-white">
+      <div class="card" style="background-color: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%);">
+        <div class="card-header" style="background-color: hsl(222, 47%, 11%); border-bottom: 1px solid hsl(217, 33%, 22%);">
           <div class="d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">
+            <h5 class="card-title mb-0" style="color: hsl(0, 0%, 95%);">
               <i class="fas fa-box-open me-2"></i>납품 상품 목록
-              {% if data_filter == 'all' %}<small class="text-muted">(전체)</small>
-              {% elif data_filter == 'user' and selected_filter_user %}<small class="text-muted">({{ selected_filter_user.username }})</small>
-              {% else %}<small class="text-muted">(나)</small>{% endif %}
+              {% if data_filter == 'all' %}<small style="color: hsl(215, 20%, 65%)">(전체)</small>
+              {% elif data_filter == 'user' and selected_filter_user %}<small style="color: hsl(215, 20%, 65%)">({{ selected_filter_user.username }})</small>
+              {% else %}<small style="color: hsl(215, 20%, 65%)">(나)</small>{% endif %}
             </h5>
             <div>
               <span class="badge bg-primary me-2">총 {{ delivery_stats.total_items }}건</span>
@@ -574,131 +574,132 @@
         <div class="card-body">
           {% if delivered_items %}
           <div class="table-responsive">
-            <table class="table table-hover table-sm">
-              <thead class="table-light">
+            <table class="table table-hover table-sm" style="color: hsl(0, 0%, 90%);">
+              <thead style="background-color: hsl(222, 47%, 18%); border-bottom: 2px solid hsl(217, 33%, 22%);">
                 <tr>
-                  <th style="width: 12%;">납품일</th>
+                  <th style="width: 12%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);">납품일</th>l(0, 0%, 95%); border-color: hsl(217, 33%, 22%);">납품일</th>
                   {% if department %}
-                  <th style="width: 12%;">고객</th>
+                  <th style="width: 12%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);">고객</th>
                   {% endif %}
-                  <th style="width: {% if department %}25{% else %}30{% endif %}%;">품목명</th>
-                  <th style="width: 8%;" class="text-end">수량</th>
-                  <th style="width: 10%;" class="text-end">단가</th>
-                  <th style="width: 13%;" class="text-end">총액</th>
-                  <th style="width: 10%;" class="text-center">세금계산서</th>
-                  <th style="width: 10%;" class="text-center">일정</th>
+                  <th style="width: {% if department %}25{% else %}30{% endif %}%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);">품목명</th>
+                  <th style="width: 8%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);" class="text-end">수량</th>
+                  <th style="width: 10%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);" class="text-end">단가</th>
+                  <th style="width: 13%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);" class="text-end">총액</th>
+                  <th style="width: 10%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);" class="text-center">세금계산서</th>
+                  <th style="width: 10%; color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);" class="text-center">일정</th>
                 </tr>
               </thead>
               <tbody>
                 {% for item in delivered_items %}
-                <tr>
-                  <td>
+                <tr style="border-color: hsl(217, 33%, 22%);">
+                  <td style="border-color: hsl(217, 33%, 22%);">
                     {% if item.schedule.visit_date %}
                       {{ item.schedule.visit_date|date:"Y-m-d" }}
                     {% else %}
-                      <span class="text-muted">날짜 미정</span>
+                      <span style="color: hsl(215, 20%, 65%);">날짜 미정</span>
                     {% endif %}
                   </td>
                   {% if department %}
-                  <td>
+                  <td style="border-color: hsl(217, 33%, 22%);">
                     <span class="badge {% if item.schedule.followup.id == followup.id %}bg-primary{% else %}bg-secondary{% endif %}">
                       {{ item.schedule.followup.customer_name|default:"-" }}
                     </span>
                   </td>
                   {% endif %}
-                  <td>
+                  <td style="border-color: hsl(217, 33%, 22%);">
                     <strong>{{ item.item_name }}</strong>
                     {% if item.product %}
                       <br>
-                      <small class="text-muted">{{ item.product.specification|default:"" }}</small>
+                      <small style="color: hsl(215, 20%, 65%);">{{ item.product.specification|default:"" }}</small>
                     {% endif %}
                     {% if item.notes %}
                       <br>
-                      <small class="text-info"><i class="fas fa-info-circle"></i> {{ item.notes|truncatechars:50 }}</small>
+                      <small style="color: hsl(199, 89%, 48%);"><i class="fas fa-info-circle"></i> {{ item.notes|truncatechars:50 }}</small>
                     {% endif %}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end" style="border-color: hsl(217, 33%, 22%);">
                     {{ item.quantity|floatformat:0 }} {{ item.unit }}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end" style="border-color: hsl(217, 33%, 22%);">
                     {% if item.unit_price %}
                       {{ item.unit_price|floatformat:0|intcomma }}원
                     {% else %}
-                      <span class="text-muted">-</span>
+                      <span style="color: hsl(215, 20%, 65%);">-</span>
                     {% endif %}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end" style="border-color: hsl(217, 33%, 22%);">
                     {% if item.total_price %}
-                      <strong class="text-success">{{ item.total_price|floatformat:0|intcomma }}원</strong>
+                      <strong style="color: hsl(134, 61%, 41%);">{{ item.total_price|floatformat:0|intcomma }}원</strong>
                     {% else %}
-                      <span class="text-muted">-</span>
+                      <span style="color: hsl(215, 20%, 65%);">-</span>
                     {% endif %}
                   </td>
-                  <td class="text-center">
+                  <td class="text-center" style="border-color: hsl(217, 33%, 22%);">
                     {% if item.tax_invoice_issued %}
                       <span class="badge bg-success"><i class="fas fa-check"></i> 발행</span>
                     {% else %}
                       <span class="badge bg-secondary">미발행</span>
                     {% endif %}
                   </td>
-                  <td class="text-center">
+                  <td class="text-center" style="border-color: hsl(217, 33%, 22%);">
                     {% if is_owner %}
                     <a href="{% url 'reporting:schedule_detail' item.schedule.pk %}" 
                        class="btn btn-sm btn-outline-primary" 
+                       style="border-color: hsl(217, 91%, 60%); color: hsl(217, 91%, 60%);"
                        title="일정 상세보기">
                       <i class="fas fa-calendar-alt"></i>
                     </a>
                     {% else %}
-                    <span class="text-muted">-</span>
+                    <span style="color: hsl(215, 20%, 65%);">-</span>
                     {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
               </tbody>
-              <tfoot class="table-light">
+              <tfoot style="background-color: hsl(222, 47%, 18%); border-top: 2px solid hsl(217, 33%, 22%);">
                 <tr>
-                  <td colspan="{% if department %}3{% else %}2{% endif %}" class="text-end"><strong>합계</strong></td>
-                  <td class="text-end"><strong>{{ delivery_stats.total_quantity|floatformat:0 }}</strong></td>
-                  <td></td>
-                  <td class="text-end">
-                    <strong class="text-success fs-5">
+                  <td colspan="{% if department %}3{% else %}2{% endif %}" class="text-end" style="color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);"><strong>합계</strong></td>
+                  <td class="text-end" style="color: hsl(0, 0%, 95%); border-color: hsl(217, 33%, 22%);"><strong>{{ delivery_stats.total_quantity|floatformat:0 }}</strong></td>
+                  <td style="border-color: hsl(217, 33%, 22%);"></td>
+                  <td class="text-end" style="border-color: hsl(217, 33%, 22%);">
+                    <strong class="fs-5" style="color: hsl(134, 61%, 41%);">
                       {{ delivery_stats.total_revenue|floatformat:0|intcomma }}원
                     </strong>
                   </td>
-                  <td colspan="2"></td>
+                  <td colspan="2" style="border-color: hsl(217, 33%, 22%);"></td>
                 </tr>
               </tfoot>
             </table>
           </div>
           
           <!-- 간단 통계 -->
-          <div class="mt-3 p-3 bg-light rounded">
+          <div class="mt-3 p-3 rounded" style="background-color: hsl(222, 47%, 18%); border: 1px solid hsl(217, 33%, 22%);">
             <div class="row text-center">
               <div class="col-md-4">
                 <div class="mb-0">
-                  <i class="fas fa-boxes fa-2x text-primary mb-2"></i>
-                  <h4 class="mb-0">{{ delivery_stats.total_items }}</h4>
-                  <small class="text-muted">총 납품 건수</small>
+                  <i class="fas fa-boxes fa-2x mb-2" style="color: hsl(217, 91%, 60%);"></i>
+                  <h4 class="mb-0" style="color: hsl(0, 0%, 95%);">{{ delivery_stats.total_items }}</h4>
+                  <small style="color: hsl(215, 20%, 65%);">총 납품 건수</small>
                 </div>
               </div>
               <div class="col-md-4">
                 <div class="mb-0">
-                  <i class="fas fa-cubes fa-2x text-success mb-2"></i>
-                  <h4 class="mb-0">{{ delivery_stats.total_quantity|floatformat:0 }}</h4>
-                  <small class="text-muted">총 수량</small>
+                  <i class="fas fa-cubes fa-2x mb-2" style="color: hsl(134, 61%, 41%);"></i>
+                  <h4 class="mb-0" style="color: hsl(0, 0%, 95%);">{{ delivery_stats.total_quantity|floatformat:0 }}</h4>
+                  <small style="color: hsl(215, 20%, 65%);">총 수량</small>
                 </div>
               </div>
               <div class="col-md-4">
                 <div class="mb-0">
-                  <i class="fas fa-won-sign fa-2x text-info mb-2"></i>
-                  <h4 class="mb-0">{{ delivery_stats.total_revenue|floatformat:0|intcomma }}원</h4>
-                  <small class="text-muted">총 납품 금액</small>
+                  <i class="fas fa-won-sign fa-2x mb-2" style="color: hsl(199, 89%, 48%);"></i>
+                  <h4 class="mb-0" style="color: hsl(0, 0%, 95%);">{{ delivery_stats.total_revenue|floatformat:0|intcomma }}원</h4>
+                  <small style="color: hsl(215, 20%, 65%);">총 납품 금액</small>
                 </div>
               </div>
             </div>
           </div>
           {% else %}
-          <div class="text-center py-5 text-muted">
+          <div class="text-center py-5" style="color: hsl(215, 20%, 65%);">
             <i class="fas fa-box-open fa-3x mb-3"></i>
             <p>아직 납품된 상품이 없습니다.</p>
             <p class="small">납품 일정을 생성하고 품목을 추가해보세요.</p>
@@ -713,12 +714,12 @@
   <!-- 관련 히스토리 섹션 -->
   <div class="row mt-4">
     <div class="col-12">
-      <div class="card">
-        <div class="card-header bg-white">
+      <div class="card" style="background-color: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%);">
+        <div class="card-header" style="background-color: hsl(222, 47%, 11%); border-bottom: 1px solid hsl(217, 33%, 22%);">
           <div class="d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">
+            <h5 class="card-title mb-0" style="color: hsl(0, 0%, 95%);">
               <i class="fas fa-history me-2"></i>같은 부서 활동 히스토리
-              <small class="text-muted">({{ followup.company }} - {{ followup.department }})</small>
+              <small style="color: hsl(215, 20%, 65%);">({{ followup.company }} - {{ followup.department }})</small>
               {% if data_filter == 'all' %}<span class="badge bg-info ms-2">전체</span>
               {% elif data_filter == 'user' and selected_filter_user %}<span class="badge bg-info ms-2">{{ selected_filter_user.username }}</span>
               {% else %}<span class="badge bg-primary ms-2">나</span>{% endif %}
@@ -747,36 +748,36 @@
                   class="fas {% if history.action_type == 'created_followup' %}fa-user-plus {% elif history.action_type == 'updated_followup' %}fa-edit {% elif history.action_type == 'status_changed_followup' %}fa-refresh {% elif history.action_type == 'created_schedule' %}fa-calendar-plus {% elif history.action_type == 'updated_schedule' %}fa-calendar-edit {% elif history.action_type == 'status_changed_schedule' %}fa-calendar-check {% elif history.action_type == 'memo' %}fa-sticky-note {% elif history.action_type == 'note' %}fa-sticky-note {% elif history.action_type == 'customer_meeting' %}fa-handshake {% elif history.action_type == 'delivery_schedule' %}fa-truck {% elif history.action_type == 'service' %}fa-cogs {% else %}fa-circle {% endif %} text-white"
                 ></i>
               </div>
-              <div class="timeline-content">
+              <div class="timeline-content" style="background-color: hsl(222, 47%, 18%); border-color: hsl(217, 33%, 22%);">
                 <div
                   class="d-flex justify-content-between align-items-start mb-2"
                 >
                   <div>
-                    <h6 class="mb-0">
+                    <h6 class="mb-0" style="color: hsl(0, 0%, 95%);">
                       {{ history.get_action_type_display }}
-                      <small class="text-muted">- {{ history.followup.customer_name }}</small>
+                      <small style="color: hsl(215, 20%, 65%);">- {{ history.followup.customer_name }}</small>
                       {% if history.user != request.user %}
                       <span class="badge bg-secondary ms-1">{{ history.user.username }}</span>
                       {% endif %}
                     </h6>
                   </div>
-                  <small class="text-muted"
+                  <small style="color: hsl(215, 20%, 65%);"
                     >{{ history.created_at|date:"m-d H:i" }}</small
                   >
                 </div>
                 {% if history.content %}
-                <p class="mb-2 text-muted small">
+                <p class="mb-2 small" style="color: hsl(215, 20%, 65%);">
                   {{ history.content|truncatewords:15 }}
                 </p>
                 {% endif %}{% if history.old_value or history.new_value %}
-                <div class="small text-muted">
+                <div class="small" style="color: hsl(215, 20%, 65%);">
                   {% if history.old_value %}
-                  <span class="text-danger"
+                  <span style="color: hsl(0, 84%, 60%);"
                     >{{ history.old_value|truncatechars:30 }}</span
                   >
                   {% endif %} {% if history.old_value and history.new_value %} →
                   {% endif %} {% if history.new_value %}
-                  <span class="text-success"
+                  <span style="color: hsl(134, 61%, 41%);"
                     >{{ history.new_value|truncatechars:30 }}</span
                   >
                   {% endif %}
@@ -786,6 +787,7 @@
                   <a
                     href="{% url 'reporting:history_detail' history.pk %}"
                     class="btn btn-outline-primary btn-sm"
+                    style="border-color: hsl(217, 91%, 60%); color: hsl(217, 91%, 60%);"
                   >
                     <i class="fas fa-eye me-1"></i>상세보기
                   </a>
@@ -795,7 +797,7 @@
             {% endfor %}
           </div>
           {% else %}
-          <div class="text-center py-4 text-muted">
+          <div class="text-center py-4" style="color: hsl(215, 20%, 65%);">
             <i class="fas fa-history fa-2x mb-3"></i>
             <p>아직 기록된 활동이 없습니다.</p>
             <p class="small">위의 버튼을 사용하여 첫 번째 기록이나 메모를 추가해보세요!</p>
