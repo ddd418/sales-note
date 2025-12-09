@@ -23,6 +23,7 @@ import json
 from django.conf import settings
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -72,13 +73,18 @@ class GmailService:
         
     def get_credentials(self):
         """저장된 토큰으로 Credentials 객체 생성 (자동 갱신 포함)"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         if not self.user_profile.gmail_token:
+            logger.warning(f'Gmail 토큰 없음 ({self.user_profile.user.username})')
             return None
             
         token_data = self.user_profile.gmail_token
         
         # refresh_token이 없으면 재인증 필요
         if not token_data.get('refresh_token'):
+            logger.warning(f'Refresh token 없음 ({self.user_profile.user.username}) - 재인증 필요')
             return None
         
         creds = Credentials(
@@ -90,21 +96,32 @@ class GmailService:
             scopes=self.SCOPES
         )
         
-        # 토큰 만료 시 자동 갱신 (예외 처리 강화)
+        # 토큰 만료 여부 확인 및 자동 갱신
         try:
             if creds.expired and creds.refresh_token:
+                logger.info(f'Gmail 토큰 만료됨, 자동 갱신 시도 ({self.user_profile.user.username})')
                 creds.refresh(Request())
                 self.save_credentials(creds)
+                logger.info(f'Gmail 토큰 자동 갱신 성공 ({self.user_profile.user.username})')
+        except RefreshError as e:
+            # Refresh token도 만료된 경우 - 재인증 필요
+            logger.error(f'Gmail 토큰 갱신 실패 - Refresh token 만료 ({self.user_profile.user.username}): {e}')
+            # 토큰 정보 삭제 (재인증 유도)
+            self.user_profile.gmail_token = None
+            self.user_profile.save(update_fields=['gmail_token'])
+            return None
         except Exception as e:
-            # 갱신 실패 시에도 refresh_token으로 재시도
+            # 기타 오류 - 한 번 더 재시도
+            logger.warning(f'Gmail 토큰 갱신 중 오류, 재시도 ({self.user_profile.user.username}): {e}')
             try:
                 creds.refresh(Request())
                 self.save_credentials(creds)
-            except Exception as refresh_error:
-                # 로깅하고 None 반환 (재인증 필요)
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f'Gmail 토큰 갱신 실패 ({self.user_profile.user.username}): {refresh_error}')
+                logger.info(f'Gmail 토큰 재시도 갱신 성공 ({self.user_profile.user.username})')
+            except Exception as retry_error:
+                logger.error(f'Gmail 토큰 갱신 재시도 실패 ({self.user_profile.user.username}): {retry_error}')
+                # 토큰 정보 삭제 (재인증 유도)
+                self.user_profile.gmail_token = None
+                self.user_profile.save(update_fields=['gmail_token'])
                 return None
             
         return creds

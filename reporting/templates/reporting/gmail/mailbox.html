@@ -346,6 +346,12 @@
                         <i class="bi bi-arrow-clockwise"></i> 동기화
                     </button>
                     {% endif %}
+                    <a href="{% url 'reporting:gmail_connect' %}" class="sync-btn" title="Gmail 재연동">
+                        <i class="bi bi-google"></i> Gmail 연동
+                    </a>
+                    <a href="{% url 'reporting:imap_connect' %}" class="sync-btn" title="IMAP/SMTP 연동">
+                        <i class="bi bi-envelope-at"></i> IMAP 연결
+                    </a>
                 </div>
             </div>
             

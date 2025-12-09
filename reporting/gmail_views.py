@@ -667,7 +667,15 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
         logger.error(f"Exception in _handle_email_send: {str(e)}")
         logger.error(traceback.format_exc())
         
-        messages.error(request, f'이메일 발송 실패: {str(e)}')
+        # 토큰 만료 에러 체크
+        error_message = str(e)
+        if 'invalid_grant' in error_message or 'Token has been expired or revoked' in error_message:
+            messages.error(request, '⚠️ Gmail 인증이 만료되었습니다. 우측 상단 "Gmail 연동" 버튼을 눌러 재인증해주세요.')
+        elif 'SMTP' in error_message and ('Authentication' in error_message or '535' in error_message):
+            messages.error(request, '⚠️ IMAP/SMTP 인증 실패. 앱 비밀번호를 확인하거나 "IMAP 연결" 버튼으로 재설정해주세요.')
+        else:
+            messages.error(request, f'이메일 발송 실패: {error_message}')
+        
         # POST 데이터 다시 가져오기
         return {
             'error': True,
