@@ -641,7 +641,7 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(async () => {
                 try {
-                    const response = await fetch(`{% url "reporting:followup_autocomplete" %}?query=${encodeURIComponent(searchTerm)}`, {
+                    const response = await fetch(`{% url "reporting:followup_autocomplete" %}?q=${encodeURIComponent(searchTerm)}`, {
                         method: 'GET',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest'
