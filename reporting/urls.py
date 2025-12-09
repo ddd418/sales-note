@@ -269,7 +269,6 @@ urlpatterns = [
     path('ai/customer-summary/<int:followup_id>/', ai_views.ai_generate_customer_summary, name='ai_customer_summary'),
     path('ai/update-grade/<int:followup_id>/', ai_views.ai_update_customer_grade, name='ai_update_grade'),
     path('ai/summarize-meeting/', ai_views.ai_summarize_meeting_notes, name='ai_summarize_meeting'),
-    path('ai/suggest-follow-ups/', ai_views.ai_suggest_follow_ups, name='ai_suggest_follow_ups'),
     path('ai/analyze-email-thread/', ai_views.ai_analyze_email_thread, name='ai_analyze_email_thread'),
     path('ai/recommend-products/<int:followup_id>/', ai_views.ai_recommend_products, name='ai_recommend_products'),
     path('ai/product-detail/<str:product_code>/', ai_views.ai_get_product_detail, name='ai_product_detail'),
