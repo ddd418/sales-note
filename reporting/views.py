@@ -6590,33 +6590,21 @@ def department_autocomplete(request):
 @login_required
 def followup_autocomplete(request):
     """팔로우업 자동완성 API (일정 생성용 + 고객별 기록 조회용)"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     query = request.GET.get('q', '').strip()
-    logger.info(f"[팔로우업 검색] 사용자: {request.user.username}, 검색어: '{query}'")
     
     if len(query) < 1:
         return JsonResponse({'results': []})
     
     # 같은 회사 사용자들의 고객 모두 검색 가능
     same_company_users = get_same_company_users(request.user)
-    logger.info(f"[팔로우업 검색] 같은 회사 사용자 수: {len(same_company_users)}")
-    
-    followups = FollowUp.objects.filter(user__in=same_company_users)
-    total_count = followups.count()
-    logger.info(f"[팔로우업 검색] 전체 팔로우업 수: {total_count}")
     
     # 검색어로 필터링 (고객명, 업체명, 부서명, 책임자명으로 검색)
-    followups = followups.filter(
+    followups = FollowUp.objects.filter(user__in=same_company_users).filter(
         Q(customer_name__icontains=query) |
         Q(company__name__icontains=query) |
         Q(department__name__icontains=query) |
         Q(manager__icontains=query)
     ).select_related('company', 'department', 'user').order_by('company__name', 'customer_name')[:15]
-    
-    filtered_count = followups.count()
-    logger.info(f"[팔로우업 검색] 검색 결과 수: {filtered_count}")
     
     results = []
     for followup in followups:
@@ -6640,9 +6628,7 @@ def followup_autocomplete(request):
             'email': followup.email or '',
             'manager': manager_name
         })
-        logger.debug(f"[팔로우업 검색] 결과: {display_text}")
     
-    logger.info(f"[팔로우업 검색] 최종 반환 결과 수: {len(results)}")
     return JsonResponse({'results': results})
 
 @login_required
