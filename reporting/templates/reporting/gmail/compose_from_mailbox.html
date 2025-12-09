@@ -315,14 +315,8 @@
                 <div class="mb-3">
                     <label for="followup_search" class="form-label">팔로우업 검색 (선택)</label>
                     <input type="text" class="form-control" id="followup_search" 
-                           placeholder="고객명, 회사명, 담당자명 입력">
-                    <select class="form-select mt-2" id="followup_select" size="5" style="display: none;">
-                        {% for fu in all_followups %}
-                        <option value="{{ fu.id }}" data-email="{{ fu.email }}">
-                            {{ fu.customer_name }} - {{ fu.company }} (담당: {{ fu.user.get_full_name|default:fu.user.username }})
-                        </option>
-                        {% endfor %}
-                    </select>
+                           placeholder="고객명, 회사명, 담당자명 입력" autocomplete="off">
+                    <select class="form-select mt-2" id="followup_select" size="5" style="display: none;"></select>
                     <small class="text-muted">같은 회사 내 모든 고객에게 메일을 발송할 수 있습니다.</small>
                 </div>
                 {% endif %}
@@ -621,7 +615,7 @@ document.addEventListener('DOMContentLoaded', function() {
         businessCardSelect.dispatchEvent(new Event('change'));
     }
     
-    // 팔로우업 검색 (메일함에서 작성 시)
+    // 팔로우업 검색 (AJAX 자동완성)
     {% if not followup %}
     const followupSearch = document.getElementById('followup_search');
     const followupSelect = document.getElementById('followup_select');
@@ -629,26 +623,64 @@ document.addEventListener('DOMContentLoaded', function() {
     const createScheduleContainer = document.getElementById('create_schedule_container');
     const selectedFollowupIdInput = document.getElementById('selected_followup_id');
     
+    let searchTimeout = null;
+    
     if (followupSearch && followupSelect) {
+        // AJAX 자동완성 검색
         followupSearch.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            let hasResults = false;
+            const searchTerm = this.value.trim();
             
-            Array.from(followupSelect.options).forEach(option => {
-                const text = option.textContent.toLowerCase();
-                if (text.includes(searchTerm)) {
-                    option.style.display = '';
-                    hasResults = true;
-                } else {
-                    option.style.display = 'none';
+            // 검색어가 없으면 숨김
+            if (!searchTerm) {
+                followupSelect.style.display = 'none';
+                followupSelect.innerHTML = '';
+                return;
+            }
+            
+            // 디바운싱 (300ms)
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`{% url "reporting:followup_autocomplete" %}?query=${encodeURIComponent(searchTerm)}`, {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('검색 실패');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // 결과 표시
+                    followupSelect.innerHTML = '';
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.id;
+                            option.setAttribute('data-email', item.email);
+                            option.textContent = `${item.customer_name} - ${item.company} (담당: ${item.manager})`;
+                            followupSelect.appendChild(option);
+                        });
+                        followupSelect.style.display = 'block';
+                    } else {
+                        followupSelect.innerHTML = '<option disabled>검색 결과가 없습니다</option>';
+                        followupSelect.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('팔로우업 검색 오류:', error);
+                    followupSelect.innerHTML = '<option disabled>검색 중 오류 발생</option>';
+                    followupSelect.style.display = 'block';
                 }
-            });
-            
-            followupSelect.style.display = hasResults && searchTerm ? 'block' : 'none';
+            }, 300);
         });
         
         followupSelect.addEventListener('change', function() {
             const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.disabled) return;
+            
             const email = selectedOption.getAttribute('data-email');
             const followupId = selectedOption.value;
             

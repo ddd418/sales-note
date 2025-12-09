@@ -346,9 +346,6 @@ def send_email_from_mailbox(request, followup_id=None):
         'followup': followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
-        'all_followups': FollowUp.objects.filter(
-            user__userprofile__company=request.user.userprofile.company
-        ).select_related('user', 'company').order_by('-created_at')[:100],
     }
     
     if request.method == 'POST':
