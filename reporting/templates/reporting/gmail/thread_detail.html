@@ -227,14 +227,14 @@
     
     <!-- AI 이메일 스레드 영업 분석 -->
     {% if request.user.userprofile.can_use_ai %}
-    <div class="card shadow-sm mb-4" style="border: 2px solid transparent; background: linear-gradient(white, white) padding-box, linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;">
-        <div class="card-body">
-            <h5 class="card-title d-flex align-items-center gap-2">
+    <div class="card shadow-sm mb-4" style="border: 2px solid transparent; background: linear-gradient(hsl(222, 47%, 11%), hsl(222, 47%, 11%)) padding-box, linear-gradient(135deg, #667eea 0%, #764ba2 100%) border-box;">
+        <div class="card-body" style="background: hsl(222, 47%, 11%); color: hsl(210, 40%, 98%);">
+            <h5 class="card-title d-flex align-items-center gap-2" style="color: hsl(210, 40%, 98%);">
                 <i class="fas fa-brain text-purple"></i>
                 AI 이메일 영업 분석
                 <span class="badge bg-gradient-purple text-white" style="font-size: 0.7rem;">실무용</span>
             </h5>
-            <p class="card-text text-muted mb-3">
+            <p class="card-text mb-3" style="color: hsl(217, 33%, 50%);">
                 <i class="fas fa-info-circle"></i>
                 이메일 대화를 분석하여 구매 온도, 숨은 의도, 후속 이메일 초안까지 생성합니다.
             </p>
@@ -491,8 +491,8 @@ function displayThreadAnalysisResults(analysis) {
                 </div>
                 
                 <!-- 고객 상태 라벨 -->
-                <div class="mb-3 p-3 border rounded bg-light">
-                    <h6 class="mb-2">
+                <div class="mb-3 p-3 border rounded" style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-tag text-info"></i>
                         📌 고객 상태 라벨 (CRM)
                     </h6>
@@ -544,12 +544,12 @@ ${analysis.followup_email_draft || '후속 이메일 초안이 없습니다.'}
                 </div>
                 
                 <!-- 요약 -->
-                <div class="p-3 border rounded bg-light">
-                    <h6 class="mb-2">
+                <div class="p-3 border rounded" style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-file-alt text-secondary"></i>
                         요약
                     </h6>
-                    <p class="mb-0">${analysis.summary || '요약 정보가 없습니다.'}</p>
+                    <p class="mb-0" style="color: hsl(210, 40%, 98%);">${analysis.summary || '요약 정보가 없습니다.'}</p>
                 </div>
             </div>
         </div>

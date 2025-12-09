@@ -313,7 +313,12 @@
                 <!-- 팔로우업 선택 (없는 경우) -->
                 {% if not followup %}
                 <div class="mb-3">
-                    <label for="followup_search" class="form-label">팔로우업 검색 (선택)</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="followup_search" class="form-label mb-0">팔로우업 검색 (선택)</label>
+                        <button type="button" class="btn btn-sm btn-primary" id="new-customer-btn">
+                            <i class="bi bi-plus-circle me-1"></i>새 고객 등록
+                        </button>
+                    </div>
                     <input type="text" class="form-control" id="followup_search" 
                            placeholder="고객명, 회사명, 담당자명 입력" autocomplete="off">
                     <select class="form-select mt-2" id="followup_select" size="5" style="display: none;"></select>
@@ -747,6 +752,520 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.innerHTML = originalHtml;
         }
     });
+    {% endif %}
+    
+    // 새 고객 등록 모달
+    {% if not followup %}
+    const newCustomerBtn = document.getElementById('new-customer-btn');
+    if (newCustomerBtn) {
+        newCustomerBtn.addEventListener('click', function() {
+            showCustomerModal();
+        });
+    }
+    
+    function showCustomerModal() {
+        // 모달 HTML 생성
+        const modalHtml = `
+            <div class="modal fade" id="newCustomerModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content" style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%);">
+                        <div class="modal-header" style="border-color: hsl(217, 33%, 22%);">
+                            <h5 class="modal-title" style="color: hsl(210, 40%, 98%);">
+                                <i class="bi bi-person-plus-fill me-2"></i>새 고객 등록
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                            <form id="quick-customer-form">
+                                <!-- 기본 정보 -->
+                                <h6 class="mb-3" style="color: hsl(210, 40%, 98%); border-bottom: 1px solid hsl(217, 33%, 22%); padding-bottom: 0.5rem;">
+                                    <i class="bi bi-info-circle me-2"></i>기본 정보
+                                </h6>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label" style="color: hsl(210, 40%, 98%);">고객명</label>
+                                        <input type="text" class="form-control" id="quick-customer-name"
+                                               style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                               placeholder="고객명 (선택사항)">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label required" style="color: hsl(210, 40%, 98%);">이메일</label>
+                                        <input type="email" class="form-control" id="quick-customer-email" required
+                                               style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                               placeholder="example@email.com">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label required" style="color: hsl(210, 40%, 98%);">업체/학교명</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="quick-company-search"
+                                                   style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                                   placeholder="업체/학교명 검색..." autocomplete="off">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" id="quick-add-company">
+                                                <i class="bi bi-plus"></i> 새로 추가
+                                            </button>
+                                        </div>
+                                        <input type="hidden" id="quick-company-id">
+                                        <input type="hidden" id="quick-company-name">
+                                        <div id="quick-company-suggestions" style="position: relative;">
+                                            <div style="position: absolute; top: 0; left: 0; right: 0; background: hsl(222, 47%, 14%); border: 1px solid hsl(217, 33%, 22%); border-radius: 0.25rem; max-height: 200px; overflow-y: auto; display: none; z-index: 1050;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" style="color: hsl(210, 40%, 98%);">부서/연구실명</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="quick-department-search"
+                                                   style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                                   placeholder="먼저 업체 선택..." autocomplete="off" disabled>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" id="quick-add-department" style="display: none;">
+                                                <i class="bi bi-plus"></i> 새로 추가
+                                            </button>
+                                        </div>
+                                        <input type="hidden" id="quick-department-id">
+                                        <input type="hidden" id="quick-department-name">
+                                        <div id="quick-department-suggestions" style="position: relative;">
+                                            <div style="position: absolute; top: 0; left: 0; right: 0; background: hsl(222, 47%, 14%); border: 1px solid hsl(217, 33%, 22%); border-radius: 0.25rem; max-height: 200px; overflow-y: auto; display: none; z-index: 1050;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 연락처 정보 -->
+                                <h6 class="mb-3 mt-4" style="color: hsl(210, 40%, 98%); border-bottom: 1px solid hsl(217, 33%, 22%); padding-bottom: 0.5rem;">
+                                    <i class="bi bi-telephone me-2"></i>연락처 정보
+                                </h6>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label" style="color: hsl(210, 40%, 98%);">담당자</label>
+                                        <input type="text" class="form-control" id="quick-customer-manager"
+                                               style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                               placeholder="담당자명">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" style="color: hsl(210, 40%, 98%);">전화번호</label>
+                                        <input type="text" class="form-control" id="quick-customer-phone"
+                                               style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                               placeholder="010-1234-5678">
+                                    </div>
+                                </div>
+                                
+                                <!-- 상태 정보 -->
+                                <h6 class="mb-3 mt-4" style="color: hsl(210, 40%, 98%); border-bottom: 1px solid hsl(217, 33%, 22%); padding-bottom: 0.5rem;">
+                                    <i class="bi bi-flag me-2"></i>상태 정보
+                                </h6>
+                                <div class="mb-3">
+                                    <label class="form-label required" style="color: hsl(210, 40%, 98%);">우선순위</label>
+                                    <select class="form-select" id="quick-customer-priority" required
+                                            style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);">
+                                        <option value="urgent">긴급 (48시간 내 대응 필요)</option>
+                                        <option value="followup">팔로업 (정기적 관리 필요)</option>
+                                        <option value="scheduled" selected>예정 (특정 시점에 컨택)</option>
+                                        <option value="long_term">장기 (장기적 관리 고객)</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- 추가 정보 -->
+                                <h6 class="mb-3 mt-4" style="color: hsl(210, 40%, 98%); border-bottom: 1px solid hsl(217, 33%, 22%); padding-bottom: 0.5rem;">
+                                    <i class="bi bi-card-text me-2"></i>추가 정보
+                                </h6>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: hsl(210, 40%, 98%);">주소</label>
+                                    <input type="text" class="form-control" id="quick-customer-address"
+                                           style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                           placeholder="주소 (선택사항)">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" style="color: hsl(210, 40%, 98%);">상세 내용</label>
+                                    <textarea class="form-control" id="quick-customer-notes" rows="3"
+                                              style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);"
+                                              placeholder="팔로우업에 대한 상세 내용 (선택사항)"></textarea>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer" style="border-color: hsl(217, 33%, 22%);">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                            <button type="button" class="btn btn-primary" id="save-quick-customer-btn">
+                                <i class="bi bi-check-circle me-1"></i>등록 후 메일 작성
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 기존 모달 제거 후 새로 추가
+        const existingModal = document.getElementById('newCustomerModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // 모달 표시
+        const modal = new bootstrap.Modal(document.getElementById('newCustomerModal'));
+        modal.show();
+        
+        // 업체 자동완성 설정
+        setupCompanyAutocomplete();
+        
+        // 저장 버튼 이벤트
+        const saveBtn = document.getElementById('save-quick-customer-btn');
+        saveBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            saveQuickCustomer();
+        });
+    }
+    
+    function setupCompanyAutocomplete() {
+        const companySearch = document.getElementById('quick-company-search');
+        const companyId = document.getElementById('quick-company-id');
+        const companySuggestions = document.querySelector('#quick-company-suggestions > div');
+        const departmentSearch = document.getElementById('quick-department-search');
+        const addCompanyBtn = document.getElementById('quick-add-company');
+        const addDeptBtn = document.getElementById('quick-add-department');
+        
+        let companyTimeout = null;
+        
+        // 업체 검색
+        companySearch.addEventListener('input', function() {
+            const query = this.value.trim();
+            
+            if (query.length < 1) {
+                companySuggestions.style.display = 'none';
+                return;
+            }
+            
+            clearTimeout(companyTimeout);
+            companyTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch('/reporting/api/companies/autocomplete/?q=' + encodeURIComponent(query));
+                    const data = await response.json();
+                    
+                    if (data.results && data.results.length > 0) {
+                        companySuggestions.innerHTML = data.results.map(item => 
+                            '<div class="p-2" style="cursor: pointer; border-bottom: 1px solid hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);" ' +
+                                  'data-id="' + item.id + '" data-name="' + item.text + '">' +
+                                item.text +
+                            '</div>'
+                        ).join('');
+                        companySuggestions.style.display = 'block';
+                        
+                        // 선택 이벤트
+                        companySuggestions.querySelectorAll('div').forEach(div => {
+                            div.addEventListener('click', function() {
+                                companySearch.value = this.dataset.name;
+                                companyId.value = this.dataset.id;
+                                document.getElementById('quick-company-name').value = this.dataset.name;
+                                companySuggestions.style.display = 'none';
+                                
+                                // 부서 검색 활성화
+                                departmentSearch.disabled = false;
+                                departmentSearch.placeholder = '부서/연구실명 검색...';
+                                addDeptBtn.style.display = 'inline-block';
+                                
+                                setupDepartmentAutocomplete();
+                            });
+                        });
+                    } else {
+                        companySuggestions.innerHTML = '<div class="p-2" style="color: hsl(210, 40%, 98%);">검색 결과 없음</div>';
+                        companySuggestions.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('업체 검색 오류:', error);
+                }
+            }, 300);
+        });
+        
+        // 새 업체 추가
+        addCompanyBtn.addEventListener('click', async function() {
+            const companyName = companySearch.value.trim();
+            if (!companyName) {
+                alert('업체/학교명을 입력하세요.');
+                return;
+            }
+            
+            // 버튼 비활성화
+            addCompanyBtn.disabled = true;
+            addCompanyBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            
+            try {
+                const response = await fetch('{% url "reporting:quick_add_company" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        company_name: companyName
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 업체 ID 저장
+                    companyId.value = data.company_id;
+                    document.getElementById('quick-company-name').value = data.company_name;
+                    companySearch.value = data.company_name;
+                    companySuggestions.style.display = 'none';
+                    
+                    // 부서 검색 활성화
+                    departmentSearch.disabled = false;
+                    departmentSearch.placeholder = '부서/연구실명 검색...';
+                    addDeptBtn.style.display = 'inline-block';
+                    
+                    // 부서 자동완성 설정
+                    setupDepartmentAutocomplete();
+                    
+                    alert(data.message);
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            } catch (error) {
+                alert('업체 등록 중 오류가 발생했습니다: ' + error.message);
+            } finally {
+                addCompanyBtn.disabled = false;
+                addCompanyBtn.innerHTML = '<i class="bi bi-plus"></i> 새로 추가';
+            }
+        });
+    }
+    
+    function setupDepartmentAutocomplete() {
+        const companyId = document.getElementById('quick-company-id').value;
+        const departmentSearch = document.getElementById('quick-department-search');
+        const departmentId = document.getElementById('quick-department-id');
+        const departmentSuggestions = document.querySelector('#quick-department-suggestions > div');
+        const addDeptBtn = document.getElementById('quick-add-department');
+        
+        // 이미 설정되었는지 체크
+        if (departmentSearch.dataset.autocompleteSetup) {
+            return;
+        }
+        departmentSearch.dataset.autocompleteSetup = 'true';
+        
+        let deptTimeout = null;
+        
+        // 부서 검색
+        departmentSearch.addEventListener('input', function() {
+            const query = this.value.trim();
+            const currentCompanyId = document.getElementById('quick-company-id').value;
+            
+            // 업체 ID가 없거나 검색어가 없으면 자동완성 숨김
+            if (query.length < 1) {
+                departmentSuggestions.style.display = 'none';
+                return;
+            }
+            
+            // 업체 ID가 없으면 자동완성 불가 (새 업체 추가 시)
+            if (!currentCompanyId) {
+                departmentSuggestions.style.display = 'none';
+                return;
+            }
+            
+            clearTimeout(deptTimeout);
+            deptTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch('/reporting/api/departments/autocomplete/?company_id=' + currentCompanyId + '&q=' + encodeURIComponent(query));
+                    const data = await response.json();
+                    
+                    if (data.results && data.results.length > 0) {
+                        departmentSuggestions.innerHTML = data.results.map(item => 
+                            '<div class="p-2" style="cursor: pointer; border-bottom: 1px solid hsl(217, 33%, 22%); color: hsl(210, 40%, 98%);" ' +
+                                  'data-id="' + item.id + '" data-name="' + item.text + '">' +
+                                item.text +
+                            '</div>'
+                        ).join('');
+                        departmentSuggestions.style.display = 'block';
+                        
+                        // 선택 이벤트
+                        departmentSuggestions.querySelectorAll('div').forEach(div => {
+                            div.addEventListener('click', function() {
+                                departmentSearch.value = this.dataset.name;
+                                departmentId.value = this.dataset.id;
+                                document.getElementById('quick-department-name').value = this.dataset.name;
+                                departmentSuggestions.style.display = 'none';
+                            });
+                        });
+                    } else {
+                        departmentSuggestions.innerHTML = '<div class="p-2" style="color: hsl(210, 40%, 98%);">검색 결과 없음</div>';
+                        departmentSuggestions.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('부서 검색 오류:', error);
+                }
+            }, 300);
+        });
+        
+        // 새 부서 추가
+        addDeptBtn.addEventListener('click', async function() {
+            const deptName = departmentSearch.value.trim();
+            const currentCompanyId = document.getElementById('quick-company-id').value;
+            
+            if (!deptName) {
+                alert('부서/연구실명을 입력하세요.');
+                return;
+            }
+            
+            if (!currentCompanyId) {
+                alert('업체를 먼저 선택하거나 등록해주세요.');
+                return;
+            }
+            
+            // 버튼 비활성화
+            addDeptBtn.disabled = true;
+            addDeptBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            
+            try {
+                const response = await fetch('{% url "reporting:quick_add_department" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({
+                        department_name: deptName,
+                        company_id: currentCompanyId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 부서 ID 저장
+                    departmentId.value = data.department_id;
+                    document.getElementById('quick-department-name').value = data.department_name;
+                    departmentSearch.value = data.department_name;
+                    departmentSuggestions.style.display = 'none';
+                    
+                    alert(data.message);
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            } catch (error) {
+                alert('부서 등록 중 오류가 발생했습니다: ' + error.message);
+            } finally {
+                addDeptBtn.disabled = false;
+                addDeptBtn.innerHTML = '<i class="bi bi-plus"></i> 새로 추가';
+            }
+        });
+    }
+    
+    async function saveQuickCustomer() {
+        const customerName = document.getElementById('quick-customer-name').value.trim();
+        const customerEmail = document.getElementById('quick-customer-email').value.trim();
+        const companySearch = document.getElementById('quick-company-search').value.trim();
+        const companyId = document.getElementById('quick-company-id').value;
+        const departmentSearch = document.getElementById('quick-department-search').value.trim();
+        const departmentId = document.getElementById('quick-department-id').value;
+        const manager = document.getElementById('quick-customer-manager').value.trim();
+        const phone = document.getElementById('quick-customer-phone').value.trim();
+        const priority = document.getElementById('quick-customer-priority').value;
+        const address = document.getElementById('quick-customer-address').value.trim();
+        const notes = document.getElementById('quick-customer-notes').value.trim();
+        
+        // 필수 필드 검증
+        if (!customerEmail) {
+            alert('이메일은 필수입니다.');
+            return;
+        }
+        
+        if (!companySearch) {
+            alert('업체/학교명은 필수입니다.');
+            return;
+        }
+        
+        // 이메일 유효성 검사
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(customerEmail)) {
+            alert('유효한 이메일 주소를 입력해주세요.');
+            return;
+        }
+        
+        const btn = document.getElementById('save-quick-customer-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>등록 중...';
+        
+        try {
+            const requestData = {
+                customer_name: customerName,
+                email: customerEmail,
+                company_id: companyId,
+                company_name: document.getElementById('quick-company-name').value || document.getElementById('quick-company-search').value.trim(),
+                department_id: departmentId,
+                department_name: document.getElementById('quick-department-name').value || document.getElementById('quick-department-search').value.trim(),
+                manager: manager,
+                phone_number: phone,
+                priority: priority,
+                address: address,
+                notes: notes
+            };
+            
+            const response = await fetch('{% url "reporting:quick_add_customer" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // 받는 사람 필드에 이메일 자동 입력
+                document.getElementById('to_email').value = customerEmail;
+                
+                // 팔로우업 검색 필드에 자동으로 추가된 고객 설정
+                const followupSearchInput = document.getElementById('followup_search');
+                const followupSelect = document.getElementById('followup_select');
+                const createScheduleContainer = document.getElementById('create_schedule_container');
+                const selectedFollowupIdInput = document.getElementById('selected_followup_id');
+                
+                if (followupSearchInput && followupSelect && data.followup_id) {
+                    // 검색 필드에 고객 정보 표시
+                    const displayText = customerName || customerEmail;
+                    followupSearchInput.value = displayText + ' (' + (companySearch || '업체명 미정') + ')';
+                    
+                    // select 옵션 추가 및 선택
+                    followupSelect.innerHTML = '';
+                    const option = document.createElement('option');
+                    option.value = data.followup_id;
+                    option.textContent = displayText + ' - ' + (companySearch || '업체명 미정') + 
+                                        (departmentSearch ? ' / ' + departmentSearch : '');
+                    option.selected = true;
+                    followupSelect.appendChild(option);
+                    followupSelect.style.display = 'block';
+                    
+                    // 숨겨진 input 필드 업데이트
+                    if (selectedFollowupIdInput) {
+                        selectedFollowupIdInput.value = data.followup_id;
+                    }
+                    
+                    // 일정 자동 생성 옵션 표시
+                    if (createScheduleContainer) {
+                        createScheduleContainer.style.display = 'block';
+                    }
+                }
+                
+                // 모달 닫기
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newCustomerModal'));
+                modal.hide();
+                
+                alert('고객이 등록되었습니다. 이메일을 작성해주세요.');
+                
+                // 제목 필드로 포커스
+                document.getElementById('subject').focus();
+            } else {
+                alert('오류: ' + data.error);
+            }
+        } catch (error) {
+            alert('등록 중 오류가 발생했습니다: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>등록 후 메일 작성';
+        }
+    }
     {% endif %}
 });
 </script>

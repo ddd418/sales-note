@@ -289,6 +289,11 @@ urlpatterns = [
     path('get-company-users/<int:company_id>/', views.get_company_users, name='get_company_users'),
     path('toggle-ai-permission/', views.toggle_ai_permission, name='toggle_ai_permission'),
     
+    # 빠른 고객 등록 (이메일 발송용)
+    path('quick-add-customer/', views.quick_add_customer, name='quick_add_customer'),
+    path('quick-add-company/', views.quick_add_company, name='quick_add_company'),
+    path('quick-add-department/', views.quick_add_department, name='quick_add_department'),
+    
     # 법적 문서
     path('privacy-policy/', views.privacy_policy_view, name='privacy_policy'),
     path('terms-of-service/', views.terms_of_service_view, name='terms_of_service'),

@@ -14334,3 +14334,267 @@ def customer_records_api(request, followup_id):
             'success': False,
             'error': '고객 기록을 가져오는 중 오류가 발생했습니다.'
         }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def quick_add_customer(request):
+    """빠른 고객 등록 API (이메일 발송용)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        data = json.loads(request.body)
+        
+        customer_name = data.get('customer_name', '').strip()
+        email = data.get('email', '').strip()
+        company_id = data.get('company_id', '').strip()
+        company_name = data.get('company_name', '').strip()
+        department_id = data.get('department_id', '').strip()
+        department_name = data.get('department_name', '').strip()
+        manager = data.get('manager', '').strip()
+        phone_number = data.get('phone_number', '').strip()
+        priority = data.get('priority', 'scheduled').strip()
+        address = data.get('address', '').strip()
+        notes = data.get('notes', '').strip()
+        
+        # 필수 필드 검증
+        if not email:
+            return JsonResponse({
+                'success': False,
+                'error': '이메일은 필수입니다.'
+            })
+        
+        if not company_name:
+            return JsonResponse({
+                'success': False,
+                'error': '업체/학교명은 필수입니다.'
+            })
+        
+        # 이메일 유효성 검사
+        import re
+        email_pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        if not re.match(email_pattern, email):
+            return JsonResponse({
+                'success': False,
+                'error': '유효한 이메일 주소를 입력해주세요.'
+            })
+        
+        # 중복 체크 (같은 사용자가 같은 이메일로 이미 등록했는지)
+        existing = FollowUp.objects.filter(
+            user=request.user,
+            email=email
+        ).first()
+        
+        if existing:
+            return JsonResponse({
+                'success': False,
+                'error': f'이미 등록된 이메일입니다. (고객: {existing.customer_name})'
+            })
+        
+        # 업체 처리
+        company = None
+        user_company = request.user.userprofile.company
+        
+        if company_id:
+            # 기존 업체 선택
+            try:
+                company = Company.objects.get(
+                    id=company_id,
+                    created_by__userprofile__company=user_company
+                )
+            except Company.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': '선택한 업체를 찾을 수 없습니다.'
+                })
+        else:
+            # 새 업체 생성
+            company = Company.objects.create(
+                name=company_name,
+                created_by=request.user
+            )
+            logger.info(f"새 업체 생성: {company_name} by {request.user.username}")
+        
+        # 부서 처리
+        department = None
+        if department_name:
+            if department_id:
+                # 기존 부서 선택
+                try:
+                    department = Department.objects.get(
+                        id=department_id,
+                        company=company
+                    )
+                except Department.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'error': '선택한 부서를 찾을 수 없습니다.'
+                    })
+            else:
+                # 새 부서 생성
+                department = Department.objects.create(
+                    name=department_name,
+                    company=company,
+                    created_by=request.user
+                )
+                logger.info(f"새 부서 생성: {department_name} by {request.user.username}")
+        
+        # 팔로우업 생성
+        followup = FollowUp.objects.create(
+            user=request.user,
+            customer_name=customer_name or email.split('@')[0],  # 고객명 없으면 이메일 ID 사용
+            email=email,
+            company=company,
+            department=department,
+            manager=manager or customer_name,  # 담당자 없으면 고객명 사용
+            phone_number=phone_number,
+            priority=priority,
+            address=address,
+            notes=notes,
+            status='active',
+            user_company=user_company
+        )
+        
+        logger.info(f"빠른 고객 등록 성공: {followup.customer_name} ({email}) by {request.user.username}")
+        
+        return JsonResponse({
+            'success': True,
+            'followup_id': followup.id,
+            'message': '고객이 등록되었습니다.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Quick add customer error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'error': '고객 등록 중 오류가 발생했습니다.'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def quick_add_company(request):
+    """업체 즉시 생성 API"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        data = json.loads(request.body)
+        company_name = data.get('company_name', '').strip()
+        
+        if not company_name:
+            return JsonResponse({
+                'success': False,
+                'error': '업체/학교명은 필수입니다.'
+            })
+        
+        # 중복 체크 (같은 회사 내)
+        user_company = request.user.userprofile.company
+        existing = Company.objects.filter(
+            name=company_name,
+            created_by__userprofile__company=user_company
+        ).first()
+        
+        if existing:
+            return JsonResponse({
+                'success': True,
+                'company_id': existing.id,
+                'company_name': existing.name,
+                'message': '이미 등록된 업체입니다.'
+            })
+        
+        # 새 업체 생성
+        company = Company.objects.create(
+            name=company_name,
+            created_by=request.user
+        )
+        
+        logger.info(f"새 업체 생성: {company_name} (ID: {company.id}) by {request.user.username}")
+        
+        return JsonResponse({
+            'success': True,
+            'company_id': company.id,
+            'company_name': company.name,
+            'message': '업체가 등록되었습니다.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Quick add company error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': '업체 등록 중 오류가 발생했습니다.'
+        }, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def quick_add_department(request):
+    """부서 즉시 생성 API"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        data = json.loads(request.body)
+        department_name = data.get('department_name', '').strip()
+        company_id = data.get('company_id', '').strip()
+        
+        if not department_name:
+            return JsonResponse({
+                'success': False,
+                'error': '부서/연구실명은 필수입니다.'
+            })
+        
+        if not company_id:
+            return JsonResponse({
+                'success': False,
+                'error': '업체를 먼저 선택하거나 등록해주세요.'
+            })
+        
+        # 업체 확인
+        try:
+            company = Company.objects.get(id=company_id)
+        except Company.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': '선택한 업체를 찾을 수 없습니다.'
+            })
+        
+        # 중복 체크
+        existing = Department.objects.filter(
+            name=department_name,
+            company=company
+        ).first()
+        
+        if existing:
+            return JsonResponse({
+                'success': True,
+                'department_id': existing.id,
+                'department_name': existing.name,
+                'message': '이미 등록된 부서입니다.'
+            })
+        
+        # 새 부서 생성
+        department = Department.objects.create(
+            name=department_name,
+            company=company,
+            created_by=request.user
+        )
+        
+        logger.info(f"새 부서 생성: {department_name} (ID: {department.id}) by {request.user.username}")
+        
+        return JsonResponse({
+            'success': True,
+            'department_id': department.id,
+            'department_name': department.name,
+            'message': '부서가 등록되었습니다.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Quick add department error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': '부서 등록 중 오류가 발생했습니다.'
+        }, status=500)
