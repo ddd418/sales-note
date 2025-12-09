@@ -6624,20 +6624,21 @@ def followup_autocomplete(request):
         company_name = str(followup.company) if followup.company else '업체명 미정'
         department_name = str(followup.department) if followup.department else '부서명 미정'
         customer_name = followup.customer_name or '고객명 미정'
+        manager_name = followup.user.get_full_name() or followup.user.username
         
         display_text = f"{company_name} - {department_name} | {customer_name}"
         
         # 동료 고객인 경우 담당자 표시
         if followup.user != request.user:
-            display_text += f" ({followup.user.username})"
+            display_text += f" ({manager_name})"
         
         results.append({
             'id': followup.id,
             'text': display_text,
             'customer_name': customer_name,
-            'company_name': company_name,
-            'department_name': department_name,
-            'user_name': followup.user.username
+            'company': company_name,
+            'email': followup.email or '',
+            'manager': manager_name
         })
         logger.debug(f"[팔로우업 검색] 결과: {display_text}")
     

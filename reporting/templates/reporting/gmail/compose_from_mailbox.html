@@ -660,7 +660,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         data.results.forEach(item => {
                             const option = document.createElement('option');
                             option.value = item.id;
-                            option.setAttribute('data-email', item.email);
+                            option.setAttribute('data-email', item.email || '');
                             option.textContent = `${item.customer_name} - ${item.company} (담당: ${item.manager})`;
                             followupSelect.appendChild(option);
                         });
