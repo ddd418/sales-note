@@ -389,12 +389,15 @@ document.addEventListener('DOMContentLoaded', function() {
 // 이메일 본문에서 인용된 이전 메일 숨기기  
 function hideQuotedContent() {
     document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
+        const originalHTML = emailBody.innerHTML;
         const text = emailBody.textContent || emailBody.innerText;
         
         // "보낸 사람:" 또는 "From:" 찾기
-        let cutIndex = text.indexOf('보낸 사람:');
+        let cutText = '보낸 사람:';
+        let cutIndex = text.indexOf(cutText);
         if (cutIndex === -1) {
-            cutIndex = text.indexOf('From:');
+            cutText = 'From:';
+            cutIndex = text.indexOf(cutText);
         }
         
         // 발견되지 않았거나 너무 앞쪽에 있으면 무시 (최소 50자 이후)
@@ -402,29 +405,27 @@ function hideQuotedContent() {
             return;
         }
         
-        // "보낸 사람:" 이전 텍스트와 이후 텍스트 분리
-        const beforeText = text.substring(0, cutIndex).trim();
-        const afterText = text.substring(cutIndex).trim();
+        // HTML에서 해당 텍스트 위치 찾기
+        const cutHTML = originalHTML.indexOf(cutText);
+        if (cutHTML === -1) {
+            return;
+        }
+        
+        // HTML을 앞부분과 뒷부분으로 분리
+        const beforeHTML = originalHTML.substring(0, cutHTML);
+        const afterHTML = originalHTML.substring(cutHTML);
         
         // 인용 ID 생성
         const quotedId = 'quoted-' + Math.random().toString(36).substr(2, 9);
         
-        // HTML 이스케이프
-        function escapeHtml(txt) {
-            const div = document.createElement('div');
-            div.textContent = txt;
-            return div.innerHTML;
-        }
-        
-        // HTML을 완전히 교체
-        emailBody.innerHTML = `
-            <div style="white-space: pre-wrap;">${escapeHtml(beforeText)}</div>
+        // HTML 재구성 (원본 HTML 구조 유지)
+        emailBody.innerHTML = beforeHTML + `
             <div class="quoted-email-section mt-3" style="border-top: 2px solid hsl(217, 33%, 22%); padding-top: 10px;">
                 <button class="btn btn-sm btn-outline-secondary" onclick="toggleQuoted('${quotedId}')" style="margin-bottom: 10px;">
                     <i class="bi bi-three-dots"></i> 이전 메일 보기
                 </button>
-                <div id="${quotedId}" style="display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%); white-space: pre-wrap;">
-                    ${escapeHtml(afterText)}
+                <div id="${quotedId}" style="display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%);">
+                    ${afterHTML}
                 </div>
             </div>
         `;
