@@ -971,12 +971,72 @@ def restore_email(request, email_id):
 @login_required
 def mailbox_thread(request, thread_id):
     """이메일 스레드 상세 (대화 전체)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     profile = request.user.userprofile
     
     # Gmail 또는 IMAP 연결 확인
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.warning(request, '이메일 계정을 연결해주세요.')
         return redirect('reporting:profile')
+    
+    # Gmail에서 최신 스레드 데이터 가져와서 DB 동기화
+    if profile.gmail_token:
+        try:
+            gmail_service = GmailService(profile)
+            thread_data = gmail_service.get_thread(thread_id)
+            
+            if thread_data and thread_data.get('messages'):
+                logger.info(f"스레드 {thread_id}: Gmail에서 {len(thread_data['messages'])}개 메시지 조회")
+                
+                # DB에 저장된 메시지 ID 목록
+                existing_message_ids = set(
+                    EmailLog.objects.filter(gmail_thread_id=thread_id)
+                    .values_list('gmail_message_id', flat=True)
+                )
+                
+                # 새로운 메시지만 DB에 저장
+                new_count = 0
+                for msg_detail in thread_data['messages']:
+                    msg_id = msg_detail['id']
+                    
+                    if msg_id not in existing_message_ids:
+                        # 새 메시지 저장
+                        try:
+                            from .imap_utils import save_email_to_db
+                            
+                            # 이메일 타입 결정 (From 주소로 판단)
+                            from_email = msg_detail.get('from', '').lower()
+                            user_email = request.user.email.lower() if request.user.email else ''
+                            email_type = 'sent' if user_email in from_email else 'received'
+                            
+                            save_email_to_db(
+                                user=request.user,
+                                message_id=msg_id,
+                                thread_id=thread_id,
+                                sender_email=msg_detail.get('from', ''),
+                                recipient_email=msg_detail.get('to', ''),
+                                cc_emails=msg_detail.get('cc', ''),
+                                bcc_emails=msg_detail.get('bcc', ''),
+                                subject=msg_detail.get('subject', ''),
+                                body=msg_detail.get('body', ''),
+                                body_html=msg_detail.get('body_html', ''),
+                                sent_at=msg_detail.get('date'),
+                                email_type=email_type,
+                                labels=msg_detail.get('labels', [])
+                            )
+                            new_count += 1
+                            logger.info(f"새 메시지 저장: {msg_id}")
+                        except Exception as e:
+                            logger.error(f"메시지 저장 실패 ({msg_id}): {e}")
+                            continue
+                
+                if new_count > 0:
+                    logger.info(f"스레드 {thread_id}: {new_count}개 새 메시지 동기화 완료")
+        except Exception as e:
+            logger.error(f"스레드 동기화 오류: {e}")
+            # 동기화 실패해도 계속 진행
     
     # DB에서 스레드의 모든 메일 조회
     emails = EmailLog.objects.filter(

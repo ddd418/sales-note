@@ -403,14 +403,39 @@ function hideQuotedContent() {
         // From: ... Sent: ... 스타일
         const fromSentRegex = /(From|보낸 사람|발신자):\s*.+?\s+(Sent|Date|보낸 날짜|날짜):/is;
         
+        // Outlook 한국어 스타일 (보낸 사람: ... 날짜:)
+        const outlookKoreanRegex = /보낸 사람:\s*[^\n]+\s*날짜:/i;
+        
+        // "받기 Mac용 Outlook" 또는 "Get Outlook for" 같은 클라이언트 시그니처
+        const outlookSignatureRegex = /(받기|Get)\s+(Mac용\s+)?Outlook/i;
+        
         let cutPosition = -1;
         
-        // 각 패턴으로 인용 시작 위치 찾기
-        const gmailMatch = html.match(gmailQuoteRegex);
-        if (gmailMatch) {
-            cutPosition = html.indexOf(gmailMatch[0]);
+        // 각 패턴으로 인용 시작 위치 찾기 (우선순위 순서대로)
+        
+        // 1. Outlook 시그니처 체크 (가장 먼저)
+        const outlookSigMatch = html.match(outlookSignatureRegex);
+        if (outlookSigMatch) {
+            cutPosition = html.indexOf(outlookSigMatch[0]);
         }
         
+        // 2. Outlook 한국어 스타일
+        if (cutPosition === -1) {
+            const outlookKorMatch = html.match(outlookKoreanRegex);
+            if (outlookKorMatch) {
+                cutPosition = html.indexOf(outlookKorMatch[0]);
+            }
+        }
+        
+        // 3. Gmail 스타일
+        if (cutPosition === -1) {
+            const gmailMatch = html.match(gmailQuoteRegex);
+            if (gmailMatch) {
+                cutPosition = html.indexOf(gmailMatch[0]);
+            }
+        }
+        
+        // 4. Original Message 스타일
         if (cutPosition === -1) {
             const originalMatch = html.match(originalMsgRegex);
             if (originalMatch) {
@@ -418,6 +443,7 @@ function hideQuotedContent() {
             }
         }
         
+        // 5. From/Sent 스타일
         if (cutPosition === -1) {
             const fromSentMatch = html.match(fromSentRegex);
             if (fromSentMatch) {
