@@ -457,36 +457,36 @@ function displayThreadAnalysisResults(analysis) {
     else { tempColor = 'secondary'; tempLabel = '🧊 구매 의사 없음'; }
     
     let html = `
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm" style="background: hsl(222, 47%, 11%); border-color: hsl(217, 33%, 22%) !important;">
             <div class="card-body">
-                <h6 class="card-title mb-3">
+                <h6 class="card-title mb-3" style="color: hsl(210, 40%, 98%);">
                     <i class="fas fa-chart-pie text-primary"></i>
                     AI 영업 분석 결과
                 </h6>
                 
                 <!-- 핵심 지표: 구매 온도 -->
-                <div class="mb-4 p-3 border rounded text-center" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
-                    <h5 class="mb-2">📌 고객 구매 온도</h5>
+                <div class="mb-4 p-3 border rounded text-center" style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%) !important;">
+                    <h5 class="mb-2" style="color: hsl(210, 40%, 98%);">📌 고객 구매 온도</h5>
                     <div class="d-flex align-items-center justify-content-center gap-3">
                         <span class="badge bg-${tempColor}" style="font-size: 2rem; padding: 1rem 1.5rem;">
                             ${purchaseTemp}/10
                         </span>
-                        <span class="fs-5">${tempLabel}</span>
+                        <span class="fs-5" style="color: hsl(210, 40%, 98%);">${tempLabel}</span>
                     </div>
-                    <p class="text-muted mt-2 mb-0 small">${analysis.temperature_reason || ''}</p>
+                    <p class="mt-2 mb-0 small" style="color: hsl(217, 33%, 50%);">${analysis.temperature_reason || ''}</p>
                 </div>
                 
                 <!-- 고객의 숨은 의도 -->
-                <div class="mb-3 p-3 border rounded">
-                    <h6 class="mb-2">
+                <div class="mb-3 p-3 border rounded" style="background: hsl(222, 47%, 14%); border-color: hsl(217, 33%, 22%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-user-secret text-purple"></i>
                         📌 고객의 숨은 의도 / 제한조건
                     </h6>
                     ${analysis.hidden_intent && analysis.hidden_intent.length > 0 ? 
-                        '<ul class="mb-0">' + 
+                        '<ul class="mb-0" style="color: hsl(210, 40%, 98%);">' + 
                         analysis.hidden_intent.map(intent => `<li>${intent}</li>`).join('') + 
                         '</ul>' : 
-                        '<p class="text-muted small mb-0">분석된 숨은 의도가 없습니다.</p>'
+                        '<p class="small mb-0" style="color: hsl(217, 33%, 50%);">분석된 숨은 의도가 없습니다.</p>'
                     }
                 </div>
                 
@@ -502,26 +502,26 @@ function displayThreadAnalysisResults(analysis) {
                 </div>
                 
                 <!-- 추천 후속 액션 -->
-                <div class="mb-3 p-3 border rounded" style="background-color: #fff3cd;">
-                    <h6 class="mb-2">
+                <div class="mb-3 p-3 border rounded" style="background: hsl(45, 100%, 15%); border-color: hsl(45, 80%, 30%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-tasks text-warning"></i>
                         📌 추천 후속 액션
                     </h6>
                     ${analysis.recommended_actions && analysis.recommended_actions.length > 0 ? 
-                        '<ul class="mb-0">' + 
+                        '<ul class="mb-0" style="color: hsl(210, 40%, 98%);">' + 
                         analysis.recommended_actions.map(action => `<li><strong>${action}</strong></li>`).join('') + 
                         '</ul>' : 
-                        '<p class="text-muted small mb-0">추천 액션이 없습니다.</p>'
+                        '<p class="small mb-0" style="color: hsl(217, 33%, 50%);">추천 액션이 없습니다.</p>'
                     }
                 </div>
                 
                 <!-- 후속 이메일 초안 -->
-                <div class="mb-3 p-3 border rounded" style="background-color: #d1e7dd;">
-                    <h6 class="mb-2">
+                <div class="mb-3 p-3 border rounded" style="background: hsl(150, 50%, 15%); border-color: hsl(150, 50%, 30%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-envelope text-success"></i>
                         📌 후속 이메일 초안
                     </h6>
-                    <div class="bg-white p-3 rounded" style="white-space: pre-wrap; font-family: 'Noto Sans KR', sans-serif; line-height: 1.8;">
+                    <div class="p-3 rounded" style="background: hsl(222, 47%, 14%); white-space: pre-wrap; font-family: 'Noto Sans KR', sans-serif; line-height: 1.8; color: hsl(210, 40%, 98%); border: 1px solid hsl(217, 33%, 22%);">
 ${analysis.followup_email_draft || '후속 이메일 초안이 없습니다.'}
                     </div>
                     <button class="btn btn-sm btn-outline-success mt-2" onclick="copyFollowupEmail()">
@@ -530,16 +530,16 @@ ${analysis.followup_email_draft || '후속 이메일 초안이 없습니다.'}
                 </div>
                 
                 <!-- 잠재 니즈 예측 -->
-                <div class="mb-3 p-3 border rounded" style="background-color: #cfe2ff;">
-                    <h6 class="mb-2">
+                <div class="mb-3 p-3 border rounded" style="background: hsl(210, 100%, 15%); border-color: hsl(210, 80%, 30%) !important;">
+                    <h6 class="mb-2" style="color: hsl(210, 40%, 98%);">
                         <i class="fas fa-lightbulb text-primary"></i>
                         📌 잠재 니즈 예측
                     </h6>
                     ${analysis.latent_needs && analysis.latent_needs.length > 0 ? 
-                        '<ul class="mb-0">' + 
+                        '<ul class="mb-0" style="color: hsl(210, 40%, 98%);">' + 
                         analysis.latent_needs.map(need => `<li>${need}</li>`).join('') + 
                         '</ul>' : 
-                        '<p class="text-muted small mb-0">예측된 잠재 니즈가 없습니다.</p>'
+                        '<p class="small mb-0" style="color: hsl(217, 33%, 50%);">예측된 잠재 니즈가 없습니다.</p>'
                     }
                 </div>
                 
