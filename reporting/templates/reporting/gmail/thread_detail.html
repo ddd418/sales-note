@@ -389,6 +389,11 @@ document.addEventListener('DOMContentLoaded', function() {
 // 이메일 본문에서 인용된 이전 메일 숨기기  
 function hideQuotedContent() {
     document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
+        // 이미 처리된 경우 스킵
+        if (emailBody.querySelector('.quoted-email-section')) {
+            return;
+        }
+        
         const originalHTML = emailBody.innerHTML;
         
         // 모든 패턴의 위치를 찾아서 배열에 저장
@@ -401,19 +406,23 @@ function hideQuotedContent() {
             if (pos >= 50) positions.push(pos);
         }
         
-        // 2. "받기 Mac용 Outlook"
+        // 2. Outlook 구분자: <div class="ms-outlook-mobile-reference-message
+        pos = originalHTML.indexOf('<div class="ms-outlook-mobile-reference-message');
+        if (pos >= 50) positions.push(pos);
+        
+        // 3. "받기 Mac용 Outlook"
         let pos = originalHTML.indexOf('받기 Mac용 Outlook');
         if (pos >= 50) positions.push(pos);
         
-        // 3. "Get Outlook for"
+        // 4. "Get Outlook for"
         pos = originalHTML.indexOf('Get Outlook for');
         if (pos >= 50) positions.push(pos);
         
-        // 4. "보낸 사람:"
+        // 5. "보낸 사람:"
         pos = originalHTML.indexOf('보낸 사람:');
         if (pos >= 50) positions.push(pos);
         
-        // 5. "From:"
+        // 6. "From:"
         pos = originalHTML.indexOf('From:');
         if (pos >= 50) positions.push(pos);
         
