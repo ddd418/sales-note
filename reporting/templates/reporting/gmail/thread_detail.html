@@ -391,38 +391,39 @@ function hideQuotedContent() {
     document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
         const originalHTML = emailBody.innerHTML;
         
-        // HTML에서 직접 패턴 찾기 (우선순위 순)
-        let cutHTML = -1;
+        // 모든 패턴의 위치를 찾아서 배열에 저장
+        const positions = [];
         
         // 1. Gmail 답장 패턴: "2025년 11월 25일 (화) 오전 7:08, 하나과학_안재현 <jhahn.hana@gmail.com>님이 작성:"
-        // "님이 작성:" 또는 "wrote:"로 끝나는 패턴
         const gmailQuoteMatch = originalHTML.match(/\d{4}년\s+\d{1,2}월\s+\d{1,2}일.*?<[^>]+@[^>]+>.*?(님이 작성:|wrote:)/i);
         if (gmailQuoteMatch) {
-            cutHTML = originalHTML.indexOf(gmailQuoteMatch[0]);
+            const pos = originalHTML.indexOf(gmailQuoteMatch[0]);
+            if (pos >= 50) positions.push(pos);
         }
         
-        // 2. "받기 Mac용 Outlook" 찾기
-        if (cutHTML === -1) {
-            cutHTML = originalHTML.indexOf('받기 Mac용 Outlook');
-            if (cutHTML === -1) {
-                cutHTML = originalHTML.indexOf('Get Outlook for');
-            }
-        }
+        // 2. "받기 Mac용 Outlook"
+        let pos = originalHTML.indexOf('받기 Mac용 Outlook');
+        if (pos >= 50) positions.push(pos);
         
-        // 3. "보낸 사람:" 찾기 (무조건)
-        if (cutHTML === -1) {
-            cutHTML = originalHTML.indexOf('보낸 사람:');
-        }
+        // 3. "Get Outlook for"
+        pos = originalHTML.indexOf('Get Outlook for');
+        if (pos >= 50) positions.push(pos);
         
-        // 4. "From:" 찾기 (무조건)
-        if (cutHTML === -1) {
-            cutHTML = originalHTML.indexOf('From:');
-        }
+        // 4. "보낸 사람:"
+        pos = originalHTML.indexOf('보낸 사람:');
+        if (pos >= 50) positions.push(pos);
+        
+        // 5. "From:"
+        pos = originalHTML.indexOf('From:');
+        if (pos >= 50) positions.push(pos);
         
         // 패턴을 찾지 못했으면 종료
-        if (cutHTML === -1 || cutHTML < 50) {
+        if (positions.length === 0) {
             return;
         }
+        
+        // 가장 먼저 나오는 위치 사용
+        const cutHTML = Math.min(...positions);
         
         // HTML을 앞부분과 뒷부분으로 분리
         const beforeHTML = originalHTML.substring(0, cutHTML);
