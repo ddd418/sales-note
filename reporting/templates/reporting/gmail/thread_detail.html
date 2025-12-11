@@ -392,16 +392,28 @@ function hideQuotedContent() {
         const originalHTML = emailBody.innerHTML;
         const text = emailBody.textContent || emailBody.innerText;
         
-        // "보낸 사람:" 또는 "From:" 찾기
-        let cutText = '보낸 사람:';
-        let cutIndex = text.indexOf(cutText);
-        if (cutIndex === -1) {
-            cutText = 'From:';
-            cutIndex = text.indexOf(cutText);
+        // 여러 패턴 시도 (우선순위 순)
+        const patterns = [
+            '받기 Mac용 Outlook',
+            'Get Outlook for',
+            '보낸 사람:',
+            'From:'
+        ];
+        
+        let cutText = null;
+        let cutIndex = -1;
+        
+        for (const pattern of patterns) {
+            const idx = text.indexOf(pattern);
+            if (idx > 50) { // 최소 50자 이후
+                cutText = pattern;
+                cutIndex = idx;
+                break;
+            }
         }
         
-        // 발견되지 않았거나 너무 앞쪽에 있으면 무시 (최소 50자 이후)
-        if (cutIndex < 50) {
+        // 패턴을 찾지 못했으면 종료
+        if (!cutText || cutIndex < 50) {
             return;
         }
         
