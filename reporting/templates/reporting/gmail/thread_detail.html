@@ -400,30 +400,18 @@ function hideQuotedContent() {
             cutHTML = originalHTML.indexOf('Get Outlook for');
         }
         
-        // 2. "보낸 사람:" 찾기 (뒤에 "날짜:"가 있는 경우만)
+        // 2. "보낸 사람:" 찾기 (무조건)
         if (cutHTML === -1) {
-            const senderHTML = originalHTML.indexOf('보낸 사람:');
-            if (senderHTML > 100) {
-                const after = originalHTML.substring(senderHTML, senderHTML + 500);
-                if (after.includes('날짜:')) {
-                    cutHTML = senderHTML;
-                }
-            }
+            cutHTML = originalHTML.indexOf('보낸 사람:');
         }
         
-        // 3. "From:" 찾기 (뒤에 "Date:" 또는 "Sent:"가 있는 경우만)
+        // 3. "From:" 찾기 (무조건)
         if (cutHTML === -1) {
-            const fromHTML = originalHTML.indexOf('From:');
-            if (fromHTML > 100) {
-                const after = originalHTML.substring(fromHTML, fromHTML + 500);
-                if (after.includes('Date:') || after.includes('Sent:')) {
-                    cutHTML = fromHTML;
-                }
-            }
+            cutHTML = originalHTML.indexOf('From:');
         }
         
         // 패턴을 찾지 못했으면 종료
-        if (cutHTML === -1 || cutHTML < 100) {
+        if (cutHTML === -1 || cutHTML < 50) {
             return;
         }
         
