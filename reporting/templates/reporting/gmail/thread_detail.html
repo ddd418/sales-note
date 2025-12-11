@@ -395,20 +395,44 @@ function hideQuotedContent() {
         // 여러 패턴 시도 (우선순위 순)
         const patterns = [
             '받기 Mac용 Outlook',
-            'Get Outlook for',
-            '보낸 사람:',
-            'From:'
+            'Get Outlook for'
         ];
         
         let cutText = null;
         let cutIndex = -1;
         
+        // 먼저 Outlook 시그니처 찾기
         for (const pattern of patterns) {
             const idx = text.indexOf(pattern);
             if (idx > 50) { // 최소 50자 이후
                 cutText = pattern;
                 cutIndex = idx;
                 break;
+            }
+        }
+        
+        // Outlook 시그니처가 없으면 "보낸 사람:" + "날짜:" 조합 찾기
+        if (!cutText) {
+            const senderIdx = text.indexOf('보낸 사람:');
+            if (senderIdx > 50) {
+                // "보낸 사람:" 이후에 "날짜:"가 있는지 확인
+                const afterSender = text.substring(senderIdx, senderIdx + 200);
+                if (afterSender.includes('날짜:')) {
+                    cutText = '보낸 사람:';
+                    cutIndex = senderIdx;
+                }
+            }
+        }
+        
+        // 그래도 없으면 "From:" + "Date:" 조합 찾기
+        if (!cutText) {
+            const fromIdx = text.indexOf('From:');
+            if (fromIdx > 50) {
+                const afterFrom = text.substring(fromIdx, fromIdx + 200);
+                if (afterFrom.includes('Date:') || afterFrom.includes('Sent:')) {
+                    cutText = 'From:';
+                    cutIndex = fromIdx;
+                }
             }
         }
         
