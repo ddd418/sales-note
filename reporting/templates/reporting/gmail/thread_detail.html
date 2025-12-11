@@ -342,6 +342,9 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // 이메일 본문에서 인용된 이전 메일 숨기기
+    hideQuotedContent();
+    
     // AI 스레드 분석 버튼
     const analyzeThreadBtn = document.getElementById('analyzeThreadBtn');
     if (analyzeThreadBtn) {
@@ -382,6 +385,81 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// 이메일 본문에서 인용된 이전 메일 숨기기
+function hideQuotedContent() {
+    document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
+        const html = emailBody.innerHTML;
+        
+        // Gmail 스타일 인용 (On ... wrote:)
+        const gmailQuoteRegex = /(<div[^>]*>)?On\s+.+?\s+wrote:/i;
+        
+        // 일반 인용 (>로 시작하는 줄들)
+        const quoteLineRegex = /^(&gt;|>).*/gm;
+        
+        // ------ Original Message ------ 스타일
+        const originalMsgRegex = /[-_]{3,}\s*(Original Message|원본 메시지|전달된 메시지|Forwarded message)/i;
+        
+        // From: ... Sent: ... 스타일
+        const fromSentRegex = /(From|보낸 사람|발신자):\s*.+?\s+(Sent|Date|보낸 날짜|날짜):/is;
+        
+        let cutPosition = -1;
+        
+        // 각 패턴으로 인용 시작 위치 찾기
+        const gmailMatch = html.match(gmailQuoteRegex);
+        if (gmailMatch) {
+            cutPosition = html.indexOf(gmailMatch[0]);
+        }
+        
+        if (cutPosition === -1) {
+            const originalMatch = html.match(originalMsgRegex);
+            if (originalMatch) {
+                cutPosition = html.indexOf(originalMatch[0]);
+            }
+        }
+        
+        if (cutPosition === -1) {
+            const fromSentMatch = html.match(fromSentRegex);
+            if (fromSentMatch) {
+                cutPosition = html.indexOf(fromSentMatch[0]);
+            }
+        }
+        
+        // 인용 부분을 발견하면 숨기기
+        if (cutPosition > -1) {
+            const originalContent = html.substring(0, cutPosition);
+            const quotedContent = html.substring(cutPosition);
+            
+            // 인용 부분을 토글 가능한 형태로 만들기
+            const quotedId = 'quoted-' + Math.random().toString(36).substr(2, 9);
+            
+            emailBody.innerHTML = originalContent + `
+                <div class="quoted-email-section mt-3" style="border-top: 2px solid hsl(217, 33%, 22%); padding-top: 10px;">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleQuoted('${quotedId}')" style="margin-bottom: 10px;">
+                        <i class="bi bi-three-dots"></i> 이전 메일 보기
+                    </button>
+                    <div id="${quotedId}" style="display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%);">
+                        ${quotedContent}
+                    </div>
+                </div>
+            `;
+        }
+    });
+}
+
+// 인용된 메일 토글
+function toggleQuoted(id) {
+    const quotedDiv = document.getElementById(id);
+    const btn = event.target.closest('button');
+    
+    if (quotedDiv.style.display === 'none') {
+        quotedDiv.style.display = 'block';
+        btn.innerHTML = '<i class="bi bi-chevron-up"></i> 이전 메일 숨기기';
+    } else {
+        quotedDiv.style.display = 'none';
+        btn.innerHTML = '<i class="bi bi-three-dots"></i> 이전 메일 보기';
+    }
+}
 
 // AI 이메일 스레드 영업 분석 함수 (runAITaskWithDetails 사용)
 async function analyzeEmailThread(threadId) {
