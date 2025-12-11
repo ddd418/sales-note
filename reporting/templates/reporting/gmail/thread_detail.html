@@ -390,77 +390,40 @@ document.addEventListener('DOMContentLoaded', function() {
 function hideQuotedContent() {
     document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
         const originalHTML = emailBody.innerHTML;
-        const text = emailBody.textContent || emailBody.innerText;
         
-        // 여러 패턴 시도 (우선순위 순)
-        const patterns = [
-            '받기 Mac용 Outlook',
-            'Get Outlook for'
-        ];
+        // HTML에서 직접 패턴 찾기 (우선순위 순)
+        let cutHTML = -1;
         
-        let cutText = null;
-        let cutIndex = -1;
-        
-        // 먼저 Outlook 시그니처 찾기
-        for (const pattern of patterns) {
-            const idx = text.indexOf(pattern);
-            if (idx > 50) { // 최소 50자 이후
-                cutText = pattern;
-                cutIndex = idx;
-                break;
-            }
+        // 1. "받기 Mac용 Outlook" 찾기
+        cutHTML = originalHTML.indexOf('받기 Mac용 Outlook');
+        if (cutHTML === -1) {
+            cutHTML = originalHTML.indexOf('Get Outlook for');
         }
         
-        // Outlook 시그니처가 없으면 "보낸 사람:" + "날짜:" 조합 찾기
-        if (!cutText) {
-            const senderIdx = text.indexOf('보낸 사람:');
-            if (senderIdx > 50) {
-                // "보낸 사람:" 이후에 "날짜:"가 있는지 확인
-                const afterSender = text.substring(senderIdx, senderIdx + 200);
-                if (afterSender.includes('날짜:')) {
-                    // "보낸 사람:" 이전 100자를 확인해서 Outlook 시그니처 찾기
-                    const beforeSender = text.substring(Math.max(0, senderIdx - 100), senderIdx);
-                    const outlookSigIdx = beforeSender.indexOf('받기 Mac용 Outlook');
-                    if (outlookSigIdx !== -1) {
-                        // Outlook 시그니처부터 숨기기
-                        cutText = '받기 Mac용 Outlook';
-                        cutIndex = senderIdx - 100 + outlookSigIdx;
-                    } else {
-                        // Outlook 시그니처가 없으면 보낸 사람 앞 빈 줄 2개 찾기
-                        const doubleNewline = beforeSender.lastIndexOf('\n\n');
-                        if (doubleNewline !== -1) {
-                            cutIndex = senderIdx - 100 + doubleNewline + 2; // 빈 줄 이후부터
-                            cutText = text.substring(cutIndex, cutIndex + 10); // 임의 텍스트
-                        } else {
-                            // 그냥 보낸 사람부터
-                            cutText = '보낸 사람:';
-                            cutIndex = senderIdx;
-                        }
-                    }
+        // 2. "보낸 사람:" 찾기 (뒤에 "날짜:"가 있는 경우만)
+        if (cutHTML === -1) {
+            const senderHTML = originalHTML.indexOf('보낸 사람:');
+            if (senderHTML > 100) {
+                const after = originalHTML.substring(senderHTML, senderHTML + 500);
+                if (after.includes('날짜:')) {
+                    cutHTML = senderHTML;
                 }
             }
         }
         
-        // 그래도 없으면 "From:" + "Date:" 조합 찾기
-        if (!cutText) {
-            const fromIdx = text.indexOf('From:');
-            if (fromIdx > 50) {
-                const afterFrom = text.substring(fromIdx, fromIdx + 200);
-                if (afterFrom.includes('Date:') || afterFrom.includes('Sent:')) {
-                    cutText = 'From:';
-                    cutIndex = fromIdx;
+        // 3. "From:" 찾기 (뒤에 "Date:" 또는 "Sent:"가 있는 경우만)
+        if (cutHTML === -1) {
+            const fromHTML = originalHTML.indexOf('From:');
+            if (fromHTML > 100) {
+                const after = originalHTML.substring(fromHTML, fromHTML + 500);
+                if (after.includes('Date:') || after.includes('Sent:')) {
+                    cutHTML = fromHTML;
                 }
             }
         }
         
         // 패턴을 찾지 못했으면 종료
-        if (!cutText || cutIndex < 50) {
-            return;
-        }
-        
-        // HTML에서 해당 텍스트 위치 찾기
-        const cutHTML = originalHTML.indexOf(cutText);
-        if (cutHTML === -1) {
+        if (cutHTML === -1 || cutHTML < 100) {
             return;
         }
         
