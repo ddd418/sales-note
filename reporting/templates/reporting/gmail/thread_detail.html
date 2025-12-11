@@ -386,128 +386,48 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// 이메일 본문에서 인용된 이전 메일 숨기기
+// 이메일 본문에서 인용된 이전 메일 숨기기  
 function hideQuotedContent() {
     document.querySelectorAll('.email-body-content').forEach(function(emailBody) {
         const text = emailBody.textContent || emailBody.innerText;
         
-        // 인용 구분 패턴들 (우선순위 순)
-        const patterns = [
-            '받기 Mac용 Outlook',
-            'Get Outlook for',
-            '보낸 사람:',
-            'From:',
-            'On ',
-            '------'
-        ];
-        
-        let cutIndex = -1;
-        let foundPattern = null;
-        
-        // 각 패턴을 텍스트에서 찾기
-        for (const pattern of patterns) {
-            const index = text.indexOf(pattern);
-            if (index > 100) { // 최소 100자 이후에 나타나는 패턴만 인용으로 간주
-                // "보낸 사람:" 이면 "날짜:" 도 있는지 확인
-                if (pattern === '보낸 사람:' || pattern === 'From:') {
-                    const afterIndex = text.substring(index);
-                    if (afterIndex.includes('날짜:') || afterIndex.includes('Date:') || afterIndex.includes('Sent:')) {
-                        cutIndex = index;
-                        foundPattern = pattern;
-                        break;
-                    }
-                } else {
-                    cutIndex = index;
-                    foundPattern = pattern;
-                    break;
-                }
-            }
+        // "보낸 사람:" 또는 "From:" 찾기
+        let cutIndex = text.indexOf('보낸 사람:');
+        if (cutIndex === -1) {
+            cutIndex = text.indexOf('From:');
         }
         
-        // 인용 부분 발견 시 처리
-        if (cutIndex > 0) {
-            const beforeText = text.substring(0, cutIndex);
-            const afterText = text.substring(cutIndex);
-            
-            // 인용 ID 생성
-            const quotedId = 'quoted-' + Math.random().toString(36).substr(2, 9);
-            
-            // DOM 조작으로 분리
-            const allNodes = Array.from(emailBody.childNodes);
-            let charCount = 0;
-            let splitPoint = null;
-            
-            // 어느 노드에서 잘라야 하는지 찾기
-            for (let i = 0; i < allNodes.length; i++) {
-                const node = allNodes[i];
-                const nodeText = node.textContent || '';
-                
-                if (charCount + nodeText.length >= cutIndex) {
-                    splitPoint = i;
-                    break;
-                }
-                charCount += nodeText.length;
-            }
-            
-            if (splitPoint !== null) {
-                // 인용 구조 생성
-                const quotedSection = document.createElement('div');
-                quotedSection.className = 'quoted-email-section mt-3';
-                quotedSection.style.cssText = 'border-top: 2px solid hsl(217, 33%, 22%); padding-top: 10px;';
-                
-                const toggleBtn = document.createElement('button');
-                toggleBtn.className = 'btn btn-sm btn-outline-secondary';
-                toggleBtn.style.marginBottom = '10px';
-                toggleBtn.innerHTML = '<i class="bi bi-three-dots"></i> 이전 메일 보기';
-                toggleBtn.setAttribute('onclick', `toggleQuoted('${quotedId}')`);
-                
-                const quotedDiv = document.createElement('div');
-                quotedDiv.id = quotedId;
-                quotedDiv.style.cssText = 'display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%); white-space: pre-wrap;';
-                quotedDiv.textContent = afterText;
-                
-                quotedSection.appendChild(toggleBtn);
-                quotedSection.appendChild(quotedDiv);
-                
-                // splitPoint 이후의 노드들 제거
-                while (emailBody.childNodes.length > splitPoint + 1) {
-                    emailBody.removeChild(emailBody.lastChild);
-                }
-                
-                // 마지막 노드가 텍스트 노드면 자르기
-                const lastNode = emailBody.lastChild;
-                if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
-                    const lastNodeStart = charCount - (lastNode.textContent || '').length;
-                    const cutAt = cutIndex - lastNodeStart;
-                    if (cutAt > 0 && cutAt < lastNode.textContent.length) {
-                        lastNode.textContent = lastNode.textContent.substring(0, cutAt);
-                    }
-                }
-                
-                // 인용 섹션 추가
-                emailBody.appendChild(quotedSection);
-            }
+        // 발견되지 않았거나 너무 앞쪽에 있으면 무시 (최소 50자 이후)
+        if (cutIndex < 50) {
+            return;
         }
         
-        // 인용 부분을 발견하면 숨기기
-        if (cutPosition > -1) {
-            const originalContent = html.substring(0, cutPosition);
-            const quotedContent = html.substring(cutPosition);
-            
-            // 인용 부분을 토글 가능한 형태로 만들기
-            const quotedId = 'quoted-' + Math.random().toString(36).substr(2, 9);
-            
-            emailBody.innerHTML = originalContent + `
-                <div class="quoted-email-section mt-3" style="border-top: 2px solid hsl(217, 33%, 22%); padding-top: 10px;">
-                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleQuoted('${quotedId}')" style="margin-bottom: 10px;">
-                        <i class="bi bi-three-dots"></i> 이전 메일 보기
-                    </button>
-                    <div id="${quotedId}" style="display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%);">
-                        ${quotedContent}
-                    </div>
+        // "보낸 사람:" 이전 텍스트와 이후 텍스트 분리
+        const beforeText = text.substring(0, cutIndex).trim();
+        const afterText = text.substring(cutIndex).trim();
+        
+        // 인용 ID 생성
+        const quotedId = 'quoted-' + Math.random().toString(36).substr(2, 9);
+        
+        // HTML 이스케이프
+        function escapeHtml(txt) {
+            const div = document.createElement('div');
+            div.textContent = txt;
+            return div.innerHTML;
+        }
+        
+        // HTML을 완전히 교체
+        emailBody.innerHTML = `
+            <div style="white-space: pre-wrap;">${escapeHtml(beforeText)}</div>
+            <div class="quoted-email-section mt-3" style="border-top: 2px solid hsl(217, 33%, 22%); padding-top: 10px;">
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleQuoted('${quotedId}')" style="margin-bottom: 10px;">
+                    <i class="bi bi-three-dots"></i> 이전 메일 보기
+                </button>
+                <div id="${quotedId}" style="display: none; color: hsl(217, 33%, 50%); font-size: 0.9em; padding: 10px; background: hsl(222, 47%, 8%); border-radius: 5px; border-left: 3px solid hsl(217, 33%, 30%); white-space: pre-wrap;">
+                    ${escapeHtml(afterText)}
                 </div>
-            `;
-        }
+            </div>
+        `;
     });
 }
 
