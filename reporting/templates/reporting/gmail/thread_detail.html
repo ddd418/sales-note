@@ -418,8 +418,25 @@ function hideQuotedContent() {
                 // "보낸 사람:" 이후에 "날짜:"가 있는지 확인
                 const afterSender = text.substring(senderIdx, senderIdx + 200);
                 if (afterSender.includes('날짜:')) {
-                    cutText = '보낸 사람:';
-                    cutIndex = senderIdx;
+                    // "보낸 사람:" 이전 100자를 확인해서 Outlook 시그니처 찾기
+                    const beforeSender = text.substring(Math.max(0, senderIdx - 100), senderIdx);
+                    const outlookSigIdx = beforeSender.indexOf('받기 Mac용 Outlook');
+                    if (outlookSigIdx !== -1) {
+                        // Outlook 시그니처부터 숨기기
+                        cutText = '받기 Mac용 Outlook';
+                        cutIndex = senderIdx - 100 + outlookSigIdx;
+                    } else {
+                        // Outlook 시그니처가 없으면 보낸 사람 앞 빈 줄 2개 찾기
+                        const doubleNewline = beforeSender.lastIndexOf('\n\n');
+                        if (doubleNewline !== -1) {
+                            cutIndex = senderIdx - 100 + doubleNewline + 2; // 빈 줄 이후부터
+                            cutText = text.substring(cutIndex, cutIndex + 10); // 임의 텍스트
+                        } else {
+                            // 그냥 보낸 사람부터
+                            cutText = '보낸 사람:';
+                            cutIndex = senderIdx;
+                        }
+                    }
                 }
             }
         }
