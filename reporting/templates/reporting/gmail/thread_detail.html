@@ -406,23 +406,27 @@ function hideQuotedContent() {
             if (pos >= 50) positions.push(pos);
         }
         
-        // 2. Outlook 구분자: <div class="ms-outlook-mobile-reference-message
+        // 2. Outlook 인용 메일 컨테이너: <div id="mail-editor-reference-message-container">
+        let pos = originalHTML.indexOf('<div id="mail-editor-reference-message-container">');
+        if (pos >= 50) positions.push(pos);
+        
+        // 3. Outlook 구분자: <div class="ms-outlook-mobile-reference-message
         pos = originalHTML.indexOf('<div class="ms-outlook-mobile-reference-message');
         if (pos >= 50) positions.push(pos);
         
-        // 3. "받기 Mac용 Outlook"
-        let pos = originalHTML.indexOf('받기 Mac용 Outlook');
+        // 4. "받기 Mac용 Outlook"
+        pos = originalHTML.indexOf('받기 Mac용 Outlook');
         if (pos >= 50) positions.push(pos);
         
-        // 4. "Get Outlook for"
+        // 5. "Get Outlook for"
         pos = originalHTML.indexOf('Get Outlook for');
         if (pos >= 50) positions.push(pos);
         
-        // 5. "보낸 사람:"
+        // 6. "보낸 사람:"
         pos = originalHTML.indexOf('보낸 사람:');
         if (pos >= 50) positions.push(pos);
         
-        // 6. "From:"
+        // 7. "From:"
         pos = originalHTML.indexOf('From:');
         if (pos >= 50) positions.push(pos);
         
