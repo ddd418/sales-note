@@ -560,7 +560,7 @@ a.text-decoration-none {
                               </a></li>
                               {% for child in children %}
                               <li><a class="dropdown-item ps-4 {% if dept.department.category.id == child.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ child.id }}, '{{ child.get_full_path }}'); return false;">
-                                <span class="badge category-badge me-2" data-bg-color="{{ child.color }}" style="background-color: {{ child.color }};"><i class="fas fa-tag"></i></span>{{ child.name }}
+                                <span class="badge category-badge me-2" data-bg-color="{{ child.color }}" style="background-color: {{ child.color }};"><i class="fas fa-tag"></i></span>{{ parent.name }} <i class="fas fa-chevron-right mx-1" style="font-size: 0.7rem;"></i> {{ child.name }}
                               </a></li>
                               {% endfor %}
                               {% endfor %}
