@@ -52,6 +52,12 @@ urlpatterns = [
     path('customer-report/<int:followup_id>/', views.customer_detail_report_view_simple, name='customer_detail_report'),
     path('followups/<int:followup_id>/priority-update/', views.customer_priority_update, name='customer_priority_update'),
     
+    # 카테고리 관리 URL들
+    path('category/create/', views.category_create, name='category_create'),
+    path('category/<int:category_id>/update/', views.category_update, name='category_update'),
+    path('category/<int:category_id>/delete/', views.category_delete, name='category_delete'),
+    path('departments/<int:department_id>/assign-category/', views.department_assign_category, name='department_assign_category'),
+    
     # 메모 URL들
     path('memo/create/', views.memo_create_view, name='memo_create'),
     

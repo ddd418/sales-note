@@ -2,6 +2,38 @@ from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
 from django.db.models import Sum
 
+# 고객 카테고리 모델
+class CustomerCategory(models.Model):
+    name = models.CharField(max_length=100, verbose_name="카테고리명")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="생성자")
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children', verbose_name="상위 카테고리")
+    color = models.CharField(max_length=7, default="#007bff", verbose_name="색상 코드", help_text="HEX 색상 코드 (예: #007bff)")
+    description = models.TextField(blank=True, null=True, verbose_name="설명")
+    order = models.IntegerField(default=0, verbose_name="정렬 순서")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        if self.parent:
+            return f"{self.parent.name} > {self.name}"
+        return self.name
+    
+    def get_full_path(self):
+        """전체 경로 반환 (상위 > 하위)"""
+        if self.parent:
+            return f"{self.parent.name} > {self.name}"
+        return self.name
+    
+    def is_parent(self):
+        """상위 카테고리인지 확인"""
+        return self.children.exists()
+
+    class Meta:
+        verbose_name = "고객 카테고리"
+        verbose_name_plural = "고객 카테고리 목록"
+        ordering = ['order', 'name']
+        unique_together = ['user', 'name', 'parent']
+
 # 사용자 소속 회사 (UserCompany) 모델 - 직원들의 소속 회사
 class UserCompany(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="회사명")
@@ -35,6 +67,7 @@ class Company(models.Model):
 class Department(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='departments', verbose_name="업체/학교")
     name = models.CharField(max_length=100, verbose_name="부서/연구실명")
+    category = models.ForeignKey('CustomerCategory', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="카테고리", help_text="부서 분류 카테고리")
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")

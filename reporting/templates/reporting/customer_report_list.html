@@ -3,7 +3,51 @@
 
 {% block extra_css %}
 <style>
-/* 🌙 다크 모드 스타일 */
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+
+/* backdrop을 완전히 투명하게 (배경 없음) */
+.modal-backdrop {
+  display: none !important; /* backdrop 자체를 숨김 */
+}
+
+/* 모달 자체는 backdrop보다 높게 */
+.modal {
+  z-index: 1055 !important;
+  pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+}
+
+/* 모달 다이얼로그만 클릭 가능하게 */
+.modal-dialog {
+  z-index: 1056 !important;
+  pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+}
+
+/* 모달 컨텐츠를 확실히 클릭 가능하게 */
+.modal-content {
+  position: relative;
+  z-index: 1057 !important;
+  pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.3rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5) !important; /* 모달에 그림자 추가 */
+}
+
+/* 모달 내부의 모든 요소가 클릭 가능하도록 */
+.modal-header,
+.modal-body,
+.modal-footer,
+.modal-header *,
+.modal-body *,
+.modal-footer * {
+  pointer-events: auto !important;
+}
+
+/* ============================================
+   🌙 다크 모드 스타일
+   ============================================ */
 
 /* 페이지 타이틀 */
 .page-title {
@@ -309,13 +353,38 @@ a.text-decoration-none {
         <div class="col-12">
           <div class="card">
             <div class="card-body">
-              <h6 class="card-title mb-3">
-                <i class="fas fa-search me-2"></i>검색 및 필터
-              </h6>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="card-title mb-0">
+                  <i class="fas fa-search me-2"></i>검색 및 필터
+                </h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#categoryModal">
+                  <i class="fas fa-tags me-1"></i>카테고리 관리
+                </button>
+              </div>
               <form method="GET" action="{% url 'reporting:customer_report' %}">
                 <div class="row g-3">
+                  <!-- 카테고리 필터 -->
+                  <div class="col-md-4">
+                    <label for="category" class="form-label">
+                      <i class="fas fa-tag me-1"></i>카테고리
+                    </label>
+                    <select class="form-select" name="category" id="category" onchange="this.form.submit()">
+                      <option value="">전체 카테고리</option>
+                      {% for parent, children in categories_dict.items %}
+                      <option value="{{ parent.id }}" {% if selected_category and selected_category.id == parent.id %}selected{% endif %}>
+                        {{ parent.name }}
+                      </option>
+                      {% for child in children %}
+                      <option value="{{ child.id }}" {% if selected_category and selected_category.id == child.id %}selected{% endif %}>
+                        &nbsp;&nbsp;└ {{ child.name }}
+                      </option>
+                      {% endfor %}
+                      {% endfor %}
+                    </select>
+                  </div>
+                  
                   <!-- 검색어 -->
-                  <div class="col-md-8">
+                  <div class="col-md-5">
                     <label for="search" class="form-label">검색어</label>
                     <input 
                       type="text" 
@@ -328,7 +397,7 @@ a.text-decoration-none {
                   </div>
                   
                   <!-- 버튼들 -->
-                  <div class="col-md-4">
+                  <div class="col-md-3">
                     <label class="form-label">&nbsp;</label>
                     <div class="btn-group w-100">
                       <button type="submit" class="btn btn-primary">
@@ -348,11 +417,12 @@ a.text-decoration-none {
                 {% endif %}
                 
                 <!-- 검색 결과 정보 -->
-                {% if search_query %}
+                {% if search_query or selected_category %}
                 <div class="mt-3">
                   <small class="text-muted">
                     검색 결과: {{ total_customers }}건
                     {% if search_query %} | 검색어: "<strong>{{ search_query }}</strong>"{% endif %}
+                    {% if selected_category %} | 카테고리: <span class="badge" style="background-color: {{ selected_category.color }};">{{ selected_category.get_full_path }}</span>{% endif %}
                   </small>
                 </div>
                 {% endif %}
@@ -465,14 +535,47 @@ a.text-decoration-none {
                         </div>
                       </td>
                       <td>
-                        <div class="d-flex flex-wrap gap-1">
-                          {% for customer in dept.customers %}
-                          <a href="{% url 'reporting:followup_detail' customer.id %}" 
-                             class="badge bg-secondary text-decoration-none" 
-                             title="{{ customer.user.username }} 담당">
-                            {{ customer.customer_name|default:"미정" }}
-                          </a>
-                          {% endfor %}
+                        <div class="d-flex align-items-center gap-2">
+                          <!-- 부서 카테고리 표시 -->
+                          <div class="dropdown">
+                            <button class="btn btn-sm p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="background: none;">
+                              <span class="badge" style="background-color: {% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}; font-size: 0.75rem; cursor: pointer;" title="부서 카테고리 변경">
+                                <i class="fas fa-tag"></i>
+                                {% if dept.department.category %}
+                                  {{ dept.department.category.get_full_path }}
+                                {% else %}
+                                  카테고리 없음
+                                {% endif %}
+                              </span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-start" style="min-width: 200px;">
+                              <li><h6 class="dropdown-header">부서 카테고리 선택</h6></li>
+                              <li><a class="dropdown-item" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, '', '없음'); return false;">
+                                <span class="badge bg-secondary me-2"><i class="fas fa-times"></i></span>없음
+                              </a></li>
+                              <li><hr class="dropdown-divider"></li>
+                              {% for parent, children in categories_dict.items %}
+                              <li><a class="dropdown-item {% if dept.department.category.id == parent.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ parent.id }}, '{{ parent.name }}'); return false;">
+                                <span class="badge me-2" style="background-color: {{ parent.color }};"><i class="fas fa-tag"></i></span>{{ parent.name }}
+                              </a></li>
+                              {% for child in children %}
+                              <li><a class="dropdown-item ps-4 {% if dept.department.category.id == child.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ child.id }}, '{{ child.get_full_path }}'); return false;">
+                                <span class="badge me-2" style="background-color: {{ child.color }};"><i class="fas fa-tag"></i></span>{{ child.name }}
+                              </a></li>
+                              {% endfor %}
+                              {% endfor %}
+                            </ul>
+                          </div>
+                          <!-- 고객 목록 -->
+                          <div class="d-flex flex-wrap gap-1">
+                            {% for customer in dept.customers %}
+                            <a href="{% url 'reporting:followup_detail' customer.id %}" 
+                               class="badge bg-secondary text-decoration-none" 
+                               title="{{ customer.user.username }} 담당">
+                              {{ customer.customer_name|default:"미정" }}
+                            </a>
+                            {% endfor %}
+                          </div>
                         </div>
                       </td>
                       <td class="text-center">
@@ -1116,6 +1219,285 @@ document.addEventListener('DOMContentLoaded', adjustCustomerReportAmountTextSize
 
 // 윈도우 리사이즈 시 재조정
 window.addEventListener('resize', adjustCustomerReportAmountTextSize);
+</script>
+
+<!-- 카테고리 관리 모달 -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="categoryModalLabel">
+          <i class="fas fa-tags me-2"></i>카테고리 관리
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <button type="button" class="btn btn-primary" onclick="showCategoryForm()">
+            <i class="fas fa-plus me-1"></i>새 카테고리 추가
+          </button>
+        </div>
+        
+        <!-- 카테고리 추가/수정 폼 -->
+        <div id="categoryFormContainer" style="display: none;" class="mb-4">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="card-title" id="categoryFormTitle">새 카테고리</h6>
+              <form id="categoryForm">
+                {% csrf_token %}
+                <input type="hidden" id="categoryId" name="category_id">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="categoryName" class="form-label">카테고리명 *</label>
+                    <input type="text" class="form-control" id="categoryName" name="name" required>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="categoryParent" class="form-label">상위 카테고리</label>
+                    <select class="form-select" id="categoryParent" name="parent_id">
+                      <option value="">없음 (최상위 카테고리)</option>
+                      {% for parent, children in categories_dict.items %}
+                      <option value="{{ parent.id }}">{{ parent.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <small class="text-muted">하위 카테고리로 만들려면 상위 카테고리를 선택하세요</small>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="categoryColor" class="form-label">색상</label>
+                    <input type="color" class="form-control form-control-color" id="categoryColor" name="color" value="#007bff">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="categoryOrder" class="form-label">정렬순서</label>
+                    <input type="number" class="form-control" id="categoryOrder" name="order" value="0">
+                  </div>
+                  <div class="col-12">
+                    <label for="categoryDescription" class="form-label">설명</label>
+                    <textarea class="form-control" id="categoryDescription" name="description" rows="2"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <button type="submit" class="btn btn-primary me-2">
+                      <i class="fas fa-save me-1"></i>저장
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="hideCategoryForm()">
+                      취소
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 카테고리 목록 -->
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th style="width: 50px;">색상</th>
+                <th>카테고리명</th>
+                <th>설명</th>
+                <th>순서</th>
+                <th style="width: 150px;">작업</th>
+              </tr>
+            </thead>
+            <tbody id="categoryList">
+              {% for parent, children in categories_dict.items %}
+              <tr data-category-id="{{ parent.id }}" style="font-weight: bold;">
+                <td><span class="badge" style="background-color: {{ parent.color }};">&nbsp;&nbsp;&nbsp;</span></td>
+                <td>
+                  <i class="fas fa-folder me-1"></i>{{ parent.name }}
+                  {% if children %}<span class="badge bg-secondary ms-2">{{ children|length }}</span>{% endif %}
+                </td>
+                <td><small class="text-muted">{{ parent.description|default:"-" }}</small></td>
+                <td>{{ parent.order }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" onclick="editCategory({{ parent.id }}, '{{ parent.name }}', '{{ parent.color }}', {{ parent.order }}, '{{ parent.description|default:"" }}', '')">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory({{ parent.id }}, '{{ parent.name }}')">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              {% for child in children %}
+              <tr data-category-id="{{ child.id }}">
+                <td><span class="badge" style="background-color: {{ child.color }};">&nbsp;&nbsp;&nbsp;</span></td>
+                <td class="ps-4">
+                  <i class="fas fa-file me-1"></i>{{ child.name }}
+                </td>
+                <td><small class="text-muted">{{ child.description|default:"-" }}</small></td>
+                <td>{{ child.order }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" onclick="editCategory({{ child.id }}, '{{ child.name }}', '{{ child.color }}', {{ child.order }}, '{{ child.description|default:"" }}', '{{ parent.id }}')">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="deleteCategory({{ child.id }}, '{{ child.name }}')">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+              {% empty %}
+              <tr>
+                <td colspan="5" class="text-center text-muted">등록된 카테고리가 없습니다</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 카테고리 폼 표시/숨김
+function showCategoryForm() {
+  document.getElementById('categoryFormContainer').style.display = 'block';
+  document.getElementById('categoryFormTitle').textContent = '새 카테고리';
+  document.getElementById('categoryForm').reset();
+  document.getElementById('categoryId').value = '';
+  
+  // 모든 상위 카테고리 옵션 활성화
+  const parentSelect = document.getElementById('categoryParent');
+  Array.from(parentSelect.options).forEach(option => {
+    option.disabled = false;
+    option.style.display = '';
+  });
+}
+
+function hideCategoryForm() {
+  document.getElementById('categoryFormContainer').style.display = 'none';
+  document.getElementById('categoryForm').reset();
+}
+
+// 카테고리 편집
+function editCategory(id, name, color, order, description, parentId) {
+  document.getElementById('categoryFormContainer').style.display = 'block';
+  document.getElementById('categoryFormTitle').textContent = '카테고리 수정';
+  document.getElementById('categoryId').value = id;
+  document.getElementById('categoryName').value = name;
+  document.getElementById('categoryColor').value = color;
+  document.getElementById('categoryOrder').value = order;
+  document.getElementById('categoryDescription').value = description;
+  document.getElementById('categoryParent').value = parentId || '';
+  
+  // 자기 자신을 상위 카테고리로 선택할 수 없도록 옵션 비활성화
+  const parentSelect = document.getElementById('categoryParent');
+  Array.from(parentSelect.options).forEach(option => {
+    if (option.value == id) {
+      option.disabled = true;
+      option.style.display = 'none';
+    } else {
+      option.disabled = false;
+      option.style.display = '';
+    }
+  });
+}
+
+// 카테고리 저장
+document.getElementById('categoryForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const formData = new FormData(this);
+  const categoryId = document.getElementById('categoryId').value;
+  const url = categoryId ? `/reporting/category/${categoryId}/update/` : '/reporting/category/create/';
+  
+  fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin', // 세션 쿠키 포함
+    headers: {
+      'X-CSRFToken': formData.get('csrfmiddlewaretoken'),
+      'X-Requested-With': 'XMLHttpRequest' // AJAX 요청임을 표시
+    },
+    body: formData
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('서버 응답 오류: ' + response.status);
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      alert(categoryId ? '카테고리가 수정되었습니다.' : '카테고리가 추가되었습니다.');
+      location.reload();
+    } else {
+      alert('오류: ' + (data.error || '알 수 없는 오류'));
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('처리 중 오류가 발생했습니다: ' + error.message);
+  });
+});
+
+// 카테고리 삭제
+function deleteCategory(id, name) {
+  if (!confirm(`"${name}" 카테고리를 삭제하시겠습니까?\n이 카테고리에 속한 고객들은 카테고리 없음으로 변경됩니다.`)) {
+    return;
+  }
+  
+  fetch(`/reporting/category/${id}/delete/`, {
+    method: 'POST',
+    credentials: 'same-origin', // 세션 쿠키 포함
+    headers: {
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      'X-Requested-With': 'XMLHttpRequest' // AJAX 요청임을 표시
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('서버 응답 오류: ' + response.status);
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      alert('카테고리가 삭제되었습니다.');
+      location.reload();
+    } else {
+      alert('오류: ' + (data.error || '알 수 없는 오류'));
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('삭제 중 오류가 발생했습니다: ' + error.message);
+  });
+}
+
+// 부서에 카테고리 할당
+function assignDepartmentCategory(departmentId, categoryId, categoryName) {
+  const formData = new FormData();
+  formData.append('category_id', categoryId);
+  
+  fetch(`/reporting/departments/${departmentId}/assign-category/`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: formData
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('서버 응답 오류: ' + response.status);
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      // 페이지 새로고침으로 UI 업데이트
+      location.reload();
+    } else {
+      alert('오류: ' + (data.error || '알 수 없는 오류'));
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('카테고리 할당 중 오류가 발생했습니다: ' + error.message);
+  });
+}
 </script>
 
 {% endblock %}

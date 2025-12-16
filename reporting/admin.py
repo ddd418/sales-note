@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
-    Company, Department, DocumentTemplate, EmailLog, BusinessCard
+    Company, Department, DocumentTemplate, EmailLog, BusinessCard, CustomerCategory
 )
 
 # UserProfile 인라인 관리자
@@ -47,6 +47,15 @@ class DepartmentAdmin(admin.ModelAdmin):
     search_fields = ('name', 'company__name')
     list_filter = ('company', 'created_by', 'created_at')
     autocomplete_fields = ['company']
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+
+# CustomerCategory 모델 관리자 설정
+@admin.register(CustomerCategory)
+class CustomerCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'color', 'order', 'created_at')
+    search_fields = ('name', 'user__username')
+    list_filter = ('user', 'created_at')
     date_hierarchy = 'created_at'
     list_per_page = 20
 

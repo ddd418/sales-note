@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage, EmailLog
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, OpportunityTracking, FunnelStage, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -330,9 +330,16 @@ class FollowUpForm(forms.ModelForm):
         error_messages={'required': '부서/연구실명은 필수 입력사항입니다.'}
     )
     
+    category = forms.ModelChoiceField(
+        queryset=CustomerCategory.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='카테고리'
+    )
+    
     class Meta:
         model = FollowUp
-        fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority']
+        fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority', 'category']
         widgets = {
             'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
@@ -352,7 +359,24 @@ class FollowUpForm(forms.ModelForm):
             'address': '상세주소',
             'notes': '상세 내용',
             'priority': '우선순위',
+            'category': '카테고리',
         }
+    
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if user:
+            # 카테고리를 계층 구조로 표시
+            categories = CustomerCategory.objects.filter(user=user).select_related('parent').order_by('order', 'name')
+            self.fields['category'].queryset = categories
+            # 선택 옵션을 계층적으로 표시
+            choices = [('', '---------')]
+            for cat in categories:
+                if cat.parent:
+                    choices.append((cat.id, f'  └ {cat.name}'))
+                else:
+                    choices.append((cat.id, cat.name))
+            self.fields['category'].choices = choices
         
     def clean_company(self):
         company = self.cleaned_data.get('company')
@@ -1155,7 +1179,7 @@ def followup_detail_view(request, pk):
 def followup_create_view(request):
     """팔로우업 생성"""
     if request.method == 'POST':
-        form = FollowUpForm(request.POST)
+        form = FollowUpForm(request.POST, user=request.user)
         if form.is_valid():
             followup = form.save(commit=False)
             followup.user = request.user  # 현재 로그인한 사용자를 연결
@@ -1166,7 +1190,7 @@ def followup_create_view(request):
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
     else:
-        form = FollowUpForm()
+        form = FollowUpForm(user=request.user)
     
     context = {
         'form': form,
@@ -1185,7 +1209,7 @@ def followup_edit_view(request, pk):
         return redirect('reporting:followup_list')
     
     if request.method == 'POST':
-        form = FollowUpForm(request.POST, instance=followup)
+        form = FollowUpForm(request.POST, instance=followup, user=request.user)
         if form.is_valid():
             updated_followup = form.save()
             
@@ -1194,7 +1218,7 @@ def followup_edit_view(request, pk):
         else:
             messages.error(request, '입력 정보를 확인해주세요.')
     else:
-        form = FollowUpForm(instance=followup)
+        form = FollowUpForm(instance=followup, user=request.user)
     
     context = {
         'form': form,
@@ -8309,8 +8333,34 @@ def customer_report_view(request):
         filter_users = User.objects.filter(id=request.user.id)
         target_user = request.user
     
+    # 카테고리 필터링
+    category_id = request.GET.get('category')
+    # 모든 카테고리 가져오기 (계층 구조 포함)
+    all_categories = CustomerCategory.objects.filter(user=request.user).select_related('parent').order_by('order', 'name')
+    # 계층 구조로 정리
+    parent_categories = all_categories.filter(parent__isnull=True)
+    categories_dict = {}
+    for cat in parent_categories:
+        children = all_categories.filter(parent=cat)
+        categories_dict[cat] = list(children)
+    
+    selected_category = None
+    
     # 모든 고객 조회
     followups = FollowUp.objects.all()
+    
+    # 카테고리 필터 적용 (부서 기준)
+    if category_id:
+        try:
+            selected_category = CustomerCategory.objects.get(id=category_id, user=request.user)
+            # 선택한 카테고리가 상위 카테고리인 경우, 하위 카테고리도 포함
+            if selected_category.is_parent():
+                child_ids = selected_category.children.values_list('id', flat=True)
+                followups = followups.filter(Q(department__category=selected_category) | Q(department__category_id__in=child_ids))
+            else:
+                followups = followups.filter(department__category=selected_category)
+        except CustomerCategory.DoesNotExist:
+            pass
     
     # 검색 기능
     search_query = request.GET.get('search')
@@ -8608,6 +8658,11 @@ def customer_report_view(request):
         'company_users': company_users,
         'selected_filter_user': selected_filter_user,
         'is_viewing_others': is_viewing_others,
+        # 카테고리 필터
+        'all_categories': all_categories,
+        'categories_dict': categories_dict,
+        'selected_category': selected_category,
+        'category_id': category_id,
     }
     
     return render(request, 'reporting/customer_report_list.html', context)
@@ -14598,3 +14653,176 @@ def quick_add_department(request):
             'success': False,
             'error': '부서 등록 중 오류가 발생했습니다.'
         }, status=500)
+
+
+@login_required
+def category_create(request):
+    """카테고리 생성"""
+    if request.method == 'POST':
+        try:
+            name = request.POST.get('name', '').strip()
+            parent_id = request.POST.get('parent_id', '').strip()
+            color = request.POST.get('color', '#007bff')
+            description = request.POST.get('description', '').strip()
+            order = int(request.POST.get('order', 0))
+            
+            if not name:
+                return JsonResponse({'success': False, 'error': '카테고리명을 입력하세요.'})
+            
+            # 상위 카테고리 처리
+            parent = None
+            if parent_id and parent_id != '':
+                try:
+                    parent = CustomerCategory.objects.get(id=parent_id, user=request.user)
+                except CustomerCategory.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': '상위 카테고리를 찾을 수 없습니다.'})
+            
+            # 중복 체크
+            if CustomerCategory.objects.filter(user=request.user, name=name, parent=parent).exists():
+                return JsonResponse({'success': False, 'error': '이미 존재하는 카테고리명입니다.'})
+            
+            # 생성
+            category = CustomerCategory.objects.create(
+                user=request.user,
+                name=name,
+                parent=parent,
+                color=color,
+                description=description,
+                order=order
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'category_id': category.id,
+                'message': '카테고리가 생성되었습니다.'
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def category_update(request, category_id):
+    """카테고리 수정"""
+    if request.method == 'POST':
+        try:
+            category = CustomerCategory.objects.get(id=category_id, user=request.user)
+            
+            name = request.POST.get('name', '').strip()
+            parent_id = request.POST.get('parent_id', '').strip()
+            color = request.POST.get('color', '#007bff')
+            description = request.POST.get('description', '').strip()
+            order = int(request.POST.get('order', 0))
+            
+            if not name:
+                return JsonResponse({'success': False, 'error': '카테고리명을 입력하세요.'})
+            
+            # 상위 카테고리 처리
+            parent = None
+            if parent_id and parent_id != '':
+                try:
+                    parent = CustomerCategory.objects.get(id=parent_id, user=request.user)
+                    # 자기 자신을 부모로 설정할 수 없음
+                    if parent.id == category_id:
+                        return JsonResponse({'success': False, 'error': '자기 자신을 상위 카테고리로 설정할 수 없습니다.'})
+                    # 자신의 하위 카테고리를 부모로 설정할 수 없음 (순환 참조 방지)
+                    if parent.parent_id == category_id:
+                        return JsonResponse({'success': False, 'error': '하위 카테고리를 상위 카테고리로 설정할 수 없습니다.'})
+                except CustomerCategory.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': '상위 카테고리를 찾을 수 없습니다.'})
+            
+            # 중복 체크 (본인 제외)
+            if CustomerCategory.objects.filter(user=request.user, name=name, parent=parent).exclude(id=category_id).exists():
+                return JsonResponse({'success': False, 'error': '이미 존재하는 카테고리명입니다.'})
+            
+            # 수정
+            category.name = name
+            category.parent = parent
+            category.color = color
+            category.description = description
+            category.order = order
+            category.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': '카테고리가 수정되었습니다.'
+            })
+            
+        except CustomerCategory.DoesNotExist:
+            return JsonResponse({'success': False, 'error': '카테고리를 찾을 수 없습니다.'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def department_assign_category(request, department_id):
+    """부서에 카테고리 빠르게 할당"""
+    if request.method == 'POST':
+        try:
+            department = Department.objects.get(id=department_id)
+            
+            # 권한 체크 - 부서에 속한 고객들의 담당자 확인
+            followups = FollowUp.objects.filter(department=department)
+            if followups.exists():
+                # 첫 번째 고객의 담당자 권한으로 체크
+                first_followup = followups.first()
+                if not can_modify_user_data(request.user, first_followup.user):
+                    return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'})
+            
+            category_id = request.POST.get('category_id', '').strip()
+            
+            if category_id and category_id != '':
+                try:
+                    category = CustomerCategory.objects.get(id=category_id, user=request.user)
+                    department.category = category
+                except CustomerCategory.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': '카테고리를 찾을 수 없습니다.'})
+            else:
+                department.category = None
+            
+            department.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': '부서에 카테고리가 할당되었습니다.',
+                'category_name': department.category.get_full_path() if department.category else '없음',
+                'category_color': department.category.color if department.category else '#6c757d'
+            })
+            
+        except Department.DoesNotExist:
+            return JsonResponse({'success': False, 'error': '부서를 찾을 수 없습니다.'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def category_delete(request, category_id):
+    """카테고리 삭제"""
+    if request.method == 'POST':
+        try:
+            category = CustomerCategory.objects.get(id=category_id, user=request.user)
+            category_name = category.name
+            
+            # 이 카테고리를 사용하는 부서들의 카테고리를 None으로 변경
+            Department.objects.filter(category=category).update(category=None)
+            
+            # 카테고리 삭제
+            category.delete()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'"{category_name}" 카테고리가 삭제되었습니다.'
+            })
+            
+        except CustomerCategory.DoesNotExist:
+            return JsonResponse({'success': False, 'error': '카테고리를 찾을 수 없습니다.'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
