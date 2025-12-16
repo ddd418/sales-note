@@ -539,7 +539,7 @@ a.text-decoration-none {
                           <!-- 부서 카테고리 표시 -->
                           <div class="dropdown">
                             <button class="btn btn-sm p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="background: none;">
-                              <span class="badge" style="background-color: {% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}; font-size: 0.75rem; cursor: pointer;" title="부서 카테고리 변경">
+                              <span class="badge" style="background-color: {% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}; color: white; font-size: 0.75rem; cursor: pointer;" title="부서 카테고리 변경">
                                 <i class="fas fa-tag"></i>
                                 {% if dept.department.category %}
                                   {{ dept.department.category.get_full_path }}
@@ -556,11 +556,11 @@ a.text-decoration-none {
                               <li><hr class="dropdown-divider"></li>
                               {% for parent, children in categories_dict.items %}
                               <li><a class="dropdown-item {% if dept.department.category.id == parent.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ parent.id }}, '{{ parent.name }}'); return false;">
-                                <span class="badge me-2" style="background-color: {{ parent.color }};"><i class="fas fa-tag"></i></span>{{ parent.name }}
+                                <span class="badge me-2" style="background-color: {{ parent.color }}; color: white;"><i class="fas fa-tag"></i></span>{{ parent.name }}
                               </a></li>
                               {% for child in children %}
                               <li><a class="dropdown-item ps-4 {% if dept.department.category.id == child.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ child.id }}, '{{ child.get_full_path }}'); return false;">
-                                <span class="badge me-2" style="background-color: {{ child.color }};"><i class="fas fa-tag"></i></span>{{ child.name }}
+                                <span class="badge me-2" style="background-color: {{ child.color }}; color: white;"><i class="fas fa-tag"></i></span>{{ child.name }}
                               </a></li>
                               {% endfor %}
                               {% endfor %}
