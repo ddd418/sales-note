@@ -8371,19 +8371,39 @@ def customer_report_view(request):
             Q(manager__icontains=search_query)
         )
     
-    # ✅ Prefetch로 N+1 쿼리 방지 (성능 최적화)
+    # ✅ 성능 최적화: Prefetch로 N+1 쿼리 방지
     from django.db.models import Prefetch
     
     # 사용자 필터 설정
     if target_user is None:
         user_filter_q = Q(user__in=filter_users)
+        prepayment_filter_q = Q(created_by__in=filter_users)
     else:
         user_filter_q = Q(user=target_user)
+        prepayment_filter_q = Q(created_by=target_user)
     
-    # 모든 관련 데이터를 한 번에 가져오기
+    # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링
+    # 1. 대상 사용자의 History가 있는 FollowUp ID
+    history_followup_ids = History.objects.filter(user_filter_q).values_list('followup_id', flat=True).distinct()
+    # 2. 대상 사용자의 Schedule이 있는 FollowUp ID  
+    schedule_followup_ids = Schedule.objects.filter(user_filter_q).values_list('followup_id', flat=True).distinct()
+    # 3. 대상 사용자의 Prepayment가 있는 FollowUp ID
+    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q).values_list('customer_id', flat=True).distinct()
+    
+    # 활동이 있는 FollowUp ID 합집합
+    active_followup_ids = set(history_followup_ids) | set(schedule_followup_ids) | set(prepayment_followup_ids)
+    
+    # ✅ 활동이 있는 고객만 조회 (대폭 감소)
+    followups = followups.filter(id__in=active_followup_ids)
+    
+    # ✅ select_related로 FK 조인 최적화
+    followups = followups.select_related('company', 'department', 'department__category', 'user')
+    
+    # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch)
     followups = followups.prefetch_related(
         Prefetch('histories', queryset=History.objects.filter(user_filter_q).select_related('user')),
-        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q).select_related('user').prefetch_related('delivery_items_set'))
+        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q).select_related('user').prefetch_related('delivery_items_set')),
+        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q).select_related('created_by'))
     )
     
     # 각 고객별 통계 계산
@@ -8518,25 +8538,14 @@ def customer_report_view(request):
         total_deliveries_count = unique_deliveries_count
         last_contact = max((h.created_at for h in all_histories), default=None)  # Prefetch된 데이터 사용
         
-        # 선결제 통계 계산 - 필터 사용자가 등록한 선결제
-        if target_user is None:
-            # 전체 필터: 같은 회사 사용자들의 선결제
-            prepayments = Prepayment.objects.filter(
-                customer=followup,
-                created_by__in=filter_users
-            ).select_related('created_by')
-        else:
-            prepayments = Prepayment.objects.filter(
-                customer=followup,
-                created_by=target_user
-            ).select_related('created_by')
-        
-        prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or Decimal('0')
-        prepayment_balance = prepayments.aggregate(total=Sum('balance'))['total'] or Decimal('0')
-        prepayment_count = prepayments.count()
+        # ✅ 선결제 통계 계산 - Prefetch된 데이터 사용 (추가 쿼리 없음!)
+        all_prepayments = list(followup.prepayments.all())
+        prepayment_total = sum(p.amount or Decimal('0') for p in all_prepayments)
+        prepayment_balance = sum(p.balance or Decimal('0') for p in all_prepayments)
+        prepayment_count = len(all_prepayments)
         
         # 선결제 등록자 정보 (중복 제거)
-        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in prepayments])) if prepayment_count > 0 else []
+        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in all_prepayments])) if prepayment_count > 0 else []
         
         # 객체에 통계 추가
         followup.total_meetings = total_meetings_count
