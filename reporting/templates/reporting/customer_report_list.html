@@ -539,7 +539,7 @@ a.text-decoration-none {
                           <!-- 부서 카테고리 표시 -->
                           <div class="dropdown">
                             <button class="btn btn-sm p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="background: none;">
-                              <span class="badge" style="background-color: {% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}; color: white; font-size: 0.75rem; cursor: pointer;" title="부서 카테고리 변경">
+                              <span class="badge category-badge" data-bg-color="{% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}" style="background-color: {% if dept.department.category %}{{ dept.department.category.color }}{% else %}#6c757d{% endif %}; font-size: 0.75rem; cursor: pointer;" title="부서 카테고리 변경">
                                 <i class="fas fa-tag"></i>
                                 {% if dept.department.category %}
                                   {{ dept.department.category.get_full_path }}
@@ -556,11 +556,11 @@ a.text-decoration-none {
                               <li><hr class="dropdown-divider"></li>
                               {% for parent, children in categories_dict.items %}
                               <li><a class="dropdown-item {% if dept.department.category.id == parent.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ parent.id }}, '{{ parent.name }}'); return false;">
-                                <span class="badge me-2" style="background-color: {{ parent.color }}; color: white;"><i class="fas fa-tag"></i></span>{{ parent.name }}
+                                <span class="badge category-badge me-2" data-bg-color="{{ parent.color }}" style="background-color: {{ parent.color }};"><i class="fas fa-tag"></i></span>{{ parent.name }}
                               </a></li>
                               {% for child in children %}
                               <li><a class="dropdown-item ps-4 {% if dept.department.category.id == child.id %}active{% endif %}" href="#" onclick="assignDepartmentCategory({{ dept.department.id }}, {{ child.id }}, '{{ child.get_full_path }}'); return false;">
-                                <span class="badge me-2" style="background-color: {{ child.color }}; color: white;"><i class="fas fa-tag"></i></span>{{ child.name }}
+                                <span class="badge category-badge me-2" data-bg-color="{{ child.color }}" style="background-color: {{ child.color }};"><i class="fas fa-tag"></i></span>{{ child.name }}
                               </a></li>
                               {% endfor %}
                               {% endfor %}
@@ -1350,6 +1350,40 @@ window.addEventListener('resize', adjustCustomerReportAmountTextSize);
 </div>
 
 <script>
+// 색상 명도 계산하여 텍스트 색상 결정 (밝은 배경 = 검은색, 어두운 배경 = 흰색)
+function getTextColorForBackground(hexColor) {
+  // HEX를 RGB로 변환
+  const r = parseInt(hexColor.substr(1, 2), 16);
+  const g = parseInt(hexColor.substr(3, 2), 16);
+  const b = parseInt(hexColor.substr(5, 2), 16);
+  
+  // 명도 계산 (0~1 사이 값)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  
+  // 0.5 이상이면 밝은 색상이므로 검은색 텍스트, 아니면 흰색
+  return luminance > 0.5 ? '#000000' : '#ffffff';
+}
+
+// 모든 카테고리 뱃지에 적절한 텍스트 색상 적용
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.category-badge').forEach(badge => {
+    const bgColor = badge.getAttribute('data-bg-color');
+    if (bgColor) {
+      badge.style.color = getTextColorForBackground(bgColor);
+    }
+  });
+});
+
+// 모든 카테고리 데이터 (서버에서 전달)
+const allCategories = [
+  {% for parent, children in categories_dict.items %}
+  { name: '{{ parent.name }}', color: '{{ parent.color }}' },
+  {% for child in children %}
+  { name: '{{ child.name }}', color: '{{ child.color }}' },
+  {% endfor %}
+  {% endfor %}
+];
+
 // 카테고리 폼 표시/숨김
 function showCategoryForm() {
   document.getElementById('categoryFormContainer').style.display = 'block';
@@ -1362,6 +1396,23 @@ function showCategoryForm() {
   Array.from(parentSelect.options).forEach(option => {
     option.disabled = false;
     option.style.display = '';
+  });
+  
+  // 카테고리명 입력 시 같은 이름의 색상 자동 적용
+  const nameInput = document.getElementById('categoryName');
+  const colorInput = document.getElementById('categoryColor');
+  
+  nameInput.addEventListener('blur', function autoFillColor() {
+    const inputName = this.value.trim();
+    if (inputName && !document.getElementById('categoryId').value) {
+      // 새 카테고리 생성 시에만
+      const existingCategory = allCategories.find(cat => cat.name === inputName);
+      if (existingCategory) {
+        colorInput.value = existingCategory.color;
+      }
+    }
+    // 이벤트 리스너 제거 (중복 방지)
+    nameInput.removeEventListener('blur', autoFillColor);
   });
 }
 
