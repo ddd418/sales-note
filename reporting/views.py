@@ -8566,17 +8566,15 @@ def customer_report_view(request):
         
         # ✅ 선결제 통계 계산 - Prefetch된 데이터 사용 (추가 쿼리 없음!)
         all_prepayments = list(followup.prepayments.all())
-        # 해당 년도의 선결제만 통계에 포함
-        year_prepayments = [p for p in all_prepayments if p.created_at.year == selected_year]
-        prepayment_total = sum(p.amount or Decimal('0') for p in year_prepayments)
-        prepayment_balance_current_year = sum(p.balance or Decimal('0') for p in year_prepayments)
-        prepayment_count = len(year_prepayments)
         
-        # 전체 선결제 잔액 (년도 무관)
+        # 전체 선결제 잔액 (년도 무관 - 모든 년도의 잔액 합계)
         prepayment_balance_total = sum(p.balance or Decimal('0') for p in all_prepayments)
+        prepayment_total_all = sum(p.amount or Decimal('0') for p in all_prepayments)
+        prepayment_count_all = len([p for p in all_prepayments if p.balance > 0])  # 잔액이 있는 선결제만 카운트
         
-        # 선결제 등록자 정보 (해당 년도만)
-        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in year_prepayments])) if prepayment_count > 0 else []
+        # 선결제 등록자 정보 (잔액이 있는 것만)
+        prepayments_with_balance = [p for p in all_prepayments if p.balance > 0]
+        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in prepayments_with_balance])) if prepayments_with_balance else []
         
         # 객체에 통계 추가
         followup.total_meetings = total_meetings_count
@@ -8586,9 +8584,9 @@ def customer_report_view(request):
         followup.tax_invoices_pending = total_tax_pending  # 세금계산서 미발행 건수
         followup.unpaid_count = total_tax_pending  # 미발행 건수를 unpaid_count로 사용
         followup.last_contact = last_contact
-        followup.prepayment_total = prepayment_total  # 해당 년도 선결제 총액
-        followup.prepayment_balance = prepayment_balance_current_year  # 해당 년도 선결제 잔액
-        followup.prepayment_count = prepayment_count  # 선결제 건수
+        followup.prepayment_total = prepayment_total_all  # 전체 선결제 총액
+        followup.prepayment_balance = prepayment_balance_total  # 전체 선결제 잔액 (년도 무관)
+        followup.prepayment_count = prepayment_count_all  # 잔액이 있는 선결제 건수
         followup.prepayment_creators = ', '.join(prepayment_creators) if prepayment_creators else ''  # 선결제 등록자
         
         # target_user의 활동이 하나라도 있는 경우 추가 (미팅, 납품, 선결제 잔액)
