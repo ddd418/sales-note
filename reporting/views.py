@@ -8407,13 +8407,13 @@ def customer_report_view(request):
     schedule_year_filter_q = Q(visit_date__year=selected_year)  # Schedule은 visit_date 사용
     prepayment_year_filter_q = Q(created_at__year=selected_year)
     
-    # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링 (년도 포함)
+    # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링
     # 1. 대상 사용자의 History가 있는 FollowUp ID (선택된 년도)
     history_followup_ids = History.objects.filter(user_filter_q & history_year_filter_q).values_list('followup_id', flat=True).distinct()
     # 2. 대상 사용자의 Schedule이 있는 FollowUp ID (선택된 년도, visit_date 기준)
     schedule_followup_ids = Schedule.objects.filter(user_filter_q & schedule_year_filter_q).values_list('followup_id', flat=True).distinct()
-    # 3. 대상 사용자의 Prepayment가 있는 FollowUp ID (선택된 년도)
-    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q & prepayment_year_filter_q).values_list('customer_id', flat=True).distinct()
+    # 3. 선결제 잔액이 있는 FollowUp ID (년도 무관, 잔액만 체크)
+    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q & Q(balance__gt=0)).values_list('customer_id', flat=True).distinct()
     
     # 활동이 있는 FollowUp ID 합집합
     active_followup_ids = set(history_followup_ids) | set(schedule_followup_ids) | set(prepayment_followup_ids)
@@ -8424,11 +8424,12 @@ def customer_report_view(request):
     # ✅ select_related로 FK 조인 최적화
     followups = followups.select_related('company', 'department', 'department__category', 'user')
     
-    # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch, 년도 필터 포함)
+    # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch)
+    # 선결제는 년도 필터 없이 모두 가져옴 (잔액 확인용)
     followups = followups.prefetch_related(
         Prefetch('histories', queryset=History.objects.filter(user_filter_q & history_year_filter_q).select_related('user')),
         Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q & schedule_year_filter_q).select_related('user').prefetch_related('delivery_items_set')),
-        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q & prepayment_year_filter_q).select_related('created_by'))
+        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q).select_related('created_by'))
     )
     
     # 각 고객별 통계 계산
@@ -8565,12 +8566,17 @@ def customer_report_view(request):
         
         # ✅ 선결제 통계 계산 - Prefetch된 데이터 사용 (추가 쿼리 없음!)
         all_prepayments = list(followup.prepayments.all())
-        prepayment_total = sum(p.amount or Decimal('0') for p in all_prepayments)
-        prepayment_balance = sum(p.balance or Decimal('0') for p in all_prepayments)
-        prepayment_count = len(all_prepayments)
+        # 해당 년도의 선결제만 통계에 포함
+        year_prepayments = [p for p in all_prepayments if p.created_at.year == selected_year]
+        prepayment_total = sum(p.amount or Decimal('0') for p in year_prepayments)
+        prepayment_balance_current_year = sum(p.balance or Decimal('0') for p in year_prepayments)
+        prepayment_count = len(year_prepayments)
         
-        # 선결제 등록자 정보 (중복 제거)
-        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in all_prepayments])) if prepayment_count > 0 else []
+        # 전체 선결제 잔액 (년도 무관)
+        prepayment_balance_total = sum(p.balance or Decimal('0') for p in all_prepayments)
+        
+        # 선결제 등록자 정보 (해당 년도만)
+        prepayment_creators = list(set([p.created_by.get_full_name() or p.created_by.username for p in year_prepayments])) if prepayment_count > 0 else []
         
         # 객체에 통계 추가
         followup.total_meetings = total_meetings_count
@@ -8580,22 +8586,23 @@ def customer_report_view(request):
         followup.tax_invoices_pending = total_tax_pending  # 세금계산서 미발행 건수
         followup.unpaid_count = total_tax_pending  # 미발행 건수를 unpaid_count로 사용
         followup.last_contact = last_contact
-        followup.prepayment_total = prepayment_total  # 선결제 총액
-        followup.prepayment_balance = prepayment_balance  # 선결제 잔액
+        followup.prepayment_total = prepayment_total  # 해당 년도 선결제 총액
+        followup.prepayment_balance = prepayment_balance_current_year  # 해당 년도 선결제 잔액
         followup.prepayment_count = prepayment_count  # 선결제 건수
         followup.prepayment_creators = ', '.join(prepayment_creators) if prepayment_creators else ''  # 선결제 등록자
         
-        # target_user의 활동이 하나라도 있는 경우만 추가 (미팅, 납품, 선결제)
-        if total_meetings_count > 0 or total_deliveries_count > 0 or prepayment_count > 0:
+        # target_user의 활동이 하나라도 있는 경우 추가 (미팅, 납품, 선결제 잔액)
+        # 선결제는 잔액이 남아있으면 년도 상관없이 표시
+        if total_meetings_count > 0 or total_deliveries_count > 0 or prepayment_balance_total > 0:
             followups_with_stats.append(followup)
             
-            # 전체 통계 누적
+            # 전체 통계 누적 (해당 년도 데이터만)
             total_amount_sum += total_amount
             total_meetings_sum += total_meetings_count
             total_deliveries_sum += total_deliveries_count
             total_unpaid_sum += total_tax_pending  # 세금계산서 미발행 건수로 변경
-            if prepayment_count > 0:
-                prepayment_customers.add(followup.id)  # 선결제가 있는 고객 추가
+            if prepayment_balance_total > 0:  # 전체 잔액이 있으면 카운트
+                prepayment_customers.add(followup.id)
     
     # === 부서별 그룹화 ===
     from collections import defaultdict
