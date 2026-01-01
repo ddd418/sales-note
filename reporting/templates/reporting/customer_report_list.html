@@ -472,7 +472,7 @@ a.text-decoration-none {
                   <thead class="table-light">
                     <tr>
                       <th>
-                        <a href="?sort=company&order={% if sort_by == 'company' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=company&order={% if sort_by == 'company' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           업체/부서 
                           {% if sort_by == 'company' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
@@ -483,7 +483,7 @@ a.text-decoration-none {
                       </th>
                       <th>소속 고객</th>
                       <th class="text-center">
-                        <a href="?sort=meetings&order={% if sort_by == 'meetings' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=meetings&order={% if sort_by == 'meetings' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           미팅 
                           {% if sort_by == 'meetings' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
@@ -493,7 +493,7 @@ a.text-decoration-none {
                         </a>
                       </th>
                       <th class="text-center">
-                        <a href="?sort=deliveries&order={% if sort_by == 'deliveries' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=deliveries&order={% if sort_by == 'deliveries' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           납품 
                           {% if sort_by == 'deliveries' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
@@ -503,7 +503,7 @@ a.text-decoration-none {
                         </a>
                       </th>
                       <th class="text-end">
-                        <a href="?sort=amount&order={% if sort_by == 'amount' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=amount&order={% if sort_by == 'amount' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           총 금액 
                           {% if sort_by == 'amount' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
@@ -513,8 +513,8 @@ a.text-decoration-none {
                         </a>
                       </th>
                       <th class="text-center">
-                        <a href="?sort=prepayment&order={% if sort_by == 'prepayment' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
-                          선결제 
+                        <a href="?sort=prepayment&order={% if sort_by == 'prepayment' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
+                          선결제 잔액
                           {% if sort_by == 'prepayment' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
                           {% else %}
@@ -523,7 +523,7 @@ a.text-decoration-none {
                         </a>
                       </th>
                       <th class="text-center">
-                        <a href="?sort=unpaid&order={% if sort_by == 'unpaid' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=unpaid&order={% if sort_by == 'unpaid' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           세금계산서 
                           {% if sort_by == 'unpaid' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
@@ -533,7 +533,7 @@ a.text-decoration-none {
                         </a>
                       </th>
                       <th class="text-center">
-                        <a href="?sort=last_contact&order={% if sort_by == 'last_contact' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="text-decoration-none text-dark">
+                        <a href="?sort=last_contact&order={% if sort_by == 'last_contact' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" class="text-decoration-none text-dark">
                           최근 접촉 
                           {% if sort_by == 'last_contact' %}
                             <i class="fas fa-sort-{% if sort_order == 'asc' %}up{% else %}down{% endif %}"></i>
