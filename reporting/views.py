@@ -8402,16 +8402,18 @@ def customer_report_view(request):
         user_filter_q = Q(user=target_user)
         prepayment_filter_q = Q(created_by=target_user)
     
-    # 년도 필터 추가
-    year_filter_q = Q(created_at__year=selected_year)
+    # 년도 필터 (각 모델에 맞는 날짜 필드 사용)
+    history_year_filter_q = Q(created_at__year=selected_year)
+    schedule_year_filter_q = Q(visit_date__year=selected_year)  # Schedule은 visit_date 사용
+    prepayment_year_filter_q = Q(created_at__year=selected_year)
     
     # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링 (년도 포함)
     # 1. 대상 사용자의 History가 있는 FollowUp ID (선택된 년도)
-    history_followup_ids = History.objects.filter(user_filter_q & year_filter_q).values_list('followup_id', flat=True).distinct()
-    # 2. 대상 사용자의 Schedule이 있는 FollowUp ID (선택된 년도)
-    schedule_followup_ids = Schedule.objects.filter(user_filter_q & year_filter_q).values_list('followup_id', flat=True).distinct()
+    history_followup_ids = History.objects.filter(user_filter_q & history_year_filter_q).values_list('followup_id', flat=True).distinct()
+    # 2. 대상 사용자의 Schedule이 있는 FollowUp ID (선택된 년도, visit_date 기준)
+    schedule_followup_ids = Schedule.objects.filter(user_filter_q & schedule_year_filter_q).values_list('followup_id', flat=True).distinct()
     # 3. 대상 사용자의 Prepayment가 있는 FollowUp ID (선택된 년도)
-    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q & year_filter_q).values_list('customer_id', flat=True).distinct()
+    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q & prepayment_year_filter_q).values_list('customer_id', flat=True).distinct()
     
     # 활동이 있는 FollowUp ID 합집합
     active_followup_ids = set(history_followup_ids) | set(schedule_followup_ids) | set(prepayment_followup_ids)
@@ -8424,9 +8426,9 @@ def customer_report_view(request):
     
     # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch, 년도 필터 포함)
     followups = followups.prefetch_related(
-        Prefetch('histories', queryset=History.objects.filter(user_filter_q & year_filter_q).select_related('user')),
-        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q & year_filter_q).select_related('user').prefetch_related('delivery_items_set')),
-        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q & year_filter_q).select_related('created_by'))
+        Prefetch('histories', queryset=History.objects.filter(user_filter_q & history_year_filter_q).select_related('user')),
+        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q & schedule_year_filter_q).select_related('user').prefetch_related('delivery_items_set')),
+        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q & prepayment_year_filter_q).select_related('created_by'))
     )
     
     # 각 고객별 통계 계산
