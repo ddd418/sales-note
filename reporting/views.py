@@ -8286,6 +8286,21 @@ def customer_report_view(request):
     
     user_profile = get_user_profile(request.user)
     
+    # === 년도 필터 ===
+    from django.utils import timezone
+    current_year = timezone.now().year
+    selected_year = request.GET.get('year')
+    if selected_year:
+        try:
+            selected_year = int(selected_year)
+        except ValueError:
+            selected_year = current_year
+    else:
+        selected_year = current_year
+    
+    # 년도 범위 생성 (최근 5년 + 내년)
+    year_range = list(range(current_year - 4, current_year + 2))
+    
     # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
     data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
     filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
@@ -8373,6 +8388,11 @@ def customer_report_view(request):
     
     # ✅ 성능 최적화: Prefetch로 N+1 쿼리 방지
     from django.db.models import Prefetch
+    import datetime
+    
+    # 선택된 년도의 시작일과 종료일
+    year_start = datetime.datetime(selected_year, 1, 1)
+    year_end = datetime.datetime(selected_year, 12, 31, 23, 59, 59)
     
     # 사용자 필터 설정
     if target_user is None:
@@ -8382,13 +8402,16 @@ def customer_report_view(request):
         user_filter_q = Q(user=target_user)
         prepayment_filter_q = Q(created_by=target_user)
     
-    # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링
-    # 1. 대상 사용자의 History가 있는 FollowUp ID
-    history_followup_ids = History.objects.filter(user_filter_q).values_list('followup_id', flat=True).distinct()
-    # 2. 대상 사용자의 Schedule이 있는 FollowUp ID  
-    schedule_followup_ids = Schedule.objects.filter(user_filter_q).values_list('followup_id', flat=True).distinct()
-    # 3. 대상 사용자의 Prepayment가 있는 FollowUp ID
-    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q).values_list('customer_id', flat=True).distinct()
+    # 년도 필터 추가
+    year_filter_q = Q(created_at__year=selected_year)
+    
+    # ✅ 핵심 최적화: 활동이 있는 고객만 먼저 필터링 (년도 포함)
+    # 1. 대상 사용자의 History가 있는 FollowUp ID (선택된 년도)
+    history_followup_ids = History.objects.filter(user_filter_q & year_filter_q).values_list('followup_id', flat=True).distinct()
+    # 2. 대상 사용자의 Schedule이 있는 FollowUp ID (선택된 년도)
+    schedule_followup_ids = Schedule.objects.filter(user_filter_q & year_filter_q).values_list('followup_id', flat=True).distinct()
+    # 3. 대상 사용자의 Prepayment가 있는 FollowUp ID (선택된 년도)
+    prepayment_followup_ids = Prepayment.objects.filter(prepayment_filter_q & year_filter_q).values_list('customer_id', flat=True).distinct()
     
     # 활동이 있는 FollowUp ID 합집합
     active_followup_ids = set(history_followup_ids) | set(schedule_followup_ids) | set(prepayment_followup_ids)
@@ -8399,11 +8422,11 @@ def customer_report_view(request):
     # ✅ select_related로 FK 조인 최적화
     followups = followups.select_related('company', 'department', 'department__category', 'user')
     
-    # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch)
+    # ✅ 모든 관련 데이터를 한 번에 가져오기 (Prefetch, 년도 필터 포함)
     followups = followups.prefetch_related(
-        Prefetch('histories', queryset=History.objects.filter(user_filter_q).select_related('user')),
-        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q).select_related('user').prefetch_related('delivery_items_set')),
-        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q).select_related('created_by'))
+        Prefetch('histories', queryset=History.objects.filter(user_filter_q & year_filter_q).select_related('user')),
+        Prefetch('schedules', queryset=Schedule.objects.filter(user_filter_q & year_filter_q).select_related('user').prefetch_related('delivery_items_set')),
+        Prefetch('prepayments', queryset=Prepayment.objects.filter(prepayment_filter_q & year_filter_q).select_related('created_by'))
     )
     
     # 각 고객별 통계 계산
@@ -8672,6 +8695,9 @@ def customer_report_view(request):
         'categories_dict': categories_dict,
         'selected_category': selected_category,
         'category_id': category_id,
+        # 년도 필터
+        'selected_year': selected_year,
+        'year_range': year_range,
     }
     
     return render(request, 'reporting/customer_report_list.html', context)

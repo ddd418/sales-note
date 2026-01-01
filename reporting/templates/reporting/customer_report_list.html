@@ -242,14 +242,32 @@ a.text-decoration-none {
           <div class="card border-primary" style="overflow: visible;">
             <div class="card-body py-2" style="overflow: visible;">
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div class="d-flex align-items-center">
-                  <span class="me-3"><i class="fas fa-users me-1"></i>데이터 범위:</span>
+                <div class="d-flex align-items-center gap-2">
+                  <!-- 년도 필터 -->
+                  <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                      <i class="fas fa-calendar-alt me-1"></i>{{ selected_year }}년
+                    </button>
+                    <ul class="dropdown-menu">
+                      {% for year in year_range %}
+                      <li>
+                        <a class="dropdown-item {% if selected_year == year %}active{% endif %}" 
+                           href="?year={{ year }}{% if data_filter %}&data_filter={{ data_filter }}{% endif %}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}">
+                          {{ year }}년
+                        </a>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  
+                  <!-- 데이터 범위 -->
+                  <span class="me-2"><i class="fas fa-users me-1"></i>데이터 범위:</span>
                   <div class="btn-group" role="group">
-                    <a href="?data_filter=me{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}" 
+                    <a href="?data_filter=me{% if selected_year %}&year={{ selected_year }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" 
                        class="btn btn-sm {% if data_filter == 'me' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                       <i class="fas fa-user me-1"></i>나
                     </a>
-                    <a href="?data_filter=all{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}" 
+                    <a href="?data_filter=all{% if selected_year %}&year={{ selected_year }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}" 
                        class="btn btn-sm {% if data_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                       <i class="fas fa-users me-1"></i>전체
                     </a>
@@ -267,7 +285,7 @@ a.text-decoration-none {
                       {% for user_item in company_users %}
                       <li>
                         <a class="dropdown-item {% if selected_filter_user.id == user_item.id %}active{% endif %}" 
-                           href="?data_filter=user&filter_user={{ user_item.id }}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}">
+                           href="?data_filter=user&filter_user={{ user_item.id }}{% if selected_year %}&year={{ selected_year }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if sort_order %}&order={{ sort_order }}{% endif %}{% if category_id %}&category={{ category_id }}{% endif %}">
                           {{ user_item.first_name }}{{ user_item.last_name }}{% if not user_item.last_name and not user_item.first_name %}{{ user_item.username }}{% endif %}
                         </a>
                       </li>
@@ -362,6 +380,13 @@ a.text-decoration-none {
                 </button>
               </div>
               <form method="GET" action="{% url 'reporting:customer_report' %}">
+                <!-- 히든 필드로 기존 필터 유지 -->
+                {% if data_filter %}<input type="hidden" name="data_filter" value="{{ data_filter }}">{% endif %}
+                {% if filter_user_id %}<input type="hidden" name="filter_user" value="{{ filter_user_id }}">{% endif %}
+                {% if sort_by %}<input type="hidden" name="sort" value="{{ sort_by }}">{% endif %}
+                {% if sort_order %}<input type="hidden" name="order" value="{{ sort_order }}">{% endif %}
+                {% if selected_year %}<input type="hidden" name="year" value="{{ selected_year }}">{% endif %}
+                
                 <div class="row g-3">
                   <!-- 카테고리 필터 -->
                   <div class="col-md-4">
