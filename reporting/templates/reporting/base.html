@@ -1599,12 +1599,7 @@
             <span>고객 리포트</span>
           </a>
         </li>
-        <li class="nav-item">
-          <a href="{% url 'reporting:funnel_dashboard' %}" class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'funnel' %}active{% endif %}">
-            <i class="fas fa-funnel-dollar"></i>
-            <span>펀넬 관리</span>
-          </a>
-        </li>
+
         <li class="nav-item">
           <a href="{% url 'reporting:prepayment_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':10' == 'prepayment' %}active{% endif %}">
             <i class="fas fa-wallet"></i>

@@ -33,7 +33,6 @@ urlpatterns = [
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),
     path('schedules/<int:schedule_id>/histories/', views.schedule_histories_api, name='schedule_histories_api'),
     path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
-    path('schedules/<int:pk>/update-funnel/', views.schedule_update_funnel, name='schedule_update_funnel'),
     path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),
@@ -152,23 +151,6 @@ urlpatterns = [
     path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
     path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
     path('api/companies/<int:company_id>/customers/', views.api_company_customers, name='api_company_customers'),
-    
-    # 펀넬 관리 URL들
-    path('funnel/', views.funnel_dashboard_view, name='funnel_dashboard'),
-    
-    # 펀넬 라벨 관리
-    path('funnel/labels/', views.opportunity_label_list, name='opportunity_label_list'),
-    path('funnel/labels/create/', views.opportunity_label_create, name='opportunity_label_create'),
-    path('funnel/labels/<int:pk>/edit/', views.opportunity_label_edit, name='opportunity_label_edit'),
-    path('funnel/labels/<int:pk>/delete/', views.opportunity_label_delete, name='opportunity_label_delete'),
-    
-    # 펀넬 API
-    path('api/funnel/update-stage/<int:opportunity_id>/', views.update_opportunity_stage_api, name='update_opportunity_stage_api'),
-    path('funnel/opportunity/<int:opportunity_id>/change-stage/', views.update_opportunity_stage_api, name='change_opportunity_stage_api'),  # 단계 변경 (대시보드용)
-    path('api/funnel/opportunity/<int:opportunity_id>/history/', views.opportunity_history_api, name='opportunity_history_api'),
-    path('api/funnel/opportunity/<int:opportunity_id>/update-label/', views.opportunity_update_label_api, name='opportunity_update_label_api'),
-    path('api/funnel/labels/', views.opportunity_labels_api, name='opportunity_labels_api'),
-    path('api/funnel/opportunities/', views.opportunities_filter_api, name='opportunities_filter_api'),
     
     # 선결제 URL들
     path('prepayment/', views.prepayment_list_view, name='prepayment_list'),
@@ -289,7 +271,6 @@ urlpatterns = [
     path('ai/schedule-detail/<int:schedule_id>/', ai_views.ai_schedule_detail, name='ai_schedule_detail'),
     path('ai/meeting-advice/', ai_views.ai_meeting_advice, name='ai_meeting_advice'),
     path('ai/meeting-strategy/', ai_views.ai_generate_meeting_strategy, name='ai_meeting_strategy'),  # 신규 API
-    path('ai/analyze-funnel/', ai_views.ai_analyze_funnel, name='ai_analyze_funnel'),  # 펀넬 AI 분석
     
     # 관리자 필터 API
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),
