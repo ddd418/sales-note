@@ -631,7 +631,7 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% if dept.tax_invoices_issued > 0 or dept.tax_invoices_pending > 0 %}
-                          <a href="{% url 'reporting:customer_detail_report' dept.followup_id %}" class="text-decoration-none">
+                          <a href="{% url 'customer_detail_report' dept.followup_id %}" class="text-decoration-none">
                             {% if dept.tax_invoices_issued > 0 %}
                               <span class="badge bg-primary">발행 {{ dept.tax_invoices_issued }}</span>
                             {% endif %}
