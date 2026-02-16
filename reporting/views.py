@@ -8963,10 +8963,11 @@ def customer_detail_report_view(request, followup_id):
         chart_deliveries.append(stat['deliveries'])
         chart_amounts.append(float(stat['amount'] or 0))
     
-    # 납품 내역 상세
+    # 납품 내역 상세 - 중복 완전 제거를 위해 정렬 순서 변경
+    # created_at 기준으로 정렬하여 가장 최근에 작성된 History가 먼저 오도록
     delivery_histories = histories.filter(
         action_type='delivery_schedule'
-    ).order_by('-delivery_date', '-created_at')
+    ).order_by('-created_at')  # created_at 기준으로만 정렬 (가장 최근 작성 우선)
     
     # Schedule 납품 일정에 총액 정보 추가
     for schedule in schedule_deliveries:
@@ -8993,6 +8994,10 @@ def customer_detail_report_view(request, followup_id):
     # 통합 납품 내역 생성 - 완전히 새로운 방식 (중복 완전 제거)
     integrated_deliveries = []
     
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[DEPT_REPORT] histories count: {len(list(delivery_histories))}, schedule_deliveries count: {len(list(schedule_deliveries))}")
+    
     # 1단계: Schedule별로 그룹화하여 가장 최근 History 1개만 선택
     schedule_to_history = {}  # schedule_id -> 가장 최근 History
     standalone_histories = []  # Schedule 없는 History
@@ -9001,11 +9006,17 @@ def customer_detail_report_view(request, followup_id):
         if history.schedule_id:
             # Schedule에 연결된 History
             if history.schedule_id not in schedule_to_history:
-                # 이 Schedule의 첫 번째(가장 최근) History만 저장
+                # 이 Schedule의 첫 번째(가장 최근 작성) History만 저장
                 schedule_to_history[history.schedule_id] = history
+                logger.info(f"[DEPT_REPORT] Selected history {history.id} for schedule {history.schedule_id}")
+            else:
+                logger.info(f"[DEPT_REPORT] Skipped duplicate history {history.id} for schedule {history.schedule_id}")
         else:
             # Schedule 없는 독립 History
             standalone_histories.append(history)
+            logger.info(f"[DEPT_REPORT] Added standalone history {history.id}")
+    
+    logger.info(f"[DEPT_REPORT] Unique schedules: {len(schedule_to_history)}, Standalone histories: {len(standalone_histories)}")
     
     # 2단계: 선택된 Schedule 연결 History를 integrated_deliveries에 추가
     for schedule_id, history in schedule_to_history.items():
