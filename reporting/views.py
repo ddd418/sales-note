@@ -5847,6 +5847,58 @@ def toggle_tax_invoice(request, history_id):
         }, status=500)
 
 @login_required
+def toggle_all_tax_invoices(request, followup_id):
+    """고객의 모든 미발행 납품을 발행완료로 일괄 변경 (AJAX)"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': '잘못된 요청입니다.'}, status=400)
+    
+    try:
+        # FollowUp 조회 및 권한 확인
+        followup = get_object_or_404(FollowUp, id=followup_id)
+        
+        # 권한 체크: 수정 권한이 있는 경우만 가능
+        if not can_modify_user_data(request.user, followup.user):
+            return JsonResponse({
+                'success': False, 
+                'error': '수정 권한이 없습니다. Manager는 읽기 전용입니다.'
+            }, status=403)
+        
+        # 미발행 납품 History 조회
+        pending_histories = History.objects.filter(
+            followup=followup,
+            action_type='delivery_schedule',
+            tax_invoice_issued=False
+        )
+        
+        # 일괄 업데이트
+        updated_count = pending_histories.update(tax_invoice_issued=True)
+        
+        # 연결된 Schedule의 DeliveryItem들도 동기화
+        from reporting.models import DeliveryItem, Schedule
+        schedule_ids = pending_histories.filter(
+            schedule__isnull=False
+        ).values_list('schedule_id', flat=True)
+        
+        if schedule_ids:
+            DeliveryItem.objects.filter(
+                schedule_id__in=schedule_ids
+            ).update(tax_invoice_issued=True)
+        
+        return JsonResponse({
+            'success': True,
+            'updated_count': updated_count,
+            'message': f'{updated_count}건의 납품이 발행완료로 변경되었습니다.'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'success': False,
+            'error': f'오류가 발생했습니다: {str(e)}'
+        }, status=500)
+
+@login_required
 def history_create_from_schedule(request, schedule_id):
     """일정에서 히스토리 생성 또는 기존 히스토리로 이동"""
     try:
@@ -8907,7 +8959,7 @@ def customer_detail_report_view(request, followup_id):
     # 통합 납품 내역 생성 (processed_schedule_ids는 위에서 이미 정의됨)
     integrated_deliveries = []
     displayed_schedule_ids = set()  # 표시된 Schedule ID 추적 (중복 방지)
-    displayed_delivery_keys = set()  # 날짜+금액 조합으로 중복 방지 (선결제 중복 처리)
+    displayed_amounts = {}  # 금액별 마지막 표시 날짜 추적 (선결제 중복 방지)
     
     # 1. History 기반 납품 내역 (같은 Schedule은 가장 최근 1개만 표시)
     for history in delivery_histories:
@@ -8918,14 +8970,19 @@ def customer_detail_report_view(request, followup_id):
                 continue
             displayed_schedule_ids.add(history.schedule_id)
         else:
-            # Schedule이 없는 경우: 날짜+금액 조합으로 중복 체크 (선결제 중복 방지)
-            delivery_date = (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d')
+            # Schedule이 없는 경우: 같은 금액 + 7일 이내 날짜면 중복으로 간주 (선결제 중복 방지)
+            delivery_date = history.delivery_date or history.created_at.date()
             delivery_amount = float(history.delivery_amount) if history.delivery_amount else 0
-            delivery_key = (delivery_date, delivery_amount)
             
-            if delivery_key in displayed_delivery_keys:
-                continue  # 같은 날짜+금액 조합이면 건너뛰기
-            displayed_delivery_keys.add(delivery_key)
+            # 같은 금액의 기존 납품이 있는지 확인
+            if delivery_amount in displayed_amounts:
+                last_date = displayed_amounts[delivery_amount]
+                date_diff = abs((delivery_date - last_date).days)
+                if date_diff <= 7:  # 7일 이내면 중복으로 간주
+                    continue
+            
+            # 이 금액의 최신 날짜 기록
+            displayed_amounts[delivery_amount] = delivery_date
         
         delivery_data = {
             'type': 'history',
