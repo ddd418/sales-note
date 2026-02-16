@@ -1,0 +1,735 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}펀넬 관리 - {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid" style="padding: 2rem; max-width: 1600px; margin: 0 auto;">
+  
+  <!-- 헤더 -->
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+      <h2 style="font-weight: 700; margin: 0;">
+        <i class="fas fa-filter" style="color: var(--primary);"></i> 펀넬 관리
+      </h2>
+      <p style="color: var(--text-secondary); margin: 0.25rem 0 0 0; font-size: 0.9rem;">
+        {{ last_year }}년 vs {{ current_year }}년 부서별 매출 비교 · 총 {{ total_count }}개 부서
+      </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <!-- 일괄 목표 설정 -->
+      <button type="button" class="btn btn-sm" 
+              style="background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-primary);"
+              onclick="openBulkTargetModal()">
+        <i class="fas fa-percentage"></i> 일괄 목표 설정
+      </button>
+      <!-- 부서 추가 -->
+      <button type="button" class="btn btn-sm" 
+              style="background: var(--primary); color: white; border: none;"
+              onclick="openAddDeptModal()">
+        <i class="fas fa-plus"></i> 부서 추가
+      </button>
+    </div>
+  </div>
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+      <div class="summary-card">
+        <div class="summary-label">{{ last_year }}년 총 매출</div>
+        <div class="summary-value">{{ total_last_revenue|floatformat:0|intcomma }}원</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="summary-card">
+        <div class="summary-label">{{ current_year }}년 목표 매출</div>
+        <div class="summary-value" style="color: var(--primary-light);">{{ total_target_revenue|floatformat:0|intcomma }}원</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="summary-card">
+        <div class="summary-label">{{ current_year }}년 실제 매출</div>
+        <div class="summary-value" style="color: var(--success);">{{ total_current_revenue|floatformat:0|intcomma }}원</div>
+      </div>
+    </div>
+    <div class="col-md-3 col-6">
+      <div class="summary-card">
+        <div class="summary-label">전체 달성률 / 증감률</div>
+        <div class="summary-value">
+          <span class="{% if total_achievement >= 80 %}text-success{% elif total_achievement >= 50 %}text-warning{% else %}text-danger{% endif %}">
+            {{ total_achievement }}%
+          </span>
+          <span style="font-size: 0.85rem; margin-left: 0.5rem;" class="{% if total_growth >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {% if total_growth >= 0 %}▲{% else %}▼{% endif %} {{ total_growth }}%
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 테이블 -->
+  <div class="funnel-table-wrap">
+    <table class="funnel-table">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="sortTable('company')" style="min-width: 120px;">
+            업체 <i class="fas fa-sort{% if sort_by == 'company' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="sortable" onclick="sortTable('department')" style="min-width: 120px;">
+            부서/연구실 <i class="fas fa-sort{% if sort_by == 'department' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="sortable text-end" onclick="sortTable('last_revenue')" style="min-width: 120px;">
+            {{ last_year }}년 매출 <i class="fas fa-sort{% if sort_by == 'last_revenue' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="text-end" style="min-width: 160px;">
+            {{ current_year }}년 목표 매출
+          </th>
+          <th class="sortable text-end" onclick="sortTable('current_revenue')" style="min-width: 120px;">
+            {{ current_year }}년 실제 매출 <i class="fas fa-sort{% if sort_by == 'current_revenue' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="sortable text-center" onclick="sortTable('achievement_rate')" style="min-width: 130px;">
+            달성률 <i class="fas fa-sort{% if sort_by == 'achievement_rate' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="sortable text-center" onclick="sortTable('growth_rate')" style="min-width: 90px;">
+            증감률 <i class="fas fa-sort{% if sort_by == 'growth_rate' %}-{{ sort_dir }}{% endif %}" style="font-size: 0.7rem;"></i>
+          </th>
+          <th class="text-center" style="min-width: 130px;">활동 (미팅/견적/납품)</th>
+          <th class="text-center" style="min-width: 60px;">상세</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in funnel_data %}
+        <tr class="funnel-row" data-dept-id="{{ item.department_id }}">
+          <td class="company-cell">{{ item.company_name }}</td>
+          <td>
+            <a href="{% url 'reporting:funnel_detail' item.department_id %}" 
+               style="color: var(--primary-light); text-decoration: none; font-weight: 600;">
+              {{ item.department_name }}
+            </a>
+          </td>
+          <td class="text-end" style="font-variant-numeric: tabular-nums;">
+            {{ item.last_revenue|floatformat:0|intcomma }}
+          </td>
+          <td class="text-end">
+            <div class="target-input-wrap">
+              <input type="text" 
+                     class="target-input" 
+                     value="{{ item.target_revenue|floatformat:0 }}"
+                     data-dept-id="{{ item.department_id }}"
+                     data-original="{{ item.target_revenue|floatformat:0 }}"
+                     onfocus="this.select()"
+                     onblur="saveTargetIfChanged(this)"
+                     onkeydown="if(event.key==='Enter'){this.blur();}">
+              <button class="auto-target-btn" title="작년 매출 기준 자동 설정" 
+                      onclick="openAutoTargetModal({{ item.department_id }}, '{{ item.department_name }}', {{ item.last_revenue|floatformat:0 }})">
+                <i class="fas fa-magic"></i>
+              </button>
+            </div>
+          </td>
+          <td class="text-end" style="font-weight: 600; font-variant-numeric: tabular-nums; color: var(--success);">
+            {{ item.current_revenue|floatformat:0|intcomma }}
+          </td>
+          <td class="text-center">
+            {% if item.target_revenue > 0 %}
+            <div class="achievement-cell">
+              <div class="progress-bar-mini">
+                <div class="progress-bar-fill bg-{{ item.status_color }}" style="width: {% if item.achievement_rate > 100 %}100{% else %}{{ item.achievement_rate }}{% endif %}%;"></div>
+              </div>
+              <span class="text-{{ item.status_color }}" style="font-weight: 600; font-size: 0.85rem;">
+                {{ item.achievement_rate }}%
+              </span>
+            </div>
+            {% else %}
+            <span style="color: var(--text-muted); font-size: 0.8rem;">목표 미설정</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if item.last_revenue > 0 %}
+            <span class="{% if item.growth_rate >= 0 %}text-success{% else %}text-danger{% endif %}" style="font-weight: 600; font-size: 0.85rem;">
+              {% if item.growth_rate >= 0 %}▲{% else %}▼{% endif %} {{ item.growth_rate }}%
+            </span>
+            {% elif item.current_revenue > 0 %}
+            <span class="text-success" style="font-size: 0.8rem;">NEW</span>
+            {% else %}
+            <span style="color: var(--text-muted);">-</span>
+            {% endif %}
+          </td>
+          <td class="text-center" style="font-size: 0.85rem; font-variant-numeric: tabular-nums;">
+            <span title="미팅">{{ item.meeting_count }}</span> /
+            <span title="견적">{{ item.quote_count }}</span> /
+            <span title="납품">{{ item.delivery_count }}</span>
+          </td>
+          <td class="text-center">
+            <a href="{% url 'reporting:funnel_detail' item.department_id %}" 
+               class="btn btn-sm" style="background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-primary);">
+              <i class="fas fa-chart-line"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 3rem; color: var(--text-muted);">
+            <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+            매출 데이터가 있는 부서가 없습니다.<br>
+            <button class="btn btn-sm mt-3" style="background: var(--primary); color: white;" onclick="openAddDeptModal()">
+              <i class="fas fa-plus"></i> 부서 추가하기
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% if funnel_data %}
+      <tfoot>
+        <tr style="font-weight: 700; background: var(--surface-hover);">
+          <td colspan="2">합계</td>
+          <td class="text-end">{{ total_last_revenue|floatformat:0|intcomma }}</td>
+          <td class="text-end">{{ total_target_revenue|floatformat:0|intcomma }}</td>
+          <td class="text-end" style="color: var(--success);">{{ total_current_revenue|floatformat:0|intcomma }}</td>
+          <td class="text-center">
+            <span class="{% if total_achievement >= 80 %}text-success{% elif total_achievement >= 50 %}text-warning{% else %}text-danger{% endif %}">
+              {{ total_achievement }}%
+            </span>
+          </td>
+          <td class="text-center">
+            <span class="{% if total_growth >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if total_growth >= 0 %}▲{% else %}▼{% endif %} {{ total_growth }}%
+            </span>
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- 부서 추가 모달 -->
+<div class="modal fade" id="addDeptModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background: var(--surface); border: 1px solid var(--border); color: var(--text-primary);">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+        <h5 class="modal-title"><i class="fas fa-plus"></i> 부서 추가</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">부서/연구실 검색</label>
+          <input type="text" id="deptSearchInput" class="form-control" 
+                 placeholder="업체명 또는 부서명을 입력하세요..."
+                 style="background: var(--background); border-color: var(--border); color: var(--text-primary);"
+                 oninput="searchDepartments(this.value)">
+        </div>
+        <div id="deptSearchResults" style="max-height: 300px; overflow-y: auto;">
+          <p style="color: var(--text-muted); text-align: center; padding: 2rem;">검색어를 입력하세요</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 자동 목표 설정 모달 (개별) -->
+<div class="modal fade" id="autoTargetModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="background: var(--surface); border: 1px solid var(--border); color: var(--text-primary);">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+        <h5 class="modal-title"><i class="fas fa-magic"></i> 자동 목표 설정</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="autoTargetDeptName" style="font-weight: 600; margin-bottom: 0.5rem;"></p>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">
+          작년 매출: <span id="autoTargetLastRevenue" style="font-weight: 600;"></span>원
+        </p>
+        <div class="mb-3">
+          <label class="form-label">작년 매출 대비 (%)</label>
+          <div class="input-group">
+            <input type="number" id="autoTargetPercent" class="form-control" value="110" min="1" max="500"
+                   style="background: var(--background); border-color: var(--border); color: var(--text-primary);">
+            <span class="input-group-text" style="background: var(--surface-hover); border-color: var(--border); color: var(--text-secondary);">%</span>
+          </div>
+          <div class="form-text" style="color: var(--text-muted);">
+            계산 결과: <span id="autoTargetResult" style="color: var(--primary-light); font-weight: 600;"></span>원
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal" 
+                style="background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-primary);">취소</button>
+        <button type="button" class="btn btn-sm" onclick="applyAutoTarget()"
+                style="background: var(--primary); color: white; border: none;">적용</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 일괄 목표 설정 모달 -->
+<div class="modal fade" id="bulkTargetModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="background: var(--surface); border: 1px solid var(--border); color: var(--text-primary);">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+        <h5 class="modal-title"><i class="fas fa-percentage"></i> 일괄 목표 설정</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">
+          모든 부서의 목표를 작년 매출 기준으로 일괄 설정합니다.
+        </p>
+        <div class="mb-3">
+          <label class="form-label">작년 매출 대비 (%)</label>
+          <div class="input-group">
+            <input type="number" id="bulkTargetPercent" class="form-control" value="110" min="1" max="500"
+                   style="background: var(--background); border-color: var(--border); color: var(--text-primary);">
+            <span class="input-group-text" style="background: var(--surface-hover); border-color: var(--border); color: var(--text-secondary);">%</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
+                style="background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-primary);">취소</button>
+        <button type="button" class="btn btn-sm" onclick="applyBulkTarget()"
+                style="background: var(--primary); color: white; border: none;">일괄 적용</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* ============================================
+   모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+   ============================================ */
+.modal-backdrop {
+  display: none !important;
+}
+.modal {
+  z-index: 1055 !important;
+  pointer-events: none !important;
+}
+.modal-dialog {
+  z-index: 1056 !important;
+  pointer-events: auto !important;
+}
+.modal-content {
+  position: relative;
+  z-index: 1057 !important;
+  pointer-events: auto !important;
+  box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.4);
+}
+.modal-header,
+.modal-body,
+.modal-footer,
+.modal-header *,
+.modal-body *,
+.modal-footer * {
+  pointer-events: auto !important;
+}
+
+/* 요약 카드 */
+.summary-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+.summary-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+.summary-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 테이블 래퍼 */
+.funnel-table-wrap {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+/* 테이블 */
+.funnel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.funnel-table thead th {
+  background: var(--surface-hover);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.funnel-table thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.funnel-table thead th.sortable:hover {
+  color: var(--primary-light);
+}
+.funnel-table tbody td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+.funnel-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+.funnel-table tfoot td {
+  padding: 0.75rem 1rem;
+  border-top: 2px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 업체 셀 */
+.company-cell {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+/* 목표 입력 */
+.target-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+.target-input {
+  background: var(--background);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  text-align: right;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  width: 120px;
+  transition: border-color 0.2s;
+}
+.target-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+.auto-target-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+.auto-target-btn:hover {
+  background: var(--primary-bg);
+  color: var(--primary-light);
+  border-color: var(--primary);
+}
+
+/* 달성률 */
+.achievement-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.progress-bar-mini {
+  width: 60px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.bg-success { background: var(--success); }
+.bg-warning { background: var(--warning); }
+.bg-danger { background: var(--danger); }
+
+/* 검색 결과 */
+.dept-search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.15s;
+}
+.dept-search-item:hover {
+  background: var(--surface-hover);
+}
+.dept-search-item.already-added {
+  opacity: 0.5;
+}
+
+/* 토스트 */
+.funnel-toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1.25rem;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-lg);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s ease;
+}
+.funnel-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .summary-value { font-size: 1rem; }
+  .target-input { width: 90px; }
+}
+</style>
+
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+const CURRENT_YEAR = {{ current_year }};
+let autoTargetDeptId = null;
+let autoTargetLastRevenue = 0;
+let searchTimeout = null;
+
+// ===== 정렬 =====
+function sortTable(field) {
+  const url = new URL(window.location);
+  const currentSort = url.searchParams.get('sort');
+  const currentDir = url.searchParams.get('dir') || 'desc';
+  
+  if (currentSort === field) {
+    url.searchParams.set('dir', currentDir === 'desc' ? 'asc' : 'desc');
+  } else {
+    url.searchParams.set('sort', field);
+    url.searchParams.set('dir', 'desc');
+  }
+  window.location = url;
+}
+
+// ===== 목표 저장 =====
+function formatNumber(num) {
+  return Math.round(num).toLocaleString('ko-KR');
+}
+
+function saveTargetIfChanged(input) {
+  const deptId = input.dataset.deptId;
+  const original = input.dataset.original;
+  const newValue = input.value.replace(/,/g, '').trim();
+  
+  if (newValue === original) return;
+  
+  fetch("{% url 'reporting:funnel_save_target' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({
+      department_id: parseInt(deptId),
+      target_revenue: parseInt(newValue) || 0,
+      year: CURRENT_YEAR,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      input.dataset.original = newValue;
+      showToast('✅ 목표가 저장되었습니다');
+      // 1초 후 새로고침하여 달성률 업데이트
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast('❌ ' + (data.error || '저장 실패'));
+      input.value = original;
+    }
+  })
+  .catch(err => {
+    showToast('❌ 네트워크 오류');
+    input.value = original;
+  });
+}
+
+// ===== 자동 목표 (개별) =====
+function openAutoTargetModal(deptId, deptName, lastRevenue) {
+  autoTargetDeptId = deptId;
+  autoTargetLastRevenue = lastRevenue;
+  document.getElementById('autoTargetDeptName').textContent = deptName;
+  document.getElementById('autoTargetLastRevenue').textContent = formatNumber(lastRevenue);
+  document.getElementById('autoTargetPercent').value = 110;
+  updateAutoTargetResult();
+  new bootstrap.Modal(document.getElementById('autoTargetModal')).show();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const percentInput = document.getElementById('autoTargetPercent');
+  if (percentInput) {
+    percentInput.addEventListener('input', updateAutoTargetResult);
+  }
+});
+
+function updateAutoTargetResult() {
+  const pct = parseFloat(document.getElementById('autoTargetPercent').value) || 0;
+  const result = Math.round(autoTargetLastRevenue * pct / 100);
+  document.getElementById('autoTargetResult').textContent = formatNumber(result);
+}
+
+function applyAutoTarget() {
+  const pct = parseFloat(document.getElementById('autoTargetPercent').value);
+  
+  fetch("{% url 'reporting:funnel_auto_target' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({
+      department_id: autoTargetDeptId,
+      percentage: pct,
+      year: CURRENT_YEAR,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('autoTargetModal')).hide();
+      showToast('✅ 목표가 설정되었습니다');
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast('❌ ' + (data.error || '설정 실패'));
+    }
+  });
+}
+
+// ===== 일괄 목표 =====
+function openBulkTargetModal() {
+  new bootstrap.Modal(document.getElementById('bulkTargetModal')).show();
+}
+
+function applyBulkTarget() {
+  const pct = parseFloat(document.getElementById('bulkTargetPercent').value);
+  
+  fetch("{% url 'reporting:funnel_bulk_auto_target' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({
+      percentage: pct,
+      year: CURRENT_YEAR,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('bulkTargetModal')).hide();
+      showToast(`✅ ${data.updated_count}개 부서의 목표가 설정되었습니다`);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast('❌ ' + (data.error || '설정 실패'));
+    }
+  });
+}
+
+// ===== 부서 추가 =====
+function openAddDeptModal() {
+  document.getElementById('deptSearchInput').value = '';
+  document.getElementById('deptSearchResults').innerHTML = 
+    '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">검색어를 입력하세요</p>';
+  new bootstrap.Modal(document.getElementById('addDeptModal')).show();
+  setTimeout(() => document.getElementById('deptSearchInput').focus(), 300);
+}
+
+function searchDepartments(query) {
+  clearTimeout(searchTimeout);
+  if (query.length < 1) {
+    document.getElementById('deptSearchResults').innerHTML = 
+      '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">검색어를 입력하세요</p>';
+    return;
+  }
+  
+  searchTimeout = setTimeout(() => {
+    fetch(`{% url 'reporting:funnel_search_departments' %}?q=${encodeURIComponent(query)}&year=${CURRENT_YEAR}`)
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('deptSearchResults');
+      if (data.results.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">검색 결과가 없습니다</p>';
+        return;
+      }
+      
+      container.innerHTML = data.results.map(dept => `
+        <div class="dept-search-item ${dept.already_added ? 'already-added' : ''}">
+          <div>
+            <div style="font-weight: 600;">${dept.name}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">${dept.company_name}</div>
+          </div>
+          ${dept.already_added 
+            ? '<span style="font-size: 0.8rem; color: var(--text-muted);">추가됨</span>'
+            : `<button class="btn btn-sm" style="background: var(--primary); color: white; border: none; font-size: 0.8rem;"
+                       onclick="addDepartment(${dept.id})">
+                <i class="fas fa-plus"></i> 추가
+              </button>`
+          }
+        </div>
+      `).join('');
+    });
+  }, 300);
+}
+
+function addDepartment(deptId) {
+  fetch("{% url 'reporting:funnel_add_department' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({
+      department_id: deptId,
+      year: CURRENT_YEAR,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('addDeptModal')).hide();
+      showToast('✅ ' + data.message);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast('❌ ' + (data.error || '추가 실패'));
+    }
+  });
+}
+
+// ===== 토스트 =====
+function showToast(message) {
+  let toast = document.querySelector('.funnel-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'funnel-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+</script>
+{% endblock %}

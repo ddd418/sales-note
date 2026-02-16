@@ -1675,3 +1675,29 @@ class DocumentGenerationLog(models.Model):
             models.Index(fields=['company', 'created_at']),
             models.Index(fields=['document_type', 'created_at']),
         ]
+
+
+# 펀넬 목표 (FunnelTarget) 모델 - 부서/연구실별 연간 매출 목표
+class FunnelTarget(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당 영업사원", related_name='funnel_targets')
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, verbose_name="부서/연구실", related_name='funnel_targets')
+    year = models.IntegerField(verbose_name="대상 연도")
+    target_revenue = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="목표 매출액")
+    is_auto_added = models.BooleanField(default=True, verbose_name="자동 추가 여부",
+                                         help_text="매출 기반 자동 추가(True) / 사용자 수동 추가(False)")
+    note = models.TextField(blank=True, null=True, verbose_name="메모")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.department} - {self.year}년 목표: {self.target_revenue:,}원"
+
+    class Meta:
+        verbose_name = "펀넬 목표"
+        verbose_name_plural = "펀넬 목표 목록"
+        unique_together = ['user', 'department', 'year']
+        ordering = ['-year', 'department__company__name', 'department__name']
+        indexes = [
+            models.Index(fields=['user', 'year']),
+            models.Index(fields=['department', 'year']),
+        ]

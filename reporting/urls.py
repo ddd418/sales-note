@@ -6,6 +6,7 @@ from . import personal_schedule_views
 from . import gmail_views
 from . import imap_views
 from . import ai_views
+from . import funnel_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
@@ -285,5 +286,17 @@ urlpatterns = [
     # 법적 문서
     path('privacy-policy/', views.privacy_policy_view, name='privacy_policy'),
     path('terms-of-service/', views.terms_of_service_view, name='terms_of_service'),
+    
+    # ============================================
+    # 펀넬 관리 URL들
+    # ============================================
+    path('funnel/', funnel_views.funnel_list_view, name='funnel_list'),
+    path('funnel/<int:department_id>/', funnel_views.funnel_detail_view, name='funnel_detail'),
+    path('funnel/api/save-target/', funnel_views.funnel_save_target, name='funnel_save_target'),
+    path('funnel/api/auto-target/', funnel_views.funnel_auto_target, name='funnel_auto_target'),
+    path('funnel/api/bulk-auto-target/', funnel_views.funnel_bulk_auto_target, name='funnel_bulk_auto_target'),
+    path('funnel/api/add-department/', funnel_views.funnel_add_department, name='funnel_add_department'),
+    path('funnel/api/remove-department/', funnel_views.funnel_remove_department, name='funnel_remove_department'),
+    path('funnel/api/search-departments/', funnel_views.funnel_search_departments, name='funnel_search_departments'),
 ]
 
