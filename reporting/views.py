@@ -5994,6 +5994,26 @@ def history_create_from_schedule(request, schedule_id):
         
         
         if request.method == 'POST':
+            # 먼저 기존 History가 있는지 확인 (중복 생성 방지)
+            existing_history = History.objects.filter(
+                schedule=schedule,
+                action_type=expected_action_type
+            ).first()
+            
+            if existing_history:
+                # 이미 History가 있으면 생성하지 않고 기존 것으로 리다이렉트
+                is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+                if is_ajax:
+                    return JsonResponse({
+                        'success': False,
+                        'error': f'이미 "{schedule.followup.customer_name}" 일정에 대한 활동 기록이 존재합니다.',
+                        'history_id': existing_history.pk,
+                        'history_url': f'/reporting/histories/{existing_history.pk}/'
+                    })
+                else:
+                    messages.warning(request, f'이미 "{schedule.followup.customer_name}" 일정에 대한 활동 기록이 존재합니다. 기존 기록으로 이동합니다.')
+                    return redirect('reporting:history_detail', pk=existing_history.pk)
+            
             # AJAX 요청인지 확인
             is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
             
@@ -9089,8 +9109,8 @@ def customer_detail_report_view(request, followup_id):
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
     
-    # 세금계산서 수정 권한: 본인 고객 데이터만 수정 가능 (Admin 제외하고 Manager도 불가)
-    can_modify_tax_invoice = can_modify_user_data(request.user, followup.user)
+    # 세금계산서 수정 권한: 읽기 권한이 있으면 수정도 가능하도록 변경
+    can_modify_tax_invoice = can_access_user_data(request.user, followup.user)
     
     context = {
         'followup': followup,
@@ -9170,6 +9190,61 @@ def toggle_schedule_delivery_tax_invoice(request, schedule_id):
         })
         
     except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'세금계산서 상태 변경 중 오류가 발생했습니다: {str(e)}'
+        })
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_history_delivery_tax_invoice(request, history_id):
+    """History의 DeliveryItem 세금계산서 발행여부 일괄 토글 API"""
+    try:
+        history = get_object_or_404(History, pk=history_id)
+        
+        # 권한 체크: 수정 권한이 있는 경우만 가능
+        if not can_modify_user_data(request.user, history.user):
+            return JsonResponse({
+                'success': False,
+                'error': '세금계산서 상태를 변경할 권한이 없습니다.'
+            }, status=403)
+        
+        # History의 Schedule에 연결된 DeliveryItem들 조회
+        if not history.schedule:
+            return JsonResponse({
+                'success': False,
+                'error': '일정이 연결되지 않은 히스토리입니다.'
+            })
+        
+        delivery_items = history.schedule.delivery_items_set.all()
+        
+        if not delivery_items.exists():
+            return JsonResponse({
+                'success': False,
+                'error': '해당 히스토리에 납품 품목이 없습니다.'
+            })
+        
+        # 현재 상태 확인 (하나라도 미발행이면 모두 발행으로, 모두 발행이면 모두 미발행으로)
+        any_not_issued = delivery_items.filter(tax_invoice_issued=False).exists()
+        new_status = any_not_issued  # 미발행이 있으면 True(발행)로, 없으면 False(미발행)로
+        
+        # 일괄 업데이트
+        updated_count = delivery_items.update(tax_invoice_issued=new_status)
+        
+        # History도 함께 업데이트
+        history.tax_invoice_issued = new_status
+        history.save()
+        
+        return JsonResponse({
+            'success': True,
+            'new_status': new_status,
+            'updated_count': updated_count,
+            'status_text': '발행완료' if new_status else '미발행'
+        })
+        
+    except Exception as e:
+        logger.error(f"히스토리 세금계산서 토글 오류: {e}")
         return JsonResponse({
             'success': False,
             'error': f'세금계산서 상태 변경 중 오류가 발생했습니다: {str(e)}'
