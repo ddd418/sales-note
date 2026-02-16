@@ -538,68 +538,43 @@ a.text-decoration-none {
                             {% if delivery.type == 'history' %}
                               {% if delivery.history_tax_status.has_items %}
                                 {% if delivery.history_tax_status.all_issued %}
-                                  {% if not can_modify_tax_invoice %}
-                                    <span class="badge bg-primary">발행완료</span>
-                                  {% else %}
-                                    <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
-                                      <span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span>
-                                    </div>
-                                    <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
-                                  {% endif %}
+                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                    <span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span>
+                                  </div>
+                                  <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
                                 {% elif delivery.history_tax_status.none_issued %}
-                                  {% if not can_modify_tax_invoice %}
-                                    <span class="badge bg-secondary">미발행</span>
-                                  {% else %}
-                                    <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
-                                      <span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span>
-                                    </div>
-                                    <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
-                                  {% endif %}
+                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                    <span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span>
+                                  </div>
+                                  <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
                                 {% else %}
                                   <span class="badge bg-primary">발행완료</span>
                                   <span class="badge bg-secondary">미발행</span>
-                                  {% if can_modify_tax_invoice %}
-                                    <br />
-                                    <button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')">
-                                      <i class="fas fa-edit me-1"></i>개별 편집
-                                    </button>
-                                  {% endif %}
+                                  <br />
+                                  <button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')">
+                                    <i class="fas fa-edit me-1"></i>개별 편집
+                                  </button>
                                 {% endif %}
                               {% else %}
-                                {% if not can_modify_tax_invoice %}
+                                <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
                                   <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
+                                    <i class="fas fa-{% if delivery.tax_invoice_issued %}check{% else %}times{% endif %} me-1"></i>
                                     {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
                                   </span>
-                                {% else %}
-                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
-                                    <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
-                                      <i class="fas fa-{% if delivery.tax_invoice_issued %}check{% else %}times{% endif %} me-1"></i>
-                                      {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
-                                    </span>
-                                  </div>
-                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
-                                {% endif %}
+                                </div>
+                                <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
                               {% endif %}
                             {% else %}
                               {% if delivery.schedule_tax_status.total_count == 0 %}
                                 <span class="text-muted">품목 없음</span>
                               {% else %}
-                                {% if not can_modify_tax_invoice %}
-                                  {% if delivery.schedule_tax_status.issued_count > 0 %}
-                                    <span class="badge bg-primary">발행완료</span>
-                                  {% endif %}
-                                  {% if delivery.schedule_tax_status.total_count > delivery.schedule_tax_status.issued_count %}
-                                    <span class="badge bg-secondary">미발행</span>
-                                  {% endif %}
-                                {% else %}
-                                  <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer" title="클릭하여 상태 변경">
-                                    <span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary{% else %}secondary{% endif %}">
-                                      <i class="fas fa-{% if delivery.schedule_tax_status.all_issued %}check{% else %}times{% endif %} me-1"></i>
-                                      {% if delivery.schedule_tax_status.all_issued %}발행완료{% else %}미발행{% endif %}
-                                    </span>
-                                  </div>
-                                  <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
-                                {% endif %}
+                                <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                  <span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary{% else %}secondary{% endif %}">
+                                    <i class="fas fa-{% if delivery.schedule_tax_status.all_issued %}check{% else %}times{% endif %} me-1"></i>
+                                    {% if delivery.schedule_tax_status.all_issued %}발행완료{% else %}미발행{% endif %}
+                                  </span>
+                                </div>
+                                <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
                               {% endif %}
                             {% endif %}
                           </td>
@@ -2211,42 +2186,39 @@ a.text-decoration-none {
     console.log('세금계산서 토글 이벤트 등록 시작');
     console.log('토글 요소 개수:', document.querySelectorAll(".tax-invoice-toggle").length);
     
-    // 세금계산서 상태 일괄 토글 (납품일별)
-    document
-      .querySelectorAll(".tax-invoice-toggle")
-      .forEach(function (element) {
-        console.log('토글 요소 등록:', element);
-        element.addEventListener("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          console.log('토글 클릭됨:', this);
-          
-          const type = this.dataset.type;
-          const id = this.dataset.id;
-          const scheduleId = this.dataset.scheduleId;
-          const badge = this.querySelector(".badge");
-          const currentStatus = badge ? badge.classList.contains("bg-primary") : false;
+    // 이벤트 위임 방식으로 변경 - 테이블 전체에 클릭 이벤트 등록
+    document.addEventListener('click', function(e) {
+      const toggleElement = e.target.closest('.tax-invoice-toggle');
+      if (!toggleElement) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('토글 클릭됨:', toggleElement);
+      
+      const type = toggleElement.dataset.type;
+      const id = toggleElement.dataset.id;
+      const badge = toggleElement.querySelector(".badge");
+      const currentStatus = badge ? badge.classList.contains("bg-primary") : false;
 
-          console.log('type:', type, 'id:', id, 'currentStatus:', currentStatus);
+      console.log('type:', type, 'id:', id, 'currentStatus:', currentStatus);
 
-          // 확인 메시지
-          const statusText = currentStatus ? "미발행" : "발행완료";
-          let message;
+      // 확인 메시지
+      const statusText = currentStatus ? "미발행" : "발행완료";
+      let message;
 
-          if (type === "history") {
-            message = `이 납품일의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-          } else if (type === "schedule_bulk") {
-            message = `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-          } else {
-            message = `모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-          }
+      if (type === "history") {
+        message = `이 납품의 세금계산서를 "${statusText}"로 변경하시겠습니까?`;
+      } else if (type === "schedule_bulk") {
+        message = `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
+      } else {
+        message = `세금계산서를 "${statusText}"로 변경하시겠습니까?`;
+      }
 
-          if (confirm(message)) {
-            updateTaxInvoiceStatus(type, id, !currentStatus);
-          }
-        });
-      });
+      if (confirm(message)) {
+        updateTaxInvoiceStatus(type, id, !currentStatus);
+      }
+    });
 
     // 세금계산서 상태 업데이트 함수
     function updateTaxInvoiceStatus(type, id, status) {
