@@ -8599,37 +8599,45 @@ def customer_report_view(request):
         history_only_deliveries = sum(1 for h in delivery_histories if h.schedule_id is None)
         unique_deliveries_count = len(history_schedule_ids | schedule_ids) + history_only_deliveries
         
-        # 통합 통계 (중복 제거) - 고객 상세 페이지 방식과 동일하게 수정
-        # 1. Schedule에 연결되지 않은 History의 delivery_amount 합산
-        # 2. Schedule에 연결된 History: DeliveryItem이 있으면 DeliveryItem 금액, 없으면 History 금액
-        # 3. History에 연결되지 않은 Schedule의 DeliveryItem 금액
+        # 통합 통계 (중복 제거) - Schedule 기준으로 집계
+        # 1. Schedule별로 가장 최근 History 1개만 선택 (중복 방지)
+        schedule_to_history = {}  # schedule_id -> 가장 최근 History
+        standalone_histories = []  # Schedule 없는 History
         
-        # Schedule ID별 DeliveryItem 금액 맵 생성
+        for h in delivery_histories:
+            if h.schedule_id:
+                if h.schedule_id not in schedule_to_history:
+                    # 이 Schedule의 첫 번째(가장 최근) History만 저장
+                    schedule_to_history[h.schedule_id] = h
+            else:
+                standalone_histories.append(h)
+        
+        # 2. Schedule ID별 DeliveryItem 금액 맵 생성
         schedule_item_amounts = {}
         for schedule in schedule_deliveries:
             items = list(schedule.delivery_items_set.all())
             schedule_item_amounts[schedule.id] = sum(item.total_price or Decimal('0') for item in items)
         
-        # History 처리된 Schedule ID 추적
+        # 3. 금액 계산 (Schedule 기준)
+        total_amount = Decimal('0')
         processed_schedule_ids = set()
         
-        total_amount = Decimal('0')
-        for h in delivery_histories:
-            if h.schedule_id is None:
-                # Schedule에 연결 안된 History - History 금액 사용
-                total_amount += h.delivery_amount or Decimal('0')
+        # Schedule에 연결된 History (중복 제거됨)
+        for schedule_id, history in schedule_to_history.items():
+            processed_schedule_ids.add(schedule_id)
+            schedule_item_amount = schedule_item_amounts.get(schedule_id, Decimal('0'))
+            if schedule_item_amount > 0:
+                # DeliveryItem이 있으면 DeliveryItem 금액 사용
+                total_amount += schedule_item_amount
             else:
-                # Schedule에 연결된 History
-                processed_schedule_ids.add(h.schedule_id)
-                schedule_item_amount = schedule_item_amounts.get(h.schedule_id, Decimal('0'))
-                if schedule_item_amount > 0:
-                    # DeliveryItem이 있으면 DeliveryItem 금액 사용
-                    total_amount += schedule_item_amount
-                else:
-                    # DeliveryItem이 없으면 History 금액 사용
-                    total_amount += h.delivery_amount or Decimal('0')
+                # DeliveryItem이 없으면 History 금액 사용
+                total_amount += history.delivery_amount or Decimal('0')
         
-        # History에 연결되지 않은 Schedule의 DeliveryItem 금액 추가
+        # Schedule 없는 독립 History
+        for h in standalone_histories:
+            total_amount += h.delivery_amount or Decimal('0')
+        
+        # History 없는 Schedule의 DeliveryItem 금액 추가
         for schedule in schedule_deliveries:
             if schedule.id not in processed_schedule_ids:
                 total_amount += schedule_item_amounts.get(schedule.id, Decimal('0'))
