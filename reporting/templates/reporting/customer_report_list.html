@@ -631,12 +631,14 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% if dept.tax_invoices_issued > 0 or dept.tax_invoices_pending > 0 %}
-                          {% if dept.tax_invoices_issued > 0 %}
-                            <span class="badge bg-primary me-1">발행 {{ dept.tax_invoices_issued }}</span>
-                          {% endif %}
-                          {% if dept.tax_invoices_pending > 0 %}
-                            <span class="badge bg-danger">미발행 {{ dept.tax_invoices_pending }}</span>
-                          {% endif %}
+                          <a href="{% url 'reporting:customer_detail_report' dept.followup_id %}" class="text-decoration-none">
+                            {% if dept.tax_invoices_issued > 0 %}
+                              <span class="badge bg-primary me-1">발행 {{ dept.tax_invoices_issued }}</span>
+                            {% endif %}
+                            {% if dept.tax_invoices_pending > 0 %}
+                              <span class="badge bg-danger">미발행 {{ dept.tax_invoices_pending }}</span>
+                            {% endif %}
+                          </a>
                         {% else %}
                           <span class="text-muted">-</span>
                         {% endif %}

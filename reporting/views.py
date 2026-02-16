@@ -8907,6 +8907,7 @@ def customer_detail_report_view(request, followup_id):
     # 통합 납품 내역 생성 (processed_schedule_ids는 위에서 이미 정의됨)
     integrated_deliveries = []
     displayed_schedule_ids = set()  # 표시된 Schedule ID 추적 (중복 방지)
+    displayed_delivery_keys = set()  # 날짜+금액 조합으로 중복 방지 (선결제 중복 처리)
     
     # 1. History 기반 납품 내역 (같은 Schedule은 가장 최근 1개만 표시)
     for history in delivery_histories:
@@ -8916,6 +8917,15 @@ def customer_detail_report_view(request, followup_id):
             if history.schedule_id in displayed_schedule_ids:
                 continue
             displayed_schedule_ids.add(history.schedule_id)
+        else:
+            # Schedule이 없는 경우: 날짜+금액 조합으로 중복 체크 (선결제 중복 방지)
+            delivery_date = (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d')
+            delivery_amount = float(history.delivery_amount) if history.delivery_amount else 0
+            delivery_key = (delivery_date, delivery_amount)
+            
+            if delivery_key in displayed_delivery_keys:
+                continue  # 같은 날짜+금액 조합이면 건너뛰기
+            displayed_delivery_keys.add(delivery_key)
         
         delivery_data = {
             'type': 'history',
