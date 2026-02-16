@@ -159,11 +159,23 @@
             <span title="견적">{{ item.quote_count }}</span> /
             <span title="납품">{{ item.delivery_count }}</span>
           </td>
-          <td class="text-center">
+          <td class="text-center" style="white-space: nowrap;">
             <a href="{% url 'reporting:funnel_detail' item.department_id %}" 
                class="btn btn-sm" style="background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-primary);">
               <i class="fas fa-chart-line"></i>
             </a>
+            {% if item.can_delete %}
+            <button class="btn btn-sm ms-1" title="펀넬에서 제거" 
+                    style="background: transparent; border: 1px solid var(--danger); color: var(--danger);"
+                    onclick="removeDepartment({{ item.department_id }}, '{{ item.company_name }} - {{ item.department_name }}')">
+              <i class="fas fa-times"></i>
+            </button>
+            {% elif item.is_manual %}
+            <button class="btn btn-sm ms-1" title="매출이 있어 삭제할 수 없습니다" disabled
+                    style="background: transparent; border: 1px solid var(--border); color: var(--text-muted); opacity: 0.4; cursor: not-allowed;">
+              <i class="fas fa-times"></i>
+            </button>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
@@ -715,6 +727,32 @@ function addDepartment(deptId) {
       setTimeout(() => location.reload(), 500);
     } else {
       showToast('❌ ' + (data.error || '추가 실패'));
+    }
+  });
+}
+
+// ===== 부서 제거 =====
+function removeDepartment(deptId, deptName) {
+  if (!confirm(`"${deptName}"을(를) 펀넬에서 제거하시겠습니까?`)) return;
+  
+  fetch("{% url 'reporting:funnel_remove_department' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({
+      department_id: deptId,
+      year: CURRENT_YEAR,
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast('✅ ' + data.message);
+      setTimeout(() => location.reload(), 500);
+    } else {
+      showToast('❌ ' + (data.error || '제거 실패'));
     }
   });
 }

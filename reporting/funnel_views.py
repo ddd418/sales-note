@@ -256,6 +256,9 @@ def funnel_list_view(request):
             'meeting_count': current_stats['meeting_count'],
             'quote_count': current_stats['quote_count'],
             'delivery_count': current_stats['delivery_count'],
+            'is_manual': target is not None and not target.is_auto_added,
+            'can_delete': (target is not None and not target.is_auto_added 
+                          and last_revenue == 0 and current_revenue == 0),
         })
         
         total_last_revenue += last_revenue
