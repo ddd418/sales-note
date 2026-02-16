@@ -48,9 +48,4 @@ urlpatterns = [
     path('api/quick-add/', views.api_quick_add, name='api_quick_add'),
     path('api/<int:pk>/toggle/', views.api_toggle_status, name='api_toggle_status'),
     path('api/search-clients/', views.api_search_clients, name='api_search_clients'),
-    
-    # AI 추천
-    path('ai/suggestions/', views.ai_suggestions, name='ai_suggestions'),
-    path('ai/accept/', views.ai_accept_suggestion, name='ai_accept'),
-    path('ai/dismiss/', views.ai_dismiss_suggestion, name='ai_dismiss'),
 ]
