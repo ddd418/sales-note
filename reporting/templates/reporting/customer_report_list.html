@@ -631,20 +631,14 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% if dept.tax_invoices_issued > 0 or dept.tax_invoices_pending > 0 %}
-                          <div class="d-inline-flex gap-1">
+                          <a href="{% url 'reporting:customer_detail_report' dept.followup_id %}" class="text-decoration-none">
                             {% if dept.tax_invoices_issued > 0 %}
                               <span class="badge bg-primary">발행 {{ dept.tax_invoices_issued }}</span>
                             {% endif %}
                             {% if dept.tax_invoices_pending > 0 %}
-                              <span class="badge bg-danger tax-toggle-badge" 
-                                    style="cursor: pointer;" 
-                                    data-followup-id="{{ dept.followup_id }}"
-                                    data-dept-name="{{ dept.department_name }}"
-                                    title="클릭하여 미발행 {{ dept.tax_invoices_pending }}건을 발행완료로 변경">
-                                미발행 {{ dept.tax_invoices_pending }}
-                              </span>
+                              <span class="badge bg-danger">미발행 {{ dept.tax_invoices_pending }}</span>
                             {% endif %}
-                          </div>
+                          </a>
                         {% else %}
                           <span class="text-muted">-</span>
                         {% endif %}
@@ -1598,42 +1592,6 @@ function getCookie(name) {
   }
   return cookieValue;
 }
-
-// 세금계산서 일괄 토글
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.tax-toggle-badge').forEach(badge => {
-    badge.addEventListener('click', function() {
-      const followupId = this.dataset.followupId;
-      const deptName = this.dataset.deptName;
-      
-      if (!confirm(`${deptName}의 모든 미발행 납품을 발행완료로 변경하시겠습니까?`)) {
-        return;
-      }
-      
-      fetch(`/reporting/customer-report/${followupId}/toggle-all-tax-invoices/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken'),
-        },
-        credentials: 'same-origin'
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert(`성공: ${data.updated_count}건의 납품이 발행완료로 변경되었습니다.`);
-          location.reload();
-        } else {
-          alert('오류: ' + (data.error || '알 수 없는 오류'));
-        }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        alert('세금계산서 변경 중 오류가 발생했습니다.');
-      });
-    });
-  });
-});
 </script>
 
 {% endblock %}
