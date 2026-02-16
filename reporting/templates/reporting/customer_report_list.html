@@ -631,7 +631,7 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% if dept.tax_invoices_issued > 0 or dept.tax_invoices_pending > 0 %}
-                          <a href="{% url 'customer_detail_report' dept.followup_id %}" class="text-decoration-none">
+                          <a href="{% url 'reporting:customer_detail_report' dept.followup_id %}" class="text-decoration-none">
                             {% if dept.tax_invoices_issued > 0 %}
                               <span class="badge bg-primary">발행 {{ dept.tax_invoices_issued }}</span>
                             {% endif %}
@@ -652,7 +652,7 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% with first_customer=dept.customers.0 %}
-                        <a href="{% url 'customer_detail_report' first_customer.id %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" 
+                        <a href="{% url 'reporting:customer_detail_report' first_customer.id %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" 
                            class="btn btn-sm btn-outline-primary" title="부서 상세 리포트">
                           <i class="fas fa-chart-line"></i>
                         </a>
