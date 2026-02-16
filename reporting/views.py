@@ -1404,9 +1404,11 @@ def dashboard_view(request):
     else:
         user_filter_for_dashboard = {'user': target_user}
     
-    # 납품 일정 조회 (올해, 취소 제외)
+    # 납품 일정 조회 (올해, 취소 제외, 오늘까지만 - 미래 일정 제외)
+    today = timezone.now().date()
     delivery_schedules = Schedule.objects.filter(
         visit_date__year=current_year,
+        visit_date__lte=today,  # 오늘까지만 포함 (미래 일정 제외)
         activity_type='delivery',
         **user_filter_for_dashboard
     ).exclude(status='cancelled').prefetch_related('delivery_items_set')
