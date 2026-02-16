@@ -1003,117 +1003,6 @@ def followup_detail_view(request, pk):
         is_active=True
     ).order_by('-is_default', '-created_at')
     
-    # AI 분석 (AI 권한이 있는 사용자 - 부서 기준 데이터 범위)
-    ai_analysis = None
-    if hasattr(request.user, 'userprofile') and request.user.userprofile.can_use_ai:
-        from datetime import datetime, timedelta
-        from django.utils import timezone
-        
-        # 최근 12개월 데이터 수집
-        twelve_months_ago = timezone.now() - timedelta(days=365)
-        
-        # 스케줄 통계 (부서 기준 + 필터에 따른 사용자 범위)
-        schedules = Schedule.objects.filter(
-            followup_id__in=same_department_followup_ids,  # 부서 기준
-            user__in=filter_users,  # 필터에 따른 사용자
-            visit_date__gte=twelve_months_ago
-        )
-        meeting_count = schedules.filter(activity_type='customer_meeting').count()
-        quote_count = schedules.filter(activity_type='quote').count()
-        
-        # 구매 내역 (납품 일정 - 부서 기준 + 필터에 따른 사용자)
-        delivery_schedules = schedules.filter(activity_type='delivery')
-        purchase_count = delivery_schedules.count()
-        
-        # 납품 금액 합계 (expected_revenue 사용)
-        total_purchase = delivery_schedules.aggregate(
-            total=Sum('expected_revenue')
-        )['total'] or 0
-        
-        # 이메일 교환 (부서 기준 + 필터에 따른 사용자)
-        email_count = EmailLog.objects.filter(
-            Q(schedule__followup_id__in=same_department_followup_ids) | Q(followup_id__in=same_department_followup_ids),
-            sender__in=filter_users,  # 필터에 따른 사용자
-            created_at__gte=twelve_months_ago
-        ).count()
-        
-        # 마지막 연락일 (필터에 따른 기록)
-        last_contact = None
-        last_schedule = schedules.order_by('-visit_date').first()
-        if last_schedule:
-            last_contact = last_schedule.visit_date.strftime('%Y-%m-%d')
-        
-        # 미팅 노트 수집 (최근 5개) - 히스토리에서 (부서 기준 + 필터에 따른 사용자)
-        histories = History.objects.filter(
-            followup_id__in=same_department_followup_ids,  # 부서 기준
-            user__in=filter_users,  # 필터에 따른 사용자
-            created_at__gte=twelve_months_ago
-        )
-        meeting_notes = []
-        recent_meetings = histories.filter(
-            action_type='customer_meeting'
-        ).order_by('-created_at')[:5]
-        for h in recent_meetings:
-            if h.content:
-                meeting_notes.append(f"[{h.created_at.strftime('%Y-%m-%d')}] {h.content[:200]}")
-        
-        # 진행 중인 기회 (부서 기준)
-        opportunities = []
-        active_opps = OpportunityTracking.objects.filter(
-            followup_id__in=same_department_followup_ids,  # 부서 기준
-            current_stage__in=['lead', 'contact', 'quote', 'closing']
-        )[:5]
-        for opp in active_opps:
-            opportunities.append({
-                'name': opp.title or '영업 기회',
-                'stage': opp.get_current_stage_display(),
-                'value': opp.expected_revenue or 0
-            })
-        
-        # 선결제 정보 (부서 기준 - 있는 경우만)
-        from reporting.models import Prepayment
-        prepayments = Prepayment.objects.filter(
-            customer_id__in=same_department_followup_ids,  # 부서 기준
-            status='active'
-        ).order_by('-payment_date')
-        
-        prepayment_info = None
-        if prepayments.exists():
-            total_balance = sum(p.balance for p in prepayments)
-            prepayment_info = {
-                'total_balance': total_balance,
-                'count': prepayments.count(),
-                'details': [{
-                    'date': p.payment_date.strftime('%Y-%m-%d'),
-                    'amount': p.amount,
-                    'balance': p.balance,
-                    'memo': p.memo
-                } for p in prepayments[:3]]  # 최근 3건만
-            }
-        
-        # 고객 데이터 준비
-        customer_data = {
-            'name': followup.customer_name,
-            'company': followup.company,
-            'industry': '과학/실험실',  # 기본값
-            'meeting_count': meeting_count,
-            'quote_count': quote_count,
-            'purchase_count': purchase_count,
-            'total_purchase': total_purchase,
-            'email_count': email_count,
-            'last_contact': last_contact or '정보 없음',
-            'meeting_notes': meeting_notes,
-            'customer_grade': followup.get_customer_grade_display() if hasattr(followup, 'customer_grade') else '미분류',
-            'opportunities': opportunities,
-            'prepayment': prepayment_info,  # 선결제 정보 추가
-        }
-        
-        # AI 분석 요청 준비 (실제 API 호출은 AJAX로)
-        ai_analysis = {
-            'customer_data': customer_data,
-            'ready': True
-        }
-    
     # 납품된 상품 목록 조회 (부서 기준 + 필터 적용)
     from reporting.models import DeliveryItem
     delivered_items = DeliveryItem.objects.filter(
@@ -1153,7 +1042,6 @@ def followup_detail_view(request, pk):
         'related_histories': related_histories,
         'quotation_templates': quotation_templates,
         'transaction_templates': transaction_templates,
-        'ai_analysis': ai_analysis,
         'delivered_items': delivered_items,
         'delivery_stats': delivery_stats,
         'followup_owner': followup_owner,  # 고객 담당자 (누가 추가했는지)
@@ -13593,51 +13481,6 @@ def get_company_users(request, company_id):
         
     except Exception as e:
         logger.error(f"사용자 목록 조회 오류: {e}")
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
-
-@login_required
-@require_POST
-def toggle_ai_permission(request):
-    """
-    사용자 AI 권한 토글 (관리자만)
-    
-    POST /reporting/toggle-ai-permission/
-    Body: {
-        "user_id": "1",
-        "enabled": true
-    }
-    """
-    # 관리자만 접근 가능
-    if not request.is_admin:
-        return JsonResponse({'success': False, 'error': '관리자만 접근 가능합니다.'}, status=403)
-    
-    try:
-        data = json.loads(request.body)
-        user_id = data.get('user_id')
-        enabled = data.get('enabled', False)
-        
-        target_user = User.objects.get(id=user_id)
-        
-        # 관리자 계정은 AI 권한 변경 불가
-        if hasattr(target_user, 'userprofile') and target_user.userprofile.role == 'admin':
-            return JsonResponse({'success': False, 'error': '관리자 계정은 AI 권한을 변경할 수 없습니다.'}, status=400)
-        
-        if hasattr(target_user, 'userprofile'):
-            target_user.userprofile.can_use_ai = enabled
-            target_user.userprofile.save(update_fields=['can_use_ai'])
-            
-            return JsonResponse({
-                'success': True,
-                'message': f"AI 권한이 {'활성화' if enabled else '비활성화'}되었습니다."
-            })
-        else:
-            return JsonResponse({'success': False, 'error': 'UserProfile이 없습니다.'}, status=400)
-        
-    except User.DoesNotExist:
-        return JsonResponse({'success': False, 'error': '사용자를 찾을 수 없습니다.'}, status=404)
-    except Exception as e:
-        logger.error(f"AI 권한 토글 오류: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

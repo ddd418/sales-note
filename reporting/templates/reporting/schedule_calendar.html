@@ -6729,14 +6729,6 @@
                             
                             <div class="col-12">
                               <label class="form-label">활동 내용</label>
-                              {% if request.user.userprofile.can_use_ai %}
-                              <div class="d-flex gap-2 mb-2">
-                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="summarizeMeetingNotes(${schedule.id})">
-                                  <i class="fas fa-magic me-1"></i>AI 요약
-                                </button>
-                                <small class="text-muted align-self-center">긴 노트를 핵심 내용으로 요약합니다</small>
-                              </div>
-                              {% endif %}
                               <textarea class="form-control" id="contentTextarea-${schedule.id}" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
                             </div>
                             

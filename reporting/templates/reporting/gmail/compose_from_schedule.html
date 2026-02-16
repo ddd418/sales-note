@@ -329,11 +329,6 @@
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label for="body_text" class="form-label required mb-0">본문</label>
                         <div class="editor-mode-toggle">
-                            {% if request.user.userprofile.can_use_ai %}
-                            <button type="button" class="btn btn-sm btn-outline-primary me-2" id="ai-transform-btn">
-                                <i class="bi bi-magic"></i> AI 톤 변환
-                            </button>
-                            {% endif %}
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleHtmlMode">
                                 <i class="bi bi-code-square"></i> HTML 편집
                             </button>
@@ -578,58 +573,6 @@ document.addEventListener('DOMContentLoaded', function() {
         businessCardSelect.dispatchEvent(new Event('change'));
     }
     
-    {% if request.user.userprofile.can_use_ai %}
-    // ============================================
-    // AI 기능
-    // ============================================
-    
-    // AI 톤 변환 버튼 클릭 (바로 실행)
-    document.getElementById('ai-transform-btn').addEventListener('click', async function() {
-        const btn = this;
-        const originalHtml = btn.innerHTML;
-        
-        // 현재 본문 가져오기
-        const currentContent = quill.root.innerHTML;
-        
-        if (!currentContent.trim() || currentContent === '<p><br></p>') {
-            alert('변환할 내용이 없습니다.');
-            return;
-        }
-        
-        btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 변환중...';
-        
-        try {
-            const response = await fetch('{% url "reporting:ai_transform_email" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                },
-                body: JSON.stringify({
-                    content: currentContent,
-                    tone: 'formal',  // 고정
-                    instructions: ''  // 사용 안함
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                // 본문 변경
-                quill.root.innerHTML = data.body;
-                alert('이메일 톤이 변환되었습니다!');
-            } else {
-                alert('오류: ' + data.error);
-            }
-        } catch (error) {
-            alert('변환 중 오류가 발생했습니다: ' + error.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-        }
-    });
-    {% endif %}
 });
 </script>
 {% endblock %}

@@ -5,7 +5,6 @@ from . import backup_api
 from . import personal_schedule_views
 from . import gmail_views
 from . import imap_views
-from . import ai_views
 from . import funnel_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
 
@@ -251,32 +250,9 @@ urlpatterns = [
     # 이미지 업로드
     path('upload-image/', gmail_views.upload_editor_image, name='upload_editor_image'),
     
-    # ============================================
-    # AI 기능 URL들
-    # ============================================
-    path('ai/generate-email/', ai_views.ai_generate_email, name='ai_generate_email'),
-    path('ai/transform-email/', ai_views.ai_transform_email, name='ai_transform_email'),
-    path('ai/customer-summary/<int:followup_id>/', ai_views.ai_generate_customer_summary, name='ai_customer_summary'),
-    path('ai/update-grade/<int:followup_id>/', ai_views.ai_update_customer_grade, name='ai_update_grade'),
-    path('ai/summarize-meeting/', ai_views.ai_summarize_meeting_notes, name='ai_summarize_meeting'),
-    path('ai/analyze-email-thread/', ai_views.ai_analyze_email_thread, name='ai_analyze_email_thread'),
-    path('ai/recommend-products/<int:followup_id>/', ai_views.ai_recommend_products, name='ai_recommend_products'),
-    path('ai/product-detail/<str:product_code>/', ai_views.ai_get_product_detail, name='ai_product_detail'),
-    path('ai/search/', ai_views.ai_natural_language_search, name='ai_natural_language_search'),
-    path('ai/refresh-all-grades/', ai_views.ai_refresh_all_grades, name='ai_refresh_all_grades'),
-    path('ai/check-grade-update-status/<str:task_id>/', ai_views.ai_check_grade_update_status, name='ai_check_grade_update_status'),
-    
-    # AI 미팅 준비
-    path('ai/meeting-advisor/', ai_views.ai_meeting_advisor, name='ai_meeting_advisor'),
-    path('ai/upcoming-schedules/', ai_views.ai_upcoming_schedules, name='ai_upcoming_schedules'),
-    path('ai/schedule-detail/<int:schedule_id>/', ai_views.ai_schedule_detail, name='ai_schedule_detail'),
-    path('ai/meeting-advice/', ai_views.ai_meeting_advice, name='ai_meeting_advice'),
-    path('ai/meeting-strategy/', ai_views.ai_generate_meeting_strategy, name='ai_meeting_strategy'),  # 신규 API
-    
     # 관리자 필터 API
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),
     path('get-company-users/<int:company_id>/', views.get_company_users, name='get_company_users'),
-    path('toggle-ai-permission/', views.toggle_ai_permission, name='toggle_ai_permission'),
     
     # 빠른 고객 등록 (이메일 발송용)
     path('quick-add-customer/', views.quick_add_customer, name='quick_add_customer'),
