@@ -1421,40 +1421,33 @@ def dashboard_view(request):
         **user_filter_for_dashboard
     )
     
-    # Schedule ID별 DeliveryItem 금액 맵 생성
-    schedule_item_amounts = {}
-    for schedule in delivery_schedules:
-        items = list(schedule.delivery_items_set.all())
-        schedule_item_amounts[schedule.id] = sum(item.total_price or Decimal('0') for item in items)
-    
-    # History 처리된 Schedule ID 추적
-    processed_schedule_ids = set()
-    
+    # 매출 계산 - Schedule 기준 (중복 방지)
     total_delivery_amount = Decimal('0')
     delivery_count = 0
+    processed_schedule_ids = set()
     
-    for h in delivery_histories:
-        if h.schedule_id is None:
-            # Schedule에 연결 안된 History - History 금액 사용
-            total_delivery_amount += h.delivery_amount or Decimal('0')
-            delivery_count += 1
-        else:
-            # Schedule에 연결된 History
-            processed_schedule_ids.add(h.schedule_id)
-            schedule_item_amount = schedule_item_amounts.get(h.schedule_id, Decimal('0'))
-            if schedule_item_amount > 0:
-                # DeliveryItem이 있으면 DeliveryItem 금액 사용
-                total_delivery_amount += schedule_item_amount
-            else:
-                # DeliveryItem이 없으면 History 금액 사용
-                total_delivery_amount += h.delivery_amount or Decimal('0')
-            delivery_count += 1
-    
-    # History에 연결되지 않은 Schedule의 DeliveryItem 금액 추가
+    # 1단계: 완료된 Schedule의 DeliveryItem 금액 집계
     for schedule in delivery_schedules:
-        if schedule.id not in processed_schedule_ids:
-            total_delivery_amount += schedule_item_amounts.get(schedule.id, Decimal('0'))
-            delivery_count += 1
+        items = list(schedule.delivery_items_set.all())
+        schedule_amount = sum(item.total_price or Decimal('0') for item in items)
+        
+        if schedule_amount > 0:
+            # DeliveryItem이 있으면 DeliveryItem 금액 사용
+            total_delivery_amount += schedule_amount
+        else:
+            # DeliveryItem이 없으면 연결된 History 중 가장 최근 것의 금액 사용
+            related_history = delivery_histories.filter(schedule_id=schedule.id).order_by('-created_at').first()
+            if related_history:
+                total_delivery_amount += related_history.delivery_amount or Decimal('0')
+        
+        processed_schedule_ids.add(schedule.id)
+        delivery_count += 1
+    
+    # 2단계: Schedule에 연결되지 않은 History의 금액 추가 (중복 방지)
+    standalone_histories = delivery_histories.filter(schedule_id__isnull=True)
+    for h in standalone_histories:
+        total_delivery_amount += h.delivery_amount or Decimal('0')
+        delivery_count += 1
     
     # 활동 유형별 통계 (Schedule 기준, 현재 연도)
     schedules_current_year_filter = schedules.filter(visit_date__year=current_year)
@@ -8754,13 +8747,7 @@ def customer_detail_report_view(request, followup_id):
     total_meetings = histories.filter(action_type='customer_meeting').count()
     total_deliveries = histories.filter(action_type='delivery_schedule').count()
     
-    # 총 금액 계산 (History + Schedule DeliveryItem 통합)
-    history_amount = histories.filter(action_type='delivery_schedule').aggregate(
-        total=Sum('delivery_amount')
-    )['total'] or 0
-    
     # Schedule DeliveryItem 총액 계산 (권한에 따라 필터링)
-    schedule_amount = 0
     if can_view_all:
         schedule_deliveries = Schedule.objects.filter(
             followup=followup, 
@@ -8774,14 +8761,44 @@ def customer_detail_report_view(request, followup_id):
             user=request.user
         ).prefetch_related('delivery_items_set')
     
-    for schedule in schedule_deliveries:
-        for item in schedule.delivery_items_set.all():
-            if item.total_price:
-                schedule_amount += float(item.total_price)
-            elif item.unit_price:
-                schedule_amount += float(item.unit_price) * item.quantity * 1.1
+    # 총 금액 계산 (중복 제거 - Schedule 기준)
+    total_amount = 0
+    processed_schedule_ids = set()
     
-    total_amount = history_amount + schedule_amount
+    # 1. Schedule의 DeliveryItem 금액 집계
+    for schedule in schedule_deliveries:
+        schedule_total = 0
+        has_items = False
+        
+        for item in schedule.delivery_items_set.all():
+            has_items = True
+            if item.total_price:
+                schedule_total += float(item.total_price)
+            elif item.unit_price:
+                schedule_total += float(item.unit_price) * item.quantity * 1.1
+        
+        if has_items:
+            # DeliveryItem이 있으면 그 금액 사용
+            total_amount += schedule_total
+        else:
+            # DeliveryItem이 없으면 연결된 History 중 가장 최근 것의 금액 사용
+            related_history = histories.filter(
+                action_type='delivery_schedule',
+                schedule_id=schedule.id
+            ).order_by('-created_at').first()
+            if related_history and related_history.delivery_amount:
+                total_amount += float(related_history.delivery_amount)
+        
+        processed_schedule_ids.add(schedule.id)
+    
+    # 2. Schedule에 연결되지 않은 History의 금액 추가
+    standalone_histories = histories.filter(
+        action_type='delivery_schedule',
+        schedule__isnull=True
+    )
+    for history in standalone_histories:
+        if history.delivery_amount:
+            total_amount += float(history.delivery_amount)
     
     # 세금계산서 현황 계산 (History + Schedule 통합, 중복 제거)
     delivery_histories = histories.filter(action_type='delivery_schedule')
@@ -8887,9 +8904,8 @@ def customer_detail_report_view(request, followup_id):
         schedule.tax_invoice_issued_count = tax_invoice_issued_count
         schedule.total_items_count = total_items_count
     
-    # 통합 납품 내역 생성
+    # 통합 납품 내역 생성 (processed_schedule_ids는 위에서 이미 정의됨)
     integrated_deliveries = []
-    processed_schedule_ids = set()
     
     # 1. History 기반 납품 내역
     for history in delivery_histories:
