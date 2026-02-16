@@ -3823,6 +3823,32 @@ def history_list_view(request):
         elif action_type_filter == 'memo':
             # 메모 필터링 (개인 일정 제외)
             histories = histories.filter(action_type='memo', personal_schedule__isnull=True)
+        elif action_type_filter == 'delivery_schedule':
+            # 납품 일정 필터링 - 중복 제거 (같은 Schedule의 History 중 최신 1개만)
+            histories = histories.filter(action_type=action_type_filter)
+            
+            # 중복 제거: 같은 schedule_id를 가진 History 중 가장 최근 것만 선택
+            from django.db.models import OuterRef, Subquery
+            
+            # 각 schedule_id의 최신 History ID를 찾음
+            latest_history_per_schedule = History.objects.filter(
+                schedule_id=OuterRef('schedule_id'),
+                action_type='delivery_schedule',
+                user__in=filter_users,
+                parent_history__isnull=True
+            ).order_by('-created_at').values('id')[:1]
+            
+            # Schedule이 있는 History: 최신 것만
+            histories_with_schedule = histories.filter(
+                schedule__isnull=False,
+                id=Subquery(latest_history_per_schedule)
+            )
+            
+            # Schedule이 없는 History: 날짜+금액으로 중복 제거
+            histories_without_schedule = histories.filter(schedule__isnull=True)
+            
+            # 두 쿼리셋을 합침 (union 대신 | 사용)
+            histories = histories_with_schedule | histories_without_schedule
         else:
             histories = histories.filter(action_type=action_type_filter)
     
@@ -8956,39 +8982,30 @@ def customer_detail_report_view(request, followup_id):
         schedule.tax_invoice_issued_count = tax_invoice_issued_count
         schedule.total_items_count = total_items_count
     
-    # 통합 납품 내역 생성 (processed_schedule_ids는 위에서 이미 정의됨)
+    # 통합 납품 내역 생성 - 완전히 새로운 방식 (중복 완전 제거)
     integrated_deliveries = []
-    displayed_schedule_ids = set()  # 표시된 Schedule ID 추적 (중복 방지)
-    displayed_amounts = {}  # 금액별 마지막 표시 날짜 추적 (선결제 중복 방지)
     
-    # 1. History 기반 납품 내역 (같은 Schedule은 가장 최근 1개만 표시)
+    # 1단계: Schedule별로 그룹화하여 가장 최근 History 1개만 선택
+    schedule_to_history = {}  # schedule_id -> 가장 최근 History
+    standalone_histories = []  # Schedule 없는 History
+    
     for history in delivery_histories:
-        # Schedule에 연결된 경우 중복 체크
         if history.schedule_id:
-            # 이미 표시된 Schedule이면 건너뛰기
-            if history.schedule_id in displayed_schedule_ids:
-                continue
-            displayed_schedule_ids.add(history.schedule_id)
+            # Schedule에 연결된 History
+            if history.schedule_id not in schedule_to_history:
+                # 이 Schedule의 첫 번째(가장 최근) History만 저장
+                schedule_to_history[history.schedule_id] = history
         else:
-            # Schedule이 없는 경우: 같은 금액 + 7일 이내 날짜면 중복으로 간주 (선결제 중복 방지)
-            delivery_date = history.delivery_date or history.created_at.date()
-            delivery_amount = float(history.delivery_amount) if history.delivery_amount else 0
-            
-            # 같은 금액의 기존 납품이 있는지 확인
-            if delivery_amount in displayed_amounts:
-                last_date = displayed_amounts[delivery_amount]
-                date_diff = abs((delivery_date - last_date).days)
-                if date_diff <= 7:  # 7일 이내면 중복으로 간주
-                    continue
-            
-            # 이 금액의 최신 날짜 기록
-            displayed_amounts[delivery_amount] = delivery_date
-        
+            # Schedule 없는 독립 History
+            standalone_histories.append(history)
+    
+    # 2단계: 선택된 Schedule 연결 History를 integrated_deliveries에 추가
+    for schedule_id, history in schedule_to_history.items():
         delivery_data = {
             'type': 'history',
             'id': history.id,
             'date': (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d'),
-            'schedule_id': history.schedule_id if history.schedule else None,
+            'schedule_id': schedule_id,
             'items_display': history.delivery_items or None,
             'amount': history.delivery_amount,
             'tax_invoice_issued': history.tax_invoice_issued,
@@ -8997,18 +9014,46 @@ def customer_detail_report_view(request, followup_id):
             'has_schedule_items': False,
         }
         
-        # 연결된 일정이 있고, 그 일정에 DeliveryItem이 있는지 확인
-        if history.schedule:
-            schedule_items = history.schedule.delivery_items_set.all()
+        # Schedule의 DeliveryItem 확인
+        schedule = next((s for s in schedule_deliveries if s.id == schedule_id), None)
+        if schedule:
+            schedule_items = schedule.delivery_items_set.all()
             if schedule_items.exists():
                 delivery_data['has_schedule_items'] = True
                 delivery_data['schedule_items'] = schedule_items
         
         integrated_deliveries.append(delivery_data)
     
-    # 2. History에 없는 Schedule 기반 납품 내역만 추가
+    # 3단계: Schedule 없는 독립 History 중복 제거 (같은 날짜+금액은 1개만)
+    standalone_unique = {}  # (date, amount) -> History
+    for history in standalone_histories:
+        delivery_date = (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d')
+        delivery_amount = float(history.delivery_amount) if history.delivery_amount else 0
+        key = (delivery_date, delivery_amount)
+        
+        if key not in standalone_unique:
+            standalone_unique[key] = history
+    
+    # 독립 History 추가
+    for history in standalone_unique.values():
+        delivery_data = {
+            'type': 'history',
+            'id': history.id,
+            'date': (history.delivery_date or history.created_at.date()).strftime('%Y-%m-%d'),
+            'schedule_id': None,
+            'items_display': history.delivery_items or None,
+            'amount': history.delivery_amount,
+            'tax_invoice_issued': history.tax_invoice_issued,
+            'content': history.content,
+            'user': history.user.username,
+            'has_schedule_items': False,
+        }
+        integrated_deliveries.append(delivery_data)
+    
+    # 4단계: History 없는 Schedule 추가
+    processed_schedule_ids = set(schedule_to_history.keys())
     for schedule in schedule_deliveries:
-        if schedule.id not in displayed_schedule_ids:
+        if schedule.id not in processed_schedule_ids:
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
