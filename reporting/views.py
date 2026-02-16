@@ -8906,9 +8906,17 @@ def customer_detail_report_view(request, followup_id):
     
     # 통합 납품 내역 생성 (processed_schedule_ids는 위에서 이미 정의됨)
     integrated_deliveries = []
+    displayed_schedule_ids = set()  # 표시된 Schedule ID 추적 (중복 방지)
     
-    # 1. History 기반 납품 내역
+    # 1. History 기반 납품 내역 (같은 Schedule은 가장 최근 1개만 표시)
     for history in delivery_histories:
+        # Schedule에 연결된 경우 중복 체크
+        if history.schedule_id:
+            # 이미 표시된 Schedule이면 건너뛰기
+            if history.schedule_id in displayed_schedule_ids:
+                continue
+            displayed_schedule_ids.add(history.schedule_id)
+        
         delivery_data = {
             'type': 'history',
             'id': history.id,
@@ -8928,15 +8936,12 @@ def customer_detail_report_view(request, followup_id):
             if schedule_items.exists():
                 delivery_data['has_schedule_items'] = True
                 delivery_data['schedule_items'] = schedule_items
-                
-                # 처리된 Schedule ID 기록
-                processed_schedule_ids.add(history.schedule.id)
         
         integrated_deliveries.append(delivery_data)
     
     # 2. History에 없는 Schedule 기반 납품 내역만 추가
     for schedule in schedule_deliveries:
-        if schedule.id not in processed_schedule_ids:
+        if schedule.id not in displayed_schedule_ids:
             delivery_data = {
                 'type': 'schedule_only',
                 'id': schedule.id,
