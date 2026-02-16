@@ -9109,8 +9109,8 @@ def customer_detail_report_view(request, followup_id):
         action_type='customer_meeting'
     ).order_by('-meeting_date', '-created_at')
     
-    # 세금계산서 수정 권한: 읽기 권한이 있으면 수정도 가능하도록 변경
-    can_modify_tax_invoice = can_access_user_data(request.user, followup.user)
+    # 세금계산서 수정 권한: 항상 True (모든 사용자가 토글 가능)
+    can_modify_tax_invoice = True
     
     context = {
         'followup': followup,
