@@ -631,7 +631,8 @@ a.text-decoration-none {
                       </td>
                       <td class="text-center">
                         {% if dept.tax_invoices_issued > 0 or dept.tax_invoices_pending > 0 %}
-                          <a href="{% url 'reporting:customer_detail_report' dept.followup_id %}" class="text-decoration-none">
+                          {% with first_customer=dept.customers.0 %}
+                          <a href="{% url 'reporting:customer_detail_report' first_customer.id %}" class="text-decoration-none">
                             {% if dept.tax_invoices_issued > 0 %}
                               <span class="badge bg-primary">발행 {{ dept.tax_invoices_issued }}</span>
                             {% endif %}
@@ -639,6 +640,7 @@ a.text-decoration-none {
                               <span class="badge bg-danger">미발행 {{ dept.tax_invoices_pending }}</span>
                             {% endif %}
                           </a>
+                          {% endwith %}
                         {% else %}
                           <span class="text-muted">-</span>
                         {% endif %}
