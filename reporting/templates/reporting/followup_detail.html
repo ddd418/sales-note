@@ -577,7 +577,11 @@
                     >{{ history.created_at|date:"m-d H:i" }}</small
                   >
                 </div>
-                {% if history.content %}
+                {% if history.action_type == 'customer_meeting' and history.meeting_situation %}
+                <p class="mb-2 small" style="color: hsl(215, 20%, 65%);">
+                  {{ history.meeting_situation|truncatewords:15 }}
+                </p>
+                {% elif history.content %}
                 <p class="mb-2 small" style="color: hsl(215, 20%, 65%);">
                   {{ history.content|truncatewords:15 }}
                 </p>

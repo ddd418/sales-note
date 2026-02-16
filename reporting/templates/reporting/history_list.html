@@ -512,7 +512,21 @@ a.text-decoration-none {
                       {% endif %}
                     </p>
 
-                    {% if history.content %}
+                    {% if history.action_type == 'customer_meeting' and history.meeting_situation %}
+                    <div class="alert alert-light mb-3">
+                      <div class="small">
+                        {% if history.meeting_situation %}
+                        <div class="mb-1"><strong class="text-primary"><i class="fas fa-info-circle me-1"></i>오늘 상황:</strong> {{ history.meeting_situation|truncatewords:30 }}</div>
+                        {% endif %}
+                        {% if history.meeting_researcher_quote %}
+                        <div class="mb-1"><strong class="text-success"><i class="fas fa-quote-left me-1"></i>연구원이 한 말:</strong> <em>{{ history.meeting_researcher_quote|truncatewords:20 }}</em></div>
+                        {% endif %}
+                        {% if history.meeting_next_action %}
+                        <div class="mb-1"><strong class="text-danger"><i class="fas fa-forward me-1"></i>다음 액션:</strong> {{ history.meeting_next_action|truncatewords:20 }}</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                    {% elif history.content %}
                     <div class="alert alert-light mb-3">
                       <i class="fas fa-quote-left me-1"></i>
                       {{ history.content|linebreaks }}

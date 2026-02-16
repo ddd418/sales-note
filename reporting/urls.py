@@ -88,7 +88,6 @@ urlpatterns = [
     path('api/departments/autocomplete/', views.department_autocomplete, name='department_autocomplete'),
     path('api/followups/autocomplete/', views.followup_autocomplete, name='followup_autocomplete'),
     path('api/followups/<int:followup_id>/quote-items/', views.followup_quote_items_api, name='followup_quote_items_api'),
-    path('api/followups/<int:followup_id>/meetings/', views.followup_meetings_api, name='followup_meetings_api'),
     path('api/followups/<int:followup_id>/records/', views.customer_records_api, name='customer_records_api'),
     path('api/companies/create/', views.company_create_api, name='company_create_api'),
     path('api/departments/create/', views.department_create_api, name='department_create_api'),

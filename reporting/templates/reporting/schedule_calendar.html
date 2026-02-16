@@ -2809,7 +2809,46 @@
                 <div class="card-body" id="historyContent-${history.id}">`;
             
             // 활동 내용
-            if (history.content) {
+            if (history.action_type === 'customer_meeting' && (history.meeting_situation || history.meeting_researcher_quote || history.meeting_confirmed_facts || history.meeting_obstacles || history.meeting_next_action)) {
+              // 구조화된 미팅 노트 표시
+              historyHtml += `<div class="mb-3">`;
+              if (history.meeting_situation) {
+                historyHtml += `
+                  <div class="mb-2 p-2 border-start border-3 border-primary bg-light rounded-end">
+                    <small class="fw-bold text-primary"><i class="fas fa-info-circle me-1"></i>오늘 상황</small>
+                    <div class="mt-1 content-display">${formatText(history.meeting_situation)}</div>
+                  </div>`;
+              }
+              if (history.meeting_researcher_quote) {
+                historyHtml += `
+                  <div class="mb-2 p-2 border-start border-3 border-success bg-light rounded-end">
+                    <small class="fw-bold text-success"><i class="fas fa-quote-left me-1"></i>연구원이 한 말</small>
+                    <div class="mt-1 fst-italic content-display">${formatText(history.meeting_researcher_quote)}</div>
+                  </div>`;
+              }
+              if (history.meeting_confirmed_facts) {
+                historyHtml += `
+                  <div class="mb-2 p-2 border-start border-3 border-info bg-light rounded-end">
+                    <small class="fw-bold text-info"><i class="fas fa-check-circle me-1"></i>내가 확인한 사실</small>
+                    <div class="mt-1 content-display">${formatText(history.meeting_confirmed_facts)}</div>
+                  </div>`;
+              }
+              if (history.meeting_obstacles) {
+                historyHtml += `
+                  <div class="mb-2 p-2 border-start border-3 border-warning bg-light rounded-end">
+                    <small class="fw-bold text-warning"><i class="fas fa-exclamation-triangle me-1"></i>장애물/반대</small>
+                    <div class="mt-1 content-display">${formatText(history.meeting_obstacles)}</div>
+                  </div>`;
+              }
+              if (history.meeting_next_action) {
+                historyHtml += `
+                  <div class="mb-2 p-2 border-start border-3 border-danger bg-light rounded-end">
+                    <small class="fw-bold text-danger"><i class="fas fa-forward me-1"></i>다음 액션</small>
+                    <div class="mt-1 content-display">${formatText(history.meeting_next_action)}</div>
+                  </div>`;
+              }
+              historyHtml += `</div>`;
+            } else if (history.content) {
               // 매니저 메모의 경우 [매니저 메모 - ...] 부분 제거
               let displayContent = history.content;
               const isManagerMemo = history.action_type === 'memo' && 
@@ -3459,12 +3498,47 @@
     // 편집 폼 HTML 생성
     let editFormHtml = `
       <form id="historyEditForm-${history.id}" onsubmit="return updateHistory(event, ${history.id}, ${scheduleId});">
-        <div class="row g-3">
+        <div class="row g-3">`;
+    
+    // 고객 미팅: 구조화된 미팅 노트 편집
+    if (history.action_type === 'customer_meeting') {
+      editFormHtml += `
+          <div class="col-12">
+            <div class="card border-primary">
+              <div class="card-header bg-primary bg-opacity-10 py-2">
+                <h6 class="card-title mb-0 text-primary small"><i class="fas fa-clipboard-list me-1"></i>미팅 노트</h6>
+              </div>
+              <div class="card-body p-3">
+                <div class="mb-2">
+                  <label class="form-label small fw-semibold mb-1"><i class="fas fa-info-circle me-1 text-primary"></i>오늘 상황</label>
+                  <textarea class="form-control form-control-sm" name="meeting_situation" rows="2">${history.meeting_situation || ''}</textarea>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small fw-semibold mb-1"><i class="fas fa-quote-left me-1 text-success"></i>연구원이 한 말 <small class="text-muted fw-normal">(직접 인용)</small></label>
+                  <textarea class="form-control form-control-sm" name="meeting_researcher_quote" rows="2">${history.meeting_researcher_quote || ''}</textarea>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small fw-semibold mb-1"><i class="fas fa-check-circle me-1 text-info"></i>내가 확인한 사실</label>
+                  <textarea class="form-control form-control-sm" name="meeting_confirmed_facts" rows="2">${history.meeting_confirmed_facts || ''}</textarea>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small fw-semibold mb-1"><i class="fas fa-exclamation-triangle me-1 text-warning"></i>장애물/반대</label>
+                  <textarea class="form-control form-control-sm" name="meeting_obstacles" rows="2">${history.meeting_obstacles || ''}</textarea>
+                </div>
+                <div class="mb-0">
+                  <label class="form-label small fw-semibold mb-1"><i class="fas fa-forward me-1 text-danger"></i>다음 액션</label>
+                  <textarea class="form-control form-control-sm" name="meeting_next_action" rows="2">${history.meeting_next_action || ''}</textarea>
+                </div>
+              </div>
+            </div>
+          </div>`;
+    } else {
+      editFormHtml += `
           <div class="col-12">
             <label class="form-label fw-bold">활동 내용</label>
-            <textarea class="form-control" name="content" rows="3" required>${history.content || ''}</textarea>
-          </div>
-    `;
+            <textarea class="form-control" name="content" rows="3">${history.content || ''}</textarea>
+          </div>`;
+    }
     
     // 활동 유형별 추가 필드
     if (history.action_type === 'delivery_schedule') {
@@ -3989,10 +4063,14 @@
     const deliveryFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .delivery-fields`);
     const quoteFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .quote-fields`);
     const serviceFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .service-fields`);
+    const meetingNotesFields = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .meeting-notes-fields`);
+    const nonMeetingContent = document.querySelectorAll(`#inlineHistoryForm-${scheduleId} .non-meeting-content`);
     
     deliveryFields.forEach(field => field.style.display = 'none');
     quoteFields.forEach(field => field.style.display = 'none');
     serviceFields.forEach(field => field.style.display = 'none');
+    meetingNotesFields.forEach(field => field.style.display = 'none');
+    nonMeetingContent.forEach(field => field.style.display = 'block');
     
     // 활동 유형에 따라 제목과 필드 업데이트
     const titleElement = document.querySelector(`#inlineHistoryForm-${scheduleId}`).closest('.card').querySelector('.card-title');
@@ -4000,7 +4078,9 @@
     switch(actionType) {
       case 'customer_meeting':
         titleElement.innerHTML = '<i class="fas fa-users me-2"></i>고객 미팅 기록 작성';
-        // 고객 미팅은 활동 내용만 필요 (이미 표시됨)
+        // 고객 미팅: 구조화된 미팅 노트 표시, 기본 content 숨김
+        meetingNotesFields.forEach(field => field.style.display = 'block');
+        nonMeetingContent.forEach(field => field.style.display = 'none');
         break;
       case 'quote':
         titleElement.innerHTML = '<i class="fas fa-file-invoice me-2"></i>견적 기록 작성';
@@ -6727,9 +6807,53 @@
                             <input type="hidden" name="schedule" value="${schedule.id}">
                             <input type="hidden" name="action_type" id="actionType-${schedule.id}" value="">
                             
-                            <div class="col-12">
+                            <!-- 기본 활동 내용 (미팅 외 유형) -->
+                            <div class="col-12 activity-field non-meeting-content">
                               <label class="form-label">활동 내용</label>
-                              <textarea class="form-control" id="contentTextarea-${schedule.id}" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요" required></textarea>
+                              <textarea class="form-control" id="contentTextarea-${schedule.id}" name="content" rows="3" placeholder="활동 내용을 상세히 기록해주세요"></textarea>
+                            </div>
+                            
+                            <!-- 구조화된 미팅 노트 (고객 미팅인 경우만 표시) -->
+                            <div class="col-12 activity-field meeting-notes-fields" style="display: none;">
+                              <div class="card border-primary">
+                                <div class="card-header bg-primary bg-opacity-10 py-2">
+                                  <h6 class="card-title mb-0 text-primary small">
+                                    <i class="fas fa-clipboard-list me-1"></i>미팅 노트
+                                  </h6>
+                                </div>
+                                <div class="card-body p-3">
+                                  <div class="mb-2">
+                                    <label class="form-label small fw-semibold mb-1">
+                                      <i class="fas fa-info-circle me-1 text-primary"></i>오늘 상황
+                                    </label>
+                                    <textarea class="form-control form-control-sm" name="meeting_situation" rows="2" placeholder="오늘 미팅에서 파악한 전반적인 상황"></textarea>
+                                  </div>
+                                  <div class="mb-2">
+                                    <label class="form-label small fw-semibold mb-1">
+                                      <i class="fas fa-quote-left me-1 text-success"></i>연구원이 한 말 <small class="text-muted fw-normal">(직접 인용)</small>
+                                    </label>
+                                    <textarea class="form-control form-control-sm" name="meeting_researcher_quote" rows="2" placeholder='예: "이번 프로젝트에 꼭 필요합니다"'></textarea>
+                                  </div>
+                                  <div class="mb-2">
+                                    <label class="form-label small fw-semibold mb-1">
+                                      <i class="fas fa-check-circle me-1 text-info"></i>내가 확인한 사실
+                                    </label>
+                                    <textarea class="form-control form-control-sm" name="meeting_confirmed_facts" rows="2" placeholder="미팅에서 직접 확인한 사실"></textarea>
+                                  </div>
+                                  <div class="mb-2">
+                                    <label class="form-label small fw-semibold mb-1">
+                                      <i class="fas fa-exclamation-triangle me-1 text-warning"></i>장애물/반대
+                                    </label>
+                                    <textarea class="form-control form-control-sm" name="meeting_obstacles" rows="2" placeholder="영업 진행에 장애물이나 반대 의견"></textarea>
+                                  </div>
+                                  <div class="mb-0">
+                                    <label class="form-label small fw-semibold mb-1">
+                                      <i class="fas fa-forward me-1 text-danger"></i>다음 액션
+                                    </label>
+                                    <textarea class="form-control form-control-sm" name="meeting_next_action" rows="2" placeholder="미팅 이후 수행할 다음 액션"></textarea>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                             
                             <!-- 견적용 필드들 -->

@@ -395,7 +395,76 @@ strong {
           {% endif %}
 
           <!-- 설명/내용 -->
-          {% if history.content %}
+          {% if history.action_type == 'customer_meeting' %}
+          <!-- 구조화된 미팅 노트 표시 -->
+          {% if history.meeting_situation or history.meeting_researcher_quote or history.meeting_confirmed_facts or history.meeting_obstacles or history.meeting_next_action %}
+          <div class="mb-4">
+            <h6 class="text-muted mb-2">
+              <i class="fas fa-clipboard-list me-1"></i>미팅 노트
+            </h6>
+            <div class="card border-primary">
+              <div class="card-body p-0">
+                {% if history.meeting_situation %}
+                <div class="p-3 border-bottom">
+                  <div class="d-flex align-items-center mb-2">
+                    <i class="fas fa-info-circle text-primary me-2"></i>
+                    <strong class="text-primary">오늘 상황</strong>
+                  </div>
+                  <p class="mb-0 whitespace-pre-line ps-4">{{ history.meeting_situation }}</p>
+                </div>
+                {% endif %}
+                {% if history.meeting_researcher_quote %}
+                <div class="p-3 border-bottom">
+                  <div class="d-flex align-items-center mb-2">
+                    <i class="fas fa-quote-left text-success me-2"></i>
+                    <strong class="text-success">연구원이 한 말 <small class="text-muted fw-normal">(직접 인용)</small></strong>
+                  </div>
+                  <blockquote class="mb-0 ps-4" style="border-left: 3px solid #198754;">
+                    <p class="mb-0 whitespace-pre-line fst-italic">{{ history.meeting_researcher_quote }}</p>
+                  </blockquote>
+                </div>
+                {% endif %}
+                {% if history.meeting_confirmed_facts %}
+                <div class="p-3 border-bottom">
+                  <div class="d-flex align-items-center mb-2">
+                    <i class="fas fa-check-circle text-info me-2"></i>
+                    <strong class="text-info">내가 확인한 사실</strong>
+                  </div>
+                  <p class="mb-0 whitespace-pre-line ps-4">{{ history.meeting_confirmed_facts }}</p>
+                </div>
+                {% endif %}
+                {% if history.meeting_obstacles %}
+                <div class="p-3 border-bottom">
+                  <div class="d-flex align-items-center mb-2">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                    <strong class="text-warning">장애물/반대</strong>
+                  </div>
+                  <p class="mb-0 whitespace-pre-line ps-4">{{ history.meeting_obstacles }}</p>
+                </div>
+                {% endif %}
+                {% if history.meeting_next_action %}
+                <div class="p-3">
+                  <div class="d-flex align-items-center mb-2">
+                    <i class="fas fa-forward text-danger me-2"></i>
+                    <strong class="text-danger">다음 액션</strong>
+                  </div>
+                  <p class="mb-0 whitespace-pre-line ps-4">{{ history.meeting_next_action }}</p>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% elif history.content %}
+          <div class="mb-4">
+            <h6 class="text-muted mb-2">
+              <i class="fas fa-file-text me-1"></i>상세 내용
+            </h6>
+            <div class="p-3 bg-light rounded">
+              <p class="mb-0 whitespace-pre-line">{{ history.content }}</p>
+            </div>
+          </div>
+          {% endif %}
+          {% elif history.content %}
           <div class="mb-4">
             <h6 class="text-muted mb-2">
               <i class="fas fa-file-text me-1"></i>상세 내용

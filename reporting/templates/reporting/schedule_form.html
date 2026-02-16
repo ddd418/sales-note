@@ -131,37 +131,6 @@ input[type="time"] {
   -moz-appearance: textfield;
 }
 
-/* 펀넬 등록 섹션 레이블 반응형 - 항상 한 줄 표시 */
-#funnel-register-section label,
-#funnel-register-section label.form-label,
-#funnel-register-section .form-label {
-  white-space: nowrap !important;
-  word-break: keep-all !important;
-  overflow-wrap: normal !important;
-}
-
-/* 모바일 전용: 작은 화면에서도 한 줄 유지 */
-@media (max-width: 768px) {
-  #funnel-register-section label,
-  #funnel-register-section label.form-label,
-  #funnel-register-section .form-label {
-    font-size: 0.85rem;
-    white-space: nowrap !important;
-    word-break: keep-all !important;
-    overflow-wrap: normal !important;
-    display: inline-block;
-  }
-}
-
-/* 초소형 화면 (360px 이하) */
-@media (max-width: 360px) {
-  #funnel-register-section label,
-  #funnel-register-section label.form-label,
-  #funnel-register-section .form-label {
-    font-size: 0.8rem;
-  }
-}
-
 /* 견적/납품 품목 관리 모달 반응형 */
 /* 모달 내 레이블 한 줄 표시 */
 #scheduleDeliveryItemsModal .form-label,
@@ -638,32 +607,6 @@ small.text-muted {
   padding-left: 0.25rem;
 }
 
-/* 펀넬 등록 체크박스 강조 */
-#funnel-register-section .form-check {
-  padding: 1rem;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: var(--radius);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-}
-
-#funnel-register-section .form-check-input {
-  width: 1.5em !important;
-  height: 1.5em !important;
-  border: 2px solid var(--primary) !important;
-  margin-top: 0.15em;
-}
-
-#funnel-register-section .form-check-label strong {
-  color: var(--primary) !important;
-  font-size: 1.1rem;
-}
-
-#funnel-register-section .form-text {
-  color: var(--text-muted) !important;
-  margin-top: 0.5rem;
-  margin-left: 2rem;
-}
-
 /* 선결제 체크박스 강조 */
 #prepayment-section .form-check-input {
   width: 1.5em !important;
@@ -849,9 +792,6 @@ small.text-muted {
                 })();
                 </script>
 
-                <!-- opportunity 필드를 숨김 필드로 추가 (견적 선택 시 자동 설정) -->
-                {{ form.opportunity }}
-
                 <div class="mb-3">
                   {{ form.visit_date.label_tag }}
                   <div class="input-group">
@@ -905,37 +845,6 @@ small.text-muted {
                 </div>
               </div>
             </div>
-
-            <!-- 펀넬 등록 섹션 (미팅 일정만 표시) -->
-            <div class="row mt-4" id="funnel-register-section" style="display: none;">
-              <div class="col-12">
-                <div class="card border-primary">
-                  <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                      <i class="fas fa-funnel-dollar me-2"></i>펀넬 등록
-                    </h5>
-                  </div>
-                  <div class="card-body">
-                    <div class="form-check">
-                      {{ form.register_funnel }}
-                      <label class="form-check-label" for="id_register_funnel">
-                        <strong>상위 영업기회에 등록</strong>
-                      </label>
-                      <div class="form-text">
-                        <i class="fas fa-info-circle me-1"></i>
-                        체크하면 이 고객이 펀넬 대시보드의 상위 영업기회에 표시됩니다.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 숨겨진 필드들 (expected_revenue, probability 등 - 견적 품목에서 자동 계산) -->
-            {{ form.expected_revenue }}
-            {{ form.probability }}
-            {{ form.expected_close_date }}
-            {{ form.purchase_confirmed }}
 
             <!-- 선결제 사용 섹션 (납품만 표시) -->
             <div class="row mt-4" id="prepayment-section" style="display: none;">
@@ -1087,9 +996,6 @@ small.text-muted {
                       <small class="text-muted">품목을 추가하고 견적 금액이 자동 계산됩니다.</small>
                     </div>
                     <div>
-                      <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromMeeting()" id="load-meeting-btn" style="display: none;">
-                        <i class="fas fa-user-tie me-1"></i>미팅에서 불러오기
-                      </button>
                       <button type="button" class="btn btn-light btn-sm me-2" onclick="loadFromQuote()" id="load-quote-btn" style="display: none;">
                         <i class="fas fa-file-import me-1"></i>견적에서 불러오기
                       </button>
@@ -2629,12 +2535,6 @@ window.toggleSections = function() {
             }
         }
         
-        // 미팅 불러오기 버튼 표시/숨김 (견적일 때만 표시)
-        const loadMeetingBtn = document.getElementById('load-meeting-btn');
-        if (loadMeetingBtn) {
-            loadMeetingBtn.style.display = (selectedValue === 'quote') ? 'inline-block' : 'none';
-        }
-        
         // 견적 불러오기 버튼 표시/숨김 (납품일 때만 표시)
         const loadQuoteBtn = document.getElementById('load-quote-btn');
         const deliveryLoadQuoteBtn = document.getElementById('delivery-load-quote-btn');
@@ -2669,11 +2569,11 @@ window.toggleSections = function() {
                         if (!helpText) {
                             helpText = document.createElement('small');
                             helpText.className = 'form-text text-warning quote-status-help';
-                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 영업기회가 실주로 처리됩니다.';
+                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 견적이 취소 처리됩니다.';
                             statusWrapper.appendChild(helpText);
                         } else {
                             helpText.className = 'form-text text-warning quote-status-help';
-                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 영업기회가 실주로 처리됩니다.';
+                            helpText.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>견적 취소 시 해당 견적이 취소 처리됩니다.';
                         }
                     }
                 } else {
@@ -2768,16 +2668,6 @@ window.toggleSections = function() {
                 itemsSectionTitle.innerHTML = '<i class="fas fa-file-invoice me-2"></i>견적 품목';
             } else if (selectedValue === 'delivery') {
                 itemsSectionTitle.innerHTML = '<i class="fas fa-boxes me-2"></i>납품 품목';
-            }
-        }
-        
-        // 펀넬 등록 섹션: 미팅일 때만 표시
-        const funnelRegisterSection = document.getElementById('funnel-register-section');
-        if (funnelRegisterSection) {
-            if (selectedValue === 'customer_meeting') {
-                funnelRegisterSection.style.display = 'block';
-            } else {
-                funnelRegisterSection.style.display = 'none';
             }
         }
         
@@ -2993,249 +2883,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// 견적에서 품목 불러오기 (버튼 클릭 시 모달 표시)
-// 미팅에서 불러오기 (견적 작성 시)
-function loadFromMeeting() {
-    const followupField = document.querySelector('[name="followup"]');
-    if (!followupField || !followupField.value) {
-        alert('먼저 팔로우업을 선택하세요.');
-        return;
-    }
-    
-    const followupId = followupField.value;
-    
-    // 해당 팔로우업의 미팅 일정 조회
-    fetch(`/reporting/api/followups/${followupId}/meetings/`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-            
-            if (!data.meetings || data.meetings.length === 0) {
-                alert('이 고객의 미팅 일정이 없습니다.');
-                return;
-            }
-            
-            // 미팅 선택 모달 표시
-            showMeetingSelectionModal(data.meetings);
-        })
-        .catch(error => {
-            console.error('미팅 불러오기 오류:', error);
-            alert('미팅을 불러오는 중 오류가 발생했습니다.');
-        });
-}
-
-// 미팅 선택 모달 표시
-function showMeetingSelectionModal(meetings) {
-    const modalHtml = `
-        <div class="modal fade" id="meetingSelectionModal" tabindex="-1">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header bg-success text-white">
-                        <h5 class="modal-title"><i class="fas fa-user-tie me-2"></i>미팅 선택</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-3"><i class="fas fa-info-circle text-info me-2"></i>연결할 미팅을 선택하세요:</p>
-                        <div class="list-group" id="meetingListGroup">
-                            ${meetings.map((meeting, index) => `
-                                <button type="button" class="list-group-item list-group-item-action meeting-item" data-meeting-index="${index}">
-                                    <div class="d-flex w-100 justify-content-between align-items-start">
-                                        <div>
-                                            <h6 class="mb-1">
-                                                <i class="fas fa-calendar-check text-success me-2"></i>
-                                                ${meeting.opportunity_title || '미팅 ' + (index + 1)}
-                                            </h6>
-                                            ${meeting.expected_revenue ? `
-                                                <p class="mb-1">
-                                                    <span class="badge bg-success me-2">예상 매출: ${meeting.expected_revenue.toLocaleString()}원</span>
-                                                    ${meeting.probability ? `<span class="badge bg-info">확률: ${meeting.probability}%</span>` : ''}
-                                                </p>
-                                            ` : ''}
-                                            ${meeting.notes ? `
-                                                <small class="text-muted">
-                                                    <i class="fas fa-sticky-note me-1"></i>${meeting.notes.substring(0, 100)}${meeting.notes.length > 100 ? '...' : ''}
-                                                </small>
-                                            ` : ''}
-                                        </div>
-                                        <small class="text-muted">
-                                            <i class="fas fa-calendar-alt me-1"></i>${meeting.visit_date}
-                                        </small>
-                                    </div>
-                                </button>
-                            `).join('')}
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                            <i class="fas fa-times me-1"></i>취소
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 기존 모달 제거
-    const existingModal = document.getElementById('meetingSelectionModal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-    
-    // 새 모달 추가
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    // 전역 변수에 meetings 저장
-    window.currentMeetings = meetings;
-    
-    // 모달 표시
-    const modalElement = document.getElementById('meetingSelectionModal');
-    const modal = new bootstrap.Modal(modalElement);
-    window.currentMeetingModal = modal;
-    
-    // 모달 이벤트 리스너 추가
-    modalElement.addEventListener('show.bs.modal', function(e) {
-        
-        if (modalElement.parentElement !== document.body) {
-            document.body.appendChild(modalElement);
-        }
-        
-        modalElement.style.zIndex = '100100';
-        modalElement.style.display = 'block';
-    });
-    
-    modalElement.addEventListener('shown.bs.modal', function() {
-        
-        // backdrop z-index 조정
-        const backdrops = document.querySelectorAll('.modal-backdrop');
-        backdrops.forEach(backdrop => {
-            backdrop.style.zIndex = '100099';
-        });
-        
-        modalElement.style.pointerEvents = 'auto';
-        
-        const modalContent = modalElement.querySelector('.modal-content');
-        if (modalContent) {
-            modalContent.style.pointerEvents = 'auto';
-        }
-    });
-    
-    // 모달 닫힐 때 정리
-    modalElement.addEventListener('hidden.bs.modal', function() {
-    });
-    
-    // 이벤트 리스너 추가
-    document.querySelectorAll('.meeting-item').forEach(button => {
-        button.addEventListener('click', function() {
-            const index = parseInt(this.dataset.meetingIndex);
-            selectMeeting(index);
-        });
-    });
-    
-    modal.show();
-}
-
-// 미팅 선택 처리
-function selectMeeting(index) {
-    
-    if (!window.currentMeetings || !window.currentMeetings[index]) {
-        console.error('미팅 데이터를 찾을 수 없습니다. index:', index);
-        alert('미팅 데이터를 불러오는 중 오류가 발생했습니다.');
-        return;
-    }
-    
-    const selectedMeeting = window.currentMeetings[index];
-    
-    loadMeetingData(selectedMeeting);
-    
-    if (window.currentMeetingModal) {
-        window.currentMeetingModal.hide();
-    }
-}
-
-// 선택된 미팅 데이터 불러오기
-function loadMeetingData(meeting) {
-    
-    if (!meeting) {
-        console.error('[LOAD_MEETING] 잘못된 미팅 데이터:', meeting);
-        alert('미팅 데이터가 올바르지 않습니다.');
-        return;
-    }
-    
-    // 선택한 미팅의 opportunity를 폼의 opportunity 필드에 설정
-    const opportunityField = document.querySelector('[name="opportunity"]');
-    if (opportunityField && meeting.opportunity_id) {
-        opportunityField.value = meeting.opportunity_id;
-        
-        // 펀넬 정보도 자동으로 로드
-        if (typeof loadOpportunityData === 'function') {
-            loadOpportunityData(meeting.opportunity_id);
-        }
-    } else {
-        console.warn('[LOAD_MEETING] Opportunity field not found or opportunity_id is missing');
-    }
-    
-    // 예상 매출액 설정
-    const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
-    
-    if (expectedRevenueField && meeting.expected_revenue) {
-        expectedRevenueField.value = meeting.expected_revenue;
-        
-        // 입력 이벤트 트리거하여 화면 업데이트
-        expectedRevenueField.dispatchEvent(new Event('input', { bubbles: true }));
-        expectedRevenueField.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-        console.warn('[LOAD_MEETING] expectedRevenueField 또는 meeting.expected_revenue 없음');
-    }
-    
-    // 확률 설정
-    const probabilityField = document.querySelector('[name="probability"]');
-    
-    if (probabilityField && meeting.probability) {
-        probabilityField.value = meeting.probability;
-        
-        // 입력 이벤트 트리거하여 화면 업데이트
-        probabilityField.dispatchEvent(new Event('input', { bubbles: true }));
-        probabilityField.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-        console.warn('[LOAD_MEETING] probabilityField 또는 meeting.probability 없음');
-    }
-    
-    // 예상 계약일 설정
-    const expectedCloseDateField = document.querySelector('[name="expected_close_date"]');
-    
-    if (expectedCloseDateField && meeting.expected_close_date) {
-        expectedCloseDateField.value = meeting.expected_close_date;
-        
-        // 입력 이벤트 트리거하여 화면 업데이트
-        expectedCloseDateField.dispatchEvent(new Event('input', { bubbles: true }));
-        expectedCloseDateField.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-        console.warn('[LOAD_MEETING] expectedCloseDateField 또는 meeting.expected_close_date 없음');
-    }
-    
-    // 필드에 시각적 효과 추가
-    setTimeout(() => {
-        [expectedRevenueField, probabilityField, expectedCloseDateField].forEach(field => {
-            if (field && field.value) {
-                field.style.backgroundColor = '#d4edda';
-                field.style.transition = 'background-color 0.5s';
-                setTimeout(() => {
-                    field.style.backgroundColor = '';
-                }, 2000);
-            }
-        });
-    }, 100);
-    
-    // 성공 메시지 표시 (모달 닫힌 후)
-    setTimeout(() => {
-        const message = `미팅과 연결되었습니다!\n\n✓ 미팅일: ${meeting.visit_date}\n✓ 예상 매출액: ${meeting.expected_revenue ? meeting.expected_revenue.toLocaleString() + '원' : '없음'}`;
-        alert(message);
-    }, 300);
-}
-
+// 견적에서 품목 불러오기 (납품 작성 시)
 function loadFromQuote() {
     const followupField = document.querySelector('[name="followup"]');
     if (!followupField || !followupField.value) {
@@ -3287,7 +2935,7 @@ function showQuoteSelectionModal(quotes) {
                                         <div>
                                             <h6 class="mb-1">
                                                 <i class="fas fa-file-alt text-primary me-2"></i>
-                                                ${quote.opportunity_title || '견적 ' + (index + 1)}
+                                                ${'견적 ' + (index + 1)}
                                             </h6>
                                             <p class="mb-1">
                                                 <span class="badge bg-success me-2">예상 매출: ${quote.expected_revenue.toLocaleString()}원</span>
@@ -3442,14 +3090,6 @@ function loadQuoteItems(quote) {
         return;
     }
     
-    
-    // 선택한 견적의 opportunity를 폼의 opportunity 필드에 설정
-    const opportunityField = document.querySelector('[name="opportunity"]');
-    if (opportunityField && quote.opportunity_id) {
-        opportunityField.value = quote.opportunity_id;
-    } else {
-        console.warn('Opportunity field not found or opportunity_id is missing');
-    }
     
     // 현재 활동 유형 확인
     const activityTypeField = document.querySelector('[name="activity_type"]');

@@ -265,8 +265,8 @@
               </div>
             </div>
 
-            <!-- 상세 설명 -->
-            <div class="mb-4">
+            <!-- 상세 설명 (미팅이 아닌 경우) -->
+            <div class="mb-4" id="content-field">
               <label for="{{ form.content.id_for_label }}" class="form-label">
                 <i class="fas fa-file-text me-1"></i>상세 내용
               </label>
@@ -277,6 +277,83 @@
               {% endif %}
               <div class="form-text">
                 활동에 대한 자세한 설명을 입력해주세요.
+              </div>
+            </div>
+
+            <!-- 구조화된 미팅 노트 (고객 미팅인 경우만 표시) -->
+            <div id="meeting-notes-section" style="display: none;">
+              <div class="card border-primary mb-4">
+                <div class="card-header bg-primary bg-opacity-10">
+                  <h6 class="card-title mb-0 text-primary">
+                    <i class="fas fa-clipboard-list me-2"></i>미팅 노트
+                  </h6>
+                </div>
+                <div class="card-body">
+                  <!-- 오늘 상황 -->
+                  <div class="mb-3">
+                    <label for="{{ form.meeting_situation.id_for_label }}" class="form-label fw-semibold">
+                      <i class="fas fa-info-circle me-1 text-primary"></i>오늘 상황
+                    </label>
+                    {{ form.meeting_situation }}
+                    {% if form.meeting_situation.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.meeting_situation.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+
+                  <!-- 연구원이 한 말(직접 인용) -->
+                  <div class="mb-3">
+                    <label for="{{ form.meeting_researcher_quote.id_for_label }}" class="form-label fw-semibold">
+                      <i class="fas fa-quote-left me-1 text-success"></i>연구원이 한 말 <small class="text-muted fw-normal">(직접 인용)</small>
+                    </label>
+                    {{ form.meeting_researcher_quote }}
+                    {% if form.meeting_researcher_quote.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.meeting_researcher_quote.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+
+                  <!-- 내가 확인한 사실 -->
+                  <div class="mb-3">
+                    <label for="{{ form.meeting_confirmed_facts.id_for_label }}" class="form-label fw-semibold">
+                      <i class="fas fa-check-circle me-1 text-info"></i>내가 확인한 사실
+                    </label>
+                    {{ form.meeting_confirmed_facts }}
+                    {% if form.meeting_confirmed_facts.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.meeting_confirmed_facts.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+
+                  <!-- 장애물/반대 -->
+                  <div class="mb-3">
+                    <label for="{{ form.meeting_obstacles.id_for_label }}" class="form-label fw-semibold">
+                      <i class="fas fa-exclamation-triangle me-1 text-warning"></i>장애물/반대
+                    </label>
+                    {{ form.meeting_obstacles }}
+                    {% if form.meeting_obstacles.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.meeting_obstacles.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+
+                  <!-- 다음 액션 -->
+                  <div class="mb-0">
+                    <label for="{{ form.meeting_next_action.id_for_label }}" class="form-label fw-semibold">
+                      <i class="fas fa-forward me-1 text-danger"></i>다음 액션
+                    </label>
+                    {{ form.meeting_next_action }}
+                    {% if form.meeting_next_action.errors %}
+                    <div class="invalid-feedback d-block">
+                      {% for error in form.meeting_next_action.errors %}{{ error }}{% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -386,6 +463,8 @@
       const deliveryItemsField = document.getElementById('delivery-items-field');
       const deliveryDateField = document.getElementById('delivery-date-field');
       const meetingDateField = document.getElementById('meeting-date-field');
+      const contentField = document.getElementById('content-field');
+      const meetingNotesSection = document.getElementById('meeting-notes-section');
       const followupField = document.getElementById('{{ form.followup.id_for_label }}');
       const scheduleField = document.getElementById('{{ form.schedule.id_for_label }}');
       const deliveryDateInput = document.getElementById('{{ form.delivery_date.id_for_label }}');
@@ -411,6 +490,8 @@
           if (deliveryItemsField) deliveryItemsField.style.display = 'none';
           if (deliveryDateField) deliveryDateField.style.display = 'none';
           if (meetingDateField) meetingDateField.style.display = 'none';
+          if (meetingNotesSection) meetingNotesSection.style.display = 'none';
+          if (contentField) contentField.style.display = 'block';
 
           // 각 활동 유형에 따른 필드 표시
           if (actionTypeField.value === 'service') {
@@ -421,6 +502,9 @@
               if (deliveryDateField) deliveryDateField.style.display = 'block';
           } else if (actionTypeField.value === 'customer_meeting') {
               if (meetingDateField) meetingDateField.style.display = 'block';
+              // 고객 미팅: 구조화된 미팅 노트 표시, 기존 content 숨김
+              if (meetingNotesSection) meetingNotesSection.style.display = 'block';
+              if (contentField) contentField.style.display = 'none';
           } else {
           }
       }

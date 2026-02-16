@@ -589,6 +589,14 @@ class History(models.Model):
     delivery_items = models.TextField(blank=True, null=True, verbose_name="납품 품목", help_text="납품 일정인 경우 품목을 입력하세요")
     delivery_date = models.DateField(blank=True, null=True, verbose_name="납품 날짜", help_text="납품 일정인 경우 실제 납품 날짜를 입력하세요")
     meeting_date = models.DateField(blank=True, null=True, verbose_name="미팅 날짜", help_text="고객 미팅인 경우 실제 미팅 날짜를 입력하세요")
+    
+    # 구조화된 미팅 노트 필드 (고객 미팅 전용)
+    meeting_situation = models.TextField(blank=True, null=True, verbose_name="오늘 상황", help_text="미팅에서 파악한 오늘의 상황을 기록하세요")
+    meeting_researcher_quote = models.TextField(blank=True, null=True, verbose_name="연구원이 한 말(직접 인용)", help_text="연구원이 직접 한 말을 인용하여 기록하세요")
+    meeting_confirmed_facts = models.TextField(blank=True, null=True, verbose_name="내가 확인한 사실", help_text="미팅에서 직접 확인한 사실을 기록하세요")
+    meeting_obstacles = models.TextField(blank=True, null=True, verbose_name="장애물/반대", help_text="영업 진행에 장애물이나 반대 의견을 기록하세요")
+    meeting_next_action = models.TextField(blank=True, null=True, verbose_name="다음 액션", help_text="미팅 이후 수행할 다음 액션을 기록하세요")
+    
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행 여부")
     old_value = models.TextField(blank=True, null=True, verbose_name="이전 값")
     new_value = models.TextField(blank=True, null=True, verbose_name="새로운 값")
