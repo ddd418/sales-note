@@ -1404,14 +1404,15 @@ def dashboard_view(request):
     else:
         user_filter_for_dashboard = {'user': target_user}
     
-    # 납품 일정 조회 (올해, 취소 제외, 오늘까지만 - 미래 일정 제외)
+    # 납품 일정 조회 (올해, 완료된 것만 - 일정 페이지와 동일한 조건)
     today = timezone.now().date()
     delivery_schedules = Schedule.objects.filter(
         visit_date__year=current_year,
         visit_date__lte=today,  # 오늘까지만 포함 (미래 일정 제외)
         activity_type='delivery',
+        status='completed',  # 완료된 납품만 집계
         **user_filter_for_dashboard
-    ).exclude(status='cancelled').prefetch_related('delivery_items_set')
+    ).prefetch_related('delivery_items_set')
     
     # 납품 History 조회 (올해)
     delivery_histories = History.objects.filter(

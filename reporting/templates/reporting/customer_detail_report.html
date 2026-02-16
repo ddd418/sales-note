@@ -2214,16 +2214,27 @@ a.text-decoration-none {
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    console.log('세금계산서 토글 이벤트 등록 시작');
+    console.log('토글 요소 개수:', document.querySelectorAll(".tax-invoice-toggle").length);
+    
     // 세금계산서 상태 일괄 토글 (납품일별)
     document
       .querySelectorAll(".tax-invoice-toggle")
       .forEach(function (element) {
-        element.addEventListener("click", function () {
+        console.log('토글 요소 등록:', element);
+        element.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          console.log('토글 클릭됨:', this);
+          
           const type = this.dataset.type;
           const id = this.dataset.id;
           const scheduleId = this.dataset.scheduleId;
-          const currentStatus =
-            this.querySelector(".badge").classList.contains("bg-primary");
+          const badge = this.querySelector(".badge");
+          const currentStatus = badge ? badge.classList.contains("bg-primary") : false;
+
+          console.log('type:', type, 'id:', id, 'currentStatus:', currentStatus);
 
           // 확인 메시지
           const statusText = currentStatus ? "미발행" : "발행완료";
@@ -2245,6 +2256,8 @@ a.text-decoration-none {
 
     // 세금계산서 상태 업데이트 함수
     function updateTaxInvoiceStatus(type, id, status) {
+      console.log('updateTaxInvoiceStatus 호출:', type, id, status);
+      
       // 로딩 표시
       const loadingText = status ? "발행 처리중..." : "미발행 처리중...";
       const loadingDiv = document.createElement("div");
@@ -2252,6 +2265,7 @@ a.text-decoration-none {
       loadingDiv.textContent = loadingText;
       document.body.appendChild(loadingDiv);
 
+      console.log('fetch 요청 시작:', '{% url "reporting:update_tax_invoice_status" %}');
       fetch('{% url "reporting:update_tax_invoice_status" %}', {
         method: "POST",
         headers: {
