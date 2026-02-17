@@ -6,6 +6,35 @@
 {% block extra_css %}
 <style>
   /* ============================================
+     모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
+     ============================================ */
+  .modal-backdrop {
+    display: none !important;
+  }
+  .modal {
+    z-index: 1055 !important;
+    pointer-events: none !important;
+  }
+  .modal-dialog {
+    z-index: 1056 !important;
+    pointer-events: auto !important;
+  }
+  .modal-content {
+    position: relative;
+    z-index: 1057 !important;
+    pointer-events: auto !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  .modal-header,
+  .modal-body,
+  .modal-footer,
+  .modal-header *,
+  .modal-body *,
+  .modal-footer * {
+    pointer-events: auto !important;
+  }
+
+  /* ============================================
      AI Chat Room - 다크 테마 채팅 UI
      ============================================ */
   .ai-chat-container {
