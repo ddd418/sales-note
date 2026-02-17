@@ -34,6 +34,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('reporting/', include('reporting.urls')),
     path('todos/', include('todos.urls')),  # TODOLIST 앱
+    path('ai/', include('ai_chat.urls')),  # AI PainPoint 채팅
     path('logout/', auth_views.LogoutView.as_view(), name='logout'), # logout URL 추가
 ]
 

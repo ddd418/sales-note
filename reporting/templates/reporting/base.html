@@ -1575,6 +1575,14 @@
           </a>
         </li>
         {% endif %}
+        {% if user.userprofile.can_use_ai %}
+        <li class="nav-item">
+          <a href="{% url 'ai_chat:room_list' %}" class="nav-link {% if request.resolver_match.app_name == 'ai_chat' %}active{% endif %}">
+            <i class="fas fa-brain" style="background: linear-gradient(135deg, #8b5cf6, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+            <span>AI 분석</span>
+          </a>
+        </li>
+        {% endif %}
         <li class="nav-item">
           <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
             <i class="fas fa-list"></i>

@@ -117,6 +117,16 @@
                   </div>
                   <small class="text-muted">{{ form.can_download_excel.help_text }}</small>
                 </div>
+
+                <div class="mb-3">
+                  <div class="form-check">
+                    {{ form.can_use_ai }}
+                    <label class="form-check-label" for="{{ form.can_use_ai.id_for_label }}">
+                      <i class="fas fa-brain me-1" style="color: #6366f1;"></i>{{ form.can_use_ai.label }}
+                    </label>
+                  </div>
+                  <small class="text-muted">{{ form.can_use_ai.help_text }}</small>
+                </div>
               </div>
 
               <!-- 비밀번호 변경 -->

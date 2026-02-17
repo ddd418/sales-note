@@ -3907,6 +3907,12 @@ class UserCreationForm(forms.Form):
         label='엑셀 다운로드 권한',
         help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다'
     )
+    can_use_ai = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='AI 분석 권한',
+        help_text='체크 시 AI PainPoint 분석 기능을 사용할 수 있습니다'
+    )
     first_name = forms.CharField(
         max_length=30,
         required=False,
@@ -3997,6 +4003,12 @@ class UserEditForm(forms.Form):
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         label='엑셀 다운로드 권한',
         help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다 (관리자는 항상 가능)'
+    )
+    can_use_ai = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='AI 분석 권한',
+        help_text='체크 시 AI PainPoint 분석 기능을 사용할 수 있습니다'
     )
     first_name = forms.CharField(
         max_length=30,
@@ -4097,6 +4109,7 @@ def user_create(request):
                 company=user_company,  # UserCompany 객체 사용
                 role=form.cleaned_data['role'],
                 can_download_excel=form.cleaned_data['can_download_excel'],
+                can_use_ai=form.cleaned_data['can_use_ai'],
                 created_by=request.user
             )
             
@@ -4139,6 +4152,7 @@ def user_edit(request, user_id):
             user_profile.company = user_company  # 회사 정보 업데이트
             user_profile.role = form.cleaned_data['role']
             user_profile.can_download_excel = form.cleaned_data['can_download_excel']
+            user_profile.can_use_ai = form.cleaned_data['can_use_ai']
             user_profile.save()
             
             messages.success(request, f'사용자 "{user.username}"의 정보가 성공적으로 수정되었습니다.')
@@ -4152,6 +4166,7 @@ def user_edit(request, user_id):
             'last_name': user.last_name,
             'role': user_profile.role,
             'can_download_excel': user_profile.can_download_excel,
+            'can_use_ai': user_profile.can_use_ai,
         })
     
     context = {
@@ -5135,6 +5150,28 @@ def user_toggle_active(request, user_id):
         
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@role_required(['admin'])
+@require_POST
+def user_toggle_ai(request, user_id):
+    """사용자 AI 권한 토글 (Admin 전용)"""
+    try:
+        user = get_object_or_404(User, id=user_id)
+        profile = get_object_or_404(UserProfile, user=user)
+
+        profile.can_use_ai = not profile.can_use_ai
+        profile.save(update_fields=['can_use_ai'])
+
+        status_text = "부여" if profile.can_use_ai else "해제"
+        return JsonResponse({
+            'success': True,
+            'can_use_ai': profile.can_use_ai,
+            'message': f'사용자 "{user.username}"의 AI 권한이 {status_text}되었습니다.'
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 
 @login_required
 @require_POST

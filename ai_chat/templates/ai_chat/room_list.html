@@ -1,0 +1,245 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}AI PainPoint 분석{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ai-room-list {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .ai-page-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+  .ai-page-header h2 {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  .ai-page-header .badge-ai {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  /* 새 분석 시작 영역 */
+  .ai-new-chat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .ai-new-chat h6 {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+  .ai-search-input {
+    width: 100%;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+  .ai-search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+  .ai-search-input::placeholder { color: var(--text-secondary); }
+  .ai-followup-list {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .ai-followup-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    transition: background 0.15s;
+  }
+  .ai-followup-item:last-child { border-bottom: none; }
+  .ai-followup-item:hover { background: var(--surface-hover); }
+  .ai-followup-item .fu-name { font-weight: 600; }
+  .ai-followup-item .fu-meta { color: var(--text-secondary); font-size: 0.75rem; }
+  .ai-followup-item .btn-start-ai {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  .ai-followup-item .btn-start-ai:hover { opacity: 0.9; }
+
+  .ai-empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+  }
+  .ai-empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: var(--border);
+  }
+
+  .ai-room-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s;
+    cursor: pointer;
+    text-decoration: none !important;
+    display: block;
+  }
+  .ai-room-card:hover {
+    border-color: var(--primary);
+    background: var(--surface-hover);
+    transform: translateY(-1px);
+  }
+  .ai-room-card .room-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+  }
+  .ai-room-card .room-meta {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .ai-room-card .room-last-msg {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ai-room-card .badge-unverified {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-room-list">
+  <div class="ai-page-header">
+    <h2><i class="fas fa-brain"></i> AI PainPoint 분석</h2>
+    <span class="badge-ai">AI</span>
+  </div>
+
+  <!-- 새 분석 시작 -->
+  {% if available_followups %}
+  <div class="ai-new-chat">
+    <h6><i class="fas fa-plus-circle me-1" style="color: #8b5cf6;"></i> 새 고객 AI 분석 시작</h6>
+    <input type="text" class="ai-search-input" id="followupSearch"
+           placeholder="고객명, 업체명으로 검색..." oninput="filterFollowups()">
+    <div class="ai-followup-list" id="followupList">
+      {% for fu in available_followups %}
+      <div class="ai-followup-item" data-search="{{ fu.customer_name|lower }} {{ fu.company.name|lower }} {{ fu.department.name|default:''|lower }}">
+        <div>
+          <span class="fu-name">{{ fu.customer_name }}</span>
+          <span class="fu-meta">
+            {% if fu.company %} &middot; {{ fu.company.name }}{% endif %}
+            {% if fu.department %} / {{ fu.department.name }}{% endif %}
+          </span>
+        </div>
+        <a href="{% url 'ai_chat:start_chat' followup_id=fu.id %}" class="btn-start-ai">
+          <i class="fas fa-brain me-1"></i>분석 시작
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 기존 채팅방 목록 -->
+  {% if room_data %}
+    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem; text-transform: uppercase;">
+      진행 중인 분석 ({{ room_data|length }})
+    </div>
+    {% for item in room_data %}
+    <a href="{% url 'ai_chat:room_detail' room_id=item.room.id %}" class="ai-room-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="room-title">
+            {{ item.room.followup.customer_name }}
+            {% if item.room.followup.department %}
+              <span style="color: var(--text-secondary); font-weight: 400;">
+                / {{ item.room.followup.department.name }}
+              </span>
+            {% endif %}
+          </div>
+          <div class="room-meta">
+            {% if item.room.followup.company %}
+              {{ item.room.followup.company.name }} &middot;
+            {% endif %}
+            {{ item.room.updated_at|date:"m/d H:i" }}
+          </div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          {% if item.unverified_count > 0 %}
+            <span class="badge-unverified">
+              <i class="fas fa-exclamation-circle"></i> 미검증 {{ item.unverified_count }}
+            </span>
+          {% endif %}
+          <i class="fas fa-chevron-right" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+        </div>
+      </div>
+      {% if item.last_message %}
+        <div class="room-last-msg">
+          {{ item.last_message.content|truncatechars:80 }}
+        </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  {% else %}
+    {% if not available_followups %}
+    <div class="ai-empty-state">
+      <i class="fas fa-robot"></i>
+      <h5>아직 AI 분석 채팅방이 없습니다</h5>
+      <p>팔로우업 상세 페이지에서<br>"AI 분석" 버튼을 눌러 시작하세요.</p>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<script>
+function filterFollowups() {
+  const query = document.getElementById('followupSearch').value.toLowerCase();
+  document.querySelectorAll('.ai-followup-item').forEach(item => {
+    const text = item.getAttribute('data-search');
+    item.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

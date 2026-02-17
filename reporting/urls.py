@@ -122,6 +122,7 @@ urlpatterns = [
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
     path('users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
     path('users/<int:user_id>/toggle-active/', views.user_toggle_active, name='user_toggle_active'),
+    path('users/<int:user_id>/toggle-ai/', views.user_toggle_ai, name='user_toggle_ai'),
     
     # 매니저용 사용자 관리 URL들 (Manager 전용)
     path('manager/users/', views.manager_user_list, name='manager_user_list'),

@@ -1,0 +1,89 @@
+{% comment %}
+PainPoint 카드 부분 템플릿
+사용: {% include 'ai_chat/partials/painpoint_card.html' with card=card %}
+{% endcomment %}
+
+<div class="painpoint-card {% if card.verification_status == 'confirmed' %}verified-confirmed{% elif card.verification_status == 'denied' %}verified-denied{% endif %}"
+     id="card-{{ card.id }}">
+  
+  <div class="card-header-row">
+    <span class="card-category">{{ card.get_category_display }}</span>
+    <span class="card-confidence confidence-{{ card.confidence }}">
+      {{ card.get_confidence_display }} {{ card.confidence_score }}
+    </span>
+  </div>
+
+  <div class="card-hypothesis">{{ card.hypothesis }}</div>
+
+  <!-- 근거 (Evidence) -->
+  {% if card.evidence %}
+    <div class="card-evidence">
+      {% for ev in card.evidence %}
+        <div style="margin-bottom: 0.2rem;">
+          {% if ev.type == 'quote' %}
+            <span class="ev-type ev-type-quote">인용</span>
+          {% elif ev.type == 'fact' %}
+            <span class="ev-type ev-type-fact">사실</span>
+          {% else %}
+            <span class="ev-type ev-type-guess">추측</span>
+          {% endif %}
+          {{ ev.text }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <!-- 검증 질문 -->
+  {% if card.verification_question %}
+    <div class="card-question">
+      <i class="fas fa-comment-dots"></i> "{{ card.verification_question }}"
+    </div>
+  {% endif %}
+
+  <!-- 대응 패키지 (접기) -->
+  <div class="card-actions-row">
+    <details>
+      <summary>✅ 맞으면</summary>
+      <div class="detail-content">{{ card.action_if_yes }}</div>
+    </details>
+    <details>
+      <summary>❌ 아니면</summary>
+      <div class="detail-content">{{ card.action_if_no }}</div>
+    </details>
+    {% if card.caution %}
+    <details>
+      <summary>⚠️ 주의</summary>
+      <div class="detail-content">{{ card.caution }}</div>
+    </details>
+    {% endif %}
+  </div>
+
+  <!-- 검증 버튼 / 상태 -->
+  {% if card.verification_status == 'unverified' %}
+    <div class="card-verify-btns">
+      <button class="btn-verify btn-verify-yes" onclick="openVerifyModal({{ card.id }}, 'confirmed')">
+        <i class="fas fa-check"></i> 확인됨
+      </button>
+      <button class="btn-verify btn-verify-no" onclick="openVerifyModal({{ card.id }}, 'denied')">
+        <i class="fas fa-times"></i> 부정됨
+      </button>
+    </div>
+  {% else %}
+    <div style="margin-top: 0.5rem;">
+      {% if card.verification_status == 'confirmed' %}
+        <span class="card-verification-status" style="background: rgba(34,197,94,0.15); color: #22c55e;">
+          ✅ 확인됨
+        </span>
+      {% elif card.verification_status == 'denied' %}
+        <span class="card-verification-status" style="background: rgba(239,68,68,0.15); color: #ef4444;">
+          ❌ 부정됨
+        </span>
+      {% endif %}
+      {% if card.verification_note %}
+        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+          {{ card.verification_note }}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

@@ -80,6 +80,7 @@
                         <th>이름</th>
                         <th>권한</th>
                         <th>엑셀 다운로드</th>
+                        <th>AI 분석</th>
                         <th>상태</th>
                         <th>작업</th>
                       </tr>
@@ -138,6 +139,21 @@
                           {% endif %}
                         </td>
                         <td>
+                          {% if user.userprofile %}
+                            {% if user.userprofile.can_use_ai %}
+                              <span class="badge bg-info">
+                                <i class="fas fa-brain me-1"></i>허용
+                              </span>
+                            {% else %}
+                              <span class="badge bg-secondary">
+                                <i class="fas fa-times me-1"></i>제한
+                              </span>
+                            {% endif %}
+                          {% else %}
+                            <span class="badge bg-secondary">-</span>
+                          {% endif %}
+                        </td>
+                        <td>
                           {% if user.is_active %}
                             <span class="badge bg-success">활성</span>
                           {% else %}
@@ -155,6 +171,13 @@
                                 </a>
                               </li>
                               {% if user.username != request.user.username %}
+                              <li>
+                                <a class="dropdown-item" href="#"
+                                   onclick="toggleUserAI({{ user.id }}, '{{ user.username }}', {{ user.userprofile.can_use_ai|yesno:'true,false' }})">
+                                  <i class="fas fa-brain me-1" style="{% if user.userprofile.can_use_ai %}color: #6366f1;{% endif %}"></i>
+                                  {% if user.userprofile.can_use_ai %}AI 권한 해제{% else %}AI 권한 부여{% endif %}
+                                </a>
+                              </li>
                               <li>
                                 <a class="dropdown-item {% if user.is_active %}text-danger{% else %}text-success{% endif %}" 
                                    href="#" 
@@ -267,6 +290,49 @@ function toggleUserStatus(userId, username, isActive) {
         alert('네트워크 오류가 발생했습니다.');
       }
     });  }
+}
+
+function toggleUserAI(userId, username, hasAI) {
+  const action = hasAI ? '해제' : '부여';
+  const message = `사용자 "${username}"의 AI 분석 권한을 ${action}하시겠습니까?`;
+  
+  if (confirm(message)) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    fetch(`/reporting/users/${userId}/toggle-ai/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        if (typeof showToast !== 'undefined') {
+          showToast(data.message, 'success');
+        } else {
+          alert(data.message);
+        }
+        setTimeout(() => { window.location.reload(); }, 1000);
+      } else {
+        if (typeof showToast !== 'undefined') {
+          showToast(data.error || '작업 중 오류가 발생했습니다.', 'error');
+        } else {
+          alert(data.error || '작업 중 오류가 발생했습니다.');
+        }
+      }
+    })
+    .catch(error => {
+      if (typeof showToast !== 'undefined') {
+        showToast('네트워크 오류가 발생했습니다.', 'error');
+      } else {
+        alert('네트워크 오류가 발생했습니다.');
+      }
+    });
+  }
 }
 
 function deleteUser(userId, username) {
