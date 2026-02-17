@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'reporting',
     'todos',
+    'ai_chat',
 ]
 
 MIDDLEWARE = [
