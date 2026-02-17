@@ -467,6 +467,27 @@
                   {% endwith %}
                 </div>
               {% endif %}
+              {% if msg.structured_data.next_action_feedback %}
+                {% with naf=msg.structured_data.next_action_feedback %}
+                <div class="ai-structured" style="margin-top: 0.5rem;">
+                  <h6><i class="fas fa-forward"></i> 다음 액션 피드백
+                    {% if naf.evaluation == 'good' %}<span style="color:#22c55e;">✔ Good</span>
+                    {% elif naf.evaluation == 'weak' %}<span style="color:#fbbf24;">⚠ Weak</span>
+                    {% elif naf.evaluation == 'risky' %}<span style="color:#ef4444;">⚠ Risky</span>
+                    {% elif naf.evaluation == 'missing' %}<span style="color:#94a3b8;">❓ Missing</span>
+                    {% endif %}
+                  </h6>
+                  {% if naf.original_action %}<div style="font-size:0.8rem; margin-bottom:0.3rem;"><strong>원래 액션:</strong> {{ naf.original_action }}</div>{% endif %}
+                  {% if naf.feedback %}<div style="font-size:0.8rem; margin-bottom:0.3rem;">{{ naf.feedback }}</div>{% endif %}
+                  {% if naf.suggested_actions %}
+                    <div style="font-size:0.8rem; margin-top:0.3rem;"><strong>추천 액션:</strong></div>
+                    {% for action in naf.suggested_actions %}
+                      <div style="font-size:0.8rem; padding-left:0.5rem;">→ {{ action }}</div>
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                {% endwith %}
+              {% endif %}
               {% if msg.structured_data.missing_info.items %}
                 <div class="ai-structured" style="margin-top: 0.5rem;">
                   <h6><i class="fas fa-question-circle"></i> 누락/확인 필요</h6>
@@ -716,6 +737,18 @@ function appendStructuredMessage(aiMsg) {
     html += '<div class="ai-structured" style="margin-top:0.5rem"><h6><i class="fas fa-bullseye"></i> CRM 추천</h6>';
     if (sd.crm_update.stage) html += `<div style="font-size:0.8rem"><strong>스테이지:</strong> ${escapeHtml(sd.crm_update.stage)}</div>`;
     if (sd.crm_update.must_get_next_visit) html += `<div style="font-size:0.8rem"><strong>다음 방문 필수:</strong> ${escapeHtml(sd.crm_update.must_get_next_visit)}</div>`;
+    html += '</div>';
+  }
+  if (sd && sd.next_action_feedback) {
+    const naf = sd.next_action_feedback;
+    const evalMap = {good:'<span style="color:#22c55e">✔ Good</span>', weak:'<span style="color:#fbbf24">⚠ Weak</span>', risky:'<span style="color:#ef4444">⚠ Risky</span>', missing:'<span style="color:#94a3b8">❓ Missing</span>'};
+    html += `<div class="ai-structured" style="margin-top:0.5rem"><h6><i class="fas fa-forward"></i> 다음 액션 피드백 ${evalMap[naf.evaluation]||''}</h6>`;
+    if (naf.original_action) html += `<div style="font-size:0.8rem;margin-bottom:0.3rem"><strong>원래 액션:</strong> ${escapeHtml(naf.original_action)}</div>`;
+    if (naf.feedback) html += `<div style="font-size:0.8rem;margin-bottom:0.3rem">${escapeHtml(naf.feedback)}</div>`;
+    if (naf.suggested_actions && naf.suggested_actions.length) {
+      html += '<div style="font-size:0.8rem;margin-top:0.3rem"><strong>추천 액션:</strong></div>';
+      naf.suggested_actions.forEach(a => { html += `<div style="font-size:0.8rem;padding-left:0.5rem">→ ${escapeHtml(a)}</div>`; });
+    }
     html += '</div>';
   }
   html += `<div class="msg-time">${aiMsg.created_at}</div></div>`;
