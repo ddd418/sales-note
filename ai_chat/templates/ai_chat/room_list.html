@@ -147,6 +147,22 @@
     border-radius: 4px;
     font-weight: 600;
   }
+  .btn-delete-room {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    opacity: 0;
+  }
+  .ai-room-card:hover .btn-delete-room { opacity: 1; }
+  .btn-delete-room:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
 </style>
 {% endblock %}
 
@@ -212,6 +228,9 @@
               <i class="fas fa-exclamation-circle"></i> 미검증 {{ item.unverified_count }}
             </span>
           {% endif %}
+          <button class="btn-delete-room" onclick="deleteRoom(event, {{ item.room.id }})" title="삭제">
+            <i class="fas fa-trash-alt"></i>
+          </button>
           <i class="fas fa-chevron-right" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
         </div>
       </div>
@@ -240,6 +259,22 @@ function filterFollowups() {
     const text = item.getAttribute('data-search');
     item.style.display = text.includes(query) ? '' : 'none';
   });
+}
+
+function deleteRoom(e, roomId) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!confirm('이 AI 분석 채팅방을 삭제하시겠습니까?\n모든 대화 내용과 PainPoint 카드가 삭제됩니다.')) return;
+  fetch(`/ai/room/${roomId}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || '삭제 실패');
+  })
+  .catch(() => alert('삭제 요청 실패'));
 }
 </script>
 {% endblock %}

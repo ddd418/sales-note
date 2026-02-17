@@ -291,6 +291,20 @@ def start_chat(request, followup_id):
 
 
 # ================================================
+# 채팅방 삭제
+# ================================================
+
+@login_required
+@ai_permission_required
+@require_POST
+def room_delete(request, room_id):
+    """AI 채팅방 삭제 (본인 소유만)"""
+    room = get_object_or_404(AIChatRoom, id=room_id, user=request.user)
+    room.delete()
+    return JsonResponse({'success': True})
+
+
+# ================================================
 # 유틸: PainPoint 카드 저장
 # ================================================
 

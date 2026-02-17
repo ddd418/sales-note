@@ -136,6 +136,43 @@ def get_openai_client():
     return OpenAI(api_key=api_key)
 
 
+# ================================================
+# 채팅 전용 시스템 프롬프트 (영업 코칭)
+# ================================================
+
+CHAT_SYSTEM_PROMPT = """너는 B2B 연구실 영업을 돕는 전문 영업 코치 AI다.
+
+━━━ 역할 ━━━
+- 이미 분석된 PainPoint 카드와 미팅록을 바탕으로, 영업 담당자의 **후속 질문에 실용적으로 답변**한다.
+- 새로운 미팅 정보가 추가되면 기존 분석을 업데이트하거나 보완한다.
+
+━━━ 핵심 원칙 ━━━
+1. **팩트 기반**: 기존 분석/미팅록에서 확인된 사실만 근거로 사용
+2. **실행 가능**: "~하세요"가 아니라 "다음 방문 시 이렇게 말하세요: ..." 수준의 구체적 액션
+3. **간결함**: 핵심만 3-5문장으로 답변. 불필요한 반복 금지
+4. **한국어**: 자연스러운 한국어로 대화
+
+━━━ 답변 가능 주제 ━━━
+- PainPoint별 대응 전략 / 화법 제안
+- 다음 방문 시나리오 / 질문 리스트
+- 경쟁사 대응 전략
+- 견적/샘플 진행 조언
+- CRM 스테이지 판단 근거
+- 고객의 구매 신호 해석
+
+━━━ 금지 사항 ━━━
+- 미팅록에 없는 연구원 발언을 만들어내지 않는다
+- 확인 안 된 고객 상황을 사실처럼 말하지 않는다
+- JSON 형식으로 출력하지 않는다 (자연어 대화만)
+
+━━━ 추가 미팅 정보가 입력된 경우 ━━━
+사용자가 새로운 미팅/통화 내용을 공유하면:
+1. 기존 PainPoint와의 연관성을 짚어준다
+2. 확신도 변화가 있으면 알려준다 (예: "앞서 Low였던 budget PainPoint가 이번 발언으로 Med로 올라갈 수 있습니다")
+3. 새롭게 발견된 PainPoint가 있으면 간단히 제안한다
+"""
+
+
 def build_user_prompt(followup, meeting_data):
     """
     미팅록 데이터로 유저 프롬프트 생성
@@ -267,26 +304,77 @@ def analyze_meeting(room, meeting_data, followup):
 
 def chat_with_ai(room, user_message):
     """
-    자유 대화 (미팅록 분석이 아닌 일반 질문)
-    이전 대화 컨텍스트를 포함하여 전송
+    영업 코칭 대화 - 기존 PainPoint 분석 결과를 컨텍스트로 활용
+    자연어 대화로 후속 질문 / 전략 조언 제공
     """
-    from ai_chat.models import AIChatMessage
+    from ai_chat.models import AIChatMessage, PainPointCard
     
     client = get_openai_client()
     model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
 
-    # 이전 대화 히스토리 (최근 20개)
+    # ---- 기존 분석 컨텍스트 구성 ----
+    context_parts = []
+
+    # 1) 고객 정보
+    followup = room.followup
+    context_parts.append(f"[고객 정보] {followup.customer_name} / {followup.department.name if followup.department else '부서 미정'} / {followup.company.name if followup.company else '회사 미정'}")
+
+    # 2) 기존 PainPoint 카드 요약
+    cards = PainPointCard.objects.filter(room=room).order_by('-confidence_score')
+    if cards.exists():
+        context_parts.append("\n[기존 PainPoint 분석 결과]")
+        for card in cards:
+            status_map = {'unverified': '미검증', 'confirmed': '✅확인', 'denied': '❌부정'}
+            status = status_map.get(card.verification_status, '미검증')
+            note = f" (메모: {card.verification_note})" if card.verification_note else ""
+            context_parts.append(
+                f"- [{card.get_category_display()}] {card.hypothesis} "
+                f"(확신도: {card.confidence_score}점, {status}{note})"
+            )
+            if card.evidence:
+                for ev in card.evidence[:2]:
+                    context_parts.append(f"  근거: {ev.get('text', '')}")
+
+    # 3) 최초 미팅록 분석의 원본 데이터 (첫 assistant 메시지의 structured_data)
+    first_analysis = AIChatMessage.objects.filter(
+        room=room, role='assistant', structured_data__isnull=False
+    ).order_by('created_at').first()
+    if first_analysis and first_analysis.structured_data:
+        sd = first_analysis.structured_data
+        if sd.get('summary_3lines'):
+            context_parts.append("\n[미팅 3줄 요약]")
+            for line in sd['summary_3lines']:
+                context_parts.append(f"- {line}")
+        if sd.get('signals', {}).get('researcher_quotes'):
+            context_parts.append("\n[연구원 발언]")
+            for q in sd['signals']['researcher_quotes'][:5]:
+                context_parts.append(f"- 「{q.get('text', '')}」")
+        if sd.get('missing_info', {}).get('items'):
+            context_parts.append("\n[아직 확인 안 된 정보]")
+            for item in sd['missing_info']['items']:
+                context_parts.append(f"- {item}")
+
+    context_text = "\n".join(context_parts)
+
+    # ---- 이전 대화 히스토리 (최근 10개) ----
     previous_messages = AIChatMessage.objects.filter(
         room=room
-    ).order_by('-created_at')[:20]
+    ).order_by('-created_at')[:10]
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [
+        {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+        {"role": "user", "content": f"[분석 컨텍스트]\n{context_text}\n\n위 분석 결과를 참고하여 이후 대화에 답변해주세요. 이 메시지에는 답변하지 말고, 다음 질문을 기다리세요."},
+        {"role": "assistant", "content": "네, 분석 결과를 숙지했습니다. 질문해주세요."},
+    ]
 
-    # 역순으로 가져왔으니 다시 정렬
+    # 이전 대화 추가 (역순 → 정순)
     for msg in reversed(list(previous_messages)):
+        # 첫 분석 메시지(JSON)는 이미 컨텍스트로 포함했으므로 건너뜀
+        if msg.role == 'assistant' and msg.structured_data and msg == first_analysis:
+            continue
         messages.append({
             "role": msg.role,
-            "content": msg.content
+            "content": msg.content if len(msg.content) < 2000 else msg.content[:2000] + "...(생략)"
         })
 
     messages.append({"role": "user", "content": user_message})
@@ -295,21 +383,14 @@ def chat_with_ai(room, user_message):
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.3,
-            max_tokens=4000,
+            temperature=0.5,
+            max_tokens=1500,
         )
 
         ai_text = response.choices[0].message.content
         token_usage = response.usage.total_tokens if response.usage else 0
 
-        # JSON인지 판별
-        structured = None
-        try:
-            structured = json.loads(ai_text)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        return ai_text, structured, token_usage
+        return ai_text, None, token_usage
 
     except Exception as e:
         logger.error(f"OpenAI API 호출 실패: {str(e)}")

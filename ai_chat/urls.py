@@ -19,6 +19,9 @@ urlpatterns = [
     # PainPoint 카드 검증 업데이트 API
     path('card/<int:card_id>/verify/', views.verify_card, name='verify_card'),
     
+    # 채팅방 삭제
+    path('room/<int:room_id>/delete/', views.room_delete, name='room_delete'),
+
     # FollowUp에서 새 채팅방 생성/이동
     path('start/<int:followup_id>/', views.start_chat, name='start_chat'),
 ]
