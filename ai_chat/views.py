@@ -59,14 +59,16 @@ def department_list(request):
     dept_data = []
     for dept in departments:
         analysis = analysis_map.get(dept.id)
-        followup_count = FollowUp.objects.filter(
+        followups = FollowUp.objects.filter(
             user=request.user, department=dept
-        ).count()
+        )
+        customer_names = list(followups.values_list('customer_name', flat=True))
         dept_data.append({
             'department': dept,
             'analysis': analysis,
-            'followup_count': followup_count,
+            'followup_count': len(customer_names),
             'has_analysis': analysis is not None,
+            'customer_names': customer_names,
         })
 
     return render(request, 'ai_chat/department_list.html', {
