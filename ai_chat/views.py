@@ -1,19 +1,19 @@
 """
-AI PainPoint 생성기 - Views
-채팅방 관리, 메시지 전송, PainPoint 검증
+AI 부서 분석 - Views
+부서 목록, 분석 실행, 결과 조회, PainPoint 검증
 """
 import json
 import logging
+from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from django.db import IntegrityError
 
-from reporting.models import FollowUp, History
-from .models import AIChatRoom, AIChatMessage, PainPointCard
-from .services import analyze_meeting, chat_with_ai
+from reporting.models import FollowUp, Department
+from .models import AIDepartmentAnalysis, PainPointCard
+from .services import analyze_department, gather_meeting_data, gather_quote_delivery_data
 
 logger = logging.getLogger(__name__)
 
@@ -32,211 +32,143 @@ def ai_permission_required(view_func):
 
 
 # ================================================
-# 채팅방 목록
+# 부서 목록 (분석 대상 선택)
 # ================================================
 
 @login_required
 @ai_permission_required
-def room_list(request):
-    """내 AI 채팅방 목록"""
-    rooms = AIChatRoom.objects.filter(
-        user=request.user
-    ).select_related('followup', 'followup__company', 'followup__department')
-
-    # 각 방의 최근 메시지, 미검증 카드 수
-    room_data = []
-    for room in rooms:
-        last_msg = room.messages.order_by('-created_at').first()
-        unverified_count = room.painpoint_cards.filter(verification_status='unverified').count()
-        room_data.append({
-            'room': room,
-            'last_message': last_msg,
-            'unverified_count': unverified_count,
-        })
-
-    # 새 채팅방 생성을 위한 팔로우업 목록 (이미 방이 있는 것 제외)
-    existing_followup_ids = AIChatRoom.objects.filter(
-        user=request.user
-    ).values_list('followup_id', flat=True)
-    
-    available_followups = FollowUp.objects.filter(
-        user=request.user
-    ).exclude(
-        id__in=existing_followup_ids
-    ).select_related('company', 'department').order_by('company__name', 'customer_name')
-
-    return render(request, 'ai_chat/room_list.html', {
-        'room_data': room_data,
-        'available_followups': available_followups,
-    })
-
-
-# ================================================
-# 채팅방 상세 (대화 UI)
-# ================================================
-
-@login_required
-@ai_permission_required
-def room_detail(request, room_id):
-    """채팅방 대화 뷰"""
-    room = get_object_or_404(AIChatRoom, id=room_id, user=request.user)
-    messages_qs = room.messages.order_by('created_at')
-    cards = room.painpoint_cards.order_by('-confidence_score')
-
-    # History(미팅록) 목록 - 분석 가능한 것들
-    histories = History.objects.filter(
-        followup=room.followup,
-        action_type='customer_meeting'
-    ).order_by('-created_at')[:20]
-
-    return render(request, 'ai_chat/room_detail.html', {
-        'room': room,
-        'messages': messages_qs,
-        'cards': cards,
-        'histories': histories,
-    })
-
-
-# ================================================
-# 메시지 전송 (자유 채팅)
-# ================================================
-
-@login_required
-@ai_permission_required
-@require_POST
-def send_message(request, room_id):
-    """채팅 메시지 전송 → AI 응답"""
-    room = get_object_or_404(AIChatRoom, id=room_id, user=request.user)
-    user_text = request.POST.get('message', '').strip()
-
-    if not user_text:
-        return JsonResponse({'error': '메시지를 입력하세요.'}, status=400)
-
-    # 사용자 메시지 저장
-    user_msg = AIChatMessage.objects.create(
-        room=room,
-        role='user',
-        content=user_text,
-    )
-
-    try:
-        ai_text, structured, token_usage = chat_with_ai(room, user_text)
-
-        # AI 응답 저장
-        ai_msg = AIChatMessage.objects.create(
-            room=room,
-            role='assistant',
-            content=ai_text,
-            structured_data=structured,
-            token_usage=token_usage,
-        )
-
-        # 구조화 데이터에서 PainPoint 카드 추출
-        cards_created = []
-        if structured and 'painpoint_cards' in structured:
-            cards_created = _save_painpoint_cards(structured['painpoint_cards'], ai_msg, room)
-
-        room.updated_at = timezone.now()
-        room.save(update_fields=['updated_at'])
-
-        return JsonResponse({
-            'success': True,
-            'user_message': {
-                'id': user_msg.id,
-                'content': user_msg.content,
-                'created_at': user_msg.created_at.strftime('%H:%M'),
-            },
-            'ai_message': {
-                'id': ai_msg.id,
-                'content': ai_text,
-                'structured_data': structured,
-                'token_usage': token_usage,
-                'created_at': ai_msg.created_at.strftime('%H:%M'),
-            },
-            'cards_created': len(cards_created),
-        })
-
-    except Exception as e:
-        logger.error(f"AI 응답 생성 실패: {str(e)}")
-        return JsonResponse({'error': f'AI 응답 생성 실패: {str(e)}'}, status=500)
-
-
-# ================================================
-# 미팅록(History)에서 분석 시작
-# ================================================
-
-@login_required
-@ai_permission_required
-@require_POST
-def analyze_history(request, history_id):
-    """특정 미팅록을 AI로 분석"""
-    history = get_object_or_404(
-        History, id=history_id, action_type='customer_meeting'
-    )
-
-    if not history.followup:
-        return JsonResponse({'error': '팔로우업이 연결되지 않은 히스토리입니다.'}, status=400)
-
-    # 채팅방 가져오기 (없으면 생성)
-    room, created = AIChatRoom.objects.get_or_create(
+def department_list(request):
+    """내 팔로우업이 있는 부서 목록"""
+    # 사용자의 팔로우업에서 부서 목록 추출
+    department_ids = FollowUp.objects.filter(
         user=request.user,
-        followup=history.followup,
-        defaults={
-            'title': f"{history.followup.customer_name} - AI 분석"
-        }
-    )
+        department__isnull=False
+    ).values_list('department_id', flat=True).distinct()
 
-    # 미팅록 데이터 조립
-    meeting_data = {
-        'situation': history.meeting_situation or '',
-        'researcher_quote': history.meeting_researcher_quote or '',
-        'confirmed_facts': history.meeting_confirmed_facts or '',
-        'obstacles': history.meeting_obstacles or '',
-        'next_action': history.meeting_next_action or '',
-        'free_text': history.content or '',
-        'channel': '방문',
-        'visit_date': history.meeting_date.strftime('%Y-%m-%d') if history.meeting_date else history.created_at.strftime('%Y-%m-%d'),
-    }
+    departments = Department.objects.filter(
+        id__in=department_ids
+    ).select_related('company').order_by('company__name', 'name')
 
-    # 사용자 메시지 기록
-    summary_text = f"미팅록 분석 요청 (일자: {meeting_data['visit_date']})"
-    user_msg = AIChatMessage.objects.create(
-        room=room,
-        role='user',
-        content=summary_text,
-        source_history=history,
+    # 기존 분석 정보
+    analyses = AIDepartmentAnalysis.objects.filter(
+        user=request.user,
+        department__in=departments
     )
+    analysis_map = {a.department_id: a for a in analyses}
+
+    dept_data = []
+    for dept in departments:
+        analysis = analysis_map.get(dept.id)
+        followup_count = FollowUp.objects.filter(
+            user=request.user, department=dept
+        ).count()
+        dept_data.append({
+            'department': dept,
+            'analysis': analysis,
+            'followup_count': followup_count,
+            'has_analysis': analysis is not None,
+        })
+
+    return render(request, 'ai_chat/department_list.html', {
+        'dept_data': dept_data,
+    })
+
+
+# ================================================
+# 부서 분석 결과 조회
+# ================================================
+
+@login_required
+@ai_permission_required
+def department_analysis(request, department_id):
+    """부서 분석 결과 상세 뷰"""
+    department = get_object_or_404(Department, id=department_id)
+
+    # 사용자에게 해당 부서 팔로우업이 있는지 확인
+    has_followups = FollowUp.objects.filter(
+        user=request.user, department=department
+    ).exists()
+    if not has_followups:
+        from django.contrib import messages
+        messages.error(request, '해당 부서에 접근 권한이 없습니다.')
+        return redirect('ai_chat:department_list')
+
+    analysis = AIDepartmentAnalysis.objects.filter(
+        user=request.user, department=department
+    ).first()
+
+    cards = []
+    if analysis:
+        cards = analysis.painpoint_cards.order_by('-confidence_score')
+
+    return render(request, 'ai_chat/department_analysis.html', {
+        'department': department,
+        'analysis': analysis,
+        'cards': cards,
+    })
+
+
+# ================================================
+# 분석 실행 (POST)
+# ================================================
+
+@login_required
+@ai_permission_required
+@require_POST
+def run_analysis(request, department_id):
+    """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
+    department = get_object_or_404(Department, id=department_id)
+
+    # 권한 확인
+    has_followups = FollowUp.objects.filter(
+        user=request.user, department=department
+    ).exists()
+    if not has_followups:
+        return JsonResponse({'error': '해당 부서에 접근 권한이 없습니다.'}, status=403)
 
     try:
-        ai_text, structured, token_usage = analyze_meeting(room, meeting_data, history.followup)
-
-        # AI 응답 저장
-        ai_msg = AIChatMessage.objects.create(
-            room=room,
-            role='assistant',
-            content=ai_text,
-            structured_data=structured,
-            source_history=history,
-            token_usage=token_usage,
+        # 기존 분석 가져오기 또는 새로 생성
+        analysis, created = AIDepartmentAnalysis.objects.get_or_create(
+            user=request.user,
+            department=department,
         )
 
-        # PainPoint 카드 추출/저장
-        cards_created = []
-        if structured and 'painpoint_cards' in structured:
-            cards_created = _save_painpoint_cards(structured['painpoint_cards'], ai_msg, room)
+        # AI 분석 실행
+        analysis_result, qd_data, token_usage = analyze_department(
+            analysis, department, request.user
+        )
 
-        room.updated_at = timezone.now()
-        room.save(update_fields=['updated_at'])
+        if not analysis_result:
+            return JsonResponse({'error': 'AI 분석 결과를 파싱하지 못했습니다.'}, status=500)
+
+        # 분석 기간 계산
+        period_end = timezone.now().date()
+        period_start = period_end - timedelta(days=180)
+
+        # 분석 결과 저장
+        analysis.analysis_data = analysis_result
+        analysis.quote_delivery_data = qd_data['summary']
+        analysis.meeting_count = len(gather_meeting_data(department, request.user))
+        analysis.quote_count = qd_data['summary']['total_quotes']
+        analysis.delivery_count = qd_data['summary']['total_deliveries']
+        analysis.analysis_period_start = period_start
+        analysis.analysis_period_end = period_end
+        analysis.token_usage = token_usage
+        analysis.save()
+
+        # 기존 PainPoint 카드 삭제 후 새로 생성
+        analysis.painpoint_cards.all().delete()
+        if 'painpoint_cards' in analysis_result:
+            _save_painpoint_cards(analysis_result['painpoint_cards'], analysis)
 
         return JsonResponse({
             'success': True,
-            'room_id': room.id,
-            'redirect_url': f'/ai/room/{room.id}/',
-            'cards_created': len(cards_created),
+            'redirect_url': f'/ai/department/{department.id}/',
+            'cards_created': len(analysis_result.get('painpoint_cards', [])),
         })
 
     except Exception as e:
-        logger.error(f"미팅록 분석 실패: {str(e)}")
+        logger.error(f"부서 분석 실패: {str(e)}")
         return JsonResponse({'error': f'AI 분석 실패: {str(e)}'}, status=500)
 
 
@@ -249,7 +181,7 @@ def analyze_history(request, history_id):
 @require_POST
 def verify_card(request, card_id):
     """PainPoint 카드 검증 상태 업데이트"""
-    card = get_object_or_404(PainPointCard, id=card_id, room__user=request.user)
+    card = get_object_or_404(PainPointCard, id=card_id, analysis__user=request.user)
 
     status = request.POST.get('status', '')
     note = request.POST.get('note', '')
@@ -270,45 +202,46 @@ def verify_card(request, card_id):
 
 
 # ================================================
-# FollowUp에서 채팅방 시작/이동
-# ================================================
-
-@login_required
-@ai_permission_required
-def start_chat(request, followup_id):
-    """FollowUp에서 AI 채팅 시작 (방이 없으면 생성, 있으면 이동)"""
-    followup = get_object_or_404(FollowUp, id=followup_id)
-
-    room, created = AIChatRoom.objects.get_or_create(
-        user=request.user,
-        followup=followup,
-        defaults={
-            'title': f"{followup.customer_name} - AI 분석"
-        }
-    )
-
-    return redirect('ai_chat:room_detail', room_id=room.id)
-
-
-# ================================================
-# 채팅방 삭제
+# 분석 삭제
 # ================================================
 
 @login_required
 @ai_permission_required
 @require_POST
-def room_delete(request, room_id):
-    """AI 채팅방 삭제 (본인 소유만)"""
-    room = get_object_or_404(AIChatRoom, id=room_id, user=request.user)
-    room.delete()
+def delete_analysis(request, department_id):
+    """부서 분석 삭제"""
+    analysis = get_object_or_404(
+        AIDepartmentAnalysis,
+        department_id=department_id,
+        user=request.user
+    )
+    analysis.delete()
     return JsonResponse({'success': True})
+
+
+# ================================================
+# FollowUp에서 부서 분석으로 이동
+# ================================================
+
+@login_required
+@ai_permission_required
+def start_analysis(request, followup_id):
+    """FollowUp에서 해당 부서의 AI 분석 페이지로 이동"""
+    followup = get_object_or_404(FollowUp, id=followup_id)
+
+    if not followup.department:
+        from django.contrib import messages
+        messages.warning(request, '부서가 지정되지 않은 팔로우업입니다.')
+        return redirect('ai_chat:department_list')
+
+    return redirect('ai_chat:department_analysis', department_id=followup.department.id)
 
 
 # ================================================
 # 유틸: PainPoint 카드 저장
 # ================================================
 
-def _save_painpoint_cards(cards_data, ai_message, room):
+def _save_painpoint_cards(cards_data, analysis):
     """JSON에서 PainPoint 카드 파싱 후 DB 저장"""
     valid_categories = dict(PainPointCard.CATEGORY_CHOICES).keys()
     valid_confidences = dict(PainPointCard.CONFIDENCE_CHOICES).keys()
@@ -331,8 +264,7 @@ def _save_painpoint_cards(cards_data, ai_message, room):
                 attribution = 'individual'
 
             card = PainPointCard.objects.create(
-                message=ai_message,
-                room=room,
+                analysis=analysis,
                 category=category,
                 hypothesis=card_data.get('hypothesis', ''),
                 confidence=confidence,

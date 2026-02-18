@@ -1,23 +1,13 @@
 from django.contrib import admin
-from .models import AIChatRoom, AIChatMessage, PainPointCard
+from .models import AIDepartmentAnalysis, PainPointCard
 
 
-@admin.register(AIChatRoom)
-class AIChatRoomAdmin(admin.ModelAdmin):
-    list_display = ['followup', 'user', 'title', 'updated_at']
+@admin.register(AIDepartmentAnalysis)
+class AIDepartmentAnalysisAdmin(admin.ModelAdmin):
+    list_display = ['department', 'user', 'meeting_count', 'quote_count', 'delivery_count', 'token_usage', 'updated_at']
     list_filter = ['user']
-    search_fields = ['title', 'followup__customer_name']
-
-
-@admin.register(AIChatMessage)
-class AIChatMessageAdmin(admin.ModelAdmin):
-    list_display = ['room', 'role', 'content_short', 'token_usage', 'created_at']
-    list_filter = ['role', 'room']
-    readonly_fields = ['structured_data']
-
-    def content_short(self, obj):
-        return obj.content[:60]
-    content_short.short_description = '내용'
+    search_fields = ['department__name', 'department__company__name']
+    readonly_fields = ['analysis_data', 'quote_delivery_data']
 
 
 @admin.register(PainPointCard)

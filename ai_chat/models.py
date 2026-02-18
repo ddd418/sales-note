@@ -1,71 +1,49 @@
 """
-AI PainPoint 생성기 - 모델
-부서별 AI 채팅방 + PainPoint 가설 카드 저장
+AI 부서 분석 - 모델
+부서별 6개월 미팅 종합 분석 + 견적/납품 패턴 분석
 """
 from django.db import models
 from django.contrib.auth.models import User
-from reporting.models import FollowUp
+from reporting.models import Department
 
 
-class AIChatRoom(models.Model):
-    """부서(팔로우업)별 AI 채팅방"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="소유자")
-    followup = models.ForeignKey(
-        FollowUp, on_delete=models.CASCADE,
-        related_name='ai_chatrooms', verbose_name="관련 팔로우업"
+class AIDepartmentAnalysis(models.Model):
+    """부서(연구실)별 AI 종합 분석"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="분석 요청자")
+    department = models.ForeignKey(
+        Department, on_delete=models.CASCADE,
+        related_name='ai_analyses', verbose_name="분석 대상 부서"
     )
-    title = models.CharField(max_length=200, verbose_name="채팅방 제목")
+
+    # 분석 결과 저장
+    analysis_data = models.JSONField(
+        null=True, blank=True, verbose_name="AI 분석 결과",
+        help_text="PainPoint, 요약, 시그널, CRM 추천 등 전체 분석 JSON"
+    )
+    quote_delivery_data = models.JSONField(
+        null=True, blank=True, verbose_name="견적/납품 분석 결과",
+        help_text="견적→납품 전환율, 납품 주기, 제품 패턴 등"
+    )
+
+    # 분석에 사용된 데이터 범위
+    meeting_count = models.IntegerField(default=0, verbose_name="분석된 미팅 수")
+    quote_count = models.IntegerField(default=0, verbose_name="분석된 견적 수")
+    delivery_count = models.IntegerField(default=0, verbose_name="분석된 납품 수")
+    analysis_period_start = models.DateField(null=True, blank=True, verbose_name="분석 기간 시작")
+    analysis_period_end = models.DateField(null=True, blank=True, verbose_name="분석 기간 종료")
+
+    token_usage = models.IntegerField(default=0, verbose_name="토큰 사용량")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
     class Meta:
-        verbose_name = "AI 채팅방"
-        verbose_name_plural = "AI 채팅방 목록"
+        verbose_name = "AI 부서 분석"
+        verbose_name_plural = "AI 부서 분석 목록"
         ordering = ['-updated_at']
-        unique_together = ['user', 'followup']
+        unique_together = ['user', 'department']
 
     def __str__(self):
-        return f"{self.followup} - AI 분석"
-
-
-class AIChatMessage(models.Model):
-    """채팅 메시지 (사용자 입력 + AI 응답)"""
-    ROLE_CHOICES = [
-        ('user', '사용자'),
-        ('assistant', 'AI'),
-        ('system', '시스템'),
-    ]
-
-    room = models.ForeignKey(
-        AIChatRoom, on_delete=models.CASCADE,
-        related_name='messages', verbose_name="채팅방"
-    )
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, verbose_name="역할")
-    content = models.TextField(verbose_name="메시지 내용")
-    
-    # AI 응답의 경우 구조화된 데이터 저장
-    structured_data = models.JSONField(
-        null=True, blank=True, verbose_name="구조화 데이터",
-        help_text="엔티티 추출, PainPoint 카드 등 파싱된 데이터"
-    )
-    
-    # 어떤 히스토리(미팅록)를 기반으로 분석했는지
-    source_history = models.ForeignKey(
-        'reporting.History', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='ai_analyses',
-        verbose_name="소스 미팅록"
-    )
-    
-    token_usage = models.IntegerField(default=0, verbose_name="토큰 사용량")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
-
-    class Meta:
-        verbose_name = "AI 채팅 메시지"
-        verbose_name_plural = "AI 채팅 메시지 목록"
-        ordering = ['created_at']
-
-    def __str__(self):
-        return f"[{self.get_role_display()}] {self.content[:50]}"
+        return f"{self.department.company.name} / {self.department.name} - AI 분석"
 
 
 class PainPointCard(models.Model):
@@ -100,13 +78,9 @@ class PainPointCard(models.Model):
         ('denied', '부정됨'),
     ]
 
-    message = models.ForeignKey(
-        AIChatMessage, on_delete=models.CASCADE,
-        related_name='painpoint_cards', verbose_name="소스 메시지"
-    )
-    room = models.ForeignKey(
-        AIChatRoom, on_delete=models.CASCADE,
-        related_name='painpoint_cards', verbose_name="채팅방"
+    analysis = models.ForeignKey(
+        AIDepartmentAnalysis, on_delete=models.CASCADE,
+        related_name='painpoint_cards', verbose_name="부서 분석"
     )
 
     # 카드 필수 필드
@@ -114,8 +88,7 @@ class PainPointCard(models.Model):
     hypothesis = models.TextField(verbose_name="가설 (한 줄)")
     confidence = models.CharField(max_length=5, choices=CONFIDENCE_CHOICES, verbose_name="확신도")
     confidence_score = models.IntegerField(
-        default=50, verbose_name="확신도 점수 (0-100)",
-        help_text="내부 저장용 점수"
+        default=50, verbose_name="확신도 점수 (0-100)"
     )
     evidence = models.JSONField(
         verbose_name="근거 (Evidence)",
@@ -129,7 +102,7 @@ class PainPointCard(models.Model):
     action_if_no = models.TextField(verbose_name="아니면 (다음 단계)")
     caution = models.TextField(blank=True, verbose_name="주의 문장")
 
-    # 검증 상태 (영업사원이 현장에서 업데이트)
+    # 검증 상태
     verification_status = models.CharField(
         max_length=15, choices=VERIFICATION_STATUS_CHOICES,
         default='unverified', verbose_name="검증 상태"

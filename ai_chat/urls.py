@@ -4,24 +4,21 @@ from . import views
 app_name = 'ai_chat'
 
 urlpatterns = [
-    # 채팅방 목록
-    path('', views.room_list, name='room_list'),
-    
-    # 채팅방 상세 (대화 UI)
-    path('room/<int:room_id>/', views.room_detail, name='room_detail'),
-    
-    # 메시지 전송 API
-    path('room/<int:room_id>/send/', views.send_message, name='send_message'),
-    
-    # 미팅록(History)에서 분석 시작
-    path('analyze/<int:history_id>/', views.analyze_history, name='analyze_history'),
-    
+    # 부서 목록 (분석 대상 선택)
+    path('', views.department_list, name='department_list'),
+
+    # 부서 분석 결과 상세
+    path('department/<int:department_id>/', views.department_analysis, name='department_analysis'),
+
+    # 분석 실행 API
+    path('department/<int:department_id>/run/', views.run_analysis, name='run_analysis'),
+
+    # 분석 삭제 API
+    path('department/<int:department_id>/delete/', views.delete_analysis, name='delete_analysis'),
+
     # PainPoint 카드 검증 업데이트 API
     path('card/<int:card_id>/verify/', views.verify_card, name='verify_card'),
-    
-    # 채팅방 삭제
-    path('room/<int:room_id>/delete/', views.room_delete, name='room_delete'),
 
-    # FollowUp에서 새 채팅방 생성/이동
-    path('start/<int:followup_id>/', views.start_chat, name='start_chat'),
+    # FollowUp에서 부서 분석으로 이동
+    path('start/<int:followup_id>/', views.start_analysis, name='start_analysis'),
 ]

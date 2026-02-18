@@ -1,0 +1,796 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}{{ department.company.name }} / {{ department.name }} - AI 분석{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ai-analysis-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+  }
+
+  /* 헤더 */
+  .analysis-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .analysis-header .dept-info h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.25rem 0;
+  }
+  .analysis-header .dept-info .dept-meta {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+  .analysis-header .header-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .btn-ai-action {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: opacity 0.15s;
+  }
+  .btn-ai-action:hover { opacity: 0.9; color: #fff; }
+  .btn-ai-action:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ai-action.btn-danger-outline {
+    background: none;
+    border: 1px solid #ef4444;
+    color: #ef4444;
+  }
+  .btn-ai-action.btn-danger-outline:hover {
+    background: rgba(239, 68, 68, 0.1);
+  }
+  .btn-back {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .btn-back:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+  /* 분석 메타 */
+  .analysis-meta-bar {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .analysis-meta-bar .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .analysis-meta-bar .meta-item strong {
+    color: var(--text-primary);
+  }
+
+  /* 빈 상태 */
+  .ai-empty-analysis {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .ai-empty-analysis i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .ai-empty-analysis h5 {
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+  }
+  .ai-empty-analysis p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+  }
+
+  /* 2열 레이아웃 */
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+  }
+  @media (max-width: 900px) {
+    .analysis-grid { grid-template-columns: 1fr; }
+  }
+
+  /* 섹션 카드 */
+  .section-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .section-card h5 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .section-card h5 i {
+    color: #8b5cf6;
+    font-size: 0.9rem;
+  }
+
+  /* 부서 요약 */
+  .dept-summary {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  /* 미팅 인사이트 */
+  .insight-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .insight-item:last-child { border-bottom: none; }
+  .insight-theme {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+  }
+  .insight-details {
+    color: var(--text-secondary);
+    font-size: 0.83rem;
+    line-height: 1.6;
+  }
+  .insight-freq {
+    font-size: 0.75rem;
+    color: #8b5cf6;
+    margin-top: 0.25rem;
+  }
+
+  /* 견적/납품 분석 */
+  .qd-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .qd-stat-box {
+    text-align: center;
+    padding: 0.75rem;
+    background: var(--background);
+    border-radius: 8px;
+  }
+  .qd-stat-box .stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .qd-stat-box .stat-label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 0.15rem;
+  }
+  .qd-analysis-text {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.7;
+    margin-bottom: 0.75rem;
+  }
+  .qd-analysis-text strong {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    margin-top: 0.5rem;
+  }
+
+  /* 미전환 견적 */
+  .stalled-quote {
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.83rem;
+  }
+  .stalled-quote .sq-info {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+  }
+  .stalled-quote .sq-reason { color: var(--text-secondary); }
+  .stalled-quote .sq-suggestion { color: #8b5cf6; margin-top: 0.25rem; }
+
+  /* 다음 액션 */
+  .next-action-item {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+  }
+  .next-action-item:last-child { border-bottom: none; }
+  .na-priority {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    height: fit-content;
+    margin-top: 0.1rem;
+  }
+  .na-priority.high { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+  .na-priority.medium { background: rgba(251, 191, 36, 0.15); color: #f59e0b; }
+  .na-priority.low { background: rgba(100, 116, 139, 0.15); color: var(--text-secondary); }
+  .na-text { color: var(--text-primary); }
+  .na-reason { color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.2rem; }
+
+  /* 누락 정보 */
+  .missing-info-item {
+    font-size: 0.83rem;
+    color: var(--text-secondary);
+    padding: 0.3rem 0;
+  }
+  .missing-info-item i { color: #fbbf24; margin-right: 0.4rem; }
+
+  /* PainPoint 카드 (오른쪽 패널) */
+  .painpoint-panel h5 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+  }
+  .pp-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.15s;
+  }
+  .pp-card:hover { border-color: var(--primary); }
+  .pp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .pp-category {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .pp-category.budget { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+  .pp-category.purchase_process { background: rgba(249, 115, 22, 0.12); color: #f97316; }
+  .pp-category.switching_cost { background: rgba(234, 179, 8, 0.12); color: #eab308; }
+  .pp-category.performance { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+  .pp-category.compatibility { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
+  .pp-category.delivery { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+  .pp-category.trust { background: rgba(168, 85, 247, 0.12); color: #a855f7; }
+  .pp-category.priority { background: rgba(236, 72, 153, 0.12); color: #ec4899; }
+  .pp-confidence {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+  }
+  .pp-confidence.high { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+  .pp-confidence.med { background: rgba(251, 191, 36, 0.15); color: #f59e0b; }
+  .pp-confidence.low { background: rgba(100, 116, 139, 0.15); color: var(--text-secondary); }
+  .pp-hypothesis {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+  }
+  .pp-evidence {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+  }
+  .pp-evidence .ev-text {
+    padding: 0.3rem 0;
+    border-left: 2px solid #8b5cf6;
+    padding-left: 0.5rem;
+    margin-bottom: 0.3rem;
+  }
+  .pp-verification {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    background: var(--background);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+  }
+  .pp-verification strong {
+    color: #8b5cf6;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+  }
+  .pp-actions-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .pp-verify-btn {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 0.4rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pp-verify-btn:hover { border-color: var(--primary); }
+  .pp-verify-btn.confirmed {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: #22c55e;
+    color: #22c55e;
+  }
+  .pp-verify-btn.denied {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+  .pp-status-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+  }
+  .pp-status-badge.confirmed { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+  .pp-status-badge.denied { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+  /* 스피너 */
+  .ai-loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+  }
+  .ai-loading-overlay.active { display: flex; }
+  .ai-loading-box {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 2.5rem;
+    text-align: center;
+    max-width: 360px;
+  }
+  .ai-loading-box .spinner {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-loading-box h6 { color: var(--text-primary); margin-bottom: 0.25rem; }
+  .ai-loading-box p { color: var(--text-secondary); font-size: 0.85rem; margin: 0; }
+
+  /* 제품 통계 */
+  .product-stat-table {
+    width: 100%;
+    font-size: 0.8rem;
+    border-collapse: collapse;
+  }
+  .product-stat-table th {
+    text-align: left;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+  }
+  .product-stat-table td {
+    padding: 0.4rem 0.5rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+  }
+  .product-stat-table tr:last-child td { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-analysis-page">
+
+  <!-- 헤더 -->
+  <div class="analysis-header">
+    <div class="dept-info">
+      <h2>
+        <i class="fas fa-brain" style="background: linear-gradient(135deg, #8b5cf6, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+        {{ department.name }}
+      </h2>
+      <div class="dept-meta">{{ department.company.name }}</div>
+    </div>
+    <div class="header-actions">
+      <a href="{% url 'ai_chat:department_list' %}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> 목록
+      </a>
+      <button class="btn-ai-action" onclick="runAnalysis()" id="btnRunAnalysis">
+        <i class="fas fa-sync-alt"></i>
+        {% if analysis %}재분석{% else %}분석 시작{% endif %}
+      </button>
+      {% if analysis %}
+      <button class="btn-ai-action btn-danger-outline" onclick="deleteAnalysis()">
+        <i class="fas fa-trash-alt"></i> 삭제
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if analysis %}
+  <!-- 분석 메타 정보 -->
+  <div class="analysis-meta-bar">
+    <div class="meta-item"><i class="fas fa-calendar-alt"></i>
+      {{ analysis.analysis_period_start|date:"Y.m.d" }} ~ {{ analysis.analysis_period_end|date:"Y.m.d" }}</div>
+    <div class="meta-item"><i class="fas fa-handshake"></i> 미팅 <strong>{{ analysis.meeting_count }}</strong>건</div>
+    <div class="meta-item"><i class="fas fa-file-invoice"></i> 견적 <strong>{{ analysis.quote_count }}</strong>건</div>
+    <div class="meta-item"><i class="fas fa-truck"></i> 납품 <strong>{{ analysis.delivery_count }}</strong>건</div>
+    <div class="meta-item"><i class="fas fa-coins"></i> 토큰 <strong>{{ analysis.token_usage }}</strong></div>
+    <div class="meta-item"><i class="fas fa-clock"></i> {{ analysis.updated_at|date:"Y.m.d H:i" }}</div>
+  </div>
+
+  <div class="analysis-grid">
+    <!-- 왼쪽: 분석 결과 -->
+    <div class="analysis-main">
+
+      <!-- 부서 요약 -->
+      {% if analysis.analysis_data.department_summary %}
+      <div class="section-card">
+        <h5><i class="fas fa-bullseye"></i> 부서 종합 요약</h5>
+        <div class="dept-summary">{{ analysis.analysis_data.department_summary }}</div>
+      </div>
+      {% endif %}
+
+      <!-- 미팅 인사이트 -->
+      {% if analysis.analysis_data.meeting_insights %}
+      <div class="section-card">
+        <h5><i class="fas fa-lightbulb"></i> 미팅 인사이트</h5>
+        {% for insight in analysis.analysis_data.meeting_insights %}
+        <div class="insight-item">
+          <div class="insight-theme">{{ insight.theme }}</div>
+          <div class="insight-details">{{ insight.details }}</div>
+          {% if insight.frequency %}
+          <div class="insight-freq"><i class="fas fa-chart-bar me-1"></i>{{ insight.frequency }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- 견적/납품 분석 -->
+      <div class="section-card">
+        <h5><i class="fas fa-chart-pie"></i> 견적/납품 분석</h5>
+
+        {% if analysis.quote_delivery_data %}
+        <div class="qd-stat-grid">
+          <div class="qd-stat-box">
+            <div class="stat-value">{{ analysis.quote_delivery_data.total_quotes|default:"0" }}</div>
+            <div class="stat-label">총 견적</div>
+          </div>
+          <div class="qd-stat-box">
+            <div class="stat-value">{{ analysis.quote_delivery_data.converted_quotes|default:"0" }}</div>
+            <div class="stat-label">납품 전환</div>
+          </div>
+          <div class="qd-stat-box">
+            <div class="stat-value">{{ analysis.quote_delivery_data.conversion_rate|default:"0" }}%</div>
+            <div class="stat-label">전환율</div>
+          </div>
+          <div class="qd-stat-box">
+            <div class="stat-value">{{ analysis.quote_delivery_data.total_deliveries|default:"0" }}</div>
+            <div class="stat-label">총 납품</div>
+          </div>
+          {% if analysis.quote_delivery_data.avg_delivery_interval_days %}
+          <div class="qd-stat-box">
+            <div class="stat-value">{{ analysis.quote_delivery_data.avg_delivery_interval_days }}일</div>
+            <div class="stat-label">평균 납품 간격</div>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- 제품 통계 -->
+        {% if analysis.quote_delivery_data.product_stats %}
+        <h6 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin: 1rem 0 0.5rem;">
+          <i class="fas fa-box me-1" style="color: #8b5cf6;"></i>제품별 현황
+        </h6>
+        <table class="product-stat-table">
+          <thead>
+            <tr>
+              <th>제품명</th>
+              <th>견적 횟수</th>
+              <th>견적 금액</th>
+              <th>납품 횟수</th>
+              <th>납품 금액</th>
+            </tr>
+          </thead>
+          <tbody id="productStatsBody">
+          </tbody>
+        </table>
+        {% endif %}
+        {% endif %}
+
+        <!-- AI 분석 코멘트 -->
+        {% if analysis.analysis_data.quote_delivery_insights %}
+        <div class="qd-analysis-text" style="margin-top: 1rem;">
+          {% if analysis.analysis_data.quote_delivery_insights.conversion_analysis %}
+          <strong><i class="fas fa-exchange-alt me-1"></i>전환율 분석</strong>
+          {{ analysis.analysis_data.quote_delivery_insights.conversion_analysis }}
+          {% endif %}
+          {% if analysis.analysis_data.quote_delivery_insights.delivery_cycle %}
+          <strong><i class="fas fa-redo me-1"></i>납품 주기</strong>
+          {{ analysis.analysis_data.quote_delivery_insights.delivery_cycle }}
+          {% endif %}
+          {% if analysis.analysis_data.quote_delivery_insights.product_trends %}
+          <strong><i class="fas fa-chart-line me-1"></i>제품 트렌드</strong>
+          {{ analysis.analysis_data.quote_delivery_insights.product_trends }}
+          {% endif %}
+        </div>
+
+        <!-- 미전환 견적 -->
+        {% if analysis.analysis_data.quote_delivery_insights.stalled_quotes %}
+        <h6 style="font-size: 0.85rem; font-weight: 600; color: #fbbf24; margin: 1rem 0 0.5rem;">
+          <i class="fas fa-exclamation-triangle me-1"></i>미전환 견적 분석
+        </h6>
+        {% for sq in analysis.analysis_data.quote_delivery_insights.stalled_quotes %}
+        <div class="stalled-quote">
+          <div class="sq-info">{{ sq.quote_info }}</div>
+          <div class="sq-reason">원인: {{ sq.possible_reason }}</div>
+          <div class="sq-suggestion"><i class="fas fa-lightbulb me-1"></i>{{ sq.suggestion }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endif %}
+      </div>
+
+      <!-- 다음 액션 -->
+      {% if analysis.analysis_data.next_actions %}
+      <div class="section-card">
+        <h5><i class="fas fa-tasks"></i> 추천 액션</h5>
+        {% for action in analysis.analysis_data.next_actions %}
+        <div class="next-action-item">
+          <span class="na-priority {{ action.priority }}">{{ action.priority|upper }}</span>
+          <div>
+            <div class="na-text">{{ action.action }}</div>
+            <div class="na-reason">{{ action.reason }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- 누락 정보 -->
+      {% if analysis.analysis_data.missing_info %}
+      <div class="section-card">
+        <h5><i class="fas fa-question-circle"></i> 확인 필요 사항</h5>
+        {% if analysis.analysis_data.missing_info.items %}
+        <div style="margin-bottom: 0.5rem;">
+          {% for item in analysis.analysis_data.missing_info.items %}
+          <div class="missing-info-item"><i class="fas fa-exclamation-circle"></i>{{ item }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if analysis.analysis_data.missing_info.questions %}
+        <div style="color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; margin: 0.5rem 0 0.3rem;">다음 방문 확인 질문</div>
+        {% for q in analysis.analysis_data.missing_info.questions %}
+        <div class="missing-info-item"><i class="fas fa-comment-dots"></i>{{ q }}</div>
+        {% endfor %}
+        {% endif %}
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- 오른쪽: PainPoint 카드 -->
+    <div class="painpoint-panel">
+      <h5><i class="fas fa-exclamation-triangle" style="color: #fbbf24;"></i> PainPoint 카드 ({{ cards|length }})</h5>
+
+      {% for card in cards %}
+      <div class="pp-card" id="card-{{ card.id }}">
+        <div class="pp-card-header">
+          <span class="pp-category {{ card.category }}">{{ card.get_category_display }}</span>
+          <div class="d-flex gap-2 align-items-center">
+            <span class="pp-confidence {{ card.confidence }}">
+              {{ card.confidence|upper }} {{ card.confidence_score }}
+            </span>
+            {% if card.verification_status != 'unverified' %}
+            <span class="pp-status-badge {{ card.verification_status }}">
+              {% if card.verification_status == 'confirmed' %}✅확인{% else %}❌부정{% endif %}
+            </span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="pp-hypothesis">{{ card.hypothesis }}</div>
+        {% if card.evidence %}
+        <div class="pp-evidence">
+          {% for ev in card.evidence %}
+          <div class="ev-text">{{ ev.text }} <span style="color: #8b5cf6; font-size: 0.72rem;">{{ ev.source_section }}</span></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="pp-verification">
+          <strong><i class="fas fa-question-circle me-1"></i>검증 질문</strong><br>
+          {{ card.verification_question }}
+        </div>
+        {% if card.verification_status == 'unverified' %}
+        <div class="pp-actions-row">
+          <button class="pp-verify-btn" onclick="verifyCard({{ card.id }}, 'confirmed')">
+            <i class="fas fa-check me-1"></i>확인됨
+          </button>
+          <button class="pp-verify-btn" onclick="verifyCard({{ card.id }}, 'denied')">
+            <i class="fas fa-times me-1"></i>부정됨
+          </button>
+        </div>
+        {% endif %}
+        {% if card.verification_note %}
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.4rem;">
+          <i class="fas fa-sticky-note me-1"></i>{{ card.verification_note }}
+        </div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div style="text-align: center; color: var(--text-secondary); padding: 2rem; font-size: 0.85rem;">
+        <i class="fas fa-info-circle" style="font-size: 1.5rem; margin-bottom: 0.5rem; display: block;"></i>
+        분석을 실행하면 PainPoint 카드가 생성됩니다.
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% else %}
+  <!-- 분석 전 빈 상태 -->
+  <div class="ai-empty-analysis">
+    <i class="fas fa-brain"></i>
+    <h5>아직 분석이 진행되지 않았습니다</h5>
+    <p>
+      {{ department.company.name }} / {{ department.name }}의<br>
+      최근 6개월 미팅, 견적, 납품 데이터를 AI가 종합 분석합니다.
+    </p>
+    <button class="btn-ai-action" onclick="runAnalysis()" style="margin: 0 auto;">
+      <i class="fas fa-play"></i> 분석 시작
+    </button>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- 로딩 오버레이 -->
+<div class="ai-loading-overlay" id="loadingOverlay">
+  <div class="ai-loading-box">
+    <div class="spinner"></div>
+    <h6>AI 분석 중...</h6>
+    <p>미팅록, 견적, 납품 데이터를 종합 분석하고 있습니다.<br>30초~1분 정도 소요됩니다.</p>
+  </div>
+</div>
+
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+const DEPT_ID = {{ department.id }};
+
+// 제품 통계 렌더링
+{% if analysis and analysis.quote_delivery_data.product_stats %}
+(function() {
+  const stats = {{ analysis.quote_delivery_data.product_stats|safe }};
+  const tbody = document.getElementById('productStatsBody');
+  if (!tbody || !stats) return;
+  for (const [name, s] of Object.entries(stats)) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${name}</td>
+      <td>${s.quoted}회</td>
+      <td>${(s.quote_amount || 0).toLocaleString()}원</td>
+      <td>${s.delivered}회</td>
+      <td>${(s.delivery_amount || 0).toLocaleString()}원</td>
+    `;
+    tbody.appendChild(row);
+  }
+})();
+{% endif %}
+
+function runAnalysis() {
+  const btn = document.getElementById('btnRunAnalysis');
+  if (btn) btn.disabled = true;
+  document.getElementById('loadingOverlay').classList.add('active');
+
+  fetch(`/ai/department/${DEPT_ID}/run/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert(data.error || '분석 실패');
+      document.getElementById('loadingOverlay').classList.remove('active');
+      if (btn) btn.disabled = false;
+    }
+  })
+  .catch(err => {
+    alert('분석 요청 실패: ' + err.message);
+    document.getElementById('loadingOverlay').classList.remove('active');
+    if (btn) btn.disabled = false;
+  });
+}
+
+function deleteAnalysis() {
+  if (!confirm('이 분석 결과를 삭제하시겠습니까?\n모든 PainPoint 카드도 함께 삭제됩니다.')) return;
+  fetch(`/ai/department/${DEPT_ID}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || '삭제 실패');
+  })
+  .catch(() => alert('삭제 요청 실패'));
+}
+
+function verifyCard(cardId, status) {
+  const note = prompt(status === 'confirmed' ? '확인 메모 (선택):' : '부정 사유 (선택):') || '';
+  const formData = new FormData();
+  formData.append('status', status);
+  formData.append('note', note);
+
+  fetch(`/ai/card/${cardId}/verify/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+    body: formData,
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) location.reload();
+    else alert(data.error || '검증 실패');
+  })
+  .catch(() => alert('검증 요청 실패'));
+}
+</script>
+{% endblock %}

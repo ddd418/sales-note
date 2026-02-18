@@ -1,0 +1,204 @@
+{% extends 'reporting/base.html' %}
+{% load static %}
+
+{% block title %}AI 부서 분석{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ai-dept-list {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .ai-page-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+  .ai-page-header h2 {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  .ai-page-header .badge-ai {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .ai-page-desc {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+  }
+
+  /* 검색 */
+  .ai-search-box {
+    margin-bottom: 1.5rem;
+  }
+  .ai-search-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 0.6rem 0.85rem;
+    font-size: 0.85rem;
+  }
+  .ai-search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+  .ai-search-input::placeholder { color: var(--text-secondary); }
+
+  /* 부서 카드 */
+  .ai-dept-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s;
+    cursor: pointer;
+    text-decoration: none !important;
+    display: block;
+  }
+  .ai-dept-card:hover {
+    border-color: var(--primary);
+    background: var(--surface-hover);
+    transform: translateY(-1px);
+  }
+  .dept-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+  }
+  .dept-company {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .dept-stats {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .dept-stat {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--background);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+  }
+  .badge-analyzed {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .badge-not-analyzed {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .ai-empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+  }
+  .ai-empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: var(--border);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-dept-list">
+  <div class="ai-page-header">
+    <h2><i class="fas fa-brain"></i> AI 부서 분석</h2>
+    <span class="badge-ai">AI</span>
+  </div>
+  <p class="ai-page-desc">
+    부서(연구실)를 선택하면 최근 6개월 미팅 내역과 견적/납품 패턴을 종합 분석합니다.
+  </p>
+
+  {% if dept_data %}
+  <div class="ai-search-box">
+    <input type="text" class="ai-search-input" id="deptSearch"
+           placeholder="업체명, 부서명으로 검색..." oninput="filterDepts()">
+  </div>
+
+  <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem; text-transform: uppercase;">
+    분석 가능 부서 ({{ dept_data|length }})
+  </div>
+
+  {% for item in dept_data %}
+  <a href="{% url 'ai_chat:department_analysis' department_id=item.department.id %}"
+     class="ai-dept-card"
+     data-search="{{ item.department.company.name|lower }} {{ item.department.name|lower }}">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <div class="dept-name">
+          {{ item.department.name }}
+        </div>
+        <div class="dept-company">
+          {{ item.department.company.name }}
+        </div>
+        <div class="dept-stats">
+          <span class="dept-stat"><i class="fas fa-users me-1"></i>팔로우업 {{ item.followup_count }}건</span>
+          {% if item.analysis %}
+            <span class="dept-stat"><i class="fas fa-handshake me-1"></i>미팅 {{ item.analysis.meeting_count }}건</span>
+            <span class="dept-stat"><i class="fas fa-file-invoice me-1"></i>견적 {{ item.analysis.quote_count }}건</span>
+            <span class="dept-stat"><i class="fas fa-truck me-1"></i>납품 {{ item.analysis.delivery_count }}건</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        {% if item.has_analysis %}
+          <span class="badge-analyzed">
+            <i class="fas fa-check-circle"></i> 분석완료
+          </span>
+          <span style="font-size: 0.7rem; color: var(--text-secondary);">
+            {{ item.analysis.updated_at|date:"m/d H:i" }}
+          </span>
+        {% else %}
+          <span class="badge-not-analyzed">미분석</span>
+        {% endif %}
+        <i class="fas fa-chevron-right" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+
+  {% else %}
+  <div class="ai-empty-state">
+    <i class="fas fa-building"></i>
+    <h5>분석 가능한 부서가 없습니다</h5>
+    <p>부서가 할당된 팔로우업이 필요합니다.<br>팔로우업의 부서(연구실)를 설정해주세요.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function filterDepts() {
+  const query = document.getElementById('deptSearch').value.toLowerCase();
+  document.querySelectorAll('.ai-dept-card').forEach(card => {
+    const text = card.getAttribute('data-search');
+    card.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

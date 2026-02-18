@@ -115,7 +115,7 @@
           {% endif %}
           {% if user.userprofile.can_use_ai %}
           <a
-            href="{% url 'ai_chat:start_chat' followup_id=followup.pk %}"
+            href="{% url 'ai_chat:start_analysis' followup_id=followup.pk %}"
             class="btn me-2"
             style="background: linear-gradient(135deg, #8b5cf6, #6366f1); color: #fff; border: none;"
           >
