@@ -84,7 +84,7 @@ def gather_quote_delivery_data(department, user):
         items = []
         for item in q.items.all():
             items.append({
-                'product': item.product.name if item.product else '미정',
+                'product': item.product.product_code if item.product else '미정',
                 'quantity': item.quantity,
                 'unit_price': int(item.unit_price) if item.unit_price else 0,
                 'subtotal': int(item.subtotal) if item.subtotal else 0,
@@ -111,7 +111,7 @@ def gather_quote_delivery_data(department, user):
         items = []
         for di in d_items:
             items.append({
-                'product': di.product.name if di.product else di.item_name,
+                'product': di.product.product_code if di.product else di.item_name,
                 'quantity': di.quantity,
                 'unit_price': int(di.unit_price) if di.unit_price else 0,
                 'total_price': int(di.total_price) if di.total_price else 0,
