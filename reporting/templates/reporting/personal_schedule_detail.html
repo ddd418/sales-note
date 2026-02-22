@@ -9,35 +9,27 @@
        모달 Z-INDEX 및 오버레이 수정 (CRITICAL FIX)
        ============================================ */
     
-    /* backdrop을 완전히 투명하게 (배경 없음) */
     .modal-backdrop {
-        display: none !important; /* backdrop 자체를 숨김 */
+        display: none !important;
     }
-    
-    /* 모달 자체는 backdrop보다 높게 */
     .modal {
         z-index: 1055 !important;
-        pointer-events: none !important; /* 모달 컨테이너도 투명하게 */
+        pointer-events: none !important;
     }
-    
-    /* 모달 다이얼로그만 클릭 가능하게 */
     .modal-dialog {
         z-index: 1056 !important;
-        pointer-events: auto !important; /* 다이얼로그는 클릭 가능 */
+        pointer-events: auto !important;
     }
-    
-    /* 모달 컨텐츠를 확실히 클릭 가능하게 */
     .modal-content {
         position: relative;
         z-index: 1057 !important;
-        pointer-events: auto !important; /* 컨텐츠 클릭 가능 */
-        background-color: #fff;
-        border: 1px solid rgba(0, 0, 0, 0.2);
+        pointer-events: auto !important;
+        background-color: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 0.3rem;
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* 모달에 그림자 추가 */
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+        color: var(--text-primary);
     }
-    
-    /* 모달 내부의 모든 요소가 클릭 가능하도록 */
     .modal-header,
     .modal-body,
     .modal-footer,
@@ -46,10 +38,27 @@
     .modal-footer * {
         pointer-events: auto !important;
     }
+    .modal-header {
+        border-bottom-color: var(--border);
+    }
+    .modal-footer {
+        border-top-color: var(--border);
+    }
+    .modal-title {
+        color: var(--text-primary);
+    }
 
     .schedule-detail-card {
         max-width: 900px;
         margin: 0 auto;
+    }
+    .schedule-detail-card .card-body {
+        background: var(--surface);
+        color: var(--text-primary);
+    }
+    .schedule-detail-card.card {
+        background: var(--surface);
+        border-color: var(--border);
     }
     .schedule-header {
         background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
@@ -62,23 +71,31 @@
         display: flex;
         align-items: center;
         margin-bottom: 0.75rem;
+        color: var(--text-primary);
     }
     .schedule-info-item i {
         width: 24px;
         margin-right: 0.5rem;
-        color: #6c757d;
+        color: var(--text-secondary);
+    }
+    .schedule-info-item span,
+    .schedule-info-item div {
+        color: var(--text-primary);
     }
     .comment-section {
         margin-top: 2rem;
         padding-top: 2rem;
-        border-top: 2px solid #e9ecef;
+        border-top: 2px solid var(--border);
+    }
+    .comment-section h5 {
+        color: var(--text-primary);
     }
     .comment-item {
-        background: #f8f9fa;
+        background: var(--background);
         padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 1rem;
-        border-left: 3px solid #6c757d;
+        border-left: 3px solid var(--text-secondary);
     }
     .comment-header {
         display: flex;
@@ -88,11 +105,11 @@
     }
     .comment-author {
         font-weight: 600;
-        color: #495057;
+        color: var(--text-primary);
     }
     .comment-date {
         font-size: 0.875rem;
-        color: #6c757d;
+        color: var(--text-secondary);
     }
     .comment-actions {
         margin-left: auto;
@@ -103,7 +120,7 @@
         margin-left: 0.25rem;
     }
     .comment-content {
-        color: #212529;
+        color: var(--text-primary);
         line-height: 1.6;
     }
     .comment-edit-form {
@@ -111,17 +128,31 @@
     }
     .comment-edit-form .form-control {
         margin-bottom: 0.5rem;
+        background: var(--surface);
+        color: var(--text-primary);
+        border-color: var(--border);
     }
     .no-comments {
         text-align: center;
         padding: 2rem;
-        color: #6c757d;
+        color: var(--text-secondary);
     }
     .comment-form {
-        background: #f8f9fa;
+        background: var(--background);
         padding: 1.5rem;
         border-radius: 0.5rem;
         margin-top: 1rem;
+    }
+    .comment-form h6 {
+        color: var(--text-primary);
+    }
+    .comment-form .form-control {
+        background: var(--surface);
+        color: var(--text-primary);
+        border-color: var(--border);
+    }
+    .comment-form .form-control::placeholder {
+        color: var(--text-secondary);
     }
 </style>
 {% endblock %}
