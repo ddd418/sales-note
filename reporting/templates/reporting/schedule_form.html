@@ -1206,7 +1206,7 @@ window.updatePrepaymentList = function(followupId) {
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
                                             <strong>${prepayment.payment_date}</strong>
-                                            <span style="color: var(--text-muted);">- ${prepayment.payer_name || '미지정'}</span>
+                                            <span style="color: var(--text-muted);">- ${prepayment.customer_name || ''} / ${prepayment.payer_name || '미지정'}</span>
                                         </div>
                                         <div>
                                             <span class="badge bg-success">잔액: ${prepayment.balance.toLocaleString()}원</span>

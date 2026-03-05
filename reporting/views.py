@@ -494,29 +494,33 @@ class ScheduleForm(forms.ModelForm):
             from django.urls import reverse
             self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
         
-        # 선결제 필드 설정
+        # 선결제 필드 설정 (같은 부서 내 모든 고객의 선결제를 공유)
         if self.instance.pk and self.instance.followup:
-            # 수정 시: 해당 고객의 사용 가능한 선결제 목록
+            # 수정 시: 같은 부서의 모든 고객 선결제 목록
+            department = self.instance.followup.department
+            same_dept_followups = FollowUp.objects.filter(department=department).values_list('id', flat=True)
             self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                customer=self.instance.followup,
+                customer_id__in=same_dept_followups,
                 status='active',
                 balance__gt=0
             ).order_by('-payment_date')
-            # 선결제 옵션 라벨 설정
-            self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
+            # 선결제 옵션 라벨 설정 (고객명 포함)
+            self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
         elif 'followup' in self.data:
             # 생성 시 followup이 선택된 경우
             try:
                 followup_id = int(self.data.get('followup'))
                 followup = FollowUp.objects.get(pk=followup_id)
-                # 생성 시: 선택된 고객의 사용 가능한 선결제 목록
+                # 생성 시: 같은 부서의 모든 고객 선결제 목록
+                department = followup.department
+                same_dept_followups = FollowUp.objects.filter(department=department).values_list('id', flat=True)
                 self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                    customer=followup,
+                    customer_id__in=same_dept_followups,
                     status='active',
                     balance__gt=0
                 ).order_by('-payment_date')
-                # 선결제 옵션 라벨 설정
-                self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
+                # 선결제 옵션 라벨 설정 (고객명 포함)
+                self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
             except (ValueError, TypeError, FollowUp.DoesNotExist):
                 pass
             
@@ -11036,17 +11040,26 @@ def prepayment_api_list(request):
         return JsonResponse({'prepayments': []})
     
     try:
-        # 해당 고객의 사용 가능한 선결제 (잔액이 남아있는 활성 선결제 - 연도 무관)
+        # 해당 고객의 부서 기준으로 같은 부서 내 모든 고객의 선결제를 불러옴
+        followup = FollowUp.objects.select_related('department').get(id=customer_id)
+        department = followup.department
+        
+        # 같은 부서의 모든 고객 ID 조회
+        same_dept_followup_ids = FollowUp.objects.filter(
+            department=department
+        ).values_list('id', flat=True)
+        
         prepayments = Prepayment.objects.filter(
-            customer_id=customer_id,
+            customer_id__in=same_dept_followup_ids,
             status='active',
             balance__gt=0
-        ).order_by('-payment_date')
+        ).select_related('customer').order_by('-payment_date')
         
         prepayments_data = [{
             'id': p.id,
             'payment_date': p.payment_date.strftime('%Y-%m-%d'),
             'payer_name': p.payer_name or '미지정',
+            'customer_name': p.customer.customer_name or str(p.customer),
             'amount': float(p.amount),
             'balance': float(p.balance),
         } for p in prepayments]
