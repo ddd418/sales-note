@@ -11036,13 +11036,12 @@ def prepayment_api_list(request):
         return JsonResponse({'prepayments': []})
     
     try:
-        # 해당 고객의 선결제 중 담당자가 등록한 것만
+        # 해당 고객의 사용 가능한 선결제 (잔액이 남아있는 활성 선결제 - 연도 무관)
         prepayments = Prepayment.objects.filter(
             customer_id=customer_id,
-            created_by__id=FollowUp.objects.get(id=customer_id).user_id,
             status='active',
             balance__gt=0
-        ).order_by('id')
+        ).order_by('-payment_date')
         
         prepayments_data = [{
             'id': p.id,
