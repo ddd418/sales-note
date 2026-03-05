@@ -503,7 +503,7 @@ class ScheduleForm(forms.ModelForm):
                 customer_id__in=same_dept_followups,
                 status='active',
                 balance__gt=0
-            ).order_by('-payment_date')
+            ).order_by('payment_date')
             # 선결제 옵션 라벨 설정 (고객명 포함)
             self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
         elif 'followup' in self.data:
@@ -518,7 +518,7 @@ class ScheduleForm(forms.ModelForm):
                     customer_id__in=same_dept_followups,
                     status='active',
                     balance__gt=0
-                ).order_by('-payment_date')
+                ).order_by('payment_date')
                 # 선결제 옵션 라벨 설정 (고객명 포함)
                 self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
             except (ValueError, TypeError, FollowUp.DoesNotExist):
@@ -11053,7 +11053,7 @@ def prepayment_api_list(request):
             customer_id__in=same_dept_followup_ids,
             status='active',
             balance__gt=0
-        ).select_related('customer').order_by('-payment_date')
+        ).select_related('customer').order_by('payment_date')
         
         prepayments_data = [{
             'id': p.id,
