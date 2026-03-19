@@ -655,6 +655,7 @@ small.text-muted {
             }
             return true;">
             {% csrf_token %}
+            <input type="hidden" name="from_quote_schedule_id" id="from-quote-schedule-id" value="">
 
             <!-- 에러 메시지 -->
             {% if form.errors %}
@@ -3145,6 +3146,12 @@ function loadQuoteItems(quote) {
     }
     
     alert(`견적 품목 ${quote.items.length}개를 불러왔습니다.\n견적일: ${quote.quote_date}`);
+    
+    // 견적 schedule_id를 hidden 필드에 저장 (납품 저장 시 견적 자동 완료 처리용)
+    const fromQuoteField = document.getElementById('from-quote-schedule-id');
+    if (fromQuoteField && quote.schedule_id) {
+        fromQuoteField.value = quote.schedule_id;
+    }
 }
 
 // 견적/납품 품목 관리 모달 관련 함수들 (전역 함수로 정의)

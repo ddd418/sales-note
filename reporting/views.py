@@ -2284,6 +2284,20 @@ def schedule_create_view(request):
                             usage.save()
                             break  # 첫 번째 usage만 업데이트
             
+            # 견적에서 불러온 납품인 경우, 원본 견적 일정을 완료 처리
+            from_quote_schedule_id = request.POST.get('from_quote_schedule_id')
+            if from_quote_schedule_id and schedule.activity_type == 'delivery':
+                try:
+                    quote_schedule = Schedule.objects.get(
+                        id=int(from_quote_schedule_id),
+                        activity_type='quote'
+                    )
+                    quote_schedule.status = 'completed'
+                    quote_schedule.save()
+                    messages.info(request, f'견적 일정(ID: {from_quote_schedule_id})이 완료 처리되었습니다.')
+                except (Schedule.DoesNotExist, ValueError):
+                    pass
+            
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
             # 일정 캘린더로 리다이렉트 (모달이 자동으로 열리도록 schedule_id 전달)
