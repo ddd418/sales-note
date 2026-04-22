@@ -119,3 +119,31 @@ class PainPointCard(models.Model):
 
     def __str__(self):
         return f"[{self.get_confidence_display()}] {self.get_category_display()} - {self.hypothesis[:40]}"
+
+
+class AIFollowUpAnalysis(models.Model):
+    """개별 고객(FollowUp) AI 분석"""
+    followup = models.ForeignKey(
+        'reporting.FollowUp', on_delete=models.CASCADE,
+        related_name='ai_analyses', verbose_name="분석 대상 고객"
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="분석 요청자")
+
+    analysis_data = models.JSONField(
+        null=True, blank=True, verbose_name="AI 분석 결과",
+        help_text="customer_summary, key_painpoints, next_best_actions, risk_factors, deal_probability 등"
+    )
+
+    meeting_count = models.IntegerField(default=0, verbose_name="분석된 미팅 수")
+    token_usage = models.IntegerField(default=0, verbose_name="토큰 사용량")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    class Meta:
+        verbose_name = "AI 고객 분석"
+        verbose_name_plural = "AI 고객 분석 목록"
+        ordering = ['-updated_at']
+        unique_together = ['followup', 'user']
+
+    def __str__(self):
+        return f"{self.followup.customer_name} - AI 분석 ({self.user.username})"

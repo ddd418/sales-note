@@ -21,4 +21,9 @@ urlpatterns = [
 
     # FollowUp에서 부서 분석으로 이동
     path('start/<int:followup_id>/', views.start_analysis, name='start_analysis'),
+
+    # 개별 고객(FollowUp) AI 분석
+    path('followup/<int:followup_id>/', views.followup_analysis_view, name='followup_analysis'),
+    path('followup/<int:followup_id>/run/', views.run_followup_analysis, name='run_followup_analysis'),
+    path('followup/<int:followup_id>/delete/', views.delete_followup_analysis, name='delete_followup_analysis'),
 ]

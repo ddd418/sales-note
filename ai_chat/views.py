@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 
 from reporting.models import FollowUp, Department
-from .models import AIDepartmentAnalysis, PainPointCard
+from .models import AIDepartmentAnalysis, PainPointCard, AIFollowUpAnalysis
 from .services import analyze_department, gather_meeting_data, gather_quote_delivery_data
 
 logger = logging.getLogger(__name__)
@@ -284,3 +284,85 @@ def _save_painpoint_cards(cards_data, analysis):
             continue
 
     return created_cards
+
+
+
+# ================================================
+# 개별 고객(FollowUp) AI 분석
+# ================================================
+
+@login_required
+@ai_permission_required
+def followup_analysis_view(request, followup_id):
+    """개별 고객 AI 분석 결과 뷰"""
+    from reporting.views import can_access_followup
+    followup = get_object_or_404(FollowUp, id=followup_id)
+
+    if not can_access_followup(request.user, followup):
+        from django.contrib import messages
+        messages.error(request, '접근 권한이 없습니다.')
+        return redirect('reporting:followup_list')
+
+    analysis = AIFollowUpAnalysis.objects.filter(
+        followup=followup, user=request.user
+    ).first()
+
+    return render(request, 'ai_chat/followup_analysis.html', {
+        'followup': followup,
+        'analysis': analysis,
+    })
+
+
+@login_required
+@ai_permission_required
+@require_POST
+def run_followup_analysis(request, followup_id):
+    """개별 고객 AI 분석 실행 (AJAX POST)"""
+    from reporting.views import can_access_followup
+    from .services import analyze_followup
+
+    followup = get_object_or_404(FollowUp, id=followup_id)
+
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+
+    try:
+        analysis, created = AIFollowUpAnalysis.objects.get_or_create(
+            followup=followup,
+            user=request.user,
+        )
+
+        analysis_result, meeting_count, token_usage = analyze_followup(
+            analysis, followup, request.user
+        )
+
+        if not analysis_result:
+            return JsonResponse({'error': 'AI 분석 결과를 파싱하지 못했습니다.'}, status=500)
+
+        analysis.analysis_data = analysis_result
+        analysis.meeting_count = meeting_count
+        analysis.token_usage = token_usage
+        analysis.save()
+
+        return JsonResponse({
+            'success': True,
+            'redirect_url': '/ai/followup/{}/'.format(followup_id),
+        })
+
+    except Exception as e:
+        logger.error('FollowUp AI 분석 실패: {}'.format(str(e)))
+        return JsonResponse({'error': 'AI 분석 실패: {}'.format(str(e))}, status=500)
+
+
+@login_required
+@ai_permission_required
+@require_POST
+def delete_followup_analysis(request, followup_id):
+    """개별 고객 분석 삭제"""
+    analysis = get_object_or_404(
+        AIFollowUpAnalysis,
+        followup_id=followup_id,
+        user=request.user,
+    )
+    analysis.delete()
+    return JsonResponse({'success': True})

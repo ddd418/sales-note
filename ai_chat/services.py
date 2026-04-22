@@ -387,3 +387,236 @@ def analyze_department(analysis, department, user):
     except Exception as e:
         logger.error(f"OpenAI API 호출 실패: {str(e)}")
         raise
+
+
+# ================================================
+# 개별 고객(FollowUp) 분석
+# ================================================
+
+FOLLOWUP_SYSTEM_PROMPT = """너는 B2B 영업 CRM의 "개별 고객 분석" AI다.
+영업 담당자가 특정 고객(연구원/담당자)과의 모든 미팅 기록, 견적, 납품 이력을 제공하면,
+이를 종합 분석하여 이 고객과의 관계 현황 및 최적의 영업 전략을 제안한다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 절대 규칙
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 입력 데이터에 명시된 내용만 근거로 사용한다.
+2. 추측 시 반드시 "(추정)" 표시하고 confidence를 low로 설정한다.
+3. 근거 없는 painpoint는 생성하지 않는다.
+4. 인용 시 「」로 감싸고 날짜를 표시한다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+출력 형식 (반드시 JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "customer_summary": "이 고객과의 관계를 2-3문장으로 요약",
+  "relationship_stage": "현재 관계 단계 (cold/warm/active/loyal/at_risk 중 하나 + 한 줄 이유)",
+  "key_painpoints": [
+    {
+      "painpoint": "핵심 불편/필요 사항",
+      "evidence": "근거 (미팅 날짜 + 인용)",
+      "confidence": "high|med|low"
+    }
+  ],
+  "next_best_actions": [
+    {
+      "action": "구체적 실행 액션 (what + when)",
+      "reason": "왜 이 액션이 필요한지",
+      "priority": 1
+    }
+  ],
+  "risk_factors": [
+    {
+      "risk": "위험 요인",
+      "severity": "high|med|low",
+      "mitigation": "대응 방법"
+    }
+  ],
+  "opportunity_signals": ["기회 신호 (미팅/견적 데이터에서 발견된 긍정 시그널)"],
+  "deal_probability": 65,
+  "deal_probability_reason": "확률 산출 근거 (최근 미팅 빈도, 견적 전환율, 관계 단계 등)",
+  "missing_info": ["확인이 필요한 정보 항목"]
+}
+
+deal_probability 기준:
+- 90-100: 구매 확정 또는 반복 납품 중
+- 70-89: 적극적 검토 + 견적 전환 이력 있음
+- 50-69: 관심 있으나 결정 장애물 존재
+- 30-49: 초기 접촉 단계 또는 장기 검토
+- 0-29: 구매 신호 없음 또는 명시적 거절
+"""
+
+
+def gather_followup_data(followup, user):
+    """특정 고객(FollowUp)의 전체 히스토리 수집"""
+    from reporting.models import History, Schedule, Quote, DeliveryItem
+
+    # 미팅 기록 (전체)
+    histories = History.objects.filter(
+        followup=followup,
+    ).select_related('user', 'schedule').order_by('-created_at')
+
+    meeting_list = []
+    for h in histories:
+        if h.action_type == 'customer_meeting':
+            parts = []
+            if h.meeting_situation:
+                parts.append(f"[상황] {h.meeting_situation}")
+            if h.meeting_researcher_quote:
+                parts.append(f"[고객 발언] {h.meeting_researcher_quote}")
+            if h.meeting_confirmed_facts:
+                parts.append(f"[확인된 사실] {h.meeting_confirmed_facts}")
+            if h.meeting_obstacles:
+                parts.append(f"[장애물] {h.meeting_obstacles}")
+            if h.meeting_next_action:
+                parts.append(f"[다음 액션] {h.meeting_next_action}")
+            if not parts and h.content:
+                parts.append(h.content)
+            meeting_list.append({
+                'date': (h.meeting_date or h.created_at.date()).strftime('%Y-%m-%d'),
+                'content': '\n'.join(parts),
+                'by': h.user.get_full_name() or h.user.username,
+            })
+
+    # 견적 기록
+    quotes = Quote.objects.filter(
+        followup=followup
+    ).prefetch_related('items__product').order_by('-quote_date')
+
+    quote_list = []
+    for q in quotes:
+        items_str = ', '.join([
+            f"{it.product.product_code if it.product else '미정'}({it.quantity}개, {int(it.subtotal or 0):,}원)"
+            for it in q.items.all()
+        ])
+        quote_list.append({
+            'date': q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '',
+            'number': q.quote_number,
+            'stage': q.get_stage_display(),
+            'total': int(q.total_amount or 0),
+            'converted': q.converted_to_delivery,
+            'items': items_str,
+        })
+
+    # 납품 기록
+    deliveries = History.objects.filter(
+        followup=followup,
+        action_type='delivery_schedule',
+    ).order_by('-created_at')
+
+    delivery_list = []
+    for d in deliveries:
+        d_items = DeliveryItem.objects.filter(history=d).select_related('product')
+        items_str = ', '.join([
+            f"{di.product.product_code if di.product else di.item_name}({di.quantity}개)"
+            for di in d_items
+        ])
+        delivery_list.append({
+            'date': d.delivery_date.strftime('%Y-%m-%d') if d.delivery_date else d.created_at.strftime('%Y-%m-%d'),
+            'amount': int(d.delivery_amount or 0),
+            'items': items_str,
+        })
+
+    # 예정 일정
+    upcoming = Schedule.objects.filter(
+        followup=followup,
+        status='scheduled',
+        visit_date__gte=__import__('datetime').date.today(),
+    ).order_by('visit_date')
+
+    upcoming_list = [{
+        'date': s.visit_date.strftime('%Y-%m-%d'),
+        'type': s.get_activity_type_display(),
+        'notes': s.notes or '',
+    } for s in upcoming]
+
+    return {
+        'meetings': meeting_list,
+        'quotes': quote_list,
+        'deliveries': delivery_list,
+        'upcoming': upcoming_list,
+    }
+
+
+def analyze_followup(analysis, followup, user):
+    """
+    개별 고객 AI 분석 실행
+    Returns: (analysis_data, meeting_count, token_usage)
+    """
+    client = get_openai_client()
+    model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+
+    data = gather_followup_data(followup, user)
+
+    # 프롬프트 조립
+    parts = []
+    company_str = str(followup.company) if followup.company else ''
+    dept_str = str(followup.department) if followup.department else ''
+    parts.append(f"[고객 정보]")
+    parts.append(f"이름: {followup.customer_name}")
+    parts.append(f"소속: {company_str} / {dept_str}")
+    parts.append(f"등급: {followup.customer_grade} | 우선순위: {followup.get_priority_display()}")
+    parts.append(f"파이프라인 단계: {followup.get_pipeline_stage_display()}")
+    parts.append("")
+
+    parts.append(f"━━━ 미팅 기록 ({len(data['meetings'])}건) ━━━")
+    if data['meetings']:
+        for i, m in enumerate(data['meetings'], 1):
+            parts.append(f"\n[미팅 #{i}] {m['date']} (담당: {m['by']})")
+            parts.append(m['content'])
+    else:
+        parts.append("(미팅 기록 없음)")
+
+    parts.append(f"\n━━━ 견적 기록 ({len(data['quotes'])}건) ━━━")
+    if data['quotes']:
+        for q in data['quotes']:
+            converted = '✅납품전환' if q['converted'] else '❌미전환'
+            parts.append(f"- {q['date']} | {q['number']} | {q['stage']} | {q['total']:,}원 | {converted}")
+            if q['items']:
+                parts.append(f"  품목: {q['items']}")
+    else:
+        parts.append("(견적 기록 없음)")
+
+    parts.append(f"\n━━━ 납품 기록 ({len(data['deliveries'])}건) ━━━")
+    if data['deliveries']:
+        for d in data['deliveries']:
+            parts.append(f"- {d['date']} | {d['amount']:,}원 | {d['items']}")
+    else:
+        parts.append("(납품 기록 없음)")
+
+    if data['upcoming']:
+        parts.append(f"\n━━━ 예정 일정 ━━━")
+        for s in data['upcoming']:
+            parts.append(f"- {s['date']} {s['type']}: {s['notes']}")
+
+    parts.append("\n위 데이터만 근거로 사용하라. 없는 정보는 missing_info에 기록하라.")
+
+    messages = [
+        {"role": "system", "content": FOLLOWUP_SYSTEM_PROMPT},
+        {"role": "user", "content": "\n".join(parts)},
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=3000,
+            response_format={"type": "json_object"},
+        )
+        ai_text = response.choices[0].message.content
+        token_usage = response.usage.total_tokens if response.usage else 0
+
+        try:
+            analysis_result = json.loads(ai_text)
+        except json.JSONDecodeError:
+            analysis_result = None
+            logger.error(f"AI 응답 JSON 파싱 실패: {ai_text[:200]}")
+
+        return analysis_result, len(data['meetings']), token_usage
+
+    except Exception as e:
+        logger.error(f"FollowUp AI 분석 실패: {str(e)}")
+        raise
