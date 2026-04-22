@@ -709,7 +709,7 @@ GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d'
 @login_required
 def funnel_pipeline_view(request):
     """칸반 파이프라인 보드 뷰"""
-    followups = _get_accessible_followups(None, request)
+    followups = _get_accessible_followups(request.user, request)
     followups = followups.select_related(
         'company', 'department', 'user'
     ).prefetch_related(
@@ -769,7 +769,7 @@ def funnel_pipeline_move(request):
             return JsonResponse({'success': False, 'error': '유효하지 않은 단계'}, status=400)
 
         # 권한 확인: 접근 가능한 followup인지
-        accessible = _get_accessible_followups(None, request)
+        accessible = _get_accessible_followups(request.user, request)
         fu = accessible.filter(pk=followup_id).first()
         if not fu:
             return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
