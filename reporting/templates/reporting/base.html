@@ -1608,9 +1608,15 @@
           </a>
         </li>
         <li class="nav-item">
-          <a href="{% url 'reporting:funnel_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'funnel' %}active{% endif %}">
+          <a href="{% url 'reporting:funnel_list' %}" class="nav-link {% if request.resolver_match.url_name == 'funnel_list' %}active{% endif %}">
             <i class="fas fa-filter"></i>
             <span>펀넬 관리</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{% url 'reporting:funnel_pipeline' %}" class="nav-link {% if request.resolver_match.url_name == 'funnel_pipeline' %}active{% endif %}">
+            <i class="fas fa-columns"></i>
+            <span>파이프라인</span>
           </a>
         </li>
         <li class="nav-item">

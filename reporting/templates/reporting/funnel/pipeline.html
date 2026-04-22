@@ -1,0 +1,211 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}파이프라인 보드{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between px-3 pt-3 pb-2 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-3">
+    <h4 class="mb-0"><i class="fas fa-columns me-2"></i>파이프라인 보드</h4>
+    <span class="badge bg-secondary">총 {{ total }}명</span>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'reporting:funnel_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-table me-1"></i>테이블 뷰
+    </a>
+  </div>
+</div>
+
+<!-- 칸반 보드 -->
+<div class="kanban-board d-flex gap-3 px-3 pb-3 overflow-auto" style="min-height: calc(100vh - 130px); align-items: flex-start;">
+
+  {% for stage in stages %}
+  <div class="kanban-col flex-shrink-0"
+       style="width: 240px;"
+       data-stage="{{ stage.key }}"
+       ondragover="onDragOver(event)"
+       ondrop="onDrop(event, '{{ stage.key }}')">
+
+    <!-- 컬럼 헤더 -->
+    <div class="kanban-col-header rounded-top px-3 py-2 d-flex align-items-center justify-content-between"
+         style="background: {{ stage.color }}20; border-top: 3px solid {{ stage.color }};">
+      <div class="d-flex align-items-center gap-2">
+        <i class="{{ stage.icon }}" style="color: {{ stage.color }};"></i>
+        <span class="fw-semibold" style="color: {{ stage.color }};">{{ stage.label }}</span>
+      </div>
+      <span class="badge rounded-pill" style="background: {{ stage.color }};">{{ stage.count }}</span>
+    </div>
+
+    <!-- 카드 목록 -->
+    <div class="kanban-cards p-2 rounded-bottom" style="background: var(--surface, #f8f9fa); min-height: 120px;">
+      {% for card in stage.cards %}
+      <div class="kanban-card card shadow-sm mb-2"
+           draggable="true"
+           data-id="{{ card.id }}"
+           data-stage="{{ card.pipeline_stage }}"
+           ondragstart="onDragStart(event)"
+           style="cursor: grab; border-left: 3px solid {{ stage.color }};">
+        <div class="card-body py-2 px-3">
+          <!-- 상단: 등급 배지 + 우선순위 -->
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="badge" style="background-color: {{ card.grade_color }}; font-size: 0.7em;">{{ card.grade }}</span>
+            <span class="text-muted" style="font-size: 0.72em;">{{ card.priority }}</span>
+          </div>
+          <!-- 고객명 -->
+          <div class="fw-bold" style="font-size: 0.9em; line-height: 1.3;">
+            <a href="{% url 'reporting:followup_detail' card.id %}" class="text-decoration-none text-body"
+               onclick="event.stopPropagation()">
+              {{ card.customer }}
+            </a>
+          </div>
+          <!-- 업체/부서 -->
+          {% if card.company or card.department %}
+          <div class="text-muted mt-1" style="font-size: 0.78em; line-height: 1.3;">
+            {% if card.company %}{{ card.company }}{% endif %}
+            {% if card.department %}<br>{{ card.department }}{% endif %}
+          </div>
+          {% endif %}
+          <!-- 다음 일정 -->
+          {% if card.next_date %}
+          <div class="mt-1 text-primary" style="font-size: 0.75em;">
+            <i class="fas fa-calendar-alt me-1"></i>{{ card.next_date }} {{ card.next_type }}
+          </div>
+          {% endif %}
+          <!-- 단계 이동 드롭다운 (모바일 대응) -->
+          <div class="mt-2">
+            <select class="form-select form-select-sm stage-select"
+                    data-id="{{ card.id }}"
+                    onchange="moveCard({{ card.id }}, this.value)"
+                    onclick="event.stopPropagation()">
+              {% for s in stages %}
+              <option value="{{ s.key }}" {% if s.key == card.pipeline_stage %}selected{% endif %}>{{ s.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="text-center text-muted py-4" style="font-size: 0.85em;" id="empty-{{ stage.key }}">
+        <i class="fas fa-inbox mb-1 d-block" style="font-size: 1.5em; opacity: 0.3;"></i>
+        없음
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- 이동 중 오버레이 -->
+<div id="moveToast" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999; display:none;">
+  <div class="toast show align-items-center text-bg-success border-0">
+    <div class="d-flex">
+      <div class="toast-body" id="moveToastMsg"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.kanban-board::-webkit-scrollbar { height: 6px; }
+.kanban-board::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+.kanban-card { transition: box-shadow 0.15s, opacity 0.15s; }
+.kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; }
+.kanban-card.dragging { opacity: 0.4; }
+.kanban-cards.drag-over { background: rgba(99,102,241,0.08) !important; outline: 2px dashed #6366f1; }
+@media (max-width: 768px) {
+  .kanban-board { flex-direction: column; }
+  .kanban-col { width: 100% !important; }
+}
+</style>
+
+<script>
+const CSRF = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+             document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+let dragId = null;
+let dragStage = null;
+
+function onDragStart(e) {
+  dragId = e.currentTarget.dataset.id;
+  dragStage = e.currentTarget.dataset.stage;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const col = e.currentTarget.querySelector('.kanban-cards');
+  if (col) col.classList.add('drag-over');
+}
+
+function onDrop(e, newStage) {
+  e.preventDefault();
+  const col = e.currentTarget.querySelector('.kanban-cards');
+  if (col) col.classList.remove('drag-over');
+  document.querySelectorAll('.kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+
+  if (!dragId || dragStage === newStage) return;
+  moveCard(dragId, newStage);
+}
+
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.kanban-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
+});
+
+function moveCard(followupId, newStage) {
+  fetch('{% url "reporting:funnel_pipeline_move" %}', {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': CSRF,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ followup_id: parseInt(followupId), stage: newStage }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast('단계가 변경되었습니다.');
+      // 카드 DOM 이동
+      const card = document.querySelector(`.kanban-card[data-id="${followupId}"]`);
+      if (card) {
+        const targetCol = document.querySelector(`.kanban-col[data-stage="${newStage}"] .kanban-cards`);
+        if (targetCol) {
+          card.dataset.stage = newStage;
+          // 셀렉트 업데이트
+          const sel = card.querySelector('.stage-select');
+          if (sel) sel.value = newStage;
+          // 빈 메시지 제거
+          const empty = targetCol.querySelector('[id^="empty-"]');
+          if (empty) empty.remove();
+          targetCol.appendChild(card);
+          // 원래 컬럼 카운트 갱신
+          updateCounts();
+        }
+      }
+    }
+  })
+  .catch(() => showToast('오류가 발생했습니다.', true));
+}
+
+function updateCounts() {
+  document.querySelectorAll('.kanban-col').forEach(col => {
+    const stage = col.dataset.stage;
+    const count = col.querySelectorAll('.kanban-card').length;
+    const badge = col.querySelector('.badge.rounded-pill');
+    if (badge) badge.textContent = count;
+  });
+}
+
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('moveToast');
+  const msgEl = document.getElementById('moveToastMsg');
+  const div = toast.querySelector('.toast');
+  msgEl.textContent = msg;
+  div.className = `toast show align-items-center text-bg-${isError ? 'danger' : 'success'} border-0`;
+  toast.style.display = 'block';
+  setTimeout(() => { toast.style.display = 'none'; }, 2000);
+}
+</script>
+{% endblock %}

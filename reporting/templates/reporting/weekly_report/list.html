@@ -17,16 +17,16 @@
     <div class="col-auto">
       <select name="year" class="form-select form-select-sm">
         <option value="">연도</option>
-        {% for y in "2024 2025 2026"|split:" " %}
-        <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}년</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if selected_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}년</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-auto">
       <select name="month" class="form-select form-select-sm">
         <option value="">월</option>
-        {% for m in "1 2 3 4 5 6 7 8 9 10 11 12"|split:" " %}
-        <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}월</option>
+        {% for m in months %}
+        <option value="{{ m }}" {% if selected_month == m|stringformat:"s" %}selected{% endif %}>{{ m }}월</option>
         {% endfor %}
       </select>
     </div>

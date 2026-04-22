@@ -271,6 +271,7 @@ urlpatterns = [
     # 펀넬 관리 URL들
     # ============================================
     path('funnel/', funnel_views.funnel_list_view, name='funnel_list'),
+    path('funnel/pipeline/', funnel_views.funnel_pipeline_view, name='funnel_pipeline'),
     path('funnel/<int:department_id>/', funnel_views.funnel_detail_view, name='funnel_detail'),
     path('funnel/api/save-target/', funnel_views.funnel_save_target, name='funnel_save_target'),
     path('funnel/api/auto-target/', funnel_views.funnel_auto_target, name='funnel_auto_target'),
@@ -278,6 +279,7 @@ urlpatterns = [
     path('funnel/api/add-department/', funnel_views.funnel_add_department, name='funnel_add_department'),
     path('funnel/api/remove-department/', funnel_views.funnel_remove_department, name='funnel_remove_department'),
     path('funnel/api/search-departments/', funnel_views.funnel_search_departments, name='funnel_search_departments'),
+    path('funnel/api/pipeline-move/', funnel_views.funnel_pipeline_move, name='funnel_pipeline_move'),
 
     # ============================================
     # 주간보고 URL

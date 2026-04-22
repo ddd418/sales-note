@@ -13516,6 +13516,8 @@ def weekly_report_list(request):
         'selected_year': year,
         'selected_month': month,
         'selected_user': target_user,
+        'years': [2024, 2025, 2026, 2027],
+        'months': list(range(1, 13)),
     })
 
 

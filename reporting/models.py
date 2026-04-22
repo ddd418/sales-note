@@ -206,6 +206,15 @@ class FollowUp(models.Model):
         ('C', 'C (잠재 고객)'),
         ('D', 'D (저관심 고객)'),
     ]
+
+    PIPELINE_STAGE_CHOICES = [
+        ('potential', '잠재'),
+        ('contact', '접촉/미팅'),
+        ('quote', '견적 제출'),
+        ('negotiation', '협상'),
+        ('won', '수주'),
+        ('lost', '실주'),
+    ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     user_company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="담당자 소속 회사")
@@ -219,6 +228,11 @@ class FollowUp(models.Model):
     notes = models.TextField(blank=True, null=True, verbose_name="상세 내용")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='scheduled', verbose_name="우선순위")
+    pipeline_stage = models.CharField(
+        max_length=20, choices=PIPELINE_STAGE_CHOICES, default='potential',
+        verbose_name="파이프라인 단계",
+        help_text="영업 파이프라인 단계 (칸반 보드용)"
+    )
     
     # AI 기반 고객 등급 시스템
     customer_grade = models.CharField(

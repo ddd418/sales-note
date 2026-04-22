@@ -688,3 +688,94 @@ def funnel_bulk_auto_target(request):
     except Exception as e:
         logger.error(f"일괄 목표 설정 오류: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+# ============================================================
+# 칸반 파이프라인 보드
+# ============================================================
+
+PIPELINE_STAGES = [
+    ('potential',    '잠재',      '#6c757d', 'fas fa-seedling'),
+    ('contact',      '접촉/미팅', '#0d6efd', 'fas fa-handshake'),
+    ('quote',        '견적 제출', '#f59e0b', 'fas fa-file-invoice'),
+    ('negotiation',  '협상',      '#8b5cf6', 'fas fa-comments-dollar'),
+    ('won',          '수주',      '#198754', 'fas fa-trophy'),
+    ('lost',         '실주',      '#dc3545', 'fas fa-times-circle'),
+]
+
+GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d', 'D': '#dc3545'}
+
+
+@login_required
+def funnel_pipeline_view(request):
+    """칸반 파이프라인 보드 뷰"""
+    followups = _get_accessible_followups(None, request)
+    followups = followups.select_related(
+        'company', 'department', 'user'
+    ).prefetch_related(
+        Prefetch('schedules', queryset=Schedule.objects.filter(
+            visit_date__gte=date.today(), status='scheduled'
+        ).order_by('visit_date'), to_attr='upcoming_schedules')
+    )
+
+    # 단계별 그룹핑
+    stage_map = {s[0]: [] for s in PIPELINE_STAGES}
+    for fu in followups:
+        stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
+        next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
+        stage_map[stage].append({
+            'id': fu.id,
+            'customer': fu.customer_name or '이름 미입력',
+            'company': str(fu.company) if fu.company else '',
+            'department': str(fu.department) if fu.department else '',
+            'grade': fu.customer_grade,
+            'grade_color': GRADE_COLORS.get(fu.customer_grade, '#6c757d'),
+            'priority': fu.get_priority_display(),
+            'next_date': next_schedule.visit_date.strftime('%m/%d') if next_schedule else None,
+            'next_type': next_schedule.get_activity_type_display() if next_schedule else None,
+            'pipeline_stage': fu.pipeline_stage,
+        })
+
+    stages_context = [
+        {
+            'key': s[0],
+            'label': s[1],
+            'color': s[2],
+            'icon': s[3],
+            'cards': stage_map[s[0]],
+            'count': len(stage_map[s[0]]),
+        }
+        for s in PIPELINE_STAGES
+    ]
+
+    return render(request, 'reporting/funnel/pipeline.html', {
+        'stages': stages_context,
+        'stages_json': json.dumps(stages_context, ensure_ascii=False),
+        'total': sum(len(v) for v in stage_map.values()),
+    })
+
+
+@login_required
+@require_POST
+def funnel_pipeline_move(request):
+    """카드 단계 이동 API"""
+    try:
+        data = json.loads(request.body)
+        followup_id = data.get('followup_id')
+        new_stage = data.get('stage')
+
+        valid_stages = [s[0] for s in PIPELINE_STAGES]
+        if new_stage not in valid_stages:
+            return JsonResponse({'success': False, 'error': '유효하지 않은 단계'}, status=400)
+
+        # 권한 확인: 접근 가능한 followup인지
+        accessible = _get_accessible_followups(None, request)
+        fu = accessible.filter(pk=followup_id).first()
+        if not fu:
+            return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+        fu.pipeline_stage = new_stage
+        fu.save(update_fields=['pipeline_stage'])
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
