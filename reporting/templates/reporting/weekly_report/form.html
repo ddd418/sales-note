@@ -1,0 +1,172 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}{% if is_edit %}주간보고 수정{% else %}주간보고 작성{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'reporting:weekly_report_list' %}">주간보고</a></li>
+      <li class="breadcrumb-item active">{% if is_edit %}수정{% else %}작성{% endif %}</li>
+    </ol>
+  </nav>
+
+  <div class="row">
+    <!-- 작성 폼 -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;">
+          <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>{% if is_edit %}주간보고 수정{% else %}주간보고 작성{% endif %}</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" id="weeklyReportForm">
+            {% csrf_token %}
+            <div class="row g-3 mb-3">
+              <div class="col-md-5">
+                <label class="form-label fw-bold">주 시작일 <small class="text-muted">(월요일)</small></label>
+                <input type="date" name="week_start" id="weekStart" class="form-control"
+                       value="{{ week_start|date:'Y-m-d' }}" required>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label fw-bold">주 종료일 <small class="text-muted">(금요일)</small></label>
+                <input type="date" name="week_end" id="weekEnd" class="form-control"
+                       value="{{ week_end|date:'Y-m-d' }}" required>
+              </div>
+              <div class="col-md-2 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-secondary w-100" onclick="loadSchedules()">
+                  <i class="fas fa-sync-alt me-1"></i>일정 불러오기
+                </button>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">보고서 제목</label>
+              <input type="text" name="title" class="form-control"
+                     value="{% if report %}{{ report.title }}{% endif %}"
+                     placeholder="예: 2025년 1월 2주차 주간보고">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">영업 활동 내용</label>
+              <small class="text-muted d-block mb-1">방문, 미팅, 전화 등 이번 주 영업 활동을 작성해 주세요.</small>
+              <textarea name="activity_notes" id="activityNotes" class="form-control" rows="8"
+                        placeholder="예&#10;- 월: 한국대학교 이화연 교수 방문, HPG 제품 데모 진행&#10;- 화: ○○연구소 전화 상담">{% if report %}{{ report.activity_notes }}{% endif %}</textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">견적/납품 내용</label>
+              <small class="text-muted d-block mb-1">이번 주 제출한 견적 및 납품 현황을 작성해 주세요.</small>
+              <textarea name="quote_delivery_notes" id="quoteDeliveryNotes" class="form-control" rows="6"
+                        placeholder="예&#10;- 한양대학교 홍길동 교수 - HPG-1000 견적 제출 (500만원)&#10;- 서울대학교 김철수 교수 - ABC-200 납품 완료">{% if report %}{{ report.quote_delivery_notes }}{% endif %}</textarea>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-bold">기타 내용</label>
+              <textarea name="other_notes" class="form-control" rows="4"
+                        placeholder="다음 주 계획, 특이사항 등">{% if report %}{{ report.other_notes }}{% endif %}</textarea>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i>저장
+              </button>
+              <a href="{% url 'reporting:weekly_report_list' %}" class="btn btn-outline-secondary">취소</a>
+              {% if is_edit %}
+              <form method="post" action="{% url 'reporting:weekly_report_delete' report.pk %}" class="ms-auto"
+                    onsubmit="return confirm('삭제하시겠습니까?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger"><i class="fas fa-trash me-1"></i>삭제</button>
+              </form>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이번 주 일정 참고 패널 -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">
+          <h6 class="mb-0"><i class="fas fa-calendar-check me-2 text-primary"></i>이번 주 일정 (참고)</h6>
+        </div>
+        <div class="card-body p-0" id="schedulePanel">
+          {% if schedules %}
+          <ul class="list-group list-group-flush">
+            {% for s in schedules %}
+            <li class="list-group-item py-2 px-3" style="cursor:pointer" onclick="insertScheduleText(this)">
+              <div class="d-flex justify-content-between">
+                <strong class="small text-primary">{{ s.visit_date|date:"m/d(D)" }}</strong>
+                <span class="badge bg-secondary small">{{ s.get_activity_type_display }}</span>
+              </div>
+              <div class="small mt-1">
+                {{ s.followup.customer_name }}
+                {% if s.followup.company %}<span class="text-muted"> · {{ s.followup.company }}</span>{% endif %}
+              </div>
+              {% if s.notes %}<div class="text-muted small mt-1 text-truncate">{{ s.notes }}</div>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="text-center text-muted py-4">이번 주 일정이 없습니다.</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="mt-2 text-muted small text-center">
+        <i class="fas fa-hand-pointer me-1"></i>항목 클릭 시 영업 활동 내용에 추가됩니다.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function loadSchedules() {
+  const ws = document.getElementById('weekStart').value;
+  const we = document.getElementById('weekEnd').value;
+  if (!ws || !we) return;
+
+  fetch(`{% url 'reporting:weekly_report_load_schedules' %}?week_start=${ws}&week_end=${we}`)
+    .then(r => r.json())
+    .then(data => {
+      const panel = document.getElementById('schedulePanel');
+      if (!data.schedules || data.schedules.length === 0) {
+        panel.innerHTML = '<div class="text-center text-muted py-4">해당 기간 일정이 없습니다.</div>';
+        return;
+      }
+      let html = '<ul class="list-group list-group-flush">';
+      data.schedules.forEach(s => {
+        html += `<li class="list-group-item py-2 px-3" style="cursor:pointer"
+                     onclick="insertScheduleText(this)"
+                     data-text="${s.date} ${s.customer}${s.company ? ' (' + s.company + ')' : ''} - ${s.activity_type}${s.notes ? ': ' + s.notes : ''}">
+          <div class="d-flex justify-content-between">
+            <strong class="small text-primary">${s.date}</strong>
+            <span class="badge bg-secondary small">${s.activity_type}</span>
+          </div>
+          <div class="small mt-1">${s.customer}${s.department ? ' · ' + s.department : ''}${s.company ? ' · ' + s.company : ''}</div>
+          ${s.notes ? `<div class="text-muted small mt-1 text-truncate">${s.notes}</div>` : ''}
+        </li>`;
+      });
+      html += '</ul>';
+      panel.innerHTML = html;
+    });
+}
+
+function insertScheduleText(el) {
+  // data-text가 있으면 사용, 없으면 직접 구성
+  let text = el.dataset.text;
+  if (!text) {
+    const dateEl = el.querySelector('.text-primary');
+    const customerEl = el.querySelector('.small.mt-1');
+    const notesEl = el.querySelector('.text-muted.small.mt-1');
+    const typeEl = el.querySelector('.badge');
+    text = `- ${dateEl?.textContent?.trim()||''}: ${customerEl?.textContent?.trim()||''} ${typeEl?.textContent?.trim()||''}${notesEl ? ' - ' + notesEl.textContent.trim() : ''}`;
+  }
+  const ta = document.getElementById('activityNotes');
+  const cur = ta.value;
+  ta.value = cur ? cur + '\n' + text : text;
+  ta.scrollTop = ta.scrollHeight;
+  ta.focus();
+}
+</script>
+{% endblock %}

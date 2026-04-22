@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST, require_http_methods
 
-from .models import Todo, TodoAttachment, TodoLog
+from .models import Todo, TodoAttachment, TodoLog, TodoCategory
 
 
 # ============================================
@@ -49,6 +49,7 @@ def todo_list(request):
         'received_count': received_count,
         'requested_count': requested_count,
         'active_tab': request.GET.get('tab', 'my'),
+        'categories': TodoCategory.objects.filter(created_by=user),
     }
     return render(request, 'todos/todo_list.html', context)
 
@@ -192,6 +193,7 @@ def todo_create(request):
         due_date = request.POST.get('due_date') or None
         expected_duration = request.POST.get('expected_duration') or None
         related_client_id = request.POST.get('related_client') or None
+        category_id = request.POST.get('category') or None
         
         if not title:
             messages.error(request, '제목을 입력해주세요.')
@@ -203,6 +205,7 @@ def todo_create(request):
             due_date=due_date,
             expected_duration=expected_duration,
             related_client_id=related_client_id,
+            category_id=category_id,
             created_by=request.user,
             source_type=Todo.SourceType.SELF,
             status=Todo.Status.ONGOING,
@@ -238,6 +241,7 @@ def todo_create(request):
     # GET: 폼 표시
     context = {
         'duration_choices': Todo.Duration.choices,
+        'categories': TodoCategory.objects.filter(created_by=request.user),
     }
     return render(request, 'todos/todo_form.html', context)
 
@@ -293,6 +297,9 @@ def todo_edit(request, pk):
         todo.due_date = request.POST.get('due_date') or None
         todo.expected_duration = request.POST.get('expected_duration') or None
         
+        category_id = request.POST.get('category') or None
+        todo.category_id = category_id
+        
         related_client_id = request.POST.get('related_client')
         if related_client_id:
             todo.related_client_id = related_client_id
@@ -315,6 +322,7 @@ def todo_edit(request, pk):
     context = {
         'todo': todo,
         'duration_choices': Todo.Duration.choices,
+        'categories': TodoCategory.objects.filter(created_by=request.user),
         'edit_mode': True,
     }
     return render(request, 'todos/todo_form.html', context)
@@ -1248,3 +1256,56 @@ def api_search_clients(request):
     ]
     
     return JsonResponse({'results': results})
+
+
+# ============================================
+# 카테고리 관리
+# ============================================
+
+@login_required
+def category_list(request):
+    """카테고리 목록 (JSON API)"""
+    categories = TodoCategory.objects.filter(created_by=request.user).values('id', 'name', 'color')
+    return JsonResponse({'categories': list(categories)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def category_create(request):
+    """카테고리 생성"""
+    name = request.POST.get('name', '').strip()
+    color = request.POST.get('color', '#6c757d').strip()
+    
+    if not name:
+        return JsonResponse({'success': False, 'error': '카테고리 이름을 입력해주세요.'}, status=400)
+    
+    if len(name) > 50:
+        return JsonResponse({'success': False, 'error': '카테고리 이름은 50자 이하여야 합니다.'}, status=400)
+
+    # color 유효성 검증 (HEX 형식)
+    import re
+    if not re.match(r'^#[0-9a-fA-F]{6}$', color):
+        color = '#6c757d'
+
+    category, created = TodoCategory.objects.get_or_create(
+        name=name,
+        created_by=request.user,
+        defaults={'color': color}
+    )
+    
+    if not created:
+        return JsonResponse({'success': False, 'error': '동일한 이름의 카테고리가 이미 존재합니다.'}, status=400)
+    
+    return JsonResponse({'success': True, 'id': category.id, 'name': category.name, 'color': category.color})
+
+
+@login_required
+@require_http_methods(["POST"])
+def category_delete(request, pk):
+    """카테고리 삭제"""
+    category = get_object_or_404(TodoCategory, pk=pk, created_by=request.user)
+    name = category.name
+    # 연결된 todo의 category를 NULL로 해제 후 삭제
+    category.todos.update(category=None)
+    category.delete()
+    return JsonResponse({'success': True, 'message': f'"{name}" 카테고리가 삭제되었습니다.'})

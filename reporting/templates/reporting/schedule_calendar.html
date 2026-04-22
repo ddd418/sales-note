@@ -6665,7 +6665,9 @@
                   </div>
                   <div class="col-12">
                     <label class="form-label fw-bold">부서명</label>
-                    <p class="mb-0">${schedule.department || '-'}</p>
+                    <p class="mb-0">${schedule.department || '-'}
+                    ${schedule.department_id ? `<button class="btn btn-outline-secondary btn-sm ms-2" onclick="openDeptMemo(${schedule.department_id}, '${schedule.department}')" title="부서 메모"><i class="fas fa-sticky-note"></i></button>` : ''}
+                    </p>
                   </div>
                   ${schedule.manager ? `
                   <div class="col-12">
@@ -7691,5 +7693,74 @@
 </style>
 
 <!-- 납품 품목 관리 모달은 JavaScript에서 동적으로 생성됩니다 -->
+
+<!-- 부서 메모 오프캔버스 -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="deptMemoOffcanvas" aria-labelledby="deptMemoLabel" style="width:340px">
+  <div class="offcanvas-header" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;">
+    <h5 class="offcanvas-title" id="deptMemoLabel"><i class="fas fa-sticky-note me-2"></i>부서 메모</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body d-flex flex-column">
+    <div class="mb-2 text-muted small" id="deptMemoMeta"></div>
+    <textarea id="deptMemoContent" class="form-control flex-grow-1 mb-3" rows="10" placeholder="부서/연구실에 관한 메모를 입력하세요..."></textarea>
+    <button class="btn btn-primary" onclick="saveDeptMemo()">
+      <i class="fas fa-save me-1"></i>저장
+    </button>
+  </div>
+</div>
+
+<script>
+let _currentDeptId = null;
+
+function openDeptMemo(deptId, deptName) {
+  _currentDeptId = deptId;
+  document.getElementById('deptMemoLabel').innerHTML = `<i class="fas fa-sticky-note me-2"></i>${deptName} 메모`;
+  document.getElementById('deptMemoContent').value = '로딩 중...';
+  document.getElementById('deptMemoMeta').textContent = '';
+  
+  const offcanvas = new bootstrap.Offcanvas(document.getElementById('deptMemoOffcanvas'));
+  offcanvas.show();
+  
+  fetch(`/reporting/api/department/${deptId}/memo/`, {
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('deptMemoContent').value = data.content || '';
+    if (data.updated_at) {
+      document.getElementById('deptMemoMeta').textContent = `최종 수정: ${data.updated_at} (${data.updated_by})`;
+    }
+  })
+  .catch(() => {
+    document.getElementById('deptMemoContent').value = '';
+  });
+}
+
+function saveDeptMemo() {
+  if (!_currentDeptId) return;
+  const content = document.getElementById('deptMemoContent').value;
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                    document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  
+  fetch(`/reporting/api/department/${_currentDeptId}/memo/`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `content=${encodeURIComponent(content)}`
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      document.getElementById('deptMemoMeta').textContent = `최종 수정: ${data.updated_at} (${data.updated_by})`;
+      // 간단한 성공 피드백
+      const btn = document.querySelector('#deptMemoOffcanvas .btn-primary');
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-check me-1"></i>저장됨';
+      btn.classList.add('btn-success');
+      btn.classList.remove('btn-primary');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('btn-success'); btn.classList.add('btn-primary'); }, 1500);
+    }
+  });
+}
+</script>
 
 {% endblock %}

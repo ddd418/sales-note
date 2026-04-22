@@ -104,6 +104,18 @@
         </div>
     </div>
     
+    <!-- 카테고리 필터 -->
+    {% if categories %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <small class="text-muted me-1"><i class="fas fa-tag me-1"></i>카테고리:</small>
+        <button class="btn btn-sm category-filter-btn active" data-category="" style="border-radius:999px">전체</button>
+        {% for cat in categories %}
+        <button class="btn btn-sm category-filter-btn" data-category="{{ cat.id }}"
+            style="background-color:{{ cat.color }};color:#fff;border:none;border-radius:999px">{{ cat.name }}</button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- 탭 네비게이션 -->
     <ul class="nav nav-tabs mb-4" id="todoTabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -258,6 +270,26 @@
         if (data && data.prevStatus) {
             updateCountOnToggle(data.tab, data.prevStatus);
         }
+    });
+    
+    // 카테고리 필터 기능
+    document.querySelectorAll('.category-filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.category-filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const catId = this.dataset.category;
+            // 현재 활성 탭의 todo 아이템 필터링
+            const activeTabId = document.querySelector('#todoTabs .nav-link.active')?.id?.replace('-tab','');
+            const container = document.getElementById(`${activeTabId}-todo-content`);
+            if (!container) return;
+            container.querySelectorAll('[data-category-id]').forEach(item => {
+                if (!catId || item.dataset.categoryId == catId) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
     });
     
 </script>

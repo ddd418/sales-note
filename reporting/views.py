@@ -6,7 +6,7 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -2947,6 +2947,7 @@ def schedule_api_view(request):
                 'customer': schedule.followup.customer_name or '고객명 미정',
                 'company': str(schedule.followup.company) if schedule.followup.company else '업체명 미정',
                 'department': str(schedule.followup.department) if schedule.followup.department else '부서명 미정',
+                'department_id': schedule.followup.department_id if schedule.followup.department else None,
                 'manager': schedule.followup.manager or '',
                 'address': schedule.followup.address or '',
                 'location': schedule.location or '',
@@ -5413,6 +5414,10 @@ def history_create_from_schedule(request, schedule_id):
                 # 고객 미팅인 경우 meeting_date가 설정되지 않았다면 일정 날짜로 설정
                 if history.action_type == 'customer_meeting' and not history.meeting_date:
                     history.meeting_date = schedule.visit_date
+                
+                # 견적/납품 유형은 delivery_amount=0으로 강제 (더블 매출 방지)
+                if history.action_type in ['delivery_schedule', 'quote_submission']:
+                    history.delivery_amount = 0
                     
                 history.save()
                 
@@ -10352,6 +10357,68 @@ def prepayment_edit_view(request, pk):
 
 
 @login_required
+@login_required
+def prepayment_transfer_view(request, pk):
+    """선결제 이관 뷰 - 같은 회사 내 다른 영업사원에게 이관"""
+    from reporting.models import Prepayment, UserProfile
+    from django.contrib.auth.models import User
+
+    prepayment = get_object_or_404(Prepayment, pk=pk)
+
+    # 본인 선결제만 이관 가능
+    if prepayment.created_by != request.user:
+        messages.error(request, '본인이 등록한 선결제만 이관할 수 있습니다.')
+        return redirect('reporting:prepayment_detail', pk=pk)
+
+    # 같은 회사 내 다른 salesman 목록
+    try:
+        my_profile = UserProfile.objects.get(user=request.user)
+        colleagues = UserProfile.objects.filter(
+            company=my_profile.company,
+            role='salesman'
+        ).exclude(user=request.user).select_related('user')
+    except UserProfile.DoesNotExist:
+        colleagues = []
+
+    if request.method == 'POST':
+        target_user_id = request.POST.get('target_user')
+        reason = request.POST.get('reason', '').strip()
+
+        if not target_user_id:
+            messages.error(request, '이관 대상을 선택해주세요.')
+        else:
+            target_user = get_object_or_404(User, pk=target_user_id)
+            # 같은 회사 소속 확인
+            if not UserProfile.objects.filter(user=target_user, company=my_profile.company).exists():
+                messages.error(request, '같은 회사 소속이 아닙니다.')
+            else:
+                from_name = request.user.get_full_name() or request.user.username
+                to_name = target_user.get_full_name() or target_user.username
+
+                # 이관 메모 기록
+                transfer_note = f"[이관] {from_name} → {to_name} ({prepayment.created_at.strftime('%Y-%m-%d')})"
+                if reason:
+                    transfer_note += f"\n사유: {reason}"
+
+                prepayment.created_by = target_user
+                if prepayment.memo:
+                    prepayment.memo = prepayment.memo + '\n' + transfer_note
+                else:
+                    prepayment.memo = transfer_note
+                prepayment.save()
+
+                messages.success(request, f'선결제가 {to_name}님께 이관되었습니다.')
+                return redirect('reporting:prepayment_detail', pk=pk)
+
+    context = {
+        'prepayment': prepayment,
+        'colleagues': colleagues,
+        'page_title': f'선결제 이관 - {prepayment.customer.customer_name}',
+    }
+    return render(request, 'reporting/prepayment/transfer.html', context)
+
+
+@login_required
 def prepayment_delete_view(request, pk):
     """선결제 삭제 뷰"""
     from reporting.models import Prepayment
@@ -13355,3 +13422,260 @@ def category_delete(request, category_id):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+# ============================================
+# 부서 메모 API
+# ============================================
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def department_memo_api(request, department_id):
+    """부서 메모 조회/저장 API"""
+    from reporting.models import DepartmentMemo, Department
+    
+    department = get_object_or_404(Department, pk=department_id)
+    
+    if request.method == 'GET':
+        memo = department.memos.order_by('-updated_at').first()
+        if memo:
+            return JsonResponse({
+                'success': True,
+                'content': memo.content,
+                'updated_at': memo.updated_at.strftime('%Y-%m-%d %H:%M'),
+                'updated_by': memo.created_by.get_full_name() or memo.created_by.username,
+            })
+        return JsonResponse({'success': True, 'content': '', 'updated_at': None, 'updated_by': None})
+    
+    # POST: 저장 (기존 메모 업데이트 또는 신규 생성)
+    content = request.POST.get('content', '').strip()
+    
+    memo = department.memos.order_by('-updated_at').first()
+    if memo:
+        memo.content = content
+        memo.created_by = request.user
+        memo.save()
+    else:
+        memo = DepartmentMemo.objects.create(
+            department=department,
+            content=content,
+            created_by=request.user,
+        )
+    
+    return JsonResponse({
+        'success': True,
+        'content': memo.content,
+        'updated_at': memo.updated_at.strftime('%Y-%m-%d %H:%M'),
+        'updated_by': request.user.get_full_name() or request.user.username,
+    })
+
+
+# ============================================
+# 주간보고
+# ============================================
+
+@login_required
+def weekly_report_list(request):
+    """주간보고 목록"""
+    user = request.user
+    profile = getattr(user, 'userprofile', None)
+    company = profile.company if profile else None
+
+    # 같은 회사 사람들 (관리자는 전체, 영업사원은 자기 것만)
+    if profile and profile.role in ['admin', 'superadmin', 'manager']:
+        if company:
+            users = User.objects.filter(userprofile__company=company, is_active=True)
+        else:
+            users = User.objects.filter(is_active=True)
+        reports = WeeklyReport.objects.filter(user__in=users).select_related('user')
+    else:
+        reports = WeeklyReport.objects.filter(user=user)
+
+    # 연도/월 필터
+    year = request.GET.get('year')
+    month = request.GET.get('month')
+    target_user = request.GET.get('user_id')
+    if year:
+        reports = reports.filter(week_start__year=year)
+    if month:
+        reports = reports.filter(week_start__month=month)
+    if target_user:
+        reports = reports.filter(user_id=target_user)
+
+    reports = reports.order_by('-week_start')[:60]
+
+    # 소속 동료 목록 (필터용)
+    if company:
+        colleagues = User.objects.filter(userprofile__company=company, is_active=True)
+    else:
+        colleagues = User.objects.none()
+
+    return render(request, 'reporting/weekly_report/list.html', {
+        'reports': reports,
+        'colleagues': colleagues,
+        'selected_year': year,
+        'selected_month': month,
+        'selected_user': target_user,
+    })
+
+
+@login_required
+def weekly_report_create(request):
+    """주간보고 작성"""
+    import datetime
+    today = datetime.date.today()
+    # 이번 주 월~금 기본값
+    monday = today - datetime.timedelta(days=today.weekday())
+    friday = monday + datetime.timedelta(days=4)
+
+    if request.method == 'POST':
+        week_start_str = request.POST.get('week_start')
+        week_end_str = request.POST.get('week_end')
+        title = request.POST.get('title', '').strip()
+        activity_notes = request.POST.get('activity_notes', '').strip()
+        quote_delivery_notes = request.POST.get('quote_delivery_notes', '').strip()
+        other_notes = request.POST.get('other_notes', '').strip()
+
+        try:
+            week_start = datetime.date.fromisoformat(week_start_str)
+            week_end = datetime.date.fromisoformat(week_end_str)
+        except (TypeError, ValueError):
+            messages.error(request, '날짜 형식이 올바르지 않습니다.')
+            return redirect('reporting:weekly_report_create')
+
+        if not title:
+            title = f"{week_start.strftime('%Y년 %m월 %d일')} 주간보고"
+
+        report, created = WeeklyReport.objects.update_or_create(
+            user=request.user,
+            week_start=week_start,
+            defaults={
+                'week_end': week_end,
+                'title': title,
+                'activity_notes': activity_notes,
+                'quote_delivery_notes': quote_delivery_notes,
+                'other_notes': other_notes,
+            }
+        )
+        messages.success(request, '주간보고가 저장되었습니다.')
+        return redirect('reporting:weekly_report_detail', pk=report.pk)
+
+    # GET: 이번 주 기존 보고서가 있으면 수정 폼으로 이동
+    existing = WeeklyReport.objects.filter(user=request.user, week_start=monday).first()
+    if existing:
+        return redirect('reporting:weekly_report_edit', pk=existing.pk)
+
+    # 이번 주 일정 자동 로드 (참고용)
+    schedules = Schedule.objects.filter(
+        user=request.user,
+        visit_date__gte=monday,
+        visit_date__lte=friday,
+    ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
+
+    return render(request, 'reporting/weekly_report/form.html', {
+        'week_start': monday,
+        'week_end': friday,
+        'schedules': schedules,
+        'is_edit': False,
+    })
+
+
+@login_required
+def weekly_report_edit(request, pk):
+    """주간보고 수정"""
+    import datetime
+    report = get_object_or_404(WeeklyReport, pk=pk, user=request.user)
+
+    if request.method == 'POST':
+        week_start_str = request.POST.get('week_start')
+        week_end_str = request.POST.get('week_end')
+        try:
+            week_start = datetime.date.fromisoformat(week_start_str)
+            week_end = datetime.date.fromisoformat(week_end_str)
+        except (TypeError, ValueError):
+            messages.error(request, '날짜 형식이 올바르지 않습니다.')
+            return redirect('reporting:weekly_report_edit', pk=pk)
+
+        title = request.POST.get('title', '').strip() or f"{week_start.strftime('%Y년 %m월 %d일')} 주간보고"
+        report.week_start = week_start
+        report.week_end = week_end
+        report.title = title
+        report.activity_notes = request.POST.get('activity_notes', '').strip()
+        report.quote_delivery_notes = request.POST.get('quote_delivery_notes', '').strip()
+        report.other_notes = request.POST.get('other_notes', '').strip()
+        report.save()
+        messages.success(request, '주간보고가 수정되었습니다.')
+        return redirect('reporting:weekly_report_detail', pk=report.pk)
+
+    schedules = Schedule.objects.filter(
+        user=request.user,
+        visit_date__gte=report.week_start,
+        visit_date__lte=report.week_end,
+    ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
+
+    return render(request, 'reporting/weekly_report/form.html', {
+        'report': report,
+        'week_start': report.week_start,
+        'week_end': report.week_end,
+        'schedules': schedules,
+        'is_edit': True,
+    })
+
+
+@login_required
+def weekly_report_detail(request, pk):
+    """주간보고 상세/출력"""
+    report = get_object_or_404(WeeklyReport, pk=pk)
+    profile = getattr(request.user, 'userprofile', None)
+    company = profile.company if profile else None
+
+    # 열람 권한: 본인 또는 같은 회사 관리자
+    if report.user != request.user:
+        if not (profile and profile.role in ['admin', 'superadmin', 'manager'] and 
+                getattr(getattr(report.user, 'userprofile', None), 'company', None) == company):
+            raise Http404
+
+    return render(request, 'reporting/weekly_report/detail.html', {'report': report})
+
+
+@login_required
+def weekly_report_delete(request, pk):
+    """주간보고 삭제"""
+    report = get_object_or_404(WeeklyReport, pk=pk, user=request.user)
+    if request.method == 'POST':
+        report.delete()
+        messages.success(request, '주간보고가 삭제되었습니다.')
+        return redirect('reporting:weekly_report_list')
+    return redirect('reporting:weekly_report_detail', pk=pk)
+
+
+@login_required
+def weekly_report_load_schedules(request):
+    """AJAX: 선택 기간 일정 반환 (주간보고 폼에서 참고용)"""
+    import datetime
+    week_start_str = request.GET.get('week_start')
+    week_end_str = request.GET.get('week_end')
+    try:
+        week_start = datetime.date.fromisoformat(week_start_str)
+        week_end = datetime.date.fromisoformat(week_end_str)
+    except (TypeError, ValueError):
+        return JsonResponse({'error': '날짜 오류'}, status=400)
+
+    schedules = Schedule.objects.filter(
+        user=request.user,
+        visit_date__gte=week_start,
+        visit_date__lte=week_end,
+    ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
+
+    data = []
+    for s in schedules:
+        fu = s.followup
+        data.append({
+            'date': s.visit_date.strftime('%m/%d'),
+            'customer': fu.customer_name or '-',
+            'company': str(fu.company) if fu.company else '',
+            'department': str(fu.department) if fu.department else '',
+            'activity_type': s.get_activity_type_display(),
+            'notes': s.notes or '',
+        })
+    return JsonResponse({'schedules': data})

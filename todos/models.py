@@ -8,6 +8,24 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 
+class TodoCategory(models.Model):
+    """TODO 카테고리 모델"""
+    name = models.CharField(max_length=50, verbose_name="카테고리명")
+    color = models.CharField(max_length=7, default='#6c757d', verbose_name="색상 (HEX)")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='todo_categories', verbose_name="생성자")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'todo_category'
+        ordering = ['name']
+        verbose_name = 'TODO 카테고리'
+        verbose_name_plural = 'TODO 카테고리 목록'
+        unique_together = ['name', 'created_by']
+
+    def __str__(self):
+        return self.name
+
+
 class Todo(models.Model):
     """통합 TODO 모델"""
     
@@ -81,6 +99,15 @@ class Todo(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True,
         verbose_name="관련 고객"
+    )
+    
+    # 카테고리
+    category = models.ForeignKey(
+        TodoCategory,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='todos',
+        verbose_name="카테고리"
     )
     
     # 일정

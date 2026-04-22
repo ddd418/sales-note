@@ -497,7 +497,7 @@
           if (actionTypeField.value === 'service') {
               if (serviceStatusField) serviceStatusField.style.display = 'block';
           } else if (actionTypeField.value === 'delivery_schedule') {
-              if (deliveryAmountField) deliveryAmountField.style.display = 'block';
+              // deliveryAmountField는 숨김 (더블 매출 방지: 금액은 납품 품목에서 자동 계산)
               if (deliveryItemsField) deliveryItemsField.style.display = 'block';
               if (deliveryDateField) deliveryDateField.style.display = 'block';
           } else if (actionTypeField.value === 'customer_meeting') {

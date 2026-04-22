@@ -1,0 +1,73 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}선결제 이관 - {{ prepayment.customer.customer_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <!-- 브레드크럼 -->
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'reporting:prepayment_list' %}">선결제 목록</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'reporting:prepayment_detail' prepayment.pk %}">{{ prepayment.customer.customer_name }}</a></li>
+      <li class="breadcrumb-item active">이관</li>
+    </ol>
+  </nav>
+
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white;">
+          <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>선결제 이관</h5>
+        </div>
+        <div class="card-body">
+          <!-- 선결제 정보 요약 -->
+          <div class="alert alert-warning mb-4">
+            <strong>이관할 선결제</strong>
+            <div class="mt-2">
+              <div><i class="fas fa-user me-1"></i>고객: <strong>{{ prepayment.customer.customer_name }}</strong></div>
+              <div><i class="fas fa-calendar me-1"></i>입금일: {{ prepayment.payment_date }}</div>
+              <div><i class="fas fa-won-sign me-1"></i>잔액: <strong>{{ prepayment.balance|intcomma }}원</strong> / 총 {{ prepayment.amount|intcomma }}원</div>
+            </div>
+          </div>
+
+          {% if colleagues %}
+          <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label for="target_user" class="form-label fw-bold">이관 대상 <span class="text-danger">*</span></label>
+              <select class="form-select" id="target_user" name="target_user" required>
+                <option value="">-- 이관할 담당자 선택 --</option>
+                {% for col in colleagues %}
+                <option value="{{ col.user.id }}">{{ col.user.get_full_name|default:col.user.username }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">같은 회사 내 영업사원 목록입니다.</div>
+            </div>
+            <div class="mb-4">
+              <label for="reason" class="form-label fw-bold">이관 사유 (선택)</label>
+              <textarea class="form-control" id="reason" name="reason" rows="3" placeholder="이관 사유를 입력하세요 (메모에 기록됩니다)"></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-warning flex-grow-1" onclick="return confirm('선결제를 이관하시겠습니까?\n이관 후 해당 담당자만 수정/삭제할 수 있습니다.')">
+                <i class="fas fa-exchange-alt me-1"></i>이관 확정
+              </button>
+              <a href="{% url 'reporting:prepayment_detail' prepayment.pk %}" class="btn btn-outline-secondary">
+                <i class="fas fa-times me-1"></i>취소
+              </a>
+            </div>
+          </form>
+          {% else %}
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>이관 가능한 동료 영업사원이 없습니다.
+          </div>
+          <a href="{% url 'reporting:prepayment_detail' prepayment.pk %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i>돌아가기
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

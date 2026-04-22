@@ -201,6 +201,25 @@
                             </select>
                         </div>
                         
+                        <!-- 카테고리 -->
+                        <div class="mb-3">
+                            <label for="category" class="form-label">카테고리</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select" id="category" name="category">
+                                    <option value="">카테고리 없음</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.id }}" data-color="{{ cat.color }}"
+                                        {% if todo.category_id == cat.id %}selected{% endif %}>
+                                        {{ cat.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#categoryModal" title="카테고리 관리">
+                                    <i class="fas fa-tag"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
                         <!-- 관련 고객 -->
                         <div class="mb-3">
                             <label class="form-label">관련 고객</label>
@@ -453,5 +472,112 @@ document.addEventListener('DOMContentLoaded', function() {
         return icons[ext] || 'fa-file';
     }
 });
+</script>
+
+<!-- 카테고리 관리 모달 -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="categoryModalLabel"><i class="fas fa-tags me-2"></i>카테고리 관리</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- 카테고리 추가 -->
+        <div class="mb-3">
+          <label class="form-label fw-bold">새 카테고리 추가</label>
+          <div class="d-flex gap-2">
+            <input type="text" id="newCategoryName" class="form-control" placeholder="카테고리 이름" maxlength="50">
+            <input type="color" id="newCategoryColor" value="#6c757d" style="width:50px;padding:2px;cursor:pointer" class="form-control">
+            <button type="button" class="btn btn-primary" onclick="addCategory()"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+        <!-- 기존 카테고리 목록 -->
+        <div id="categoryListContainer">
+          <label class="form-label fw-bold">기존 카테고리</label>
+          <ul class="list-group" id="categoryList">
+            {% for cat in categories %}
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-id="{{ cat.id }}">
+              <span><span class="badge me-2" style="background-color:{{ cat.color }}">&#9679;</span>{{ cat.name }}</span>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteCategory({{ cat.id }}, '{{ cat.name }}')">
+                <i class="fas fa-trash"></i>
+              </button>
+            </li>
+            {% empty %}
+            <li class="list-group-item text-muted" id="emptyCategoryMsg">카테고리가 없습니다.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function addCategory() {
+    const name = document.getElementById('newCategoryName').value.trim();
+    const color = document.getElementById('newCategoryColor').value;
+    if (!name) { alert('카테고리 이름을 입력해주세요.'); return; }
+    
+    fetch("{% url 'todos:category_create' %}", {
+        method: 'POST',
+        headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `name=${encodeURIComponent(name)}&color=${encodeURIComponent(color)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // 드롭다운에 추가
+            const select = document.getElementById('category');
+            const opt = new Option(data.name, data.id);
+            opt.dataset.color = data.color;
+            select.add(opt);
+            // 목록에 추가
+            const list = document.getElementById('categoryList');
+            const emptyMsg = document.getElementById('emptyCategoryMsg');
+            if (emptyMsg) emptyMsg.remove();
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.dataset.id = data.id;
+            li.innerHTML = `<span><span class="badge me-2" style="background-color:${data.color}">&#9679;</span>${data.name}</span>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteCategory(${data.id}, '${data.name}')"><i class="fas fa-trash"></i></button>`;
+            list.appendChild(li);
+            document.getElementById('newCategoryName').value = '';
+        } else {
+            alert(data.error);
+        }
+    });
+}
+
+function deleteCategory(id, name) {
+    if (!confirm(`"${name}" 카테고리를 삭제하시겠습니까?\n연결된 TODO의 카테고리는 해제됩니다.`)) return;
+    
+    fetch(`{% url 'todos:category_delete' 0 %}`.replace('/0/', `/${id}/`), {
+        method: 'POST',
+        headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // 드롭다운에서 제거
+            const select = document.getElementById('category');
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].value == id) { select.remove(i); break; }
+            }
+            // 목록에서 제거
+            const li = document.querySelector(`#categoryList li[data-id="${id}"]`);
+            if (li) li.remove();
+            if (!document.querySelectorAll('#categoryList li[data-id]').length) {
+                const list = document.getElementById('categoryList');
+                list.innerHTML = '<li class="list-group-item text-muted" id="emptyCategoryMsg">카테고리가 없습니다.</li>';
+            }
+        } else {
+            alert(data.error || '삭제 실패');
+        }
+    });
+}
 </script>
 {% endblock %}

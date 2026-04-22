@@ -158,12 +158,16 @@ urlpatterns = [
     path('prepayment/<int:pk>/', views.prepayment_detail_view, name='prepayment_detail'),
     path('prepayment/<int:pk>/edit/', views.prepayment_edit_view, name='prepayment_edit'),
     path('prepayment/<int:pk>/delete/', views.prepayment_delete_view, name='prepayment_delete'),
+    path('prepayment/<int:pk>/transfer/', views.prepayment_transfer_view, name='prepayment_transfer'),
     path('prepayment/customer/<int:customer_id>/', views.prepayment_customer_view, name='prepayment_customer'),
     path('prepayment/customer/<int:customer_id>/excel/', views.prepayment_customer_excel, name='prepayment_customer_excel'),
     path('prepayment/excel/', views.prepayment_list_excel, name='prepayment_list_excel'),
     
     # 선결제 API
     path('api/prepayments/', views.prepayment_api_list, name='prepayment_api_list'),
+    
+    # 부서 메모 API
+    path('api/department/<int:department_id>/memo/', views.department_memo_api, name='department_memo_api'),
     
     # 제품 관리 URL들
     path('products/', views.product_list, name='product_list'),
@@ -274,5 +278,15 @@ urlpatterns = [
     path('funnel/api/add-department/', funnel_views.funnel_add_department, name='funnel_add_department'),
     path('funnel/api/remove-department/', funnel_views.funnel_remove_department, name='funnel_remove_department'),
     path('funnel/api/search-departments/', funnel_views.funnel_search_departments, name='funnel_search_departments'),
+
+    # ============================================
+    # 주간보고 URL
+    # ============================================
+    path('weekly-reports/', views.weekly_report_list, name='weekly_report_list'),
+    path('weekly-reports/create/', views.weekly_report_create, name='weekly_report_create'),
+    path('weekly-reports/<int:pk>/', views.weekly_report_detail, name='weekly_report_detail'),
+    path('weekly-reports/<int:pk>/edit/', views.weekly_report_edit, name='weekly_report_edit'),
+    path('weekly-reports/<int:pk>/delete/', views.weekly_report_delete, name='weekly_report_delete'),
+    path('api/weekly-reports/schedules/', views.weekly_report_load_schedules, name='weekly_report_load_schedules'),
 ]
 

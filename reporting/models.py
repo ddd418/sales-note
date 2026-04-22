@@ -81,6 +81,24 @@ class Department(models.Model):
         unique_together = ['company', 'name']
         ordering = ['company__name', 'name']
 
+class DepartmentMemo(models.Model):
+    """부서/연구실 메모 (캘린더 표시용)"""
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='memos', verbose_name="부서/연구실")
+    content = models.TextField(verbose_name="메모 내용")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="작성자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    class Meta:
+        db_table = 'department_memo'
+        verbose_name = "부서 메모"
+        verbose_name_plural = "부서 메모 목록"
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.department.name} 메모 ({self.updated_at.strftime('%Y-%m-%d')})"
+
+
 # 사용자 프로필 (UserProfile) 모델 - 권한 관리
 class UserProfile(models.Model):
     ROLE_CHOICES = [
@@ -1709,3 +1727,26 @@ class FunnelTarget(models.Model):
             models.Index(fields=['user', 'year']),
             models.Index(fields=['department', 'year']),
         ]
+
+
+class WeeklyReport(models.Model):
+    """주간보고 모델"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='weekly_reports', verbose_name="작성자")
+    week_start = models.DateField(verbose_name="주 시작일 (월요일)")
+    week_end = models.DateField(verbose_name="주 종료일 (금요일)")
+    title = models.CharField(max_length=200, verbose_name="보고서 제목")
+    activity_notes = models.TextField(blank=True, verbose_name="영업 활동 내용")
+    quote_delivery_notes = models.TextField(blank=True, verbose_name="견적/납품 내용")
+    other_notes = models.TextField(blank=True, verbose_name="기타 내용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    class Meta:
+        db_table = 'weekly_report'
+        verbose_name = "주간보고"
+        verbose_name_plural = "주간보고 목록"
+        ordering = ['-week_start']
+        unique_together = ['user', 'week_start']
+
+    def __str__(self):
+        return self.title

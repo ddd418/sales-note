@@ -3,7 +3,8 @@
 <div class="list-group-item list-group-item-action d-flex align-items-center py-3 {% if todo.status == 'done' %}bg-light{% endif %}" 
      id="todo-row-{{ todo.pk }}"
      data-status="{{ todo.status }}"
-     data-tab="{{ tab|default:'my' }}">
+     data-tab="{{ tab|default:'my' }}"
+     data-category-id="{{ todo.category_id|default:'' }}">
     <!-- 체크박스 -->
     <div class="me-3">
         {% if todo.status == 'pending' %}
@@ -45,6 +46,11 @@
             <!-- 출처 배지 -->
             {% if todo.source_type != 'self' %}
             <span class="badge {{ todo.source_badge_class }} ms-2">{{ todo.get_source_type_display }}</span>
+            {% endif %}
+            
+            <!-- 카테고리 배지 -->
+            {% if todo.category %}
+            <span class="badge ms-2" style="background-color:{{ todo.category.color }}">{{ todo.category.name }}</span>
             {% endif %}
             
             <!-- 마감일 경고 -->

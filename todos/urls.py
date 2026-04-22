@@ -48,4 +48,9 @@ urlpatterns = [
     path('api/quick-add/', views.api_quick_add, name='api_quick_add'),
     path('api/<int:pk>/toggle/', views.api_toggle_status, name='api_toggle_status'),
     path('api/search-clients/', views.api_search_clients, name='api_search_clients'),
+    
+    # 카테고리 관리
+    path('categories/', views.category_list, name='category_list'),
+    path('categories/create/', views.category_create, name='category_create'),
+    path('categories/<int:pk>/delete/', views.category_delete, name='category_delete'),
 ]

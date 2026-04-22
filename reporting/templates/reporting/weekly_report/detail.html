@@ -1,0 +1,83 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ report.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'reporting:weekly_report_list' %}">주간보고</a></li>
+      <li class="breadcrumb-item active">{{ report.title }}</li>
+    </ol>
+  </nav>
+
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between"
+             style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;">
+          <div>
+            <h5 class="mb-0">{{ report.title }}</h5>
+            <small class="opacity-75">{{ report.week_start }} ~ {{ report.week_end }} · {{ report.user.get_full_name|default:report.user.username }}</small>
+          </div>
+          <div class="d-flex gap-2">
+            {% if report.user == request.user %}
+            <a href="{% url 'reporting:weekly_report_edit' report.pk %}" class="btn btn-sm btn-light">
+              <i class="fas fa-edit me-1"></i>수정
+            </a>
+            {% endif %}
+            <button onclick="window.print()" class="btn btn-sm btn-light">
+              <i class="fas fa-print me-1"></i>인쇄
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+
+          {% if report.activity_notes %}
+          <div class="mb-4">
+            <h6 class="fw-bold border-bottom pb-2">
+              <i class="fas fa-walking me-2 text-primary"></i>영업 활동 내용
+            </h6>
+            <div class="bg-light rounded p-3" style="white-space: pre-wrap;">{{ report.activity_notes }}</div>
+          </div>
+          {% endif %}
+
+          {% if report.quote_delivery_notes %}
+          <div class="mb-4">
+            <h6 class="fw-bold border-bottom pb-2">
+              <i class="fas fa-file-invoice me-2 text-success"></i>견적 / 납품 내용
+            </h6>
+            <div class="bg-light rounded p-3" style="white-space: pre-wrap;">{{ report.quote_delivery_notes }}</div>
+          </div>
+          {% endif %}
+
+          {% if report.other_notes %}
+          <div class="mb-4">
+            <h6 class="fw-bold border-bottom pb-2">
+              <i class="fas fa-sticky-note me-2 text-warning"></i>기타 내용
+            </h6>
+            <div class="bg-light rounded p-3" style="white-space: pre-wrap;">{{ report.other_notes }}</div>
+          </div>
+          {% endif %}
+
+          {% if not report.activity_notes and not report.quote_delivery_notes and not report.other_notes %}
+          <div class="text-center text-muted py-5">내용이 없습니다.</div>
+          {% endif %}
+
+        </div>
+        <div class="card-footer text-muted small text-end">
+          작성: {{ report.created_at|date:"Y-m-d H:i" }} · 수정: {{ report.updated_at|date:"Y-m-d H:i" }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@media print {
+  .breadcrumb, .btn, .card-header .d-flex.gap-2 { display: none !important; }
+  .card { border: none !important; box-shadow: none !important; }
+}
+</style>
+{% endblock %}
