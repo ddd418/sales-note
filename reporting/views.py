@@ -2223,6 +2223,63 @@ def dashboard_view(request):
     ).order_by('next_action_date')[:5]
     context['overdue_next_actions'] = overdue_next_actions
 
+    # Phase 5: 오늘 예정 일정
+    today_schedules = schedules.filter(
+        visit_date=today,
+        status='scheduled'
+    ).select_related('followup', 'followup__company', 'user').order_by('visit_time')[:5]
+    context['today_schedules'] = today_schedules
+
+    # Phase 5: 이번 주 예정 일정 (오늘 초과 ~ 7일 이내)
+    week_later = today + timedelta(days=7)
+    upcoming_schedules_dash = schedules.filter(
+        visit_date__gt=today,
+        visit_date__lte=week_later,
+        status='scheduled'
+    ).select_related('followup', 'followup__company', 'user').order_by('visit_date', 'visit_time')[:5]
+    context['upcoming_schedules_dash'] = upcoming_schedules_dash
+
+    # Phase 5: 파이프라인 단계별 현황 (FollowUp 기준)
+    pipeline_stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    pipeline_stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+    pipeline_raw = followups.values('pipeline_stage').annotate(cnt=Count('id'))
+    pipeline_dict = {item['pipeline_stage']: item['cnt'] for item in pipeline_raw}
+    pipeline_summary = [
+        {
+            'stage': stage,
+            'label': pipeline_stage_labels.get(stage, stage),
+            'count': pipeline_dict.get(stage, 0),
+        }
+        for stage in pipeline_stage_order
+        if pipeline_dict.get(stage, 0) > 0
+    ]
+    context['pipeline_summary'] = pipeline_summary
+
+    # Phase 5: 팀 활동 현황 (매니저/관리자 전용, 최근 30일)
+    if user_profile.can_view_all_users() and salesman_users:
+        thirty_days_ago = today - timedelta(days=30)
+        team_activity = []
+        for u in list(salesman_users)[:8]:
+            recent_cnt = History.objects.filter(
+                user=u,
+                created_at__date__gte=thirty_days_ago,
+                parent_history__isnull=True,
+            ).exclude(action_type='memo').count()
+            overdue_cnt = History.objects.filter(
+                user=u,
+                next_action_date__lt=today,
+                next_action_date__isnull=False,
+                parent_history__isnull=True,
+            ).exclude(action_type='memo').count()
+            team_activity.append({
+                'user': u,
+                'recent_count': recent_cnt,
+                'overdue_count': overdue_cnt,
+            })
+        context['team_activity'] = team_activity
+    else:
+        context['team_activity'] = []
+
     return render(request, 'reporting/dashboard.html', context)
 
 # ============ 일정(Schedule) 관련 뷰들 ============
@@ -3474,6 +3531,26 @@ def history_list_view(request):
     if company_filter:
         histories = histories.filter(followup__company_id=company_filter)
 
+    # Phase 5: 다음 액션 날짜 필터 (overdue / upcoming / has_date)
+    from django.utils import timezone as tz_util
+    history_list_today = tz_util.now().date()
+    next_action_filter = request.GET.get('next_action_filter', '')
+    if next_action_filter == 'overdue':
+        histories = histories.filter(
+            next_action_date__lt=history_list_today,
+            next_action_date__isnull=False,
+        )
+    elif next_action_filter == 'upcoming':
+        from datetime import timedelta as td
+        history_list_week = history_list_today + td(days=7)
+        histories = histories.filter(
+            next_action_date__gte=history_list_today,
+            next_action_date__lte=history_list_week,
+            next_action_date__isnull=False,
+        )
+    elif next_action_filter == 'has_date':
+        histories = histories.filter(next_action_date__isnull=False)
+
     # Phase 4: 접근 가능한 업체 목록 (검색 폼용)
     accessible_companies = Company.objects.filter(
         followup_companies__user__in=filter_users
@@ -3645,6 +3722,9 @@ def history_list_view(request):
         # Phase 4: 업체 필터
         'company_filter': company_filter,
         'accessible_companies': accessible_companies,
+        # Phase 5: 다음 액션 날짜 필터 & 오늘 날짜
+        'next_action_filter': next_action_filter,
+        'today': history_list_today,
     }
     return render(request, 'reporting/history_list.html', context)
 

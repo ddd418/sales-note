@@ -1067,3 +1067,68 @@ Phase 4 (수정판) 구현 완료 후 엄격한 QA 실시.
 **✅ Phase 5 시작 가능**
 
 Phase 4 QA 패스 완료. 모든 검사 통과. 잔여 버그 없음.
+
+---
+
+## Phase 5: 후속 조치 관리 & 영업 파이프라인 가시성 (2026-04-26)
+
+### 요약
+
+대시보드에 오늘 예정 일정, 이번 주 예정 일정, 파이프라인 단계별 현황, 팀 활동 현황(매니저 전용)을 추가하였습니다. 영업 활동 기록 목록(`history_list`)에는 다음 액션 날짜 필터(지연/7일 이내 예정/날짜 있음)와 카드별 다음 액션 날짜 배지를 추가하였습니다. 모든 기능은 기존 권한 체계(login_required, 회사 범위, accessible_users)를 그대로 유지합니다. 모델 변경 없음.
+
+### 변경된 파일
+
+| 파일                                              | 변경 내용                                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `reporting/views.py`                              | `dashboard_view`: `today_schedules`, `upcoming_schedules_dash`, `pipeline_summary`, `team_activity` 컨텍스트 추가 |
+| `reporting/views.py`                              | `history_list_view`: `next_action_filter` GET 파라미터 처리 추가, 컨텍스트에 `next_action_filter`, `today` 추가   |
+| `reporting/templates/reporting/dashboard.html`    | 파이프라인 단계 배지 행, 오늘 예정 일정 카드, 이번 주 예정 일정 카드, 팀 활동 현황 테이블 카드 추가               |
+| `reporting/templates/reporting/history_list.html` | 다음 액션 날짜 필터 버튼 그룹 추가, 각 카드에 `next_action_date` 배지 추가 (지연 시 빨간색)                       |
+
+### 신규 기능 상세
+
+#### 대시보드 (`dashboard.html` + `dashboard_view`)
+
+1. **파이프라인 단계별 현황 배지 행**: 잠재/연락중/견적/협상/수주/실주 각 단계의 거래처 수를 컬러 배지로 표시. 각 배지를 클릭하면 해당 단계의 거래처 목록으로 이동.
+2. **오늘 예정 일정 카드**: `visit_date=today, status='scheduled'` 일정을 최대 5건 표시.
+3. **이번 주 예정 일정 카드**: `visit_date` 오늘 초과 ~ 7일 이내 scheduled 일정 최대 5건, 날짜 배지 포함.
+4. **팀 활동 현황 카드** (매니저/관리자 전용): 최근 30일 팀원별 활동 수 + 지연 액션 수 테이블.
+
+#### 영업 활동 기록 목록 (`history_list.html` + `history_list_view`)
+
+5. **다음 액션 날짜 필터 버튼**: 전체 / 지연된 액션(빨간) / 7일 이내 예정(노란) / 날짜 있음(파란) 4가지 모드.
+6. **다음 액션 날짜 배지**: 각 카드에 `next_action_date`가 있으면 배지 표시. 만료 시 `bg-danger`, 예정 시 `bg-warning text-dark`.
+
+### 기존 기능 보존 확인
+
+- `/reporting/*` URL 그대로 유지
+- `@login_required` 모든 뷰 유지
+- 기존 Phase 4 대시보드 섹션(최근 영업 활동, 지연 후속 조치) 유지
+- 기존 history_list 필터(날짜, 업체, 활동 유형, 담당자, 검색) 유지
+- 모델 변경 없음, 마이그레이션 없음
+
+### 실행 명령 및 결과
+
+```
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests --verbosity=2
+→ Ran 9 tests in 7.894s — OK
+```
+
+### 알려진 한계
+
+- 팀 활동 현황: 최대 8명 표시 (대용량 팀 대비 트런케이트)
+- 파이프라인 배지: 0건인 단계는 표시 생략
+- next_action_filter 링크 생성 시 복합 GET 파라미터 조합은 일부 누락 가능 (date_range 등)
+
+### 다음 권장 작업
+
+- 거래처 상세(`followup_detail`) 페이지에 인라인 영업 노트 빠른 작성 폼 추가
+- 일정 캘린더 뷰 개선 (월별 전체 일정 가시성)
+- 주간 / 월간 영업 활동 요약 리포트 자동 생성
+- history_list의 복합 필터(date_from, date_to, next_action_filter 동시 적용) URL 파라미터 개선

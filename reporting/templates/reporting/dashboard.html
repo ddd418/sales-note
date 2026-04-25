@@ -1252,6 +1252,115 @@ html, body {
     </div>
   </div>
 
+  <!-- Phase 5: 파이프라인 단계별 현황 -->
+  {% if pipeline_summary %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="text-muted small me-1"><i class="fas fa-funnel-dollar me-1"></i>파이프라인:</span>
+        {% for item in pipeline_summary %}
+        <a href="{% url 'reporting:followup_list' %}?pipeline_stage={{ item.stage }}" class="text-decoration-none">
+          <span class="badge {% if item.stage == 'won' %}bg-success{% elif item.stage == 'lost' %}bg-secondary{% elif item.stage == 'quote' or item.stage == 'negotiation' %}bg-warning text-dark{% else %}bg-primary{% endif %} px-2 py-1">
+            {{ item.label }} {{ item.count }}
+          </span>
+        </a>
+        {% endfor %}
+        <a href="{% url 'reporting:followup_list' %}" class="text-muted small ms-auto">전체 보기 →</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Phase 5: 오늘 예정 일정 -->
+  {% if today_schedules %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem; border-left: 4px solid var(--bs-info, #0dcaf0) !important;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(13, 202, 240, 0.1);">
+      <span><i class="fas fa-calendar-day me-2 text-info"></i><strong class="text-info">오늘 예정 일정</strong> <span class="badge bg-info ms-1">{{ today_schedules|length }}건</span></span>
+      <a href="{% url 'reporting:schedule_list' %}" class="btn btn-sm btn-outline-info">전체 보기</a>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for s in today_schedules %}
+      <li class="list-group-item py-2" style="background:transparent;">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div class="flex-grow-1">
+            <strong class="small">{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
+            {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
+            {% if s.visit_time %}<small class="text-info ms-2"><i class="fas fa-clock me-1"></i>{{ s.visit_time|date:"H:i" }}</small>{% endif %}
+            {% if s.title %}<div class="text-muted small">{{ s.title|truncatechars:60 }}</div>{% endif %}
+          </div>
+          <a href="{% url 'reporting:schedule_detail' s.pk %}" class="btn btn-sm btn-outline-info py-0 px-2 flex-shrink-0">상세</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Phase 5: 이번 주 예정 일정 -->
+  {% if upcoming_schedules_dash %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem; border-left: 4px solid var(--bs-primary, #0d6efd) !important;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(13, 110, 253, 0.08);">
+      <span><i class="fas fa-calendar-week me-2 text-primary"></i><strong class="text-primary">이번 주 예정 일정</strong> <span class="badge bg-primary ms-1">{{ upcoming_schedules_dash|length }}건</span></span>
+      <a href="{% url 'reporting:schedule_list' %}" class="btn btn-sm btn-outline-primary">전체 보기</a>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for s in upcoming_schedules_dash %}
+      <li class="list-group-item py-2" style="background:transparent;">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div class="flex-grow-1">
+            <span class="badge bg-primary small me-1">{{ s.visit_date|date:"m/d" }}</span>
+            <strong class="small">{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
+            {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
+            {% if s.title %}<div class="text-muted small">{{ s.title|truncatechars:60 }}</div>{% endif %}
+          </div>
+          <a href="{% url 'reporting:schedule_detail' s.pk %}" class="btn btn-sm btn-outline-primary py-0 px-2 flex-shrink-0">상세</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Phase 5: 팀 활동 현황 (매니저/관리자 전용) -->
+  {% if team_activity %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(255,255,255,0.05);">
+      <span><i class="fas fa-users me-2 text-secondary"></i><strong>팀 활동 현황</strong> <small class="text-muted ms-1">(최근 30일)</small></span>
+      <a href="{% url 'reporting:history_list' %}?data_filter=all" class="btn btn-sm btn-outline-secondary">전체 기록</a>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0" style="font-size:0.85rem;">
+        <thead>
+          <tr style="background:rgba(255,255,255,0.05);">
+            <th class="px-3 py-2">담당자</th>
+            <th class="px-3 py-2 text-center">활동 수</th>
+            <th class="px-3 py-2 text-center">지연 액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in team_activity %}
+          <tr>
+            <td class="px-3 py-2">
+              <i class="fas fa-user me-1 text-muted"></i>{{ row.user.username }}
+            </td>
+            <td class="px-3 py-2 text-center">
+              <a href="{% url 'reporting:history_list' %}?filter_user={{ row.user.pk }}&data_filter=user" class="badge bg-info text-decoration-none">{{ row.recent_count }}</a>
+            </td>
+            <td class="px-3 py-2 text-center">
+              {% if row.overdue_count > 0 %}
+              <span class="badge bg-danger">{{ row.overdue_count }}</span>
+              {% else %}
+              <span class="badge bg-success">0</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Phase 4: 지연된 후속 조치 -->
   {% if overdue_next_actions %}
   <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem; border-left: 4px solid var(--bs-warning, #ffc107) !important;">

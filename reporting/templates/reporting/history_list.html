@@ -409,6 +409,27 @@ a.text-decoration-none {
                   </div>
                 </div>
                 {% endif %}
+
+                <!-- Phase 5: 다음 액션 날짜 필터 -->
+                <div class="row g-2 mt-1">
+                  <div class="col-12">
+                    <label class="form-label">다음 액션 날짜</label>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <a href="?{{ request.GET.urlencode }}" class="btn btn-sm {% if not next_action_filter %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                        전체
+                      </a>
+                      <a href="?next_action_filter=overdue&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if company_filter %}&company_filter={{ company_filter }}{% endif %}" class="btn btn-sm {% if next_action_filter == 'overdue' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                        <i class="fas fa-exclamation-circle me-1"></i>지연된 액션
+                      </a>
+                      <a href="?next_action_filter=upcoming&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if company_filter %}&company_filter={{ company_filter }}{% endif %}" class="btn btn-sm {% if next_action_filter == 'upcoming' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                        <i class="fas fa-calendar-alt me-1"></i>7일 이내 예정
+                      </a>
+                      <a href="?next_action_filter=has_date&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if company_filter %}&company_filter={{ company_filter }}{% endif %}" class="btn btn-sm {% if next_action_filter == 'has_date' %}btn-info{% else %}btn-outline-info{% endif %}">
+                        <i class="fas fa-tasks me-1"></i>액션 날짜 있음
+                      </a>
+                    </div>
+                  </div>
+                </div>
                 
                 <!-- 현재 필터 유지 -->
                 {% if action_type_filter %}
@@ -491,6 +512,20 @@ a.text-decoration-none {
                         {{ history.created_at|date:"Y년 m월 d일 H:i" }}
                       </small>
                     </div>
+                    {% if history.next_action_date %}
+                    <div class="mb-2">
+                      {% if history.next_action_date < today %}
+                      <span class="badge bg-danger" title="다음 액션 마감일 초과">
+                        <i class="fas fa-exclamation-circle me-1"></i>액션 지연: {{ history.next_action_date }}
+                      </span>
+                      {% else %}
+                      <span class="badge bg-warning text-dark" title="다음 액션 예정일">
+                        <i class="fas fa-calendar-check me-1"></i>다음 액션: {{ history.next_action_date }}
+                      </span>
+                      {% endif %}
+                      {% if history.next_action %}<small class="text-muted ms-2">{{ history.next_action|truncatechars:50 }}</small>{% endif %}
+                    </div>
+                    {% endif %}
                     <p class="card-text">
                       {% if history.personal_schedule %}
                       <strong>일정 제목:</strong> {{ history.personal_schedule.title }}<br />
