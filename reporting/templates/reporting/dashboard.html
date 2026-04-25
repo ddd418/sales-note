@@ -1239,9 +1239,9 @@ html, body {
     <div class="card-body py-3">
       <div class="d-flex gap-2 flex-wrap align-items-center">
         <span class="text-muted small me-1"><i class="fas fa-bolt me-1"></i>빠른 작성:</span>
-        <a href="{% url 'reporting:memo_create' %}" class="btn btn-success btn-sm">
+        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#dashboardNoteModal">
           <i class="fas fa-pen me-1"></i>영업 노트 작성
-        </a>
+        </button>
         <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-calendar-plus me-1"></i>일정 추가
         </a>
@@ -1449,9 +1449,9 @@ html, body {
     <div class="card-body text-center py-4">
       <i class="fas fa-history fa-2x text-muted mb-2"></i>
       <p class="text-muted mb-2">최근 영업 활동이 없습니다.</p>
-      <a href="{% url 'reporting:memo_create' %}" class="btn btn-sm btn-success">
+      <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#dashboardNoteModal">
         <i class="fas fa-pen me-1"></i>영업 노트 작성
-      </a>
+      </button>
     </div>
     {% endif %}
   </div>
@@ -2543,5 +2543,321 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 });
+</script>
+
+<!-- =====================================================
+     대시보드 영업 노트 작성 모달
+     Step 1: 일정 선택 | Step 2: 노트 작성
+     ===================================================== -->
+<div class="modal fade" id="dashboardNoteModal" tabindex="-1" aria-labelledby="dashboardNoteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background: var(--surface); border: 1px solid var(--border);">
+
+      <!-- Modal Header -->
+      <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+        <h5 class="modal-title" id="dashboardNoteModalLabel">
+          <i class="fas fa-pen me-2 text-success"></i>영업 노트 작성
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <!-- ── Step 1: 일정 선택 ── -->
+      <div id="dnm-step1" class="modal-body">
+        <p class="text-muted small mb-3">
+          <i class="fas fa-info-circle me-1"></i>노트를 작성할 일정을 선택하세요.
+        </p>
+
+        {% if today_schedules or upcoming_schedules_dash %}
+          {% if today_schedules %}
+          <div class="mb-3">
+            <div class="fw-semibold small text-info mb-2">
+              <i class="fas fa-calendar-day me-1"></i>오늘 일정
+            </div>
+            <div class="list-group">
+              {% for s in today_schedules %}
+              <button type="button"
+                      class="list-group-item list-group-item-action dnm-schedule-btn"
+                      data-schedule-id="{{ s.pk }}"
+                      data-submit-url="{% url 'reporting:history_create_from_schedule' s.pk %}"
+                      data-customer="{{ s.followup.customer_name|default:'고객명 미정' }}"
+                      data-company="{{ s.followup.company|default:'' }}"
+                      data-date="{{ s.visit_date|date:'Y년 m월 d일' }}"
+                      data-time="{% if s.visit_time %}{{ s.visit_time|time:'H:i' }}{% endif %}"
+                      style="background: var(--surface); border-color: var(--border); color: var(--text-primary);">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <strong>{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
+                    {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
+                  </div>
+                  <div class="text-end">
+                    {% if s.visit_time %}<small class="text-info me-2"><i class="fas fa-clock me-1"></i>{{ s.visit_time|time:"H:i" }}</small>{% endif %}
+                    <span class="badge bg-info">오늘</span>
+                  </div>
+                </div>
+                {% if s.notes %}<div class="text-muted small mt-1">{{ s.notes|truncatechars:80 }}</div>{% endif %}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          {% if upcoming_schedules_dash %}
+          <div class="mb-2">
+            <div class="fw-semibold small text-primary mb-2">
+              <i class="fas fa-calendar-week me-1"></i>이번 주 예정 일정
+            </div>
+            <div class="list-group">
+              {% for s in upcoming_schedules_dash %}
+              <button type="button"
+                      class="list-group-item list-group-item-action dnm-schedule-btn"
+                      data-schedule-id="{{ s.pk }}"
+                      data-submit-url="{% url 'reporting:history_create_from_schedule' s.pk %}"
+                      data-customer="{{ s.followup.customer_name|default:'고객명 미정' }}"
+                      data-company="{{ s.followup.company|default:'' }}"
+                      data-date="{{ s.visit_date|date:'Y년 m월 d일' }}"
+                      data-time="{% if s.visit_time %}{{ s.visit_time|time:'H:i' }}{% endif %}"
+                      style="background: var(--surface); border-color: var(--border); color: var(--text-primary);">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <strong>{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
+                    {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
+                  </div>
+                  <div class="text-end">
+                    <span class="badge bg-primary me-1">{{ s.visit_date|date:"m/d" }}</span>
+                    {% if s.visit_time %}<small class="text-muted"><i class="fas fa-clock me-1"></i>{{ s.visit_time|time:"H:i" }}</small>{% endif %}
+                  </div>
+                </div>
+                {% if s.notes %}<div class="text-muted small mt-1">{{ s.notes|truncatechars:80 }}</div>{% endif %}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+        {% else %}
+          <!-- 일정 없음 -->
+          <div class="text-center py-4">
+            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+            <p class="text-muted mb-1">오늘과 이번 주 예정된 일정이 없습니다.</p>
+            <p class="text-muted small mb-3">일정을 먼저 추가한 뒤 영업 노트를 작성하세요.</p>
+            <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm me-2">
+              <i class="fas fa-calendar-plus me-1"></i>일정 추가
+            </a>
+            <a href="{% url 'reporting:schedule_list' %}" class="btn btn-outline-secondary btn-sm">
+              <i class="fas fa-calendar-alt me-1"></i>일정 목록
+            </a>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- ── Step 2: 노트 작성 폼 ── -->
+      <div id="dnm-step2" style="display:none;">
+        <div class="modal-body">
+          <!-- 선택된 일정 정보 헤더 -->
+          <div class="alert alert-info py-2 mb-3" style="background: hsla(217,91%,60%,0.12); border-color: hsl(217,91%,60%); color: var(--text-primary);">
+            <div class="d-flex align-items-center gap-2">
+              <i class="fas fa-calendar-check text-info"></i>
+              <div>
+                <strong id="dnm-customer-name"></strong>
+                <span class="text-muted small ms-2" id="dnm-company-name"></span>
+                <div class="text-muted small" id="dnm-schedule-date"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 활동 유형 -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">활동 유형 <span class="text-danger">*</span></label>
+            <div class="d-flex flex-wrap gap-2" id="dnm-action-type-btns">
+              <button type="button" class="btn btn-sm btn-outline-secondary dnm-type-btn" data-value="customer_meeting">
+                <i class="fas fa-handshake me-1"></i>고객 미팅
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary dnm-type-btn" data-value="call">
+                <i class="fas fa-phone me-1"></i>전화 상담
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary dnm-type-btn" data-value="email">
+                <i class="fas fa-envelope me-1"></i>이메일
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary dnm-type-btn" data-value="visit">
+                <i class="fas fa-map-marker-alt me-1"></i>방문
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary dnm-type-btn" data-value="memo">
+                <i class="fas fa-sticky-note me-1"></i>메모
+              </button>
+            </div>
+            <input type="hidden" id="dnm-action-type-value" value="">
+          </div>
+
+          <!-- 활동 내용 -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">활동 내용 <span class="text-danger">*</span></label>
+            <textarea id="dnm-content" class="form-control" rows="4"
+                      placeholder="활동 내용을 상세히 기록해주세요"
+                      style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary);"></textarea>
+          </div>
+
+          <!-- 다음 할 일 -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">다음 할 일 <span class="text-muted fw-normal">(선택)</span></label>
+            <textarea id="dnm-next-action" class="form-control" rows="2"
+                      placeholder="다음에 할 액션을 기록하세요"
+                      style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary);"></textarea>
+          </div>
+
+          <!-- 다음 연락일 -->
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">다음 연락일 <span class="text-muted fw-normal">(선택)</span></label>
+            <input type="date" id="dnm-next-action-date" class="form-control"
+                   style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary);">
+          </div>
+
+          <!-- 오류 메시지 영역 -->
+          <div id="dnm-error" class="alert alert-danger py-2 small" style="display:none;"></div>
+        </div>
+
+        <div class="modal-footer" style="border-top: 1px solid var(--border);">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="dnm-back-btn">
+            <i class="fas fa-arrow-left me-1"></i>일정 다시 선택
+          </button>
+          <button type="button" class="btn btn-success" id="dnm-submit-btn">
+            <i class="fas fa-save me-1"></i>저장
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  let dnmSubmitUrl = '';
+
+  // 일정 선택 버튼 클릭
+  document.querySelectorAll('.dnm-schedule-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      dnmSubmitUrl = this.dataset.submitUrl;
+      document.getElementById('dnm-customer-name').textContent = this.dataset.customer;
+      document.getElementById('dnm-company-name').textContent = this.dataset.company;
+      document.getElementById('dnm-schedule-date').textContent =
+        this.dataset.date + (this.dataset.time ? ' ' + this.dataset.time : '');
+
+      // 폼 초기화
+      document.getElementById('dnm-content').value = '';
+      document.getElementById('dnm-next-action').value = '';
+      document.getElementById('dnm-next-action-date').value = '';
+      document.getElementById('dnm-action-type-value').value = '';
+      document.querySelectorAll('.dnm-type-btn').forEach(function(b) {
+        b.classList.remove('btn-primary', 'btn-success');
+        b.classList.add('btn-outline-secondary');
+      });
+      document.getElementById('dnm-error').style.display = 'none';
+
+      // Step 전환
+      document.getElementById('dnm-step1').style.display = 'none';
+      document.getElementById('dnm-step2').style.display = 'block';
+      document.getElementById('dashboardNoteModalLabel').innerHTML =
+        '<i class="fas fa-pen me-2 text-success"></i>영업 노트 작성';
+    });
+  });
+
+  // 활동 유형 토글
+  document.querySelectorAll('.dnm-type-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.dnm-type-btn').forEach(function(b) {
+        b.classList.remove('btn-primary', 'btn-success');
+        b.classList.add('btn-outline-secondary');
+      });
+      this.classList.remove('btn-outline-secondary');
+      this.classList.add('btn-success');
+      document.getElementById('dnm-action-type-value').value = this.dataset.value;
+    });
+  });
+
+  // 뒤로가기
+  document.getElementById('dnm-back-btn').addEventListener('click', function() {
+    document.getElementById('dnm-step2').style.display = 'none';
+    document.getElementById('dnm-step1').style.display = 'block';
+  });
+
+  // 저장
+  document.getElementById('dnm-submit-btn').addEventListener('click', function() {
+    const content = document.getElementById('dnm-content').value.trim();
+    const actionType = document.getElementById('dnm-action-type-value').value;
+    const errorDiv = document.getElementById('dnm-error');
+
+    if (!actionType) {
+      errorDiv.textContent = '활동 유형을 선택해주세요.';
+      errorDiv.style.display = 'block';
+      return;
+    }
+    if (!content) {
+      errorDiv.textContent = '활동 내용을 입력해주세요.';
+      errorDiv.style.display = 'block';
+      return;
+    }
+    errorDiv.style.display = 'none';
+
+    const submitBtn = this;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                   || '{{ csrf_token }}';
+
+    const formData = new FormData();
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('action_type', actionType);
+    formData.append('content', content);
+    const nextAction = document.getElementById('dnm-next-action').value.trim();
+    const nextDate = document.getElementById('dnm-next-action-date').value;
+    if (nextAction) formData.append('next_action', nextAction);
+    if (nextDate)   formData.append('next_action_date', nextDate);
+
+    fetch(dnmSubmitUrl, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': csrfToken
+      }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.success) {
+        // 모달 닫고 대시보드 새로고침
+        var modal = bootstrap.Modal.getInstance(document.getElementById('dashboardNoteModal'));
+        if (modal) modal.hide();
+        location.reload();
+      } else {
+        // 이미 존재하는 기록인 경우 상세 페이지로 이동
+        if (data.history_url) {
+          window.location.href = data.history_url;
+          return;
+        }
+        errorDiv.textContent = data.error || '저장 중 오류가 발생했습니다.';
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+      }
+    })
+    .catch(function(err) {
+      errorDiv.textContent = '네트워크 오류가 발생했습니다. 다시 시도해주세요.';
+      errorDiv.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+    });
+  });
+
+  // 모달 닫을 때 Step 1로 초기화
+  document.getElementById('dashboardNoteModal').addEventListener('hidden.bs.modal', function() {
+    document.getElementById('dnm-step1').style.display = 'block';
+    document.getElementById('dnm-step2').style.display = 'none';
+    document.getElementById('dnm-error').style.display = 'none';
+    dnmSubmitUrl = '';
+  });
+})();
 </script>
 {% endblock %}

@@ -2223,10 +2223,10 @@ def dashboard_view(request):
     ).order_by('next_action_date')[:5]
     context['overdue_next_actions'] = overdue_next_actions
 
-    # Phase 5: 오늘 예정 일정
+    # Phase 5: 오늘 예정 일정 (scheduled + completed 포함 — 노트 작성 가능하도록)
     today_schedules = schedules.filter(
         visit_date=today,
-        status='scheduled'
+        status__in=['scheduled', 'completed']
     ).select_related('followup', 'followup__company', 'user').order_by('visit_time')[:5]
     context['today_schedules'] = today_schedules
 
