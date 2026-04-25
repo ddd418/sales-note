@@ -85,36 +85,58 @@
 
 <style>
   .page-title {
-    color: #37352f;
+    color: var(--text-primary);
     font-weight: 600;
   }
   
   .card {
-    border: none;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     border-radius: 12px;
   }
   
   .card-header {
-    border-bottom: 1px solid #e9ecef;
+    background: var(--surface-hover) !important;
+    border-bottom: 1px solid var(--border) !important;
     border-radius: 12px 12px 0 0 !important;
+  }
+
+  .card-header h5 {
+    color: var(--text-primary) !important;
   }
   
   .form-label {
     font-weight: 600;
-    color: #495057;
+    color: var(--text-primary) !important;
   }
   
   .form-control {
+    background: var(--surface) !important;
     border-radius: 8px;
-    border: 1px solid #ced4da;
+    border: 1px solid var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+
+  .form-control::placeholder {
+    color: var(--text-muted) !important;
   }
   
   .form-control:focus {
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 0.2rem hsla(217, 91%, 60%, 0.25) !important;
   }
   
+  .form-text {
+    color: var(--text-muted) !important;
+  }
+
+  .alert-info {
+    background: hsla(217, 91%, 60%, 0.1) !important;
+    border-color: hsla(217, 91%, 60%, 0.3) !important;
+    color: var(--text-primary) !important;
+  }
+
   .btn {
     border-radius: 8px;
     font-weight: 500;

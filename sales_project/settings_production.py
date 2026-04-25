@@ -6,7 +6,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-o9d76l+p#vrgs6r601a=w6pgzi56i-vik9z(g+1qi(k3-)1n+w')
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    raise RuntimeError(
+        'SECRET_KEY 환경변수가 설정되지 않았습니다. '
+        '프로덕션 배포 전 반드시 설정하세요.'
+    )
+SECRET_KEY = _secret_key
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
@@ -95,8 +101,6 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'reporting.context_processors.manager_filter_context',
             ],
-            # 프로덕션에서도 템플릿 캐시 비활성화 (템플릿 오류 디버깅용)
-            'debug': True,
         },
     },
 ]
@@ -229,8 +233,8 @@ else:
     SITE_DOMAIN = 'http://127.0.0.1:8000'
 
 # Gmail API 설정
-GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '55340147819-ohm77rvua57152f4ns5v330aj2efbkiq.apps.googleusercontent.com')
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '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')
+GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
+GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'https://your-domain.com/reporting/gmail/callback/')
 
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)

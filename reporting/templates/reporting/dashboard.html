@@ -1173,6 +1173,154 @@ html, body {
     </div>
   </div>
 
+  <!-- 담당자용: 오늘 미작성 보고서 알림 -->
+  {% if today_unwritten_count > 0 %}
+  <div class="alert alert-warning d-flex justify-content-between align-items-center p-3 rounded-3 mb-3" role="alert">
+    <div>
+      <i class="fas fa-exclamation-triangle me-2"></i>
+      <strong>오늘 보고서 작성 필요</strong>
+      <span class="badge bg-warning text-dark ms-2">{{ today_unwritten_count }}건</span>
+      <small class="text-muted d-block mt-1">오늘 완료된 일정 중 활동 기록이 없는 건이 있습니다.</small>
+    </div>
+    <a href="{% url 'reporting:history_list' %}?date_from={{ today|date:'Y-m-d' }}&date_to={{ today|date:'Y-m-d' }}" class="btn btn-warning btn-sm text-dark flex-shrink-0">
+      <i class="fas fa-pen me-1"></i>확인하기
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- 관리자용: 미검토 보고서 알림 -->
+  {% if pending_review_count > 0 %}
+  <div class="alert alert-info d-flex justify-content-between align-items-center p-3 rounded-3 mb-3" role="alert">
+    <div>
+      <i class="fas fa-clipboard-check me-2"></i>
+      <strong>미검토 보고서</strong>
+      <span class="badge bg-info ms-2">{{ pending_review_count }}건</span>
+      <small class="text-muted d-block mt-1">최근 30일 내 검토가 필요한 활동 보고서가 있습니다.</small>
+    </div>
+    <a href="{% url 'reporting:history_list' %}?data_filter=all&review_filter=unreviewed" class="btn btn-info btn-sm text-white flex-shrink-0">
+      <i class="fas fa-eye me-1"></i>검토하기
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- 오늘 일정 카드 -->
+  {% if today_schedules %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(255,255,255,0.05);">
+      <span><i class="fas fa-calendar-day me-2 text-primary"></i><strong>오늘 일정</strong></span>
+      <a href="{% url 'reporting:schedule_list' %}?start_date={{ today|date:'Y-m-d' }}&end_date={{ today|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary">전체 보기</a>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for sch in today_schedules %}
+      <li class="list-group-item d-flex justify-content-between align-items-center py-2" style="background:transparent;">
+        <div>
+          <strong>{{ sch.followup.customer_name|default:"고객명 미정" }}</strong>
+          {% if sch.followup.company %}<small class="text-muted ms-2">{{ sch.followup.company }}</small>{% endif %}
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+          {% if sch.visit_time %}<span class="text-muted small">{{ sch.visit_time|time:"H:i" }}</span>{% endif %}
+          <span class="badge {% if sch.status == 'completed' %}bg-success{% elif sch.status == 'cancelled' %}bg-danger{% else %}bg-primary{% endif %}">
+            {{ sch.get_status_display }}
+          </span>
+          {% if sch.status == 'completed' %}
+          <a href="{% url 'reporting:history_create_from_schedule' sch.pk %}" class="btn btn-sm btn-warning">
+            <i class="fas fa-pen me-1"></i>보고서 작성
+          </a>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Phase 4: 빠른 작성 버튼 -->
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
+    <div class="card-body py-3">
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <span class="text-muted small me-1"><i class="fas fa-bolt me-1"></i>빠른 작성:</span>
+        <a href="{% url 'reporting:memo_create' %}" class="btn btn-success btn-sm">
+          <i class="fas fa-pen me-1"></i>영업 노트 작성
+        </a>
+        <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-calendar-plus me-1"></i>일정 추가
+        </a>
+        <a href="{% url 'reporting:followup_create' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-user-plus me-1"></i>거래처 추가
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 4: 지연된 후속 조치 -->
+  {% if overdue_next_actions %}
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem; border-left: 4px solid var(--bs-warning, #ffc107) !important;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(255, 193, 7, 0.1);">
+      <span><i class="fas fa-exclamation-triangle me-2 text-warning"></i><strong class="text-warning">지연된 후속 조치</strong> <span class="badge bg-warning text-dark ms-1">{{ overdue_next_actions|length }}건</span></span>
+      <a href="{% url 'reporting:history_list' %}" class="btn btn-sm btn-outline-warning">전체 보기</a>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for h in overdue_next_actions %}
+      <li class="list-group-item py-2" style="background:transparent;">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <strong>{{ h.followup.customer_name|default:"고객명 미정" }}</strong>
+            {% if h.followup.company %}<small class="text-muted ms-2">{{ h.followup.company }}</small>{% endif %}
+            <div class="text-muted small mt-1">{{ h.next_action|truncatechars:60 }}</div>
+          </div>
+          <div class="d-flex flex-column align-items-end gap-1 ms-2">
+            <span class="badge bg-danger small">{{ h.next_action_date }} 만료</span>
+            <a href="{% url 'reporting:history_detail' h.pk %}" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2">상세</a>
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Phase 4: 최근 영업 활동 -->
+  <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:1rem 1rem 0 0; background: rgba(255,255,255,0.05);">
+      <span><i class="fas fa-history me-2 text-info"></i><strong>최근 영업 활동</strong></span>
+      <a href="{% url 'reporting:history_list' %}" class="btn btn-sm btn-outline-info">전체 보기</a>
+    </div>
+    {% if recent_histories %}
+    <ul class="list-group list-group-flush">
+      {% for h in recent_histories %}
+      <li class="list-group-item py-2" style="background:transparent;">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div class="flex-grow-1 min-w-0">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+              <span class="badge {% if h.action_type == 'customer_meeting' %}bg-primary{% elif h.action_type == 'quote' %}bg-info{% elif h.action_type == 'delivery_schedule' %}bg-success{% elif h.action_type == 'service' %}bg-warning text-dark{% else %}bg-secondary{% endif %} small">
+                {{ h.get_action_type_display }}
+              </span>
+              <strong class="small">{{ h.followup.customer_name|default:"고객명 미정" }}</strong>
+              {% if h.followup.company %}<small class="text-muted">{{ h.followup.company }}</small>{% endif %}
+            </div>
+            <div class="text-muted small text-truncate">{{ h.content|truncatechars:70 }}</div>
+          </div>
+          <div class="d-flex flex-column align-items-end flex-shrink-0 gap-1">
+            <small class="text-muted">
+              {% if h.schedule %}{{ h.schedule.visit_date }}{% else %}{{ h.created_at|date:"Y-m-d" }}{% endif %}
+            </small>
+            <a href="{% url 'reporting:history_detail' h.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2">상세</a>
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="card-body text-center py-4">
+      <i class="fas fa-history fa-2x text-muted mb-2"></i>
+      <p class="text-muted mb-2">최근 영업 활동이 없습니다.</p>
+      <a href="{% url 'reporting:memo_create' %}" class="btn btn-sm btn-success">
+        <i class="fas fa-pen me-1"></i>영업 노트 작성
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
   <!-- Activity Timeline: 이번 달 활동 -->
   <div class="activity-timeline">
     <h3 class="timeline-title">

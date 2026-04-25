@@ -987,6 +987,46 @@
         </div>
       </div>
 
+      <!-- 파이프라인 단계 필터 버튼 -->
+      <div class="row mb-3">
+        <div class="col-12">
+          <div class="card filter-box-premium">
+            <div class="card-body py-2">
+              <h6 class="mb-2" style="font-weight: 700; color: var(--text-primary);">
+                <i class="fas fa-filter me-2"></i>파이프라인 단계
+              </h6>
+              <div class="d-flex flex-wrap" role="group" style="gap: 5px;">
+                <a href="{% url 'reporting:followup_list' %}?{% if search_query %}search={{ search_query }}&{% endif %}{% if priority_filter %}priority={{ priority_filter }}&{% endif %}{% if grade_filter %}grade={{ grade_filter }}&{% endif %}{% if company_filter %}company={{ company_filter }}{% endif %}"
+                   class="btn btn-sm {% if not pipeline_stage_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                  전체
+                </a>
+                {% for value, label in pipeline_stage_choices %}
+                <a href="{% url 'reporting:followup_list' %}?pipeline_stage={{ value }}{% if search_query %}&search={{ search_query }}{% endif %}{% if priority_filter %}&priority={{ priority_filter }}{% endif %}{% if grade_filter %}&grade={{ grade_filter }}{% endif %}{% if company_filter %}&company={{ company_filter }}{% endif %}"
+                   class="btn btn-sm
+                     {% if pipeline_stage_filter == value %}
+                       {% if value == 'won' %}btn-success
+                       {% elif value == 'lost' %}btn-danger
+                       {% elif value == 'quote' %}btn-info
+                       {% elif value == 'contact' %}btn-warning
+                       {% elif value == 'negotiation' %}btn-primary
+                       {% else %}btn-secondary{% endif %}
+                     {% else %}
+                       {% if value == 'won' %}btn-outline-success
+                       {% elif value == 'lost' %}btn-outline-danger
+                       {% elif value == 'quote' %}btn-outline-info
+                       {% elif value == 'contact' %}btn-outline-warning
+                       {% elif value == 'negotiation' %}btn-outline-primary
+                       {% else %}btn-outline-secondary{% endif %}
+                     {% endif %}">
+                  {{ label }}
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 업체별 필터 버튼 -->
       <div class="row mb-4">
         <div class="col-12">
@@ -1032,12 +1072,23 @@
                   {{ followup.customer_name|default:"고객명 미정" }}
                 </a>
               </h6>
-              <div class="d-flex gap-1">
+              <div class="d-flex gap-1 flex-wrap">
                 <!-- 우선순위 표시 -->
                 <span
                   class="badge bg-{% if followup.priority == 'urgent' %}danger{% elif followup.priority == 'followup' %}warning{% elif followup.priority == 'scheduled' %}info{% else %}secondary{% endif %}"
                 >
                   {{ followup.get_priority_display }}
+                </span>
+                <!-- 파이프라인 단계 배지 -->
+                <span class="badge
+                  {% if followup.pipeline_stage == 'won' %}bg-success
+                  {% elif followup.pipeline_stage == 'lost' %}bg-danger
+                  {% elif followup.pipeline_stage == 'quote' %}bg-info
+                  {% elif followup.pipeline_stage == 'contact' %}bg-warning text-dark
+                  {% elif followup.pipeline_stage == 'negotiation' %}bg-primary
+                  {% else %}bg-secondary{% endif %}"
+                  style="font-size:0.75em;">
+                  {{ followup.get_pipeline_stage_display }}
                 </span>
               </div>
             </div>

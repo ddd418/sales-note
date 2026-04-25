@@ -1,0 +1,229 @@
+{% extends "reporting/base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<style>
+.form-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+.form-card .card-header {
+  background: var(--surface-hover);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.form-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.form-control, .form-select {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+.form-control:focus, .form-select:focus {
+  background: var(--surface);
+  border-color: var(--primary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 0.2rem hsla(217, 91%, 60%, 0.25);
+}
+.form-control::placeholder {
+  color: var(--text-muted);
+}
+.form-text {
+  color: var(--text-muted);
+}
+.stage-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.required-mark { color: var(--bs-danger); }
+</style>
+
+<div class="container-fluid" style="max-width: 800px;">
+  <!-- 헤더 -->
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">
+        <i class="fas {% if is_create %}fa-plus-circle{% else %}fa-edit{% endif %} me-2 text-primary"></i>
+        {% if is_create %}영업 기회 등록{% else %}영업 기회 수정{% endif %}
+      </h2>
+      <p class="text-muted mb-0 mt-1">
+        <a href="{% url 'reporting:followup_detail' followup.pk %}" class="text-decoration-none">
+          <i class="fas fa-user me-1"></i>{{ followup.customer_name|default:"고객명 미정" }}
+        </a>
+        {% if followup.company %}
+          <span class="text-muted mx-1">·</span>{{ followup.company.name }}
+        {% endif %}
+        {% if followup.department %}
+          <span class="text-muted mx-1">·</span>{{ followup.department.name }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      {% if not is_create %}
+      <a href="{% url 'reporting:opportunity_detail' opportunity.pk %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>상세로 돌아가기
+      </a>
+      {% else %}
+      <a href="{% url 'reporting:followup_detail' followup.pk %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>고객 상세로 돌아가기
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 에러 요약 -->
+  {% if form.errors %}
+  <div class="alert alert-danger mb-4">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>입력 오류가 있습니다. 아래 항목을 확인해주세요.</strong>
+    <ul class="mb-0 mt-2">
+      {% for field in form %}
+        {% for error in field.errors %}
+        <li>{{ field.label }}: {{ error }}</li>
+        {% endfor %}
+      {% endfor %}
+      {% for error in form.non_field_errors %}
+      <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="POST" novalidate>
+    {% csrf_token %}
+
+    <!-- 기본 정보 카드 -->
+    <div class="card form-card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>기본 정보</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- 기회 제목 -->
+          <div class="col-12">
+            <label for="{{ form.title.id_for_label }}" class="form-label">
+              기회 제목
+            </label>
+            {{ form.title }}
+            {% if form.title.errors %}
+            <div class="invalid-feedback d-block">{{ form.title.errors.0 }}</div>
+            {% endif %}
+            <div class="form-text">이 영업 기회를 구분하는 제목을 입력하세요. (예: 장비 A 구매, 소모품 정기 공급)</div>
+          </div>
+
+          <!-- 영업 단계 -->
+          <div class="col-md-6">
+            <label for="{{ form.current_stage.id_for_label }}" class="form-label">
+              영업 단계 <span class="required-mark">*</span>
+            </label>
+            {{ form.current_stage }}
+            {% if form.current_stage.errors %}
+            <div class="invalid-feedback d-block">{{ form.current_stage.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <!-- 라벨 -->
+          <div class="col-md-6">
+            <label for="{{ form.label.id_for_label }}" class="form-label">
+              라벨
+            </label>
+            {{ form.label }}
+            {% if form.label.errors %}
+            <div class="invalid-feedback d-block">{{ form.label.errors.0 }}</div>
+            {% endif %}
+            <div class="form-text">분류 라벨을 선택하세요 (선택사항)</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 예측 정보 카드 -->
+    <div class="card form-card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>예측 정보</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <!-- 예상 매출 -->
+          <div class="col-md-4">
+            <label for="{{ form.expected_revenue.id_for_label }}" class="form-label">
+              예상 매출 (원)
+            </label>
+            {{ form.expected_revenue }}
+            {% if form.expected_revenue.errors %}
+            <div class="invalid-feedback d-block">{{ form.expected_revenue.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <!-- 수주 가능성 -->
+          <div class="col-md-4">
+            <label for="{{ form.probability.id_for_label }}" class="form-label">
+              수주 가능성 (%)
+            </label>
+            {{ form.probability }}
+            {% if form.probability.errors %}
+            <div class="invalid-feedback d-block">{{ form.probability.errors.0 }}</div>
+            {% endif %}
+            <div class="form-text">0 ~ 100</div>
+          </div>
+
+          <!-- 예상 계약일 -->
+          <div class="col-md-4">
+            <label for="{{ form.expected_close_date.id_for_label }}" class="form-label">
+              예상 계약일
+            </label>
+            {{ form.expected_close_date }}
+            {% if form.expected_close_date.errors %}
+            <div class="invalid-feedback d-block">{{ form.expected_close_date.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 실주 사유 (단계가 quote_lost/won일 때 유용) -->
+    <div class="card form-card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-comment-alt me-2"></i>실주 사유 <span class="text-muted fw-normal" style="font-size:0.85em;">(선택사항)</span></h5>
+      </div>
+      <div class="card-body">
+        {{ form.lost_reason }}
+        {% if form.lost_reason.errors %}
+        <div class="invalid-feedback d-block">{{ form.lost_reason.errors.0 }}</div>
+        {% endif %}
+        <div class="form-text">영업 단계가 "견적실패"인 경우 사유를 기록하세요.</div>
+      </div>
+    </div>
+
+    <!-- 버튼 영역 -->
+    <div class="d-flex justify-content-between align-items-center mb-5">
+      <div>
+        {% if not is_create %}
+        <a href="{% url 'reporting:opportunity_detail' opportunity.pk %}" class="btn btn-outline-secondary">
+          <i class="fas fa-times me-1"></i>취소
+        </a>
+        {% else %}
+        <a href="{% url 'reporting:followup_detail' followup.pk %}" class="btn btn-outline-secondary">
+          <i class="fas fa-times me-1"></i>취소
+        </a>
+        {% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary px-4">
+        <i class="fas fa-save me-2"></i>
+        {% if is_create %}영업 기회 등록{% else %}수정 저장{% endif %}
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

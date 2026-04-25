@@ -16,26 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.contrib.auth import views as auth_views # auth_views 임포트
-from django.shortcuts import redirect
+from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
-
-# 루트 URL을 대시보드로 리디렉션하는 뷰
-def home_redirect(request):
-    if request.user.is_authenticated:
-        return redirect('reporting:dashboard')
-    else:
-        return redirect('reporting:login')
+from django.views.generic import RedirectView
 
 urlpatterns = [
-    path('', home_redirect, name='home'),  # 루트 URL 추가
+    path('', RedirectView.as_view(pattern_name='reporting:dashboard', permanent=False)),  # 루트 → 대시보드로 리다이렉트
     path('admin/', admin.site.urls),
     path('reporting/', include('reporting.urls')),
     path('todos/', include('todos.urls')),  # TODOLIST 앱
     path('ai/', include('ai_chat.urls')),  # AI PainPoint 채팅
-    path('logout/', auth_views.LogoutView.as_view(), name='logout'), # logout URL 추가
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 ]
 
 # 개발 환경에서 미디어 파일 서빙

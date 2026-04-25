@@ -6,13 +6,12 @@ from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, OpportunityLabel, Quote
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST, require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
@@ -174,7 +173,8 @@ def validate_file_upload(file):
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS = [
         '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', 
-        '.txt', '.jpg', '.jpeg', '.png', '.gif', '.zip', '.rar'
+        '.txt', '.jpg', '.jpeg', '.png', '.gif', '.zip', '.rar',
+        '.hwp', '.hwpx',
     ]
     
     # 파일 크기 검사
@@ -555,7 +555,8 @@ class HistoryForm(forms.ModelForm):
     class Meta:
         model = History
         fields = ['followup', 'schedule', 'action_type', 'service_status', 'content', 'delivery_amount', 'delivery_items', 'delivery_date', 'meeting_date',
-                  'meeting_situation', 'meeting_researcher_quote', 'meeting_confirmed_facts', 'meeting_obstacles', 'meeting_next_action']
+                  'meeting_situation', 'meeting_researcher_quote', 'meeting_confirmed_facts', 'meeting_obstacles', 'meeting_next_action',
+                  'next_action', 'next_action_date']
         widgets = {
             'followup': forms.Select(attrs={'class': 'form-control'}),
             'schedule': forms.Select(attrs={'class': 'form-control'}),
@@ -571,6 +572,8 @@ class HistoryForm(forms.ModelForm):
             'meeting_confirmed_facts': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '미팅에서 직접 확인한 사실을 기록하세요', 'autocomplete': 'off'}),
             'meeting_obstacles': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '영업 진행에 장애물이나 반대 의견을 기록하세요', 'autocomplete': 'off'}),
             'meeting_next_action': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '미팅 이후 수행할 다음 액션을 기록하세요', 'autocomplete': 'off'}),
+            'next_action': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '이번 활동 이후 수행할 다음 액션을 기록하세요', 'autocomplete': 'off'}),
+            'next_action_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         }
         labels = {
             'followup': '관련 고객 정보',
@@ -587,6 +590,8 @@ class HistoryForm(forms.ModelForm):
             'meeting_confirmed_facts': '내가 확인한 사실',
             'meeting_obstacles': '장애물/반대',
             'meeting_next_action': '다음 액션',
+            'next_action': '다음 할 일',
+            'next_action_date': '다음 예정일',
         }
 
     def __init__(self, *args, **kwargs):
@@ -729,6 +734,11 @@ def followup_list_view(request):
     if grade_filter:
         followups = followups.filter(customer_grade=grade_filter)
     
+    # 파이프라인 단계 필터링
+    pipeline_stage_filter = request.GET.get('pipeline_stage', '')
+    if pipeline_stage_filter:
+        followups = followups.filter(pipeline_stage=pipeline_stage_filter)
+
     # 종합 점수(우선순위 레벨) 필터링
     level_filter = request.GET.get('level')
     if level_filter:
@@ -859,6 +869,8 @@ def followup_list_view(request):
         'priority_choices': priority_choices,
         'grade_choices': grade_choices,
         'level_choices': level_choices,
+        'pipeline_stage_filter': pipeline_stage_filter,
+        'pipeline_stage_choices': FollowUp.PIPELINE_STAGE_CHOICES,
         'companies': companies,
         'user_profile': user_profile,  # 사용자 프로필 추가
     }
@@ -978,6 +990,26 @@ def followup_detail_view(request, pk):
         except User.DoesNotExist:
             pass
     
+    # 연관 영업 기회 (OpportunityTracking)
+    from datetime import date as date_cls
+    opportunities = OpportunityTracking.objects.filter(
+        followup_id__in=same_department_followup_ids
+    ).select_related('followup', 'followup__company', 'followup__user').order_by(
+        'current_stage', '-created_at'
+    )
+
+    # 예정 일정 (오늘 이후, 최대 5개)
+    upcoming_schedules = Schedule.objects.filter(
+        followup_id__in=same_department_followup_ids,
+        status='scheduled',
+        visit_date__gte=date_cls.today()
+    ).select_related('followup', 'user', 'opportunity').order_by('visit_date', 'visit_time')[:5]
+
+    # 최근 견적 (최대 5개)
+    recent_quotes = Quote.objects.filter(
+        followup_id__in=same_department_followup_ids
+    ).select_related('user', 'schedule').order_by('-quote_date')[:5]
+
     # 페이지 제목 구성 (부서 중심)
     if department:
         page_title = f'{company.name if company else ""} - {department.name} 고객 상세'
@@ -1009,9 +1041,13 @@ def followup_detail_view(request, pk):
             'full_name': followup_owner.get_full_name() or followup_owner.username,
             'email': followup_owner.email,
         },
-        'page_title': page_title
+        'page_title': page_title,
+        'opportunities': opportunities,
+        'upcoming_schedules': upcoming_schedules,
+        'recent_quotes': recent_quotes,
     }
     return render(request, 'reporting/followup_detail.html', context)
+
 
 @login_required
 def followup_create_view(request):
@@ -1087,6 +1123,260 @@ def followup_delete_view(request, pk):
         'page_title': f'팔로우업 삭제 - {followup.customer_name or "고객명 미정"}'
     }
     return render(request, 'reporting/followup_delete.html', context)
+
+
+OPPORTUNITY_STAGE_CHOICES = [
+    ('lead', '리드'),
+    ('contact', '컨택'),
+    ('quote', '견적'),
+    ('closing', '클로징'),
+    ('won', '수주'),
+    ('quote_lost', '견적실패'),
+]
+
+
+class OpportunityForm(forms.ModelForm):
+    """영업 기회 생성/수정 폼"""
+
+    class Meta:
+        model = OpportunityTracking
+        fields = [
+            'title', 'label', 'current_stage',
+            'expected_revenue', 'probability', 'expected_close_date',
+            'lost_reason',
+        ]
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '예: 장비 A 구매, 소모품 정기 공급',
+                'autocomplete': 'off',
+            }),
+            'label': forms.Select(attrs={'class': 'form-select'}),
+            'current_stage': forms.Select(attrs={'class': 'form-select'}),
+            'expected_revenue': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'placeholder': '예상 매출 금액 (원)',
+                'min': '0',
+            }),
+            'probability': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '0',
+                'max': '100',
+                'placeholder': '0 ~ 100',
+            }),
+            'expected_close_date': forms.DateInput(attrs={
+                'class': 'form-control',
+                'type': 'date',
+            }),
+            'lost_reason': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': '실주 사유를 입력하세요 (선택사항)',
+            }),
+        }
+        labels = {
+            'title': '기회 제목',
+            'label': '라벨',
+            'current_stage': '영업 단계',
+            'expected_revenue': '예상 매출 (원)',
+            'probability': '수주 가능성 (%)',
+            'expected_close_date': '예상 계약일',
+            'lost_reason': '실주 사유',
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['label'].required = False
+        self.fields['lost_reason'].required = False
+        self.fields['expected_close_date'].required = False
+        self.fields['title'].required = False
+        # 사용자 소속 회사 라벨만 표시
+        if user:
+            try:
+                user_company = user.userprofile.company
+                self.fields['label'].queryset = OpportunityLabel.objects.filter(
+                    user_company=user_company, is_active=True
+                )
+            except Exception:
+                self.fields['label'].queryset = OpportunityLabel.objects.none()
+        else:
+            self.fields['label'].queryset = OpportunityLabel.objects.none()
+
+    def clean_probability(self):
+        prob = self.cleaned_data.get('probability')
+        if prob is not None and not (0 <= prob <= 100):
+            raise forms.ValidationError('수주 가능성은 0~100 사이의 값이어야 합니다.')
+        return prob
+
+
+@login_required
+def opportunity_create_view(request, followup_pk):
+    """영업 기회 생성 뷰"""
+    followup = get_object_or_404(FollowUp, pk=followup_pk)
+    if not can_access_followup(request.user, followup):
+        messages.error(request, '접근 권한이 없습니다.')
+        return redirect('reporting:followup_list')
+
+    if request.method == 'POST':
+        form = OpportunityForm(request.POST, user=request.user)
+        if form.is_valid():
+            opportunity = form.save(commit=False)
+            opportunity.followup = followup
+            opportunity.save()
+            messages.success(request, '영업 기회가 등록되었습니다.')
+            return redirect('reporting:opportunity_detail', pk=opportunity.pk)
+    else:
+        form = OpportunityForm(user=request.user)
+
+    context = {
+        'form': form,
+        'followup': followup,
+        'page_title': f'영업 기회 등록 — {followup.customer_name or "고객명 미정"}',
+        'is_create': True,
+        'stage_choices': OPPORTUNITY_STAGE_CHOICES,
+    }
+    return render(request, 'reporting/opportunity_form.html', context)
+
+
+@login_required
+def opportunity_edit_view(request, pk):
+    """영업 기회 수정 뷰"""
+    opportunity = get_object_or_404(
+        OpportunityTracking.objects.select_related('followup'),
+        pk=pk,
+    )
+    if not can_access_followup(request.user, opportunity.followup):
+        messages.error(request, '접근 권한이 없습니다.')
+        return redirect('reporting:opportunity_list')
+
+    if request.method == 'POST':
+        form = OpportunityForm(request.POST, instance=opportunity, user=request.user)
+        if form.is_valid():
+            updated = form.save(commit=False)
+            # current_stage 변경 시 이력 기록
+            if updated.current_stage != opportunity.current_stage:
+                updated.update_stage(updated.current_stage)
+            else:
+                updated.save()
+            messages.success(request, '영업 기회가 수정되었습니다.')
+            return redirect('reporting:opportunity_detail', pk=opportunity.pk)
+    else:
+        form = OpportunityForm(instance=opportunity, user=request.user)
+
+    context = {
+        'form': form,
+        'followup': opportunity.followup,
+        'opportunity': opportunity,
+        'page_title': f'영업 기회 수정 — {opportunity.title or "(제목 없음)"}',
+        'is_create': False,
+        'stage_choices': OPPORTUNITY_STAGE_CHOICES,
+    }
+    return render(request, 'reporting/opportunity_form.html', context)
+
+
+@login_required
+def opportunity_list_view(request):
+    """영업 기회 목록 (자신 담당 고객 기준, 매니저는 팀 전체)"""
+    from datetime import date as date_cls
+    user_profile = get_user_profile(request.user)
+    accessible_users = get_accessible_users(request.user, request)
+
+    opportunities = OpportunityTracking.objects.filter(
+        followup__user__in=accessible_users
+    ).select_related(
+        'followup', 'followup__company', 'followup__department', 'followup__user'
+    ).order_by('-updated_at')
+
+    # 단계 필터
+    stage_filter = request.GET.get('stage', '')
+    if stage_filter:
+        opportunities = opportunities.filter(current_stage=stage_filter)
+
+    # 예상 계약일 필터
+    close_filter = request.GET.get('close', '')
+    today = date_cls.today()
+    if close_filter == 'this_month':
+        opportunities = opportunities.filter(
+            expected_close_date__year=today.year,
+            expected_close_date__month=today.month
+        )
+    elif close_filter == 'overdue':
+        opportunities = opportunities.filter(
+            expected_close_date__lt=today,
+            current_stage__in=['lead', 'contact', 'quote', 'closing']
+        )
+
+    # 통계
+    stats = opportunities.aggregate(
+        total=Count('id'),
+        total_expected=Sum('expected_revenue'),
+        total_weighted=Sum('weighted_revenue'),
+    )
+
+    # 단계별 개수 (필터 전 전체 기준)
+    all_opps = OpportunityTracking.objects.filter(followup__user__in=accessible_users)
+    stage_counts = {}
+    for value, _label in OPPORTUNITY_STAGE_CHOICES:
+        stage_counts[value] = all_opps.filter(current_stage=value).count()
+
+    paginator = Paginator(opportunities, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    context = {
+        'opportunities': page_obj,
+        'stage_filter': stage_filter,
+        'close_filter': close_filter,
+        'stage_choices': OPPORTUNITY_STAGE_CHOICES,
+        'stats': stats,
+        'stage_counts': stage_counts,
+        'today': today,
+        'page_title': '영업 기회 목록',
+        'user_profile': user_profile,
+    }
+    return render(request, 'reporting/opportunity_list.html', context)
+
+
+@login_required
+def opportunity_detail_view(request, pk):
+    """영업 기회 상세 (조회 전용)"""
+    opportunity = get_object_or_404(
+        OpportunityTracking.objects.select_related(
+            'followup', 'followup__company', 'followup__department', 'followup__user'
+        ),
+        pk=pk
+    )
+    # 권한 체크: 고객 접근 가능 여부로 판단
+    if not can_access_followup(request.user, opportunity.followup):
+        messages.error(request, '접근 권한이 없습니다.')
+        return redirect('reporting:opportunity_list')
+
+    # 연관 일정 (최신 10개)
+    related_schedules = Schedule.objects.filter(
+        opportunity=opportunity
+    ).select_related('followup', 'user').order_by('-visit_date', '-visit_time')[:10]
+
+    # 연관 견적 (최신 5개)
+    related_quotes = Quote.objects.filter(
+        followup=opportunity.followup
+    ).select_related('user', 'schedule').order_by('-quote_date')[:5]
+
+    # 연관 히스토리 (최신 5개)
+    related_histories = History.objects.filter(
+        followup=opportunity.followup,
+        parent_history__isnull=True
+    ).select_related('user').order_by('-created_at')[:5]
+
+    context = {
+        'opportunity': opportunity,
+        'followup': opportunity.followup,
+        'related_schedules': related_schedules,
+        'related_quotes': related_quotes,
+        'related_histories': related_histories,
+        'stage_choices': OPPORTUNITY_STAGE_CHOICES,
+        'page_title': f'영업 기회 - {opportunity}',
+    }
+    return render(request, 'reporting/opportunity_detail.html', context)
+
 
 @login_required
 @never_cache
@@ -1381,7 +1671,29 @@ def dashboard_view(request):
         visit_date=today,
         status='scheduled'
     ).order_by('visit_time')[:5]
-    
+
+    # 오늘 완료된 일정 중 히스토리 미작성 건수 (담당자용)
+    from django.db.models import Exists, OuterRef
+    today_unwritten_count = schedules.filter(
+        visit_date=today,
+        status='completed',
+    ).exclude(
+        Exists(History.objects.filter(schedule_id=OuterRef('pk'), parent_history__isnull=True))
+    ).count()
+
+    # 관리자용: 최근 30일 미검토 보고서 수
+    pending_review_count = 0
+    if user_profile.can_view_all_users():
+        thirty_days_ago = now - timedelta(days=30)
+        review_users = get_accessible_users(request.user, request)
+        pending_review_count = History.objects.filter(
+            user__in=review_users,
+            action_type__in=['customer_meeting', 'delivery_schedule', 'quote', 'service'],
+            parent_history__isnull=True,
+            reviewed_at__isnull=True,
+            created_at__gte=thirty_days_ago,
+        ).count()
+
     # 최근 고객 (최근 7일)
     week_ago = now - timedelta(days=7)
     recent_customers = followups.filter(
@@ -1889,7 +2201,28 @@ def dashboard_view(request):
     context['current_month'] = current_month  # 현재 월
     context['month_start'] = month_start.date()  # 이번 달 시작일
     context['month_end'] = month_last_date.date()  # 이번 달 마지막 날 (URL 표시용)
-    
+    context['today_unwritten_count'] = today_unwritten_count  # 오늘 미작성 보고서 수
+    context['pending_review_count'] = pending_review_count  # 관리자용 미검토 보고서 수
+    context['today'] = today  # 오늘 날짜 (템플릿 URL 생성용)
+
+    # Phase 4: 최근 영업 활동 (메모 제외, 최신 8개)
+    recent_histories = histories.filter(
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule'
+    ).order_by('-created_at')[:8]
+    context['recent_histories'] = recent_histories
+
+    # Phase 4: 지연된 후속 조치 (next_action_date가 오늘 이전, 최대 5개)
+    overdue_next_actions = histories.filter(
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company'
+    ).order_by('next_action_date')[:5]
+    context['overdue_next_actions'] = overdue_next_actions
+
     return render(request, 'reporting/dashboard.html', context)
 
 # ============ 일정(Schedule) 관련 뷰들 ============
@@ -3135,7 +3468,17 @@ def history_list_view(request):
     followup_filter = request.GET.get('followup')
     if followup_filter:
         histories = histories.filter(followup_id=followup_filter)
-    
+
+    # Phase 4: 업체 필터링
+    company_filter = request.GET.get('company_filter', '')
+    if company_filter:
+        histories = histories.filter(followup__company_id=company_filter)
+
+    # Phase 4: 접근 가능한 업체 목록 (검색 폼용)
+    accessible_companies = Company.objects.filter(
+        followup_companies__user__in=filter_users
+    ).distinct().order_by('name')
+
     # 활동 유형별 카운트 계산
     base_queryset_for_counts = histories
     total_count = base_queryset_for_counts.count()
@@ -3206,7 +3549,37 @@ def history_list_view(request):
                 ).filter(filter_month__in=selected_months)
         except (ValueError, TypeError):
             pass
-    
+
+    # 날짜 범위 필터
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str = request.GET.get('date_to', '')
+    if date_from_str:
+        try:
+            from datetime import datetime as dt
+            date_from_val = dt.strptime(date_from_str, '%Y-%m-%d').date()
+            histories = histories.filter(created_at__date__gte=date_from_val)
+        except ValueError:
+            date_from_str = ''
+    if date_to_str:
+        try:
+            from datetime import datetime as dt
+            date_to_val = dt.strptime(date_to_str, '%Y-%m-%d').date()
+            histories = histories.filter(created_at__date__lte=date_to_val)
+        except ValueError:
+            date_to_str = ''
+
+    # 미검토 필터 (관리자/매니저용)
+    review_filter = request.GET.get('review_filter', '')
+    unreviewed_count = 0
+    if user_profile and user_profile.can_view_all_users():
+        unreviewed_count = histories.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule', 'quote', 'service'],
+            parent_history__isnull=True,
+            reviewed_at__isnull=True,
+        ).count()
+        if review_filter == 'unreviewed':
+            histories = histories.filter(reviewed_at__isnull=True)
+
     # 정렬 (일정이 있는 경우 일정 날짜 기준, 개인 일정이 있는 경우 개인 일정 날짜 기준, 없는 경우 작성일 기준으로 최신순)
     from django.db.models import Case, When, F
     histories = histories.annotate(
@@ -3264,13 +3637,23 @@ def history_list_view(request):
         'company_users': company_users,
         'selected_filter_user': selected_filter_user,
         'is_viewing_others': is_viewing_others,
+        # 날짜 범위 / 미검토 필터
+        'date_from': date_from_str,
+        'date_to': date_to_str,
+        'review_filter': review_filter,
+        'unreviewed_count': unreviewed_count,
+        # Phase 4: 업체 필터
+        'company_filter': company_filter,
+        'accessible_companies': accessible_companies,
     }
     return render(request, 'reporting/history_list.html', context)
 
 @login_required
 def history_detail_view(request, pk):
     """히스토리 상세 보기 (Manager 권한 포함)"""
+    from django.utils import timezone
     history = get_object_or_404(History, pk=pk)
+    today = timezone.now().date()
     
     # 권한 체크 (Manager도 Salesman 데이터 접근 가능)
     if not can_access_user_data(request.user, history.user):
@@ -3325,7 +3708,8 @@ def history_detail_view(request, pk):
         'can_add_memo': user_profile.is_manager(),
         'can_modify': can_modify_user_data(request.user, history.user),  # 수정/삭제 권한 (관리자 포함)
         'is_owner': is_owner,  # 본인 데이터 여부
-        'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}'
+        'page_title': f'활동 상세 - {history.followup.customer_name if history.followup else "일반 메모"}',
+        'today': today,  # Phase 4: 다음 액션 만료 여부 표시용
     }
     return render(request, 'reporting/history_detail.html', context)
 
@@ -3517,6 +3901,34 @@ def history_delete_view(request, pk):
         'page_title': f'활동 삭제 - {history.followup.customer_name or "고객명 미정" if history.followup else "일반 메모"}'
     }
     return render(request, 'reporting/history_delete.html', context)
+
+@login_required
+@require_POST
+def history_toggle_reviewed(request, pk):
+    """보고서 관리자 검토 완료 토글 (관리자/매니저만)"""
+    history = get_object_or_404(History, pk=pk)
+    user_profile = get_user_profile(request.user)
+    if not user_profile.can_view_all_users():
+        return JsonResponse({'success': False, 'error': '검토 권한이 없습니다.'}, status=403)
+    if not can_access_user_data(request.user, history.user):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    from django.utils import timezone as tz
+    if history.reviewed_at:
+        history.reviewed_at = None
+        history.reviewer = None
+        is_reviewed = False
+    else:
+        history.reviewed_at = tz.now()
+        history.reviewer = request.user
+        is_reviewed = True
+    history.save(update_fields=['reviewed_at', 'reviewer'])
+    return JsonResponse({
+        'success': True,
+        'is_reviewed': is_reviewed,
+        'reviewed_at': history.reviewed_at.strftime('%Y년 %m월 %d일 %H:%M') if is_reviewed else None,
+        'reviewer': request.user.get_full_name() or request.user.username if is_reviewed else None,
+    })
+
 
 @login_required
 def history_by_followup_view(request, followup_pk):
@@ -5421,29 +5833,21 @@ def history_create_from_schedule(request, schedule_id):
                     
                 history.save()
                 
-                # 파일 업로드 처리
+                # 파일 업로드 처리 (공통 validate_file_upload 사용)
                 uploaded_files = request.FILES.getlist('files')
                 for uploaded_file in uploaded_files:
-                    if uploaded_file:  # 빈 파일 체크
-                        # 파일 크기 제한 (10MB)
-                        max_size = 10 * 1024 * 1024  # 10MB
-                        if uploaded_file.size > max_size:
-                            continue  # 큰 파일은 건너뛰기
-                        
-                        # 파일 확장자 검증
-                        allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.hwp']
-                        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-                        if file_extension not in allowed_extensions:
-                            continue  # 허용되지 않은 확장자는 건너뛰기
-                        
-                        # HistoryFile 생성
-                        HistoryFile.objects.create(
-                            history=history,
-                            file=uploaded_file,
-                            original_filename=uploaded_file.name,
-                            file_size=uploaded_file.size,
-                            uploaded_by=request.user
-                        )
+                    if not uploaded_file:
+                        continue
+                    is_valid, _ = validate_file_upload(uploaded_file)
+                    if not is_valid:
+                        continue  # 검증 실패 파일은 건너뛰기
+                    HistoryFile.objects.create(
+                        history=history,
+                        file=uploaded_file,
+                        original_filename=uploaded_file.name,
+                        file_size=uploaded_file.size,
+                        uploaded_by=request.user
+                    )
                 
                 if is_ajax:
                     # AJAX 요청인 경우 JSON 응답
@@ -5905,7 +6309,6 @@ def schedule_activity_type(request):
     return JsonResponse({'success': False, 'error': '일정 ID가 필요합니다.'})
 
 @login_required
-@csrf_exempt
 @require_POST
 def company_create_api(request):
     """새 업체/학교 생성 API"""
@@ -5938,7 +6341,6 @@ def company_create_api(request):
         return JsonResponse({'error': f'업체/학교 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
 
 @login_required
-@csrf_exempt
 @require_POST
 def department_create_api(request):
     """새 부서/연구실 생성 API"""
@@ -6813,7 +7215,6 @@ def memo_create_view(request):
 
 @login_required
 @require_POST
-@csrf_exempt
 def history_update_tax_invoice(request, pk):
     """세금계산서 발행 상태 업데이트"""
     try:
@@ -6881,7 +7282,6 @@ def history_update_tax_invoice(request, pk):
 
 @login_required
 @require_POST
-@csrf_exempt
 def history_update_memo(request, pk):
     """AJAX 요청으로 메모 내용 업데이트"""
     import json
@@ -8283,7 +8683,6 @@ def customer_detail_report_view(request, followup_id):
     return render(request, 'reporting/customer_detail_report.html', context)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 @login_required
 def toggle_schedule_delivery_tax_invoice(request, schedule_id):
@@ -8396,7 +8795,6 @@ def toggle_history_delivery_tax_invoice(request, history_id):
         })
 
 
-@csrf_exempt
 @require_http_methods(["DELETE"])
 @login_required
 def delete_manager_memo_api(request, history_id):
@@ -8449,7 +8847,6 @@ def delete_manager_memo_api(request, history_id):
         }, status=500)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 @login_required
 def add_manager_memo_to_history_api(request, history_id):
@@ -8519,7 +8916,6 @@ def add_manager_memo_to_history_api(request, history_id):
             'error': '메모 추가 중 오류가 발생했습니다.'
         }, status=500)
 
-@csrf_exempt
 @require_http_methods(["POST"])
 @login_required
 def customer_priority_update(request, followup_id):
@@ -9343,7 +9739,6 @@ def department_list_ajax(request, company_id):
 @login_required
 @role_required(['admin', 'salesman'])
 @require_POST
-@csrf_exempt
 def update_tax_invoice_status(request):
     """세금계산서 상태 업데이트 API"""
     try:
@@ -9670,7 +10065,6 @@ def api_users_list(request):
 
 @role_required(['admin'])
 @require_http_methods(["POST"])
-@csrf_exempt
 def api_change_company_creator(request):
     """업체 생성자 변경 API (Admin 전용)"""
     import logging

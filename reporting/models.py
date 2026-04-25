@@ -637,6 +637,16 @@ class History(models.Model):
                                    help_text="매니저가 작성한 메모인 경우 매니저 정보가 저장됩니다")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="활동 시간")
 
+    # 다음 할 일 (영업보고 후속 액션)
+    next_action = models.TextField(blank=True, null=True, verbose_name="다음 할 일",
+                                   help_text="이번 활동 이후 수행할 다음 액션을 기록하세요")
+    next_action_date = models.DateField(blank=True, null=True, verbose_name="다음 예정일",
+                                        help_text="다음 액션 예정일을 선택하세요")
+    # 관리자 검토
+    reviewed_at = models.DateTimeField(blank=True, null=True, verbose_name="관리자 검토 완료 시각")
+    reviewer = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True,
+                                 related_name='reviewed_histories', verbose_name="검토 관리자")
+
     def __str__(self):
         followup_name = self.followup.customer_name if self.followup else "일반 메모"
         return f"{followup_name} - {self.get_action_type_display()} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"

@@ -1,0 +1,331 @@
+{% extends "reporting/base.html" %}
+{% load humanize %}
+{% block title %}{{ opportunity }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <!-- 헤더 -->
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">
+        <i class="fas fa-chart-line me-2"></i>{{ opportunity.title|default:"(제목 없음)" }}
+        <span class="badge ms-2
+          {% if opportunity.current_stage == 'won' %}bg-success
+          {% elif opportunity.current_stage == 'quote_lost' %}bg-danger
+          {% elif opportunity.current_stage == 'closing' %}bg-primary
+          {% elif opportunity.current_stage == 'quote' %}bg-info
+          {% elif opportunity.current_stage == 'contact' %}bg-warning text-dark
+          {% else %}bg-secondary{% endif %}
+          " style="font-size: 0.6em; vertical-align: middle;">
+          {{ opportunity.get_current_stage_display }}
+        </span>
+      </h2>
+      <p class="text-muted mb-0">
+        <a href="{% url 'reporting:followup_detail' followup.pk %}" class="text-decoration-none">
+          <i class="fas fa-user me-1"></i>{{ followup.customer_name|default:"고객명 미정" }}
+        </a>
+        {% if followup.company %}
+          <span class="text-muted mx-1">·</span>{{ followup.company.name }}
+        {% endif %}
+        {% if followup.department %}
+          <span class="text-muted mx-1">·</span>{{ followup.department.name }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'reporting:followup_detail' followup.pk %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>고객 상세
+      </a>
+      <a href="{% url 'reporting:opportunity_edit' opportunity.pk %}" class="btn btn-warning btn-sm">
+        <i class="fas fa-edit me-1"></i>편집
+      </a>
+      <a href="{% url 'reporting:opportunity_list' %}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-list me-1"></i>영업 기회 목록
+      </a>
+    </div>
+  </div>
+
+  <!-- 단계 진행 표시 -->
+  <div class="card mb-4">
+    <div class="card-body py-3">
+      <div class="d-flex align-items-center justify-content-between flex-wrap" style="gap: 4px;">
+        {% for value, label in stage_choices %}
+        {% if value != 'quote_lost' %}
+        <div class="text-center flex-fill" style="min-width: 80px;">
+          <div class="rounded-circle mx-auto mb-1 d-flex align-items-center justify-content-center
+            {% if opportunity.current_stage == value %}
+              {% if value == 'won' %}bg-success{% else %}bg-primary{% endif %} text-white
+            {% else %}
+              {% for hist in opportunity.stage_history %}{% if hist.stage == value %}bg-success text-white{% endif %}{% endfor %}
+            {% endif %}"
+            style="width: 36px; height: 36px; border: 2px solid
+              {% if opportunity.current_stage == value %}var(--bs-primary)
+              {% else %}#dee2e6{% endif %};">
+            {% if opportunity.current_stage == value %}
+            <i class="fas fa-circle" style="font-size: 10px;"></i>
+            {% else %}
+            <i class="fas fa-check" style="font-size: 10px; opacity: 0.4;"></i>
+            {% endif %}
+          </div>
+          <small class="{% if opportunity.current_stage == value %}fw-bold{% else %}text-muted{% endif %}" style="font-size: 0.75em;">
+            {{ label }}
+          </small>
+        </div>
+        {% if not forloop.last and value != 'closing' %}
+        <div class="flex-fill" style="height: 2px; background: #dee2e6; min-width: 20px; max-width: 40px; margin-bottom: 20px;"></div>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 핵심 수치 카드 -->
+  <div class="row mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">예상 매출</div>
+          <div class="fw-bold">
+            {% if opportunity.expected_revenue %}
+            {{ opportunity.expected_revenue|floatformat:0|intcomma }}원
+            {% else %}-{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">가중 매출</div>
+          <div class="fw-bold">
+            {% if opportunity.weighted_revenue %}
+            {{ opportunity.weighted_revenue|floatformat:0|intcomma }}원
+            {% else %}-{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">성공 확률</div>
+          <div class="fw-bold">{{ opportunity.probability }}%</div>
+          <div class="progress mt-1" style="height: 4px;">
+            <div class="progress-bar
+              {% if opportunity.probability >= 70 %}bg-success
+              {% elif opportunity.probability >= 40 %}bg-warning
+              {% else %}bg-danger{% endif %}"
+              style="width: {{ opportunity.probability }}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body py-3">
+          <div class="text-muted small mb-1">예상 계약일</div>
+          <div class="fw-bold">{{ opportunity.expected_close_date|date:"Y-m-d"|default:"-" }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 실주 사유 (실주인 경우) -->
+  {% if opportunity.current_stage == 'quote_lost' and opportunity.lost_reason %}
+  <div class="alert alert-danger mb-4">
+    <strong><i class="fas fa-times-circle me-2"></i>실주 사유:</strong> {{ opportunity.lost_reason }}
+  </div>
+  {% endif %}
+
+  <div class="row">
+    <!-- 왼쪽 컬럼 -->
+    <div class="col-lg-6">
+      <!-- 연관 일정 -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0"><i class="fas fa-calendar me-2"></i>연관 일정</h5>
+        </div>
+        {% if related_schedules %}
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th>유형</th>
+                  <th>담당자</th>
+                  <th>상태</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for schedule in related_schedules %}
+                <tr>
+                  <td>{{ schedule.visit_date|date:"Y-m-d" }}</td>
+                  <td>{{ schedule.get_activity_type_display }}</td>
+                  <td>{{ schedule.user.username }}</td>
+                  <td>
+                    <span class="badge
+                      {% if schedule.status == 'completed' %}bg-success
+                      {% elif schedule.status == 'cancelled' %}bg-danger
+                      {% else %}bg-primary{% endif %}">
+                      {{ schedule.get_status_display }}
+                    </span>
+                  </td>
+                  <td>
+                    <a href="{% url 'reporting:schedule_detail' schedule.pk %}" class="btn btn-sm btn-outline-secondary">
+                      <i class="fas fa-eye"></i>
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-4">
+          <i class="fas fa-calendar-times fa-2x mb-2"></i>
+          <p class="mb-0">연관 일정이 없습니다.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 연관 견적 -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>연관 견적</h5>
+        </div>
+        {% if related_quotes %}
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>견적번호</th>
+                  <th>상태</th>
+                  <th>금액</th>
+                  <th>견적일</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for quote in related_quotes %}
+                <tr>
+                  <td><code>{{ quote.quote_number }}</code></td>
+                  <td>
+                    <span class="badge
+                      {% if quote.stage == 'approved' or quote.stage == 'converted' %}bg-success
+                      {% elif quote.stage == 'rejected' or quote.stage == 'expired' %}bg-danger
+                      {% elif quote.stage == 'sent' %}bg-info
+                      {% elif quote.stage == 'negotiation' %}bg-warning text-dark
+                      {% else %}bg-secondary{% endif %}">
+                      {{ quote.get_stage_display }}
+                    </span>
+                  </td>
+                  <td>{% if quote.total_amount %}{{ quote.total_amount|floatformat:0|intcomma }}원{% else %}-{% endif %}</td>
+                  <td>{{ quote.quote_date|date:"Y-m-d"|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-4">
+          <i class="fas fa-file-times fa-2x mb-2"></i>
+          <p class="mb-0">연관 견적이 없습니다.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 오른쪽 컬럼 -->
+    <div class="col-lg-6">
+      <!-- 최근 활동 히스토리 -->
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0"><i class="fas fa-history me-2"></i>최근 활동</h5>
+          <a href="{% url 'reporting:followup_detail' followup.pk %}" class="btn btn-sm btn-outline-secondary">
+            전체 보기
+          </a>
+        </div>
+        {% if related_histories %}
+        <div class="list-group list-group-flush">
+          {% for history in related_histories %}
+          <a href="{% url 'reporting:history_detail' history.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-bold small">{{ history.get_action_type_display }}</div>
+                {% if history.content %}
+                <div class="text-muted small text-truncate" style="max-width: 280px;">{{ history.content }}</div>
+                {% endif %}
+              </div>
+              <small class="text-muted text-nowrap ms-2">{{ history.created_at|date:"m/d" }}</small>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-4">
+          <i class="fas fa-history fa-2x mb-2"></i>
+          <p class="mb-0">활동 기록이 없습니다.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 단계 이력 -->
+      {% if opportunity.stage_history %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0"><i class="fas fa-stream me-2"></i>단계 이력</h5>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for hist in opportunity.stage_history %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="badge
+                {% if hist.stage == 'won' %}bg-success
+                {% elif hist.stage == 'quote_lost' %}bg-danger
+                {% elif hist.stage == 'closing' %}bg-primary
+                {% elif hist.stage == 'quote' %}bg-info
+                {% elif hist.stage == 'contact' %}bg-warning text-dark
+                {% else %}bg-secondary{% endif %}">
+                {{ hist.stage }}
+              </span>
+              <small class="text-muted">{{ hist.entered_at|slice:":10" }}</small>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- 기본 정보 -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0"><i class="fas fa-info-circle me-2"></i>기본 정보</h5>
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-5 text-muted small">담당자</dt>
+            <dd class="col-7 small">{{ followup.user.get_full_name|default:followup.user.username }}</dd>
+            {% if opportunity.label %}
+            <dt class="col-5 text-muted small">라벨</dt>
+            <dd class="col-7 small">{{ opportunity.label }}</dd>
+            {% endif %}
+            <dt class="col-5 text-muted small">생성일</dt>
+            <dd class="col-7 small">{{ opportunity.created_at|date:"Y-m-d" }}</dd>
+            <dt class="col-5 text-muted small">수정일</dt>
+            <dd class="col-7 small">{{ opportunity.updated_at|date:"Y-m-d" }}</dd>
+            {% if opportunity.won_date %}
+            <dt class="col-5 text-muted small">수주일</dt>
+            <dd class="col-7 small">{{ opportunity.won_date|date:"Y-m-d" }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

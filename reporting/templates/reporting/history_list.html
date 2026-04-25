@@ -316,11 +316,19 @@ a.text-decoration-none {
                   <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
                 </a>
                 <a
-                  href="{% url 'reporting:history_list' %}?action_type=personal_schedule&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
+                  href="{% url 'reporting:history_list' %}?action_type=personal_schedule&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
                   class="btn {% if action_type_filter == 'personal_schedule' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
                 >
                   <i class="fas fa-calendar-day me-1"></i>개인 일정 ({{ personal_schedule_count|default:0 }})
                 </a>
+                {% if unreviewed_count > 0 %}
+                <a
+                  href="{% url 'reporting:history_list' %}?review_filter=unreviewed&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                  class="btn {% if review_filter == 'unreviewed' %}btn-danger{% else %}btn-outline-danger{% endif %}"
+                >
+                  <i class="fas fa-clipboard-list me-1"></i>미검토 ({{ unreviewed_count }})
+                </a>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -364,7 +372,43 @@ a.text-decoration-none {
                       </a>
                     </div>
                   </div>
+
+                  <!-- 날짜 범위 -->
+                  <div class="col-md-6">
+                    <div class="row g-2">
+                      <div class="col-6">
+                        <label for="date_from" class="form-label">시작일</label>
+                        <input type="date" class="form-control" id="date_from" name="date_from" value="{{ date_from }}">
+                      </div>
+                      <div class="col-6">
+                        <label for="date_to" class="form-label">종료일</label>
+                        <input type="date" class="form-control" id="date_to" name="date_to" value="{{ date_to }}">
+                      </div>
+                    </div>
+                  </div>
                 </div>
+
+                <!-- Phase 4: 업체 필터 -->
+                {% if accessible_companies %}
+                <div class="row g-2 mt-1">
+                  <div class="col-md-5">
+                    <label class="form-label">업체 필터</label>
+                    <select name="company_filter" class="form-select form-select-sm">
+                      <option value="">전체 업체</option>
+                      {% for company in accessible_companies %}
+                      <option value="{{ company.pk }}" {% if company_filter == company.pk|stringformat:"s" %}selected{% endif %}>
+                        {{ company.name }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-auto d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                      <i class="fas fa-filter me-1"></i>필터 적용
+                    </button>
+                  </div>
+                </div>
+                {% endif %}
                 
                 <!-- 현재 필터 유지 -->
                 {% if action_type_filter %}
@@ -430,6 +474,15 @@ a.text-decoration-none {
                         {% if is_viewing_others and history.user != request.user %}
                         <span class="badge bg-warning text-dark ms-2" style="font-size: 0.8em;">
                           <i class="fas fa-user me-1"></i>{{ history.user.username }}
+                        </span>
+                        {% endif %}
+                        {% if history.reviewed_at %}
+                        <span class="badge bg-success ms-1" style="font-size: 0.75em;" title="{{ history.reviewer.username|default:'' }} 검토완료">
+                          <i class="fas fa-check-circle"></i>
+                        </span>
+                        {% elif unreviewed_count > 0 and history.action_type in 'customer_meeting,delivery_schedule,quote,service' and not history.personal_schedule %}
+                        <span class="badge bg-secondary ms-1" style="font-size: 0.75em;" title="미검토">
+                          <i class="fas fa-clock"></i>
                         </span>
                         {% endif %}
                       </h6>

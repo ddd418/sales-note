@@ -302,6 +302,172 @@
     </div>
   </div>
 
+  <!-- 영업 기회 섹션 -->
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-chart-line me-2"></i>영업 기회
+            <span class="badge bg-secondary ms-2">{{ opportunities.count }}</span>
+          </h5>
+          <div class="d-flex gap-2">
+            <a href="{% url 'reporting:opportunity_create' followup.pk %}" class="btn btn-sm btn-success">
+              <i class="fas fa-plus me-1"></i>기회 등록
+            </a>
+            <a href="{% url 'reporting:opportunity_list' %}" class="btn btn-sm btn-outline-primary">
+              <i class="fas fa-list me-1"></i>전체 목록
+            </a>
+          </div>
+        </div>
+        {% if opportunities %}
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>제목</th>
+                  <th>단계</th>
+                  <th>예상 매출</th>
+                  <th>확률</th>
+                  <th>예상 계약일</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for opp in opportunities %}
+                <tr>
+                  <td>{{ opp.title|default:"(제목 없음)" }}</td>
+                  <td>
+                    <span class="badge
+                      {% if opp.current_stage == 'won' %}bg-success
+                      {% elif opp.current_stage == 'quote_lost' %}bg-danger
+                      {% elif opp.current_stage == 'closing' %}bg-primary
+                      {% elif opp.current_stage == 'quote' %}bg-info
+                      {% elif opp.current_stage == 'contact' %}bg-warning text-dark
+                      {% else %}bg-secondary{% endif %}">
+                      {{ opp.get_current_stage_display }}
+                    </span>
+                  </td>
+                  <td>{% if opp.expected_revenue %}{{ opp.expected_revenue|floatformat:0 }}원{% else %}-{% endif %}</td>
+                  <td>{{ opp.probability }}%</td>
+                  <td>{{ opp.expected_close_date|date:"Y-m-d"|default:"-" }}</td>
+                  <td>
+                    <div class="d-flex gap-1">
+                      <a href="{% url 'reporting:opportunity_detail' opp.pk %}" class="btn btn-sm btn-outline-primary" title="상세보기">
+                        <i class="fas fa-eye"></i>
+                      </a>
+                      <a href="{% url 'reporting:opportunity_edit' opp.pk %}" class="btn btn-sm btn-outline-secondary" title="수정">
+                        <i class="fas fa-edit"></i>
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% else %}
+        <div class="card-body text-center py-4">
+          <i class="fas fa-chart-line fa-2x text-muted mb-2"></i>
+          <p class="text-muted mb-2">아직 등록된 영업 기회가 없습니다.</p>
+          <a href="{% url 'reporting:opportunity_create' followup.pk %}" class="btn btn-success btn-sm">
+            <i class="fas fa-plus me-1"></i>첫 번째 기회 등록하기
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 예정 일정 섹션 -->
+  {% if upcoming_schedules %}
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card border-info">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-calendar-check me-2 text-info"></i>예정 일정
+          </h5>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for schedule in upcoming_schedules %}
+          <a href="{% url 'reporting:schedule_detail' schedule.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <span class="badge bg-info text-dark me-2">{{ schedule.visit_date|date:"m월 d일" }}</span>
+                {{ schedule.get_activity_type_display }} — {{ schedule.followup.customer_name|default:"고객명 미정" }}
+                {% if schedule.location %}<small class="text-muted ms-1">({{ schedule.location }})</small>{% endif %}
+              </div>
+              <small class="text-muted">{{ schedule.user.username }}</small>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 최근 견적 섹션 -->
+  {% if recent_quotes %}
+  <div class="row mt-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="fas fa-file-invoice-dollar me-2"></i>최근 견적
+          </h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>견적번호</th>
+                  <th>상태</th>
+                  <th>금액</th>
+                  <th>견적일</th>
+                  <th>유효기한</th>
+                  <th>일정</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for quote in recent_quotes %}
+                <tr>
+                  <td><code>{{ quote.quote_number }}</code></td>
+                  <td>
+                    <span class="badge
+                      {% if quote.stage == 'approved' or quote.stage == 'converted' %}bg-success
+                      {% elif quote.stage == 'rejected' or quote.stage == 'expired' %}bg-danger
+                      {% elif quote.stage == 'sent' %}bg-info
+                      {% elif quote.stage == 'negotiation' %}bg-warning text-dark
+                      {% else %}bg-secondary{% endif %}">
+                      {{ quote.get_stage_display }}
+                    </span>
+                  </td>
+                  <td>{% if quote.total_amount %}{{ quote.total_amount|floatformat:0 }}원{% else %}-{% endif %}</td>
+                  <td>{{ quote.quote_date|date:"Y-m-d"|default:"-" }}</td>
+                  <td>{{ quote.valid_until|date:"Y-m-d"|default:"-" }}</td>
+                  <td>
+                    {% if quote.schedule %}
+                    <a href="{% url 'reporting:schedule_detail' quote.schedule.pk %}" class="btn btn-sm btn-outline-secondary">
+                      <i class="fas fa-calendar"></i>
+                    </a>
+                    {% else %}-{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- 데이터 필터 섹션 -->
   <div class="row mt-4">
     <div class="col-12">
@@ -553,12 +719,15 @@
               {% else %}<span class="badge bg-primary ms-2">나</span>{% endif %}
             </h5>
             <div>
+              <a href="{% url 'reporting:history_list' %}?followup={{ followup.pk }}" class="btn btn-outline-info btn-sm me-1">
+                <i class="fas fa-list me-1"></i>전체 이력
+              </a>
               {% if is_owner %}
               <a
                 href="{% url 'reporting:memo_create' %}?followup={{ followup.pk }}"
-                class="btn btn-outline-secondary btn-sm"
+                class="btn btn-success btn-sm"
               >
-                <i class="fas fa-sticky-note me-1"></i>메모 추가
+                <i class="fas fa-pen me-1"></i>영업 기록 작성
               </a>
               {% endif %}
             </div>

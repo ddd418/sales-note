@@ -3,6 +3,73 @@
 
 {% block title %}{{ page_title }}{% endblock %}
 
+{% block extra_css %}
+<style>
+  .card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+  }
+  .card-header {
+    background: var(--surface-hover) !important;
+    border-bottom-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  .card-header h4 {
+    color: var(--text-primary) !important;
+  }
+  .card-body {
+    background: var(--surface) !important;
+  }
+  .form-label {
+    color: var(--text-primary) !important;
+    font-weight: 600;
+  }
+  .form-control,
+  .form-select {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  .form-control::placeholder {
+    color: var(--text-muted) !important;
+  }
+  .form-control:focus,
+  .form-select:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 0.2rem hsla(217, 91%, 60%, 0.25) !important;
+    background: var(--surface) !important;
+    color: var(--text-primary) !important;
+  }
+  .form-text, small.text-muted {
+    color: var(--text-muted) !important;
+  }
+  .form-check-label {
+    color: var(--text-primary) !important;
+  }
+  .form-check-input {
+    background-color: var(--surface) !important;
+    border-color: var(--border) !important;
+  }
+  .form-check-input:checked {
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
+  }
+  .alert-info {
+    background: hsla(217, 91%, 60%, 0.1) !important;
+    border-color: hsla(217, 91%, 60%, 0.3) !important;
+    color: var(--text-primary) !important;
+  }
+  .alert-danger {
+    background: hsla(0, 84%, 60%, 0.1) !important;
+    border-color: hsla(0, 84%, 60%, 0.3) !important;
+    color: var(--text-primary) !important;
+  }
+  a.text-muted {
+    color: var(--text-muted) !important;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="row justify-content-center">
@@ -12,9 +79,24 @@
                     <h4><i class="fas fa-file-alt"></i> {{ page_title }}</h4>
                 </div>
                 <div class="card-body">
+                    {% if messages %}
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
                         
+                        {% if form_errors %}
+                        <div class="alert alert-danger">
+                            <strong>오류가 발생했습니다. 입력 내용을 확인해주세요.</strong>
+                        </div>
+                        {% endif %}
+
                         {% if is_superuser and companies %}
                         <div class="mb-3">
                             <label for="company" class="form-label">회사 <span class="text-danger">*</span></label>
@@ -38,6 +120,7 @@
                                 </option>
                                 {% endfor %}
                             </select>
+                            <div class="invalid-feedback">서류 종류를 선택해주세요.</div>
                         </div>
                         
                         <div class="mb-3">
@@ -50,6 +133,7 @@
                                    placeholder="예: 2024년 표준 견적서"
                                    required>
                             <small class="form-text text-muted">서류를 구분할 수 있는 이름을 입력하세요.</small>
+                            <div class="invalid-feedback">서류명을 입력해주세요.</div>
                         </div>
                         
                         <div class="mb-3">

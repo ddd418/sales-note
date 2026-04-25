@@ -2,13 +2,11 @@
 
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404
 from .models import Schedule, DeliveryItem
 from .views import can_modify_user_data
 
-@csrf_exempt
 @require_http_methods(["POST"])
 @login_required
 def toggle_schedule_delivery_tax_invoice(request, schedule_id):

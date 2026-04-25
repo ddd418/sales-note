@@ -4,7 +4,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, JsonResponse, Http404, HttpResponse
 from django.contrib import messages
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 from django.urls import reverse
 from .models import HistoryFile, History
 import os
@@ -215,7 +214,6 @@ def schedule_file_download(request, file_id):
 
 
 @login_required
-@csrf_exempt
 def schedule_file_delete(request, file_id):
     """일정 파일 삭제"""
     if request.method != 'POST':

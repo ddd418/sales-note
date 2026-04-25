@@ -2441,6 +2441,35 @@
   </script>
 
   {% block extra_js %}{% endblock %}
+
+  <!-- 전역: Django 폼 에러 발생 시 해당 필드에 is-invalid CSS 자동 적용 -->
+  <script>
+  (function() {
+    document.addEventListener('DOMContentLoaded', function() {
+      // .invalid-feedback.d-block 이 있는 경우, 가장 가까운 form-control/form-select 에 is-invalid 추가
+      document.querySelectorAll('.invalid-feedback.d-block').forEach(function(errEl) {
+        // 이전 형제 요소(select/input/textarea) 탐색
+        var prev = errEl.previousElementSibling;
+        while (prev) {
+          if (prev.matches('.form-control, .form-select, select, input, textarea')) {
+            prev.classList.add('is-invalid');
+            break;
+          }
+          prev = prev.previousElementSibling;
+        }
+        // 부모 div 안에서 .form-control 탐색 (input-group 구조 대응)
+        if (!errEl.previousElementSibling || !errEl.previousElementSibling.matches('.form-control, .form-select, select, input, textarea')) {
+          var parent = errEl.parentElement;
+          if (parent) {
+            parent.querySelectorAll('.form-control, .form-select').forEach(function(field) {
+              field.classList.add('is-invalid');
+            });
+          }
+        }
+      });
+    });
+  })();
+  </script>
 </body>
 </html>
 

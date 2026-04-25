@@ -5,19 +5,6 @@
 
 {% block extra_css %}
 <style>
-    .personal-schedule-form {
-        max-width: 800px;
-        margin: 0 auto;
-    }
-    .form-header {
-        margin-bottom: 2rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #e9ecef;
-    }
-    .btn-group-custom {
-        gap: 10px;
-    }
-    
     /* 날짜/시간 input의 기본 캘린더/시계 아이콘 숨기기 */
     input[type="date"]::-webkit-calendar-picker-indicator,
     input[type="time"]::-webkit-calendar-picker-indicator {
@@ -35,6 +22,69 @@
     input[type="date"],
     input[type="time"] {
         -moz-appearance: textfield;
+    }
+
+    /* 다크모드 카드 */
+    .card {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+    }
+
+    .card-header {
+        background: var(--surface-hover) !important;
+        border-bottom-color: var(--border) !important;
+    }
+
+    .card-header h4 {
+        color: var(--text-primary) !important;
+    }
+
+    .card-body {
+        background: var(--surface) !important;
+    }
+
+    .personal-schedule-form {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    .form-header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--border);
+    }
+    .btn-group-custom {
+        gap: 10px;
+    }
+
+    /* 폼 컨트롤 다크모드 */
+    .form-control,
+    .form-select {
+        background: var(--surface) !important;
+        border-color: var(--border) !important;
+        color: var(--text-primary) !important;
+    }
+    .form-control::placeholder {
+        color: var(--text-muted) !important;
+    }
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 0.2rem hsla(217, 91%, 60%, 0.25) !important;
+        background: var(--surface) !important;
+    }
+    .form-label {
+        color: var(--text-primary) !important;
+    }
+    .form-text {
+        color: var(--text-muted) !important;
+    }
+    .text-danger {
+        color: #f87171 !important;
+    }
+    .input-group-text {
+        background: var(--surface-hover) !important;
+        border-color: var(--border) !important;
+        color: var(--text-primary) !important;
     }
 </style>
 {% endblock %}

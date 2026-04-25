@@ -120,7 +120,7 @@
               </label>
               {% if schedule %}
               <!-- 일정에서 생성되는 경우 읽기 전용으로 표시 -->
-              <div class="form-control bg-light" style="pointer-events: none">
+              <div class="form-control" style="background: var(--surface-hover); color: var(--text-primary); pointer-events: none;">
                 {{ schedule.followup.customer_name|default:"고객명 미정" }} - {{schedule.followup.company|default:"업체명 미정" }}
               </div>
               <div class="form-text text-info">
@@ -147,7 +147,7 @@
               </label>
               {% if schedule %}
               <!-- 일정에서 생성되는 경우 읽기 전용으로 표시 -->
-              <div class="form-control bg-light" style="pointer-events: none">
+              <div class="form-control" style="background: var(--surface-hover); color: var(--text-primary); pointer-events: none;">
                 {{ schedule.visit_date|date:"Y년 m월 d일" }} {{schedule.visit_time|date:"H:i" }} {% if schedule.location %} -
                 {{ schedule.location }}{% endif %}
               </div>
@@ -357,6 +357,42 @@
               </div>
             </div>
 
+            <!-- 다음 할 일 (선택사항) -->
+            <div class="card border-secondary mb-4">
+              <div class="card-header bg-transparent">
+                <h6 class="card-title mb-0 text-secondary">
+                  <i class="fas fa-tasks me-2"></i>다음 할 일
+                  <small class="fw-normal text-muted">(선택사항)</small>
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label for="{{ form.next_action_date.id_for_label }}" class="form-label">
+                    <i class="fas fa-calendar me-1"></i>다음 예정일
+                  </label>
+                  {{ form.next_action_date }}
+                  {% if form.next_action_date.errors %}
+                  <div class="invalid-feedback d-block">
+                    {% for e in form.next_action_date.errors %}{{ e }}{% endfor %}
+                  </div>
+                  {% endif %}
+                  <div class="form-text">다음 액션 예정일을 선택하세요.</div>
+                </div>
+                <div class="mb-0">
+                  <label for="{{ form.next_action.id_for_label }}" class="form-label">
+                    <i class="fas fa-pen me-1"></i>다음 할 일
+                  </label>
+                  {{ form.next_action }}
+                  {% if form.next_action.errors %}
+                  <div class="invalid-feedback d-block">
+                    {% for e in form.next_action.errors %}{{ e }}{% endfor %}
+                  </div>
+                  {% endif %}
+                  <div class="form-text">이번 활동 이후 수행할 다음 액션을 기록하세요.</div>
+                </div>
+              </div>
+            </div>
+
             <!-- 첨부파일 -->
             <div class="mb-4">
               <label for="id_files" class="form-label">
@@ -452,6 +488,12 @@
 #delivery-items-display {
   white-space: pre-line !important;
   word-break: break-word !important;
+}
+/* 다크모드: bg-light로 동적 생성되는 delivery-item 오버라이드 */
+.delivery-item.bg-light {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
 }
 </style>
 
@@ -800,7 +842,7 @@
               <!-- 총액 표시 -->
               <div class="row mt-4">
                 <div class="col-12">
-                  <div class="card bg-light">
+                  <div class="card" style="background: var(--surface-hover) !important; border-color: var(--border) !important;">
                     <div class="card-body">
                       <div class="row">
                         <div class="col-md-4">

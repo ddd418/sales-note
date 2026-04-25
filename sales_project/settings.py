@@ -14,7 +14,7 @@ else:
     BASE_DIR = Path(__file__).resolve().parent.parent
     SECRET_KEY = "django-insecure-o9d76l+p#vrgs6r601a=w6pgzi56i-vik9z(g+1qi(k3-)1n+w"
     DEBUG = True
-    ALLOWED_HOSTS = ["127.0.0.1", "localhost", "192.168.0.54", "192.168.0.1", "*"]
+    ALLOWED_HOSTS = ["127.0.0.1", "localhost", "192.168.0.54", "192.168.0.1"]
     
     INSTALLED_APPS = [
         "django.contrib.admin",
@@ -127,7 +127,15 @@ GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
 
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)
-EMAIL_ENCRYPTION_KEY = os.environ.get('EMAIL_ENCRYPTION_KEY', 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()  # Base64 encoded key
+_email_encryption_key_raw = os.environ.get('EMAIL_ENCRYPTION_KEY')
+if _email_encryption_key_raw:
+    EMAIL_ENCRYPTION_KEY = _email_encryption_key_raw.encode()
+else:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        'EMAIL_ENCRYPTION_KEY 환경변수가 설정되지 않았습니다. IMAP/SMTP 비밀번호 암호화가 비활성화됩니다.'
+    )
+    EMAIL_ENCRYPTION_KEY = None
 
 # Celery 설정
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')

@@ -19,6 +19,11 @@ urlpatterns = [
     path('followups/<int:pk>/delete/', views.followup_delete_view, name='followup_delete'),
     path('followups/excel-download/', views.followup_excel_download, name='followup_excel_download'),
     path('followups/basic-excel-download/', views.followup_basic_excel_download, name='followup_basic_excel_download'),
+    # 영업 기회 URL들
+    path('opportunities/', views.opportunity_list_view, name='opportunity_list'),
+    path('opportunities/create/<int:followup_pk>/', views.opportunity_create_view, name='opportunity_create'),
+    path('opportunities/<int:pk>/', views.opportunity_detail_view, name='opportunity_detail'),
+    path('opportunities/<int:pk>/edit/', views.opportunity_edit_view, name='opportunity_edit'),
       # 일정 URL들
     path('schedules/', views.schedule_list_view, name='schedule_list'),
     path('schedules/calendar/', views.schedule_calendar_view, name='schedule_calendar'),
@@ -41,6 +46,7 @@ urlpatterns = [
     path('histories/create-from-schedule/<int:schedule_id>/', views.history_create_from_schedule, name='history_create_from_schedule'),  # 캘린더에서 사용
     path('histories/<int:pk>/edit/', views.history_edit_view, name='history_edit'),
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
+    path('histories/<int:pk>/toggle-reviewed/', views.history_toggle_reviewed, name='history_toggle_reviewed'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('histories/<int:pk>/update-tax-invoice/', views.history_update_tax_invoice, name='history_update_tax_invoice'),
     path('histories/<int:history_id>/delivery-items-api/', views.history_delivery_items_api, name='history_delivery_items_api'),
