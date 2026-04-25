@@ -415,7 +415,7 @@ a.text-decoration-none {
                   <div class="col-12">
                     <label class="form-label">다음 액션 날짜</label>
                     <div class="d-flex gap-2 flex-wrap">
-                      <a href="?{{ request.GET.urlencode }}" class="btn btn-sm {% if not next_action_filter %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                      <a href="?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if company_filter %}&company_filter={{ company_filter }}{% endif %}" class="btn btn-sm {% if not next_action_filter %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
                         전체
                       </a>
                       <a href="?next_action_filter=overdue&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if action_type_filter %}&action_type={{ action_type_filter }}{% endif %}{% if company_filter %}&company_filter={{ company_filter }}{% endif %}" class="btn btn-sm {% if next_action_filter == 'overdue' %}btn-danger{% else %}btn-outline-danger{% endif %}">

@@ -1070,65 +1070,135 @@ Phase 4 QA 패스 완료. 모든 검사 통과. 잔여 버그 없음.
 
 ---
 
-## Phase 5: 후속 조치 관리 & 영업 파이프라인 가시성 (2026-04-26)
+## Phase 5 Summary
 
-### 요약
+Phase 5 implemented follow-up and pipeline visibility improvements for the internal Sales Note system.
 
-대시보드에 오늘 예정 일정, 이번 주 예정 일정, 파이프라인 단계별 현황, 팀 활동 현황(매니저 전용)을 추가하였습니다. 영업 활동 기록 목록(`history_list`)에는 다음 액션 날짜 필터(지연/7일 이내 예정/날짜 있음)와 카드별 다음 액션 날짜 배지를 추가하였습니다. 모든 기능은 기존 권한 체계(login_required, 회사 범위, accessible_users)를 그대로 유지합니다. 모델 변경 없음.
+### Files changed
 
-### 변경된 파일
+- `reporting/views.py`
+- `reporting/templates/reporting/dashboard.html`
+- `reporting/templates/reporting/history_list.html`
 
-| 파일                                              | 변경 내용                                                                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `reporting/views.py`                              | `dashboard_view`: `today_schedules`, `upcoming_schedules_dash`, `pipeline_summary`, `team_activity` 컨텍스트 추가 |
-| `reporting/views.py`                              | `history_list_view`: `next_action_filter` GET 파라미터 처리 추가, 컨텍스트에 `next_action_filter`, `today` 추가   |
-| `reporting/templates/reporting/dashboard.html`    | 파이프라인 단계 배지 행, 오늘 예정 일정 카드, 이번 주 예정 일정 카드, 팀 활동 현황 테이블 카드 추가               |
-| `reporting/templates/reporting/history_list.html` | 다음 액션 날짜 필터 버튼 그룹 추가, 각 카드에 `next_action_date` 배지 추가 (지연 시 빨간색)                       |
+### Implemented features
 
-### 신규 기능 상세
+#### dashboard_view
 
-#### 대시보드 (`dashboard.html` + `dashboard_view`)
+- Added `today_schedules` for today's scheduled activities.
+- Added `upcoming_schedules_dash` for schedules within the next 7 days.
+- Added `pipeline_summary` grouped by FollowUp pipeline/status stage.
+- Added `team_activity` for manager/admin users, including recent 30-day activity count and overdue action count.
 
-1. **파이프라인 단계별 현황 배지 행**: 잠재/연락중/견적/협상/수주/실주 각 단계의 거래처 수를 컬러 배지로 표시. 각 배지를 클릭하면 해당 단계의 거래처 목록으로 이동.
-2. **오늘 예정 일정 카드**: `visit_date=today, status='scheduled'` 일정을 최대 5건 표시.
-3. **이번 주 예정 일정 카드**: `visit_date` 오늘 초과 ~ 7일 이내 scheduled 일정 최대 5건, 날짜 배지 포함.
-4. **팀 활동 현황 카드** (매니저/관리자 전용): 최근 30일 팀원별 활동 수 + 지연 액션 수 테이블.
+#### history_list_view
 
-#### 영업 활동 기록 목록 (`history_list.html` + `history_list_view`)
+- Added `next_action_filter` GET parameter.
+- Supported values:
+  - `overdue`
+  - `upcoming`
+  - `has_date`
+- Added `next_action_filter` and `today` to template context.
 
-5. **다음 액션 날짜 필터 버튼**: 전체 / 지연된 액션(빨간) / 7일 이내 예정(노란) / 날짜 있음(파란) 4가지 모드.
-6. **다음 액션 날짜 배지**: 각 카드에 `next_action_date`가 있으면 배지 표시. 만료 시 `bg-danger`, 예정 시 `bg-warning text-dark`.
+#### dashboard.html
 
-### 기존 기능 보존 확인
+- Added pipeline stage badge row.
+- Added today schedule card.
+- Added upcoming schedule card.
+- Added manager-only team activity table.
 
-- `/reporting/*` URL 그대로 유지
-- `@login_required` 모든 뷰 유지
-- 기존 Phase 4 대시보드 섹션(최근 영업 활동, 지연 후속 조치) 유지
-- 기존 history_list 필터(날짜, 업체, 활동 유형, 담당자, 검색) 유지
-- 모델 변경 없음, 마이그레이션 없음
+#### history_list.html
+
+- Added next action date filter button group.
+- Added `next_action_date` badges.
+- Overdue items are displayed with red badges.
+- Upcoming items are displayed with yellow badges.
+
+### Validation
+
+- 9/9 tests passed.
+- `python manage.py check`: passed.
+- `python manage.py makemigrations --check --dry-run`: No changes detected.
+- `python manage.py test reporting.tests --verbosity=2`: Ran 9 tests in 7.894s — OK.
+
+### Known limitations
+
+- Confirm whether FollowUp-based pipeline grouping matches the intended business pipeline model.
+- Confirm manager/admin permission behavior with real user roles.
+- Confirm empty-state behavior with production-like data.
+
+### Recommended Phase 6
+
+- Reporting and export.
+- Manager analytics.
+- CSV export.
+- Date-range reports.
+- Sales rep performance summary.
+- Customer activity report.
+
+---
+
+## Phase 5 QA 패스 (2026-04-26)
+
+### QA 요약
+
+Phase 5 구현 완료 후 엄격한 QA를 실시하였습니다. 2개의 소규모 버그를 발견하고 즉시 수정하였습니다. 모든 Django 검사 통과, 기존 9개 테스트 통과.
 
 ### 실행 명령 및 결과
 
-```
-python manage.py check
-→ System check identified no issues (0 silenced)
+| 명령                                                | 결과                                           |
+| --------------------------------------------------- | ---------------------------------------------- |
+| `python manage.py check`                            | System check identified no issues (0 silenced) |
+| `python manage.py makemigrations --check --dry-run` | No changes detected                            |
+| `python manage.py test reporting.tests`             | Ran 9 tests in 7.053s — **OK**                 |
+| 템플릿 파서 (`get_template` 검증)                   | `dashboard.html`, `history_list.html` 모두 OK  |
 
-python manage.py makemigrations --check --dry-run
-→ No changes detected
+### URL 스모크 테스트 결과 (비로그인 상태)
 
-python manage.py test reporting.tests --verbosity=2
-→ Ran 9 tests in 7.894s — OK
-```
+| URL                                                      | 응답 코드 | 비고                                                                             |
+| -------------------------------------------------------- | --------- | -------------------------------------------------------------------------------- |
+| `/`                                                      | 302       | 대시보드로 리다이렉트 ✅                                                         |
+| `/reporting/login/`                                      | 200       | 로그인 페이지 정상 표시 ✅                                                       |
+| `/reporting/`                                            | 404       | **Pre-existing 이슈** — Phase 5 무관, 매핑된 URL 없음 (Phase 6 권장 사항에 기록) |
+| `/reporting/dashboard/`                                  | 302       | 로그인 필요 → 리다이렉트 ✅                                                      |
+| `/reporting/histories/`                                  | 302       | 로그인 필요 → 리다이렉트 ✅                                                      |
+| `/reporting/histories/?next_action_filter=overdue`       | 302       | 로그인 필요 → 리다이렉트 ✅                                                      |
+| `/reporting/histories/?next_action_filter=upcoming`      | 302       | 로그인 필요 → 리다이렉트 ✅                                                      |
+| `/reporting/histories/?next_action_filter=has_date`      | 302       | 로그인 필요 → 리다이렉트 ✅                                                      |
+| `/reporting/histories/?next_action_filter=invalid_value` | 302       | 잘못된 값 → 정상 처리(필터 무시) ✅                                              |
 
-### 알려진 한계
+### 발견된 버그 및 수정
 
-- 팀 활동 현황: 최대 8명 표시 (대용량 팀 대비 트런케이트)
-- 파이프라인 배지: 0건인 단계는 표시 생략
-- next_action_filter 링크 생성 시 복합 GET 파라미터 조합은 일부 누락 가능 (date_range 등)
+#### 버그 1 (수정됨): `{{ s.title }}` — Schedule 모델에 없는 필드 참조
 
-### 다음 권장 작업
+- **위치**: `dashboard.html` 오늘 예정 일정 / 이번 주 예정 일정 카드 (2군데)
+- **증상**: `Schedule` 모델에 `title` 필드 없음 → Django 템플릿이 빈 문자열로 렌더링, 메모 줄이 항상 미표시
+- **수정**: `s.title` → `s.notes`로 변경 (Schedule 모델의 실제 필드 `notes` 사용)
+- **영향**: 기능 오류 없이 조용히 실패하던 것을 올바르게 수정
 
-- 거래처 상세(`followup_detail`) 페이지에 인라인 영업 노트 빠른 작성 폼 추가
-- 일정 캘린더 뷰 개선 (월별 전체 일정 가시성)
-- 주간 / 월간 영업 활동 요약 리포트 자동 생성
-- history_list의 복합 필터(date_from, date_to, next_action_filter 동시 적용) URL 파라미터 개선
+#### 버그 2 (수정됨): history_list "전체" 필터 버튼이 next_action_filter를 해제하지 않음
+
+- **위치**: `history_list.html` 다음 액션 날짜 필터 버튼 그룹, "전체" 버튼
+- **증상**: `request.GET.urlencode()`를 그대로 사용해 현재 `next_action_filter` 파라미터가 URL에 그대로 유지됨 → "전체" 클릭 시 필터 해제 안 됨
+- **수정**: `request.GET.urlencode()` → 나머지 필터(`data_filter`, `filter_user`, `action_type`, `company_filter`)만 명시적으로 포함하는 URL로 교체
+- **영향**: UX 버그 수정. 기능 로직 변경 없음
+
+### 권한 및 보안 확인
+
+| 항목                                                                              | 결과              |
+| --------------------------------------------------------------------------------- | ----------------- |
+| 비로그인 사용자 → 인증 페이지 접근 시 302 리다이렉트                              | ✅ 확인           |
+| `team_activity` 컨텍스트 — `can_view_all_users()`가 `True`인 경우만 채워짐        | ✅ 코드 확인      |
+| 일반 영업사원 → `team_activity = []` → 템플릿에서 `{% if team_activity %}` 미표시 | ✅ 확인           |
+| `followups`, `schedules`, `histories` — 권한 범위(회사/사용자) 기반 필터링 유지   | ✅ 기존 로직 유지 |
+| CSRF 보호 — 새로운 뷰/폼 없음, 기존 설정 유지                                     | ✅ 변경 없음      |
+
+### 잔여 위험
+
+- `/reporting/` (루트) → 404: pre-existing 이슈. `/reporting/dashboard/`로 리다이렉트하는 URL 추가 권장 (Phase 6)
+- `next_action_filter` 링크에 `date_from`, `date_to`, `search_query`, `month_filter` 등의 복합 파라미터는 일부 누락될 수 있음. 검색 폼 submit이 완전 교체하므로 실사용에서 문제는 적음
+- `team_activity`의 최대 8명 트런케이트: 팀원이 많은 경우 전체 미표시
+
+### Phase 6 시작 가능 여부
+
+**✅ Phase 6 시작 가능**
+
+Phase 5 QA 완료. 2개 버그 수정. 모든 검사 통과. 기존 기능 이상 없음.

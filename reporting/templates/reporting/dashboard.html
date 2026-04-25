@@ -1286,7 +1286,7 @@ html, body {
             <strong class="small">{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
             {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
             {% if s.visit_time %}<small class="text-info ms-2"><i class="fas fa-clock me-1"></i>{{ s.visit_time|date:"H:i" }}</small>{% endif %}
-            {% if s.title %}<div class="text-muted small">{{ s.title|truncatechars:60 }}</div>{% endif %}
+            {% if s.notes %}<div class="text-muted small">{{ s.notes|truncatechars:60 }}</div>{% endif %}
           </div>
           <a href="{% url 'reporting:schedule_detail' s.pk %}" class="btn btn-sm btn-outline-info py-0 px-2 flex-shrink-0">상세</a>
         </div>
@@ -1311,7 +1311,7 @@ html, body {
             <span class="badge bg-primary small me-1">{{ s.visit_date|date:"m/d" }}</span>
             <strong class="small">{{ s.followup.customer_name|default:"고객명 미정" }}</strong>
             {% if s.followup.company %}<small class="text-muted ms-2">{{ s.followup.company }}</small>{% endif %}
-            {% if s.title %}<div class="text-muted small">{{ s.title|truncatechars:60 }}</div>{% endif %}
+            {% if s.notes %}<div class="text-muted small">{{ s.notes|truncatechars:60 }}</div>{% endif %}
           </div>
           <a href="{% url 'reporting:schedule_detail' s.pk %}" class="btn btn-sm btn-outline-primary py-0 px-2 flex-shrink-0">상세</a>
         </div>
