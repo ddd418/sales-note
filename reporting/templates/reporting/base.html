@@ -82,6 +82,63 @@
       --radius: 12px;
       --radius-sm: 8px;
       --radius-lg: 16px;
+
+      /* ── Bootstrap 5.3 CSS Variable Overrides (Dark Theme) ── */
+      --bs-body-color: hsl(210, 40%, 98%);
+      --bs-body-bg: hsl(222, 47%, 11%);
+      --bs-secondary-color: hsl(215, 20%, 75%);
+      --bs-secondary-bg: hsl(217, 33%, 17%);
+      --bs-tertiary-color: hsl(215, 20%, 65%);
+      --bs-tertiary-bg: hsl(222, 47%, 14%);
+      --bs-emphasis-color: hsl(210, 40%, 98%);
+      --bs-link-color: hsl(217, 91%, 60%);
+      --bs-link-hover-color: hsl(217, 91%, 70%);
+      --bs-border-color: hsl(217, 33%, 22%);
+      --bs-border-color-translucent: hsla(217, 33%, 22%, 0.5);
+      --bs-heading-color: hsl(210, 40%, 98%);
+      --bs-card-bg: hsl(222, 47%, 14%);
+      --bs-card-color: hsl(210, 40%, 98%);
+      --bs-card-border-color: hsl(217, 33%, 22%);
+      --bs-card-cap-bg: hsl(222, 47%, 14%);
+      --bs-list-group-bg: hsl(222, 47%, 14%);
+      --bs-list-group-color: hsl(210, 40%, 98%);
+      --bs-list-group-border-color: hsl(217, 33%, 22%);
+      --bs-modal-bg: hsl(222, 47%, 14%);
+      --bs-modal-color: hsl(210, 40%, 98%);
+      --bs-dropdown-bg: hsl(222, 47%, 14%);
+      --bs-dropdown-color: hsl(210, 40%, 98%);
+      --bs-dropdown-border-color: hsl(217, 33%, 22%);
+      --bs-dropdown-link-color: hsl(210, 40%, 98%);
+      --bs-dropdown-link-hover-color: hsl(210, 40%, 98%);
+      --bs-dropdown-link-hover-bg: hsl(217, 33%, 17%);
+      --bs-input-bg: hsl(222, 47%, 14%);
+      --bs-input-color: hsl(210, 40%, 98%);
+      --bs-input-border-color: hsl(217, 33%, 22%);
+      --bs-input-placeholder-color: hsl(215, 20%, 65%);
+      --bs-table-color: hsl(210, 40%, 98%);
+      --bs-table-bg: transparent;
+      --bs-table-striped-bg: hsla(217, 33%, 17%, 0.3);
+      --bs-table-hover-bg: hsl(217, 33%, 17%);
+      --bs-table-border-color: hsl(217, 33%, 22%);
+      --bs-pagination-bg: hsl(222, 47%, 14%);
+      --bs-pagination-color: hsl(215, 20%, 75%);
+      --bs-pagination-border-color: hsl(217, 33%, 22%);
+      --bs-pagination-hover-bg: hsl(217, 33%, 17%);
+      --bs-pagination-hover-color: hsl(217, 91%, 60%);
+      --bs-pagination-hover-border-color: hsl(217, 33%, 22%);
+      --bs-pagination-disabled-bg: hsl(222, 47%, 14%);
+      --bs-pagination-disabled-color: hsl(215, 20%, 65%);
+      --bs-accordion-bg: hsl(222, 47%, 14%);
+      --bs-accordion-color: hsl(210, 40%, 98%);
+      --bs-accordion-border-color: hsl(217, 33%, 22%);
+      --bs-accordion-button-bg: hsl(222, 47%, 14%);
+      --bs-accordion-button-color: hsl(210, 40%, 98%);
+      --bs-accordion-button-active-bg: hsl(217, 33%, 17%);
+      --bs-accordion-button-active-color: hsl(217, 91%, 60%);
+      --bs-toast-bg: hsl(222, 47%, 14%);
+      --bs-toast-color: hsl(210, 40%, 98%);
+      --bs-offcanvas-bg: hsl(222, 47%, 14%);
+      --bs-offcanvas-color: hsl(210, 40%, 98%);
     }
 
     * {
@@ -2187,7 +2244,7 @@
       }
       
       // 터미널 스타일 로그
-      const logLine = `<span style="color: #888;">[${timestamp}]</span> <span style="color: ${color}; font-weight: bold;">[${prefix}]</span> <span style="color: ${color};">${icon} ${message}</span>\n`;
+      const logLine = `<span style="color: #94a3b8;">[${timestamp}]</span> <span style="color: ${color}; font-weight: bold;">[${prefix}]</span> <span style="color: ${color};">${icon} ${message}</span>\n`;
       logsElement.innerHTML += logLine;
       
       // 자동 스크롤

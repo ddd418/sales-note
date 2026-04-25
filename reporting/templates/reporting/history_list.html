@@ -768,7 +768,7 @@ a.text-decoration-none {
 
 <style>
   .page-title {
-    color: #37352f;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -784,7 +784,7 @@ a.text-decoration-none {
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #e9ecef;
+    background: var(--border);
   }
 
   .timeline-item {
@@ -802,8 +802,8 @@ a.text-decoration-none {
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 3px solid #fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: 3px solid var(--border);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
 
   .timeline-content {
@@ -816,9 +816,9 @@ a.text-decoration-none {
     border-radius: 8px;
   }
   .alert-light {
-    background-color: #f8f9fa;
-    border-color: #e9ecef;
-    color: #495057;
+    background-color: var(--surface-hover);
+    border-color: var(--border);
+    color: var(--text-secondary);
   }
 
   .tax-invoice-toggle {
@@ -1071,11 +1071,11 @@ span.meeting-date {
     gap: 15px !important;
     position: sticky !important;
     top: 60px !important;
-    background: #fcfcfc !important;
+    background: var(--surface) !important;
     z-index: 98 !important;
     padding: 15px 0 !important;
     margin-bottom: 15px !important;
-    border-bottom: 1px solid #edecec !important;
+    border-bottom: 1px solid var(--border) !important;
   }
 
   .page-header .page-title {
@@ -1127,9 +1127,9 @@ span.meeting-date {
   .history-card .card-header {
     padding: 2px 4px !important;
     font-size: 10px !important;
-    border-bottom: 1px solid #eee !important;
+    border-bottom: 1px solid var(--border) !important;
     margin-bottom: 2px !important;
-    background: #f8f9fa !important;
+    background: var(--surface-hover) !important;
     border-radius: 2px !important;
   }
 
@@ -1149,14 +1149,14 @@ span.meeting-date {
   .history-card .card-text {
     font-size: 9px !important;
     margin-bottom: 2px !important;
-    color: #666 !important;
+    color: var(--text-muted) !important;
     line-height: 1.2 !important;
   }
 
   /* 메타 정보 모바일 최적화 - 더 작게 */
   .history-card .text-muted {
     font-size: 9px !important;
-    color: #777 !important;
+    color: var(--text-muted) !important;
   }
 
   .history-card .badge {
@@ -1188,7 +1188,7 @@ span.meeting-date {
     font-size: 9px !important;
     font-weight: 600 !important;
     margin-bottom: 1px !important;
-    color: #555 !important;
+    color: var(--text-secondary) !important;
   }
 
   .history-card .detail-info dd {
@@ -1214,7 +1214,7 @@ span.meeting-date {
   .history-card .card-text {
     font-size: 12px;
     margin-bottom: 8px;
-    color: #666;
+    color: var(--text-muted);
   }
   /* 메타 정보 모바일 최적화 - 전체 페이지 */
   .text-muted {
@@ -1326,7 +1326,7 @@ span.meeting-date {
     font-size: 9px !important;
     font-weight: 600 !important;
     margin-bottom: 1px !important;
-    color: #555 !important;
+    color: var(--text-secondary) !important;
   }
 
   .detail-info dd {

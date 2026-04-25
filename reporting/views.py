@@ -2239,6 +2239,21 @@ def dashboard_view(request):
     ).select_related('followup', 'followup__company', 'user').order_by('visit_date', 'visit_time')[:5]
     context['upcoming_schedules_dash'] = upcoming_schedules_dash
 
+    # Phase 5+: 개인 일정 포함 (오늘 + 이번 주 예정)
+    from .models import PersonalSchedule as _PersonalSchedule
+    today_personal_schedules = _PersonalSchedule.objects.filter(
+        schedule_date=today,
+        **user_filter_for_dashboard
+    ).select_related('user').order_by('schedule_time')[:5]
+    context['today_personal_schedules'] = today_personal_schedules
+
+    upcoming_personal_schedules_dash = _PersonalSchedule.objects.filter(
+        schedule_date__gt=today,
+        schedule_date__lte=week_later,
+        **user_filter_for_dashboard
+    ).select_related('user').order_by('schedule_date', 'schedule_time')[:5]
+    context['upcoming_personal_schedules_dash'] = upcoming_personal_schedules_dash
+
     # Phase 5: 파이프라인 단계별 현황 (FollowUp 기준)
     pipeline_stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
     pipeline_stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)

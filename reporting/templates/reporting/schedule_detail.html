@@ -912,7 +912,7 @@ a.text-decoration-none {
 
 <style>
   .page-title {
-    color: #37352f;
+    color: var(--text-primary);
     font-weight: 600;
   }
 
@@ -1603,7 +1603,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 resultsDiv.innerHTML = '';
                 
                 if (products.length === 0) {
-                    resultsDiv.innerHTML = '<div style="padding: 8px; color: #999;">검색 결과가 없습니다</div>';
+                    resultsDiv.innerHTML = '<div style="padding: 8px; color: #a0aec0;">검색 결과가 없습니다</div>';
                     resultsDiv.style.display = 'block';
                 } else {
                     
@@ -1612,7 +1612,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     displayProducts.forEach((product, index) => {
                         const resultItem = document.createElement('div');
-                        resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+                        resultItem.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #2d3748; color: #f0f4f8;';
                         resultItem.textContent = `${product.product_code} - ${product.description || '설명 없음'} (${parseInt(product.current_price || product.standard_price).toLocaleString()}원)`;
                         resultItem.dataset.productId = product.id;
                         resultItem.dataset.productCode = product.product_code;
@@ -1620,8 +1620,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         resultItem.dataset.productDescription = product.description || product.product_code;
                         
                         // 호버 효과
-                        resultItem.onmouseover = function() { this.style.background = '#f0f0f0'; };
-                        resultItem.onmouseout = function() { this.style.background = 'white'; };
+                        resultItem.onmouseover = function() { this.style.background = '#2d3748'; };
+                        resultItem.onmouseout = function() { this.style.background = '#1e293b'; };
                         
                         // 클릭 이벤트
                         resultItem.onclick = function() {

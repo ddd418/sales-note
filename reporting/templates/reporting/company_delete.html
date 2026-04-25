@@ -110,9 +110,9 @@
 }
 
 .info-table-premium th {
-    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    background: var(--surface-hover);
     font-weight: 600;
-    color: #2d3748;
+    color: var(--text-secondary);
     padding: 1rem 1.25rem;
     border: none;
 }
@@ -120,7 +120,7 @@
 .info-table-premium td {
     padding: 1rem 1.25rem;
     border: none;
-    border-top: 1px solid #dee2e6;
+    border-top: 1px solid var(--border);
 }
 
 .info-table-premium .badge {
@@ -132,7 +132,7 @@
 .company-name-display {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #2d3748;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -209,7 +209,7 @@
     justify-content: center;
     margin-top: 2rem;
     padding-top: 2rem;
-    border-top: 2px solid #f1f3f5;
+    border-top: 2px solid var(--border);
 }
 
 @media (max-width: 768px) {
@@ -263,7 +263,7 @@
             <!-- 삭제 정보 카드 -->
             <div class="premium-delete-card">
                 <div class="premium-delete-card-body">
-                    <h5 class="mb-4" style="font-weight: 700; color: #2d3748;">
+                    <h5 class="mb-4" style="font-weight: 700; color: var(--text-primary);">
                         <i class="fas fa-info-circle me-2" style="color: #dc3545;"></i>
                         삭제할 업체/학교 정보
                     </h5>
