@@ -20,10 +20,18 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
-from django.views.generic import RedirectView
+from django.shortcuts import redirect
+
+
+def root_redirect(request):
+    """루트 URL: 인증된 사용자 → 대시보드, 미인증 → 로그인 페이지"""
+    if request.user.is_authenticated:
+        return redirect('/reporting/dashboard/')
+    return redirect('/reporting/login/')
+
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='reporting:dashboard', permanent=False)),  # 루트 → 대시보드로 리다이렉트
+    path('', root_redirect, name='root'),  # 루트: 인증 여부에 따라 분기
     path('admin/', admin.site.urls),
     path('reporting/', include('reporting.urls')),
     path('todos/', include('todos.urls')),  # TODOLIST 앱

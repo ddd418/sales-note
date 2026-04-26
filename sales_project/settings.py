@@ -99,9 +99,9 @@ else:
     # 절대 URL 생성을 위한 도메인 설정
     SITE_DOMAIN = "http://127.0.0.1:8000"
     
-    LOGIN_URL = "reporting:login"
-    LOGIN_REDIRECT_URL = "reporting:dashboard"
-    LOGOUT_REDIRECT_URL = "reporting:login"
+    LOGIN_URL = "/reporting/login/"
+    LOGIN_REDIRECT_URL = "/reporting/dashboard/"
+    LOGOUT_REDIRECT_URL = "/reporting/login/"
     MESSAGE_TAGS = {messages.DEBUG: "debug", messages.INFO: "info", messages.SUCCESS: "success", messages.WARNING: "warning", messages.ERROR: "error"}
     LOGGING = {"version": 1, "disable_existing_loggers": False, "formatters": {"verbose": {"format": "[{levelname}] {asctime} {name} {process:d} {thread:d} {message}", "style": "{"}}, "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "verbose"}}, "loggers": {"reporting": {"handlers": ["console"], "level": "INFO", "propagate": False}, "django": {"handlers": ["console"], "level": "INFO", "propagate": False}}}
     TAILWIND_APP_NAME = "theme"
