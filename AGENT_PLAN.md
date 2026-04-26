@@ -419,6 +419,30 @@ python pre_deployment_check.py
 
 ## 현재 단계
 
-**Phase 7 계획 중** (2026-04-25)
+**Phase 6.5-1 완료** (2026-04-27)
+
+### Phase 6.5-1 — 모달 클릭/입력 버그 수정
+
+**목표**: Bootstrap 중첩 모달 및 stacking context 문제로 인한 입력 불가/모달 소멸 문제 해결.
+
+**작업 범위**:
+
+- 캘린더 일정 상세 모달의 고객 활동 기록: 중첩 Bootstrap Modal 제거, Offcanvas/인라인 패널 방식 사용
+- 캘린더 일정 상세 모달의 부서 메모: 일정 상세 모달을 유지한 상태로 메모 입력 가능하게 처리
+- 대시보드 영업노트 작성 모달: backdrop/z-index/focus 문제로 필드 클릭이 막히지 않게 처리
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `History`, `DepartmentMemo` 모델과 API를 그대로 사용.
+
+**검증 계획**:
+
+- `python manage.py check` — 완료
+- `python manage.py makemigrations --check --dry-run` — 완료, 변경 없음
+- `python manage.py test` — 완료, 9개 통과
+- 템플릿 정적 점검 — 완료: 중첩 모달 제거, 중복 ID 없음, 전역 backdrop 숨김 없음, CSRF 제출 유지
+- Playwright 브라우저 점검 — 완료: 캘린더 일정 모달 유지 상태에서 부서 메모/고객 활동기록 Offcanvas 입력 및 닫기 가능, 대시보드 영업노트 모달 필드 입력 가능
+
+---
+
+**다음 권장 단계**: Phase 7 계획 재개
 
 권장 실행 순서: Phase 7C (빠른 정리) → Phase 7A (영업기회 CRUD) → Phase 7B (테스트)

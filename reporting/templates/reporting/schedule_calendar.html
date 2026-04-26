@@ -5,25 +5,11 @@
      🎨 LOVABLE CALENDAR STYLES
      ============================================ */
 
-  /* 모달 Z-INDEX 및 오버레이 수정 */
-  .modal-backdrop {
-    z-index: 1040 !important;
-    pointer-events: none !important;
-    opacity: 0.5 !important;
-    background-color: rgba(0, 0, 0, 0.5) !important;
-  }
-  
-  .modal {
-    z-index: 1055 !important;
-  }
-  
-  .modal-dialog {
-    z-index: 1056 !important;
-  }
-  
+  /* 캘린더 페이지 모달 스타일
+     - pointer-events 오버라이드 제거: Bootstrap 기본 포커스 트랩이 올바르게 작동해야 함
+     - 중첩 모달 대신 Offcanvas 구조 사용 */
   .modal-content {
     position: relative;
-    z-index: 1057 !important;
     background-color: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -192,116 +178,111 @@
      🌙 고객 활동 기록 모달 다크모드
      ============================================ */
   
-  /* 고객 활동 기록 모달 전체 */
-  #customerHistoriesModal .modal-content {
-    background-color: var(--surface) !important;
-    border-color: var(--border) !important;
+  /* ─── 고객 활동기록 Offcanvas 다크모드 (중첩 모달 대신 Offcanvas 사용) ─── */
+  #deptMemoOffcanvas,
+  #customerHistoryOffcanvas {
+    z-index: 1065 !important;
   }
-  
-  #customerHistoriesModal .modal-header {
+
+  #customerHistoryOffcanvas .offcanvas-header {
     background: var(--surface-hover) !important;
-    border-bottom-color: var(--border) !important;
+    border-bottom: 1px solid var(--border) !important;
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .modal-body {
+  #customerHistoryOffcanvas .offcanvas-body {
     background: var(--surface) !important;
     color: var(--text-primary) !important;
-  }
-  
-  #customerHistoriesModal .modal-footer {
-    background: var(--surface) !important;
-    border-top-color: var(--border) !important;
   }
   
   /* 활동 기록 카드 */
-  #customerHistoriesModal .card {
+  #customerHistoryOffcanvas .card {
     background: var(--surface) !important;
     border-color: var(--border) !important;
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .card-header {
+  #customerHistoryOffcanvas .card-header {
     background: var(--surface-hover) !important;
     border-bottom-color: var(--border) !important;
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .card-header.bg-light {
+  #customerHistoryOffcanvas .card-header.bg-light {
     background: var(--surface-hover) !important;
   }
   
-  #customerHistoriesModal .card-body {
+  #customerHistoryOffcanvas .card-body {
     background: var(--surface) !important;
     color: var(--text-primary) !important;
   }
   
   /* form-label과 plaintext */
-  #customerHistoriesModal .form-label {
+  #customerHistoryOffcanvas .form-label {
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .form-control-plaintext {
+  #customerHistoryOffcanvas .form-control-plaintext {
     color: var(--text-primary) !important;
     background: var(--surface) !important;
   }
   
   /* bg-light 영역 다크모드 */
-  #customerHistoriesModal .bg-light {
+  #customerHistoryOffcanvas .bg-light {
     background: var(--surface-hover) !important;
     border-color: var(--border) !important;
   }
   
-  #customerHistoriesModal .border {
+  #customerHistoryOffcanvas .border {
     border-color: var(--border) !important;
   }
   
   /* 테이블 다크모드 */
-  #customerHistoriesModal .table {
+  #customerHistoryOffcanvas .table {
     color: var(--text-primary) !important;
     border-color: var(--border) !important;
   }
   
-  #customerHistoriesModal .table thead {
+  #customerHistoryOffcanvas .table thead {
     background: var(--surface-hover) !important;
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .table-light {
+  #customerHistoryOffcanvas .table-light {
     background: var(--surface-hover) !important;
     color: var(--text-primary) !important;
   }
   
-  #customerHistoriesModal .table-bordered {
+  #customerHistoryOffcanvas .table-bordered {
     border-color: var(--border) !important;
   }
   
-  #customerHistoriesModal .table-bordered th,
-  #customerHistoriesModal .table-bordered td {
+  #customerHistoryOffcanvas .table-bordered th,
+  #customerHistoryOffcanvas .table-bordered td {
     border-color: var(--border) !important;
   }
   
-  #customerHistoriesModal .table-success {
+  #customerHistoryOffcanvas .table-success {
     background: rgba(25, 135, 84, 0.1) !important;
     color: var(--text-primary) !important;
   }
   
   /* text-muted 스타일 */
-  #customerHistoriesModal .text-muted {
+  #customerHistoryOffcanvas .text-muted {
     color: var(--text-muted) !important;
   }
   
-  #customerHistoriesModal small.text-muted {
+  #customerHistoryOffcanvas small.text-muted {
     color: var(--text-muted) !important;
   }
   
   /* 빈 상태 스타일 */
-  #customerHistoriesModal .text-center h6 {
+  #customerHistoryOffcanvas .text-center h6 {
     color: var(--text-primary) !important;
   }
   
   /* content-display 영역 */
-  #customerHistoriesModal .content-display {
+  #customerHistoryOffcanvas .content-display {
     background: var(--surface-hover) !important;
     border-color: var(--border) !important;
     color: var(--text-primary) !important;
@@ -7040,64 +7021,31 @@
       loadScheduleHistories(schedule.id);
     }
 
-    // 고객 활동기록 모달 표시 함수
+    // 고객 활동기록 Offcanvas 표시 함수 (중첩 모달 제거 → Offcanvas 전환)
+    // Bootstrap 5는 중첩 모달을 공식 지원하지 않아 첫 번째 모달이 사라지는 버그가 있음
     window.showCustomerHistories = function(followupId, customerName) {
-      // 기존 모달 제거
-      const existingModal = document.getElementById('customerHistoriesModal');
-      if (existingModal) {
-        existingModal.remove();
-      }
+      const offcanvasEl = document.getElementById('customerHistoryOffcanvas');
+      const label = document.getElementById('customerHistoryOffcanvasLabel');
+      const content = document.getElementById('customerHistoryOffcanvasContent');
+      const detailLink = document.getElementById('customerHistoryDetailLink');
 
-      // 모달 HTML 생성
-      const modalHtml = `
-        <div class="modal fade" id="customerHistoriesModal" tabindex="-1" aria-labelledby="customerHistoriesModalLabel" aria-hidden="true">
-          <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title" id="customerHistoriesModalLabel">
-                  <i class="fas fa-history me-2"></i>${customerName} 활동 기록
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-                <div id="customerHistoriesContent">
-                  <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                      <span class="visually-hidden">로딩중...</span>
-                    </div>
-                    <p class="mt-2">활동 기록을 불러오는 중...</p>
-                  </div>
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
-                <a href="#" id="customerDetailLink" class="btn btn-primary">
-                  <i class="fas fa-external-link-alt me-1"></i>고객 상세보기
-                </a>
-              </div>
-            </div>
+      // 제목 및 링크 설정
+      label.innerHTML = `<i class="fas fa-history me-2"></i>${customerName} 활동 기록`;
+      detailLink.href = `{% url 'reporting:followup_detail' 0 %}`.replace('0', followupId);
+
+      // 로딩 스피너 표시
+      content.innerHTML = `
+        <div class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">로딩중...</span>
           </div>
+          <p class="mt-2 text-muted small">활동 기록을 불러오는 중...</p>
         </div>
       `;
 
-      // 새 모달 추가
-      document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-      // 고객 상세보기 링크 설정
-      const customerDetailLink = document.getElementById('customerDetailLink');
-      customerDetailLink.href = `{% url 'reporting:followup_detail' 0 %}`.replace('0', followupId);
-
-      // 모달 표시
-      const modal = new bootstrap.Modal(document.getElementById('customerHistoriesModal'), {
-        backdrop: true,  // 외부 클릭 시 모달 닫기
-        keyboard: true   // ESC 키로 모달 닫기
-      });
-      modal.show();
-
-      // 모달이 닫힐 때 DOM에서 제거
-      document.getElementById('customerHistoriesModal').addEventListener('hidden.bs.modal', function() {
-        this.remove();
-      });
+      // getOrCreateInstance: HTML data-bs-* 속성(backdrop=false, scroll=true)을 사용
+      const offcanvas = bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl);
+      offcanvas.show();
 
       // 활동 기록 로딩
       loadCustomerHistories(followupId);
@@ -7111,19 +7059,19 @@
           if (data.success) {
             displayCustomerHistories(data);
           } else {
-            document.getElementById('customerHistoriesContent').innerHTML = 
+            document.getElementById('customerHistoryOffcanvasContent').innerHTML = 
               '<div class="alert alert-danger">활동 기록을 불러오는데 실패했습니다.</div>';
           }
         })
         .catch(error => {
-          document.getElementById('customerHistoriesContent').innerHTML = 
+          document.getElementById('customerHistoryOffcanvasContent').innerHTML = 
             '<div class="alert alert-danger">활동 기록을 불러오는 중 오류가 발생했습니다.</div>';
         });
     }
 
     // 고객 활동기록 표시 함수
     function displayCustomerHistories(data) {
-      const content = document.getElementById('customerHistoriesContent');
+      const content = document.getElementById('customerHistoryOffcanvasContent');
       
       // 전역 히스토리 데이터 업데이트
       if (data.histories && data.histories.length > 0) {
@@ -7708,8 +7656,12 @@
 
 <!-- 납품 품목 관리 모달은 JavaScript에서 동적으로 생성됩니다 -->
 
-<!-- 부서 메모 오프캔버스 -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="deptMemoOffcanvas" aria-labelledby="deptMemoLabel" style="width:340px">
+<!-- 부서 메모 오프캔버스
+     data-bs-backdrop="false": 모달과 동시에 열릴 때 두 번째 backdrop 생성 방지
+     data-bs-scroll="true": 뒤 모달 스크롤 허용 -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="deptMemoOffcanvas"
+     data-bs-backdrop="false" data-bs-scroll="true"
+     aria-labelledby="deptMemoLabel" style="width:340px">
   <div class="offcanvas-header" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;">
     <h5 class="offcanvas-title" id="deptMemoLabel"><i class="fas fa-sticky-note me-2"></i>부서 메모</h5>
     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
@@ -7723,6 +7675,31 @@
   </div>
 </div>
 
+<!-- 고객 활동기록 오프캔버스
+     중첩 모달 대신 Offcanvas 사용 (Bootstrap 5 중첩 모달 미지원)
+     data-bs-backdrop="false": 모달 위에 열려도 backdrop 충돌 없음
+     data-bs-scroll="true": 뒤 모달 스크롤 허용 -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="customerHistoryOffcanvas"
+     data-bs-backdrop="false" data-bs-scroll="true"
+     aria-labelledby="customerHistoryOffcanvasLabel" style="width:520px; max-width:95vw;">
+  <div class="offcanvas-header" style="background: linear-gradient(135deg, #0ea5e9, #6366f1); color: white;">
+    <h5 class="offcanvas-title" id="customerHistoryOffcanvasLabel">
+      <i class="fas fa-history me-2"></i>고객 활동 기록
+    </h5>
+    <a href="#" id="customerHistoryDetailLink" class="btn btn-sm btn-light me-2" style="font-size:0.75rem;" title="고객 상세보기">
+      <i class="fas fa-external-link-alt me-1"></i>상세보기
+    </a>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body" id="customerHistoryOffcanvasContent" style="overflow-y:auto;">
+    <div class="text-center py-4">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">로딩중...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let _currentDeptId = null;
 
@@ -7732,7 +7709,25 @@ function openDeptMemo(deptId, deptName) {
   document.getElementById('deptMemoContent').value = '로딩 중...';
   document.getElementById('deptMemoMeta').textContent = '';
   
-  const offcanvas = new bootstrap.Offcanvas(document.getElementById('deptMemoOffcanvas'));
+  // Bootstrap Offcanvas를 사용 (HTML에 data-bs-backdrop="false" 이미 설정됨)
+  // getOrCreateInstance: 기존 인스턴스 재사용
+  const offcanvasEl = document.getElementById('deptMemoOffcanvas');
+  const offcanvas = bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl);
+
+  // ── 모달 포커스 트랩 우회 ──────────────────────────────────────────────
+  // Bootstrap modal의 focusin 이벤트 리스너가 offcanvas 내 포커스를 빼앗는 것을 방지
+  // useCapture=true로 Bootstrap보다 먼저 실행, offcanvas 내 요소면 stopPropagation
+  const _focusTrapBypass = function(e) {
+    if (offcanvasEl.contains(e.target)) {
+      e.stopPropagation();
+    }
+  };
+  document.addEventListener('focusin', _focusTrapBypass, true);
+  offcanvasEl.addEventListener('hidden.bs.offcanvas', function() {
+    document.removeEventListener('focusin', _focusTrapBypass, true);
+  }, { once: true });
+  // ───────────────────────────────────────────────────────────────────────
+
   offcanvas.show();
   
   fetch(`/reporting/api/department/${deptId}/memo/`, {

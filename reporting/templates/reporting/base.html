@@ -416,7 +416,9 @@
       margin-bottom: 0 !important;
       min-height: 100vh;
       padding: 0 !important;
-      z-index: 1;
+      /* z-index: 1 제거 — stacking context 생성 방지
+         이 값이 있으면 내부 Bootstrap 모달의 z-index가 main-content stacking context 내에
+         갇혀 Bootstrap이 body에 추가하는 backdrop(z-index:1040)보다 낮아져 클릭 불가 상태가 됨 */
       background: var(--background);
       transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
