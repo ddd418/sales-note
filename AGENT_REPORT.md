@@ -1223,10 +1223,14 @@ admin/manager는 전체 또는 특정 영업사원 필터 조회가 가능하고
 
 | 파일 | 변경 |
 |------|------|
-| eporting/views.py | nalytics_dashboard_view, nalytics_activity_csv_export, nalytics_pipeline_csv_export 3개 뷰 추가 |
-| eporting/urls.py | /analytics/, /analytics/export/activity.csv, /analytics/export/pipeline.csv 3개 URL 추가 |
-| eporting/templates/reporting/analytics_dashboard.html | 신규 템플릿 생성 (필터, 요약 카드, 활동 보고서, 파이프라인 차트, 거래처 현황 포함) |
-| eporting/templates/reporting/base.html | 사이드바에 "분석 보고서" 네비게이션 항목 추가 |
+| 
+eporting/views.py | nalytics_dashboard_view, nalytics_activity_csv_export, nalytics_pipeline_csv_export 3개 뷰 추가 |
+| 
+eporting/urls.py | /analytics/, /analytics/export/activity.csv, /analytics/export/pipeline.csv 3개 URL 추가 |
+| 
+eporting/templates/reporting/analytics_dashboard.html | 신규 템플릿 생성 (필터, 요약 카드, 활동 보고서, 파이프라인 차트, 거래처 현황 포함) |
+| 
+eporting/templates/reporting/base.html | 사이드바에 "분석 보고서" 네비게이션 항목 추가 |
 | AGENT_REPORT.md | Phase 6 내용 추가 |
 
 ---
@@ -1287,3 +1291,99 @@ admin/manager는 전체 또는 특정 영업사원 필터 조회가 가능하고
 - 월별 추세 그래프 추가
 - 영업사원 개인별 상세 보고서 페이지
 - 대시보드 위젯에 분석 요약 통합
+
+---
+
+## Phase 6 QA 패스 — 버그 수정 (2026-04-26)
+
+**날짜**: 2026-04-26  
+**상태**: 완료
+
+---
+
+## 요약
+
+Phase 6 구현 후 QA 패스를 실행하여 3개의 버그를 발견하고 모두 수정했습니다.
+
+---
+
+## 발견된 버그 및 수정
+
+### Bug 1: CSV BOM이 모든 행에 반복 삽입 (FIXED)
+
+**증상**: Excel에서 CSV 열면 각 행 앞에 `<U+FEFF>` 깨진 문자가 반복됨  
+**원인**: `HttpResponse(content_type='text/csv; charset=utf-8-sig')` 사용 시 Django가 모든 `write()` 호출에 BOM을 삽입함 — `csv.writer`는 각 행마다 별도 `write()`를 호출  
+**수정** (`reporting/views.py`):
+- `charset=utf-8-sig` → `charset=utf-8`
+- `response.write('\ufeff')` 를 헤더 행 이전에 **1회만** 명시적으로 추가
+- 영향 뷰: `analytics_activity_csv_export`, `analytics_pipeline_csv_export`
+
+### Bug 2: 파이프라인 막대 차트 너비가 모두 0% (FIXED)
+
+**증상**: 파이프라인 단계별 막대 차트가 모두 0% 너비로 표시됨  
+**원인**: `{% with max_cnt=pipeline_summary.0.count %}` — 목록의 첫 번째 항목(`potential`)의 카운트를 최대값으로 사용했는데, 해당 값이 0이면 전체 차트가 0%로 렌더링됨  
+**수정**:
+- `analytics_dashboard_view`에 `max_pipeline_count = max((item['count'] for item in pipeline_summary), default=1) or 1` 계산 추가
+- 템플릿에서 `{% widthratio item.count max_pipeline_count 100 %}` 사용으로 변경
+
+### Bug 3: `UnboundLocalError: pipeline_summary` (salesman 접근 시 500 에러) (FIXED)
+
+**증상**: salesman 사용자가 `/reporting/analytics/` 접근 시 500 Internal Server Error  
+**원인**: `max_pipeline_count` 계산 코드가 `pipeline_summary` 리스트 정의보다 앞에 배치됨 (Bug 2 수정 과정에서 위치가 잘못됨)  
+**수정**: `max_pipeline_count` 계산 코드를 `pipeline_summary` 루프 완료 **직후**로 이동
+
+---
+
+## 변경된 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `reporting/views.py` | CSV BOM 수정 (2개 뷰), `max_pipeline_count` 계산 위치 수정 |
+| `reporting/templates/reporting/analytics_dashboard.html` | `widthratio` 태그에 `max_pipeline_count` 사용 |
+| `AGENT_REPORT.md` | Phase 6 QA 섹션 추가 |
+
+---
+
+## 실행된 명령 및 결과
+
+| 명령 | 결과 |
+|------|------|
+| `python manage.py check` | ✅ System check identified no issues (0 silenced) |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
+| `python manage.py test` | ✅ Ran 9 tests in ~8.7s — OK |
+| BOM 검증 스크립트 | ✅ BOM only at start: OK |
+| HTTP 스모크 테스트 (미인증) | ✅ 모든 analytics URL → 302 |
+| 역할별 권한 테스트 (Test Client) | ✅ 아래 표 참고 |
+
+---
+
+## 역할별 권한 테스트 결과
+
+| 역할 | `/reporting/analytics/` | `/analytics/export/activity.csv` | `/analytics/export/pipeline.csv` |
+|------|-------------------------|----------------------------------|----------------------------------|
+| 미인증 | 302 (로그인 리디렉션) | 302 (로그인 리디렉션) | 302 (로그인 리디렉션) |
+| salesman (hana008) | **200** ✅ | **403** ✅ | **403** ✅ |
+| manager (hana) | **200** ✅ | **200** ✅ | **200** ✅ |
+| admin (ddd418) | **200** ✅ | **200** ✅ | **200** ✅ |
+
+모든 결과가 예상 동작과 일치합니다.
+
+---
+
+## 알려진 제한사항 / 잔여 위험
+
+- 없음 — 발견된 버그 3개 모두 수정 완료
+- `python manage.py test` 9개 기존 테스트 모두 통과
+
+---
+
+## 배포 안전성
+
+✅ **배포 가능** — 버그 수정 후 모든 검증 통과
+
+---
+
+## Phase 7 시작 가능 여부
+
+✅ **Phase 7 시작 가능**
+

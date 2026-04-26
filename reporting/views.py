@@ -14344,6 +14344,9 @@ def analytics_dashboard_view(request):
             'count': cnt,
         })
 
+    # 파이프라인 바 차트 최대값 (0 나눗셈 방지)
+    max_pipeline_count = max((item['count'] for item in pipeline_summary), default=1) or 1
+
     context = {
         'user_profile': user_profile,
         'is_manager_or_admin': is_manager_or_admin,
@@ -14362,6 +14365,7 @@ def analytics_dashboard_view(request):
         'activity_report': activity_report,
         'customer_report': customer_report,
         'pipeline_summary': pipeline_summary,
+        'max_pipeline_count': max_pipeline_count,
     }
     return render(request, 'reporting/analytics_dashboard.html', context)
 
@@ -14410,9 +14414,10 @@ def analytics_activity_csv_export(request):
     from django.http import HttpResponse
     from django.db.models import Max
 
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
     filename = f"activity_report_{date_from}_{date_to}.csv"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.write('\ufeff')  # BOM — 한국어 Excel 호환
 
     writer = csv.writer(response)
     writer.writerow(['영업사원', '기간 내 영업노트', '활성 거래처', '지연 후속조치', '최근 활동일'])
@@ -14464,8 +14469,9 @@ def analytics_pipeline_csv_export(request):
 
     from django.http import HttpResponse
 
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="pipeline_summary.csv"'
+    response.write('\ufeff')  # BOM — 한국어 Excel 호환
 
     writer = csv.writer(response)
     writer.writerow(['파이프라인 단계', '건수'])

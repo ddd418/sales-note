@@ -201,15 +201,11 @@
                 {{ item.label }}
               </div>
               <div class="flex-grow-1" style="height:20px; background: var(--surface-hover); border-radius:4px; overflow:hidden;">
-                {% with max_cnt=pipeline_summary.0.count %}
-                {% if item.count > 0 %}
                 <div style="height:100%;
-                  width:{% widthratio item.count max_cnt 100 %}%;
+                  width:{% widthratio item.count max_pipeline_count 100 %}%;
                   background: {% if item.stage == 'won' %}#22c55e{% elif item.stage == 'lost' %}#ef4444{% elif item.stage == 'negotiation' %}#f59e0b{% else %}#3b82f6{% endif %};
                   border-radius:4px; min-width:4px;">
                 </div>
-                {% endif %}
-                {% endwith %}
               </div>
               <div class="fw-bold" style="width:30px; text-align:right; font-size:.88rem; color: var(--text-primary);">
                 {{ item.count }}
