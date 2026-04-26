@@ -138,7 +138,12 @@ urlpatterns = [
     # Manager 전용 URL들
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
     path('manager/salesman/<int:user_id>/', views.salesman_detail, name='salesman_detail'),
-    
+
+    # Phase 6: 분석 보고서 URL들
+    path('analytics/', views.analytics_dashboard_view, name='analytics_dashboard'),
+    path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
+    path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
+
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),

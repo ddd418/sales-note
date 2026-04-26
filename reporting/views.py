@@ -14170,3 +14170,310 @@ def weekly_report_load_schedules(request):
             'notes': s.notes or '',
         })
     return JsonResponse({'schedules': data})
+
+
+# ============ Phase 6: 분석 보고서 뷰들 ============
+
+@login_required
+def analytics_dashboard_view(request):
+    """
+    영업 분석 보고서 대시보드
+    - admin/manager: 전체 또는 특정 영업사원 필터 가능
+    - salesman: 본인 데이터만 조회
+    """
+    from django.db.models import Max, Min
+    import datetime
+
+    user_profile = get_user_profile(request.user)
+    is_manager_or_admin = user_profile.role in ('admin', 'manager')
+
+    today = timezone.now().date()
+
+    # ─── 날짜 범위 필터 ───
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str = request.GET.get('date_to', '')
+    try:
+        date_from = datetime.date.fromisoformat(date_from_str) if date_from_str else (today - datetime.timedelta(days=30))
+    except ValueError:
+        date_from = today - datetime.timedelta(days=30)
+    try:
+        date_to = datetime.date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    # ─── 영업사원 필터 ───
+    # admin/manager만 다른 사용자 데이터 조회 가능
+    selected_user_id = request.GET.get('user_id', '')
+    filter_users = None  # None = 자기 자신
+
+    salesperson_list = []
+    if is_manager_or_admin:
+        # 같은 회사의 영업사원 목록
+        if user_profile.company:
+            salesperson_list = User.objects.filter(
+                userprofile__company=user_profile.company,
+                userprofile__role='salesman',
+                is_active=True,
+            ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+        else:
+            salesperson_list = User.objects.filter(
+                userprofile__role='salesman',
+                is_active=True,
+            ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+
+        if selected_user_id:
+            try:
+                uid = int(selected_user_id)
+                filter_users = User.objects.filter(pk=uid)
+            except (ValueError, TypeError):
+                filter_users = None
+        # filter_users=None → 전체 조회 (admin/manager)
+        if filter_users is None:
+            # 전체 영업사원
+            if user_profile.company:
+                filter_users = User.objects.filter(
+                    userprofile__company=user_profile.company,
+                    userprofile__role='salesman',
+                    is_active=True,
+                )
+            else:
+                filter_users = User.objects.filter(
+                    userprofile__role='salesman',
+                    is_active=True,
+                )
+    else:
+        # salesman → 본인만
+        filter_users = User.objects.filter(pk=request.user.pk)
+
+    # ─── 기본 쿼리셋 ───
+    histories_qs = History.objects.filter(
+        user__in=filter_users,
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+        parent_history__isnull=True,  # 댓글 메모 제외
+    )
+    followups_qs = FollowUp.objects.filter(user__in=filter_users)
+
+    # ─── 요약 카드 ───
+    total_histories = histories_qs.count()
+
+    # 완료된 follow-up (next_action_date 있고 reviewed_at 있는 경우)
+    completed_followups = histories_qs.filter(
+        next_action_date__isnull=False,
+        reviewed_at__isnull=False,
+    ).count()
+
+    # 지연된 follow-up (next_action_date가 오늘 이전이고 reviewed_at 없음)
+    overdue_followups = History.objects.filter(
+        user__in=filter_users,
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+        reviewed_at__isnull=True,
+        parent_history__isnull=True,
+    ).count()
+
+    # 예정된 follow-up (next_action_date가 오늘 이후)
+    upcoming_followups = History.objects.filter(
+        user__in=filter_users,
+        next_action_date__gte=today,
+        next_action_date__isnull=False,
+        reviewed_at__isnull=True,
+        parent_history__isnull=True,
+    ).count()
+
+    # 활성 파이프라인 항목
+    active_pipeline = followups_qs.filter(
+        status='active',
+        pipeline_stage__in=['potential', 'contact', 'quote', 'negotiation'],
+    ).count()
+
+    # ─── 영업사원별 활동 보고서 ───
+    activity_report = []
+    report_users = filter_users.select_related('userprofile') if filter_users else []
+    for u in report_users:
+        user_histories = histories_qs.filter(user=u)
+        user_hist_all = History.objects.filter(
+            user=u,
+            parent_history__isnull=True,
+        )
+        last_activity = user_histories.aggregate(last=Max('created_at'))['last']
+        overdue_count = user_hist_all.filter(
+            next_action_date__lt=today,
+            next_action_date__isnull=False,
+            reviewed_at__isnull=True,
+        ).count()
+        followup_count = FollowUp.objects.filter(user=u, status='active').count()
+        activity_report.append({
+            'user': u,
+            'history_count': user_histories.count(),
+            'followup_count': followup_count,
+            'overdue_count': overdue_count,
+            'last_activity': last_activity,
+        })
+    # 활동 수 내림차순 정렬
+    activity_report.sort(key=lambda x: x['history_count'], reverse=True)
+
+    # ─── 고객 활동 보고서 ───
+    # 기간 내 활동이 있는 거래처 (최대 50개)
+    active_followup_ids = histories_qs.values_list('followup_id', flat=True).distinct()
+    customer_report = []
+    for fup in FollowUp.objects.filter(
+        pk__in=active_followup_ids,
+    ).select_related('company', 'user').order_by('-updated_at')[:50]:
+        last_hist = History.objects.filter(
+            followup=fup,
+            parent_history__isnull=True,
+        ).aggregate(last=Max('created_at'), next_date=Max('next_action_date'))
+        customer_report.append({
+            'followup': fup,
+            'last_activity': last_hist['last'],
+            'next_action_date': last_hist['next_date'],
+        })
+
+    # ─── 파이프라인 단계별 현황 ───
+    pipeline_stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+    stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    pipeline_summary = []
+    for stage in stage_order:
+        cnt = followups_qs.filter(pipeline_stage=stage).count()
+        pipeline_summary.append({
+            'stage': stage,
+            'label': pipeline_stage_labels.get(stage, stage),
+            'count': cnt,
+        })
+
+    context = {
+        'user_profile': user_profile,
+        'is_manager_or_admin': is_manager_or_admin,
+        'salesperson_list': salesperson_list,
+        'selected_user_id': selected_user_id,
+        'date_from': date_from,
+        'date_to': date_to,
+        'today': today,
+        # 요약 카드
+        'total_histories': total_histories,
+        'completed_followups': completed_followups,
+        'overdue_followups': overdue_followups,
+        'upcoming_followups': upcoming_followups,
+        'active_pipeline': active_pipeline,
+        # 보고서
+        'activity_report': activity_report,
+        'customer_report': customer_report,
+        'pipeline_summary': pipeline_summary,
+    }
+    return render(request, 'reporting/analytics_dashboard.html', context)
+
+
+@login_required
+def analytics_activity_csv_export(request):
+    """
+    영업사원별 활동 보고서 CSV 내보내기 (admin/manager 전용)
+    UTF-8 with BOM — 한국어 Excel 호환
+    """
+    import csv
+    import datetime
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today = timezone.now().date()
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str = request.GET.get('date_to', '')
+    try:
+        date_from = datetime.date.fromisoformat(date_from_str) if date_from_str else (today - datetime.timedelta(days=30))
+    except ValueError:
+        date_from = today - datetime.timedelta(days=30)
+    try:
+        date_to = datetime.date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    # 영업사원 목록
+    if user_profile.company:
+        report_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True,
+        ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+    else:
+        report_users = User.objects.filter(
+            userprofile__role='salesman',
+            is_active=True,
+        ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+
+    from django.http import HttpResponse
+    from django.db.models import Max
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    filename = f"activity_report_{date_from}_{date_to}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow(['영업사원', '기간 내 영업노트', '활성 거래처', '지연 후속조치', '최근 활동일'])
+
+    for u in report_users:
+        hist_count = History.objects.filter(
+            user=u,
+            created_at__date__gte=date_from,
+            created_at__date__lte=date_to,
+            parent_history__isnull=True,
+        ).count()
+        followup_count = FollowUp.objects.filter(user=u, status='active').count()
+        overdue_count = History.objects.filter(
+            user=u,
+            next_action_date__lt=today,
+            next_action_date__isnull=False,
+            reviewed_at__isnull=True,
+            parent_history__isnull=True,
+        ).count()
+        last_activity = History.objects.filter(
+            user=u,
+            parent_history__isnull=True,
+        ).aggregate(last=Max('created_at'))['last']
+        last_str = last_activity.strftime('%Y-%m-%d') if last_activity else '-'
+        display_name = u.get_full_name() or u.username
+        writer.writerow([display_name, hist_count, followup_count, overdue_count, last_str])
+
+    return response
+
+
+@login_required
+def analytics_pipeline_csv_export(request):
+    """
+    파이프라인 단계별 현황 CSV 내보내기 (admin/manager 전용)
+    UTF-8 with BOM — 한국어 Excel 호환
+    """
+    import csv
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    if user_profile.company:
+        followups_qs = FollowUp.objects.filter(
+            user__userprofile__company=user_profile.company,
+        )
+    else:
+        followups_qs = FollowUp.objects.all()
+
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = 'attachment; filename="pipeline_summary.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['파이프라인 단계', '건수'])
+
+    stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+    for stage in stage_order:
+        cnt = followups_qs.filter(pipeline_stage=stage).count()
+        writer.writerow([stage_labels.get(stage, stage), cnt])
+
+    return response

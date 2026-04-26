@@ -1,0 +1,348 @@
+{% extends 'reporting/base.html' %}
+{% load i18n %}
+
+{% block title %}영업 분석 보고서{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- 페이지 헤더 -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h3 fw-bold mb-0" style="color: var(--text-primary);">
+        <i class="fas fa-chart-line me-2 text-info"></i>영업 분석 보고서
+      </h1>
+      <p class="text-muted small mb-0 mt-1">영업 활동 현황, 거래처 활동, 파이프라인 단계를 한눈에 파악하세요.</p>
+    </div>
+    {% if is_manager_or_admin %}
+    <div class="d-flex gap-2">
+      <a href="{% url 'reporting:analytics_activity_csv' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+         class="btn btn-outline-success btn-sm">
+        <i class="fas fa-file-csv me-1"></i>활동 보고서 CSV
+      </a>
+      <a href="{% url 'reporting:analytics_pipeline_csv' %}"
+         class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-file-csv me-1"></i>파이프라인 CSV
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 필터 폼 -->
+  <div class="card border-0 shadow-sm mb-4" style="border-radius:1rem; background: var(--surface);">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label small fw-semibold mb-1">시작일</label>
+          <input type="date" name="date_from" class="form-control form-control-sm"
+                 value="{{ date_from|date:'Y-m-d' }}"
+                 style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary); min-width:130px;">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small fw-semibold mb-1">종료일</label>
+          <input type="date" name="date_to" class="form-control form-control-sm"
+                 value="{{ date_to|date:'Y-m-d' }}"
+                 style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary); min-width:130px;">
+        </div>
+        {% if is_manager_or_admin and salesperson_list %}
+        <div class="col-auto">
+          <label class="form-label small fw-semibold mb-1">영업사원</label>
+          <select name="user_id" class="form-select form-select-sm"
+                  style="background: var(--surface-hover); border-color: var(--border); color: var(--text-primary); min-width:140px;">
+            <option value="">전체</option>
+            {% for u in salesperson_list %}
+            <option value="{{ u.pk }}" {% if selected_user_id == u.pk|stringformat:'s' %}selected{% endif %}>
+              {{ u.get_full_name|default:u.username }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="fas fa-search me-1"></i>조회
+          </button>
+          <a href="{% url 'reporting:analytics_dashboard' %}" class="btn btn-outline-secondary btn-sm ms-1">초기화</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border-0 shadow-sm h-100" style="border-radius:.9rem; background: var(--surface);">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-info">{{ total_histories }}</div>
+          <div class="text-muted small mt-1">영업 노트</div>
+          <div class="text-muted" style="font-size:.7rem;">{{ date_from|date:"m/d" }}~{{ date_to|date:"m/d" }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border-0 shadow-sm h-100" style="border-radius:.9rem; background: var(--surface);">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-success">{{ completed_followups }}</div>
+          <div class="text-muted small mt-1">검토 완료</div>
+          <div class="text-muted" style="font-size:.7rem;">후속조치 포함</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border-0 shadow-sm h-100" style="border-radius:.9rem; background: var(--surface);">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-danger">{{ overdue_followups }}</div>
+          <div class="text-muted small mt-1">지연 후속조치</div>
+          <div class="text-muted" style="font-size:.7rem;">미검토 + 날짜 경과</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border-0 shadow-sm h-100" style="border-radius:.9rem; background: var(--surface);">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-warning">{{ upcoming_followups }}</div>
+          <div class="text-muted small mt-1">예정 후속조치</div>
+          <div class="text-muted" style="font-size:.7rem;">오늘 이후</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border-0 shadow-sm h-100" style="border-radius:.9rem; background: var(--surface);">
+        <div class="card-body text-center py-3">
+          <div class="display-6 fw-bold text-primary">{{ active_pipeline }}</div>
+          <div class="text-muted small mt-1">활성 파이프라인</div>
+          <div class="text-muted" style="font-size:.7rem;">잠재~협상 단계</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- 영업사원별 활동 보고서 -->
+    <div class="col-12 col-xl-7">
+      <div class="card border-0 shadow-sm" style="border-radius:1rem; background: var(--surface);">
+        <div class="card-header border-0 py-3" style="background:transparent;">
+          <h5 class="mb-0 fw-semibold" style="color: var(--text-primary);">
+            <i class="fas fa-users me-2 text-info"></i>영업사원별 활동 현황
+          </h5>
+        </div>
+        <div class="card-body pt-0">
+          {% if activity_report %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size:.88rem;">
+              <thead>
+                <tr style="color: var(--text-secondary); border-bottom: 1px solid var(--border);">
+                  <th class="py-2 fw-semibold">영업사원</th>
+                  <th class="py-2 fw-semibold text-center">영업노트</th>
+                  <th class="py-2 fw-semibold text-center">활성거래처</th>
+                  <th class="py-2 fw-semibold text-center">지연후속</th>
+                  <th class="py-2 fw-semibold">최근 활동</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in activity_report %}
+                <tr style="border-bottom: 1px solid var(--border);">
+                  <td style="color: var(--text-primary);">
+                    <i class="fas fa-user-circle me-1 text-muted"></i>
+                    {{ row.user.get_full_name|default:row.user.username }}
+                  </td>
+                  <td class="text-center">
+                    <span class="badge bg-info">{{ row.history_count }}</span>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge bg-primary">{{ row.followup_count }}</span>
+                  </td>
+                  <td class="text-center">
+                    {% if row.overdue_count > 0 %}
+                    <span class="badge bg-danger">{{ row.overdue_count }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">0</span>
+                    {% endif %}
+                  </td>
+                  <td style="color: var(--text-muted); font-size:.82rem;">
+                    {% if row.last_activity %}
+                      {{ row.last_activity|date:"Y.m.d" }}
+                    {% else %}
+                      <span class="text-muted">없음</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="fas fa-inbox fa-2x mb-2"></i>
+            <p class="mb-0">해당 기간에 활동 데이터가 없습니다.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 파이프라인 단계별 현황 -->
+    <div class="col-12 col-xl-5">
+      <div class="card border-0 shadow-sm" style="border-radius:1rem; background: var(--surface);">
+        <div class="card-header border-0 py-3" style="background:transparent;">
+          <h5 class="mb-0 fw-semibold" style="color: var(--text-primary);">
+            <i class="fas fa-filter me-2 text-primary"></i>파이프라인 단계별 현황
+          </h5>
+        </div>
+        <div class="card-body pt-0">
+          {% if pipeline_summary %}
+          {% with total_pipeline=pipeline_summary|length %}
+          <div class="d-flex flex-column gap-2">
+            {% for item in pipeline_summary %}
+            {% if item.count > 0 %}
+            <div class="d-flex align-items-center gap-2">
+              <div style="width:80px; font-size:.83rem; color: var(--text-secondary); text-align:right;">
+                {{ item.label }}
+              </div>
+              <div class="flex-grow-1" style="height:20px; background: var(--surface-hover); border-radius:4px; overflow:hidden;">
+                {% with max_cnt=pipeline_summary.0.count %}
+                {% if item.count > 0 %}
+                <div style="height:100%;
+                  width:{% widthratio item.count max_cnt 100 %}%;
+                  background: {% if item.stage == 'won' %}#22c55e{% elif item.stage == 'lost' %}#ef4444{% elif item.stage == 'negotiation' %}#f59e0b{% else %}#3b82f6{% endif %};
+                  border-radius:4px; min-width:4px;">
+                </div>
+                {% endif %}
+                {% endwith %}
+              </div>
+              <div class="fw-bold" style="width:30px; text-align:right; font-size:.88rem; color: var(--text-primary);">
+                {{ item.count }}
+              </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+          </div>
+          <!-- 전체 합계 -->
+          <div class="mt-3 pt-2 d-flex justify-content-between small text-muted" style="border-top: 1px solid var(--border);">
+            <span>전체 거래처 합계</span>
+            <span class="fw-bold" style="color: var(--text-primary);">
+              {% with total=0 %}
+              {% for item in pipeline_summary %}
+              {% endfor %}
+              {% endwith %}
+              {% for item in pipeline_summary %}{% if forloop.last %}—{% endif %}{% endfor %}
+            </span>
+          </div>
+          <div class="mt-1">
+            <div class="row g-1">
+              {% for item in pipeline_summary %}
+              <div class="col-6">
+                <div class="d-flex justify-content-between px-1 py-1 rounded" style="background: var(--surface-hover); font-size:.8rem;">
+                  <span style="color: var(--text-secondary);">{{ item.label }}</span>
+                  <span class="fw-bold" style="color: var(--text-primary);">{{ item.count }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endwith %}
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="fas fa-inbox fa-2x mb-2"></i>
+            <p class="mb-0">파이프라인 데이터가 없습니다.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 고객 활동 보고서 -->
+    <div class="col-12">
+      <div class="card border-0 shadow-sm" style="border-radius:1rem; background: var(--surface);">
+        <div class="card-header border-0 py-3 d-flex justify-content-between align-items-center" style="background:transparent;">
+          <h5 class="mb-0 fw-semibold" style="color: var(--text-primary);">
+            <i class="fas fa-building me-2 text-warning"></i>거래처 활동 현황
+            <small class="fw-normal text-muted ms-2" style="font-size:.75rem;">기간 내 활동 있는 거래처 (최대 50개)</small>
+          </h5>
+        </div>
+        <div class="card-body pt-0">
+          {% if customer_report %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size:.87rem;">
+              <thead>
+                <tr style="color: var(--text-secondary); border-bottom: 1px solid var(--border);">
+                  <th class="py-2 fw-semibold">거래처</th>
+                  <th class="py-2 fw-semibold">고객명</th>
+                  <th class="py-2 fw-semibold">담당 영업사원</th>
+                  <th class="py-2 fw-semibold">파이프라인 단계</th>
+                  <th class="py-2 fw-semibold">최근 활동일</th>
+                  <th class="py-2 fw-semibold">다음 연락일</th>
+                  <th class="py-2 fw-semibold"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in customer_report %}
+                <tr style="border-bottom: 1px solid var(--border);">
+                  <td style="color: var(--text-primary);">
+                    <a href="{% url 'reporting:followup_detail' row.followup.pk %}"
+                       style="color: var(--text-primary); text-decoration:none;">
+                      {{ row.followup.company.name|default:"-" }}
+                    </a>
+                  </td>
+                  <td style="color: var(--text-secondary);">{{ row.followup.customer_name|default:"-" }}</td>
+                  <td style="color: var(--text-secondary);">
+                    {{ row.followup.user.get_full_name|default:row.followup.user.username }}
+                  </td>
+                  <td>
+                    {% with stage=row.followup.pipeline_stage %}
+                    <span class="badge
+                      {% if stage == 'won' %}bg-success
+                      {% elif stage == 'lost' %}bg-danger
+                      {% elif stage == 'negotiation' %}bg-warning text-dark
+                      {% elif stage == 'quote' %}bg-info
+                      {% elif stage == 'contact' %}bg-primary
+                      {% else %}bg-secondary
+                      {% endif %}">
+                      {{ row.followup.get_pipeline_stage_display }}
+                    </span>
+                    {% endwith %}
+                  </td>
+                  <td style="color: var(--text-muted); font-size:.82rem;">
+                    {% if row.last_activity %}{{ row.last_activity|date:"Y.m.d" }}{% else %}-{% endif %}
+                  </td>
+                  <td style="font-size:.82rem;">
+                    {% if row.next_action_date %}
+                      {% if row.next_action_date < today %}
+                        <span class="text-danger fw-bold">{{ row.next_action_date|date:"Y.m.d" }}</span>
+                        <small class="text-danger ms-1">지연</small>
+                      {% else %}
+                        <span style="color: var(--text-primary);">{{ row.next_action_date|date:"Y.m.d" }}</span>
+                      {% endif %}
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <a href="{% url 'reporting:followup_detail' row.followup.pk %}"
+                       class="btn btn-outline-secondary btn-sm py-0 px-2"
+                       style="font-size:.75rem;">상세</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="fas fa-inbox fa-2x mb-2"></i>
+            <p class="mb-0">해당 기간에 활동이 기록된 거래처가 없습니다.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+</div>
+
+<script>
+// today 변수 (다음 연락일 지연 판단용)
+const today = new Date('{{ today|date:"Y-m-d" }}');
+</script>
+{% endblock %}
