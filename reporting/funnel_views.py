@@ -721,12 +721,16 @@ PIPELINE_STAGES = [
 GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d', 'D': '#dc3545'}
 
 
-def _suggest_pipeline_stage(followup, current_month_schedules=None):
+def _suggest_pipeline_stage(followup, current_month_schedules=None, recent_histories=None):
     """
     Quote / Schedule / History 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
-    - prefetch_related('quotes', 'histories') 후 호출 시 DB 추가 쿼리 없음.
-    - current_month_schedules: 이번 달 Schedule 리스트 (미리 필터링된 것, 없으면 None).
+    - prefetch_related('quotes') 후 호출 시 DB 추가 쿼리 없음.
+    - current_month_schedules: 최근 30일 Schedule 리스트 (미리 날짜 필터링된 것).
+    - recent_histories: 최근 30일 History 리스트 (미리 날짜 필터링된 것).
+      None 이면 History 기반 단계 추천을 건너뜀 (날짜 필터 없는 전체 조회 방지).
     Returns (stage_key, source_label) or (None, None) if no better suggestion.
+
+    단계 우선순위: 견적(Quote) > 최근 30일 일정 > 최근 30일 미팅 히스토리
     """
     # 1. Quote 기반 (최우선 — 실제 견적 객체)
     quotes = list(followup.quotes.all())
@@ -741,7 +745,8 @@ def _suggest_pipeline_stage(followup, current_month_schedules=None):
             return ('lost', '견적 거절')
         return ('quote', '견적')
 
-    # 2. 이번 달 일정 기반 (Schedule 객체, 견적 일정 → quote 단계)
+    # 2. 최근 30일 일정 기반 (current_month_schedules는 이미 날짜 필터된 목록)
+    #    ※ 견적 일정이 있으면 quote 우선 — 미팅 일정보다 항상 앞섬
     if current_month_schedules:
         has_quote_schedule = any(
             s.activity_type == 'quote'
@@ -750,14 +755,20 @@ def _suggest_pipeline_stage(followup, current_month_schedules=None):
             for s in current_month_schedules
         )
         if has_quote_schedule:
-            return ('quote', '이번 달 견적 일정')
-        # 이번 달 다른 일정이라도 있으면 contact 단계 추천
-        return ('contact', '이번 달 일정')
+            return ('quote', '최근 견적 일정')
+        # 최근 30일 내 다른 일정(미팅/접촉 등)이 있으면 contact 단계 추천
+        return ('contact', '최근 30일 일정')
 
-    # 3. History 기반 (실제 고객 접촉)
-    histories = list(followup.histories.all())
-    if any(h.action_type == 'customer_meeting' for h in histories):
-        return ('contact', '고객 미팅')
+    # 3. 최근 30일 History 기반 (recent_histories는 이미 날짜 필터된 목록)
+    #    ※ 날짜 필터 없는 followup.histories.all() 호출 절대 금지
+    #    ※ None 이면 안전하게 건너뜀 (전체 이력 조회 방지)
+    if recent_histories is not None:
+        # 견적 히스토리가 있으면 quote 우선
+        if any(h.action_type == 'quote' for h in recent_histories):
+            return ('quote', '최근 견적 활동')
+        # 최근 30일 내 고객 미팅 히스토리가 있으면 contact
+        if any(h.action_type == 'customer_meeting' for h in recent_histories):
+            return ('contact', '최근 고객 미팅')
 
     return (None, None)
 
@@ -791,6 +802,14 @@ def funnel_pipeline_view(request):
     thirty_days_ago = today - timedelta(days=30)
 
     followups = _get_accessible_followups(request.user, request)
+    # 단계 추천용: 최근 30일 히스토리 (날짜 필터 — meeting_date 우선, fallback created_at)
+    recent_histories_qs = History.objects.filter(
+        parent_history__isnull=True,
+    ).filter(
+        Q(meeting_date__gte=thirty_days_ago) |
+        Q(meeting_date__isnull=True, created_at__date__gte=thirty_days_ago)
+    ).order_by('-created_at')
+
     followups = followups.select_related(
         'company', 'department', 'user'
     ).prefetch_related(
@@ -799,14 +818,18 @@ def funnel_pipeline_view(request):
             visit_date__gte=today,
             status='scheduled',
         ).order_by('visit_date'), to_attr='upcoming_schedules'),
-        # 단계 추천용: 최근 30일 일정 (cancelled 제외) — Blocker 2
+        # 단계 추천용: 최근 30일 일정 (cancelled 제외)
         Prefetch('schedules', queryset=Schedule.objects.filter(
             visit_date__gte=thirty_days_ago,
             visit_date__lte=today,
         ).exclude(status='cancelled').order_by('visit_date'), to_attr='recent_schedules'),
+        # 표시용: 전체 히스토리 (카드에 최근 활동 표시)
         Prefetch('histories', queryset=History.objects.filter(
             parent_history__isnull=True
         ).order_by('-created_at'), to_attr='all_histories'),
+        # 단계 추천용: 최근 30일 히스토리 (날짜 필터)
+        Prefetch('histories', queryset=recent_histories_qs,
+                 to_attr='recent_histories_for_stage'),
         Prefetch('quotes', queryset=Quote.objects.order_by('-created_at'), to_attr='all_quotes'),
     )
 
@@ -820,10 +843,11 @@ def funnel_pipeline_view(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         latest_quote = fu.all_quotes[0] if fu.all_quotes else None
 
-        # 최근 30일 일정을 단계 추천에 사용 (Blocker 2 + 3)
+        # 최근 30일 일정·히스토리를 단계 추천에 사용 (날짜 필터 필수)
         recent_schedules = getattr(fu, 'recent_schedules', [])
+        recent_histories = getattr(fu, 'recent_histories_for_stage', [])
         suggested_stage, suggested_source = _suggest_pipeline_stage(
-            fu, current_month_schedules=recent_schedules
+            fu, current_month_schedules=recent_schedules, recent_histories=recent_histories
         )
         has_suggestion = bool(suggested_stage and suggested_stage != fu.pipeline_stage)
 
@@ -925,13 +949,23 @@ def funnel_pipeline_sync(request):
 
         accessible = _get_accessible_followups(request.user, request)
 
-        # Blocker 2: 이번 달 대신 최근 30일 일정만 사용
+        # 최근 30일 기준 날짜 계산
         from datetime import timedelta
         today = timezone.localdate()
         thirty_days_ago = today - timedelta(days=30)
+
+        # 최근 30일 일정 쿼리 (cancelled 제외)
         recent_schedules_qs = Schedule.objects.filter(
             visit_date__gte=thirty_days_ago,
             visit_date__lte=today,
+        ).exclude(status='cancelled')
+
+        # 최근 30일 히스토리 쿼리 (meeting_date 우선, fallback created_at)
+        recent_histories_qs = History.objects.filter(
+            parent_history__isnull=True,
+        ).filter(
+            Q(meeting_date__gte=thirty_days_ago) |
+            Q(meeting_date__isnull=True, created_at__date__gte=thirty_days_ago)
         )
 
         if followup_id:
@@ -939,9 +973,11 @@ def funnel_pipeline_sync(request):
             fu = (
                 accessible
                 .prefetch_related(
-                    'quotes', 'histories',
+                    'quotes',
                     Prefetch('schedules', queryset=recent_schedules_qs,
                              to_attr='current_month_schedules'),
+                    Prefetch('histories', queryset=recent_histories_qs,
+                             to_attr='recent_histories'),
                 )
                 .filter(pk=followup_id)
                 .first()
@@ -953,8 +989,9 @@ def funnel_pipeline_sync(request):
                 fu.pipeline_manually_set = False
                 fu.save(update_fields=['pipeline_manually_set'])
             current_schedules = getattr(fu, 'current_month_schedules', [])
+            recent_hist = getattr(fu, 'recent_histories', [])
             suggested_stage, suggested_source = _suggest_pipeline_stage(
-                fu, current_month_schedules=current_schedules
+                fu, current_month_schedules=current_schedules, recent_histories=recent_hist
             )
             if suggested_stage and suggested_stage != fu.pipeline_stage:
                 changed = _try_advance_pipeline(fu, suggested_stage)
@@ -973,17 +1010,20 @@ def funnel_pipeline_sync(request):
                 accessible
                 .filter(pipeline_manually_set=False)  # Blocker 4: 수동 이동 카드 제외
                 .prefetch_related(
-                    'quotes', 'histories',
+                    'quotes',
                     Prefetch('schedules', queryset=recent_schedules_qs,
                              to_attr='current_month_schedules'),
+                    Prefetch('histories', queryset=recent_histories_qs,
+                             to_attr='recent_histories'),
                 )
                 .all()
             )
             changed_count = 0
             for fu in followups:
                 current_schedules = getattr(fu, 'current_month_schedules', [])
+                recent_hist = getattr(fu, 'recent_histories', [])
                 suggested_stage, _ = _suggest_pipeline_stage(
-                    fu, current_month_schedules=current_schedules
+                    fu, current_month_schedules=current_schedules, recent_histories=recent_hist
                 )
                 if suggested_stage and _try_advance_pipeline(fu, suggested_stage):
                     changed_count += 1

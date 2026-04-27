@@ -3291,6 +3291,118 @@ notes에 "견적" 포함 시 quote 단계 추천.
 
 ---
 
+## Pipeline Sync 단계 매핑 버그 수정 (2026-04-28)
+
+**상태**: ✅ 완료
+
+---
+
+### 요약
+
+파이프라인 sync 시 과거에 한 번이라도 미팅 이력이 있는 모든 고객이 `접촉/미팅` 단계로 이동하는 버그를 수정했습니다. 최근 30일 이내 활동만 단계 추천 기준으로 사용하도록 수정했습니다.
+
+---
+
+### 근본 원인
+
+`reporting/funnel_views.py`의 `_suggest_pipeline_stage` 함수 3단계:
+
+```python
+# 수정 전 (버그)
+histories = list(followup.histories.all())  # ← 전체 이력, 날짜 필터 없음
+if any(h.action_type == 'customer_meeting' for h in histories):
+    return ('contact', '고객 미팅')
+```
+
+`followup.histories.all()`은 날짜 필터 없이 **전체 이력**을 조회하므로, 1년 전 미팅이라도 있으면 모두 `접촉/미팅` 단계로 이동했습니다.
+
+1단계(Quote), 2단계(최근 30일 일정)는 이미 올바르게 구현되어 있었으나, 3단계만 날짜 필터가 누락되어 있었습니다.
+
+---
+
+### 변경된 파일
+
+**`reporting/funnel_views.py`**
+
+1. **`_suggest_pipeline_stage` 함수**: `recent_histories=None` 파라미터 추가, 3단계를 `recent_histories` 파라미터로 교체. `followup.histories.all()` 호출 완전 제거.
+
+2. **`funnel_pipeline_view`**: `recent_histories_qs` (최근 30일, `meeting_date` 우선 → fallback `created_at`) Prefetch 추가. `_suggest_pipeline_stage` 호출 시 `recent_histories` 파라미터 전달.
+
+3. **`funnel_pipeline_sync`**: 단일/일괄 sync 모두에서 `recent_histories_qs` Prefetch 추가, `'histories'` 문자열 prefetch 제거. `_suggest_pipeline_stage` 호출 시 `recent_histories` 전달.
+
+---
+
+### 수정 후 단계 추천 로직
+
+```
+단계 우선순위: 견적(Quote) > 최근 30일 일정 > 최근 30일 미팅 히스토리
+
+1. Quote 객체 존재 → 견적 단계 (최우선)
+   - approved/converted → 수주
+   - negotiation → 협상
+   - rejected/expired → 실주
+   - 그 외 → 견적
+2. 최근 30일 일정 존재 →
+   - 견적 일정이면 → 견적
+   - 기타 일정이면 → 접촉/미팅
+3. 최근 30일 History 존재 →
+   - quote 타입 → 견적
+   - customer_meeting 타입 → 접촉/미팅
+4. 해당 없음 → 추천 없음 (현재 단계 유지)
+```
+
+**날짜 필터 기준**:
+- `Schedule`: `visit_date__gte=thirty_days_ago AND visit_date__lte=today AND status != cancelled`
+- `History`: `meeting_date__gte=thirty_days_ago OR (meeting_date IS NULL AND created_at__date__gte=thirty_days_ago)`
+
+---
+
+### 검증 케이스별 결과
+
+| 케이스 | 상황 | 기대 결과 | 수정 후 결과 |
+|---|---|---|---|
+| A | 현재: 잠재, 60일 전 미팅 | 잠재 유지 | ✅ `recent_histories` 필터로 미포함 → 추천 없음 → 잠재 유지 |
+| B | 현재: 잠재, 10일 전 미팅 | 접촉/미팅 | ✅ `recent_histories`에 포함 → contact 추천 |
+| C | 견적 일정 10일 전 | 견적 | ✅ `current_month_schedules`에서 quote activity → quote 추천 |
+| D | 현재: 견적, 10일 전 미팅 | 견적 유지 | ✅ `_try_advance_pipeline`이 앞으로만 이동 → 견적 유지 |
+| E | 현재: 잠재, 최근 30일 미팅 없음 | 잠재 유지 | ✅ 추천 없음 → 잠재 유지 |
+| F | 최근 견적 + 최근 미팅 | 견적 | ✅ 2단계에서 quote 일정 감지 → quote 우선 |
+
+---
+
+### 수동 이동 보호
+
+- `pipeline_manually_set=True` 카드는 일괄 sync 시 건너뜀 (기존 Blocker 4 로직 유지)
+- 단일 카드 명시적 sync 시 플래그 해제 후 재평가
+
+---
+
+### 중복 방지
+
+- 기존 로직 유지: `_try_advance_pipeline`이 앞으로만 이동하고 같은 단계면 저장 안 함
+- Prefetch로 DB 쿼리 수 변화 없음 (효율 동일 또는 개선)
+
+---
+
+### 실행한 명령어 및 결과
+
+```
+python manage.py check                          → 0 issues
+python manage.py makemigrations --check --dry-run → No changes detected
+python manage.py test reporting                 → 53/53 PASSED (49.895s)
+```
+
+모델 변경 없음 — 마이그레이션 불필요.
+
+---
+
+### 알려진 제한 사항
+
+- `_try_advance_pipeline`이 앞으로만 이동하므로, 고객이 `견적` 단계로 이미 수동 이동된 경우 최근 미팅만 있어도 `contact`로 내려가지 않음 (설계대로 올바른 동작)
+- `History.meeting_date`가 NULL이고 `created_at`이 30일 이내인 경우도 포함됨 (의도적: 기록 생성 기준 허용)
+
+---
+
 ## Phase 7 최종 QA 완료 (2026-04-27)
 
 **상태**: ✅ 완료
