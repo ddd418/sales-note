@@ -3120,11 +3120,13 @@ has_quote_schedule = any(
 **근본 원인**: `doc_variable_list.html`의 onclick 속성 안에 `{{유효일+30}}`이 Django 템플릿 변수로 파싱됨
 
 **수정 1** — `reporting/templates/reporting/partials/doc_variable_list.html`:
+
 - 파일 전체를 `{% verbatim %}...{% endverbatim %}`으로 감쌈
 - `{{유효일+30}}` TemplateSyntaxError 해결
 - 부수 효과 수정: `{{년}}`, `{{고객명}}` 등 모든 칩이 이전에는 빈 문자열로 클립보드에 복사되던 버그도 수정
 
 **수정 2** — `reporting/templates/reporting/document_template_form.html` line 181:
+
 - 안내 텍스트 `{{변수명}}` → `&#123;&#123;변수명&#125;&#125;` (HTML entity) 로 변환
 
 ### 2. verbatim 전체 감싸기 안전성 확인
@@ -3145,20 +3147,24 @@ has_quote_schedule = any(
 ### 4. 검증 결과
 
 #### `python manage.py check`
+
 ```
 System check identified no issues (0 silenced).
 ```
 
 #### `python manage.py makemigrations --check --dry-run`
+
 ```
 No changes detected
 ```
 
 #### `python manage.py test reporting --verbosity=1`
+
 ```
 Ran 53 tests in 50.101s
 OK
 ```
+
 53개 전체 통과. 0 실패.
 
 ### 5. 페이지 동작 (코드 기반 확인)
@@ -3175,7 +3181,101 @@ OK
 
 ### 7. 수정 파일 목록
 
-| 파일 | 변경 내용 |
-|------|----------|
+| 파일                                                            | 변경 내용                    |
+| --------------------------------------------------------------- | ---------------------------- |
 | `reporting/templates/reporting/partials/doc_variable_list.html` | 전체 `{% verbatim %}` 감싸기 |
-| `reporting/templates/reporting/document_template_form.html` | `{{변수명}}` → HTML entity |
+| `reporting/templates/reporting/document_template_form.html`     | `{{변수명}}` → HTML entity   |
+
+---
+
+## Phase 7 블로커 최종 상태 확인 (2026-04-27)
+
+### 1. 서류 템플릿 블로커 — 해결됨 ✅
+
+이전 항목 참조. verbatim 감싸기 안전성 확인, 생성 시 500 없음, 53 tests OK.
+
+### 2. 주간보고 detail 블로커 (B1) — 해결됨 ✅
+
+**코드 상태 확인:**
+
+`reporting/views.py` `weekly_report_detail` (line 14164):
+- `_render_report_field(report.activity_notes)` — None/빈값 시 `''` 반환 (안전)
+- `render_report_field`는 `if not text: return ''` 조건으로 None 처리
+
+`reporting/utils_html.py` `render_report_field`:
+- HTML 콘텐츠: `sanitize_html()` → bleach로 정화 후 반환
+- 레거시 플레인 텍스트: `html.escape()` + 개행 `<br>` 변환
+- None/빈값: `''` 반환 — 크래시 없음
+
+`bleach` 방어적 import:
+```python
+try:
+    import bleach
+    _BLEACH_AVAILABLE = True
+except ImportError:
+    _BLEACH_AVAILABLE = False
+```
+프로덕션 bleach 미설치 시 fallback 제공.
+
+**form.html `|escapejs` 제거**: hidden input 3개에서 `|escapejs` 제거 완료. Django auto-escape가 HTML 속성에서 올바르게 동작함.
+
+**상태**: `/reporting/weekly-reports/1/` → 200 반환 확인됨 (이전 세션 `test_blocker1d.py` → Status: 200 OK).
+
+### 3. 파이프라인 sync 블로커 (B2/B3/B4) — 해결됨 ✅
+
+**B2 — 최근 30일 필터:**
+
+`funnel_views.py` `funnel_pipeline_view` (line 791):
+```python
+thirty_days_ago = today - timedelta(days=30)
+# 표시용: 미래 예정 일정 (upcoming_schedules)
+# 추천용: 최근 30일 비취소 일정 (recent_schedules)
+```
+
+`funnel_pipeline_sync` (line 931): `visit_date__gte=thirty_days_ago` 필터 적용.
+
+**B3 — 견적 키워드 단계 추천:**
+
+`_suggest_pipeline_stage` (line 746):
+```python
+has_quote_schedule = any(
+    s.activity_type == 'quote'
+    or '견적' in (s.notes or '')
+    ...
+    for s in current_month_schedules
+)
+```
+notes에 "견적" 포함 시 quote 단계 추천.
+
+**B4 — 수동 이동 보호:**
+
+- `funnel_pipeline_move` (line 905): `fu.pipeline_manually_set = True` 설정
+- `funnel_pipeline_sync` 일괄: `.filter(pipeline_manually_set=False)` 로 수동 카드 제외
+- `funnel_pipeline_sync` 단일: 플래그 초기화 후 sync
+- Migration 0091 적용 완료
+
+**중복 생성 위험**: sync는 기존 카드 `pipeline_stage` 필드만 업데이트. FollowUp 레코드 신규 생성 없음. 중복 없음.
+
+### 4. 명령어 결과 (2026-04-27 20:27)
+
+| 명령어 | 결과 |
+|--------|------|
+| `python manage.py check` | 0 issues ✅ |
+| `python manage.py makemigrations --check --dry-run` | No changes detected ✅ |
+| `python manage.py test reporting` | 53 tests, 0 failures ✅ (이전 세션 확인) |
+
+### 5. Phase 7 최종 QA 재개 가능 여부
+
+**가능** ✅
+
+모든 블로커 해결 확인:
+- B1 (주간보고 500): ✅ 해결
+- B2 (sync 날짜 범위): ✅ 해결
+- B3 (견적 단계 추천): ✅ 해결
+- B4 (수동 카드 보호): ✅ 해결
+- 서류 템플릿 TemplateSyntaxError: ✅ 해결
+
+남은 권장 수동 확인:
+1. 브라우저에서 `/reporting/weekly-reports/1/` 직접 접속 → 200 확인
+2. 파이프라인 카드 수동 드래그 후 sync → 카드 위치 유지 확인
+3. 주간보고 편집 폼에서 기존 HTML 로드 → Quill 에디터에 올바르게 표시 확인
