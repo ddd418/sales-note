@@ -14,9 +14,16 @@ HTML 정화(Sanitization) 유틸리티
   - 임의의 style 속성 (허용 목록 외)
 """
 
+import html as _html_module
 import re
-import bleach
-from bleach.css_sanitizer import CSSSanitizer
+
+try:
+    import bleach
+    from bleach.css_sanitizer import CSSSanitizer
+    _BLEACH_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _BLEACH_AVAILABLE = False
+
 from django.utils.safestring import mark_safe
 
 
@@ -62,7 +69,7 @@ ALLOWED_CSS_PROPERTIES = [
     'text-decoration',
 ]
 
-_css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES)
+_css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES) if _BLEACH_AVAILABLE else None
 
 
 def _safe_link_callback(attrs, new=False):
@@ -83,9 +90,15 @@ def sanitize_html(html: str) -> str:
 
     Quill 에디터 출력 또는 사용자 작성 HTML에 적용하세요.
     반환값은 Django 템플릿에서 |safe 필터와 함께 사용할 수 있습니다.
+    bleach 미설치 시: 모든 HTML 태그를 이스케이프하여 안전하게 반환.
     """
     if not html:
         return ''
+
+    if not _BLEACH_AVAILABLE:
+        # fallback: 태그를 모두 이스케이프하여 안전하게 표시
+        return '<p>' + _html_module.escape(html).replace('\n', '<br>') + '</p>'
+
     cleaned = bleach.clean(
         html,
         tags=ALLOWED_TAGS,
@@ -94,14 +107,16 @@ def sanitize_html(html: str) -> str:
         strip=True,          # 허용되지 않은 태그 내용은 유지, 태그만 제거
         strip_comments=True,
     )
-    # bleach.linkify 미사용 (불필요한 자동 링크 변환 방지)
-    # <a> 태그 href 추가 정화
-    cleaned = bleach.linkify(
-        cleaned,
-        callbacks=[_safe_link_callback],
-        parse_email=False,
-        skip_tags=['code', 'pre'],
-    )
+    # <a> 태그 href 추가 정화 (linkify 사용 가능 시에만)
+    try:
+        cleaned = bleach.linkify(
+            cleaned,
+            callbacks=[_safe_link_callback],
+            parse_email=False,
+            skip_tags=['code', 'pre'],
+        )
+    except (AttributeError, Exception):
+        pass  # linkify 미지원 환경에서는 생략
     return cleaned
 
 

@@ -233,6 +233,11 @@ class FollowUp(models.Model):
         verbose_name="파이프라인 단계",
         help_text="영업 파이프라인 단계 (칸반 보드용)"
     )
+    pipeline_manually_set = models.BooleanField(
+        default=False,
+        verbose_name="파이프라인 수동 설정",
+        help_text="True이면 자동 동기화에서 이 카드의 단계를 변경하지 않음"
+    )
     
     # AI 기반 고객 등급 시스템
     customer_grade = models.CharField(

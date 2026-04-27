@@ -3021,3 +3021,88 @@ Phase 7 QA 완료. 잔여 위험 항목(HSTS, debug 엔드포인트, MIME 검증
 
 - 브라우저 수동 테스트 (create/edit 폼, 일정 삽입, AI 초안, detail 렌더링)
 - Phase 8 보안 항목 계속 진행 (HSTS, debug 엔드포인트)
+
+---
+
+## Phase 7 QA 프로덕션 블로커 2차 수정 (2026-04-27)
+
+**상태**: 완료
+
+### 1. 블로커 요약
+
+| #   | 블로커                                                    | 수정 내용                                                                        |
+| --- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| B1  | `/reporting/weekly-reports/1/` 500 에러                   | ① form.html `escapejs` 이중인코딩 버그 수정 ② utils_html.py bleach 방어적 import |
+| B2  | 파이프라인 sync가 이번 달 전체 일정 포함 (너무 많음)      | sync/보드 모두 최근 30일 일정만 사용으로 변경                                    |
+| B3  | 견적 type이 아닌 일정도 견적 단계 추천이 안 됨            | `_suggest_pipeline_stage`에 "견적" 키워드(notes) 포함 검색 추가                   |
+| B4  | 자동 sync가 수동으로 이동한 파이프라인 카드를 덮어씀      | `pipeline_manually_set` 필드 추가, 수동 이동 시 플래그, 일괄 sync에서 제외       |
+
+### 2. 변경 파일
+
+| 파일                                                    | 변경 내용                                                                                                              |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `reporting/utils_html.py`                               | `import bleach` → try/except 방어적 import; bleach 미설치 시 HTML escape fallback; `bleach.linkify` try/except 보호     |
+| `reporting/templates/reporting/weekly_report/form.html` | 3개 hidden input `\|escapejs` 필터 제거 (Django auto-escaping이 HTML 속성에 올바름 — 이중인코딩 방지)                   |
+| `reporting/models.py`                                   | `FollowUp.pipeline_manually_set = BooleanField(default=False)` 추가                                                   |
+| `reporting/migrations/0091_add_pipeline_manually_set.py`| 신규 마이그레이션                                                                                                      |
+| `reporting/funnel_views.py`                             | ① `funnel_pipeline_view`: 표시용(미래) + 추천용(최근 30일) prefetch 분리 ② `funnel_pipeline_move`: 수동 플래그 설정 ③ `funnel_pipeline_sync`: 최근 30일 필터 + 수동 플래그 카드 제외 ④ `_suggest_pipeline_stage`: "견적" 키워드 포함 |
+
+### 3. 핵심 수정 상세
+
+#### B1-① form.html escapejs 이중인코딩 버그
+
+**문제**: `value="{{ report.activity_notes|escapejs }}"` — `escapejs`는 JS 문자열용 (`<` → `\u003C`). HTML 속성에서는 이 값이 리터럴 `\u003C`로 남아 `val.startsWith('<')` 판별이 실패하여 HTML이 plain text로 처리됨.
+
+**수정**: `escapejs` 필터 제거. Django 기본 auto-escaping이 HTML 속성에 올바름 (`<` → `&lt;`, 브라우저가 `input.value`에서 `<`로 디코딩).
+
+#### B1-② utils_html.py 방어적 bleach import
+
+**문제**: `import bleach`가 최상위에서 실패하면 모듈 전체 ImportError → `_render_report_field` 호출 시 500.
+
+**수정**: try/except로 감싸 `_BLEACH_AVAILABLE` 플래그 설정; 미설치 시 HTML escape fallback; `bleach.linkify`도 try/except 보호.
+
+#### B2 파이프라인 sync 날짜 범위
+
+**이전**: `_current_month_range()` — 이번 달 1일~다음 달 1일 전체  
+**이후**: `today - timedelta(days=30)` ~ `today` — 최근 30일만
+
+#### B3 견적 일정 추천 개선
+
+```python
+# 이전
+has_quote_schedule = any(s.activity_type == 'quote' for s in schedules)
+# 이후
+has_quote_schedule = any(
+    s.activity_type == 'quote' or '견적' in (s.notes or '')
+    for s in schedules
+)
+```
+
+#### B4 수동 이동 보호
+
+- `funnel_pipeline_move` API: `pipeline_manually_set = True` 저장
+- `funnel_pipeline_sync` 일괄 모드: `.filter(pipeline_manually_set=False)` 제외
+- `funnel_pipeline_sync` 단일 카드 모드: 플래그 해제 후 sync (사용자 명시적 요청)
+
+### 4. 검증 명령 결과
+
+| 명령                                                  | 결과                              |
+| ----------------------------------------------------- | --------------------------------- |
+| `python manage.py check`                              | ✅ 0 issues                       |
+| `python manage.py makemigrations --check --dry-run`   | ✅ No changes detected            |
+| `python manage.py migrate`                            | ✅ 0091_add_pipeline_manually_set |
+| `python test_blocker1d.py`                            | ✅ Status 200 OK (report owner)   |
+| `utils_html.py` 기능 테스트                           | ✅ sanitize/render/None 모두 정상  |
+
+### 5. 알려진 한계
+
+- B1 500 에러의 프로덕션 재현 불가 (Railway 환경 변수 / 빌드 캐시 이슈 가능성)
+- bleach.linkify가 활성화 시 이미 저장된 링크를 이중 처리할 수 있음 (비중요)
+- B3 "견적" 키워드는 한국어만 검출, 영어 "quote"는 activity_type으로 처리됨 (충분)
+- B4 `pipeline_manually_set` 플래그는 단일 sync 요청 시 초기화됨 (의도적 설계)
+
+### 6. 다음 단계 권장
+
+- Phase 8: HSTS, debug 엔드포인트, MIME 검증 등 보안 항목
+- 브라우저 수동 테스트: 파이프라인 카드 수동 이동 → sync 건너뜀 확인
+- 주간보고 수정 폼에서 기존 HTML 콘텐츠가 Quill에 올바르게 로드되는지 확인

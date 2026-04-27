@@ -744,7 +744,10 @@ def _suggest_pipeline_stage(followup, current_month_schedules=None):
     # 2. 이번 달 일정 기반 (Schedule 객체, 견적 일정 → quote 단계)
     if current_month_schedules:
         has_quote_schedule = any(
-            s.activity_type == 'quote' for s in current_month_schedules
+            s.activity_type == 'quote'
+            or '견적' in (s.notes or '')
+            or '견적' in (s.title if hasattr(s, 'title') else '')
+            for s in current_month_schedules
         )
         if has_quote_schedule:
             return ('quote', '이번 달 견적 일정')
@@ -783,18 +786,24 @@ def _try_advance_pipeline(followup, target_stage):
 @login_required
 def funnel_pipeline_view(request):
     """칸반 파이프라인 보드 뷰"""
-    month_start, next_month_start = _current_month_range()
+    from datetime import timedelta
+    today = timezone.localdate()
+    thirty_days_ago = today - timedelta(days=30)
 
     followups = _get_accessible_followups(request.user, request)
     followups = followups.select_related(
         'company', 'department', 'user'
     ).prefetch_related(
-        # 이번 달 예정 일정만 표시 (파이프라인 혼잡 방지)
+        # 표시용: 미래 예정 일정 (카드에 "다음 방문" 표시)
         Prefetch('schedules', queryset=Schedule.objects.filter(
-            visit_date__gte=month_start,
-            visit_date__lt=next_month_start,
+            visit_date__gte=today,
             status='scheduled',
         ).order_by('visit_date'), to_attr='upcoming_schedules'),
+        # 단계 추천용: 최근 30일 일정 (cancelled 제외) — Blocker 2
+        Prefetch('schedules', queryset=Schedule.objects.filter(
+            visit_date__gte=thirty_days_ago,
+            visit_date__lte=today,
+        ).exclude(status='cancelled').order_by('visit_date'), to_attr='recent_schedules'),
         Prefetch('histories', queryset=History.objects.filter(
             parent_history__isnull=True
         ).order_by('-created_at'), to_attr='all_histories'),
@@ -811,9 +820,10 @@ def funnel_pipeline_view(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         latest_quote = fu.all_quotes[0] if fu.all_quotes else None
 
-        # 이번 달 일정을 단계 추천에 사용 (Blocker 1 + 2)
+        # 최근 30일 일정을 단계 추천에 사용 (Blocker 2 + 3)
+        recent_schedules = getattr(fu, 'recent_schedules', [])
         suggested_stage, suggested_source = _suggest_pipeline_stage(
-            fu, current_month_schedules=fu.upcoming_schedules
+            fu, current_month_schedules=recent_schedules
         )
         has_suggestion = bool(suggested_stage and suggested_stage != fu.pipeline_stage)
 
@@ -892,7 +902,8 @@ def funnel_pipeline_move(request):
             return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
         fu.pipeline_stage = new_stage
-        fu.save(update_fields=['pipeline_stage'])
+        fu.pipeline_manually_set = True  # 수동 이동 플래그: 자동 sync 보호
+        fu.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
         return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
@@ -903,29 +914,33 @@ def funnel_pipeline_move(request):
 def funnel_pipeline_sync(request):
     """
     파이프라인 단계 자동 동기화 API (앞으로만 이동).
-    - followup_id 지정 시 단일 카드 동기화
+    - followup_id 지정 시 단일 카드 동기화 (수동 설정 플래그 무시, 완료 후 플래그 해제)
     - followup_id 없으면 접근 가능한 전체 카드 일괄 동기화
+      · pipeline_manually_set=True 카드는 건너뜀 (Blocker 4)
+      · 최근 30일 일정만 기준으로 사용 (Blocker 2)
     """
     try:
         data = json.loads(request.body)
         followup_id = data.get('followup_id')
 
         accessible = _get_accessible_followups(request.user, request)
-        month_start, next_month_start = _current_month_range()
 
-        # 이번 달 일정 Prefetch 쿼리셋 (단계 추천에 사용)
-        current_month_schedules_qs = Schedule.objects.filter(
-            visit_date__gte=month_start,
-            visit_date__lt=next_month_start,
+        # Blocker 2: 이번 달 대신 최근 30일 일정만 사용
+        from datetime import timedelta
+        today = timezone.localdate()
+        thirty_days_ago = today - timedelta(days=30)
+        recent_schedules_qs = Schedule.objects.filter(
+            visit_date__gte=thirty_days_ago,
+            visit_date__lte=today,
         )
 
         if followup_id:
-            # 단일 카드 동기화
+            # 단일 카드 동기화: 수동 플래그 무시, 완료 후 플래그 해제
             fu = (
                 accessible
                 .prefetch_related(
                     'quotes', 'histories',
-                    Prefetch('schedules', queryset=current_month_schedules_qs,
+                    Prefetch('schedules', queryset=recent_schedules_qs,
                              to_attr='current_month_schedules'),
                 )
                 .filter(pk=followup_id)
@@ -933,6 +948,10 @@ def funnel_pipeline_sync(request):
             )
             if not fu:
                 return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+            # 수동 플래그 해제 (사용자가 명시적으로 단일 sync 요청)
+            if fu.pipeline_manually_set:
+                fu.pipeline_manually_set = False
+                fu.save(update_fields=['pipeline_manually_set'])
             current_schedules = getattr(fu, 'current_month_schedules', [])
             suggested_stage, suggested_source = _suggest_pipeline_stage(
                 fu, current_month_schedules=current_schedules
@@ -949,12 +968,13 @@ def funnel_pipeline_sync(request):
             return JsonResponse({'success': True, 'changed': False, 'message': '이미 적절한 단계입니다.'})
 
         else:
-            # 전체 일괄 동기화 — 이번 달 일정 포함 prefetch
+            # 전체 일괄 동기화: 수동 설정된 카드는 건너뜀 (Blocker 4)
             followups = (
                 accessible
+                .filter(pipeline_manually_set=False)  # Blocker 4: 수동 이동 카드 제외
                 .prefetch_related(
                     'quotes', 'histories',
-                    Prefetch('schedules', queryset=current_month_schedules_qs,
+                    Prefetch('schedules', queryset=recent_schedules_qs,
                              to_attr='current_month_schedules'),
                 )
                 .all()

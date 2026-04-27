@@ -82,7 +82,7 @@
                 <div id="activityNotesEditor" data-placeholder="예) 월: 한국대학교 방문, HPG 제품 데모 진행 / 화: ○○연구소 전화 상담"></div>
               </div>
               <input type="hidden" name="activity_notes" id="activityNotesInput"
-                     value="{% if report %}{{ report.activity_notes|escapejs }}{% endif %}">
+                     value="{% if report %}{{ report.activity_notes }}{% endif %}">
             </div>
 
             <div class="mb-3">
@@ -92,7 +92,7 @@
                 <div id="quoteDeliveryNotesEditor" data-placeholder="예) 한양대학교 홍길동 교수 - HPG-1000 견적 제출 (500만원)"></div>
               </div>
               <input type="hidden" name="quote_delivery_notes" id="quoteDeliveryNotesInput"
-                     value="{% if report %}{{ report.quote_delivery_notes|escapejs }}{% endif %}">
+                     value="{% if report %}{{ report.quote_delivery_notes }}{% endif %}">
             </div>
 
             <div class="mb-4">
@@ -101,7 +101,7 @@
                 <div id="otherNotesEditor" data-placeholder="다음 주 계획, 특이사항 등"></div>
               </div>
               <input type="hidden" name="other_notes" id="otherNotesInput"
-                     value="{% if report %}{{ report.other_notes|escapejs }}{% endif %}">
+                     value="{% if report %}{{ report.other_notes }}{% endif %}">
             </div>
 
             <div class="d-flex gap-2">
