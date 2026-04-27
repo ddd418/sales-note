@@ -3199,15 +3199,18 @@ OK
 **코드 상태 확인:**
 
 `reporting/views.py` `weekly_report_detail` (line 14164):
+
 - `_render_report_field(report.activity_notes)` — None/빈값 시 `''` 반환 (안전)
 - `render_report_field`는 `if not text: return ''` 조건으로 None 처리
 
 `reporting/utils_html.py` `render_report_field`:
+
 - HTML 콘텐츠: `sanitize_html()` → bleach로 정화 후 반환
 - 레거시 플레인 텍스트: `html.escape()` + 개행 `<br>` 변환
 - None/빈값: `''` 반환 — 크래시 없음
 
 `bleach` 방어적 import:
+
 ```python
 try:
     import bleach
@@ -3215,6 +3218,7 @@ try:
 except ImportError:
     _BLEACH_AVAILABLE = False
 ```
+
 프로덕션 bleach 미설치 시 fallback 제공.
 
 **form.html `|escapejs` 제거**: hidden input 3개에서 `|escapejs` 제거 완료. Django auto-escape가 HTML 속성에서 올바르게 동작함.
@@ -3226,6 +3230,7 @@ except ImportError:
 **B2 — 최근 30일 필터:**
 
 `funnel_views.py` `funnel_pipeline_view` (line 791):
+
 ```python
 thirty_days_ago = today - timedelta(days=30)
 # 표시용: 미래 예정 일정 (upcoming_schedules)
@@ -3237,6 +3242,7 @@ thirty_days_ago = today - timedelta(days=30)
 **B3 — 견적 키워드 단계 추천:**
 
 `_suggest_pipeline_stage` (line 746):
+
 ```python
 has_quote_schedule = any(
     s.activity_type == 'quote'
@@ -3245,6 +3251,7 @@ has_quote_schedule = any(
     for s in current_month_schedules
 )
 ```
+
 notes에 "견적" 포함 시 quote 단계 추천.
 
 **B4 — 수동 이동 보호:**
@@ -3258,17 +3265,18 @@ notes에 "견적" 포함 시 quote 단계 추천.
 
 ### 4. 명령어 결과 (2026-04-27 20:27)
 
-| 명령어 | 결과 |
-|--------|------|
-| `python manage.py check` | 0 issues ✅ |
-| `python manage.py makemigrations --check --dry-run` | No changes detected ✅ |
-| `python manage.py test reporting` | 53 tests, 0 failures ✅ (이전 세션 확인) |
+| 명령어                                              | 결과                                     |
+| --------------------------------------------------- | ---------------------------------------- |
+| `python manage.py check`                            | 0 issues ✅                              |
+| `python manage.py makemigrations --check --dry-run` | No changes detected ✅                   |
+| `python manage.py test reporting`                   | 53 tests, 0 failures ✅ (이전 세션 확인) |
 
 ### 5. Phase 7 최종 QA 재개 가능 여부
 
 **가능** ✅
 
 모든 블로커 해결 확인:
+
 - B1 (주간보고 500): ✅ 해결
 - B2 (sync 날짜 범위): ✅ 해결
 - B3 (견적 단계 추천): ✅ 해결
@@ -3276,6 +3284,114 @@ notes에 "견적" 포함 시 quote 단계 추천.
 - 서류 템플릿 TemplateSyntaxError: ✅ 해결
 
 남은 권장 수동 확인:
+
 1. 브라우저에서 `/reporting/weekly-reports/1/` 직접 접속 → 200 확인
 2. 파이프라인 카드 수동 드래그 후 sync → 카드 위치 유지 확인
 3. 주간보고 편집 폼에서 기존 HTML 로드 → Quill 에디터에 올바르게 표시 확인
+
+---
+
+## Phase 7 최종 QA 완료 (2026-04-27)
+
+**상태**: ✅ 완료
+
+---
+
+### 요약
+
+Phase 7 B0~B4 블로커 수정 이후 최종 QA를 수행했습니다.
+Django 검증 명령어 4종 모두 통과, 53개 자동화 테스트 전원 통과, 코드 기반 QA 11개 영역 검토 완료.
+추가 코드 변경 없음.
+
+---
+
+### 실행한 명령어 및 결과
+
+| 명령어                                              | 결과                                                                     |
+| --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `python manage.py check`                            | ✅ 0 issues (EMAIL_ENCRYPTION_KEY 경고는 IMAP/SMTP 비활성화 상태로 정상) |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected                                                   |
+| `python manage.py test reporting`                   | ✅ 53/53 PASSED (47.563s)                                                |
+| `python manage.py collectstatic --noinput`          | ✅ staticfiles/ 갱신                                                     |
+
+---
+
+### URL 스모크 테스트 결과
+
+서버 포트 8765에서 비인증 접근 테스트:
+
+| URL                              | 예상 상태                   | 실제 상태 |
+| -------------------------------- | --------------------------- | --------- |
+| `/`                              | 302 (대시보드로 리다이렉트) | ✅ 302    |
+| `/reporting/login/`              | 200                         | ✅ 200    |
+| `/reporting/followups/`          | 302 (로그인으로 리다이렉트) | ✅ 302    |
+| `/reporting/histories/`          | 302                         | ✅ 302    |
+| `/reporting/schedules/calendar/` | 302                         | ✅ 302    |
+| `/reporting/dashboard/`          | 302                         | ✅ 302    |
+| `/reporting/funnel/pipeline/`    | 302                         | ✅ 302    |
+| `/reporting/weekly-reports/`     | 302                         | ✅ 302    |
+| `/reporting/documents/`          | 302                         | ✅ 302    |
+| `/reporting/analytics/`          | 302                         | ✅ 302    |
+
+모든 보호된 URL이 비인증 접근 시 로그인 페이지로 리다이렉트. 53/53 테스트로 자동 검증 완료.
+
+---
+
+### 코드 기반 QA — 11개 영역
+
+| #   | 영역            | 상태    | 비고                                                                                                                   |
+| --- | --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | 인증/접근 제어  | ✅ 정상 | 모든 뷰 `@login_required`, `debug_user_company_info` 포함                                                              |
+| 2   | 대시보드        | ✅ 정상 | 53개 테스트 통과, 빈 데이터 안전 처리                                                                                  |
+| 3   | 영업노트/이력   | ✅ 정상 | 기존 테스트 커버                                                                                                       |
+| 4   | 일정 캘린더     | ✅ 정상 | 기존 테스트 커버                                                                                                       |
+| 5   | 파이프라인 보드 | ✅ 정상 | B2/B3/B4 수정 코드 확인: `pipeline_manually_set`, `thirty_days_ago`, `견적` 키워드 체크                                |
+| 6   | 주간보고        | ✅ 정상 | B1 수정 확인: `bleach` 방어적 임포트, `\|escapejs` 제거                                                                |
+| 7   | 문서 관리       | ✅ 정상 | B0 수정 확인: `{% verbatim %}` 래핑, HTML 엔티티 이스케이프                                                            |
+| 8   | 분석/리포트     | ✅ 정상 | 기존 권한 범위 유지                                                                                                    |
+| 9   | AI 분석         | ✅ 정상 | `@login_required` 적용, 시크릿 미노출                                                                                  |
+| 10  | 보안            | ✅ 정상 | 프로덕션 설정: `SECRET_KEY` 환경변수, `DEBUG=False`, `CSRF_COOKIE_SECURE=not DEBUG`, `SESSION_COOKIE_SECURE=not DEBUG` |
+| 11  | 배포            | ✅ 정상 | 마이그레이션 0091 적용, `collectstatic` 완료                                                                           |
+
+---
+
+### Phase 7 최종 블로커 상태
+
+| 블로커 | 설명                             | 상태    |
+| ------ | -------------------------------- | ------- |
+| B0     | 서류 템플릿 TemplateSyntaxError  | ✅ 해결 |
+| B1     | 주간보고 상세 500 에러           | ✅ 해결 |
+| B2     | 파이프라인 sync 30일 필터 미작동 | ✅ 해결 |
+| B3     | 견적 단계 추천 미작동            | ✅ 해결 |
+| B4     | 수동 이동 카드 sync 덮어쓰기     | ✅ 해결 |
+
+---
+
+### 보안 검토 결과
+
+- `debug_user_company_info` 뷰: `@login_required` + `is_superuser` 이중 보호 확인 ✅
+- `ALLOWED_HOSTS` 로컬 개발: 명시적 IP 목록 (`127.0.0.1`, `localhost`) ✅
+- `ALLOWED_HOSTS` 프로덕션: Railway/Render 도메인만 포함, 환경변수 기반 ✅
+- `SECRET_KEY`: 로컬은 insecure key (개발 전용), 프로덕션은 환경변수 필수 ✅
+- `CSRF_COOKIE_SECURE`, `SESSION_COOKIE_SECURE`: 프로덕션에서 `not DEBUG` → `True` ✅
+- 기존 `@csrf_exempt` 제거 (Phase 0 완료) ✅
+
+---
+
+### 알려진 제한 사항 및 잔여 위험
+
+1. **HSTS**: `SECURE_HSTS_SECONDS` 미설정 — Railway 프록시 레이어에서 처리 가능하나 Django 수준 설정 미완료
+2. **파일 업로드 MIME 검증**: 업로드 파일의 서버 사이드 MIME 타입 재검증 미구현
+3. **`debug_user_company_info` 엔드포인트**: 프로덕션 배포 후 필요 없으면 제거 권장
+4. **로컬 `SECRET_KEY`**: `"django-insecure-..."` 형태 — 프로덕션 배포 시 반드시 환경변수로 교체 필요 (현재 구조상 프로덕션은 환경변수 사용)
+5. **자동화 테스트 커버리지**: 53개 테스트로 핵심 뷰 검증, 파이프라인 sync/move 로직은 수동 확인 필요
+
+---
+
+### 권장 다음 Phase (Phase 8)
+
+1. **HSTS 활성화**: `SECURE_HSTS_SECONDS = 31536000`, `SECURE_HSTS_INCLUDE_SUBDOMAINS = True` 프로덕션 설정 추가
+2. **파일 업로드 MIME 검증**: `python-magic` 또는 직접 매직 바이트 검사
+3. **자동화 테스트 확장**: 파이프라인 sync, 주간보고 Quill 렌더링, 분석 CSV 내보내기 테스트 추가
+4. **`debug_user_company_info` 정리**: 디버그 엔드포인트 제거 또는 관리자 페이지로 통합
+5. **성능 최적화**: N+1 쿼리 프로파일링, DB 인덱스 추가 검토
