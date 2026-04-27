@@ -3030,22 +3030,22 @@ Phase 7 QA 완료. 잔여 위험 항목(HSTS, debug 엔드포인트, MIME 검증
 
 ### 1. 블로커 요약
 
-| #   | 블로커                                                    | 수정 내용                                                                        |
-| --- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| B1  | `/reporting/weekly-reports/1/` 500 에러                   | ① form.html `escapejs` 이중인코딩 버그 수정 ② utils_html.py bleach 방어적 import |
-| B2  | 파이프라인 sync가 이번 달 전체 일정 포함 (너무 많음)      | sync/보드 모두 최근 30일 일정만 사용으로 변경                                    |
-| B3  | 견적 type이 아닌 일정도 견적 단계 추천이 안 됨            | `_suggest_pipeline_stage`에 "견적" 키워드(notes) 포함 검색 추가                   |
-| B4  | 자동 sync가 수동으로 이동한 파이프라인 카드를 덮어씀      | `pipeline_manually_set` 필드 추가, 수동 이동 시 플래그, 일괄 sync에서 제외       |
+| #   | 블로커                                               | 수정 내용                                                                        |
+| --- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| B1  | `/reporting/weekly-reports/1/` 500 에러              | ① form.html `escapejs` 이중인코딩 버그 수정 ② utils_html.py bleach 방어적 import |
+| B2  | 파이프라인 sync가 이번 달 전체 일정 포함 (너무 많음) | sync/보드 모두 최근 30일 일정만 사용으로 변경                                    |
+| B3  | 견적 type이 아닌 일정도 견적 단계 추천이 안 됨       | `_suggest_pipeline_stage`에 "견적" 키워드(notes) 포함 검색 추가                  |
+| B4  | 자동 sync가 수동으로 이동한 파이프라인 카드를 덮어씀 | `pipeline_manually_set` 필드 추가, 수동 이동 시 플래그, 일괄 sync에서 제외       |
 
 ### 2. 변경 파일
 
-| 파일                                                    | 변경 내용                                                                                                              |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `reporting/utils_html.py`                               | `import bleach` → try/except 방어적 import; bleach 미설치 시 HTML escape fallback; `bleach.linkify` try/except 보호     |
-| `reporting/templates/reporting/weekly_report/form.html` | 3개 hidden input `\|escapejs` 필터 제거 (Django auto-escaping이 HTML 속성에 올바름 — 이중인코딩 방지)                   |
-| `reporting/models.py`                                   | `FollowUp.pipeline_manually_set = BooleanField(default=False)` 추가                                                   |
-| `reporting/migrations/0091_add_pipeline_manually_set.py`| 신규 마이그레이션                                                                                                      |
-| `reporting/funnel_views.py`                             | ① `funnel_pipeline_view`: 표시용(미래) + 추천용(최근 30일) prefetch 분리 ② `funnel_pipeline_move`: 수동 플래그 설정 ③ `funnel_pipeline_sync`: 최근 30일 필터 + 수동 플래그 카드 제외 ④ `_suggest_pipeline_stage`: "견적" 키워드 포함 |
+| 파일                                                     | 변경 내용                                                                                                                                                                                                                            |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reporting/utils_html.py`                                | `import bleach` → try/except 방어적 import; bleach 미설치 시 HTML escape fallback; `bleach.linkify` try/except 보호                                                                                                                  |
+| `reporting/templates/reporting/weekly_report/form.html`  | 3개 hidden input `\|escapejs` 필터 제거 (Django auto-escaping이 HTML 속성에 올바름 — 이중인코딩 방지)                                                                                                                                |
+| `reporting/models.py`                                    | `FollowUp.pipeline_manually_set = BooleanField(default=False)` 추가                                                                                                                                                                  |
+| `reporting/migrations/0091_add_pipeline_manually_set.py` | 신규 마이그레이션                                                                                                                                                                                                                    |
+| `reporting/funnel_views.py`                              | ① `funnel_pipeline_view`: 표시용(미래) + 추천용(최근 30일) prefetch 분리 ② `funnel_pipeline_move`: 수동 플래그 설정 ③ `funnel_pipeline_sync`: 최근 30일 필터 + 수동 플래그 카드 제외 ④ `_suggest_pipeline_stage`: "견적" 키워드 포함 |
 
 ### 3. 핵심 수정 상세
 
@@ -3086,13 +3086,13 @@ has_quote_schedule = any(
 
 ### 4. 검증 명령 결과
 
-| 명령                                                  | 결과                              |
-| ----------------------------------------------------- | --------------------------------- |
-| `python manage.py check`                              | ✅ 0 issues                       |
-| `python manage.py makemigrations --check --dry-run`   | ✅ No changes detected            |
-| `python manage.py migrate`                            | ✅ 0091_add_pipeline_manually_set |
-| `python test_blocker1d.py`                            | ✅ Status 200 OK (report owner)   |
-| `utils_html.py` 기능 테스트                           | ✅ sanitize/render/None 모두 정상  |
+| 명령                                                | 결과                              |
+| --------------------------------------------------- | --------------------------------- |
+| `python manage.py check`                            | ✅ 0 issues                       |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected            |
+| `python manage.py migrate`                          | ✅ 0091_add_pipeline_manually_set |
+| `python test_blocker1d.py`                          | ✅ Status 200 OK (report owner)   |
+| `utils_html.py` 기능 테스트                         | ✅ sanitize/render/None 모두 정상 |
 
 ### 5. 알려진 한계
 
@@ -3106,3 +3106,76 @@ has_quote_schedule = any(
 - Phase 8: HSTS, debug 엔드포인트, MIME 검증 등 보안 항목
 - 브라우저 수동 테스트: 파이프라인 카드 수동 이동 → sync 건너뜀 확인
 - 주간보고 수정 폼에서 기존 HTML 콘텐츠가 Quill에 올바르게 로드되는지 확인
+
+---
+
+## 서류 템플릿 TemplateSyntaxError 수정 및 검증 (2026-04-27)
+
+### 1. 수정 요약
+
+커밋: `98ede61`
+
+**문제**: `/reporting/documents/4/edit/` (등록/수정 페이지) 접근 시 `TemplateSyntaxError: Could not parse the remainder: '+30' from '유효일+30'`
+
+**근본 원인**: `doc_variable_list.html`의 onclick 속성 안에 `{{유효일+30}}`이 Django 템플릿 변수로 파싱됨
+
+**수정 1** — `reporting/templates/reporting/partials/doc_variable_list.html`:
+- 파일 전체를 `{% verbatim %}...{% endverbatim %}`으로 감쌈
+- `{{유효일+30}}` TemplateSyntaxError 해결
+- 부수 효과 수정: `{{년}}`, `{{고객명}}` 등 모든 칩이 이전에는 빈 문자열로 클립보드에 복사되던 버그도 수정
+
+**수정 2** — `reporting/templates/reporting/document_template_form.html` line 181:
+- 안내 텍스트 `{{변수명}}` → `&#123;&#123;변수명&#125;&#125;` (HTML entity) 로 변환
+
+### 2. verbatim 전체 감싸기 안전성 확인
+
+`doc_variable_list.html` 내부에 `{% url %}`, `{% static %}`, `{% if %}`, `{% for %}`, `{% load %}`, `{% block %}` 등 Django 템플릿 태그가 **전혀 없음** 확인.
+
+이 파일은 순수한 정적 HTML + CSS + JavaScript이므로 전체 `{% verbatim %}` 감싸기가 완전히 안전함.
+
+### 3. 문서 생성/미리보기 안전성 확인
+
+`generate_document_pdf` (views.py line 12691+)는 Django Template 엔진을 사용하지 않음.
+
+- 엑셀 파일 내용을 openpyxl로 읽어 ZIP 내 XML에 직접 문자열 치환
+- `{{유효일+30}}` 은 line 13032의 정규식 `r'\{\{유효일\+(\d+)\}\}'`으로 별도 처리
+- `schedule.visit_date + timedelta(days=N)` 으로 날짜 계산 후 치환
+- **생성 시 500 없음** — 기존 템플릿 파일에 `{{유효일+30}}`이 있어도 안전하게 처리됨
+
+### 4. 검증 결과
+
+#### `python manage.py check`
+```
+System check identified no issues (0 silenced).
+```
+
+#### `python manage.py makemigrations --check --dry-run`
+```
+No changes detected
+```
+
+#### `python manage.py test reporting --verbosity=1`
+```
+Ran 53 tests in 50.101s
+OK
+```
+53개 전체 통과. 0 실패.
+
+### 5. 페이지 동작 (코드 기반 확인)
+
+- **`/reporting/documents/4/edit/`**: `document_template_form.html` → `{% include "reporting/partials/doc_variable_list.html" %}` 호출. verbatim 적용으로 TemplateSyntaxError 해소. 200 반환 예상.
+- **`/reporting/documents/new/`** (등록): 동일 form 템플릿 사용. 동일하게 수정 효과 적용됨.
+- **변수 칩 클릭 동작**: `onclick="copyDocVar(this,'{{고객명}}')"` — verbatim 내부이므로 브라우저에 리터럴 `{{고객명}}`이 전달되어 클립보드에 올바르게 복사됨.
+- **`{{유효일_30일후}}` 권장**: `{{유효일+30}}` 은 생성 시 regex로 지원되나, 변수명 규칙(`_` 구분자)에 맞게 `{{유효일_30일후}}`로 안내하는 것이 권장됨. (현재 regex는 `+숫자` 형식만 지원하므로 `{{유효일_30일후}}`를 별도 지원하려면 views.py 추가 수정 필요 — 요청 없으면 보류)
+
+### 6. 알려진 제한 사항
+
+- 브라우저 직접 접속 스모크 테스트는 로컬 서버(8765) 운영 중이나 자동화 미실행 (수동 확인 권장)
+- `{{유효일+숫자}}` 외 다른 날짜 연산 패턴(`{{견적일+7}}` 등)은 생성 시 치환되지 않고 리터럴로 남음
+
+### 7. 수정 파일 목록
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `reporting/templates/reporting/partials/doc_variable_list.html` | 전체 `{% verbatim %}` 감싸기 |
+| `reporting/templates/reporting/document_template_form.html` | `{{변수명}}` → HTML entity |
