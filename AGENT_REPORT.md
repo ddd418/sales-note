@@ -2541,3 +2541,345 @@ Phase 6.6 전체 4개 서브 페이즈(6.6-1~6.6-4) 구현 후 최종 QA 실시.
 ### 다음 권장 단계
 
 Phase 7 시작 가능. Phase 6.6 QA 완료, 9/9 테스트 통과, 보안 취약점 수정 완료.
+
+---
+
+## Phase 7 최종 QA (2026-04-27)
+
+**상태**: 완료 — 버그 3개 발견 및 수정, 테스트 9 → 53개로 확장
+
+### 1. QA 범위
+
+새 기능 추가 없음. 코드 탐색 + Django 명령 + 역할별 권한 검증 + 자동화 테스트 확장 수행.
+
+검토 영역:
+
+- 인증 및 역할 권한
+- 파일 업로드/다운로드 보안
+- Analytics export 역할 체크 코드 품질
+- `can_access_user_data` / `can_modify_user_data` 로직
+- 익명 사용자 URL 접근 차단 (17개 주요 URL)
+- AI 기능 접근 권한 (`can_use_ai`)
+- 주간보고 API (`weekly_report_load_schedules`)
+- 대시보드 smoke 테스트
+
+---
+
+### 2. 실행 명령 및 결과
+
+| 명령                                                                           | 결과                                               |
+| ------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `python manage.py check`                                                       | ✅ 0 issues (EMAIL_ENCRYPTION_KEY 경고 1개 — 정상) |
+| `python manage.py makemigrations --check --dry-run`                            | ✅ No changes detected                             |
+| `python manage.py test reporting.tests --verbosity=2` (버그 수정 전, 원본 9개) | ✅ Ran 9 tests — OK                                |
+| `python manage.py test reporting.tests --verbosity=2` (새 테스트 추가 후)      | ✅ Ran 53 tests in 43.057s — OK                    |
+
+---
+
+### 3. URL 스모크 테스트 (익명 사용자 접근 차단 — 자동화 검증)
+
+`AnonymousAccessTests` 클래스에서 17개 URL 자동 검증. 전부 302 리다이렉트 (로그인으로 이동) 확인.
+
+| URL                                         | 익명 응답 | 결과    |
+| ------------------------------------------- | --------- | ------- |
+| `/reporting/dashboard/`                     | 302       | ✅ 차단 |
+| `/reporting/followups/`                     | 302       | ✅ 차단 |
+| `/reporting/histories/`                     | 302       | ✅ 차단 |
+| `/reporting/schedules/`                     | 302       | ✅ 차단 |
+| `/reporting/schedules/calendar/`            | 302       | ✅ 차단 |
+| `/reporting/opportunities/`                 | 302       | ✅ 차단 |
+| `/reporting/funnel/pipeline/`               | 302       | ✅ 차단 |
+| `/reporting/weekly-reports/`                | 302       | ✅ 차단 |
+| `/reporting/documents/`                     | 302       | ✅ 차단 |
+| `/reporting/analytics/`                     | 302       | ✅ 차단 |
+| `/reporting/analytics/export/activity.csv`  | 302       | ✅ 차단 |
+| `/reporting/analytics/export/pipeline.csv`  | 302       | ✅ 차단 |
+| `/reporting/analytics/export/activity.xlsx` | 302       | ✅ 차단 |
+| `/reporting/analytics/export/pipeline.xlsx` | 302       | ✅ 차단 |
+| `/reporting/followups/excel/`               | 302       | ✅ 차단 |
+| `/reporting/followups/excel/basic/`         | 302       | ✅ 차단 |
+| `/reporting/prepayments/`                   | 302       | ✅ 차단 |
+| `/reporting/users/`                         | 302       | ✅ 차단 |
+
+---
+
+### 4. 역할별 권한 테스트 결과 (자동화 검증)
+
+`ExportPermissionTests` 클래스에서 8개 테스트 자동 검증.
+
+| 기능                          | Anonymous | salesman | manager | admin |
+| ----------------------------- | --------- | -------- | ------- | ----- |
+| Analytics dashboard           | 302       | 200      | 200     | 200   |
+| Activity CSV export           | 302       | 403      | 200     | 200   |
+| Pipeline CSV export           | 302       | 403      | 200     | 200   |
+| Activity XLSX export          | 302       | 403      | 200     | 200   |
+| Pipeline XLSX export          | 302       | 403      | 200     | 200   |
+| FollowUp Excel download       | 302       | 차단     | —       | 200   |
+| FollowUp Basic Excel download | 302       | 차단     | —       | 200   |
+
+---
+
+### 5. AI 권한 테스트 결과 (자동화 검증)
+
+`AIPermissionTests` 클래스에서 3개 테스트 자동 검증.
+
+| 기능                                  | can_use_ai=False | can_use_ai=True   |
+| ------------------------------------- | ---------------- | ----------------- |
+| `/ai/` (부서 분석 목록)               | 302 차단         | 200 허용          |
+| `/api/weekly-reports/ai-draft/` (API) | 403              | (AI 뷰 자체 허용) |
+
+---
+
+### 6. 권한 격리 단위 테스트 결과
+
+`PermissionIsolationTests` 클래스에서 8개 테스트 자동 검증.
+
+| 케이스                                       | 결과    |
+| -------------------------------------------- | ------- |
+| 같은 회사 사용자 간 데이터 접근              | ✅ 허용 |
+| 다른 회사 사용자 데이터 접근 차단            | ✅ 차단 |
+| company=None 사용자 간 접근 차단 (버그 없음) | ✅ 차단 |
+| 자기 자신 데이터 항상 접근 허용              | ✅ 허용 |
+| admin은 전체 회사 데이터 접근 가능           | ✅ 허용 |
+| manager는 타인 데이터 수정 불가              | ✅ 차단 |
+| salesman은 자신 데이터 수정 가능             | ✅ 허용 |
+| salesman은 타인 데이터 수정 불가             | ✅ 차단 |
+
+---
+
+### 7. 발견 및 수정된 버그
+
+#### Bug 1: `schedule_file_download` 메모리 누수 + 내부 에러 노출 (FIXED)
+
+- **위치**: `reporting/file_views.py`, `schedule_file_download()`
+- **문제 1**: `file_obj.file.read()` — 파일 전체를 메모리에 올림 (대용량 파일 위험)
+- **문제 2**: `except Exception as e: return HttpResponse(f'...{str(e)}...', status=500)` — 내부 예외 메시지가 HTTP 응답에 노출 (정보 누출)
+- **수정**: `FileResponse(file_obj.file.open('rb'), ...)` + 일반 한국어 오류 메시지로 교체
+- **영향**: 스트리밍 응답으로 메모리 효율 개선, 내부 정보 노출 차단
+
+#### Bug 2: `schedule_file_upload` 허용 확장자 불일치 (FIXED)
+
+- **위치**: `reporting/file_views.py`, `schedule_file_upload()`
+- **문제**: `allowed_extensions` 리스트에 `hwp`, `hwpx` 미포함 → 한글 문서 업로드 불가
+- **불일치**: `views.py`의 `validate_file_upload()`에는 이미 `hwp` 포함됨
+- **수정**: `allowed_extensions`에 `'hwp', 'hwpx'` 추가
+- **영향**: 한글 문서 일정 첨부 가능, 허용 확장자 일관성 확보
+
+#### Bug 3: Analytics export 뷰 `superadmin` 데드 코드 역할 체크 (FIXED)
+
+- **위치**: `reporting/views.py`, 4개 analytics export 뷰
+- **문제**: `role not in ('admin', 'manager', 'superadmin')` — `superadmin`은 `ROLE_CHOICES`에 존재하지 않는 역할 (데드 코드)
+- **영향**: 기능적으로 동작하나 코드 불일치 및 유지보수 위험
+- **수정**: 4개 뷰 모두 `is_admin() or is_manager()` 모델 메서드 방식으로 통일
+  - `analytics_activity_csv_export`
+  - `analytics_pipeline_csv_export`
+  - `analytics_activity_xlsx_export`
+  - `analytics_pipeline_xlsx_export`
+
+---
+
+### 8. 테스트 확장 결과
+
+**이전**: 9개 테스트 (`AuthenticationSmoke` 클래스만)  
+**이후**: 53개 테스트 (6개 클래스)
+
+| 테스트 클래스              | 테스트 수 | 설명                                               |
+| -------------------------- | --------- | -------------------------------------------------- |
+| `AuthenticationSmoke`      | 9         | 로그인/인증/주요 목록 뷰 smoke (기존 유지)         |
+| `AnonymousAccessTests`     | 18        | 주요 내부 URL 익명 접근 차단 검증                  |
+| `ExportPermissionTests`    | 8         | CSV/XLSX export 역할별 권한 검증                   |
+| `AIPermissionTests`        | 3         | AI 기능 접근 권한 검증                             |
+| `DashboardSmokeTests`      | 3         | 대시보드 기본 동작 검증                            |
+| `PermissionIsolationTests` | 8         | `can_access_user_data`/`can_modify_user_data` 단위 |
+| `WeeklyReportTests`        | 4         | 주간보고 API 동작 검증                             |
+
+**결과**: 53/53 PASS (43.057s)
+
+---
+
+### 9. 잔여 위험 (미수정 — QA 범위 외)
+
+| #   | 중요도  | 항목                                                   | 설명                                                   |
+| --- | ------- | ------------------------------------------------------ | ------------------------------------------------------ |
+| 1   | 🟡 중간 | `EMAIL_ENCRYPTION_KEY` 프로덕션 설정 하드코딩 fallback | `settings_production.py` — 환경변수 없을 때 base64 값  |
+| 2   | 🟡 중간 | `SECURE_HSTS_SECONDS` 미설정                           | 브라우저 HSTS 캐싱 활성화 안 됨                        |
+| 3   | 🟡 중간 | `debug_user_company_info` 엔드포인트 배포 중           | `/reporting/debug/user-company/` — 내부 정보 노출 가능 |
+| 4   | 🟢 낮음 | `CSRF_COOKIE_HTTPONLY = False`                         | JS에서 CSRF 토큰 읽기 위한 의도적 설정 (문서화됨)      |
+| 5   | 🟢 낮음 | 파일 업로드 MIME 타입 검증 없음                        | 확장자 기반 검증만 수행 (python-magic 미도입)          |
+| 6   | 🟢 낮음 | Cloudinary URL에 Django 인증 미적용                    | 문서 템플릿 파일은 Cloudinary URL 직접 접근 가능       |
+
+---
+
+### 다음 권장 단계
+
+**Phase 8 (선택사항)**:
+
+1. `SECURE_HSTS_SECONDS` 설정 추가 및 프로덕션 보안 헤더 강화
+2. `debug_user_company_info` 엔드포인트 제거 또는 admin-only 보호
+3. 파일 업로드 MIME 타입 검증 도입 (`python-magic`)
+4. `EMAIL_ENCRYPTION_KEY` 하드코딩 fallback 제거
+5. Sentry 또는 유사 에러 모니터링 도구 연동
+
+---
+
+## Phase 7 QA 프로덕션 블로커 수정 (2026-04-27)
+
+**상태**: 완료 — 블로커 3개 발견 및 수정, 53/53 테스트 통과
+
+### 1. 블로커 요약
+
+| #   | 블로커                                          | 근본 원인                                                                       | 파일                                                      |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| B1  | 파이프라인 sync가 모든 일정을 가져와 보드 혼잡  | `upcoming_schedules` prefetch에 날짜 상한 없음 (`visit_date__gte=date.today()`) | `reporting/funnel_views.py`                               |
+| B2  | 견적 일정이 견적 파이프라인 단계에 미분류       | `_suggest_pipeline_stage()`가 Schedule 객체를 전혀 고려하지 않음                | `reporting/funnel_views.py`                               |
+| B3  | 주간보고 상세 텍스트 불가시 (흰 배경에 흰 글씨) | 다크 테마 body color(near-white)가 라이트 배경 라인 div에 상속됨                | `reporting/templates/reporting/weekly_report/detail.html` |
+
+---
+
+### 2. 블로커별 근본 원인
+
+**B1: 파이프라인 sync 일정 과다 포함**
+
+- `funnel_pipeline_view()`에서 `upcoming_schedules` prefetch가 `visit_date__gte=date.today()`만 적용
+- 날짜 상한이 없어 미래 전체 일정(수개월~수년치)이 모두 로드됨
+- 동기화 시 불필요하게 많은 팔로우업 카드에 "다음 일정" 표시
+
+**B2: 견적 일정 파이프라인 단계 미분류**
+
+- `_suggest_pipeline_stage(followup)`가 Quote 객체와 History 객체만 참조
+- Schedule 객체의 `activity_type='quote'`인 경우를 완전히 무시
+- 견적 일정이 있어도 파이프라인 보드에서 견적 단계 제안이 없음
+
+**B3: 주간보고 상세 텍스트 불가시**
+
+- `base.html` `:root`에서 다크 테마 전역 설정: `--text-primary: hsl(210, 40%, 98%)` (near-white)
+- `body { color: var(--text-primary); }` — body 글자색이 near-white
+- 주간보고 상세 `.normal-line { background: #f9fafb; }` 등의 라이트 배경 div에 white text 상속
+- `.risk-line`, `.deal-line`, `.quote-line`, `.action-line` 모두 동일 문제
+- 관리자 코멘트 박스 `style="background: #f5f3ff;"` div도 white text 상속
+
+---
+
+### 3. 변경된 파일
+
+| 파일                                                      | 유형 | 내용                                                                                                                                                              |
+| --------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reporting/funnel_views.py`                               | 수정 | `_current_month_range()` 헬퍼 추가; `_suggest_pipeline_stage()` 개선; `funnel_pipeline_view()` 현재 월 필터링; `funnel_pipeline_sync()` 현재 월 Schedule prefetch |
+| `reporting/templates/reporting/weekly_report/detail.html` | 수정 | `<style>` 블록에 라인 클래스 color 추가; `.manager-comment-box` 클래스 적용; `.weekly-meta-row` 클래스 적용                                                       |
+
+---
+
+### 4. 현재 월 sync 동작 (B1 수정)
+
+**변경 전:**
+
+```python
+Schedule.objects.filter(visit_date__gte=date.today(), status='scheduled')
+```
+
+**변경 후:**
+
+```python
+month_start, next_month_start = _current_month_range()
+Schedule.objects.filter(
+    visit_date__gte=month_start,
+    visit_date__lt=next_month_start,
+    status='scheduled',
+)
+```
+
+- `_current_month_range()` 함수: `timezone.localdate()`로 타임존 안전하게 오늘 날짜 취득
+- 이번 달 첫날 ~ 다음 달 첫날(미포함) 범위로 제한
+- 파이프라인 보드와 sync API 모두 동일 범위 적용
+- 지난 달/다음 달 일정은 포함되지 않음
+
+---
+
+### 5. 견적 일정 분류 동작 (B2 수정)
+
+`_suggest_pipeline_stage(followup, current_month_schedules=None)` 개선:
+
+| 우선순위   | 조건                                            | 추천 단계                   |
+| ---------- | ----------------------------------------------- | --------------------------- |
+| 1 (최우선) | Quote 객체 존재 → approved/converted            | `won`                       |
+| 1          | Quote 객체 → negotiation                        | `negotiation`               |
+| 1          | Quote 객체 → 전체 rejected/expired              | `lost`                      |
+| 1          | Quote 객체 → 기타                               | `quote`                     |
+| 2          | 이번 달 Schedule에 `activity_type='quote'` 존재 | `quote` (이번 달 견적 일정) |
+| 2          | 이번 달 다른 Schedule 존재                      | `contact` (이번 달 일정)    |
+| 3          | History에 customer_meeting 존재                 | `contact`                   |
+| -          | 해당 없음                                       | 제안 없음                   |
+
+---
+
+### 6. 수동 이동 보존 동작
+
+`_try_advance_pipeline()` 기존 로직 유지 (미변경):
+
+- `won`/`lost` 단계는 자동 동기화로 절대 덮어쓰지 않음
+- 현재 단계보다 앞선 단계로만 이동 (backward 이동 없음)
+- 수동으로 나중 단계로 이동한 카드는 sync 후에도 그대로 유지
+
+---
+
+### 7. 중복 방지 동작
+
+- 파이프라인 보드: FollowUp 1건 → 카드 1장 (stage_map 그룹핑, 중복 불가 구조)
+- sync API: `followup.pipeline_stage` 필드 업데이트만 수행 (새 레코드 생성 없음)
+- 동일 sync를 여러 번 실행해도 멱등성 보장 (`_try_advance_pipeline`은 변경 없으면 save 호출 안 함)
+
+---
+
+### 8. 주간보고 가독성 수정 (B3)
+
+**변경 전** `<style>` 블록: color 지정 없음 → body near-white 상속
+**변경 후**: 각 라인 클래스에 명시적 색상 추가
+
+| 클래스                 | 배경      | 글자색                     |
+| ---------------------- | --------- | -------------------------- |
+| `.normal-line`         | `#f9fafb` | `#212529` (Bootstrap dark) |
+| `.activity-line`       | 투명      | `#212529`                  |
+| `.risk-line`           | 빨간 7%   | `#842029` (어두운 빨간)    |
+| `.action-line`         | 청록 7%   | `#055160` (어두운 청록)    |
+| `.deal-line`           | 초록 7%   | `#0f5132` (어두운 초록)    |
+| `.quote-line`          | 보라 7%   | `#3730a3` (어두운 보라)    |
+| `.manager-comment-box` | `#f5f3ff` | `#374151`                  |
+| `.weekly-meta-row`     | `#f8f9fa` | `#495057`                  |
+
+- 다크 테마 사이드바/네비게이션은 영향 없음
+- 대시보드, 분석, 문서 페이지는 영향 없음 (스코프드 CSS, 해당 클래스 미사용)
+- 헤더 보라 그라디언트(inline style)는 `color: white` 유지 (변경 없음)
+- 배지/버튼의 Bootstrap 기본 색상 유지
+
+---
+
+### 9. 명령 실행 및 결과
+
+| 명령                                                  | 결과                            |
+| ----------------------------------------------------- | ------------------------------- |
+| `python manage.py check`                              | ✅ 0 issues                     |
+| `python manage.py makemigrations --check --dry-run`   | ✅ No changes detected          |
+| `python manage.py test reporting.tests --verbosity=1` | ✅ Ran 53 tests in 41.754s — OK |
+
+---
+
+### 10. 보안 검토
+
+- 주간보고 상세 (`/reporting/weekly-reports/<pk>/`): `@login_required` 유지, 인증 필수
+- 파이프라인 보드/sync: `@login_required`, `_get_accessible_followups()` 권한 체크 유지
+- 내부 CRM 데이터 공개 노출 없음
+- 기존 권한 체계 변경 없음
+
+---
+
+### 11. 잔여 위험
+
+이전 Phase 7 QA 잔여 위험과 동일 (변경 없음):
+
+| 항목                                         | 위험도  |
+| -------------------------------------------- | ------- |
+| `EMAIL_ENCRYPTION_KEY` 하드코딩 fallback     | 🟡 중간 |
+| `SECURE_HSTS_SECONDS` 미설정                 | 🟡 중간 |
+| `debug_user_company_info` 엔드포인트 배포 중 | 🟡 중간 |
+| MIME 타입 미검증                             | 🟢 낮음 |
+| Cloudinary URL Django 인증 미적용            | 🟢 낮음 |

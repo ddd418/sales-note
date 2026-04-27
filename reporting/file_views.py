@@ -148,7 +148,7 @@ def schedule_file_upload(request, schedule_id):
             }, status=400)
         
         uploaded_files = []
-        allowed_extensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'zip', 'rar']
+        allowed_extensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'zip', 'rar', 'hwp', 'hwpx']
         
         for file in files:
             # 파일 크기 제한 (10MB)
@@ -198,6 +198,7 @@ def schedule_file_download(request, file_id):
     """일정 파일 다운로드"""
     try:
         from .models import ScheduleFile
+        from django.http import FileResponse
         file_obj = get_object_or_404(ScheduleFile, id=file_id)
         
         # 권한 체크
@@ -205,12 +206,13 @@ def schedule_file_download(request, file_id):
         if not can_access_user_data(request.user, file_obj.schedule.user):
             return HttpResponse('이 파일에 접근할 권한이 없습니다.', status=403)
         
-        response = HttpResponse(file_obj.file.read(), content_type='application/octet-stream')
+        # FileResponse로 스트리밍 (전체 메모리 로드 방지)
+        response = FileResponse(file_obj.file.open('rb'), content_type='application/octet-stream')
         response['Content-Disposition'] = f'attachment; filename="{file_obj.original_filename}"'
         return response
         
-    except Exception as e:
-        return HttpResponse(f'파일 다운로드 중 오류가 발생했습니다: {str(e)}', status=500)
+    except Exception:
+        return HttpResponse('파일 다운로드 중 오류가 발생했습니다.', status=500)
 
 
 @login_required

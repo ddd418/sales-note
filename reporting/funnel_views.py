@@ -694,6 +694,18 @@ def funnel_bulk_auto_target(request):
 # 칸반 파이프라인 보드
 # ============================================================
 
+
+def _current_month_range():
+    """이번 달 첫날과 다음 달 첫날을 반환 (DateField 비교용, 타임존 안전)"""
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+    if today.month == 12:
+        next_month_start = today.replace(year=today.year + 1, month=1, day=1)
+    else:
+        next_month_start = today.replace(month=today.month + 1, day=1)
+    return month_start, next_month_start
+
+
 # 파이프라인 단계 순서 (앞으로만 자동 이동 시 비교용)
 STAGE_ORDER = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
 
@@ -709,13 +721,14 @@ PIPELINE_STAGES = [
 GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d', 'D': '#dc3545'}
 
 
-def _suggest_pipeline_stage(followup):
+def _suggest_pipeline_stage(followup, current_month_schedules=None):
     """
-    Quote / History 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
+    Quote / Schedule / History 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
     - prefetch_related('quotes', 'histories') 후 호출 시 DB 추가 쿼리 없음.
+    - current_month_schedules: 이번 달 Schedule 리스트 (미리 필터링된 것, 없으면 None).
     Returns (stage_key, source_label) or (None, None) if no better suggestion.
     """
-    # 1. Quote 기반 (최우선)
+    # 1. Quote 기반 (최우선 — 실제 견적 객체)
     quotes = list(followup.quotes.all())
     if quotes:
         stages_set = {q.stage for q in quotes}
@@ -728,7 +741,17 @@ def _suggest_pipeline_stage(followup):
             return ('lost', '견적 거절')
         return ('quote', '견적')
 
-    # 2. History 기반 (실제 고객 접촉)
+    # 2. 이번 달 일정 기반 (Schedule 객체, 견적 일정 → quote 단계)
+    if current_month_schedules:
+        has_quote_schedule = any(
+            s.activity_type == 'quote' for s in current_month_schedules
+        )
+        if has_quote_schedule:
+            return ('quote', '이번 달 견적 일정')
+        # 이번 달 다른 일정이라도 있으면 contact 단계 추천
+        return ('contact', '이번 달 일정')
+
+    # 3. History 기반 (실제 고객 접촉)
     histories = list(followup.histories.all())
     if any(h.action_type == 'customer_meeting' for h in histories):
         return ('contact', '고객 미팅')
@@ -760,12 +783,17 @@ def _try_advance_pipeline(followup, target_stage):
 @login_required
 def funnel_pipeline_view(request):
     """칸반 파이프라인 보드 뷰"""
+    month_start, next_month_start = _current_month_range()
+
     followups = _get_accessible_followups(request.user, request)
     followups = followups.select_related(
         'company', 'department', 'user'
     ).prefetch_related(
+        # 이번 달 예정 일정만 표시 (파이프라인 혼잡 방지)
         Prefetch('schedules', queryset=Schedule.objects.filter(
-            visit_date__gte=date.today(), status='scheduled'
+            visit_date__gte=month_start,
+            visit_date__lt=next_month_start,
+            status='scheduled',
         ).order_by('visit_date'), to_attr='upcoming_schedules'),
         Prefetch('histories', queryset=History.objects.filter(
             parent_history__isnull=True
@@ -783,7 +811,10 @@ def funnel_pipeline_view(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         latest_quote = fu.all_quotes[0] if fu.all_quotes else None
 
-        suggested_stage, suggested_source = _suggest_pipeline_stage(fu)
+        # 이번 달 일정을 단계 추천에 사용 (Blocker 1 + 2)
+        suggested_stage, suggested_source = _suggest_pipeline_stage(
+            fu, current_month_schedules=fu.upcoming_schedules
+        )
         has_suggestion = bool(suggested_stage and suggested_stage != fu.pipeline_stage)
 
         stage_map[stage].append({
@@ -880,13 +911,32 @@ def funnel_pipeline_sync(request):
         followup_id = data.get('followup_id')
 
         accessible = _get_accessible_followups(request.user, request)
+        month_start, next_month_start = _current_month_range()
+
+        # 이번 달 일정 Prefetch 쿼리셋 (단계 추천에 사용)
+        current_month_schedules_qs = Schedule.objects.filter(
+            visit_date__gte=month_start,
+            visit_date__lt=next_month_start,
+        )
 
         if followup_id:
             # 단일 카드 동기화
-            fu = accessible.prefetch_related('quotes', 'histories').filter(pk=followup_id).first()
+            fu = (
+                accessible
+                .prefetch_related(
+                    'quotes', 'histories',
+                    Prefetch('schedules', queryset=current_month_schedules_qs,
+                             to_attr='current_month_schedules'),
+                )
+                .filter(pk=followup_id)
+                .first()
+            )
             if not fu:
                 return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
-            suggested_stage, suggested_source = _suggest_pipeline_stage(fu)
+            current_schedules = getattr(fu, 'current_month_schedules', [])
+            suggested_stage, suggested_source = _suggest_pipeline_stage(
+                fu, current_month_schedules=current_schedules
+            )
             if suggested_stage and suggested_stage != fu.pipeline_stage:
                 changed = _try_advance_pipeline(fu, suggested_stage)
                 stage_label = dict(FollowUp.PIPELINE_STAGE_CHOICES).get(fu.pipeline_stage, fu.pipeline_stage)
@@ -899,11 +949,22 @@ def funnel_pipeline_sync(request):
             return JsonResponse({'success': True, 'changed': False, 'message': '이미 적절한 단계입니다.'})
 
         else:
-            # 전체 일괄 동기화
-            followups = accessible.prefetch_related('quotes', 'histories').all()
+            # 전체 일괄 동기화 — 이번 달 일정 포함 prefetch
+            followups = (
+                accessible
+                .prefetch_related(
+                    'quotes', 'histories',
+                    Prefetch('schedules', queryset=current_month_schedules_qs,
+                             to_attr='current_month_schedules'),
+                )
+                .all()
+            )
             changed_count = 0
             for fu in followups:
-                suggested_stage, _ = _suggest_pipeline_stage(fu)
+                current_schedules = getattr(fu, 'current_month_schedules', [])
+                suggested_stage, _ = _suggest_pipeline_stage(
+                    fu, current_month_schedules=current_schedules
+                )
                 if suggested_stage and _try_advance_pipeline(fu, suggested_stage):
                     changed_count += 1
             return JsonResponse({

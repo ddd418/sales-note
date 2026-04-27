@@ -44,7 +44,7 @@
         </div>
 
         <!-- 메타 배지 행 -->
-        <div class="card-body py-2 px-3 border-bottom bg-light d-flex flex-wrap gap-3 align-items-center">
+        <div class="card-body py-2 px-3 border-bottom weekly-meta-row d-flex flex-wrap gap-3 align-items-center">
           <span class="text-muted small"><i class="fas fa-clock me-1"></i>작성: {{ report.created_at|date:"Y-m-d H:i" }}</span>
           <span class="text-muted small"><i class="fas fa-edit me-1"></i>수정: {{ report.updated_at|date:"Y-m-d H:i" }}</span>
           {% if report.activity_notes %}
@@ -154,7 +154,7 @@
         </div>
         <div class="card-body">
           {% if report.manager_comment %}
-          <div class="p-3 rounded mb-3" style="background: #f5f3ff; border: 1px solid #ede9fe;">
+          <div class="p-3 rounded mb-3 manager-comment-box" style="background: #f5f3ff; border: 1px solid #ede9fe;">
             <div class="small text-muted mb-1">
               <i class="fas fa-comment me-1"></i>
               {% if report.reviewed_by %}{{ report.reviewed_by.get_full_name|default:report.reviewed_by.username }}{% else %}관리자{% endif %}
@@ -186,12 +186,19 @@
 </div>
 
 <style>
-.activity-line { font-size: .92em; }
-.risk-line    { background: rgba(220,53,69,.07); border: 1px solid rgba(220,53,69,.2); }
-.action-line  { background: rgba(13,202,240,.07); border: 1px solid rgba(13,202,240,.2); }
-.deal-line    { background: rgba(25,135,84,.07); border: 1px solid rgba(25,135,84,.2); }
-.quote-line   { background: rgba(99,102,241,.07); border: 1px solid rgba(99,102,241,.2); }
-.normal-line  { background: #f9fafb; }
+/* 주간보고 상세: 다크 테마 아래서 라이트 배경 컨텐츠 영역 텍스트 가독성 수정 */
+.activity-line { font-size: .92em; color: #212529; }
+.risk-line    { background: rgba(220,53,69,.07);  border: 1px solid rgba(220,53,69,.2);  color: #842029; }
+.action-line  { background: rgba(13,202,240,.07); border: 1px solid rgba(13,202,240,.2); color: #055160; }
+.deal-line    { background: rgba(25,135,84,.07);  border: 1px solid rgba(25,135,84,.2);  color: #0f5132; }
+.quote-line   { background: rgba(99,102,241,.07); border: 1px solid rgba(99,102,241,.2); color: #3730a3; }
+.normal-line  { background: #f9fafb; color: #212529; }
+/* 관리자 코멘트 라이트 배경 박스 */
+.manager-comment-box { color: #374151 !important; }
+.manager-comment-box .text-muted { color: #6c757d !important; }
+/* 메타 배지 행: bg-light 강제 적용 */
+.weekly-meta-row { background-color: #f8f9fa !important; color: #495057 !important; }
+.weekly-meta-row .text-muted { color: #6c757d !important; }
 @media print {
   .breadcrumb, .btn, nav, #commentFormArea { display: none !important; }
   .card { border: none !important; box-shadow: none !important; }

@@ -14856,7 +14856,7 @@ def analytics_activity_csv_export(request):
     import csv
 
     user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+    if not (user_profile.is_admin() or user_profile.is_manager()):
         return HttpResponseForbidden('접근 권한이 없습니다.')
 
     today     = timezone.now().date()
@@ -14888,7 +14888,7 @@ def analytics_pipeline_csv_export(request):
     import csv
 
     user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+    if not (user_profile.is_admin() or user_profile.is_manager()):
         return HttpResponseForbidden('접근 권한이 없습니다.')
 
     today = timezone.now().date()
@@ -14923,7 +14923,7 @@ def analytics_activity_xlsx_export(request):
     import io
 
     user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+    if not (user_profile.is_admin() or user_profile.is_manager()):
         return HttpResponseForbidden('접근 권한이 없습니다.')
 
     today     = timezone.now().date()
@@ -15017,7 +15017,7 @@ def analytics_pipeline_xlsx_export(request):
     import io
 
     user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+    if not (user_profile.is_admin() or user_profile.is_manager()):
         return HttpResponseForbidden('접근 권한이 없습니다.')
 
     today = timezone.now().date()
