@@ -67,66 +67,38 @@
 
       <!-- ② 영업 활동 내용 -->
       {% if report.activity_notes %}
-      <div class="card shadow-sm mb-4 border-0" style="border-left: 4px solid #6366f1 !important;">
-        <div class="card-header bg-white d-flex align-items-center gap-2 py-2" style="border-bottom: 1px solid #e5e7eb;">
-          <i class="fas fa-walking text-primary"></i>
-          <h6 class="mb-0 fw-bold text-primary">영업 활동 내용</h6>
-          <span class="badge bg-primary bg-opacity-10 text-primary ms-auto" id="activityLineCount"></span>
+      <section class="weekly-section activity-section mb-5">
+        <h6 class="section-title">
+          <i class="fas fa-walking me-2"></i>영업 활동 내용
+        </h6>
+        <div class="report-html-content">
+          {{ activity_notes_html|safe }}
         </div>
-        <div class="card-body pb-2">
-          {% for line in report.activity_notes.splitlines %}{% if line.strip %}
-          <div class="activity-line mb-2 p-2 rounded {% if '⚠️' in line or '위험' in line or '리스크' in line or '지연' in line or '문제' in line %}risk-line{% elif '다음 액션' in line or '후속' in line or '예정' in line %}action-line{% elif '납품' in line or '견적' in line %}deal-line{% else %}normal-line{% endif %}">
-            {{ line }}
-          </div>
-          {% endif %}{% endfor %}
-        </div>
-        <!-- 위험/리스크 항목 하이라이트 섹션 -->
-        {% with has_risk=False %}
-        {% for line in report.activity_notes.splitlines %}{% if line.strip %}{% if '⚠️' in line or '위험' in line or '리스크' in line or '지연' in line %}
-        {% if forloop.first %}<div class="card-footer bg-danger bg-opacity-5" style="border-top: 1px solid rgba(220,53,69,.2);">
-          <div class="d-flex align-items-center gap-1 mb-1">
-            <i class="fas fa-exclamation-triangle text-danger small"></i>
-            <span class="small fw-bold text-danger">위험/리스크 감지 항목</span>
-          </div>{% endif %}
-          <div class="small text-danger mb-1 ps-2">{{ line }}</div>
-        {% endif %}{% endif %}{% endfor %}
-        {% endwith %}
-        {% for line in report.activity_notes.splitlines %}{% if line.strip %}{% if '⚠️' in line or '위험' in line or '리스크' in line or '지연' in line %}{% if forloop.last %}</div>{% endif %}{% endif %}{% endif %}{% endfor %}
-      </div>
+      </section>
       {% endif %}
 
       <!-- ③ 견적/납품 내용 -->
       {% if report.quote_delivery_notes %}
-      <div class="card shadow-sm mb-4 border-0" style="border-left: 4px solid #16a34a !important;">
-        <div class="card-header bg-white d-flex align-items-center gap-2 py-2" style="border-bottom: 1px solid #e5e7eb;">
-          <i class="fas fa-file-invoice text-success"></i>
-          <h6 class="mb-0 fw-bold text-success">견적 / 납품 내용</h6>
+      <section class="weekly-section quote-section mb-5">
+        <h6 class="section-title">
+          <i class="fas fa-file-invoice me-2"></i>견적 / 납품 내용
+        </h6>
+        <div class="report-html-content">
+          {{ quote_delivery_notes_html|safe }}
         </div>
-        <div class="card-body pb-2">
-          {% for line in report.quote_delivery_notes.splitlines %}{% if line.strip %}
-          <div class="mb-2 p-2 rounded {% if '납품' in line %}deal-line{% elif '견적' in line or '제출' in line %}quote-line{% else %}normal-line{% endif %}">
-            {{ line }}
-          </div>
-          {% endif %}{% endfor %}
-        </div>
-      </div>
+      </section>
       {% endif %}
 
       <!-- ④ 기타 내용 (다음 주 계획 등) -->
       {% if report.other_notes %}
-      <div class="card shadow-sm mb-4 border-0" style="border-left: 4px solid #d97706 !important;">
-        <div class="card-header bg-white d-flex align-items-center gap-2 py-2" style="border-bottom: 1px solid #e5e7eb;">
-          <i class="fas fa-calendar-alt" style="color: #d97706;"></i>
-          <h6 class="mb-0 fw-bold" style="color: #92400e;">다음 주 계획 / 기타</h6>
+      <section class="weekly-section other-section mb-5">
+        <h6 class="section-title">
+          <i class="fas fa-calendar-alt me-2"></i>다음 주 계획 / 기타
+        </h6>
+        <div class="report-html-content">
+          {{ other_notes_html|safe }}
         </div>
-        <div class="card-body pb-2">
-          {% for line in report.other_notes.splitlines %}{% if line.strip %}
-          <div class="mb-2 p-2 rounded {% if '중요' in line or '핵심' in line or '우선' in line %}bg-warning bg-opacity-10{% else %}normal-line{% endif %}">
-            {{ line }}
-          </div>
-          {% endif %}{% endfor %}
-        </div>
-      </div>
+      </section>
       {% endif %}
 
       {% if not report.activity_notes and not report.quote_delivery_notes and not report.other_notes %}
@@ -187,12 +159,12 @@
 
 <style>
 /* ═══════════════════════════════════════════════════════════════════
-   주간보고 상세 페이지 — .weekly-report-detail-page 스코프 가독성 수정
-   다크 테마 위에서 라이트 콘텐츠를 표시. 다른 페이지에는 영향 없음.
+   주간보고 상세 페이지 — .weekly-report-detail-page 스코프 전용
+   다크 베이스 테마 위에서 라이트 문서형 레이아웃 적용.
+   다른 페이지에는 영향 없음.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* 1. CSS Custom Property 재정의
-      이 스코프 안의 var(--*) 참조를 모두 라이트 테마값으로 변환 */
+/* 1. 페이지 기반 — CSS 변수 라이트테마로 재정의 */
 .weekly-report-detail-page {
   --text-primary:         #1f2937;
   --text-secondary:       #475569;
@@ -211,11 +183,11 @@
   --bs-border-color:      #e5e7eb;
   --bs-emphasis-color:    #0f172a;
   --bs-link-color:        #3b82f6;
-  background: #f3f4f6;
+  background: #f8fafc;
   color: #1f2937;
 }
 
-/* 2. 카드 */
+/* 2. 실제 카드 UI 유지 (헤더 카드, 관리자 검토 카드) */
 .weekly-report-detail-page .card {
   background: #ffffff !important;
   border: 1px solid #e5e7eb !important;
@@ -236,15 +208,13 @@
   color: #374151 !important;
 }
 
-/* 3. 그라디언트 헤더 카드 — 보라/남색 배경 + 흰 글자 유지 */
+/* 3. 그라디언트 헤더 (헤더 카드 상단) */
 .weekly-report-detail-page .report-gradient-header {
   background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
   color: #ffffff !important;
-  --bs-heading-color: #ffffff;   /* 내부 h1-h6도 흰색으로 */
 }
-.weekly-report-detail-page .report-gradient-header h5 {
-  color: #ffffff !important;
-}
+.weekly-report-detail-page .report-gradient-header h5,
+.weekly-report-detail-page .report-gradient-header h6 { color: #ffffff !important; }
 .weekly-report-detail-page .report-gradient-header small {
   color: rgba(255,255,255,.85) !important;
 }
@@ -261,7 +231,35 @@
   color: #6c757d !important;
 }
 
-/* 5. 본문 텍스트 — !important 없이 적용 (Bootstrap text-* 유틸리티 보존) */
+/* 5. 콘텐츠 섹션 — 플랫 문서형 (흔 박스 없음) */
+.weekly-report-detail-page .weekly-section {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.weekly-report-detail-page .weekly-section .section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding-bottom: 0.55rem;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid;
+}
+.weekly-report-detail-page .activity-section .section-title {
+  color: #4f46e5;
+  border-bottom-color: #a5b4fc;
+}
+.weekly-report-detail-page .quote-section .section-title {
+  color: #15803d;
+  border-bottom-color: #86efac;
+}
+.weekly-report-detail-page .other-section .section-title {
+  color: #92400e;
+  border-bottom-color: #fcd34d;
+}
+
+/* 6. 일반 본문 텍스트 */
 .weekly-report-detail-page h1,
 .weekly-report-detail-page h2,
 .weekly-report-detail-page h3,
@@ -280,41 +278,7 @@
   color: #64748b !important;
 }
 
-/* 6. 활동 라인 분류 박스 */
-.weekly-report-detail-page .activity-line {
-  font-size: .92em;
-  color: #212529;
-}
-.weekly-report-detail-page .risk-line {
-  background: rgba(220,53,69,.08)  !important;
-  border:     1px solid rgba(220,53,69,.25) !important;
-  color:      #842029 !important;
-}
-.weekly-report-detail-page .action-line {
-  background: rgba(13,202,240,.08) !important;
-  border:     1px solid rgba(13,202,240,.25) !important;
-  color:      #055160 !important;
-}
-.weekly-report-detail-page .deal-line {
-  background: rgba(25,135,84,.08)  !important;
-  border:     1px solid rgba(25,135,84,.25)  !important;
-  color:      #0f5132 !important;
-}
-.weekly-report-detail-page .quote-line {
-  background: rgba(99,102,241,.08) !important;
-  border:     1px solid rgba(99,102,241,.25) !important;
-  color:      #3730a3 !important;
-}
-.weekly-report-detail-page .normal-line {
-  background: #f1f5f9 !important;
-  color:      #212529 !important;
-}
-/* 중요/핵심/우선 라인 (bg-warning 계열 — bg-opacity-10 사용) */
-.weekly-report-detail-page .bg-warning.bg-opacity-10 {
-  color: #78350f !important;
-}
-
-/* 7. 관리자 코멘트 박스 */
+/* 7. 관리자 코멘트 박스 (카드 내부) */
 .weekly-report-detail-page .manager-comment-box {
   background: #f5f3ff !important;
   color: #374151 !important;
@@ -366,16 +330,51 @@
   color: #64748b;
 }
 
-/* 13. 인쇄 */
+/* 13. 리치 텍스트 HTML 콘텐츠 — 투명 배경, 사용자 서식 보존 */
+.weekly-report-detail-page .report-html-content {
+  background: transparent;
+  color: #1f2937;
+  font-size: 0.93rem;
+  line-height: 1.75;
+}
+.weekly-report-detail-page .report-html-content p {
+  margin-bottom: 0.5em;
+  color: inherit;
+}
+.weekly-report-detail-page .report-html-content h2,
+.weekly-report-detail-page .report-html-content h3,
+.weekly-report-detail-page .report-html-content h4 {
+  color: #0f172a;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+}
+.weekly-report-detail-page .report-html-content ul,
+.weekly-report-detail-page .report-html-content ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.6em;
+}
+.weekly-report-detail-page .report-html-content li {
+  color: inherit;
+  margin-bottom: 0.25em;
+}
+.weekly-report-detail-page .report-html-content blockquote {
+  border-left: 3px solid #a5b4fc;
+  padding: 0.5em 1em;
+  margin: 0.5em 0;
+  color: #374151;
+  background: transparent;
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+.weekly-report-detail-page .report-html-content strong,
+.weekly-report-detail-page .report-html-content b { color: inherit; }
+
+/* 14. 인쇄 */
 @media print {
   .weekly-report-detail-page .btn,
   .weekly-report-detail-page #commentFormArea { display: none !important; }
   .weekly-report-detail-page .card { border: 1px solid #ccc !important; box-shadow: none !important; }
-  .weekly-report-detail-page .risk-line,
-  .weekly-report-detail-page .action-line,
-  .weekly-report-detail-page .deal-line,
-  .weekly-report-detail-page .quote-line,
-  .weekly-report-detail-page .normal-line {
+  .weekly-report-detail-page .weekly-section { break-inside: avoid; }
+  .weekly-report-detail-page .report-html-content {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -388,9 +387,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  var lines = document.querySelectorAll('.activity-line');
-  var el = document.getElementById('activityLineCount');
-  if (el && lines.length) el.textContent = lines.length + '건';
+  // 리치 텍스트 렌더링으로 교체됨 — activityLine 카운터는 제거
 });
 
 {% if is_manager %}

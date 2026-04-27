@@ -2956,3 +2956,68 @@ Schedule.objects.filter(
 ### 4. 다음 단계
 
 Phase 7 QA 완료. 잔여 위험 항목(HSTS, debug 엔드포인트, MIME 검증 등)은 Phase 8 과제로 보류.
+
+---
+
+## Phase 7 주간보고 리치 텍스트 에디터 구현 (2026-04-27)
+
+### 1. 요약
+
+주간보고 작성/수정 폼에 **Quill.js 2.x 리치 텍스트 에디터**를 적용하고,
+서버 사이드에서 `bleach` 라이브러리로 HTML을 정화(sanitize)한 뒤 저장하도록 변경.
+상세 페이지는 sanitize된 HTML을 안전하게 렌더링. 기존 레거시 플레인텍스트 보고서는 HTML로 자동 변환 후 렌더링.
+
+### 2. 변경 파일
+
+| 파일                                                      | 내용                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requirements.txt`                                        | `bleach==6.2.0` 추가                                                                                                                                                                                                                                           |
+| `reporting/utils_html.py`                                 | 신규 생성 — HTML sanitize 유틸리티 (`sanitize_html`, `is_html_content`, `render_report_field`)                                                                                                                                                                 |
+| `reporting/views.py`                                      | `_render_report_field()` helper 추가; `weekly_report_create`, `weekly_report_edit`에 `sanitize_html()` 적용; `weekly_report_detail`에 pre-rendered HTML 컨텍스트 추가                                                                                          |
+| `reporting/templates/reporting/weekly_report/form.html`   | Quill CSS CDN(`{% block extra_css %}`), 3개 textarea → Quill 에디터 div + hidden input 교체, `buildInsertText` → `buildInsertHtml` HTML 삽입, `insertSelected` Quill API 사용, AI 초안 Quill API 사용, form submit 핸들러 + Quill init(`{% block extra_js %}`) |
+| `reporting/templates/reporting/weekly_report/detail.html` | 3개 섹션 `splitlines` 루프 → `activity_notes_html\|safe` 렌더링으로 교체, `.report-html-content` CSS 추가                                                                                                                                                      |
+
+### 3. 아키텍처
+
+```
+[Quill 에디터] --HTML--> [POST request]
+     |
+     v
+[views.py: bleach.clean()] --sanitized HTML--> [DB TextField]
+     |
+     v
+[detail.html: render_report_field()] --safe HTML--> [{{ *_html|safe }}]
+```
+
+**허용 태그**: p, div, br, h2, h3, h4, ul, ol, li, blockquote, pre, hr, strong, b, em, i, u, s, span, a, table, thead, tbody, tr, th, td
+
+**허용 CSS 속성**: color, background-color, font-size, text-align, font-weight, font-style, text-decoration
+
+**차단**: script, iframe, object, embed, form, on\* 이벤트, javascript: URL
+
+### 4. 하위 호환성
+
+- 기존 레거시 플레인텍스트 보고서(`<`로 시작하지 않음) → `render_report_field()`가 개행을 `<p>`/`<br>`로 변환
+- 신규 HTML 보고서 → bleach 정화 후 `|safe` 렌더링
+- 모델 스키마 변경 없음 (기존 TextField 재사용)
+- 마이그레이션 없음
+
+### 5. 명령 실행 및 결과
+
+| 명령                                                | 결과                            |
+| --------------------------------------------------- | ------------------------------- |
+| `pip install bleach==6.2.0`                         | ✅ bleach-6.2.0 설치 완료       |
+| `python manage.py check`                            | ✅ 0 issues                     |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected          |
+| `python manage.py test reporting.tests`             | ✅ Ran 53 tests in 42.633s — OK |
+
+### 6. 알려진 한계
+
+- Quill `dangerouslyPasteHTML`은 Quill 자체 sanitization을 우회하므로, 서버 사이드 bleach 정화가 필수 (구현됨)
+- 일정 삽입 HTML은 JS 빌드 (XSS 우려 없음 — 사용자 서버 데이터 기반)
+- 테이블 편집 기능 없음 (Quill 기본 툴바에 미포함)
+
+### 7. 다음 단계 권장
+
+- 브라우저 수동 테스트 (create/edit 폼, 일정 삽입, AI 초안, detail 렌더링)
+- Phase 8 보안 항목 계속 진행 (HSTS, debug 엔드포인트)

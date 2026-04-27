@@ -3,6 +3,27 @@
 
 {% block title %}{% if is_edit %}주간보고 수정{% else %}주간보고 작성{% endif %}{% endblock %}
 
+{% block extra_css %}
+<!-- Quill Snow 테마 -->
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<style>
+  /* Quill 에디터 컨테이너 - 다크 테마 base.html과 충돌 방지 */
+  .ql-editor-wrap { border: 1px solid #dee2e6; border-radius: 0.375rem; background: #fff; }
+  .ql-editor-wrap .ql-toolbar { border-bottom: 1px solid #dee2e6; border-radius: 0.375rem 0.375rem 0 0; background: #f8f9fa; }
+  .ql-editor-wrap .ql-container { border-radius: 0 0 0.375rem 0.375rem; }
+  .ql-editor-wrap .ql-editor { min-height: 140px; color: #212529; font-size: 0.92rem; }
+  .ql-editor-wrap-lg .ql-editor { min-height: 200px; }
+  .ql-editor-wrap .ql-editor.ql-blank::before { color: #adb5bd; font-style: normal; }
+  /* 툴바 아이콘 색상 */
+  .ql-editor-wrap .ql-toolbar button, .ql-editor-wrap .ql-toolbar .ql-picker-label { color: #495057; }
+  .ql-editor-wrap .ql-toolbar button:hover, .ql-editor-wrap .ql-toolbar button.ql-active { color: #6366f1; }
+  .ql-editor-wrap .ql-toolbar .ql-stroke { stroke: #495057; }
+  .ql-editor-wrap .ql-toolbar button:hover .ql-stroke, .ql-editor-wrap .ql-toolbar button.ql-active .ql-stroke { stroke: #6366f1; }
+  .ql-editor-wrap .ql-toolbar .ql-fill { fill: #495057; }
+  .ql-editor-wrap .ql-toolbar button:hover .ql-fill { fill: #6366f1; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-4">
   <nav aria-label="breadcrumb" class="mb-3">
@@ -57,21 +78,30 @@
                 {% endif %}
               </div>
               <small class="text-muted d-block mb-1">방문, 미팅, 전화 등 이번 주 영업 활동을 작성해 주세요.</small>
-              <textarea name="activity_notes" id="activityNotes" class="form-control" rows="8"
-                        placeholder="예&#10;- 월: 한국대학교 이화연 교수 방문, HPG 제품 데모 진행&#10;- 화: ○○연구소 전화 상담">{% if report %}{{ report.activity_notes }}{% endif %}</textarea>
+              <div class="ql-editor-wrap ql-editor-wrap-lg">
+                <div id="activityNotesEditor" data-placeholder="예) 월: 한국대학교 방문, HPG 제품 데모 진행 / 화: ○○연구소 전화 상담"></div>
+              </div>
+              <input type="hidden" name="activity_notes" id="activityNotesInput"
+                     value="{% if report %}{{ report.activity_notes|escapejs }}{% endif %}">
             </div>
 
             <div class="mb-3">
               <label class="form-label fw-bold">견적/납품 내용</label>
               <small class="text-muted d-block mb-1">이번 주 제출한 견적 및 납품 현황을 작성해 주세요.</small>
-              <textarea name="quote_delivery_notes" id="quoteDeliveryNotes" class="form-control" rows="6"
-                        placeholder="예&#10;- 한양대학교 홍길동 교수 - HPG-1000 견적 제출 (500만원)&#10;- 서울대학교 김철수 교수 - ABC-200 납품 완료">{% if report %}{{ report.quote_delivery_notes }}{% endif %}</textarea>
+              <div class="ql-editor-wrap">
+                <div id="quoteDeliveryNotesEditor" data-placeholder="예) 한양대학교 홍길동 교수 - HPG-1000 견적 제출 (500만원)"></div>
+              </div>
+              <input type="hidden" name="quote_delivery_notes" id="quoteDeliveryNotesInput"
+                     value="{% if report %}{{ report.quote_delivery_notes|escapejs }}{% endif %}">
             </div>
 
             <div class="mb-4">
               <label class="form-label fw-bold">다음 주 계획 / 기타</label>
-              <textarea name="other_notes" id="otherNotes" class="form-control" rows="4"
-                        placeholder="다음 주 계획, 특이사항 등">{% if report %}{{ report.other_notes }}{% endif %}</textarea>
+              <div class="ql-editor-wrap">
+                <div id="otherNotesEditor" data-placeholder="다음 주 계획, 특이사항 등"></div>
+              </div>
+              <input type="hidden" name="other_notes" id="otherNotesInput"
+                     value="{% if report %}{{ report.other_notes|escapejs }}{% endif %}">
             </div>
 
             <div class="d-flex gap-2">
@@ -374,21 +404,13 @@ function insertSelected(category) {
   setTimeout(() => ta.classList.remove('border-primary'), 800);
 }
 
-// 기존 단순 클릭 방식 (하위 호환, 초기 렌더링된 카드에서 직접 클릭)
+// 기존 단순 클릭 방식 (하위 호환, 사용 안 됨)
 function insertScheduleText(el) {
-  let text = el.dataset.text;
-  if (!text) {
-    const dateEl = el.querySelector('.text-primary');
-    const customerEl = el.querySelector('.small.mt-1');
-    const notesEl = el.querySelector('.text-muted.small.mt-1');
-    const typeEl = el.querySelector('.badge');
-    text = `- ${dateEl?.textContent?.trim()||''}: ${customerEl?.textContent?.trim()||''} ${typeEl?.textContent?.trim()||''}${notesEl ? ' - ' + notesEl.textContent.trim() : ''}`;
-  }
-  const ta = document.getElementById('activityNotes');
-  const cur = ta.value;
-  ta.value = cur ? cur + '\n' + text : text;
-  ta.scrollTop = ta.scrollHeight;
-  ta.focus();
+  const actEditor = window.quillActivity;
+  if (!actEditor) return;
+  const len = actEditor.getLength();
+  actEditor.setSelection(len - 1);
+  actEditor.insertText(len - 1, '\n', 'user');
 }
 
 {% if can_use_ai %}
@@ -409,18 +431,26 @@ function generateAiDraft() {
       if (data.error) { alert(data.error); return; }
       const draft = data.draft;
 
-      const actNotes = document.getElementById('activityNotes');
-      const qdNotes  = document.getElementById('quoteDeliveryNotes');
-      const otNotes  = document.getElementById('otherNotes');
+      // Quill 에디터 인스턴스 사용
+      const qAct = window.quillActivity;
+      const qQD  = window.quillQuoteDelivery;
+      const qOth = window.quillOther;
 
-      const hasExisting = actNotes.value.trim() || qdNotes.value.trim() || otNotes.value.trim();
+      const hasExisting = (qAct && qAct.getText().trim()) ||
+                          (qQD  && qQD.getText().trim()) ||
+                          (qOth && qOth.getText().trim());
       if (hasExisting) {
         if (!confirm('현재 입력된 내용이 있습니다.\nAI 초안으로 교체하시겠습니까?\n(기존 내용은 사라집니다)')) return;
       }
 
-      if (draft.activity_notes)       actNotes.value = draft.activity_notes;
-      if (draft.quote_delivery_notes) qdNotes.value  = draft.quote_delivery_notes;
-      if (draft.other_notes)          otNotes.value  = draft.other_notes;
+      // 플레인 텍스트를 HTML <p> 블록으로 변환 후 Quill에 삽입
+      function plainToHtml(text) {
+        if (!text) return '';
+        return text.split('\n').map(line => `<p>${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '<br>'}</p>`).join('');
+      }
+      if (draft.activity_notes && qAct)       { qAct.clipboard.dangerouslyPasteHTML(0, plainToHtml(draft.activity_notes), 'user'); }
+      if (draft.quote_delivery_notes && qQD)  { qQD.clipboard.dangerouslyPasteHTML(0, plainToHtml(draft.quote_delivery_notes), 'user'); }
+      if (draft.other_notes && qOth)          { qOth.clipboard.dangerouslyPasteHTML(0, plainToHtml(draft.other_notes), 'user'); }
 
       if (draft.summary) {
         const s = draft.summary;
@@ -439,7 +469,7 @@ function generateAiDraft() {
         const div = document.createElement('div');
         div.className = 'ai-summary-alert';
         div.innerHTML = summaryHtml;
-        actNotes.parentElement.insertAdjacentElement('afterend', div);
+        document.getElementById('activityNotesEditor').closest('.ql-editor-wrap').insertAdjacentElement('afterend', div);
       }
     })
     .catch(() => {
@@ -449,5 +479,71 @@ function generateAiDraft() {
     });
 }
 {% endif %}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Quill.js 2.x CDN -->
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+(function() {
+  // ─── Quill 툴바 설정 ─────────────────────────────────────────────────────
+  const TOOLBAR = [
+    [{ 'header': [2, 3, 4, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+    ['blockquote'],
+    [{ 'align': [] }],
+    ['clean']
+  ];
+
+  function makeQuill(editorId) {
+    return new Quill('#' + editorId, {
+      theme: 'snow',
+      modules: { toolbar: TOOLBAR },
+      placeholder: document.getElementById(editorId).dataset.placeholder || ''
+    });
+  }
+
+  // ─── Quill 인스턴스 초기화 ───────────────────────────────────────────────
+  window.quillActivity       = makeQuill('activityNotesEditor');
+  window.quillQuoteDelivery  = makeQuill('quoteDeliveryNotesEditor');
+  window.quillOther          = makeQuill('otherNotesEditor');
+
+  // ─── 수정 모드: 기존 내용 불러오기 ──────────────────────────────────────
+  function initEditorContent(quill, hiddenInputId) {
+    const input = document.getElementById(hiddenInputId);
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) return;
+    // HTML 콘텐츠 감지 (bleach 정화된 HTML 또는 레거시 플레인텍스트)
+    if (val.startsWith('<')) {
+      quill.clipboard.dangerouslyPasteHTML(val);
+    } else {
+      // 레거시 플레인텍스트: 줄바꿈 보존
+      const htmlFromPlain = val.split('\n').map(line =>
+        `<p>${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '<br>'}</p>`
+      ).join('');
+      quill.clipboard.dangerouslyPasteHTML(htmlFromPlain);
+    }
+  }
+
+  initEditorContent(window.quillActivity,      'activityNotesInput');
+  initEditorContent(window.quillQuoteDelivery, 'quoteDeliveryNotesInput');
+  initEditorContent(window.quillOther,         'otherNotesInput');
+
+  // ─── 폼 제출 시 Quill HTML → hidden input 동기화 ────────────────────────
+  const form = document.getElementById('weeklyReportForm');
+  if (form) {
+    form.addEventListener('submit', function() {
+      // quill.root.innerHTML: Quill 편집기의 내부 HTML 원본
+      // 빈 에디터는 '<p><br></p>' → 서버에서 bleach 정화 후 저장
+      document.getElementById('activityNotesInput').value      = window.quillActivity.root.innerHTML;
+      document.getElementById('quoteDeliveryNotesInput').value = window.quillQuoteDelivery.root.innerHTML;
+      document.getElementById('otherNotesInput').value         = window.quillOther.root.innerHTML;
+    });
+  }
+})();
 </script>
 {% endblock %}

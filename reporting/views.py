@@ -14042,10 +14042,18 @@ def weekly_report_list(request):
     })
 
 
+# ─── 주간보고 리치 텍스트 헬퍼 ──────────────────────────────────────────────
+def _render_report_field(text: str) -> str:
+    """주간보고 필드를 안전한 HTML로 변환 (뷰 내부 전용)."""
+    from reporting.utils_html import render_report_field
+    return render_report_field(text)
+
+
 @login_required
 def weekly_report_create(request):
     """주간보고 작성"""
     import datetime
+    from reporting.utils_html import sanitize_html
     today = datetime.date.today()
     # 이번 주 월~금 기본값
     monday = today - datetime.timedelta(days=today.weekday())
@@ -14055,9 +14063,10 @@ def weekly_report_create(request):
         week_start_str = request.POST.get('week_start')
         week_end_str = request.POST.get('week_end')
         title = request.POST.get('title', '').strip()
-        activity_notes = request.POST.get('activity_notes', '').strip()
-        quote_delivery_notes = request.POST.get('quote_delivery_notes', '').strip()
-        other_notes = request.POST.get('other_notes', '').strip()
+        # 리치 텍스트 에디터가 HTML을 전송하므로 서버 사이드 정화 적용
+        activity_notes = sanitize_html(request.POST.get('activity_notes', '').strip())
+        quote_delivery_notes = sanitize_html(request.POST.get('quote_delivery_notes', '').strip())
+        other_notes = sanitize_html(request.POST.get('other_notes', '').strip())
 
         try:
             week_start = datetime.date.fromisoformat(week_start_str)
@@ -14122,12 +14131,14 @@ def weekly_report_edit(request, pk):
             return redirect('reporting:weekly_report_edit', pk=pk)
 
         title = request.POST.get('title', '').strip() or f"{week_start.strftime('%Y년 %m월 %d일')} 주간보고"
+        from reporting.utils_html import sanitize_html
         report.week_start = week_start
         report.week_end = week_end
         report.title = title
-        report.activity_notes = request.POST.get('activity_notes', '').strip()
-        report.quote_delivery_notes = request.POST.get('quote_delivery_notes', '').strip()
-        report.other_notes = request.POST.get('other_notes', '').strip()
+        # 리치 텍스트 에디터가 HTML을 전송하므로 서버 사이드 정화 적용
+        report.activity_notes = sanitize_html(request.POST.get('activity_notes', '').strip())
+        report.quote_delivery_notes = sanitize_html(request.POST.get('quote_delivery_notes', '').strip())
+        report.other_notes = sanitize_html(request.POST.get('other_notes', '').strip())
         report.save()
         messages.success(request, '주간보고가 수정되었습니다.')
         return redirect('reporting:weekly_report_detail', pk=report.pk)
@@ -14165,6 +14176,10 @@ def weekly_report_detail(request, pk):
     return render(request, 'reporting/weekly_report/detail.html', {
         'report': report,
         'is_manager': profile and profile.role in ['admin', 'superadmin', 'manager'],
+        # 리치 텍스트 / 레거시 플레인텍스트 모두 안전하게 렌더링된 HTML
+        'activity_notes_html': _render_report_field(report.activity_notes),
+        'quote_delivery_notes_html': _render_report_field(report.quote_delivery_notes),
+        'other_notes_html': _render_report_field(report.other_notes),
     })
 
 

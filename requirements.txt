@@ -43,4 +43,7 @@ openai>=1.68.0
 cloudinary==1.41.0
 django-cloudinary-storage==0.3.0
 
+# HTML Sanitizer (주간보고 리치 텍스트 에디터 서버 사이드 정화)
+bleach==6.2.0
+
 
