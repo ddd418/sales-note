@@ -59,113 +59,320 @@
   {% if analysis and analysis.analysis_data %}
   {% with d=analysis.analysis_data %}
 
-  <!-- 딜 확률 + 고객 요약 -->
+  <!-- 딜 확률 + 어카운트 브리핑 -->
   <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <!-- 딜 확률 -->
+    <div class="col-md-3">
       <div class="card h-100 shadow-sm border-0">
         <div class="card-body text-center py-4">
-          <div class="mb-2 text-muted" style="font-size:0.85em; font-weight:600; letter-spacing:0.05em;">딜 성공 확률</div>
+          <div class="mb-2 text-muted" style="font-size:0.8em; font-weight:600; letter-spacing:0.05em;">딜 성공 확률</div>
           {% with prob=d.deal_probability|default:0 %}
-          <div class="fw-bold mb-2" style="font-size:3rem;
+          <div class="fw-bold mb-1" style="font-size:3rem;
             {% if prob >= 70 %}color:#198754;{% elif prob >= 50 %}color:#f59e0b;{% else %}color:#dc3545;{% endif %}">
             {{ prob }}%
           </div>
-          <div class="progress mb-3" style="height:8px; border-radius:4px;">
+          <div class="progress mb-2" style="height:8px; border-radius:4px;">
             <div class="progress-bar" role="progressbar"
                  style="width:{{ prob }}%;
                  {% if prob >= 70 %}background:#198754;{% elif prob >= 50 %}background:#f59e0b;{% else %}background:#dc3545;{% endif %}">
             </div>
           </div>
           {% endwith %}
-          <div class="text-muted" style="font-size:0.82em; line-height:1.5;">
+          {% if d.relationship_stage %}
+          <span class="badge mb-2" style="background:#6366f1; font-size:0.72em;">{{ d.relationship_stage|truncatechars:20 }}</span>
+          {% endif %}
+          <div class="text-muted" style="font-size:0.78em; line-height:1.5;">
             {{ d.deal_probability_reason|default:"" }}
           </div>
         </div>
       </div>
     </div>
-    <div class="col-md-8">
+
+    <!-- 어카운트 브리핑 -->
+    <div class="col-md-9">
       <div class="card h-100 shadow-sm border-0">
-        <div class="card-body py-3 px-4">
+        <div class="card-header d-flex align-items-center gap-2" style="background:linear-gradient(135deg,#374151,#4b5563); color:white; border-radius:8px 8px 0 0; padding:10px 16px;">
+          <i class="fas fa-user-tie"></i>
+          <span class="fw-semibold" style="font-size:0.9em;">어카운트 브리핑</span>
+        </div>
+        <div class="card-body p-3">
+          {% if d.account_brief %}
+          <p class="mb-2" style="font-size:0.9em; line-height:1.7;">{{ d.account_brief.customer_summary|default:"" }}</p>
+          <div class="row g-2">
+            {% if d.account_brief.recent_activity %}
+            <div class="col-md-6">
+              <div class="p-2 rounded" style="background:#f8f9fa; font-size:0.82em; line-height:1.5;">
+                <span class="fw-semibold text-muted">최근 활동:</span> {{ d.account_brief.recent_activity }}
+              </div>
+            </div>
+            {% endif %}
+            {% if d.account_brief.sales_status %}
+            <div class="col-md-6">
+              <div class="p-2 rounded" style="background:#f8f9fa; font-size:0.82em; line-height:1.5;">
+                <span class="fw-semibold text-muted">영업 현황:</span> {{ d.account_brief.sales_status }}
+              </div>
+            </div>
+            {% endif %}
+            {% if d.account_brief.prepayment_note %}
+            <div class="col-md-6">
+              <div class="p-2 rounded" style="background:#e7f0ff; font-size:0.82em; line-height:1.5;">
+                <i class="fas fa-money-bill-wave me-1" style="color:#0d6efd;"></i>
+                <span class="fw-semibold" style="color:#0d6efd;">선결제:</span> {{ d.account_brief.prepayment_note }}
+              </div>
+            </div>
+            {% endif %}
+            {% if d.account_brief.quote_delivery_note %}
+            <div class="col-md-6">
+              <div class="p-2 rounded" style="background:#f8f9fa; font-size:0.82em; line-height:1.5;">
+                <span class="fw-semibold text-muted">견적/납품:</span> {{ d.account_brief.quote_delivery_note }}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% else %}
+          <!-- 구버전 호환 -->
           <div class="d-flex align-items-center gap-2 mb-2">
             <span class="fw-semibold" style="font-size:0.9em; color:#6366f1;">고객 요약</span>
             {% if d.relationship_stage %}
-            <span class="badge" style="background:#6366f1; font-size:0.75em;">
-              {{ d.relationship_stage|truncatechars:30 }}
-            </span>
+            <span class="badge" style="background:#6366f1; font-size:0.75em;">{{ d.relationship_stage|truncatechars:30 }}</span>
             {% endif %}
           </div>
-          <p class="mb-0" style="font-size:0.92em; line-height:1.7; color:var(--text-primary);">
-            {{ d.customer_summary|default:"(요약 없음)" }}
-          </p>
+          <p class="mb-0" style="font-size:0.92em; line-height:1.7;">{{ d.customer_summary|default:"(요약 없음)" }}</p>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 다음 액션 + 기회 신호 -->
-  <div class="row g-3 mb-4">
+  <!-- 다음 베스트 액션 -->
+  <div class="mb-4">
+    <div class="card shadow-sm border-0">
+      <div class="card-header d-flex align-items-center gap-2" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; border-radius:8px 8px 0 0; padding:12px 16px;">
+        <i class="fas fa-bolt"></i>
+        <span class="fw-semibold">다음 베스트 액션</span>
+      </div>
+      <div class="card-body p-3">
+        {% if d.next_best_actions %}
+        <div class="row g-3">
+          {% for action in d.next_best_actions %}
+          <div class="col-md-6 col-xl-4">
+            <div class="border rounded p-3 h-100"
+                 style="border-color:{% if forloop.counter == 1 %}#6366f1{% elif forloop.counter == 2 %}#8b5cf6{% else %}#a78bfa{% endif %} !important; border-width:2px !important;">
+              <div class="d-flex align-items-start gap-2 mb-2">
+                <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                     style="width:26px; height:26px; background:{% if forloop.counter == 1 %}#6366f1{% elif forloop.counter == 2 %}#8b5cf6{% else %}#a78bfa{% endif %}; color:white; font-weight:700; font-size:0.78em; margin-top:1px;">
+                  {{ action.priority|default:forloop.counter }}
+                </div>
+                <div class="fw-semibold" style="font-size:0.9em; line-height:1.4;">{{ action.action }}</div>
+              </div>
+              {% if action.suggested_due %}
+              <div class="text-muted mb-2" style="font-size:0.78em;">
+                <i class="fas fa-calendar-alt me-1"></i>{{ action.suggested_due }}
+              </div>
+              {% endif %}
+              {% if action.what_to_ask %}
+              <div class="mb-1" style="font-size:0.82em; line-height:1.5;">
+                <span class="badge me-1" style="background:#f59e0b; font-size:0.68em;">질문</span>{{ action.what_to_ask }}
+              </div>
+              {% endif %}
+              {% if action.what_to_prepare %}
+              <div class="mb-1" style="font-size:0.82em; line-height:1.5;">
+                <span class="badge me-1" style="background:#0d6efd; font-size:0.68em;">준비</span>{{ action.what_to_prepare }}
+              </div>
+              {% endif %}
+              {% if action.reason %}
+              <div class="text-muted mt-2" style="font-size:0.78em; line-height:1.5; border-left:2px solid #dee2e6; padding-left:6px;">
+                {{ action.reason }}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted text-center py-3" style="font-size:0.88em;">액션 없음</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
-    <!-- 다음 베스트 액션 -->
-    <div class="col-lg-7">
+  <!-- 기회/리스크 분석 + 매니저 요약 -->
+  <div class="row g-3 mb-4">
+    <!-- 기회/리스크 분석 -->
+    <div class="col-lg-8">
       <div class="card shadow-sm border-0 h-100">
-        <div class="card-header" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; border-radius:8px 8px 0 0; padding:12px 16px;">
-          <i class="fas fa-bolt me-2"></i><span class="fw-semibold">다음 베스트 액션</span>
+        <div class="card-header" style="background:#f8f9fa; border-bottom:1px solid #dee2e6; border-radius:8px 8px 0 0; padding:10px 16px;">
+          <span class="fw-semibold" style="font-size:0.9em;"><i class="fas fa-chart-line me-2" style="color:#374151;"></i>기회/리스크 분석</span>
         </div>
         <div class="card-body p-3">
-          {% if d.next_best_actions %}
-          <div class="d-flex flex-column gap-3">
-            {% for action in d.next_best_actions %}
-            <div class="d-flex gap-3 align-items-start">
-              <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                   style="width:28px; height:28px; background:{% if forloop.counter == 1 %}#6366f1{% elif forloop.counter == 2 %}#8b5cf6{% else %}#a78bfa{% endif %}; color:white; font-weight:700; font-size:0.8em;">
-                {{ action.priority|default:forloop.counter }}
-              </div>
-              <div>
-                <div class="fw-semibold" style="font-size:0.9em;">{{ action.action }}</div>
-                <div class="text-muted mt-1" style="font-size:0.8em; line-height:1.5;">{{ action.reason }}</div>
-              </div>
+          {% if d.opportunity_risk %}
+          {% if d.opportunity_risk.purchase_potential %}
+          <div class="mb-2 d-flex align-items-start gap-2">
+            <span class="badge flex-shrink-0" style="background:#198754; font-size:0.7em; margin-top:3px;">구매 가능성</span>
+            <span style="font-size:0.85em; line-height:1.6;">{{ d.opportunity_risk.purchase_potential }}</span>
+          </div>
+          {% endif %}
+          {% if d.opportunity_risk.stalled_risk %}
+          <div class="mb-2 d-flex align-items-start gap-2">
+            <span class="badge flex-shrink-0" style="background:#dc3545; font-size:0.7em; margin-top:3px;">정체 위험</span>
+            <span style="font-size:0.85em; line-height:1.6;">{{ d.opportunity_risk.stalled_risk }}</span>
+          </div>
+          {% endif %}
+          {% if d.opportunity_risk.price_risk %}
+          <div class="mb-2 d-flex align-items-start gap-2">
+            <span class="badge flex-shrink-0" style="background:#f59e0b; font-size:0.7em; margin-top:3px;">가격 리스크</span>
+            <span style="font-size:0.85em; line-height:1.6;">{{ d.opportunity_risk.price_risk }}</span>
+          </div>
+          {% endif %}
+          {% if d.opportunity_risk.compatibility_risk %}
+          <div class="mb-2 d-flex align-items-start gap-2">
+            <span class="badge flex-shrink-0" style="background:#6c757d; font-size:0.7em; margin-top:3px;">호환 리스크</span>
+            <span style="font-size:0.85em; line-height:1.6;">{{ d.opportunity_risk.compatibility_risk }}</span>
+          </div>
+          {% endif %}
+          {% if d.opportunity_risk.budget_prepayment_risk %}
+          <div class="mb-2 d-flex align-items-start gap-2">
+            <span class="badge flex-shrink-0" style="background:#0d6efd; font-size:0.7em; margin-top:3px;">예산/선결제</span>
+            <span style="font-size:0.85em; line-height:1.6;">{{ d.opportunity_risk.budget_prepayment_risk }}</span>
+          </div>
+          {% endif %}
+          {% if d.opportunity_risk.missing_info %}
+          <div class="mt-3 pt-2 border-top">
+            <div class="text-muted mb-1" style="font-size:0.8em; font-weight:600;">
+              <i class="fas fa-question-circle me-1"></i>확인 필요
             </div>
+            <ul class="mb-0 ps-3" style="font-size:0.82em; line-height:1.9;">
+              {% for item in d.opportunity_risk.missing_info %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% else %}
+          <!-- 구버전 호환 -->
+          {% if d.opportunity_signals %}
+          {% for sig in d.opportunity_signals %}
+          <div class="mb-1" style="font-size:0.85em;"><i class="fas fa-check text-success me-1"></i>{{ sig }}</div>
+          {% endfor %}
+          {% endif %}
+          {% if d.missing_info %}
+          <div class="mt-2">
+            {% for item in d.missing_info %}
+            <div class="mb-1" style="font-size:0.83em;"><i class="fas fa-question-circle text-muted me-1"></i>{{ item }}</div>
             {% endfor %}
           </div>
-          {% else %}
-          <div class="text-muted text-center py-3" style="font-size:0.88em;">액션 없음</div>
+          {% endif %}
           {% endif %}
         </div>
       </div>
     </div>
 
-    <!-- 기회 신호 + 누락 정보 -->
-    <div class="col-lg-5 d-flex flex-column gap-3">
-      {% if d.opportunity_signals %}
-      <div class="card shadow-sm border-0">
-        <div class="card-header" style="background:#198754; color:white; border-radius:8px 8px 0 0; padding:10px 16px;">
-          <i class="fas fa-signal me-2"></i><span class="fw-semibold" style="font-size:0.9em;">기회 신호</span>
+    <!-- 매니저 요약 -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 h-100" style="border-left:4px solid #7c3aed !important;">
+        <div class="card-header" style="background:#f3e8ff; border-bottom:1px solid #ddd8fe; border-radius:8px 8px 0 0; padding:10px 16px;">
+          <span class="fw-semibold" style="font-size:0.9em; color:#7c3aed;"><i class="fas fa-file-alt me-2"></i>매니저 요약</span>
         </div>
         <div class="card-body p-3">
-          <ul class="mb-0 ps-3" style="font-size:0.85em; line-height:1.8;">
-            {% for signal in d.opportunity_signals %}
-            <li>{{ signal }}</li>
-            {% endfor %}
+          {% if d.manager_summary %}
+          {% if d.manager_summary.key_point %}
+          <p class="fw-semibold mb-2" style="font-size:0.88em; line-height:1.6;">{{ d.manager_summary.key_point }}</p>
+          {% endif %}
+          {% if d.manager_summary.risk_level %}
+          <div class="mb-2">
+            <span class="badge" style="background:{% if d.manager_summary.risk_level == 'high' %}#dc3545{% elif d.manager_summary.risk_level == 'med' %}#f59e0b{% else %}#198754{% endif %}; font-size:0.72em;">
+              리스크 {% if d.manager_summary.risk_level == 'high' %}높음{% elif d.manager_summary.risk_level == 'med' %}보통{% else %}낮음{% endif %}
+            </span>
+          </div>
+          {% endif %}
+          {% if d.manager_summary.decision_needed %}
+          <div class="mb-2 p-2 rounded" style="background:#fff3cd; font-size:0.82em; line-height:1.5;">
+            <i class="fas fa-exclamation-triangle me-1" style="color:#f59e0b;"></i>{{ d.manager_summary.decision_needed }}
+          </div>
+          {% endif %}
+          {% if d.manager_summary.expected_impact %}
+          <div class="text-muted" style="font-size:0.8em; line-height:1.5;">{{ d.manager_summary.expected_impact }}</div>
+          {% endif %}
+          {% else %}
+          <!-- 구버전 호환 -->
+          {% if d.manager_report_points %}
+          <ul class="mb-0 ps-3" style="font-size:0.85em; line-height:2;">
+            {% for pt in d.manager_report_points %}<li>{{ pt }}</li>{% endfor %}
           </ul>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 방문 준비 체크리스트 -->
+  {% if d.visit_checklist %}
+  <div class="mb-4">
+    <h6 class="fw-bold mb-3"><i class="fas fa-clipboard-check me-2" style="color:#0891b2;"></i>방문 준비 체크리스트</h6>
+    {% if d.visit_checklist.customer_context %}
+    <div class="mb-3 p-2 rounded" style="background:#f0f9ff; font-size:0.85em; line-height:1.6;">
+      <span class="fw-semibold me-2" style="color:#0891b2;">고객 현황:</span>{{ d.visit_checklist.customer_context }}
+    </div>
+    {% endif %}
+    <div class="row g-3">
+      {% if d.visit_checklist.items_to_bring %}
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header py-2" style="background:#e0f2fe; font-size:0.82em; font-weight:600; color:#0369a1; border-radius:8px 8px 0 0;">
+            <i class="fas fa-briefcase me-1"></i>지참할 자료
+          </div>
+          <div class="card-body p-3">
+            <ul class="mb-0 ps-3" style="font-size:0.83em; line-height:1.9;">
+              {% for item in d.visit_checklist.items_to_bring %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
         </div>
       </div>
       {% endif %}
-      {% if d.missing_info %}
-      <div class="card shadow-sm border-0">
-        <div class="card-header" style="background:#6c757d; color:white; border-radius:8px 8px 0 0; padding:10px 16px;">
-          <i class="fas fa-question-circle me-2"></i><span class="fw-semibold" style="font-size:0.9em;">확인 필요 정보</span>
+      {% if d.visit_checklist.questions_to_ask %}
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header py-2" style="background:#fef9c3; font-size:0.82em; font-weight:600; color:#854d0e; border-radius:8px 8px 0 0;">
+            <i class="fas fa-question-circle me-1"></i>확인할 질문
+          </div>
+          <div class="card-body p-3">
+            <ul class="mb-0 ps-3" style="font-size:0.83em; line-height:1.9;">
+              {% for q in d.visit_checklist.questions_to_ask %}<li>{{ q }}</li>{% endfor %}
+            </ul>
+          </div>
         </div>
-        <div class="card-body p-3">
-          <ul class="mb-0 ps-3" style="font-size:0.85em; line-height:1.8;">
-            {% for item in d.missing_info %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
+      </div>
+      {% endif %}
+      {% if d.visit_checklist.unresolved_issues %}
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header py-2" style="background:#ffe4e6; font-size:0.82em; font-weight:600; color:#9f1239; border-radius:8px 8px 0 0;">
+            <i class="fas fa-exclamation-circle me-1"></i>미해결 이슈
+          </div>
+          <div class="card-body p-3">
+            <ul class="mb-0 ps-3" style="font-size:0.83em; line-height:1.9;">
+              {% for issue in d.visit_checklist.unresolved_issues %}<li>{{ issue }}</li>{% endfor %}
+            </ul>
+          </div>
         </div>
       </div>
       {% endif %}
     </div>
   </div>
+  {% elif d.pre_visit_checklist %}
+  <!-- 구버전 호환 -->
+  <div class="mb-4">
+    <h6 class="fw-bold mb-3"><i class="fas fa-clipboard-check me-2" style="color:#0891b2;"></i>방문 전 확인사항</h6>
+    <div class="card shadow-sm border-0">
+      <div class="card-body p-3">
+        <ul class="mb-0 ps-3" style="font-size:0.88em; line-height:2;">
+          {% for item in d.pre_visit_checklist %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- 핵심 PainPoint -->
   {% if d.key_painpoints %}
@@ -177,7 +384,7 @@
         <div class="card shadow-sm border-0 h-100"
              style="border-left:4px solid {% if pp.confidence == 'high' %}#dc3545{% elif pp.confidence == 'med' %}#f59e0b{% else %}#6c757d{% endif %} !important;">
           <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="mb-2">
               <span class="badge"
                     style="background:{% if pp.confidence == 'high' %}#dc3545{% elif pp.confidence == 'med' %}#f59e0b{% else %}#6c757d{% endif %}; font-size:0.72em;">
                 {% if pp.confidence == 'high' %}High{% elif pp.confidence == 'med' %}Med{% else %}Low{% endif %}
@@ -206,19 +413,17 @@
       <div class="col-md-6">
         <div class="card shadow-sm border-0"
              style="border-left:4px solid {% if risk.severity == 'high' %}#dc3545{% elif risk.severity == 'med' %}#f59e0b{% else %}#6c757d{% endif %} !important;">
-          <div class="card-body p-3 d-flex gap-3">
-            <div>
-              <span class="badge mb-1"
-                    style="background:{% if risk.severity == 'high' %}#dc3545{% elif risk.severity == 'med' %}#f59e0b{% else %}#6c757d{% endif %}; font-size:0.72em;">
-                {% if risk.severity == 'high' %}심각{% elif risk.severity == 'med' %}보통{% else %}낮음{% endif %}
-              </span>
-              <div class="fw-semibold mb-1" style="font-size:0.88em;">{{ risk.risk }}</div>
-              {% if risk.mitigation %}
-              <div class="text-muted" style="font-size:0.8em; line-height:1.5;">
-                <i class="fas fa-lightbulb me-1" style="color:#f59e0b;"></i>{{ risk.mitigation }}
-              </div>
-              {% endif %}
+          <div class="card-body p-3">
+            <span class="badge mb-1"
+                  style="background:{% if risk.severity == 'high' %}#dc3545{% elif risk.severity == 'med' %}#f59e0b{% else %}#6c757d{% endif %}; font-size:0.72em;">
+              {% if risk.severity == 'high' %}심각{% elif risk.severity == 'med' %}보통{% else %}낮음{% endif %}
+            </span>
+            <div class="fw-semibold mb-1" style="font-size:0.88em;">{{ risk.risk }}</div>
+            {% if risk.mitigation %}
+            <div class="text-muted" style="font-size:0.8em; line-height:1.5;">
+              <i class="fas fa-lightbulb me-1" style="color:#f59e0b;"></i>{{ risk.mitigation }}
             </div>
+            {% endif %}
           </div>
         </div>
       </div>

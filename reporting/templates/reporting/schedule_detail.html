@@ -555,6 +555,9 @@ a.text-decoration-none {
                       <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('quotation', '{{ schedule.pk }}', 'xlsx')">
                         <i class="fas fa-file-excel me-1"></i> Excel 다운로드
                       </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="previewDocument('quotation', '{{ schedule.pk }}')">
+                        <i class="fas fa-eye me-1"></i> 변수 미리보기
+                      </button>
                       <small class="text-muted d-block">
                         등록된 납품 품목을 포함한 견적서를 생성합니다.
                       </small>
@@ -573,6 +576,9 @@ a.text-decoration-none {
                       <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('transaction_statement', '{{ schedule.pk }}', 'xlsx')">
                         <i class="fas fa-file-excel me-1"></i> Excel 다운로드
                       </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="previewDocument('transaction_statement', '{{ schedule.pk }}')">
+                        <i class="fas fa-eye me-1"></i> 변수 미리보기
+                      </button>
                       <small class="text-muted d-block">
                         납품 완료된 품목의 거래명세서를 생성합니다.
                       </small>
@@ -588,6 +594,9 @@ a.text-decoration-none {
                       </button>
                       <button type="button" class="btn btn-outline-success btn-sm w-100 mb-2" onclick="generateDocument('delivery_note', '{{ schedule.pk }}', 'xlsx')">
                         <i class="fas fa-file-excel me-1"></i> Excel 다운로드
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="previewDocument('delivery_note', '{{ schedule.pk }}')">
+                        <i class="fas fa-eye me-1"></i> 변수 미리보기
                       </button>
                       <small class="text-muted d-block">
                         납품 예정인 품목의 납품서를 생성합니다.
@@ -1905,28 +1914,131 @@ async function generateDocument(documentType, scheduleId, outputFormat = 'xlsx')
   } catch (error) {
     console.error('서류 생성 오류:', error);
     alert('서류 생성 실패: ' + error.message);
-    console.error('Error:', error);
-    alert('서류 생성 중 오류가 발생했습니다.');
     
     // 버튼 복구
-    const button = event.target.closest('button');
-    button.disabled = false;
+    try {
+      const button = event.target.closest('button');
+      if (button) { button.disabled = false; }
+    } catch (_) {}
+  }
+}
+
+async function previewDocument(documentType, scheduleId) {
+  // HTML 이스케이프 헬퍼 (XSS 방지)
+  function escHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  const docTypeNames = {
+    'quotation': '견적서',
+    'transaction_statement': '거래명세서',
+    'delivery_note': '납품서'
+  };
+  const docTypeName = docTypeNames[documentType] || documentType;
+
+  // 모달 표시
+  const modalEl = document.getElementById('documentPreviewModal');
+  const modal = bootstrap.Modal.getOrCreate(modalEl);
+  document.getElementById('previewModalTitle').textContent = docTypeName + ' 변수 미리보기';
+  document.getElementById('previewModalBody').innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-muted"></i><p class="mt-2 text-muted">데이터 불러오는 중...</p></div>';
+  document.getElementById('previewGenerateBtn').onclick = null;
+  modal.show();
+
+  try {
+    const res = await fetch(`/reporting/documents/template-data/${documentType}/${scheduleId}/`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      document.getElementById('previewModalBody').innerHTML =
+        `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>${escHtml(data.error)}</div>`;
+      return;
+    }
+
+    const variables = data.variables || {};
+    const varGroups = [
+      { label: '기본 정보', keys: ['년','월','일','거래번호','발행일','날짜','일정날짜'] },
+      { label: '고객 정보', keys: ['고객명','담당자','업체명','학교명','부서명','연구실','이메일','연락처','전화번호'] },
+      { label: '영업담당자', keys: ['실무자','영업담당자','담당영업'] },
+      { label: '회사 정보', keys: ['회사명'] },
+      { label: '견적 정보', keys: ['견적번호','메모'] },
+      { label: '금액', keys: ['공급가액','소계','부가세액','부가세','총액','합계','총액한글','한글금액'] },
+    ];
+
+    // 품목 그룹 동적 생성
+    const itemCount = data.item_count || 0;
+    if (itemCount > 0) {
+      const itemFields = ['이름','품목명','수량','단위','규격','설명','단가','공급가액','부가세액','금액','총액'];
+      const itemKeys = [];
+      for (let i = 1; i <= Math.min(itemCount, 3); i++) {
+        itemFields.forEach(f => itemKeys.push(`품목${i}_${f}`));
+      }
+      varGroups.push({ label: `품목 (총 ${itemCount}개)`, keys: itemKeys });
+    }
+
+    let html = '<div class="table-responsive">';
+    for (const group of varGroups) {
+      const groupVars = group.keys.filter(k => k in variables);
+      if (groupVars.length === 0) continue;
+      html += `<h6 class="text-muted border-bottom pb-1 mt-3">${group.label}</h6>`;
+      html += '<table class="table table-sm table-bordered mb-0">';
+      html += '<thead class="table-light"><tr><th style="width:40%">변수</th><th>값</th></tr></thead><tbody>';
+      for (const key of groupVars) {
+        const val = variables[key];
+        const isEmpty = val === '' || val === null || val === undefined;
+        const rowClass = isEmpty ? 'table-warning' : '';
+        html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td><td>${isEmpty ? '<span class="text-muted">(비어있음)</span>' : escHtml(val)}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    if (itemCount === 0) {
+      html += '<div class="alert alert-info mt-2"><i class="fas fa-info-circle me-1"></i>등록된 납품 품목이 없습니다. 품목을 먼저 등록해주세요.</div>';
+    }
+
+    document.getElementById('previewModalBody').innerHTML = html;
+    document.getElementById('previewGenerateBtn').onclick = () => {
+      modal.hide();
+      // 기본 xlsx 다운로드 실행
+      const btn = document.querySelector(`[onclick*="generateDocument('${documentType}'"][onclick*="xlsx"]`);
+      if (btn) btn.click();
+    };
+
+  } catch (err) {
+    document.getElementById('previewModalBody').innerHTML =
+      `<div class="alert alert-danger"><i class="fas fa-times-circle me-2"></i>미리보기 로드 실패: ${escHtml(err.message)}</div>`;
   }
 }
 </script>
 
-<script>
-.strategy-content h5 {
-  border-left: 3px solid #6c757d;
-  padding-left: 0.75rem;
-}
-.strategy-content ul {
-  margin-left: 1.5rem;
-}
-.strategy-content .form-check {
-  margin-bottom: 0.5rem;
-}
-</style>
+<!-- 서류 변수 미리보기 모달 -->
+<div class="modal fade" id="documentPreviewModal" tabindex="-1" aria-labelledby="documentPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="previewModalTitle"><i class="fas fa-eye me-2"></i>변수 미리보기</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="previewModalBody">
+        <div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-muted"></i></div>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted me-auto"><span class="badge bg-warning text-dark">노란색</span> 행 = 값이 없는 변수</small>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-success" id="previewGenerateBtn">
+          <i class="fas fa-file-excel me-1"></i> Excel로 생성
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}
 

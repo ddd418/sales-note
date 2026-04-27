@@ -7,12 +7,45 @@
 <div class="d-flex align-items-center justify-content-between px-3 pt-3 pb-2 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-3">
     <h4 class="mb-0"><i class="fas fa-columns me-2"></i>파이프라인 보드</h4>
-    <span class="badge bg-secondary">총 {{ total }}명</span>
+    <span class="badge bg-secondary" id="totalCount">총 {{ total }}명</span>
   </div>
   <div class="d-flex gap-2">
     <a href="{% url 'reporting:funnel_list' %}" class="btn btn-outline-secondary btn-sm">
       <i class="fas fa-table me-1"></i>테이블 뷰
     </a>
+    <button type="button" class="btn btn-outline-primary btn-sm" id="syncAllBtn" onclick="syncAll()"
+            title="Quote/히스토리 기반으로 파이프라인 단계를 자동 정렬합니다 (앞으로만 이동)">
+      <i class="fas fa-magic me-1"></i>자동 동기화
+      {% if sync_count > 0 %}
+      <span class="badge bg-warning text-dark ms-1">{{ sync_count }}</span>
+      {% endif %}
+    </button>
+  </div>
+</div>
+
+<!-- 검색/필터 바 -->
+<div class="px-3 pb-2">
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <div class="flex-grow-1" style="min-width:180px; max-width:380px;">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
+        <input type="text" id="searchInput" class="form-control border-start-0 ps-1"
+               placeholder="고객명, 업체, 담당자 검색..." autocomplete="off">
+        <button class="btn btn-outline-secondary" id="clearBtn" onclick="clearFilter()"
+                style="display:none;" title="검색 초기화" type="button">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+    <select id="gradeFilter" class="form-select form-select-sm" style="width:auto; min-width:90px;" title="등급 필터">
+      <option value="">전체 등급</option>
+      <option value="VIP">VIP</option>
+      <option value="A">A</option>
+      <option value="B">B</option>
+      <option value="C">C</option>
+      <option value="D">D</option>
+    </select>
+    <span id="filterStatus" class="text-muted" style="font-size:0.82em; display:none;"></span>
   </div>
 </div>
 
@@ -43,6 +76,8 @@
            draggable="true"
            data-id="{{ card.id }}"
            data-stage="{{ card.pipeline_stage }}"
+           data-grade="{{ card.grade }}"
+           data-search="{{ card.customer }} {{ card.company }} {{ card.department }} {{ card.owner }} {{ card.manager }} {{ card.priority }} {{ card.grade }}"
            ondragstart="onDragStart(event)"
            style="cursor: grab; border-left: 3px solid {{ stage.color }};">
         <div class="card-body py-2 px-3">
@@ -65,10 +100,49 @@
             {% if card.department %}<br>{{ card.department }}{% endif %}
           </div>
           {% endif %}
-          <!-- 다음 일정 -->
+          <!-- 담당자 -->
+          {% if card.owner %}
+          <div class="text-muted mt-1" style="font-size: 0.73em;">
+            <i class="fas fa-user me-1" style="opacity:0.5;"></i>{{ card.owner }}
+          </div>
+          {% endif %}
+          <!-- 다음 예정 일정 -->
           {% if card.next_date %}
           <div class="mt-1 text-primary" style="font-size: 0.75em;">
-            <i class="fas fa-calendar-alt me-1"></i>{{ card.next_date }} {{ card.next_type }}
+            <i class="fas fa-calendar-alt me-1"></i>
+            {% if card.next_schedule_id %}
+            <a href="{% url 'reporting:schedule_detail' card.next_schedule_id %}"
+               class="text-decoration-none text-primary" onclick="event.stopPropagation()">
+              {{ card.next_date }} {{ card.next_type }}
+            </a>
+            {% else %}
+            {{ card.next_date }} {{ card.next_type }}
+            {% endif %}
+          </div>
+          {% endif %}
+          <!-- 최근 견적 -->
+          {% if card.latest_quote_stage %}
+          <div class="mt-1" style="font-size: 0.73em; color: #f59e0b;">
+            <i class="fas fa-file-invoice me-1"></i>{{ card.latest_quote_stage }}{% if card.latest_quote_amount %} · {{ card.latest_quote_amount }}{% endif %}
+          </div>
+          {% endif %}
+          <!-- 최근 히스토리 -->
+          {% if card.last_history_type %}
+          <div class="mt-1 text-muted" style="font-size: 0.72em; line-height: 1.3;">
+            <i class="fas fa-history me-1" style="opacity:0.5;"></i>{{ card.last_history_date }} {{ card.last_history_type }}
+            {% if card.last_history_snippet %}<br><span style="opacity:0.8;">{{ card.last_history_snippet }}</span>{% endif %}
+          </div>
+          {% endif %}
+          <!-- 추천 단계 배지 -->
+          {% if card.has_suggestion %}
+          <div class="mt-2 d-flex align-items-center gap-1">
+            <span class="badge bg-success bg-opacity-10 text-success border border-success" style="font-size:0.68em;">
+              <i class="fas fa-magic me-1"></i>추천: {{ card.suggested_stage_label }}
+            </span>
+            <button type="button" class="btn btn-success btn-sm py-0 px-1"
+                    style="font-size:0.68em; line-height:1.5;"
+                    onclick="event.stopPropagation(); syncCard({{ card.id }})"
+                    title="{{ card.suggested_source }}">적용</button>
           </div>
           {% endif %}
           <!-- 단계 이동 드롭다운 (모바일 대응) -->
@@ -112,6 +186,8 @@
 .kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; }
 .kanban-card.dragging { opacity: 0.4; }
 .kanban-cards.drag-over { background: rgba(99,102,241,0.08) !important; outline: 2px dashed #6366f1; }
+.kanban-filter-empty { pointer-events: none; }
+#searchInput:focus { box-shadow: none; border-color: #86b7fe; }
 @media (max-width: 768px) {
   .kanban-board { flex-direction: column; }
   .kanban-col { width: 100% !important; }
@@ -119,8 +195,11 @@
 </style>
 
 <script>
-const CSRF = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-             document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+const CSRF = document.querySelector('meta[name="csrf-token"]')?.content
+          || document.querySelector('[name=csrfmiddlewaretoken]')?.value
+          || document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+const SYNC_URL = '{% url "reporting:funnel_pipeline_sync" %}';
 
 let dragId = null;
 let dragStage = null;
@@ -180,8 +259,8 @@ function moveCard(followupId, newStage) {
           const empty = targetCol.querySelector('[id^="empty-"]');
           if (empty) empty.remove();
           targetCol.appendChild(card);
-          // 원래 컬럼 카운트 갱신
-          updateCounts();
+          // 필터 재적용 후 카운트 갱신
+          applyFilter();
         }
       }
     }
@@ -190,13 +269,91 @@ function moveCard(followupId, newStage) {
 }
 
 function updateCounts() {
+  let totalVisible = 0;
   document.querySelectorAll('.kanban-col').forEach(col => {
-    const stage = col.dataset.stage;
-    const count = col.querySelectorAll('.kanban-card').length;
+    const visible = Array.from(col.querySelectorAll('.kanban-card'))
+                         .filter(c => c.style.display !== 'none').length;
     const badge = col.querySelector('.badge.rounded-pill');
-    if (badge) badge.textContent = count;
+    if (badge) badge.textContent = visible;
+    totalVisible += visible;
   });
+  return totalVisible;
 }
+
+function applyFilter() {
+  const query = document.getElementById('searchInput').value.toLowerCase().trim();
+  const gradeFilter = document.getElementById('gradeFilter').value;
+  const isFiltered = query !== '' || gradeFilter !== '';
+
+  document.querySelectorAll('.kanban-col').forEach(col => {
+    let colVisible = 0;
+    const cards = col.querySelectorAll('.kanban-card');
+
+    cards.forEach(card => {
+      const searchText = (card.dataset.search || '').toLowerCase();
+      const grade = card.dataset.grade || '';
+      const matchesQuery = !query || searchText.includes(query);
+      const matchesGrade = !gradeFilter || grade === gradeFilter;
+
+      if (matchesQuery && matchesGrade) {
+        card.style.display = '';
+        colVisible++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    // 컬럼 카운트 배지 업데이트
+    const badge = col.querySelector('.badge.rounded-pill');
+    if (badge) badge.textContent = colVisible;
+
+    // 필터 결과 빈 상태 표시
+    const cardsArea = col.querySelector('.kanban-cards');
+    let emptyFilter = cardsArea.querySelector('.kanban-filter-empty');
+
+    if (isFiltered && cards.length > 0 && colVisible === 0) {
+      if (!emptyFilter) {
+        emptyFilter = document.createElement('div');
+        emptyFilter.className = 'text-center text-muted py-4 kanban-filter-empty';
+        emptyFilter.style.fontSize = '0.82em';
+        emptyFilter.innerHTML = '<i class="fas fa-search mb-1 d-block" style="font-size:1.5em;opacity:0.3;"></i>검색 결과 없음';
+        cardsArea.appendChild(emptyFilter);
+      }
+      emptyFilter.style.display = '';
+    } else if (emptyFilter) {
+      emptyFilter.style.display = 'none';
+    }
+  });
+
+  // 전체 카운트 및 필터 상태 표시
+  const totalVisible = updateCounts();
+  const totalCountEl = document.getElementById('totalCount');
+  const filterStatus = document.getElementById('filterStatus');
+  const clearBtn = document.getElementById('clearBtn');
+
+  if (isFiltered) {
+    if (totalCountEl) totalCountEl.textContent = `${totalVisible}명 (필터됨)`;
+    if (filterStatus) {
+      filterStatus.style.display = '';
+      filterStatus.textContent = `전체 {{ total }}명 중 ${totalVisible}명 표시`;
+    }
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    if (totalCountEl) totalCountEl.textContent = `총 {{ total }}명`;
+    if (filterStatus) filterStatus.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function clearFilter() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('gradeFilter').value = '';
+  applyFilter();
+}
+
+// 이벤트 연결
+document.getElementById('searchInput').addEventListener('input', applyFilter);
+document.getElementById('gradeFilter').addEventListener('change', applyFilter);
 
 function showToast(msg, isError = false) {
   const toast = document.getElementById('moveToast');
@@ -206,6 +363,66 @@ function showToast(msg, isError = false) {
   div.className = `toast show align-items-center text-bg-${isError ? 'danger' : 'success'} border-0`;
   toast.style.display = 'block';
   setTimeout(() => { toast.style.display = 'none'; }, 2000);
+}
+
+function syncCard(followupId) {
+  fetch(SYNC_URL, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ followup_id: followupId }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast(data.message);
+      if (data.changed && data.new_stage) {
+        const card = document.querySelector(`.kanban-card[data-id="${followupId}"]`);
+        if (card) {
+          const targetCol = document.querySelector(`.kanban-col[data-stage="${data.new_stage}"] .kanban-cards`);
+          if (targetCol) {
+            card.dataset.stage = data.new_stage;
+            const sel = card.querySelector('.stage-select');
+            if (sel) sel.value = data.new_stage;
+            const empty = targetCol.querySelector('[id^="empty-"]');
+            if (empty) empty.remove();
+            targetCol.appendChild(card);
+            // 추천 배지 제거 (이미 적용됨)
+            const badge = card.querySelector('.bg-success.bg-opacity-10');
+            if (badge) badge.closest('.d-flex.align-items-center.gap-1')?.remove();
+            applyFilter();
+          }
+        }
+      }
+    } else {
+      showToast(data.error || '오류가 발생했습니다.', true);
+    }
+  })
+  .catch(() => showToast('오류가 발생했습니다.', true));
+}
+
+function syncAll() {
+  const btn = document.getElementById('syncAllBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>동기화 중...'; }
+  fetch(SYNC_URL, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast(data.message);
+      if (data.changed_count > 0) {
+        setTimeout(() => location.reload(), 1200);
+      }
+    } else {
+      showToast(data.error || '오류가 발생했습니다.', true);
+    }
+  })
+  .catch(() => showToast('오류가 발생했습니다.', true))
+  .finally(() => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magic me-1"></i>자동 동기화'; }
+  });
 }
 </script>
 {% endblock %}

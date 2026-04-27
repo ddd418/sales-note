@@ -1764,6 +1764,13 @@ class WeeklyReport(models.Model):
     other_notes = models.TextField(blank=True, verbose_name="기타 내용")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="작성일시")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+    # 관리자 검토 필드
+    manager_comment = models.TextField(blank=True, verbose_name="관리자 코멘트")
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reviewed_weekly_reports', verbose_name="검토 관리자"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="검토 완료 시각")
 
     class Meta:
         db_table = 'weekly_report'

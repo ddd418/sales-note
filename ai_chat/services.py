@@ -170,6 +170,70 @@ def gather_quote_delivery_data(department, user):
     }
 
 
+def gather_prepayment_data(followups):
+    """
+    팔로우업 목록(queryset)에 대한 선결제 데이터 수집.
+    followups: FollowUp queryset (이미 권한 범위 내로 필터링됨)
+    """
+    from reporting.models import Prepayment
+    from datetime import date, timedelta
+
+    prepayments = Prepayment.objects.filter(
+        customer__in=followups
+    ).select_related('customer').prefetch_related('usages').order_by('-payment_date')
+
+    result = []
+    today = date.today()
+    stale_threshold = today - timedelta(days=90)
+
+    for p in prepayments:
+        usages = p.usages.all().order_by('-used_at')
+        usage_list = []
+        for u in usages:
+            usage_list.append({
+                'product': u.product_name,
+                'quantity': u.quantity,
+                'amount': int(u.amount),
+                'remaining_after': int(u.remaining_balance),
+                'used_at': u.used_at.strftime('%Y-%m-%d'),
+            })
+        last_usage = usages.first()
+        last_used_date = last_usage.used_at.date() if last_usage else None
+        days_since_use = (today - last_used_date).days if last_used_date else None
+        is_stalled = (
+            p.status == 'active'
+            and p.balance > 0
+            and (last_used_date is None or last_used_date < stale_threshold)
+        )
+        result.append({
+            'customer': p.customer.customer_name,
+            'original_amount': int(p.amount),
+            'balance': int(p.balance),
+            'used_amount': int(p.amount - p.balance),
+            'payment_date': p.payment_date.strftime('%Y-%m-%d'),
+            'status': p.status,
+            'status_display': p.get_status_display(),
+            'payer_name': p.payer_name,
+            'last_used_date': last_used_date.strftime('%Y-%m-%d') if last_used_date else None,
+            'days_since_last_use': days_since_use,
+            'is_stalled': is_stalled,
+            'usages': usage_list,
+        })
+
+    active = [p for p in result if p['status'] == 'active']
+    stalled = [p for p in active if p['is_stalled']]
+    return {
+        'prepayments': result,
+        'summary': {
+            'total_count': len(result),
+            'active_count': len(active),
+            'total_remaining_balance': sum(p['balance'] for p in active),
+            'stalled_count': len(stalled),
+            'stalled_customers': [p['customer'] for p in stalled],
+        }
+    }
+
+
 # ================================================
 # 시스템 프롬프트
 # ================================================
@@ -301,6 +365,9 @@ def analyze_department(analysis, department, user):
     # 데이터 수집
     meetings = gather_meeting_data(department, user)
     qd_data = gather_quote_delivery_data(department, user)
+    from reporting.models import FollowUp as _FollowUp
+    _followups = _FollowUp.objects.filter(user=user, department=department)
+    prepayment_data = gather_prepayment_data(_followups)
 
     # 프롬프트 조립
     prompt_parts = []
@@ -355,6 +422,36 @@ def analyze_department(analysis, department, user):
                 f"납품 {stats['delivered']}회({stats['delivery_amount']:,}원)"
             )
 
+    # 선결제 현황
+    pp_sum = prepayment_data['summary']
+    prompt_parts.append(f"\n━━━ 선결제 현황 ({pp_sum['total_count']}건) ━━━")
+    if prepayment_data['prepayments']:
+        prompt_parts.append(
+            f"활성: {pp_sum['active_count']}건 | 총 잔액: ₩{pp_sum['total_remaining_balance']:,}"
+        )
+        if pp_sum['stalled_count'] > 0:
+            prompt_parts.append(
+                f"⚠️ 고착 위험 ({pp_sum['stalled_count']}건): {', '.join(pp_sum['stalled_customers'])}"
+            )
+        for p in prepayment_data['prepayments']:
+            stalled_note = " ⚠️고착위험" if p['is_stalled'] else ""
+            days_note = (
+                f" / 최종사용 {p['days_since_last_use']}일전"
+                if p['days_since_last_use'] is not None
+                else " / 미사용"
+            )
+            prompt_parts.append(
+                f"- {p['customer']} | 원금 ₩{p['original_amount']:,} | "
+                f"잔액 ₩{p['balance']:,} | 입금일 {p['payment_date']} | {p['status_display']}{stalled_note}{days_note}"
+            )
+            for u in p['usages'][:3]:
+                prompt_parts.append(
+                    f"  └ {u['used_at']} {u['product']}×{u['quantity']} "
+                    f"₩{u['amount']:,} (잔액→₩{u['remaining_after']:,})"
+                )
+    else:
+        prompt_parts.append("(선결제 데이터 없음)")
+
     prompt_parts.append("\n위 데이터만 근거로 사용하라. 없는 정보는 '확인 필요'로 처리하라.")
 
     user_prompt = "\n".join(prompt_parts)
@@ -393,59 +490,116 @@ def analyze_department(analysis, department, user):
 # 개별 고객(FollowUp) 분석
 # ================================================
 
-FOLLOWUP_SYSTEM_PROMPT = """너는 B2B 영업 CRM의 "개별 고객 분석" AI다.
-영업 담당자가 특정 고객(연구원/담당자)과의 모든 미팅 기록, 견적, 납품 이력을 제공하면,
-이를 종합 분석하여 이 고객과의 관계 현황 및 최적의 영업 전략을 제안한다.
+FOLLOWUP_SYSTEM_PROMPT = """너는 B2B 영업 CRM의 "개별 고객 영업 분석" AI다.
+영업 담당자가 특정 고객(거래처 담당자)과의 모든 활동 기록, 견적, 납품, 선결제 이력,
+미처리 후속 액션을 제공하면, 이를 종합 분석하여 실제 영업 활동에 즉시 활용 가능한
+분석 결과를 제공한다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚫 절대 규칙
+🚫 절대 규칙 (소설 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. 입력 데이터에 명시된 내용만 근거로 사용한다.
-2. 추측 시 반드시 "(추정)" 표시하고 confidence를 low로 설정한다.
-3. 근거 없는 painpoint는 생성하지 않는다.
+1. 입력 데이터에 **명시적으로 적혀있는 내용**만 근거로 사용한다.
+2. 입력에 없는 사실, 제품명, 장비, 상황, 감정을 **절대 추측하거나 만들어내지 않는다**.
+3. 정보가 없으면 반드시 null 또는 "확인 필요"로 표시한다.
 4. 인용 시 「」로 감싸고 날짜를 표시한다.
+5. 추측 시 반드시 "(추정)" 표시하고 근거를 명시한다.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 출력 형식 (반드시 JSON)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {
-  "customer_summary": "이 고객과의 관계를 2-3문장으로 요약",
-  "relationship_stage": "현재 관계 단계 (cold/warm/active/loyal/at_risk 중 하나 + 한 줄 이유)",
+  "deal_probability": 65,
+  "deal_probability_reason": "확률 산출 근거 (데이터 기반, 1-2문장)",
+  "relationship_stage": "cold|warm|active|loyal|at_risk",
+
+  "account_brief": {
+    "customer_summary": "이 고객과의 관계 및 현황을 2-3문장으로 요약",
+    "recent_activity": "가장 최근 활동 내용 요약 (날짜 포함)",
+    "sales_status": "현재 영업 단계 및 진행 상황",
+    "prepayment_note": "선결제 잔액 현황 요약 및 활용 전략 (없으면 null)",
+    "quote_delivery_note": "최근 견적/납품 현황 요약 (없으면 null)"
+  },
+
+  "opportunity_risk": {
+    "purchase_potential": "구매 가능성 분석 (미팅/견적/납품 데이터 기반, 1-2문장)",
+    "stalled_risk": "정체 위험 여부 및 원인 (없으면 null)",
+    "price_risk": "가격 경쟁 또는 예산 리스크 (없으면 null)",
+    "compatibility_risk": "제품 호환성 또는 사용 적합성 리스크 (없으면 null)",
+    "budget_prepayment_risk": "예산 제약 또는 선결제 잔액 고착 리스크 (없으면 null)",
+    "missing_info": ["확인이 필요한 정보 항목 (없으면 빈 배열)"]
+  },
+
+  "next_best_actions": [
+    {
+      "priority": 1,
+      "action": "구체적 실행 액션 (무엇을, 어떻게)",
+      "suggested_due": "YYYY-MM-DD 형식 또는 '다음 방문 시' 같은 표현",
+      "what_to_ask": "고객에게 확인할 핵심 질문 한 줄",
+      "what_to_prepare": "준비할 자료, 샘플, 견적서 (없으면 null)",
+      "reason": "이 액션이 필요한 이유 (데이터 근거)"
+    }
+  ],
+
+  "manager_summary": {
+    "key_point": "매니저에게 보고할 핵심 사항 1-2줄",
+    "decision_needed": "의사결정 또는 지원 요청 사항 (없으면 null)",
+    "risk_level": "high|med|low",
+    "expected_impact": "예상 비즈니스 영향 (수주 가능성, 금액 등)"
+  },
+
+  "visit_checklist": {
+    "customer_context": "방문 전 파악할 고객 현황 (1-2문장)",
+    "items_to_bring": ["지참할 자료, 샘플, 견적서 목록 (없으면 빈 배열)"],
+    "questions_to_ask": ["방문 시 반드시 확인할 질문 (최소 2개)"],
+    "unresolved_issues": ["미해결 이슈 또는 후속 미확인 사항 (없으면 빈 배열)"]
+  },
+
   "key_painpoints": [
     {
       "painpoint": "핵심 불편/필요 사항",
-      "evidence": "근거 (미팅 날짜 + 인용)",
+      "evidence": "근거 (날짜 + 인용)",
       "confidence": "high|med|low"
     }
   ],
-  "next_best_actions": [
-    {
-      "action": "구체적 실행 액션 (what + when)",
-      "reason": "왜 이 액션이 필요한지",
-      "priority": 1
-    }
-  ],
+
   "risk_factors": [
     {
       "risk": "위험 요인",
       "severity": "high|med|low",
       "mitigation": "대응 방법"
     }
-  ],
-  "opportunity_signals": ["기회 신호 (미팅/견적 데이터에서 발견된 긍정 시그널)"],
-  "deal_probability": 65,
-  "deal_probability_reason": "확률 산출 근거 (최근 미팅 빈도, 견적 전환율, 관계 단계 등)",
-  "missing_info": ["확인이 필요한 정보 항목"]
+  ]
 }
 
-deal_probability 기준:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+deal_probability 기준
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 90-100: 구매 확정 또는 반복 납품 중
 - 70-89: 적극적 검토 + 견적 전환 이력 있음
 - 50-69: 관심 있으나 결정 장애물 존재
 - 30-49: 초기 접촉 단계 또는 장기 검토
 - 0-29: 구매 신호 없음 또는 명시적 거절
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+분석 지침
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 미처리 후속 액션(특히 지연된 것)은 visit_checklist.unresolved_issues와
+  next_best_actions에 반드시 반영한다.
+- 선결제 잔액이 있고 최근 90일 사용 없으면 account_brief.prepayment_note와
+  next_best_actions에 재구매 유도 또는 잔액 소진 전략을 포함한다.
+- next_best_actions은 우선순위 순으로 최대 3건 제시하고, 각 항목은 실제 영업
+  현장에서 바로 실행할 수 있는 수준으로 작성한다.
+- visit_checklist.questions_to_ask는 최소 2개 이상 제시한다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+최종 자기검증
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 모든 분석이 입력 데이터에 명시된 내용에만 근거하는가?
+2. 없는 사실을 만들어낸 부분은 없는가?
+3. next_best_actions이 실제 영업 활동에 즉시 활용 가능한 수준인가?
+4. 선결제 및 미처리 후속 액션이 적절히 반영되었는가?
 """
 
 
@@ -458,8 +612,20 @@ def gather_followup_data(followup, user):
         followup=followup,
     ).select_related('user', 'schedule').order_by('-created_at')
 
+    import datetime as _dt
+    _today = _dt.date.today()
     meeting_list = []
+    pending_actions = []
     for h in histories:
+        # 후속 액션 수집 (모든 활동 유형)
+        if h.next_action and h.next_action.strip():
+            pending_actions.append({
+                'action': h.next_action.strip(),
+                'due_date': h.next_action_date.strftime('%Y-%m-%d') if h.next_action_date else None,
+                'is_overdue': (h.next_action_date < _today) if h.next_action_date else False,
+                'from_type': h.get_action_type_display(),
+                'from_date': (h.meeting_date or h.created_at.date()).strftime('%Y-%m-%d'),
+            })
         if h.action_type == 'customer_meeting':
             parts = []
             if h.meeting_situation:
@@ -478,7 +644,11 @@ def gather_followup_data(followup, user):
                 'date': (h.meeting_date or h.created_at.date()).strftime('%Y-%m-%d'),
                 'content': '\n'.join(parts),
                 'by': h.user.get_full_name() or h.user.username,
+                'next_action': h.next_action or '',
+                'next_action_date': h.next_action_date.strftime('%Y-%m-%d') if h.next_action_date else '',
             })
+    # 지연 > 예정 > 날짜미정 순으로 정렬
+    pending_actions.sort(key=lambda x: (x['due_date'] is None, not x['is_overdue'], x['due_date'] or ''))
 
     # 견적 기록
     quotes = Quote.objects.filter(
@@ -532,11 +702,56 @@ def gather_followup_data(followup, user):
         'notes': s.notes or '',
     } for s in upcoming]
 
+    # 선결제 기록
+    from reporting.models import Prepayment
+    from datetime import date, timedelta
+
+    pp_qs = Prepayment.objects.filter(
+        customer=followup
+    ).prefetch_related('usages').order_by('-payment_date')
+
+    today = date.today()
+    stale_threshold = today - timedelta(days=90)
+    prepayment_list = []
+    for p in pp_qs:
+        usages = p.usages.all().order_by('-used_at')
+        usage_list = []
+        for u in usages:
+            usage_list.append({
+                'product': u.product_name,
+                'quantity': u.quantity,
+                'amount': int(u.amount),
+                'remaining_after': int(u.remaining_balance),
+                'used_at': u.used_at.strftime('%Y-%m-%d'),
+            })
+        last_usage = usages.first()
+        last_used_date = last_usage.used_at.date() if last_usage else None
+        days_since_use = (today - last_used_date).days if last_used_date else None
+        is_stalled = (
+            p.status == 'active'
+            and p.balance > 0
+            and (last_used_date is None or last_used_date < stale_threshold)
+        )
+        prepayment_list.append({
+            'original_amount': int(p.amount),
+            'balance': int(p.balance),
+            'used_amount': int(p.amount - p.balance),
+            'payment_date': p.payment_date.strftime('%Y-%m-%d'),
+            'status': p.status,
+            'status_display': p.get_status_display(),
+            'last_used_date': last_used_date.strftime('%Y-%m-%d') if last_used_date else None,
+            'days_since_last_use': days_since_use,
+            'is_stalled': is_stalled,
+            'usages': usage_list,
+        })
+
     return {
         'meetings': meeting_list,
         'quotes': quote_list,
         'deliveries': delivery_list,
         'upcoming': upcoming_list,
+        'prepayments': prepayment_list,
+        'pending_actions': pending_actions,
     }
 
 
@@ -591,6 +806,48 @@ def analyze_followup(analysis, followup, user):
         for s in data['upcoming']:
             parts.append(f"- {s['date']} {s['type']}: {s['notes']}")
 
+    # 미처리 후속 액션
+    pending = data.get('pending_actions', [])
+    if pending:
+        overdue = [a for a in pending if a['is_overdue']]
+        upcoming_acts = [a for a in pending if not a['is_overdue'] and a['due_date']]
+        no_date = [a for a in pending if not a['due_date']]
+        parts.append(f"\n━━━ 미처리 후속 액션 ({len(pending)}건) ━━━")
+        if overdue:
+            parts.append(f"⚠️ 지연 ({len(overdue)}건):")
+            for a in overdue[:5]:
+                parts.append(f"  - 예정:{a['due_date']} | {a['action'][:120]} (기록:{a['from_type']} {a['from_date']})")
+        if upcoming_acts:
+            parts.append(f"예정 ({len(upcoming_acts)}건):")
+            for a in upcoming_acts[:5]:
+                parts.append(f"  - 예정:{a['due_date']} | {a['action'][:120]}")
+        if no_date:
+            parts.append(f"날짜 미정 ({len(no_date)}건):")
+            for a in no_date[:3]:
+                parts.append(f"  - {a['action'][:120]}")
+
+    # 선결제 현황
+    pp_list = data.get('prepayments', [])
+    parts.append(f"\n━━━ 선결제 현황 ({len(pp_list)}건) ━━━")
+    if pp_list:
+        for p in pp_list:
+            stalled_note = " ⚠️고착위험(90일이상미사용)" if p['is_stalled'] else ""
+            days_note = (
+                f" / 최종사용 {p['days_since_last_use']}일전"
+                if p['days_since_last_use'] is not None
+                else " / 미사용"
+            )
+            parts.append(
+                f"원금 ₩{p['original_amount']:,} | 잔액 ₩{p['balance']:,} | "
+                f"입금일 {p['payment_date']} | {p['status_display']}{stalled_note}{days_note}"
+            )
+            for u in p['usages'][:5]:
+                parts.append(
+                    f"  └ {u['used_at']} {u['product']}×{u['quantity']} ₩{u['amount']:,} (잔액→₩{u['remaining_after']:,})"
+                )
+    else:
+        parts.append("(선결제 데이터 없음)")
+
     parts.append("\n위 데이터만 근거로 사용하라. 없는 정보는 missing_info에 기록하라.")
 
     messages = [
@@ -603,7 +860,7 @@ def analyze_followup(analysis, followup, user):
             model=model,
             messages=messages,
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=4000,
             response_format={"type": "json_object"},
         )
         ai_text = response.choices[0].message.content
@@ -619,4 +876,231 @@ def analyze_followup(analysis, followup, user):
 
     except Exception as e:
         logger.error(f"FollowUp AI 분석 실패: {str(e)}")
+        raise
+
+
+# ================================================
+# 주간보고 AI 초안 생성
+# ================================================
+
+WEEKLY_REPORT_SYSTEM_PROMPT = """너는 B2B 영업 CRM의 "주간보고 초안 작성" AI다.
+영업 담당자의 해당 주 미팅·견적·납품 활동 기록을 받아서
+주간보고서 초안 3개 섹션을 작성한다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 절대 규칙
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 입력 데이터에 명시된 내용만 사용한다.
+2. 없는 활동, 고객명, 금액을 만들어내지 않는다.
+3. 없는 정보는 "(확인 필요)" 또는 생략한다.
+4. 한국어 영업 실무 문체로 작성한다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+출력 형식 (반드시 JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "activity_notes": "영업 활동 내용 초안 (줄 구분하여 작성, 날짜별·고객별 활동 요약)",
+  "quote_delivery_notes": "견적/납품 내용 초안 (없으면 빈 문자열)",
+  "other_notes": "다음 주 예정 계획 및 특이사항 초안 (없으면 빈 문자열)",
+  "summary": {
+    "total_meetings": 미팅 건수 (정수),
+    "total_quotes": 견적 건수 (정수),
+    "total_deliveries": 납품 건수 (정수),
+    "key_customers": ["주요 고객명 목록"],
+    "risks": ["위험 요인 목록 (없으면 빈 배열)"],
+    "next_week_priorities": ["다음 주 중점 사항 목록 (없으면 빈 배열)"]
+  }
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+activity_notes 작성 기준
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 날짜 순 또는 고객별로 그룹화
+- 각 활동을 "- [날짜] [고객명] ([소속]): [활동 유형] — [핵심 내용] / 다음 액션: [내용]" 형식
+- 고객 발언 또는 핵심 정보는 "(직접 인용)" 표시
+- 위험 요인이나 장애물은 ⚠️ 표시
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+quote_delivery_notes 작성 기준
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 견적: "- [고객명]: [견적번호] 제출, 금액 [N원], 단계: [단계]"
+- 납품: "- [고객명]: [금액] 납품 완료, 품목: [목록]"
+- 전환율/금액 합계 있으면 마지막 줄에 요약
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+other_notes 작성 기준
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 다음 주 예정 활동 목록
+- 미해결 이슈 또는 후속 필요 사항
+- 특이사항
+"""
+
+
+def generate_weekly_report_draft(user, week_start, week_end):
+    """
+    주간보고 AI 초안 생성
+    Args:
+        user: Django User 인스턴스
+        week_start: datetime.date
+        week_end: datetime.date
+    Returns:
+        dict: {activity_notes, quote_delivery_notes, other_notes, summary}
+        또는 None (데이터 없음)
+    """
+    import datetime as _dt
+    from django.utils import timezone as _tz
+    from reporting.models import History, Schedule, Quote
+
+    # 해당 주 미팅 기록 (meeting_date 기준)
+    meetings = History.objects.filter(
+        user=user,
+        action_type__in=['customer_meeting', 'quote', 'delivery_schedule'],
+        meeting_date__gte=week_start,
+        meeting_date__lte=week_end,
+    ).select_related(
+        'followup', 'followup__company', 'followup__department'
+    ).order_by('meeting_date', 'created_at')
+
+    # meeting_date 없는 항목도 created_at 기준으로 포함
+    start_dt = _tz.make_aware(_dt.datetime.combine(week_start, _dt.time.min))
+    end_dt = _tz.make_aware(_dt.datetime.combine(week_end, _dt.time.max))
+    extra_meetings = History.objects.filter(
+        user=user,
+        action_type__in=['customer_meeting', 'quote', 'delivery_schedule'],
+        meeting_date__isnull=True,
+        created_at__gte=start_dt,
+        created_at__lte=end_dt,
+    ).select_related(
+        'followup', 'followup__company', 'followup__department'
+    ).order_by('created_at')
+
+    all_histories = list(meetings) + list(extra_meetings)
+
+    # 해당 주 일정 (참고용)
+    schedules = Schedule.objects.filter(
+        user=user,
+        visit_date__gte=week_start,
+        visit_date__lte=week_end,
+    ).select_related(
+        'followup', 'followup__company'
+    ).order_by('visit_date')
+
+    # 해당 주 견적
+    quotes = Quote.objects.filter(
+        followup__user=user,
+        quote_date__gte=week_start,
+        quote_date__lte=week_end,
+    ).select_related('followup', 'followup__company').prefetch_related('items__product')
+
+    # 데이터 없으면 None 반환
+    if not all_histories and not schedules and not quotes:
+        return None
+
+    # 프롬프트 조립
+    parts = []
+    parts.append(f"[보고 기간] {week_start.strftime('%Y년 %m월 %d일')} ~ {week_end.strftime('%Y년 %m월 %d일')}")
+    parts.append(f"[작성자] {user.get_full_name() or user.username}")
+    parts.append("")
+
+    # 미팅·납품 기록
+    parts.append(f"━━━ 영업 활동 기록 ({len(all_histories)}건) ━━━")
+    if all_histories:
+        for h in all_histories:
+            fu = h.followup
+            customer = fu.customer_name if fu else '-'
+            company = str(fu.company) if fu and fu.company else ''
+            dept = str(fu.department) if fu and fu.department else ''
+            date_str = (h.meeting_date or h.created_at.date()).strftime('%m/%d')
+            act_type = h.get_action_type_display()
+
+            entry_parts = []
+            if h.meeting_situation:
+                entry_parts.append(f"상황: {h.meeting_situation}")
+            if h.meeting_researcher_quote:
+                entry_parts.append(f"고객 발언: 「{h.meeting_researcher_quote}」")
+            if h.meeting_confirmed_facts:
+                entry_parts.append(f"확인된 사실: {h.meeting_confirmed_facts}")
+            if h.meeting_obstacles:
+                entry_parts.append(f"⚠️ 장애물: {h.meeting_obstacles}")
+            if h.meeting_next_action:
+                entry_parts.append(f"다음 액션: {h.meeting_next_action}")
+            if h.content and not entry_parts:
+                entry_parts.append(h.content)
+            if h.next_action:
+                entry_parts.append(f"후속 예정: {h.next_action}" +
+                                   (f" ({h.next_action_date.strftime('%m/%d')})" if h.next_action_date else ""))
+            if h.delivery_amount:
+                entry_parts.append(f"납품금액: {int(h.delivery_amount):,}원")
+            if h.delivery_items:
+                entry_parts.append(f"납품품목: {h.delivery_items}")
+
+            content_str = " / ".join(entry_parts) if entry_parts else "(내용 없음)"
+            co_str = f" ({company}{' · ' + dept if dept else ''})" if (company or dept) else ""
+            parts.append(f"- [{date_str}] {customer}{co_str} — {act_type}: {content_str}")
+    else:
+        parts.append("(기록 없음)")
+
+    # 일정 (미팅 기록 없는 경우 보완)
+    if schedules:
+        parts.append(f"\n━━━ 해당 주 일정 참고 ({schedules.count()}건) ━━━")
+        for s in schedules:
+            fu = s.followup
+            customer = fu.customer_name if fu else '-'
+            company = str(fu.company) if fu and fu.company else ''
+            parts.append(
+                f"- [{s.visit_date.strftime('%m/%d')}] {customer}"
+                f"{' (' + company + ')' if company else ''} — {s.get_activity_type_display()}"
+                f"{': ' + s.notes if s.notes else ''}"
+            )
+
+    # 견적 기록
+    parts.append(f"\n━━━ 해당 주 견적 ({quotes.count()}건) ━━━")
+    if quotes:
+        for q in quotes:
+            fu = q.followup
+            customer = fu.customer_name if fu else '-'
+            company = str(fu.company) if fu and fu.company else ''
+            items_str = ', '.join([
+                f"{it.product.product_code if it.product else '미정'}({it.quantity}개)"
+                for it in q.items.all()
+            ])
+            converted = '→납품전환' if q.converted_to_delivery else '미전환'
+            parts.append(
+                f"- {customer}{' (' + company + ')' if company else ''}: "
+                f"{q.quote_number} | {q.get_stage_display()} | "
+                f"{int(q.total_amount or 0):,}원 | {converted}"
+                f"{' | 품목: ' + items_str if items_str else ''}"
+            )
+    else:
+        parts.append("(해당 주 견적 없음)")
+
+    parts.append("\n위 데이터만 사용하여 주간보고 초안을 작성하라.")
+    user_prompt = "\n".join(parts)
+
+    client = get_openai_client()
+    model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+
+    messages = [
+        {"role": "system", "content": WEEKLY_REPORT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=3000,
+            response_format={"type": "json_object"},
+        )
+        ai_text = response.choices[0].message.content
+        try:
+            result = json.loads(ai_text)
+        except json.JSONDecodeError:
+            logger.error(f"주간보고 AI 응답 JSON 파싱 실패: {ai_text[:200]}")
+            return None
+        return result
+    except Exception as e:
+        logger.error(f"주간보고 AI 초안 생성 실패: {str(e)}")
         raise

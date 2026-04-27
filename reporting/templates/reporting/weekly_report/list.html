@@ -65,6 +65,16 @@
                 <a href="{% url 'reporting:weekly_report_detail' report.pk %}" class="text-decoration-none fw-semibold">
                   {{ report.title }}
                 </a>
+                {% if report.reviewed_at %}
+                <span class="badge bg-success bg-opacity-75 ms-1" style="font-size:.7em;">
+                  <i class="fas fa-check me-1"></i>검토 완료
+                </span>
+                {% endif %}
+                {% if report.activity_notes %}
+                <div class="text-muted small mt-1 text-truncate" style="max-width:320px;">
+                  {{ report.activity_notes|truncatechars:80 }}
+                </div>
+                {% endif %}
               </td>
               <td class="text-muted small">{{ report.week_start }} ~ {{ report.week_end }}</td>
               <td class="text-muted small">{{ report.user.get_full_name|default:report.user.username }}</td>

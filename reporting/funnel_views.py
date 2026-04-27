@@ -694,6 +694,9 @@ def funnel_bulk_auto_target(request):
 # 칸반 파이프라인 보드
 # ============================================================
 
+# 파이프라인 단계 순서 (앞으로만 자동 이동 시 비교용)
+STAGE_ORDER = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+
 PIPELINE_STAGES = [
     ('potential',    '잠재',      '#6c757d', 'fas fa-seedling'),
     ('contact',      '접촉/미팅', '#0d6efd', 'fas fa-handshake'),
@@ -706,6 +709,54 @@ PIPELINE_STAGES = [
 GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d', 'D': '#dc3545'}
 
 
+def _suggest_pipeline_stage(followup):
+    """
+    Quote / History 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
+    - prefetch_related('quotes', 'histories') 후 호출 시 DB 추가 쿼리 없음.
+    Returns (stage_key, source_label) or (None, None) if no better suggestion.
+    """
+    # 1. Quote 기반 (최우선)
+    quotes = list(followup.quotes.all())
+    if quotes:
+        stages_set = {q.stage for q in quotes}
+        if stages_set & {'approved', 'converted'}:
+            return ('won', '견적 수주')
+        if 'negotiation' in stages_set:
+            return ('negotiation', '견적 협상')
+        # 전체가 거절/만료면 실주 추천
+        if stages_set <= {'rejected', 'expired'}:
+            return ('lost', '견적 거절')
+        return ('quote', '견적')
+
+    # 2. History 기반 (실제 고객 접촉)
+    histories = list(followup.histories.all())
+    if any(h.action_type == 'customer_meeting' for h in histories):
+        return ('contact', '고객 미팅')
+
+    return (None, None)
+
+
+def _try_advance_pipeline(followup, target_stage):
+    """
+    파이프라인 단계를 앞으로만 자동 이동 (Method C — DB 필드 추가 없음).
+    - won / lost 단계는 자동으로 덮어쓰지 않음.
+    - 현재 단계가 이미 같거나 더 앞선 경우 skip.
+    Returns True if stage was actually changed.
+    """
+    current = followup.pipeline_stage or 'potential'
+    if current in ('won', 'lost'):
+        return False
+    if target_stage not in STAGE_ORDER:
+        return False
+    current_idx = STAGE_ORDER.index(current) if current in STAGE_ORDER else 0
+    target_idx = STAGE_ORDER.index(target_stage)
+    if target_idx > current_idx:
+        followup.pipeline_stage = target_stage
+        followup.save(update_fields=['pipeline_stage'])
+        return True
+    return False
+
+
 @login_required
 def funnel_pipeline_view(request):
     """칸반 파이프라인 보드 뷰"""
@@ -715,25 +766,53 @@ def funnel_pipeline_view(request):
     ).prefetch_related(
         Prefetch('schedules', queryset=Schedule.objects.filter(
             visit_date__gte=date.today(), status='scheduled'
-        ).order_by('visit_date'), to_attr='upcoming_schedules')
+        ).order_by('visit_date'), to_attr='upcoming_schedules'),
+        Prefetch('histories', queryset=History.objects.filter(
+            parent_history__isnull=True
+        ).order_by('-created_at'), to_attr='all_histories'),
+        Prefetch('quotes', queryset=Quote.objects.order_by('-created_at'), to_attr='all_quotes'),
     )
+
+    stage_labels = {s[0]: s[1] for s in PIPELINE_STAGES}
 
     # 단계별 그룹핑
     stage_map = {s[0]: [] for s in PIPELINE_STAGES}
     for fu in followups:
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
+        last_history = fu.all_histories[0] if fu.all_histories else None
+        latest_quote = fu.all_quotes[0] if fu.all_quotes else None
+
+        suggested_stage, suggested_source = _suggest_pipeline_stage(fu)
+        has_suggestion = bool(suggested_stage and suggested_stage != fu.pipeline_stage)
+
         stage_map[stage].append({
             'id': fu.id,
             'customer': fu.customer_name or '이름 미입력',
             'company': str(fu.company) if fu.company else '',
             'department': str(fu.department) if fu.department else '',
+            'manager': fu.manager or '',
+            'owner': fu.user.get_full_name() or fu.user.username,
             'grade': fu.customer_grade,
             'grade_color': GRADE_COLORS.get(fu.customer_grade, '#6c757d'),
             'priority': fu.get_priority_display(),
+            'pipeline_stage': fu.pipeline_stage,
+            # 다음 예정 일정
             'next_date': next_schedule.visit_date.strftime('%m/%d') if next_schedule else None,
             'next_type': next_schedule.get_activity_type_display() if next_schedule else None,
-            'pipeline_stage': fu.pipeline_stage,
+            'next_schedule_id': next_schedule.pk if next_schedule else None,
+            # 최근 히스토리
+            'last_history_type': last_history.get_action_type_display() if last_history else None,
+            'last_history_date': last_history.created_at.strftime('%m/%d') if last_history else None,
+            'last_history_snippet': (last_history.content or '')[:40] if last_history else None,
+            # 최근 견적
+            'latest_quote_stage': latest_quote.get_stage_display() if latest_quote else None,
+            'latest_quote_amount': f'{int(latest_quote.total_amount):,}원' if latest_quote else None,
+            # 추천 단계 (자동 동기화 대상)
+            'suggested_stage': suggested_stage,
+            'suggested_stage_label': stage_labels.get(suggested_stage, '') if suggested_stage else '',
+            'suggested_source': suggested_source or '',
+            'has_suggestion': has_suggestion,
         })
 
     stages_context = [
@@ -748,10 +827,17 @@ def funnel_pipeline_view(request):
         for s in PIPELINE_STAGES
     ]
 
+    sync_count = sum(
+        1 for stage_data in stages_context
+        for card in stage_data['cards']
+        if card.get('has_suggestion')
+    )
+
     return render(request, 'reporting/funnel/pipeline.html', {
         'stages': stages_context,
         'stages_json': json.dumps(stages_context, ensure_ascii=False),
         'total': sum(len(v) for v in stage_map.values()),
+        'sync_count': sync_count,
     })
 
 
@@ -779,3 +865,54 @@ def funnel_pipeline_move(request):
         return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def funnel_pipeline_sync(request):
+    """
+    파이프라인 단계 자동 동기화 API (앞으로만 이동).
+    - followup_id 지정 시 단일 카드 동기화
+    - followup_id 없으면 접근 가능한 전체 카드 일괄 동기화
+    """
+    try:
+        data = json.loads(request.body)
+        followup_id = data.get('followup_id')
+
+        accessible = _get_accessible_followups(request.user, request)
+
+        if followup_id:
+            # 단일 카드 동기화
+            fu = accessible.prefetch_related('quotes', 'histories').filter(pk=followup_id).first()
+            if not fu:
+                return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+            suggested_stage, suggested_source = _suggest_pipeline_stage(fu)
+            if suggested_stage and suggested_stage != fu.pipeline_stage:
+                changed = _try_advance_pipeline(fu, suggested_stage)
+                stage_label = dict(FollowUp.PIPELINE_STAGE_CHOICES).get(fu.pipeline_stage, fu.pipeline_stage)
+                return JsonResponse({
+                    'success': True,
+                    'changed': changed,
+                    'new_stage': fu.pipeline_stage,
+                    'message': f'"{stage_label}"로 단계가 변경되었습니다.' if changed else '이미 적절한 단계입니다.',
+                })
+            return JsonResponse({'success': True, 'changed': False, 'message': '이미 적절한 단계입니다.'})
+
+        else:
+            # 전체 일괄 동기화
+            followups = accessible.prefetch_related('quotes', 'histories').all()
+            changed_count = 0
+            for fu in followups:
+                suggested_stage, _ = _suggest_pipeline_stage(fu)
+                if suggested_stage and _try_advance_pipeline(fu, suggested_stage):
+                    changed_count += 1
+            return JsonResponse({
+                'success': True,
+                'changed_count': changed_count,
+                'message': f'{changed_count}개 항목의 단계가 업데이트되었습니다.' if changed_count else '모든 항목이 이미 적절한 단계입니다.',
+            })
+
+    except Exception as e:
+        logger.error(f"파이프라인 동기화 오류: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+

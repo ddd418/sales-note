@@ -1,0 +1,105 @@
+{# 서류 템플릿 변수 도움말 — document_template_form.html 에서 include #}
+<style>
+.var-group-title { font-size: 0.8rem; font-weight: 700; color: var(--text-muted, #6b7280); text-transform: uppercase; letter-spacing: 0.05em; margin: 0.75rem 0 0.3rem; }
+.var-chip { display: inline-block; cursor: pointer; user-select: none;
+  background: var(--surface-hover, #f0f4ff); border: 1px solid var(--border, #dde3f0);
+  border-radius: 4px; padding: 2px 8px; margin: 2px 3px 2px 0;
+  font-family: monospace; font-size: 0.82rem; color: #2563eb;
+  transition: background 0.15s; }
+.var-chip:hover { background: hsla(217,91%,60%,0.15); border-color: #2563eb; }
+.var-chip.copied { background: #d1fae5; border-color: #10b981; color: #065f46; }
+</style>
+
+<div id="docVarHelp">
+  <div class="var-group-title">기본 정보</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{년}}')">&#123;&#123;년&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{월}}')">&#123;&#123;월&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{일}}')">&#123;&#123;일&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{거래번호}}')">&#123;&#123;거래번호&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{발행일}}')">&#123;&#123;발행일&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{날짜}}')">&#123;&#123;날짜&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{일정날짜}}')">&#123;&#123;일정날짜&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{유효일+30}}')">&#123;&#123;유효일+30&#125;&#125;</span>
+  </div>
+
+  <div class="var-group-title">고객 / 거래처 정보</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{고객명}}')">&#123;&#123;고객명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{담당자}}')">&#123;&#123;담당자&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{업체명}}')">&#123;&#123;업체명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{학교명}}')">&#123;&#123;학교명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{부서명}}')">&#123;&#123;부서명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{연구실}}')">&#123;&#123;연구실&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{이메일}}')">&#123;&#123;이메일&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{연락처}}')">&#123;&#123;연락처&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{전화번호}}')">&#123;&#123;전화번호&#125;&#125;</span>
+  </div>
+
+  <div class="var-group-title">영업담당자</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{실무자}}')">&#123;&#123;실무자&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{영업담당자}}')">&#123;&#123;영업담당자&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{담당영업}}')">&#123;&#123;담당영업&#125;&#125;</span>
+  </div>
+
+  <div class="var-group-title">회사 / 견적 정보</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{회사명}}')">&#123;&#123;회사명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{견적번호}}')">&#123;&#123;견적번호&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{메모}}')">&#123;&#123;메모&#125;&#125;</span>
+  </div>
+
+  <div class="var-group-title">금액</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{공급가액}}')">&#123;&#123;공급가액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{소계}}')">&#123;&#123;소계&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{부가세액}}')">&#123;&#123;부가세액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{부가세}}')">&#123;&#123;부가세&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{총액}}')">&#123;&#123;총액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{합계}}')">&#123;&#123;합계&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{총액한글}}')">&#123;&#123;총액한글&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{한글금액}}')">&#123;&#123;한글금액&#125;&#125;</span>
+  </div>
+
+  <div class="var-group-title">품목 (N = 1, 2, 3 … 순번)</div>
+  <div>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_이름}}')">&#123;&#123;품목N_이름&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_품목명}}')">&#123;&#123;품목N_품목명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_수량}}')">&#123;&#123;품목N_수량&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_단위}}')">&#123;&#123;품목N_단위&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_규격}}')">&#123;&#123;품목N_규격&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_설명}}')">&#123;&#123;품목N_설명&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_단가}}')">&#123;&#123;품목N_단가&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_공급가액}}')">&#123;&#123;품목N_공급가액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_부가세액}}')">&#123;&#123;품목N_부가세액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_금액}}')">&#123;&#123;품목N_금액&#125;&#125;</span>
+    <span class="var-chip" onclick="copyDocVar(this,'{{품목1_총액}}')">&#123;&#123;품목N_총액&#125;&#125;</span>
+  </div>
+  <small class="text-muted d-block mt-1">
+    <i class="fas fa-lightbulb me-1"></i>
+    <strong>품목 변수</strong>: 위 버튼은 품목1 기준으로 복사됩니다.
+    엑셀에서 <code>&#123;&#123;품목2_이름&#125;&#125;</code>, <code>&#123;&#123;품목3_수량&#125;&#125;</code> 처럼 N 자리에 순번을 넣어 쓰세요.
+  </small>
+</div>
+
+<script>
+(function() {
+  function copyDocVar(el, varStr) {
+    navigator.clipboard.writeText(varStr).then(function() {
+      el.classList.add('copied');
+      var orig = el.textContent;
+      el.textContent = '\u2713 \ubcf5\uc0ac\ub428';
+      setTimeout(function() { el.classList.remove('copied'); el.textContent = orig; }, 1200);
+    }).catch(function() {
+      var ta = document.createElement('textarea');
+      ta.value = varStr; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+      el.classList.add('copied');
+      setTimeout(function() { el.classList.remove('copied'); }, 1200);
+    });
+  }
+  window.copyDocVar = copyDocVar;
+})();
+</script>

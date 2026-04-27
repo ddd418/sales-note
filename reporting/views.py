@@ -3817,7 +3817,15 @@ def history_create_view(request):
             history = form.save(commit=False)
             history.user = request.user
             history.save()
-            
+
+            # 파이프라인 자동 진행 (고객 미팅 → contact 이상으로 앞으로만 이동)
+            try:
+                if history.action_type == 'customer_meeting' and history.followup:
+                    from .funnel_views import _try_advance_pipeline
+                    _try_advance_pipeline(history.followup, 'contact')
+            except Exception:
+                pass  # 파이프라인 업데이트 실패해도 히스토리 저장은 유지
+
             # 납품 품목 저장
             save_delivery_items(request, history)
             
@@ -5927,7 +5935,15 @@ def history_create_from_schedule(request, schedule_id):
                     history.delivery_amount = 0
                     
                 history.save()
-                
+
+                # 파이프라인 자동 진행 (고객 미팅 → contact 이상으로 앞으로만 이동)
+                try:
+                    if history.action_type == 'customer_meeting' and history.followup:
+                        from .funnel_views import _try_advance_pipeline
+                        _try_advance_pipeline(history.followup, 'contact')
+                except Exception:
+                    pass  # 파이프라인 업데이트 실패해도 히스토리 저장은 유지
+
                 # 파일 업로드 처리 (공통 validate_file_upload 사용)
                 uploaded_files = request.FILES.getlist('files')
                 for uploaded_file in uploaded_files:
@@ -12557,6 +12573,10 @@ def get_document_template_data(request, document_type, schedule_id):
         # 담당자 정보
         salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
         
+        # 연결된 견적번호 자동 채움
+        _linked_quote = schedule.quotes.order_by('-created_at').first()
+        _quote_number = _linked_quote.quote_number if _linked_quote else ''
+
         # 데이터 매핑
         data_map = {
             '년': today.strftime('%Y'),
@@ -12581,6 +12601,10 @@ def get_document_template_data(request, document_type, schedule_id):
             '일정날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
             '날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
             '발행일': today.strftime('%Y년 %m월 %d일'),
+
+            # 견적 정보 (자동 채움)
+            '견적번호': _quote_number,
+            '메모': schedule.notes or '',
             
             '회사명': company.name,
             
@@ -12893,6 +12917,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 # 담당자(실무자) 정보
                 salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
                 
+                # 연결된 견적번호 자동 채움
+                _linked_quote = schedule.quotes.order_by('-created_at').first()
+                _quote_number = _linked_quote.quote_number if _linked_quote else ''
+
                 data_map = {
                     # 기본 정보
                     '년': today.strftime('%Y'),
@@ -12922,6 +12950,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     
                     # 회사 정보
                     '회사명': company.name,
+
+                    # 견적 정보 (자동 채움)
+                    '견적번호': _quote_number,
+                    '메모': schedule.notes or '',
                     
                     # 금액 정보
                     '공급가액': f"{int(subtotal):,}",
@@ -14063,11 +14095,13 @@ def weekly_report_create(request):
         visit_date__lte=friday,
     ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
 
+    profile = getattr(request.user, 'userprofile', None)
     return render(request, 'reporting/weekly_report/form.html', {
         'week_start': monday,
         'week_end': friday,
         'schedules': schedules,
         'is_edit': False,
+        'can_use_ai': profile and profile.can_use_ai,
     })
 
 
@@ -14104,12 +14138,14 @@ def weekly_report_edit(request, pk):
         visit_date__lte=report.week_end,
     ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
 
+    edit_profile = getattr(request.user, 'userprofile', None)
     return render(request, 'reporting/weekly_report/form.html', {
         'report': report,
         'week_start': report.week_start,
         'week_end': report.week_end,
         'schedules': schedules,
         'is_edit': True,
+        'can_use_ai': edit_profile and edit_profile.can_use_ai,
     })
 
 
@@ -14126,7 +14162,10 @@ def weekly_report_detail(request, pk):
                 getattr(getattr(report.user, 'userprofile', None), 'company', None) == company):
             raise Http404
 
-    return render(request, 'reporting/weekly_report/detail.html', {'report': report})
+    return render(request, 'reporting/weekly_report/detail.html', {
+        'report': report,
+        'is_manager': profile and profile.role in ['admin', 'superadmin', 'manager'],
+    })
 
 
 @login_required
@@ -14142,7 +14181,7 @@ def weekly_report_delete(request, pk):
 
 @login_required
 def weekly_report_load_schedules(request):
-    """AJAX: 선택 기간 일정 반환 (주간보고 폼에서 참고용)"""
+    """AJAX: 선택 기간 일정 반환 (주간보고 폼에서 참고용) — 카테고리 분류 + 연결 History 포함"""
     import datetime
     week_start_str = request.GET.get('week_start')
     week_end_str = request.GET.get('week_end')
@@ -14152,24 +14191,178 @@ def weekly_report_load_schedules(request):
     except (TypeError, ValueError):
         return JsonResponse({'error': '날짜 오류'}, status=400)
 
+    # Schedule.activity_type → 카테고리 매핑
+    QUOTE_DELIVERY_TYPES = {'quote', 'delivery'}
+    ACTIVITY_TYPES = {'customer_meeting', 'service'}
+
+    from django.db.models import Prefetch
+
     schedules = Schedule.objects.filter(
         user=request.user,
         visit_date__gte=week_start,
         visit_date__lte=week_end,
-    ).select_related('followup', 'followup__company', 'followup__department').order_by('visit_date')
+    ).select_related(
+        'followup', 'followup__company', 'followup__department'
+    ).prefetch_related(
+        # 이 일정에 직접 연결된 History (History.schedule FK)
+        Prefetch(
+            'histories',
+            queryset=History.objects.filter(
+                user=request.user,
+                parent_history__isnull=True,
+            ).order_by('-created_at'),
+            to_attr='linked_histories',
+        ),
+        # 이 일정에 연결된 Quote
+        Prefetch(
+            'quotes',
+            queryset=Quote.objects.order_by('-created_at'),
+            to_attr='linked_quotes',
+        ),
+    ).order_by('visit_date')
 
-    data = []
+    # 카테고리별 목록
+    activity_list = []
+    quote_delivery_list = []
+
+    def _history_snippet(h):
+        """히스토리에서 핵심 내용 추출"""
+        parts = []
+        if h.meeting_situation:
+            parts.append(h.meeting_situation)
+        if h.meeting_confirmed_facts:
+            parts.append(h.meeting_confirmed_facts)
+        if h.content and not parts:
+            parts.append(h.content)
+        if h.next_action:
+            nd = f" ({h.next_action_date.strftime('%m/%d')})" if h.next_action_date else ''
+            parts.append(f"다음 액션: {h.next_action}{nd}")
+        return ' / '.join(parts)[:200] if parts else ''
+
     for s in schedules:
         fu = s.followup
-        data.append({
+        base = {
+            'id': s.pk,
             'date': s.visit_date.strftime('%m/%d'),
+            'weekday': ['월', '화', '수', '목', '금', '토', '일'][s.visit_date.weekday()],
             'customer': fu.customer_name or '-',
             'company': str(fu.company) if fu.company else '',
             'department': str(fu.department) if fu.department else '',
-            'activity_type': s.get_activity_type_display(),
+            'manager': fu.manager or '',
+            'activity_type': s.activity_type,
+            'activity_type_display': s.get_activity_type_display(),
             'notes': s.notes or '',
+            'status': s.status,
+            # 연결된 히스토리 (직접 FK)
+            'histories': [
+                {
+                    'id': h.pk,
+                    'type': h.get_action_type_display(),
+                    'snippet': _history_snippet(h),
+                    'next_action': h.next_action or '',
+                    'next_action_date': h.next_action_date.strftime('%m/%d') if h.next_action_date else '',
+                }
+                for h in (s.linked_histories or [])
+            ],
+            # 연결된 견적
+            'quotes': [
+                {
+                    'number': q.quote_number,
+                    'stage': q.get_stage_display(),
+                    'amount': f'{int(q.total_amount):,}원' if q.total_amount else '',
+                    'probability': q.probability,
+                }
+                for q in (s.linked_quotes or [])
+            ],
+        }
+
+        if s.activity_type in QUOTE_DELIVERY_TYPES:
+            quote_delivery_list.append(base)
+        else:
+            # customer_meeting, service, 기타 → 영업활동
+            activity_list.append(base)
+
+    # 기존 flat 형식도 유지 (backward compatibility)
+    flat_data = []
+    for s_obj in list(schedules):
+        fu = s_obj.followup
+        flat_data.append({
+            'date': s_obj.visit_date.strftime('%m/%d'),
+            'customer': fu.customer_name or '-',
+            'company': str(fu.company) if fu.company else '',
+            'department': str(fu.department) if fu.department else '',
+            'activity_type': s_obj.get_activity_type_display(),
+            'notes': s_obj.notes or '',
         })
-    return JsonResponse({'schedules': data})
+
+    return JsonResponse({
+        'schedules': flat_data,           # 기존 형식 유지
+        'categorized': {
+            'activity': activity_list,     # 영업활동
+            'quote_delivery': quote_delivery_list,  # 견적/납품
+        },
+    })
+
+
+
+@login_required
+def weekly_report_ai_draft(request):
+    """AJAX GET: 해당 주 활동 기반 AI 주간보고 초안 생성"""
+    import datetime as _dt
+    profile = getattr(request.user, 'userprofile', None)
+    if not (profile and profile.can_use_ai):
+        return JsonResponse({'error': 'AI 기능 사용 권한이 없습니다.'}, status=403)
+
+    week_start_str = request.GET.get('week_start')
+    week_end_str = request.GET.get('week_end')
+    try:
+        week_start = _dt.date.fromisoformat(week_start_str)
+        week_end = _dt.date.fromisoformat(week_end_str)
+    except (TypeError, ValueError):
+        return JsonResponse({'error': '날짜 형식 오류'}, status=400)
+
+    try:
+        from ai_chat.services import generate_weekly_report_draft
+        result = generate_weekly_report_draft(request.user, week_start, week_end)
+        if result is None:
+            return JsonResponse({'error': '해당 기간에 활동 기록이 없어 초안을 생성할 수 없습니다.'}, status=404)
+        return JsonResponse({'draft': result})
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        logger.error(f"weekly_report_ai_draft error: {e}")
+        return JsonResponse({'error': 'AI 초안 생성 중 오류가 발생했습니다.'}, status=500)
+
+
+@login_required
+def weekly_report_manager_comment(request, pk):
+    """POST: 관리자 코멘트 저장"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    profile = getattr(request.user, 'userprofile', None)
+    if not (profile and profile.role in ['admin', 'superadmin', 'manager']):
+        return JsonResponse({'error': '권한 없음'}, status=403)
+
+    report = get_object_or_404(WeeklyReport, pk=pk)
+    # 같은 회사 소속인지 확인
+    company = profile.company if profile else None
+    if company:
+        report_company = getattr(getattr(report.user, 'userprofile', None), 'company', None)
+        if report_company != company:
+            return JsonResponse({'error': '권한 없음'}, status=403)
+
+    comment = request.POST.get('manager_comment', '').strip()
+    report.manager_comment = comment
+    report.reviewed_by = request.user
+    report.reviewed_at = timezone.now()
+    report.save(update_fields=['manager_comment', 'reviewed_by', 'reviewed_at'])
+    return JsonResponse({
+        'ok': True,
+        'reviewer': request.user.get_full_name() or request.user.username,
+        'reviewed_at': report.reviewed_at.strftime('%Y-%m-%d %H:%M'),
+        'comment': comment,
+    })
 
 
 # ============ Phase 6: 분석 보고서 뷰들 ============
@@ -14370,95 +14563,173 @@ def analytics_dashboard_view(request):
     return render(request, 'reporting/analytics_dashboard.html', context)
 
 
-@login_required
-def analytics_activity_csv_export(request):
-    """
-    영업사원별 활동 보고서 CSV 내보내기 (admin/manager 전용)
-    UTF-8 with BOM — 한국어 Excel 호환
-    """
-    import csv
-    import datetime
-
-    user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager'):
-        return HttpResponseForbidden('접근 권한이 없습니다.')
-
-    today = timezone.now().date()
-
+def _get_activity_export_date_range(request, today):
+    """날짜 파라미터 파싱 헬퍼 — activity/pipeline export 공통 사용"""
+    import datetime as dt
     date_from_str = request.GET.get('date_from', '')
-    date_to_str = request.GET.get('date_to', '')
+    date_to_str   = request.GET.get('date_to', '')
     try:
-        date_from = datetime.date.fromisoformat(date_from_str) if date_from_str else (today - datetime.timedelta(days=30))
+        date_from = dt.date.fromisoformat(date_from_str) if date_from_str else (today - dt.timedelta(days=30))
     except ValueError:
-        date_from = today - datetime.timedelta(days=30)
+        date_from = today - dt.timedelta(days=30)
     try:
-        date_to = datetime.date.fromisoformat(date_to_str) if date_to_str else today
+        date_to = dt.date.fromisoformat(date_to_str) if date_to_str else today
     except ValueError:
         date_to = today
     if date_from > date_to:
         date_from, date_to = date_to, date_from
+    return date_from, date_to
 
-    # 영업사원 목록
+
+def _build_activity_rows(user_profile, date_from, date_to, today):
+    """
+    activity export 공통 데이터 빌드.
+    반환: (headers, rows)  — rows는 list-of-list
+    """
+    from django.db.models import Prefetch, OuterRef, Subquery, DecimalField
+    from django.db.models.functions import Coalesce
+
+    # 회사 범위 필터
     if user_profile.company:
-        report_users = User.objects.filter(
-            userprofile__company=user_profile.company,
-            userprofile__role='salesman',
-            is_active=True,
-        ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+        histories_qs = History.objects.filter(
+            user__userprofile__company=user_profile.company,
+        )
     else:
-        report_users = User.objects.filter(
-            userprofile__role='salesman',
-            is_active=True,
-        ).select_related('userprofile').order_by('last_name', 'first_name', 'username')
+        histories_qs = History.objects.all()
 
-    from django.http import HttpResponse
-    from django.db.models import Max
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    filename = f"activity_report_{date_from}_{date_to}.csv"
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    response.write('\ufeff')  # BOM — 한국어 Excel 호환
-
-    writer = csv.writer(response)
-    writer.writerow(['영업사원', '기간 내 영업노트', '활성 거래처', '지연 후속조치', '최근 활동일'])
-
-    for u in report_users:
-        hist_count = History.objects.filter(
-            user=u,
+    histories_qs = (
+        histories_qs
+        .filter(
+            parent_history__isnull=True,
             created_at__date__gte=date_from,
             created_at__date__lte=date_to,
-            parent_history__isnull=True,
-        ).count()
-        followup_count = FollowUp.objects.filter(user=u, status='active').count()
-        overdue_count = History.objects.filter(
-            user=u,
-            next_action_date__lt=today,
-            next_action_date__isnull=False,
-            reviewed_at__isnull=True,
-            parent_history__isnull=True,
-        ).count()
-        last_activity = History.objects.filter(
-            user=u,
-            parent_history__isnull=True,
-        ).aggregate(last=Max('created_at'))['last']
-        last_str = last_activity.strftime('%Y-%m-%d') if last_activity else '-'
-        display_name = u.get_full_name() or u.username
-        writer.writerow([display_name, hist_count, followup_count, overdue_count, last_str])
+        )
+        .select_related(
+            'user', 'followup', 'followup__company', 'followup__department',
+            'reviewer',
+        )
+        .prefetch_related(
+            Prefetch(
+                'followup__quotes',
+                queryset=Quote.objects.order_by('-quote_date'),
+                to_attr='_latest_quotes',
+            ),
+            Prefetch(
+                'followup__prepayments',
+                queryset=Prepayment.objects.filter(status='active').order_by('-payment_date'),
+                to_attr='_active_prepayments',
+            ),
+        )
+        .order_by('user__last_name', 'user__first_name', '-created_at')
+    )
 
-    return response
+    HEADERS = [
+        '활동일', '영업사원', '거래처', '부서/연구실', '담당자',
+        '활동유형', '내용요약', '미팅상황', '다음액션', '다음예정일',
+        '지연여부', '지연일수', '파이프라인단계',
+        '견적제출여부', '최근견적금액(원)', '납품금액(원)', '납품품목',
+        '선결제잔액(원)', '선결제최근입금일',
+        '관리자검토', '검토관리자',
+    ]
+
+    rows = []
+    for h in histories_qs:
+        fu = h.followup
+
+        # 활동일: meeting_date 우선, delivery_date, created_at 순
+        activity_date = (
+            h.meeting_date or h.delivery_date
+            or h.created_at.date()
+        )
+
+        salesperson   = h.user.get_full_name() or h.user.username
+        customer_name = fu.customer_name if fu else '-'
+        company_name  = (fu.company.name if fu and fu.company else '-')
+        dept_name     = (fu.department.name if fu and fu.department else '-')
+        manager_name  = (fu.manager or '-') if fu else '-'
+
+        # 내용 요약 (미팅 구조화 필드 or content)
+        summary = (h.meeting_situation or h.content or '').strip()
+        if len(summary) > 120:
+            summary = summary[:120] + '…'
+
+        situation = (h.meeting_situation or '').strip()
+        if len(situation) > 120:
+            situation = situation[:120] + '…'
+
+        next_action      = (h.next_action or h.meeting_next_action or '').strip()
+        next_action_date = h.next_action_date.strftime('%Y-%m-%d') if h.next_action_date else '-'
+
+        # 지연 여부
+        is_overdue   = bool(h.next_action_date and h.next_action_date < today and not h.reviewed_at)
+        overdue_days = (today - h.next_action_date).days if is_overdue else 0
+        overdue_str  = '지연' if is_overdue else ''
+
+        # 파이프라인
+        pipeline_stage = '-'
+        if fu:
+            stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+            pipeline_stage = stage_labels.get(fu.pipeline_stage, fu.pipeline_stage)
+
+        # 견적 정보 (최신 1건)
+        quote_submitted = '-'
+        quote_amount    = '-'
+        if fu and hasattr(fu, '_latest_quotes') and fu._latest_quotes:
+            lq = fu._latest_quotes[0]
+            stage_label_map = dict(Quote.STAGE_CHOICES)
+            quote_submitted = stage_label_map.get(lq.stage, lq.stage)
+            quote_amount    = int(lq.total_amount) if lq.total_amount else 0
+
+        # 납품 정보
+        delivery_amount = int(h.delivery_amount) if h.delivery_amount is not None else '-'
+        delivery_items  = (h.delivery_items or '').replace('\n', ' / ').strip() or '-'
+
+        # 선결제 정보 (활성 잔액 합산)
+        prepay_balance  = '-'
+        prepay_last_date = '-'
+        if fu and hasattr(fu, '_active_prepayments') and fu._active_prepayments:
+            total_bal = sum(int(p.balance) for p in fu._active_prepayments)
+            prepay_balance   = total_bal
+            prepay_last_date = fu._active_prepayments[0].payment_date.strftime('%Y-%m-%d')
+
+        # 관리자 검토
+        reviewed_str = '검토완료' if h.reviewed_at else '미검토'
+        reviewer_str = (h.reviewer.get_full_name() or h.reviewer.username) if h.reviewer else '-'
+
+        rows.append([
+            activity_date.strftime('%Y-%m-%d'),
+            salesperson,
+            customer_name,
+            company_name,
+            dept_name,
+            manager_name,
+            h.get_action_type_display(),
+            summary,
+            situation,
+            next_action,
+            next_action_date,
+            overdue_str,
+            overdue_days if is_overdue else '',
+            pipeline_stage,
+            quote_submitted,
+            quote_amount,
+            delivery_amount,
+            delivery_items,
+            prepay_balance,
+            prepay_last_date,
+            reviewed_str,
+            reviewer_str,
+        ])
+
+    return HEADERS, rows
 
 
-@login_required
-def analytics_pipeline_csv_export(request):
+def _build_pipeline_rows(user_profile, today):
     """
-    파이프라인 단계별 현황 CSV 내보내기 (admin/manager 전용)
-    UTF-8 with BOM — 한국어 Excel 호환
+    pipeline export 공통 데이터 빌드.
+    반환: (headers, rows)
     """
-    import csv
-
-    user_profile = get_user_profile(request.user)
-    if user_profile.role not in ('admin', 'manager'):
-        return HttpResponseForbidden('접근 권한이 없습니다.')
+    from django.db.models import Max, Sum, Prefetch
 
     if user_profile.company:
         followups_qs = FollowUp.objects.filter(
@@ -14467,19 +14738,397 @@ def analytics_pipeline_csv_export(request):
     else:
         followups_qs = FollowUp.objects.all()
 
-    from django.http import HttpResponse
+    followups_qs = (
+        followups_qs
+        .select_related('user', 'company', 'department')
+        .prefetch_related(
+            Prefetch(
+                'histories',
+                queryset=History.objects.filter(parent_history__isnull=True).order_by('-created_at'),
+                to_attr='_all_histories',
+            ),
+            Prefetch(
+                'quotes',
+                queryset=Quote.objects.order_by('-quote_date'),
+                to_attr='_latest_quotes',
+            ),
+            Prefetch(
+                'prepayments',
+                queryset=Prepayment.objects.filter(status='active').order_by('-payment_date'),
+                to_attr='_active_prepayments',
+            ),
+        )
+        .order_by('pipeline_stage', 'company__name', 'customer_name')
+    )
 
+    HEADERS = [
+        '거래처', '부서/연구실', '담당자(고객)', '영업사원',
+        '파이프라인단계', '고객상태', '고객등급', '우선순위',
+        '최근활동일', '다음액션', '다음예정일', '지연여부', '지연일수(일)',
+        '최근견적상태', '최근견적금액(원)', '견적성공확률(%)',
+        '선결제잔액(원)', '선결제최근입금일',
+        '총납품금액(원)',
+    ]
+
+    stage_labels   = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+    status_labels  = dict(FollowUp.STATUS_CHOICES)
+    priority_labels = dict(FollowUp.PRIORITY_CHOICES)
+    quote_stage_labels = dict(Quote.STAGE_CHOICES)
+
+    rows = []
+    for fu in followups_qs:
+        customer_name  = fu.customer_name or '-'
+        company_name   = fu.company.name if fu.company else '-'
+        dept_name      = fu.department.name if fu.department else '-'
+        manager_name   = fu.manager or '-'
+        salesperson    = fu.user.get_full_name() or fu.user.username
+
+        pipeline_stage = stage_labels.get(fu.pipeline_stage, fu.pipeline_stage)
+        status_str     = status_labels.get(fu.status, fu.status)
+        grade_str      = fu.customer_grade or '-'
+        priority_str   = priority_labels.get(fu.priority, fu.priority)
+
+        # 최근 활동일
+        last_hist = fu._all_histories[0] if (hasattr(fu, '_all_histories') and fu._all_histories) else None
+        last_activity_str = '-'
+        next_action_str   = '-'
+        next_action_date_str = '-'
+        overdue_str  = ''
+        overdue_days = ''
+
+        if last_hist:
+            act_date = last_hist.meeting_date or last_hist.delivery_date or last_hist.created_at.date()
+            last_activity_str = act_date.strftime('%Y-%m-%d')
+            next_action_str  = (last_hist.next_action or last_hist.meeting_next_action or '').strip()[:100]
+            if last_hist.next_action_date:
+                next_action_date_str = last_hist.next_action_date.strftime('%Y-%m-%d')
+                if last_hist.next_action_date < today and not last_hist.reviewed_at:
+                    overdue_str  = '지연'
+                    overdue_days = (today - last_hist.next_action_date).days
+
+        # 최근 견적 정보
+        quote_stage_str  = '-'
+        quote_amount_str = '-'
+        quote_prob_str   = '-'
+        if hasattr(fu, '_latest_quotes') and fu._latest_quotes:
+            lq = fu._latest_quotes[0]
+            quote_stage_str  = quote_stage_labels.get(lq.stage, lq.stage)
+            quote_amount_str = int(lq.total_amount) if lq.total_amount else 0
+            quote_prob_str   = lq.probability
+
+        # 선결제 잔액
+        prepay_balance   = '-'
+        prepay_last_date = '-'
+        if hasattr(fu, '_active_prepayments') and fu._active_prepayments:
+            total_bal = sum(int(p.balance) for p in fu._active_prepayments)
+            prepay_balance   = total_bal
+            prepay_last_date = fu._active_prepayments[0].payment_date.strftime('%Y-%m-%d')
+
+        # 총 납품 금액
+        total_delivery = '-'
+        if hasattr(fu, '_all_histories'):
+            delivery_total = sum(
+                int(h.delivery_amount)
+                for h in fu._all_histories
+                if h.delivery_amount is not None and h.action_type == 'delivery_schedule'
+            )
+            total_delivery = delivery_total if delivery_total else 0
+
+        rows.append([
+            customer_name, dept_name, manager_name, salesperson,
+            pipeline_stage, status_str, grade_str, priority_str,
+            last_activity_str, next_action_str, next_action_date_str, overdue_str, overdue_days,
+            quote_stage_str, quote_amount_str, quote_prob_str,
+            prepay_balance, prepay_last_date,
+            total_delivery,
+        ])
+
+    return HEADERS, rows
+
+
+# ── Phase 6.5-6: 개선된 activity CSV export ──────────────────────────────────
+@login_required
+def analytics_activity_csv_export(request):
+    """
+    활동 내역 상세 CSV 내보내기 (admin/manager 전용)
+    활동 단위 행 출력, UTF-8 BOM — 한국어 Excel 호환
+    """
+    import csv
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today     = timezone.now().date()
+    date_from, date_to = _get_activity_export_date_range(request, today)
+    headers, rows = _build_activity_rows(user_profile, date_from, date_to, today)
+
+    from django.http import HttpResponse
     response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="pipeline_summary.csv"'
-    response.write('\ufeff')  # BOM — 한국어 Excel 호환
+    response['Content-Disposition'] = (
+        f'attachment; filename="activity_detail_{date_from}_{date_to}.csv"'
+    )
+    response.write('\ufeff')  # BOM
 
     writer = csv.writer(response)
-    writer.writerow(['파이프라인 단계', '건수'])
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
 
-    stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
-    stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
-    for stage in stage_order:
-        cnt = followups_qs.filter(pipeline_stage=stage).count()
-        writer.writerow([stage_labels.get(stage, stage), cnt])
+    return response
 
+
+# ── Phase 6.5-6: 개선된 pipeline CSV export ──────────────────────────────────
+@login_required
+def analytics_pipeline_csv_export(request):
+    """
+    파이프라인 거래처별 상세 CSV 내보내기 (admin/manager 전용)
+    UTF-8 BOM — 한국어 Excel 호환
+    """
+    import csv
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today = timezone.now().date()
+    headers, rows = _build_pipeline_rows(user_profile, today)
+
+    from django.http import HttpResponse
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        f'attachment; filename="pipeline_detail_{today}.csv"'
+    )
+    response.write('\ufeff')  # BOM
+
+    writer = csv.writer(response)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+
+    return response
+
+
+# ── Phase 6.5-6: activity XLSX export ────────────────────────────────────────
+@login_required
+def analytics_activity_xlsx_export(request):
+    """
+    활동 내역 상세 XLSX 내보내기 (admin/manager 전용)
+    헤더 스타일, 첫 행 고정, 지연 행 강조
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    import io
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today     = timezone.now().date()
+    date_from, date_to = _get_activity_export_date_range(request, today)
+    headers, rows = _build_activity_rows(user_profile, date_from, date_to, today)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '활동 내역'
+
+    # 스타일 정의
+    header_font   = Font(bold=True, color='FFFFFF', size=10)
+    header_fill   = PatternFill(fill_type='solid', fgColor='4F46E5')  # 인디고
+    overdue_fill  = PatternFill(fill_type='solid', fgColor='FEE2E2')  # 연한 빨강
+    center_align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left_align    = Alignment(horizontal='left',   vertical='center', wrap_text=True)
+    thin_side     = Side(style='thin', color='D1D5DB')
+    border        = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    # 헤더 행
+    ws.row_dimensions[1].height = 22
+    for col_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=h)
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = center_align
+        cell.border    = border
+
+    # 첫 행 고정
+    ws.freeze_panes = 'A2'
+
+    # 지연 열 인덱스 (0-based in rows list: index 11 = '지연여부')
+    OVERDUE_IDX = 11  # headers 기준 인덱스 (0-based)
+
+    # 데이터 행
+    for row_num, row_data in enumerate(rows, 2):
+        is_overdue = str(row_data[OVERDUE_IDX]) == '지연'
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col_idx, value=value)
+            cell.border    = border
+            cell.alignment = left_align
+            if is_overdue:
+                cell.fill = overdue_fill
+
+    # 열 너비 자동 조정
+    COL_WIDTHS = [
+        12, 10, 16, 18, 14, 12, 12, 30, 30, 30,
+        12, 8, 8, 14,
+        14, 14, 14, 20,
+        14, 12, 8, 12,
+    ]
+    for col_idx, width in enumerate(COL_WIDTHS, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # 제목 정보 시트
+    ws_info = wb.create_sheet(title='내보내기 정보')
+    ws_info['A1'] = '보고서 기간'
+    ws_info['B1'] = f'{date_from} ~ {date_to}'
+    ws_info['A2'] = '내보낸 행수'
+    ws_info['B2'] = len(rows)
+    ws_info['A3'] = '생성일시'
+    ws_info['B3'] = timezone.now().strftime('%Y-%m-%d %H:%M')
+    ws_info['A4'] = '생성자'
+    ws_info['B4'] = request.user.get_full_name() or request.user.username
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="activity_detail_{date_from}_{date_to}.xlsx"'
+    )
+    return response
+
+
+# ── Phase 6.5-6: pipeline XLSX export ────────────────────────────────────────
+@login_required
+def analytics_pipeline_xlsx_export(request):
+    """
+    파이프라인 거래처별 상세 XLSX 내보내기 (admin/manager 전용)
+    헤더 스타일, 첫 행 고정, 지연 행 강조, 단계별 시트 분리
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    import io
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.role not in ('admin', 'manager', 'superadmin'):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today = timezone.now().date()
+    headers, rows = _build_pipeline_rows(user_profile, today)
+
+    wb = Workbook()
+
+    # 스타일 정의
+    header_font   = Font(bold=True, color='FFFFFF', size=10)
+    header_fill   = PatternFill(fill_type='solid', fgColor='16A34A')  # 녹색
+    overdue_fill  = PatternFill(fill_type='solid', fgColor='FEE2E2')  # 연한 빨강
+    center_align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left_align    = Alignment(horizontal='left',   vertical='center', wrap_text=True)
+    thin_side     = Side(style='thin', color='D1D5DB')
+    border        = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    COL_WIDTHS = [
+        16, 16, 12, 12,
+        14, 10, 8, 10,
+        12, 28, 12, 8, 10,
+        14, 14, 12,
+        14, 12,
+        14,
+    ]
+
+    OVERDUE_IDX = 11  # headers 기준 인덱스 (0-based): '지연여부'
+
+    # 단계 순서 (pipeline_stage 값 기준 — rows의 컬럼 4 = '파이프라인단계' 표시값)
+    STAGE_ORDER = ['잠재', '접촉/미팅', '견적 제출', '협상', '수주', '실주']
+    STAGE_COLORS = {
+        '잠재':    '6B7280',
+        '접촉/미팅': '3B82F6',
+        '견적 제출': 'F59E0B',
+        '협상':    'EF4444',
+        '수주':    '10B981',
+        '실주':    '9CA3AF',
+    }
+
+    def _write_sheet(ws, sheet_rows):
+        ws.row_dimensions[1].height = 22
+        for col_idx, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font      = header_font
+            cell.fill      = header_fill
+            cell.alignment = center_align
+            cell.border    = border
+        ws.freeze_panes = 'A2'
+        for row_num, row_data in enumerate(sheet_rows, 2):
+            is_overdue = str(row_data[OVERDUE_IDX]) == '지연'
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_num, column=col_idx, value=value)
+                cell.border    = border
+                cell.alignment = left_align
+                if is_overdue:
+                    cell.fill = overdue_fill
+        for col_idx, width in enumerate(COL_WIDTHS, 1):
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # 전체 시트
+    ws_all = wb.active
+    ws_all.title = '전체'
+    _write_sheet(ws_all, rows)
+
+    # 단계별 시트
+    for stage_name in STAGE_ORDER:
+        stage_rows = [r for r in rows if r[4] == stage_name]
+        if not stage_rows:
+            continue
+        ws_s = wb.create_sheet(title=stage_name)
+        fill_color = STAGE_COLORS.get(stage_name, '4F46E5')
+        # 단계별로 헤더 색상 변경
+        orig_fill = header_fill
+        stage_header_fill = PatternFill(fill_type='solid', fgColor=fill_color)
+        # 임시로 교체하지 않고 직접 작성
+        ws_s.row_dimensions[1].height = 22
+        for col_idx, h in enumerate(headers, 1):
+            cell = ws_s.cell(row=1, column=col_idx, value=h)
+            cell.font      = header_font
+            cell.fill      = stage_header_fill
+            cell.alignment = center_align
+            cell.border    = border
+        ws_s.freeze_panes = 'A2'
+        for row_num, row_data in enumerate(stage_rows, 2):
+            is_overdue = str(row_data[OVERDUE_IDX]) == '지연'
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws_s.cell(row=row_num, column=col_idx, value=value)
+                cell.border    = border
+                cell.alignment = left_align
+                if is_overdue:
+                    cell.fill = overdue_fill
+        for col_idx, width in enumerate(COL_WIDTHS, 1):
+            ws_s.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # 내보내기 정보 시트
+    ws_info = wb.create_sheet(title='내보내기 정보')
+    ws_info['A1'] = '생성일시'
+    ws_info['B1'] = timezone.now().strftime('%Y-%m-%d %H:%M')
+    ws_info['A2'] = '생성자'
+    ws_info['B2'] = request.user.get_full_name() or request.user.username
+    ws_info['A3'] = '전체 건수'
+    ws_info['B3'] = len(rows)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="pipeline_detail_{today}.xlsx"'
+    )
     return response

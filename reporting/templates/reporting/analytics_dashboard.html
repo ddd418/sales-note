@@ -15,14 +15,22 @@
       <p class="text-muted small mb-0 mt-1">영업 활동 현황, 거래처 활동, 파이프라인 단계를 한눈에 파악하세요.</p>
     </div>
     {% if is_manager_or_admin %}
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
       <a href="{% url 'reporting:analytics_activity_csv' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
          class="btn btn-outline-success btn-sm">
-        <i class="fas fa-file-csv me-1"></i>활동 보고서 CSV
+        <i class="fas fa-file-csv me-1"></i>활동 CSV
+      </a>
+      <a href="{% url 'reporting:analytics_activity_xlsx' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}"
+         class="btn btn-success btn-sm">
+        <i class="fas fa-file-excel me-1"></i>활동 XLSX
       </a>
       <a href="{% url 'reporting:analytics_pipeline_csv' %}"
          class="btn btn-outline-primary btn-sm">
         <i class="fas fa-file-csv me-1"></i>파이프라인 CSV
+      </a>
+      <a href="{% url 'reporting:analytics_pipeline_xlsx' %}"
+         class="btn btn-primary btn-sm">
+        <i class="fas fa-file-excel me-1"></i>파이프라인 XLSX
       </a>
     </div>
     {% endif %}

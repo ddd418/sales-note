@@ -2507,6 +2507,9 @@
 
   {% block extra_js %}{% endblock %}
 
+  <!-- 페이지별 모달 슬롯: stacking context 바깥(body 직접 하위)에 배치 -->
+  {% block modals %}{% endblock %}
+
   <!-- 전역: Django 폼 에러 발생 시 해당 필드에 is-invalid CSS 자동 적용 -->
   <script>
   (function() {

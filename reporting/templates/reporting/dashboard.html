@@ -12,8 +12,9 @@
   box-sizing: border-box;
 }
 
+/* html/body overflow-x:hidden 제거: position:fixed 모달의 stacking context를 깨뜨리지 않기 위함
+   overflow-x 클리핑은 .infographic-dashboard 래퍼에서 처리 */
 html, body {
-  overflow-x: hidden;
   width: 100%;
   max-width: 100%;
 }
@@ -2545,10 +2546,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+{% endblock %}
+
 <!-- =====================================================
      대시보드 영업 노트 작성 모달
      Step 1: 일정 선택 | Step 2: 노트 작성
+     body 직접 하위(block modals)에 배치 —
+     overflow/transform stacking context 바깥에서 렌더링됩니다.
      ===================================================== -->
+{% block modals %}
 <div class="modal fade" id="dashboardNoteModal" tabindex="-1" aria-labelledby="dashboardNoteModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content" style="background: var(--surface); border: 1px solid var(--border);">
@@ -2804,8 +2810,9 @@ document.addEventListener('DOMContentLoaded', function() {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
 
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
-                   || '{{ csrf_token }}';
+    // base.html 의 <meta name="csrf-token"> 에서 CSRF 토큰 읽기 (안전한 단일 소스)
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+                   || document.querySelector('[name=csrfmiddlewaretoken]')?.value;
 
     const formData = new FormData();
     formData.append('csrfmiddlewaretoken', csrfToken);
@@ -2828,8 +2835,9 @@ document.addEventListener('DOMContentLoaded', function() {
     .then(function(data) {
       if (data.success) {
         // 모달 닫고 대시보드 새로고침
-        var modal = bootstrap.Modal.getInstance(document.getElementById('dashboardNoteModal'));
-        if (modal) modal.hide();
+        var modalEl = document.getElementById('dashboardNoteModal');
+        var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.hide();
         location.reload();
       } else {
         // 이미 존재하는 기록인 경우 상세 페이지로 이동

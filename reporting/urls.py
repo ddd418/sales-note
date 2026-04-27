@@ -143,6 +143,8 @@ urlpatterns = [
     path('analytics/', views.analytics_dashboard_view, name='analytics_dashboard'),
     path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
     path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
+    path('analytics/export/activity.xlsx', views.analytics_activity_xlsx_export, name='analytics_activity_xlsx'),
+    path('analytics/export/pipeline.xlsx', views.analytics_pipeline_xlsx_export, name='analytics_pipeline_xlsx'),
 
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),
@@ -291,6 +293,7 @@ urlpatterns = [
     path('funnel/api/remove-department/', funnel_views.funnel_remove_department, name='funnel_remove_department'),
     path('funnel/api/search-departments/', funnel_views.funnel_search_departments, name='funnel_search_departments'),
     path('funnel/api/pipeline-move/', funnel_views.funnel_pipeline_move, name='funnel_pipeline_move'),
+    path('funnel/api/pipeline-sync/', funnel_views.funnel_pipeline_sync, name='funnel_pipeline_sync'),
 
     # ============================================
     # 주간보고 URL
@@ -301,5 +304,7 @@ urlpatterns = [
     path('weekly-reports/<int:pk>/edit/', views.weekly_report_edit, name='weekly_report_edit'),
     path('weekly-reports/<int:pk>/delete/', views.weekly_report_delete, name='weekly_report_delete'),
     path('api/weekly-reports/schedules/', views.weekly_report_load_schedules, name='weekly_report_load_schedules'),
+    path('api/weekly-reports/ai-draft/', views.weekly_report_ai_draft, name='weekly_report_ai_draft'),
+    path('api/weekly-reports/<int:pk>/manager-comment/', views.weekly_report_manager_comment, name='weekly_report_manager_comment'),
 ]
 

@@ -171,6 +171,24 @@
                                       placeholder="이 서류에 대한 간단한 설명을 입력하세요.">{{ template.description|default:'' }}</textarea>
                         </div>
                         
+                        <!-- 템플릿 변수 도움말 패널 -->
+                        <div class="mb-3">
+                            <div class="card border-primary">
+                                <div class="card-header d-flex justify-content-between align-items-center" 
+                                     style="cursor:pointer; background: hsla(217,91%,60%,0.1);"
+                                     data-bs-toggle="collapse" data-bs-target="#varHelpPanel">
+                                    <span><i class="fas fa-code me-2 text-primary"></i><strong>사용 가능한 템플릿 변수</strong></span>
+                                    <small class="text-muted">엑셀 파일에서 <code>{{변수명}}</code> 형식으로 사용</small>
+                                </div>
+                                <div id="varHelpPanel" class="collapse">
+                                    <div class="card-body pt-2">
+                                        <p class="text-muted small mb-3"><i class="fas fa-info-circle me-1"></i>아래 변수를 클릭하면 클립보드에 복사됩니다. 엑셀 템플릿 셀에 붙여넣기 하세요.</p>
+                                        {% include "reporting/partials/doc_variable_list.html" %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="mb-3 form-check">
                             <input type="checkbox" 
                                    name="is_default" 

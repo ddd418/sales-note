@@ -48,7 +48,14 @@
             </div>
 
             <div class="mb-3">
-              <label class="form-label fw-bold">영업 활동 내용</label>
+              <div class="d-flex align-items-center justify-content-between mb-1">
+                <label class="form-label fw-bold mb-0">영업 활동 내용</label>
+                {% if can_use_ai %}
+                <button type="button" class="btn btn-sm btn-outline-primary" id="aiDraftBtn" onclick="generateAiDraft()">
+                  <i class="fas fa-robot me-1"></i>AI 초안 생성
+                </button>
+                {% endif %}
+              </div>
               <small class="text-muted d-block mb-1">방문, 미팅, 전화 등 이번 주 영업 활동을 작성해 주세요.</small>
               <textarea name="activity_notes" id="activityNotes" class="form-control" rows="8"
                         placeholder="예&#10;- 월: 한국대학교 이화연 교수 방문, HPG 제품 데모 진행&#10;- 화: ○○연구소 전화 상담">{% if report %}{{ report.activity_notes }}{% endif %}</textarea>
@@ -62,8 +69,8 @@
             </div>
 
             <div class="mb-4">
-              <label class="form-label fw-bold">기타 내용</label>
-              <textarea name="other_notes" class="form-control" rows="4"
+              <label class="form-label fw-bold">다음 주 계획 / 기타</label>
+              <textarea name="other_notes" id="otherNotes" class="form-control" rows="4"
                         placeholder="다음 주 계획, 특이사항 등">{% if report %}{{ report.other_notes }}{% endif %}</textarea>
             </div>
 
@@ -88,39 +95,92 @@
     <!-- 이번 주 일정 참고 패널 -->
     <div class="col-lg-4">
       <div class="card shadow-sm">
-        <div class="card-header bg-light">
+        <div class="card-header bg-light d-flex align-items-center justify-content-between py-2">
           <h6 class="mb-0"><i class="fas fa-calendar-check me-2 text-primary"></i>이번 주 일정 (참고)</h6>
+          <div class="d-flex gap-1" id="insertBtns" style="display:none!important;">
+            <button type="button" class="btn btn-xs btn-outline-primary px-2 py-0" style="font-size:.76em;"
+                    onclick="insertSelected('activity')" title="선택한 활동 일정을 영업활동 내용에 삽입">
+              <i class="fas fa-walking me-1"></i>활동 삽입
+            </button>
+            <button type="button" class="btn btn-xs btn-outline-success px-2 py-0" style="font-size:.76em;"
+                    onclick="insertSelected('quote_delivery')" title="선택한 견적/납품 일정을 견적/납품 내용에 삽입">
+              <i class="fas fa-file-invoice me-1"></i>견적 삽입
+            </button>
+          </div>
         </div>
         <div class="card-body p-0" id="schedulePanel">
+          <!-- 서버 사이드 초기 렌더링 -->
           {% if schedules %}
-          <ul class="list-group list-group-flush">
-            {% for s in schedules %}
-            <li class="list-group-item py-2 px-3" style="cursor:pointer" onclick="insertScheduleText(this)">
-              <div class="d-flex justify-content-between">
-                <strong class="small text-primary">{{ s.visit_date|date:"m/d(D)" }}</strong>
-                <span class="badge bg-secondary small">{{ s.get_activity_type_display }}</span>
+          {% with has_quote=False has_activity=False %}
+          <div id="initialPanel">
+            {% regroup schedules by activity_type as type_groups %}
+            {% for group in type_groups %}
+              {% if group.grouper == 'quote' or group.grouper == 'delivery' %}
+            <div class="px-2 pt-2 pb-0"><small class="text-success fw-bold"><i class="fas fa-file-invoice me-1"></i>견적/납품</small></div>
+              {% else %}
+            <div class="px-2 pt-2 pb-0"><small class="text-primary fw-bold"><i class="fas fa-walking me-1"></i>영업활동</small></div>
+              {% endif %}
+              {% for s in group.list %}
+            <div class="schedule-item border-bottom py-2 px-3"
+                 data-category="{% if s.activity_type == 'quote' or s.activity_type == 'delivery' %}quote_delivery{% else %}activity{% endif %}">
+              <div class="form-check mb-0">
+                <input type="checkbox" class="form-check-input schedule-check" id="sch-{{ s.pk }}"
+                       data-category="{% if s.activity_type == 'quote' or s.activity_type == 'delivery' %}quote_delivery{% else %}activity{% endif %}"
+                       data-date="{{ s.visit_date|date:'m/d' }}"
+                       data-weekday="{% with wd=s.visit_date.weekday %}{% if wd == 0 %}월{% elif wd == 1 %}화{% elif wd == 2 %}수{% elif wd == 3 %}목{% elif wd == 4 %}금{% elif wd == 5 %}토{% else %}일{% endif %}{% endwith %}"
+                       data-customer="{{ s.followup.customer_name|default:'-' }}"
+                       data-company="{% if s.followup.company %}{{ s.followup.company }}{% endif %}"
+                       data-activity-type="{{ s.get_activity_type_display }}"
+                       data-notes="{{ s.notes|default:'' }}"
+                       onchange="onCheckChange()">
+                <label class="form-check-label w-100" for="sch-{{ s.pk }}" style="cursor:pointer;">
+                  <div class="d-flex justify-content-between">
+                    <strong class="small text-primary">{{ s.visit_date|date:"m/d" }}({% with wd2=s.visit_date.weekday %}{% if wd2 == 0 %}월{% elif wd2 == 1 %}화{% elif wd2 == 2 %}수{% elif wd2 == 3 %}목{% elif wd2 == 4 %}금{% elif wd2 == 5 %}토{% else %}일{% endif %}{% endwith %})</strong>
+                    <span class="badge bg-secondary small">{{ s.get_activity_type_display }}</span>
+                  </div>
+                  <div class="small mt-1">
+                    {{ s.followup.customer_name }}
+                    {% if s.followup.company %}<span class="text-muted"> · {{ s.followup.company }}</span>{% endif %}
+                  </div>
+                  {% if s.notes %}<div class="text-muted small mt-1 text-truncate">{{ s.notes }}</div>{% endif %}
+                </label>
               </div>
-              <div class="small mt-1">
-                {{ s.followup.customer_name }}
-                {% if s.followup.company %}<span class="text-muted"> · {{ s.followup.company }}</span>{% endif %}
-              </div>
-              {% if s.notes %}<div class="text-muted small mt-1 text-truncate">{{ s.notes }}</div>{% endif %}
-            </li>
+            </div>
+              {% endfor %}
             {% endfor %}
-          </ul>
+          </div>
+          {% endwith %}
           {% else %}
-          <div class="text-center text-muted py-4">이번 주 일정이 없습니다.</div>
+          <div class="text-center text-muted py-4" id="emptyMsg">이번 주 일정이 없습니다.</div>
           {% endif %}
+        </div>
+        <!-- 삽입 버튼 -->
+        <div class="card-footer bg-white border-top pt-2 pb-2" id="panelFooter">
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="insertActivityBtn"
+                    onclick="insertSelected('activity')" disabled>
+              <i class="fas fa-walking me-1"></i>영업활동에 삽입
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="insertQuoteBtn"
+                    onclick="insertSelected('quote_delivery')" disabled>
+              <i class="fas fa-file-invoice me-1"></i>견적/납품에 삽입
+            </button>
+            <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-auto" onclick="selectAllSchedules()" style="font-size:.8em;">전체선택</button>
+          </div>
         </div>
       </div>
       <div class="mt-2 text-muted small text-center">
-        <i class="fas fa-hand-pointer me-1"></i>항목 클릭 시 영업 활동 내용에 추가됩니다.
+        <i class="fas fa-check-square me-1"></i>항목 선택 후 삽입 버튼을 클릭하세요.
       </div>
     </div>
   </div>
 </div>
 
 <script>
+const CSRF = document.querySelector('meta[name="csrf-token"]')?.content
+          || document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+// ─── 일정 불러오기 (분류 포함) ─────────────────────────────────────────────
 function loadSchedules() {
   const ws = document.getElementById('weekStart').value;
   const we = document.getElementById('weekEnd').value;
@@ -130,30 +190,192 @@ function loadSchedules() {
     .then(r => r.json())
     .then(data => {
       const panel = document.getElementById('schedulePanel');
-      if (!data.schedules || data.schedules.length === 0) {
+      const categorized = data.categorized || {};
+      const activityItems = categorized.activity || [];
+      const qdItems = categorized.quote_delivery || [];
+
+      if (activityItems.length === 0 && qdItems.length === 0) {
         panel.innerHTML = '<div class="text-center text-muted py-4">해당 기간 일정이 없습니다.</div>';
+        updateInsertBtns();
         return;
       }
-      let html = '<ul class="list-group list-group-flush">';
-      data.schedules.forEach(s => {
-        html += `<li class="list-group-item py-2 px-3" style="cursor:pointer"
-                     onclick="insertScheduleText(this)"
-                     data-text="${s.date} ${s.customer}${s.company ? ' (' + s.company + ')' : ''} - ${s.activity_type}${s.notes ? ': ' + s.notes : ''}">
-          <div class="d-flex justify-content-between">
-            <strong class="small text-primary">${s.date}</strong>
-            <span class="badge bg-secondary small">${s.activity_type}</span>
-          </div>
-          <div class="small mt-1">${s.customer}${s.department ? ' · ' + s.department : ''}${s.company ? ' · ' + s.company : ''}</div>
-          ${s.notes ? `<div class="text-muted small mt-1 text-truncate">${s.notes}</div>` : ''}
-        </li>`;
-      });
-      html += '</ul>';
+
+      let html = '';
+
+      // 영업활동 섹션
+      if (activityItems.length > 0) {
+        html += `<div class="px-2 pt-2 pb-0"><small class="text-primary fw-bold"><i class="fas fa-walking me-1"></i>영업활동 (${activityItems.length}건)</small></div>`;
+        activityItems.forEach(s => {
+          html += buildScheduleCard(s, 'activity');
+        });
+      }
+
+      // 견적/납품 섹션
+      if (qdItems.length > 0) {
+        html += `<div class="px-2 pt-2 pb-0"><small class="text-success fw-bold"><i class="fas fa-file-invoice me-1"></i>견적/납품 (${qdItems.length}건)</small></div>`;
+        qdItems.forEach(s => {
+          html += buildScheduleCard(s, 'quote_delivery');
+        });
+      }
+
       panel.innerHTML = html;
+      panel.querySelectorAll('.schedule-check').forEach(cb => {
+        cb.addEventListener('change', onCheckChange);
+      });
+      updateInsertBtns();
+    })
+    .catch(() => {
+      const panel = document.getElementById('schedulePanel');
+      panel.innerHTML = '<div class="text-center text-danger py-3 small">불러오기 오류가 발생했습니다.</div>';
     });
 }
 
+function buildScheduleCard(s, category) {
+  const histHtml = s.histories && s.histories.length > 0
+    ? s.histories.map(h => {
+        let txt = h.snippet ? `<span class="text-body">${escHtml(h.snippet.slice(0, 80))}</span>` : '';
+        let action = h.next_action ? `<br><i class="fas fa-arrow-right text-info" style="font-size:.7em;"></i> ${escHtml(h.next_action)}${h.next_action_date ? ' (' + h.next_action_date + ')' : ''}` : '';
+        return `<div class="ms-2 mt-1 p-1 rounded" style="background:#f0f9ff;font-size:.72em;border-left:2px solid #0ea5e9;">
+          <i class="fas fa-history me-1 text-info" style="font-size:.9em;"></i>${escHtml(h.type)} ${txt}${action}
+        </div>`;
+      }).join('')
+    : '';
+  const quoteHtml = s.quotes && s.quotes.length > 0
+    ? s.quotes.map(q =>
+        `<div class="ms-2 mt-1 p-1 rounded" style="background:#f0fdf4;font-size:.72em;border-left:2px solid #16a34a;">
+          <i class="fas fa-file-invoice-dollar me-1 text-success" style="font-size:.9em;"></i>
+          ${escHtml(q.number)} · ${escHtml(q.stage)}${q.amount ? ' · ' + escHtml(q.amount) : ''}
+        </div>`
+      ).join('')
+    : '';
+
+  const idSafe = `sch-${s.id}`;
+  const dataAttrs = `
+    data-category="${category}"
+    data-date="${s.date}"
+    data-weekday="${s.weekday}"
+    data-customer="${escAttr(s.customer)}"
+    data-company="${escAttr(s.company)}"
+    data-department="${escAttr(s.department)}"
+    data-activity-type="${escAttr(s.activity_type_display)}"
+    data-notes="${escAttr(s.notes)}"
+    data-histories='${JSON.stringify((s.histories||[]).map(h=>({type:h.type,snippet:h.snippet,next_action:h.next_action,next_action_date:h.next_action_date})))}'
+    data-quotes='${JSON.stringify((s.quotes||[]).map(q=>({number:q.number,stage:q.stage,amount:q.amount})))}'
+  `.trim();
+
+  return `<div class="schedule-item border-bottom py-2 px-3" data-category="${category}">
+    <div class="form-check mb-0">
+      <input type="checkbox" class="form-check-input schedule-check" id="${idSafe}" ${dataAttrs}>
+      <label class="form-check-label w-100" for="${idSafe}" style="cursor:pointer;">
+        <div class="d-flex justify-content-between">
+          <strong class="small text-${category === 'quote_delivery' ? 'success' : 'primary'}">${escHtml(s.date)}(${escHtml(s.weekday)})</strong>
+          <span class="badge bg-secondary small">${escHtml(s.activity_type_display)}</span>
+        </div>
+        <div class="small mt-1">${escHtml(s.customer)}${s.company ? ' <span class="text-muted">· ' + escHtml(s.company) + '</span>' : ''}</div>
+        ${s.notes ? `<div class="text-muted small mt-1 text-truncate">${escHtml(s.notes)}</div>` : ''}
+        ${histHtml}${quoteHtml}
+      </label>
+    </div>
+  </div>`;
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 초기 로드(서버 사이드 렌더링) 체크박스에도 이벤트 연결
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.schedule-check').forEach(cb => {
+    cb.addEventListener('change', onCheckChange);
+  });
+  updateInsertBtns();
+});
+
+function onCheckChange() {
+  updateInsertBtns();
+}
+
+function updateInsertBtns() {
+  const actChecked = document.querySelectorAll('.schedule-check[data-category="activity"]:checked').length;
+  const qdChecked = document.querySelectorAll('.schedule-check[data-category="quote_delivery"]:checked').length;
+  const actBtn = document.getElementById('insertActivityBtn');
+  const qdBtn = document.getElementById('insertQuoteBtn');
+  if (actBtn) actBtn.disabled = actChecked === 0;
+  if (qdBtn) qdBtn.disabled = qdChecked === 0;
+}
+
+function selectAllSchedules() {
+  document.querySelectorAll('.schedule-check').forEach(cb => { cb.checked = true; });
+  updateInsertBtns();
+}
+
+// ─── 선택한 일정을 텍스트로 생성 ────────────────────────────────────────────
+function buildInsertText(cb) {
+  const date = cb.dataset.date || '';
+  const weekday = cb.dataset.weekday || '';
+  const customer = cb.dataset.customer || '';
+  const company = cb.dataset.company || '';
+  const dept = cb.dataset.department || '';
+  const actType = cb.dataset.activityType || '';
+  const notes = cb.dataset.notes || '';
+
+  let historyLines = [];
+  try { historyLines = JSON.parse(cb.dataset.histories || '[]'); } catch(e) {}
+
+  let quoteLines = [];
+  try { quoteLines = JSON.parse(cb.dataset.quotes || '[]'); } catch(e) {}
+
+  let line = `- ${date}(${weekday}): ${customer}`;
+  if (company) line += ` (${company}${dept ? ' · ' + dept : ''})`;
+  line += ` — ${actType}`;
+  if (notes) line += `\n  메모: ${notes}`;
+
+  historyLines.forEach(h => {
+    if (h.snippet) line += `\n  └ ${h.type}: ${h.snippet}`;
+    if (h.next_action) line += `\n    → 다음 액션: ${h.next_action}${h.next_action_date ? ' (' + h.next_action_date + ')' : ''}`;
+  });
+
+  quoteLines.forEach(q => {
+    let qPart = `\n  └ 견적 ${q.number} [${q.stage}]`;
+    if (q.amount) qPart += ` ${q.amount}`;
+    line += qPart;
+  });
+
+  return line;
+}
+
+function insertSelected(category) {
+  const checked = document.querySelectorAll(`.schedule-check[data-category="${category}"]:checked`);
+  if (checked.length === 0) return;
+
+  const lines = Array.from(checked).map(cb => buildInsertText(cb));
+  const insertText = lines.join('\n');
+
+  const targetId = category === 'quote_delivery' ? 'quoteDeliveryNotes' : 'activityNotes';
+  const ta = document.getElementById(targetId);
+  if (!ta) return;
+
+  const cur = ta.value.trim();
+  ta.value = cur ? cur + '\n' + insertText : insertText;
+  ta.scrollTop = ta.scrollHeight;
+  ta.focus();
+
+  // 체크박스 해제
+  checked.forEach(cb => { cb.checked = false; });
+  updateInsertBtns();
+
+  // 시각적 피드백
+  ta.classList.add('border-primary');
+  setTimeout(() => ta.classList.remove('border-primary'), 800);
+}
+
+// 기존 단순 클릭 방식 (하위 호환, 초기 렌더링된 카드에서 직접 클릭)
 function insertScheduleText(el) {
-  // data-text가 있으면 사용, 없으면 직접 구성
   let text = el.dataset.text;
   if (!text) {
     const dateEl = el.querySelector('.text-primary');
@@ -168,5 +390,64 @@ function insertScheduleText(el) {
   ta.scrollTop = ta.scrollHeight;
   ta.focus();
 }
+
+{% if can_use_ai %}
+function generateAiDraft() {
+  const ws = document.getElementById('weekStart').value;
+  const we = document.getElementById('weekEnd').value;
+  if (!ws || !we) { alert('주 시작일과 종료일을 먼저 입력해 주세요.'); return; }
+
+  const btn = document.getElementById('aiDraftBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>생성 중...';
+
+  fetch(`{% url 'reporting:weekly_report_ai_draft' %}?week_start=${ws}&week_end=${we}`)
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-robot me-1"></i>AI 초안 생성';
+      if (data.error) { alert(data.error); return; }
+      const draft = data.draft;
+
+      const actNotes = document.getElementById('activityNotes');
+      const qdNotes  = document.getElementById('quoteDeliveryNotes');
+      const otNotes  = document.getElementById('otherNotes');
+
+      const hasExisting = actNotes.value.trim() || qdNotes.value.trim() || otNotes.value.trim();
+      if (hasExisting) {
+        if (!confirm('현재 입력된 내용이 있습니다.\nAI 초안으로 교체하시겠습니까?\n(기존 내용은 사라집니다)')) return;
+      }
+
+      if (draft.activity_notes)       actNotes.value = draft.activity_notes;
+      if (draft.quote_delivery_notes) qdNotes.value  = draft.quote_delivery_notes;
+      if (draft.other_notes)          otNotes.value  = draft.other_notes;
+
+      if (draft.summary) {
+        const s = draft.summary;
+        let summaryHtml = '<div class="alert alert-info alert-dismissible mt-2 mb-0 small" role="alert">'
+          + '<button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>'
+          + '<strong><i class="fas fa-robot me-1"></i>AI 초안 생성 완료</strong>'
+          + `<div class="mt-1">미팅 ${s.total_meetings||0}건 · 견적 ${s.total_quotes||0}건 · 납품 ${s.total_deliveries||0}건`;
+        if (s.key_customers && s.key_customers.length)
+          summaryHtml += ` | 주요 고객: ${s.key_customers.join(', ')}`;
+        if (s.risks && s.risks.length)
+          summaryHtml += `<br><span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>위험: ${s.risks.join(' / ')}</span>`;
+        summaryHtml += '</div></div>';
+        const formEl = document.getElementById('weeklyReportForm');
+        const existing = formEl.querySelector('.ai-summary-alert');
+        if (existing) existing.remove();
+        const div = document.createElement('div');
+        div.className = 'ai-summary-alert';
+        div.innerHTML = summaryHtml;
+        actNotes.parentElement.insertAdjacentElement('afterend', div);
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-robot me-1"></i>AI 초안 생성';
+      alert('AI 초안 생성 중 오류가 발생했습니다.');
+    });
+}
+{% endif %}
 </script>
 {% endblock %}
