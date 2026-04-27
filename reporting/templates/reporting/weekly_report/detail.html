@@ -4,7 +4,7 @@
 {% block title %}{{ report.title }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
+<div class="container-fluid py-4 weekly-report-detail-page">
   <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{% url 'reporting:weekly_report_list' %}">주간보고</a></li>
@@ -17,8 +17,8 @@
 
       <!-- ① 헤더 요약 카드 -->
       <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2"
-             style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border-radius: .5rem .5rem 0 0;">
+        <div class="card-header report-gradient-header d-flex align-items-center justify-content-between flex-wrap gap-2"
+             style="border-radius: .5rem .5rem 0 0;">
           <div>
             <h5 class="mb-1">{{ report.title }}</h5>
             <small class="opacity-75">
@@ -186,24 +186,198 @@
 </div>
 
 <style>
-/* 주간보고 상세: 다크 테마 아래서 라이트 배경 컨텐츠 영역 텍스트 가독성 수정 */
-.activity-line { font-size: .92em; color: #212529; }
-.risk-line    { background: rgba(220,53,69,.07);  border: 1px solid rgba(220,53,69,.2);  color: #842029; }
-.action-line  { background: rgba(13,202,240,.07); border: 1px solid rgba(13,202,240,.2); color: #055160; }
-.deal-line    { background: rgba(25,135,84,.07);  border: 1px solid rgba(25,135,84,.2);  color: #0f5132; }
-.quote-line   { background: rgba(99,102,241,.07); border: 1px solid rgba(99,102,241,.2); color: #3730a3; }
-.normal-line  { background: #f9fafb; color: #212529; }
-/* 관리자 코멘트 라이트 배경 박스 */
-.manager-comment-box { color: #374151 !important; }
-.manager-comment-box .text-muted { color: #6c757d !important; }
-/* 메타 배지 행: bg-light 강제 적용 */
-.weekly-meta-row { background-color: #f8f9fa !important; color: #495057 !important; }
-.weekly-meta-row .text-muted { color: #6c757d !important; }
+/* ═══════════════════════════════════════════════════════════════════
+   주간보고 상세 페이지 — .weekly-report-detail-page 스코프 가독성 수정
+   다크 테마 위에서 라이트 콘텐츠를 표시. 다른 페이지에는 영향 없음.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 1. CSS Custom Property 재정의
+      이 스코프 안의 var(--*) 참조를 모두 라이트 테마값으로 변환 */
+.weekly-report-detail-page {
+  --text-primary:         #1f2937;
+  --text-secondary:       #475569;
+  --text-muted:           #64748b;
+  --surface:              #ffffff;
+  --surface-hover:        #f3f4f6;
+  --border:               #e5e7eb;
+  --border-light:         #f1f5f9;
+  /* Bootstrap 5 CSS 변수 */
+  --bs-body-color:        #1f2937;
+  --bs-heading-color:     #0f172a;
+  --bs-card-bg:           #ffffff;
+  --bs-card-color:        #1f2937;
+  --bs-card-border-color: #e5e7eb;
+  --bs-secondary-color:   #64748b;
+  --bs-border-color:      #e5e7eb;
+  --bs-emphasis-color:    #0f172a;
+  --bs-link-color:        #3b82f6;
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+/* 2. 카드 */
+.weekly-report-detail-page .card {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #1f2937 !important;
+  box-shadow: 0 1px 6px rgba(15,23,42,.07) !important;
+}
+.weekly-report-detail-page .card-header {
+  background: #f8f9fa !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  color: #1f2937 !important;
+}
+.weekly-report-detail-page .card-body {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+}
+.weekly-report-detail-page .card-footer {
+  background: #f9fafb !important;
+  color: #374151 !important;
+}
+
+/* 3. 그라디언트 헤더 카드 — 보라/남색 배경 + 흰 글자 유지 */
+.weekly-report-detail-page .report-gradient-header {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #ffffff !important;
+  --bs-heading-color: #ffffff;   /* 내부 h1-h6도 흰색으로 */
+}
+.weekly-report-detail-page .report-gradient-header h5 {
+  color: #ffffff !important;
+}
+.weekly-report-detail-page .report-gradient-header small {
+  color: rgba(255,255,255,.85) !important;
+}
+.weekly-report-detail-page .report-gradient-header .text-muted {
+  color: rgba(255,255,255,.7) !important;
+}
+
+/* 4. 메타 배지 행 */
+.weekly-report-detail-page .weekly-meta-row {
+  background-color: #f8f9fa !important;
+  color: #495057 !important;
+}
+.weekly-report-detail-page .weekly-meta-row .text-muted {
+  color: #6c757d !important;
+}
+
+/* 5. 본문 텍스트 — !important 없이 적용 (Bootstrap text-* 유틸리티 보존) */
+.weekly-report-detail-page h1,
+.weekly-report-detail-page h2,
+.weekly-report-detail-page h3,
+.weekly-report-detail-page h4,
+.weekly-report-detail-page h5,
+.weekly-report-detail-page h6 {
+  color: #0f172a;
+}
+.weekly-report-detail-page p,
+.weekly-report-detail-page li,
+.weekly-report-detail-page td,
+.weekly-report-detail-page th {
+  color: #1f2937;
+}
+.weekly-report-detail-page .text-muted {
+  color: #64748b !important;
+}
+
+/* 6. 활동 라인 분류 박스 */
+.weekly-report-detail-page .activity-line {
+  font-size: .92em;
+  color: #212529;
+}
+.weekly-report-detail-page .risk-line {
+  background: rgba(220,53,69,.08)  !important;
+  border:     1px solid rgba(220,53,69,.25) !important;
+  color:      #842029 !important;
+}
+.weekly-report-detail-page .action-line {
+  background: rgba(13,202,240,.08) !important;
+  border:     1px solid rgba(13,202,240,.25) !important;
+  color:      #055160 !important;
+}
+.weekly-report-detail-page .deal-line {
+  background: rgba(25,135,84,.08)  !important;
+  border:     1px solid rgba(25,135,84,.25)  !important;
+  color:      #0f5132 !important;
+}
+.weekly-report-detail-page .quote-line {
+  background: rgba(99,102,241,.08) !important;
+  border:     1px solid rgba(99,102,241,.25) !important;
+  color:      #3730a3 !important;
+}
+.weekly-report-detail-page .normal-line {
+  background: #f1f5f9 !important;
+  color:      #212529 !important;
+}
+/* 중요/핵심/우선 라인 (bg-warning 계열 — bg-opacity-10 사용) */
+.weekly-report-detail-page .bg-warning.bg-opacity-10 {
+  color: #78350f !important;
+}
+
+/* 7. 관리자 코멘트 박스 */
+.weekly-report-detail-page .manager-comment-box {
+  background: #f5f3ff !important;
+  color: #374151 !important;
+}
+.weekly-report-detail-page .manager-comment-box .text-muted {
+  color: #6c757d !important;
+}
+
+/* 8. 배지 — bg-info 가독성 수정 (밝은 배경에 흰 글자 방지) */
+.weekly-report-detail-page .badge.bg-info {
+  background-color: #0f766e !important;
+  color: #ffffff !important;
+}
+/* bg-secondary (미검토 배지) 가독성 */
+.weekly-report-detail-page .badge.bg-secondary {
+  background-color: #64748b !important;
+  color: #ffffff !important;
+}
+
+/* 9. bg-info 유틸리티 (배지 외 — alert, 박스 등) */
+.weekly-report-detail-page .bg-info:not(.badge) {
+  background-color: #ccfbf1 !important;
+  color: #134e4a !important;
+}
+
+/* 10. 위험 카드 푸터 */
+.weekly-report-detail-page .card-footer.bg-danger.bg-opacity-5 {
+  background: rgba(220,53,69,.07) !important;
+}
+.weekly-report-detail-page .card-footer .text-danger {
+  color: #9b1c1c !important;
+}
+
+/* 11. 폼 컨트롤 (관리자 코멘트 textarea) */
+.weekly-report-detail-page .form-control {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border-color: #d1d5db !important;
+}
+.weekly-report-detail-page .form-control::placeholder {
+  color: #9ca3af !important;
+}
+
+/* 12. 브레드크럼 */
+.weekly-report-detail-page .breadcrumb-item a {
+  color: #3b82f6;
+}
+.weekly-report-detail-page .breadcrumb-item.active {
+  color: #64748b;
+}
+
+/* 13. 인쇄 */
 @media print {
-  .breadcrumb, .btn, nav, #commentFormArea { display: none !important; }
-  .card { border: none !important; box-shadow: none !important; }
-  .risk-line, .action-line, .deal-line, .quote-line, .normal-line {
-    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  .weekly-report-detail-page .btn,
+  .weekly-report-detail-page #commentFormArea { display: none !important; }
+  .weekly-report-detail-page .card { border: 1px solid #ccc !important; box-shadow: none !important; }
+  .weekly-report-detail-page .risk-line,
+  .weekly-report-detail-page .action-line,
+  .weekly-report-detail-page .deal-line,
+  .weekly-report-detail-page .quote-line,
+  .weekly-report-detail-page .normal-line {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 </style>

@@ -2883,3 +2883,76 @@ Schedule.objects.filter(
 | `debug_user_company_info` 엔드포인트 배포 중 | 🟡 중간 |
 | MIME 타입 미검증                             | 🟢 낮음 |
 | Cloudinary URL Django 인증 미적용            | 🟢 낮음 |
+
+---
+
+## Phase 7 블로커 QA 재검증 및 추가 QA (2026-04-27)
+
+**상태**: 완료 — 53/53 테스트 통과, 블로커 3개 모두 검증 완료
+
+### 1. 블로커 재검증 결과
+
+| #    | 검증 항목                                              | 방법                                                                                        | 결과 |
+| ---- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ---- |
+| B1-1 | 파이프라인 sync가 이번 달 일정만 포함                  | `funnel_views.py` 코드 검토: `visit_date__gte=month_start, visit_date__lt=next_month_start` | ✅   |
+| B1-2 | 지난 달 일정 포함 안 됨                                | `month_start = today.replace(day=1)` — 이번 달 1일 이후만 포함                              | ✅   |
+| B1-3 | 다음 달 일정 포함 안 됨                                | `visit_date__lt=next_month_start` — 다음 달 첫날 미포함                                     | ✅   |
+| B2-1 | 견적 일정(`activity_type='quote'`)이 `quote` 단계 제안 | `_suggest_pipeline_stage()` 코드 검토 확인                                                  | ✅   |
+| B2-2 | Quote 객체 우선 (실제 견적 레코드 > 일정 기반)         | Quote 존재 시 먼저 반환, Schedule은 2순위                                                   | ✅   |
+| B3-1 | 수동 이동 후 sync 불변                                 | `_try_advance_pipeline()`: `won`/`lost` 보호 + 앞으로만 이동                                | ✅   |
+| B3-2 | 중복 카드 없음                                         | `stage_map` 그룹핑 구조 — followup 1건 = 카드 1장                                           | ✅   |
+| B4-1 | 주간보고 상세 텍스트 가시성                            | `.normal-line { color: #212529; }` 등 명시적 색상 적용                                      | ✅   |
+| B4-2 | 배지/버튼 색상 유지                                    | `<style>` 스코프 제한 — Badge/Button Bootstrap 색상 미변경                                  | ✅   |
+| B4-3 | 인증 필수 유지                                         | `@login_required`, 회사/역할 권한 체크 모두 유지                                            | ✅   |
+
+---
+
+### 2. Phase 7 추가 QA — 코드 레벨 검토
+
+#### 2-1. Analytics export 역할 체크
+
+| 뷰                               | 체크 코드                    | 결과 |
+| -------------------------------- | ---------------------------- | ---- |
+| `analytics_activity_csv_export`  | `is_admin() or is_manager()` | ✅   |
+| `analytics_pipeline_csv_export`  | `is_admin() or is_manager()` | ✅   |
+| `analytics_activity_xlsx_export` | `is_admin() or is_manager()` | ✅   |
+| `analytics_pipeline_xlsx_export` | `is_admin() or is_manager()` | ✅   |
+
+#### 2-2. 인증 데코레이터 확인
+
+| 뷰                         | 데코레이터                                  | 결과 |
+| -------------------------- | ------------------------------------------- | ---- |
+| `funnel_pipeline_view`     | `@login_required`                           | ✅   |
+| `funnel_pipeline_move`     | `@login_required` + `@require_POST`         | ✅   |
+| `funnel_pipeline_sync`     | `@login_required` + `@require_POST`         | ✅   |
+| `weekly_report_detail`     | `@login_required` + 소유자/관리자 권한 체크 | ✅   |
+| `analytics_dashboard_view` | `@login_required`                           | ✅   |
+
+#### 2-3. 자동화 테스트 전체 결과 (53개)
+
+| 테스트 클래스              | 수     | 결과             |
+| -------------------------- | ------ | ---------------- |
+| `AuthenticationSmoke`      | 9      | ✅               |
+| `AnonymousAccessTests`     | 18     | ✅               |
+| `ExportPermissionTests`    | 8      | ✅               |
+| `AIPermissionTests`        | 3      | ✅               |
+| `DashboardSmokeTests`      | 3      | ✅               |
+| `PermissionIsolationTests` | 8      | ✅               |
+| `WeeklyReportTests`        | 4      | ✅               |
+| **합계**                   | **53** | **✅ 전체 통과** |
+
+---
+
+### 3. 명령 실행 및 결과
+
+| 명령                                                  | 결과                                               |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| `python manage.py check`                              | ✅ 0 issues (EMAIL_ENCRYPTION_KEY 경고 1개 — 정상) |
+| `python manage.py makemigrations --check --dry-run`   | ✅ No changes detected                             |
+| `python manage.py test reporting.tests --verbosity=2` | ✅ Ran 53 tests in 47.602s — OK                    |
+
+---
+
+### 4. 다음 단계
+
+Phase 7 QA 완료. 잔여 위험 항목(HSTS, debug 엔드포인트, MIME 검증 등)은 Phase 8 과제로 보류.
