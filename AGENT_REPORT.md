@@ -2450,11 +2450,11 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 
 ### 5. 실행 명령 및 결과
 
-| 명령                                                                             | 결과                            |
-| -------------------------------------------------------------------------------- | ------------------------------- |
-| `python manage.py check` | ✅ 0 issues |
-| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
-| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.935s — OK |
+| 명령                                                | 결과                            |
+| --------------------------------------------------- | ------------------------------- |
+| `python manage.py check`                            | ✅ 0 issues                     |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected          |
+| `python manage.py test reporting --verbosity=1`     | ✅ Ran 64 tests in 59.935s — OK |
 
 ---
 
@@ -2496,12 +2496,13 @@ Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
 
 ### 2. 추가된 변수
 
-| 변수 키 | 표시 레이블 | 데이터 소스 | 위치 |
-|---------|------------|------------|------|
-| `{{담당자이메일}}` | 담당자 이메일 | `FollowUp.email` (고객/거래처 담당자 이메일) | 고객/거래처 정보 섹션 |
-| `{{영업담당자이메일}}` | 영업담당자 이메일 | `User.email` (Django 기본 User 이메일 필드) | 영업담당자 섹션 |
+| 변수 키                | 표시 레이블       | 데이터 소스                                  | 위치                  |
+| ---------------------- | ----------------- | -------------------------------------------- | --------------------- |
+| `{{담당자이메일}}`     | 담당자 이메일     | `FollowUp.email` (고객/거래처 담당자 이메일) | 고객/거래처 정보 섹션 |
+| `{{영업담당자이메일}}` | 영업담당자 이메일 | `User.email` (Django 기본 User 이메일 필드)  | 영업담당자 섹션       |
 
 **데이터 소스 상세:**
+
 - `담당자이메일` → `schedule.followup.email` (FollowUp 모델의 EmailField, blank=True, null=True) → 없을 경우 빈 문자열
 - `영업담당자이메일` → `schedule.user.email` (Django auth.User의 email 필드) → 없을 경우 빈 문자열
 
@@ -2512,10 +2513,95 @@ Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
 ### 3. 변경된 파일
 
 #### `reporting/templates/reporting/partials/doc_variable_list.html`
+
 - **"고객 / 거래처 정보" 섹션**: `{{이메일}}` 칩 다음에 `{{담당자이메일}}` 칩 추가 (verbatim 블록 내 HTML 엔티티 사용)
 - **"영업담당자" 섹션**: 기존 칩 목록 끝에 `{{영업담당자이메일}}` 칩 추가
 
+---
+
+## 프로덕션 블로커 수정: 일정 상세 500 에러 (2026-04-28)
+
+**상태**: 완료 — 64/64 테스트 통과
+
+---
+
+### 1. 요약
+
+캘린더에서 일정 상세 페이지(`/reporting/schedules/<id>/`)로 이동 시 500 에러가 발생하던 문제를 수정.  
+`?from=calendar` 파라미터와 무관하게, `schedule_detail.html` 템플릿 자체의 `TemplateSyntaxError`가 원인이었음.
+
+---
+
+### 2. 근본 원인
+
+`reporting/templates/reporting/schedule_detail.html` 1997번 줄에서:
+
+```javascript
+html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td>...`;
+```
+
+JavaScript 템플릿 리터럴 내의 `{{${key}}}` 패턴에서 Django 템플릿 엔진이:
+1. `{{` → Django 변수 태그 시작으로 인식
+2. `${key}` → 파이썬 변수명으로 파싱 시도 → 실패
+3. `TemplateSyntaxError: Could not parse the remainder: '${key' from '${key'` 발생
+
+이 에러는 `schedule_detail_view`가 렌더링하는 모든 요청에서 발생하지만,  
+캘린더에서 `?from=calendar` 파라미터로 접근하다가 처음 발견된 것.
+
+---
+
+### 3. 수정 사항
+
+#### `reporting/templates/reporting/schedule_detail.html` (1997번 줄)
+
+**변경 전:**
+```javascript
+html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td>...`;
+```
+
+**변경 후:**
+```javascript
+html += `<tr class="${rowClass}"><td><code>{` + `{${key}}}</code></td>...`;
+```
+
+**원리:** `{{`를 두 개의 분리된 문자열 리터럴로 쪼개어 Django 템플릿 엔진의 렉서가 `{{` 연속 패턴을 인식하지 못하도록 함.  
+렌더링된 HTML 출력은 동일: `{{변수명}}` 형태로 표시됨.
+
+---
+
+### 4. 실행한 명령어 및 결과
+
+```
+python test_calendar_500.py
+→ Test 1: /reporting/schedules/545/ → Status: 200 ✓
+→ Test 2: /reporting/schedules/545/?from=calendar → Status: 200 ✓
+→ Test 3: /reporting/schedules/545/edit/ → Status: 200 ✓
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py test reporting
+→ Ran 64 tests in 53.517s — OK
+```
+
+---
+
+### 5. 기존 기능 유지
+
+- `schedule_detail_view`: `from_page` 컨텍스트 전달 정상 동작
+- `schedule_edit_view`: 변경 없음
+- 캘린더 → 상세 → 수정 플로우: 정상
+- 서류 변수 미리보기(previewModal) JavaScript: 동일 출력 유지
+
+---
+
+### 6. 다음 권장 단계
+
+- 일정 상세/수정 페이지 회귀 테스트 추가 (현재 64개 테스트에 포함 안 됨)
+- `schedule_form.html` 등 다른 대형 템플릿에도 `{{${...}}}` 유사 패턴 없는지 검증 권장
+
 #### `reporting/views.py` (두 곳)
+
 1. **line ~12625** (JSON API 응답 `data_map`): `'담당자이메일'`, `'영업담당자이메일'` 키 추가
 2. **line ~12972** (XLSX 서버 생성 `data_map`): `'담당자이메일'`, `'영업담당자이메일'` 키 추가
 
@@ -2533,28 +2619,28 @@ Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
 
 ### 5. 실행 명령 및 결과
 
-| 명령 | 결과 |
-|------|------|
-| `python manage.py check` | ✅ 0 issues |
-| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
-| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.935s — OK |
+| 명령                                                | 결과                            |
+| --------------------------------------------------- | ------------------------------- |
+| `python manage.py check`                            | ✅ 0 issues                     |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected          |
+| `python manage.py test reporting --verbosity=1`     | ✅ Ran 64 tests in 59.935s — OK |
 
 ---
 
 ### 6. 잔여 위험
 
-| 항목 | 위험도 | 설명 |
-|------|--------|------|
-| `User.email` 미등록 사용자 | 🟢 낮음 | 빈 문자열로 처리됨 — 크래시 없음 |
-| `FollowUp.email` NULL | 🟢 낮음 | `or ''` 처리됨 — 크래시 없음 |
-| 이전 Phase 잔여 위험 항목 | 변경 없음 | HSTS, debug endpoint 등 동일 |
+| 항목                       | 위험도    | 설명                             |
+| -------------------------- | --------- | -------------------------------- |
+| `User.email` 미등록 사용자 | 🟢 낮음   | 빈 문자열로 처리됨 — 크래시 없음 |
+| `FollowUp.email` NULL      | 🟢 낮음   | `or ''` 처리됨 — 크래시 없음     |
+| 이전 Phase 잔여 위험 항목  | 변경 없음 | HSTS, debug endpoint 등 동일     |
 
 ---
 
-| `python manage.py check`                                                         | ✅ 0 issues                     |
-| `python manage.py makemigrations --check --dry-run`                              | ✅ No changes detected          |
+| `python manage.py check` | ✅ 0 issues |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
 | `python manage.py test reporting.tests.ManagerRolePermissionTests --verbosity=1` | ✅ Ran 11 tests in 15.089s — OK |
-| `python manage.py test reporting --verbosity=1`                                  | ✅ Ran 64 tests in 59.877s — OK |
+| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.877s — OK |
 
 ---
 

@@ -1994,7 +1994,7 @@ async function previewDocument(documentType, scheduleId) {
         const val = variables[key];
         const isEmpty = val === '' || val === null || val === undefined;
         const rowClass = isEmpty ? 'table-warning' : '';
-        html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td><td>${isEmpty ? '<span class="text-muted">(비어있음)</span>' : escHtml(val)}</td></tr>`;
+        html += `<tr class="${rowClass}"><td><code>{` + `{${key}}}</code></td><td>${isEmpty ? '<span class="text-muted">(비어있음)</span>' : escHtml(val)}</td></tr>`;
       }
       html += '</tbody></table>';
     }
