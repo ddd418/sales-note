@@ -2393,20 +2393,21 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 
 ### 2. 권한 매트릭스 (확정)
 
-| 액션 | Admin | Manager (뷰어) | Salesman (실무자) |
-|------|-------|----------------|-------------------|
-| 데이터 조회 (같은 회사) | ✅ | ✅ | ✅ (본인 데이터) |
-| 팔로우업 생성 | ✅ | ❌ 403/302 | ✅ |
-| 일정 생성 | ✅ | ❌ 403/302 | ✅ |
-| 히스토리 기록 | ✅ | ❌ 403/302 | ✅ |
-| 파이프라인 카드 이동 | ✅ | ❌ 403 JSON | ✅ |
-| Analytics export | ✅ | ✅ | ❌ 403 |
+| 액션                    | Admin | Manager (뷰어) | Salesman (실무자) |
+| ----------------------- | ----- | -------------- | ----------------- |
+| 데이터 조회 (같은 회사) | ✅    | ✅             | ✅ (본인 데이터)  |
+| 팔로우업 생성           | ✅    | ❌ 403/302     | ✅                |
+| 일정 생성               | ✅    | ❌ 403/302     | ✅                |
+| 히스토리 기록           | ✅    | ❌ 403/302     | ✅                |
+| 파이프라인 카드 이동    | ✅    | ❌ 403 JSON    | ✅                |
+| Analytics export        | ✅    | ✅             | ❌ 403            |
 
 ---
 
 ### 3. 변경된 파일
 
 #### `reporting/views.py`
+
 - `followup_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message
 - `schedule_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message
 - `history_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message (URL 미노출이지만 안전 레이어로 유지)
@@ -2414,33 +2415,119 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 - `followup_create_ajax`: 최상단 `is_manager()` 체크 → 403 JSON
 
 #### `reporting/funnel_views.py`
+
 - `funnel_pipeline_move`: 최상단 `is_manager()` 체크 → 403 JSON
 
 #### `reporting/templates/reporting/dashboard.html`
+
 - "보고서 작성" 버튼: `{% if user.userprofile.role != 'manager' %}` 가드 추가
 - "빠른 작성" 전체 섹션: `{% if user.userprofile.role != 'manager' %}` 가드 추가
 - "일정 없음" 모달의 "일정 추가" 버튼: `{% if user.userprofile.role != 'manager' %}` 가드 추가
 
 #### `reporting/tests.py`
+
 - `ManagerRolePermissionTests` 클래스 신설 (11개 테스트)
 
 ---
 
 ### 4. 신규 테스트 (`ManagerRolePermissionTests`)
 
-| 테스트명 | 검증 내용 | 결과 |
-|---------|----------|------|
-| `test_manager_can_view_followup_list` | Manager GET 팔로우업 목록 → 200 | ✅ |
-| `test_manager_can_view_history_list` | Manager GET 히스토리 목록 → 200 | ✅ |
-| `test_manager_can_view_schedule_list` | Manager GET 일정 목록 → 200 | ✅ |
-| `test_manager_cannot_get_followup_create` | Manager GET 팔로우업 생성 → 302 | ✅ |
-| `test_manager_cannot_post_followup_create` | Manager POST 팔로우업 생성 → 302 | ✅ |
-| `test_manager_cannot_get_schedule_create` | Manager GET 일정 생성 → 302 | ✅ |
-| `test_manager_cannot_post_schedule_create` | Manager POST 일정 생성 → 302 | ✅ |
-| `test_manager_cannot_access_history_create_from_schedule` | Manager GET history-from-schedule → 302 | ✅ |
-| `test_manager_cannot_post_history_create_from_schedule` | Manager POST history-from-schedule → 302 | ✅ |
-| `test_salesman_can_get_schedule_create` | Salesman GET 일정 생성 → 200 (차단 없음) | ✅ |
-| `test_salesman_can_get_followup_create` | Salesman GET 팔로우업 생성 → 200 (차단 없음) | ✅ |
+| 테스트명                                                  | 검증 내용                                    | 결과 |
+| --------------------------------------------------------- | -------------------------------------------- | ---- |
+| `test_manager_can_view_followup_list`                     | Manager GET 팔로우업 목록 → 200              | ✅   |
+| `test_manager_can_view_history_list`                      | Manager GET 히스토리 목록 → 200              | ✅   |
+| `test_manager_can_view_schedule_list`                     | Manager GET 일정 목록 → 200                  | ✅   |
+| `test_manager_cannot_get_followup_create`                 | Manager GET 팔로우업 생성 → 302              | ✅   |
+| `test_manager_cannot_post_followup_create`                | Manager POST 팔로우업 생성 → 302             | ✅   |
+| `test_manager_cannot_get_schedule_create`                 | Manager GET 일정 생성 → 302                  | ✅   |
+| `test_manager_cannot_post_schedule_create`                | Manager POST 일정 생성 → 302                 | ✅   |
+| `test_manager_cannot_access_history_create_from_schedule` | Manager GET history-from-schedule → 302      | ✅   |
+| `test_manager_cannot_post_history_create_from_schedule`   | Manager POST history-from-schedule → 302     | ✅   |
+| `test_salesman_can_get_schedule_create`                   | Salesman GET 일정 생성 → 200 (차단 없음)     | ✅   |
+| `test_salesman_can_get_followup_create`                   | Salesman GET 팔로우업 생성 → 200 (차단 없음) | ✅   |
+
+---
+
+### 5. 실행 명령 및 결과
+
+| 명령                                                                             | 결과                            |
+| -------------------------------------------------------------------------------- | ------------------------------- |
+| `python manage.py check` | ✅ 0 issues |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
+| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.935s — OK |
+
+---
+
+### 6. 보안 확인
+
+- Manager는 URL 직접 접근(GET/POST) 모두 차단됨 (서버 사이드 검증)
+- 템플릿 UI 숨김은 UX 보조 레이어 (보안 레이어는 서버 사이드)
+- 기존 admin 권한, salesman 권한, 익명 차단 — 모두 변경 없음
+
+---
+
+### 7. 기존 기능 유지
+
+- 모든 목록/상세 조회 뷰: 역할 관계없이 동일하게 동작
+- Analytics export (manager 허용): 변경 없음
+- Phase 7 파이프라인 sync 날짜 필터: 변경 없음
+- 기존 53개 테스트: 전부 통과 유지
+
+---
+
+### 8. 다음 권장 단계
+
+Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
+
+---
+
+## 서류 관리 담당자 이메일 변수 추가 (2026-04-28)
+
+**상태**: 완료 — 64/64 테스트 통과
+
+---
+
+### 1. 요약
+
+서류 템플릿 변수 목록에 `{{담당자이메일}}` 및 `{{영업담당자이메일}}` 변수를 추가하여
+견적서/거래명세서 생성 시 고객 담당자 이메일과 영업담당자 이메일을 자동 채울 수 있도록 개선.
+
+---
+
+### 2. 추가된 변수
+
+| 변수 키 | 표시 레이블 | 데이터 소스 | 위치 |
+|---------|------------|------------|------|
+| `{{담당자이메일}}` | 담당자 이메일 | `FollowUp.email` (고객/거래처 담당자 이메일) | 고객/거래처 정보 섹션 |
+| `{{영업담당자이메일}}` | 영업담당자 이메일 | `User.email` (Django 기본 User 이메일 필드) | 영업담당자 섹션 |
+
+**데이터 소스 상세:**
+- `담당자이메일` → `schedule.followup.email` (FollowUp 모델의 EmailField, blank=True, null=True) → 없을 경우 빈 문자열
+- `영업담당자이메일` → `schedule.user.email` (Django auth.User의 email 필드) → 없을 경우 빈 문자열
+
+**참고:** `{{이메일}}`은 기존에도 존재하며 동일한 `followup.email` 소스를 사용합니다. `{{담당자이메일}}`은 의미를 명확히 하는 별칭으로 추가되었습니다.
+
+---
+
+### 3. 변경된 파일
+
+#### `reporting/templates/reporting/partials/doc_variable_list.html`
+- **"고객 / 거래처 정보" 섹션**: `{{이메일}}` 칩 다음에 `{{담당자이메일}}` 칩 추가 (verbatim 블록 내 HTML 엔티티 사용)
+- **"영업담당자" 섹션**: 기존 칩 목록 끝에 `{{영업담당자이메일}}` 칩 추가
+
+#### `reporting/views.py` (두 곳)
+1. **line ~12625** (JSON API 응답 `data_map`): `'담당자이메일'`, `'영업담당자이메일'` 키 추가
+2. **line ~12972** (XLSX 서버 생성 `data_map`): `'담당자이메일'`, `'영업담당자이메일'` 키 추가
+
+---
+
+### 4. 하위 호환성
+
+- 기존 `{{이메일}}` 변수: 변경 없음, 동일하게 동작
+- 기존 `{{유효일+30}}` 등 특수 패턴: 변경 없음
+- 기존 `{{품목N_xxx}}` 패턴: 변경 없음
+- 템플릿 편집 페이지 (`/reporting/documents/4/edit/`): TemplateSyntaxError 없음 (verbatim 블록 유지)
+- 기존 서류 템플릿 파일에 해당 변수 미포함 시: 치환 없이 그대로 유지 (기존 동작)
 
 ---
 
@@ -2450,8 +2537,24 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 |------|------|
 | `python manage.py check` | ✅ 0 issues |
 | `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
+| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.935s — OK |
+
+---
+
+### 6. 잔여 위험
+
+| 항목 | 위험도 | 설명 |
+|------|--------|------|
+| `User.email` 미등록 사용자 | 🟢 낮음 | 빈 문자열로 처리됨 — 크래시 없음 |
+| `FollowUp.email` NULL | 🟢 낮음 | `or ''` 처리됨 — 크래시 없음 |
+| 이전 Phase 잔여 위험 항목 | 변경 없음 | HSTS, debug endpoint 등 동일 |
+
+---
+
+| `python manage.py check`                                                         | ✅ 0 issues                     |
+| `python manage.py makemigrations --check --dry-run`                              | ✅ No changes detected          |
 | `python manage.py test reporting.tests.ManagerRolePermissionTests --verbosity=1` | ✅ Ran 11 tests in 15.089s — OK |
-| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.877s — OK |
+| `python manage.py test reporting --verbosity=1`                                  | ✅ Ran 64 tests in 59.877s — OK |
 
 ---
 
@@ -2478,6 +2581,7 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
 
 권장 Phase 8 후보:
+
 1. 잔여 보안 항목: `debug_user_company_info` 제거, `SECURE_HSTS_SECONDS` 추가
 2. 모바일 영업노트 입력 UX 개선
 3. 후속조치 지연 알림 (due date 지난 팔로우업 강조)

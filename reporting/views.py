@@ -12622,12 +12622,14 @@ def get_document_template_data(request, document_type, schedule_id):
             '연구실': str(schedule.followup.department) if schedule.followup.department else '',
             '담당자': schedule.followup.customer_name,
             '이메일': schedule.followup.email or '',
+            '담당자이메일': schedule.followup.email or '',
             '연락처': schedule.followup.phone_number or '',
             '전화번호': schedule.followup.phone_number or '',
             
             '실무자': salesman_name,
             '영업담당자': salesman_name,
             '담당영업': salesman_name,
+            '영업담당자이메일': schedule.user.email or '',
             
             '일정날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
             '날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
@@ -12967,6 +12969,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     '연구실': str(schedule.followup.department) if schedule.followup.department else '',
                     '담당자': schedule.followup.customer_name,
                     '이메일': schedule.followup.email or '',
+                    '담당자이메일': schedule.followup.email or '',
                     '연락처': schedule.followup.phone_number or '',
                     '전화번호': schedule.followup.phone_number or '',
                     
@@ -12974,6 +12977,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     '실무자': salesman_name,
                     '영업담당자': salesman_name,
                     '담당영업': salesman_name,
+                    '영업담당자이메일': schedule.user.email or '',
                     # 날짜 정보
                     '일정날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
                     '날짜': schedule.visit_date.strftime('%Y년 %m월 %d일'),
