@@ -1052,6 +1052,12 @@ def followup_detail_view(request, pk):
 @login_required
 def followup_create_view(request):
     """팔로우업 생성"""
+    # Manager는 데이터 생성 불가 (뷰어 권한)
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        messages.error(request, '권한이 없습니다. Manager는 데이터를 생성할 수 없습니다.')
+        return redirect('reporting:followup_list')
+
     if request.method == 'POST':
         form = FollowUpForm(request.POST, user=request.user)
         if form.is_valid():
@@ -2570,6 +2576,12 @@ def schedule_detail_view(request, pk):
 @login_required
 def schedule_create_view(request):
     """일정 생성 (캘린더에서 선택된 날짜 지원)"""
+    # Manager는 데이터 생성 불가 (뷰어 권한)
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        messages.error(request, '권한이 없습니다. Manager는 일정을 생성할 수 없습니다.')
+        return redirect('reporting:schedule_list')
+
     if request.method == 'POST':
         form = ScheduleForm(request.POST, user=request.user, request=request)
         if form.is_valid():
@@ -3811,6 +3823,12 @@ def history_detail_view(request, pk):
 @login_required
 def history_create_view(request):
     """히스토리 생성"""
+    # Manager는 데이터 생성 불가 (뷰어 권한)
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        messages.error(request, '권한이 없습니다. Manager는 활동을 기록할 수 없습니다.')
+        return redirect('reporting:history_list')
+
     if request.method == 'POST':
         form = HistoryForm(request.POST, request.FILES, user=request.user, request=request)
         if form.is_valid():
@@ -5817,6 +5835,14 @@ def toggle_all_tax_invoices(request, followup_id):
 def history_create_from_schedule(request, schedule_id):
     """일정에서 히스토리 생성 또는 기존 히스토리로 이동"""
     try:
+        # Manager는 히스토리 생성 불가 (뷰어 권한)
+        _profile = get_user_profile(request.user)
+        if _profile.is_manager():
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': '권한이 없습니다. Manager는 활동을 기록할 수 없습니다.'}, status=403)
+            messages.error(request, '권한이 없습니다. Manager는 활동을 기록할 수 없습니다.')
+            return redirect('reporting:schedule_list')
+
         schedule = get_object_or_404(Schedule, pk=schedule_id)
         
         # 권한 체크: 자신의 일정이거나 관리 권한이 있는 경우만 허용
@@ -9709,6 +9735,11 @@ def customer_detail_report_view_simple(request, followup_id):
 def followup_create_ajax(request):
     """AJAX로 팔로우업을 생성하는 뷰"""
     try:
+        # Manager는 데이터 생성 불가 (뷰어 권한)
+        _ajax_profile = get_user_profile(request.user)
+        if _ajax_profile.is_manager():
+            return JsonResponse({'success': False, 'error': '권한이 없습니다. Manager는 데이터를 생성할 수 없습니다.'}, status=403)
+
         # 필수 필드 검증
         customer_name = request.POST.get('customer_name', '').strip()
         company_id = request.POST.get('company', '').strip()

@@ -431,3 +431,140 @@ class WeeklyReportTests(TestCase):
         r = self.client.get(reverse('reporting:weekly_report_list'))
         self.assertEqual(r.status_code, 200)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Manager 역할 권한 검증 테스트
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ManagerRolePermissionTests(TestCase):
+    """Manager(뷰어)는 영업노트/일정/고객 데이터를 생성·수정할 수 없음을 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='테스트회사')
+        self.manager = make_user('mgr_test', role='manager', company=self.company)
+        self.salesman = make_user('slm_test', role='salesman', company=self.company)
+
+    # ── 히스토리 생성 차단 (일정 기반) ────────────────────────────────────
+
+    def test_manager_cannot_access_history_create_from_schedule(self):
+        """Manager: 일정 기반 히스토리 생성 → 리다이렉트/403 차단"""
+        from reporting.models import Company, Department, FollowUp, Schedule
+        import datetime
+        # 최소 필요 객체 생성
+        company = Company.objects.create(name='테스트업체', created_by=self.salesman)
+        dept = Department.objects.create(name='테스트부서', company=company, created_by=self.salesman)
+        followup = FollowUp.objects.create(
+            user=self.salesman, customer_name='테스트고객',
+            company=company, department=dept
+        )
+        schedule = Schedule.objects.create(
+            user=self.salesman, followup=followup,
+            visit_date=datetime.date.today(),
+            visit_time=datetime.time(9, 0),
+            activity_type='customer_meeting'
+        )
+        self.client.force_login(self.manager)
+        url = reverse('reporting:history_create_from_schedule', args=[schedule.pk])
+        r = self.client.get(url)
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager GET history_create_from_schedule: expected redirect/403, got {r.status_code}")
+
+    def test_manager_cannot_post_history_create_from_schedule(self):
+        """Manager: 일정 기반 히스토리 생성 POST → 리다이렉트/403 차단"""
+        from reporting.models import Company, Department, FollowUp, Schedule
+        import datetime
+        company = Company.objects.create(name='테스트업체2', created_by=self.salesman)
+        dept = Department.objects.create(name='테스트부서2', company=company, created_by=self.salesman)
+        followup = FollowUp.objects.create(
+            user=self.salesman, customer_name='테스트고객2',
+            company=company, department=dept
+        )
+        schedule = Schedule.objects.create(
+            user=self.salesman, followup=followup,
+            visit_date=datetime.date.today(),
+            visit_time=datetime.time(9, 0),
+            activity_type='customer_meeting'
+        )
+        self.client.force_login(self.manager)
+        url = reverse('reporting:history_create_from_schedule', args=[schedule.pk])
+        r = self.client.post(url, {'action_type': 'customer_meeting'})
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager POST history_create_from_schedule: expected redirect/403, got {r.status_code}")
+
+    # ── 일정 생성 차단 ──────────────────────────────────────────────────────
+
+    def test_manager_cannot_get_schedule_create(self):
+        """Manager: 일정 생성 폼 GET → 리다이렉트(차단)"""
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:schedule_create'))
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager GET schedule_create: expected redirect/403, got {r.status_code}")
+
+    def test_manager_cannot_post_schedule_create(self):
+        """Manager: 일정 생성 POST → 리다이렉트(차단)"""
+        self.client.force_login(self.manager)
+        r = self.client.post(reverse('reporting:schedule_create'), {
+            'visit_date': '2026-05-01',
+            'activity_type': 'customer_meeting',
+        })
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager POST schedule_create: expected redirect/403, got {r.status_code}")
+
+    # ── 고객(팔로우업) 생성 차단 ────────────────────────────────────────────
+
+    def test_manager_cannot_get_followup_create(self):
+        """Manager: 고객 생성 폼 GET → 리다이렉트(차단)"""
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:followup_create'))
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager GET followup_create: expected redirect/403, got {r.status_code}")
+
+    def test_manager_cannot_post_followup_create(self):
+        """Manager: 고객 생성 POST → 리다이렉트(차단)"""
+        self.client.force_login(self.manager)
+        r = self.client.post(reverse('reporting:followup_create'), {
+            'customer_name': '홍길동',
+        })
+        self.assertIn(r.status_code, [302, 403],
+                      msg=f"Manager POST followup_create: expected redirect/403, got {r.status_code}")
+
+    # ── Salesman은 정상 접근 가능 (form 렌더링) ─────────────────────────────
+
+    def test_salesman_can_get_schedule_create(self):
+        """Salesman: 일정 생성 폼 GET → 200"""
+        self.client.force_login(self.salesman)
+        r = self.client.get(reverse('reporting:schedule_create'))
+        self.assertEqual(r.status_code, 200,
+                         msg=f"Salesman GET schedule_create: expected 200, got {r.status_code}")
+
+    def test_salesman_can_get_followup_create(self):
+        """Salesman: 고객 생성 폼 GET → 200"""
+        self.client.force_login(self.salesman)
+        r = self.client.get(reverse('reporting:followup_create'))
+        self.assertEqual(r.status_code, 200,
+                         msg=f"Salesman GET followup_create: expected 200, got {r.status_code}")
+
+    # ── 조회는 허용 ─────────────────────────────────────────────────────────
+
+    def test_manager_can_view_history_list(self):
+        """Manager: 히스토리 목록 조회 → 200"""
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:history_list'))
+        self.assertEqual(r.status_code, 200,
+                         msg=f"Manager GET history_list: expected 200, got {r.status_code}")
+
+    def test_manager_can_view_schedule_list(self):
+        """Manager: 일정 목록 조회 → 200"""
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:schedule_list'))
+        self.assertEqual(r.status_code, 200,
+                         msg=f"Manager GET schedule_list: expected 200, got {r.status_code}")
+
+    def test_manager_can_view_followup_list(self):
+        """Manager: 고객 목록 조회 → 200"""
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:followup_list'))
+        self.assertEqual(r.status_code, 200,
+                         msg=f"Manager GET followup_list: expected 200, got {r.status_code}")
+

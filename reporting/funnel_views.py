@@ -911,6 +911,11 @@ def funnel_pipeline_view(request):
 def funnel_pipeline_move(request):
     """카드 단계 이동 API"""
     try:
+        # Manager는 파이프라인 카드 이동 불가 (뷰어 권한)
+        _move_profile = _get_user_profile(request.user)
+        if _move_profile.is_manager():
+            return JsonResponse({'success': False, 'error': '권한이 없습니다. Manager는 파이프라인 카드를 이동할 수 없습니다.'}, status=403)
+
         data = json.loads(request.body)
         followup_id = data.get('followup_id')
         new_stage = data.get('stage')

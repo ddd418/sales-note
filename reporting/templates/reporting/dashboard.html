@@ -1224,9 +1224,11 @@ html, body {
             {{ sch.get_status_display }}
           </span>
           {% if sch.status == 'completed' %}
+          {% if user.userprofile.role != 'manager' %}
           <a href="{% url 'reporting:history_create_from_schedule' sch.pk %}" class="btn btn-sm btn-warning">
             <i class="fas fa-pen me-1"></i>보고서 작성
           </a>
+          {% endif %}
           {% endif %}
         </div>
       </li>
@@ -1235,7 +1237,8 @@ html, body {
   </div>
   {% endif %}
 
-  <!-- Phase 4: 빠른 작성 버튼 -->
+  <!-- Phase 4: 빠른 작성 버튼 (Manager는 읽기 전용이므로 숨김) -->
+  {% if user.userprofile.role != 'manager' %}
   <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem;">
     <div class="card-body py-3">
       <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -1252,6 +1255,7 @@ html, body {
       </div>
     </div>
   </div>
+  {% endif %}
 
   <!-- Phase 5: 파이프라인 단계별 현황 -->
   {% if pipeline_summary %}
@@ -2646,9 +2650,11 @@ document.addEventListener('DOMContentLoaded', function() {
             <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
             <p class="text-muted mb-1">오늘과 이번 주 예정된 일정이 없습니다.</p>
             <p class="text-muted small mb-3">일정을 먼저 추가한 뒤 영업 노트를 작성하세요.</p>
+            {% if user.userprofile.role != 'manager' %}
             <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm me-2">
               <i class="fas fa-calendar-plus me-1"></i>일정 추가
             </a>
+            {% endif %}
             <a href="{% url 'reporting:schedule_list' %}" class="btn btn-outline-secondary btn-sm">
               <i class="fas fa-calendar-alt me-1"></i>일정 목록
             </a>

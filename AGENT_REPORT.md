@@ -2375,6 +2375,116 @@ Phase 6.6-3: 주간보고 일정 불러오기 개선
 
 ---
 
+## Manager 역할 쓰기 권한 차단 강화 (2026-04-28)
+
+**상태**: 완료 — 64/64 테스트 통과
+
+---
+
+### 1. 요약
+
+`manager` 역할 사용자가 영업 실무 데이터(팔로우업, 일정, 히스토리, 파이프라인 카드)를
+생성·이동할 수 없도록 서버 사이드 차단과 템플릿 UI 숨김을 강화.
+
+- **기존 문제**: `can_modify_user_data()`는 manager를 차단하지만, 개별 create 뷰는 이 함수를 호출하지 않아 manager가 POST로 직접 생성 가능
+- **해결**: 각 create 뷰 최상단에 `is_manager()` 직접 체크 추가; 파이프라인 이동(AJAX) 차단; 대시보드 "빠른 작성" 버튼 숨김
+
+---
+
+### 2. 권한 매트릭스 (확정)
+
+| 액션 | Admin | Manager (뷰어) | Salesman (실무자) |
+|------|-------|----------------|-------------------|
+| 데이터 조회 (같은 회사) | ✅ | ✅ | ✅ (본인 데이터) |
+| 팔로우업 생성 | ✅ | ❌ 403/302 | ✅ |
+| 일정 생성 | ✅ | ❌ 403/302 | ✅ |
+| 히스토리 기록 | ✅ | ❌ 403/302 | ✅ |
+| 파이프라인 카드 이동 | ✅ | ❌ 403 JSON | ✅ |
+| Analytics export | ✅ | ✅ | ❌ 403 |
+
+---
+
+### 3. 변경된 파일
+
+#### `reporting/views.py`
+- `followup_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message
+- `schedule_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message
+- `history_create_view`: 최상단 `is_manager()` 체크 → 302 redirect + error message (URL 미노출이지만 안전 레이어로 유지)
+- `history_create_from_schedule`: 최상단 `is_manager()` 체크 → AJAX: 403 JSON, 일반: 302 redirect
+- `followup_create_ajax`: 최상단 `is_manager()` 체크 → 403 JSON
+
+#### `reporting/funnel_views.py`
+- `funnel_pipeline_move`: 최상단 `is_manager()` 체크 → 403 JSON
+
+#### `reporting/templates/reporting/dashboard.html`
+- "보고서 작성" 버튼: `{% if user.userprofile.role != 'manager' %}` 가드 추가
+- "빠른 작성" 전체 섹션: `{% if user.userprofile.role != 'manager' %}` 가드 추가
+- "일정 없음" 모달의 "일정 추가" 버튼: `{% if user.userprofile.role != 'manager' %}` 가드 추가
+
+#### `reporting/tests.py`
+- `ManagerRolePermissionTests` 클래스 신설 (11개 테스트)
+
+---
+
+### 4. 신규 테스트 (`ManagerRolePermissionTests`)
+
+| 테스트명 | 검증 내용 | 결과 |
+|---------|----------|------|
+| `test_manager_can_view_followup_list` | Manager GET 팔로우업 목록 → 200 | ✅ |
+| `test_manager_can_view_history_list` | Manager GET 히스토리 목록 → 200 | ✅ |
+| `test_manager_can_view_schedule_list` | Manager GET 일정 목록 → 200 | ✅ |
+| `test_manager_cannot_get_followup_create` | Manager GET 팔로우업 생성 → 302 | ✅ |
+| `test_manager_cannot_post_followup_create` | Manager POST 팔로우업 생성 → 302 | ✅ |
+| `test_manager_cannot_get_schedule_create` | Manager GET 일정 생성 → 302 | ✅ |
+| `test_manager_cannot_post_schedule_create` | Manager POST 일정 생성 → 302 | ✅ |
+| `test_manager_cannot_access_history_create_from_schedule` | Manager GET history-from-schedule → 302 | ✅ |
+| `test_manager_cannot_post_history_create_from_schedule` | Manager POST history-from-schedule → 302 | ✅ |
+| `test_salesman_can_get_schedule_create` | Salesman GET 일정 생성 → 200 (차단 없음) | ✅ |
+| `test_salesman_can_get_followup_create` | Salesman GET 팔로우업 생성 → 200 (차단 없음) | ✅ |
+
+---
+
+### 5. 실행 명령 및 결과
+
+| 명령 | 결과 |
+|------|------|
+| `python manage.py check` | ✅ 0 issues |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
+| `python manage.py test reporting.tests.ManagerRolePermissionTests --verbosity=1` | ✅ Ran 11 tests in 15.089s — OK |
+| `python manage.py test reporting --verbosity=1` | ✅ Ran 64 tests in 59.877s — OK |
+
+---
+
+### 6. 보안 확인
+
+- manager는 URL 직접 접근(GET/POST) 모두 차단됨 (서버 사이드 검증)
+- 템플릿 UI 숨김은 UX 보조 레이어 (보안 레이어는 서버 사이드)
+- 기존 admin 권한, salesman 권한, 익명 차단 — 모두 변경 없음
+- `history_create` URL은 urls.py에서 주석 처리되어 직접 접근 불가 (view 내 guard는 안전 레이어)
+
+---
+
+### 7. 기존 기능 유지
+
+- 모든 목록/상세 조회 뷰: 역할 관계없이 동일하게 동작
+- Analytics export (manager 허용): 변경 없음
+- Phase 7 파이프라인 sync 날짜 필터: 변경 없음
+- 기존 53개 테스트: 전부 통과 유지
+
+---
+
+### 8. 다음 권장 단계
+
+Phase 8 시작 가능 — Manager 역할 권한 완전 적용 확인됨.
+
+권장 Phase 8 후보:
+1. 잔여 보안 항목: `debug_user_company_info` 제거, `SECURE_HSTS_SECONDS` 추가
+2. 모바일 영업노트 입력 UX 개선
+3. 후속조치 지연 알림 (due date 지난 팔로우업 강조)
+4. 대시보드 담당자별 활동 통계 추가
+
+---
+
 ### 삽입 텍스트 예시
 
 **영업활동 삽입 결과**:
@@ -3352,6 +3462,7 @@ if any(h.action_type == 'customer_meeting' for h in histories):
 ```
 
 **날짜 필터 기준**:
+
 - `Schedule`: `visit_date__gte=thirty_days_ago AND visit_date__lte=today AND status != cancelled`
 - `History`: `meeting_date__gte=thirty_days_ago OR (meeting_date IS NULL AND created_at__date__gte=thirty_days_ago)`
 
@@ -3359,14 +3470,14 @@ if any(h.action_type == 'customer_meeting' for h in histories):
 
 ### 검증 케이스별 결과
 
-| 케이스 | 상황 | 기대 결과 | 수정 후 결과 |
-|---|---|---|---|
-| A | 현재: 잠재, 60일 전 미팅 | 잠재 유지 | ✅ `recent_histories` 필터로 미포함 → 추천 없음 → 잠재 유지 |
-| B | 현재: 잠재, 10일 전 미팅 | 접촉/미팅 | ✅ `recent_histories`에 포함 → contact 추천 |
-| C | 견적 일정 10일 전 | 견적 | ✅ `current_month_schedules`에서 quote activity → quote 추천 |
-| D | 현재: 견적, 10일 전 미팅 | 견적 유지 | ✅ `_try_advance_pipeline`이 앞으로만 이동 → 견적 유지 |
-| E | 현재: 잠재, 최근 30일 미팅 없음 | 잠재 유지 | ✅ 추천 없음 → 잠재 유지 |
-| F | 최근 견적 + 최근 미팅 | 견적 | ✅ 2단계에서 quote 일정 감지 → quote 우선 |
+| 케이스 | 상황                            | 기대 결과 | 수정 후 결과                                                 |
+| ------ | ------------------------------- | --------- | ------------------------------------------------------------ |
+| A      | 현재: 잠재, 60일 전 미팅        | 잠재 유지 | ✅ `recent_histories` 필터로 미포함 → 추천 없음 → 잠재 유지  |
+| B      | 현재: 잠재, 10일 전 미팅        | 접촉/미팅 | ✅ `recent_histories`에 포함 → contact 추천                  |
+| C      | 견적 일정 10일 전               | 견적      | ✅ `current_month_schedules`에서 quote activity → quote 추천 |
+| D      | 현재: 견적, 10일 전 미팅        | 견적 유지 | ✅ `_try_advance_pipeline`이 앞으로만 이동 → 견적 유지       |
+| E      | 현재: 잠재, 최근 30일 미팅 없음 | 잠재 유지 | ✅ 추천 없음 → 잠재 유지                                     |
+| F      | 최근 견적 + 최근 미팅           | 견적      | ✅ 2단계에서 quote 일정 감지 → quote 우선                    |
 
 ---
 
