@@ -2541,6 +2541,7 @@ html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td>...`;
 ```
 
 JavaScript 템플릿 리터럴 내의 `{{${key}}}` 패턴에서 Django 템플릿 엔진이:
+
 1. `{{` → Django 변수 태그 시작으로 인식
 2. `${key}` → 파이썬 변수명으로 파싱 시도 → 실패
 3. `TemplateSyntaxError: Could not parse the remainder: '${key' from '${key'` 발생
@@ -2555,11 +2556,13 @@ JavaScript 템플릿 리터럴 내의 `{{${key}}}` 패턴에서 Django 템플릿
 #### `reporting/templates/reporting/schedule_detail.html` (1997번 줄)
 
 **변경 전:**
+
 ```javascript
 html += `<tr class="${rowClass}"><td><code>{{${key}}}</code></td>...`;
 ```
 
 **변경 후:**
+
 ```javascript
 html += `<tr class="${rowClass}"><td><code>{` + `{${key}}}</code></td>...`;
 ```
