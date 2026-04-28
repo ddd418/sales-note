@@ -28,7 +28,12 @@ class EmailEncryption:
     @staticmethod
     def get_cipher():
         """암호화 키 가져오기 (settings에서)"""
-        key = getattr(settings, 'EMAIL_ENCRYPTION_KEY', Fernet.generate_key())
+        key = getattr(settings, 'EMAIL_ENCRYPTION_KEY', None)
+        if not key:
+            raise ValueError(
+                'EMAIL_ENCRYPTION_KEY 설정이 없어 이메일 암호화 기능을 사용할 수 없습니다. '
+                'Railway 환경변수 EMAIL_ENCRYPTION_KEY를 설정하세요.'
+            )
         return Fernet(key)
     
     @staticmethod
@@ -36,8 +41,12 @@ class EmailEncryption:
         """비밀번호 암호화"""
         if not password:
             return ""
-        cipher = EmailEncryption.get_cipher()
-        return cipher.encrypt(password.encode()).decode()
+        try:
+            cipher = EmailEncryption.get_cipher()
+            return cipher.encrypt(password.encode()).decode()
+        except ValueError as e:
+            logger.error(f"이메일 암호화 불가 (EMAIL_ENCRYPTION_KEY 미설정): {e}")
+            return ""
     
     @staticmethod
     def decrypt_password(encrypted_password: str) -> str:

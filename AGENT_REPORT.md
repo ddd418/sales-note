@@ -3973,82 +3973,82 @@ Phase 8에서 구현된 모든 보안 강화 항목을 실제 코드 검사, 자
 
 ### 1. 실행 명령어 및 결과
 
-| 명령어 | 결과 |
-|---|---|
-| `python manage.py check` | ✅ System check identified no issues (0 silenced) |
-| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected |
-| `python manage.py test reporting --verbosity=1` | ✅ **Ran 75 tests in 56.092s — OK** |
+| 명령어                                              | 결과                                              |
+| --------------------------------------------------- | ------------------------------------------------- |
+| `python manage.py check`                            | ✅ System check identified no issues (0 silenced) |
+| `python manage.py makemigrations --check --dry-run` | ✅ No changes detected                            |
+| `python manage.py test reporting --verbosity=1`     | ✅ **Ran 75 tests in 56.092s — OK**               |
 
 ---
 
 ### 2. 보안 검사 결과
 
-| 항목 | 상태 | 비고 |
-|---|---|---|
-| `debug_user_company_info` URL 제거 | ✅ 확인 | `/reporting/debug/user-company/` → **404** 반환 |
-| `debug_user_company_info` 뷰 제거 | ✅ 확인 | `views.py`에 함수 없음 (grep 확인) |
-| `SECURE_CONTENT_TYPE_NOSNIFF` | ✅ 설정됨 | `settings_production.py` 60번줄 |
-| `SECURE_REFERRER_POLICY` | ✅ 설정됨 | `strict-origin-when-cross-origin` |
-| `SECURE_PROXY_SSL_HEADER` | ✅ 설정됨 | Railway 프록시 HTTPS 신뢰 |
-| `SECURE_SSL_REDIRECT` | ✅ 환경변수 제어 | 기본 비활성화 (무한 리다이렉트 방지) |
-| `HSTS_SECONDS` | ✅ 환경변수 제어 | 기본 비활성화 (안전) |
-| `CSRF_COOKIE_SECURE` | ✅ `not DEBUG` | 로컬 개발에서도 안전 |
-| `SESSION_COOKIE_SECURE` | ✅ `not DEBUG` | 로컬 개발에서도 안전 |
-| `@csrf_exempt` 뷰 | ✅ 없음 | `backup_api.py`만 Bearer Token 인증과 함께 유지 (의도적) |
-| 시크릿 커밋 여부 | ✅ 없음 | 환경변수 또는 경고 방식으로 처리됨 |
+| 항목                               | 상태             | 비고                                                     |
+| ---------------------------------- | ---------------- | -------------------------------------------------------- |
+| `debug_user_company_info` URL 제거 | ✅ 확인          | `/reporting/debug/user-company/` → **404** 반환          |
+| `debug_user_company_info` 뷰 제거  | ✅ 확인          | `views.py`에 함수 없음 (grep 확인)                       |
+| `SECURE_CONTENT_TYPE_NOSNIFF`      | ✅ 설정됨        | `settings_production.py` 60번줄                          |
+| `SECURE_REFERRER_POLICY`           | ✅ 설정됨        | `strict-origin-when-cross-origin`                        |
+| `SECURE_PROXY_SSL_HEADER`          | ✅ 설정됨        | Railway 프록시 HTTPS 신뢰                                |
+| `SECURE_SSL_REDIRECT`              | ✅ 환경변수 제어 | 기본 비활성화 (무한 리다이렉트 방지)                     |
+| `HSTS_SECONDS`                     | ✅ 환경변수 제어 | 기본 비활성화 (안전)                                     |
+| `CSRF_COOKIE_SECURE`               | ✅ `not DEBUG`   | 로컬 개발에서도 안전                                     |
+| `SESSION_COOKIE_SECURE`            | ✅ `not DEBUG`   | 로컬 개발에서도 안전                                     |
+| `@csrf_exempt` 뷰                  | ✅ 없음          | `backup_api.py`만 Bearer Token 인증과 함께 유지 (의도적) |
+| 시크릿 커밋 여부                   | ✅ 없음          | 환경변수 또는 경고 방식으로 처리됨                       |
 
 ---
 
 ### 3. 권한 검사 결과
 
-| 항목 | 상태 | 비고 |
-|---|---|---|
-| Manager — 일정 생성 불가 | ✅ 테스트 통과 | `ManagerRolePermissionTests` 11개 모두 통과 |
-| Manager — 후속조치 생성 불가 | ✅ 테스트 통과 | GET/POST 모두 차단 → 로그인 리다이렉트 |
-| Manager — 목록 조회 가능 | ✅ 테스트 통과 | 히스토리/일정/후속조치 목록 200 반환 |
-| Manager — 문서 관리 가능 | ✅ `role_required(['admin', 'manager'])` | `document_template_create` 뷰 확인 |
-| Salesman — 일정/후속조치 생성 가능 | ✅ 테스트 통과 | GET 200 반환 확인 |
-| Analytics export — salesman 차단 | ✅ 테스트 통과 | `ExportPermissionTests` 통과 |
-| Analytics export — manager/admin 허용 | ✅ 테스트 통과 | 200 반환 확인 |
-| AI 분석 — 권한 미보유자 차단 | ✅ 테스트 통과 | `AIPermissionTests` 통과 |
-| 익명 접근 전체 차단 | ✅ 테스트 통과 | `AnonymousAccessTests` 20개 통과 |
-| 파일 다운로드 — 권한 체크 | ✅ 코드 확인 | `file_download_view`에 `can_access_user_data` 검사 |
+| 항목                                  | 상태                                     | 비고                                               |
+| ------------------------------------- | ---------------------------------------- | -------------------------------------------------- |
+| Manager — 일정 생성 불가              | ✅ 테스트 통과                           | `ManagerRolePermissionTests` 11개 모두 통과        |
+| Manager — 후속조치 생성 불가          | ✅ 테스트 통과                           | GET/POST 모두 차단 → 로그인 리다이렉트             |
+| Manager — 목록 조회 가능              | ✅ 테스트 통과                           | 히스토리/일정/후속조치 목록 200 반환               |
+| Manager — 문서 관리 가능              | ✅ `role_required(['admin', 'manager'])` | `document_template_create` 뷰 확인                 |
+| Salesman — 일정/후속조치 생성 가능    | ✅ 테스트 통과                           | GET 200 반환 확인                                  |
+| Analytics export — salesman 차단      | ✅ 테스트 통과                           | `ExportPermissionTests` 통과                       |
+| Analytics export — manager/admin 허용 | ✅ 테스트 통과                           | 200 반환 확인                                      |
+| AI 분석 — 권한 미보유자 차단          | ✅ 테스트 통과                           | `AIPermissionTests` 통과                           |
+| 익명 접근 전체 차단                   | ✅ 테스트 통과                           | `AnonymousAccessTests` 20개 통과                   |
+| 파일 다운로드 — 권한 체크             | ✅ 코드 확인                             | `file_download_view`에 `can_access_user_data` 검사 |
 
 ---
 
 ### 4. 파일 업로드 검사 결과
 
-| 항목 | 상태 | 비고 |
-|---|---|---|
-| PDF 정상 파일 허용 | ✅ 테스트 통과 | `%PDF` 매직 바이트 확인 |
-| JPEG 정상 파일 허용 | ✅ 테스트 통과 | `\xff\xd8\xff` 매직 바이트 확인 |
-| PNG 정상 파일 허용 | ✅ 테스트 통과 | `\x89PNG` 매직 바이트 확인 |
-| DOCX 정상 파일 허용 | ✅ 테스트 통과 | `PK\x03\x04` (ZIP 계열) 확인 |
-| 허용되지 않은 확장자(.exe) 차단 | ✅ 테스트 통과 | 확장자 화이트리스트에 없음 |
-| EXE → PDF 위장 차단 | ✅ 테스트 통과 | `MZ` 헤더 + `.pdf` 확장자 → 거부 |
-| EXE → JPG 위장 차단 | ✅ 테스트 통과 | `MZ` 헤더 + `.jpg` 확장자 → 거부 |
-| 10MB 초과 파일 차단 | ✅ 테스트 통과 | 크기 초과 → 한국어 오류 메시지 반환 |
-| 한국어 오류 메시지 | ✅ 확인 | `validate_file_upload` 반환값 한국어 |
-| `schedule_file_upload` MIME 검사 | ✅ 코드 확인 | `file_views.py`에 동일 시그니처 체크 적용 |
+| 항목                             | 상태           | 비고                                      |
+| -------------------------------- | -------------- | ----------------------------------------- |
+| PDF 정상 파일 허용               | ✅ 테스트 통과 | `%PDF` 매직 바이트 확인                   |
+| JPEG 정상 파일 허용              | ✅ 테스트 통과 | `\xff\xd8\xff` 매직 바이트 확인           |
+| PNG 정상 파일 허용               | ✅ 테스트 통과 | `\x89PNG` 매직 바이트 확인                |
+| DOCX 정상 파일 허용              | ✅ 테스트 통과 | `PK\x03\x04` (ZIP 계열) 확인              |
+| 허용되지 않은 확장자(.exe) 차단  | ✅ 테스트 통과 | 확장자 화이트리스트에 없음                |
+| EXE → PDF 위장 차단              | ✅ 테스트 통과 | `MZ` 헤더 + `.pdf` 확장자 → 거부          |
+| EXE → JPG 위장 차단              | ✅ 테스트 통과 | `MZ` 헤더 + `.jpg` 확장자 → 거부          |
+| 10MB 초과 파일 차단              | ✅ 테스트 통과 | 크기 초과 → 한국어 오류 메시지 반환       |
+| 한국어 오류 메시지               | ✅ 확인        | `validate_file_upload` 반환값 한국어      |
+| `schedule_file_upload` MIME 검사 | ✅ 코드 확인   | `file_views.py`에 동일 시그니처 체크 적용 |
 
 ---
 
 ### 5. 회귀 검사 결과 (URL Smoke Test)
 
-| URL | 예상 | 실제 | 상태 |
-|---|---|---|---|
-| `/` | 302 (로그인 리다이렉트) | 302 | ✅ |
-| `/reporting/login/` | 200 | 200 | ✅ |
-| `/reporting/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/dashboard/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/schedules/calendar/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/funnel/pipeline/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/weekly-reports/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/documents/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/documents/create/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/documents/4/edit/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/analytics/` | 302 (로그인 필요) | 302 | ✅ |
-| `/reporting/debug/user-company/` | **404** | **404** | ✅ |
+| URL                              | 예상                    | 실제    | 상태 |
+| -------------------------------- | ----------------------- | ------- | ---- |
+| `/`                              | 302 (로그인 리다이렉트) | 302     | ✅   |
+| `/reporting/login/`              | 200                     | 200     | ✅   |
+| `/reporting/`                    | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/dashboard/`          | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/schedules/calendar/` | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/funnel/pipeline/`    | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/weekly-reports/`     | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/documents/`          | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/documents/create/`   | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/documents/4/edit/`   | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/analytics/`          | 302 (로그인 필요)       | 302     | ✅   |
+| `/reporting/debug/user-company/` | **404**                 | **404** | ✅   |
 
 > 참고: `/reporting/documents/new/`는 실제 URL이 `/reporting/documents/create/`이므로 정상적으로 404 → 의도된 동작 확인 완료.
 
@@ -4068,11 +4068,11 @@ Phase 8에서 구현된 모든 보안 강화 항목을 실제 코드 검사, 자
 
 ### 8. 잔여 위험 요소
 
-| 위험 | 심각도 | 현재 완화책 | 권장 조치 |
-|---|---|---|---|
-| `ALLOWED_HOSTS` 와일드카드 (`*.railway.app`) | 낮음 | Railway 환경 감지 블록이 실제 도메인 추가 | Phase 9에서 명시적 도메인으로 교체 |
-| `EMAIL_ENCRYPTION_KEY` 기본값 코드 존재 | 낮음 | 경고 로그 출력, Railway 환경변수 설정 권장 | Phase 9에서 기본값 제거 |
-| HSTS 미활성화 | 낮음 | 환경변수 `HSTS_SECONDS`로 제어 가능 | Railway에서 `HSTS_SECONDS=300` 설정 후 검증, 이후 `31536000` 으로 상향 |
+| 위험                                         | 심각도 | 현재 완화책                                | 권장 조치                                                              |
+| -------------------------------------------- | ------ | ------------------------------------------ | ---------------------------------------------------------------------- |
+| `ALLOWED_HOSTS` 와일드카드 (`*.railway.app`) | 낮음   | Railway 환경 감지 블록이 실제 도메인 추가  | Phase 9에서 명시적 도메인으로 교체                                     |
+| `EMAIL_ENCRYPTION_KEY` 기본값 코드 존재      | 낮음   | 경고 로그 출력, Railway 환경변수 설정 권장 | Phase 9에서 기본값 제거                                                |
+| HSTS 미활성화                                | 낮음   | 환경변수 `HSTS_SECONDS`로 제어 가능        | Railway에서 `HSTS_SECONDS=300` 설정 후 검증, 이후 `31536000` 으로 상향 |
 
 ---
 
@@ -4088,3 +4088,227 @@ Phase 8에서 구현된 모든 보안 강화 항목을 실제 코드 검사, 자
 - 파일 업로드 MIME 검증: 정상 동작
 - 기존 기능 회귀: 없음
 - 시크릿 커밋: 없음
+
+---
+
+## Phase 9 — 프로덕션 하드닝 (Production Hardening)
+
+**날짜**: 2026-04-28  
+**상태**: 완료  
+**커밋 대상**: 코드 변경 3개 파일
+
+---
+
+### 1. 요약
+
+Phase 9는 프로덕션 환경의 보안 설정을 코드 레벨에서 완성하는 작업입니다.
+비즈니스 기능 추가 없이 아래 5개 항목을 수정했습니다:
+
+1. `ALLOWED_HOSTS` — 미작동 와일드카드 제거, 명시적 도메인만 사용
+2. `EMAIL_ENCRYPTION_KEY` — 하드코딩 Base64 fallback 제거, `None` 처리
+3. `imap_utils.py get_cipher()` — `None` 키일 때 `ValueError` 발생 (무음 실패 방지)
+4. `SITE_DOMAIN` — `RAILWAY_PUBLIC_DOMAIN` 환경변수 우선 사용
+5. `CSRF 주석` — "임시 디버깅용" 오해 유발 주석 정리
+6. `GMAIL_REDIRECT_URI` — 플레이스홀더 기본값 제거
+7. 신규 테스트 12개 추가 (Phase 9 설정 검증 + EmailEncryption 안전성)
+
+---
+
+### 2. 변경된 파일
+
+| 파일                                   | 변경 내용                                                                                                                                       |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sales_project/settings_production.py` | ALLOWED_HOSTS 와일드카드 제거, EMAIL_ENCRYPTION_KEY fallback 제거, SITE_DOMAIN 환경변수화, CSRF 주석 정리, GMAIL_REDIRECT_URI 플레이스홀더 제거 |
+| `reporting/imap_utils.py`              | `get_cipher()` — None일 때 ValueError, `encrypt_password()` — ValueError 처리                                                                   |
+| `reporting/tests.py`                   | `ProductionSettingsTests` (6개), `EmailEncryptionSafetyTests` (6개) 추가                                                                        |
+
+---
+
+### 3. ALLOWED_HOSTS 동작
+
+#### 변경 전
+
+```python
+ALLOWED_HOSTS = [
+    '127.0.0.1', 'localhost', '192.168.0.54', '192.168.0.1',
+    'web-production-5096.up.railway.app',
+    '*.railway.app',      # Django 미지원 — 무시됨 ⚠️
+    '*.up.railway.app',   # Django 미지원 — 무시됨 ⚠️
+]
+# Railway 블록에서도 동일한 와일드카드 extend()
+```
+
+#### 변경 후
+
+```python
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    'web-production-5096.up.railway.app',  # 명시적 Railway 도메인
+    # *.railway.app 와일드카드는 Django ALLOWED_HOSTS에서 지원되지 않으므로 제거
+]
+# Railway 환경 감지 블록 — RAILWAY_PUBLIC_DOMAIN이 있으면 동적 추가 (중복 방지 포함)
+```
+
+- `*.railway.app`, `*.up.railway.app` 전부 제거 (Django가 원래 무시하던 항목)
+- `192.168.0.54`, `192.168.0.1` LAN 주소 제거 (프로덕션 불필요)
+- `RAILWAY_PUBLIC_DOMAIN` 환경변수로 동적 도메인 추가 유지
+- **기존 배포 영향 없음**: 명시적 도메인이 이미 있었으므로 동작 변화 없음
+
+---
+
+### 4. EMAIL_ENCRYPTION_KEY 동작
+
+#### 변경 전 (`settings_production.py`)
+
+```python
+EMAIL_ENCRYPTION_KEY = (_email_encryption_key or 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()
+# 하드코딩 Base64 — 공개된 상수, 보안 무효
+```
+
+#### 변경 후 (`settings_production.py`)
+
+```python
+EMAIL_ENCRYPTION_KEY = _email_encryption_key.encode() if _email_encryption_key else None
+# 환경변수 없으면 None — IMAP/SMTP 기능 비활성화, 명확한 경고 로그
+```
+
+#### 변경 전 (`imap_utils.py`)
+
+```python
+key = getattr(settings, 'EMAIL_ENCRYPTION_KEY', Fernet.generate_key())
+# None이면 매번 랜덤 키 생성 → 복호화 불가 🔴
+```
+
+#### 변경 후 (`imap_utils.py`)
+
+```python
+key = getattr(settings, 'EMAIL_ENCRYPTION_KEY', None)
+if not key:
+    raise ValueError('EMAIL_ENCRYPTION_KEY 설정이 없어...')
+# encrypt_password()에서 ValueError를 catch → 빈 문자열 반환 + 오류 로그
+```
+
+**Railway 필수 설정**:
+
+```
+EMAIL_ENCRYPTION_KEY=<Fernet 키>
+# 키 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+> ⚠️ **기존 배포 주의**: 현재 Railway에 `EMAIL_ENCRYPTION_KEY`가 없다면
+> 이전에 하드코딩 fallback으로 암호화된 IMAP/SMTP 비밀번호들이 있을 수 있습니다.
+> Railway에 새 키를 설정하기 전에 사용자들에게 IMAP/SMTP 비밀번호 재입력을 안내하세요.
+
+---
+
+### 5. HSTS 동작
+
+Phase 8에서 이미 구현된 HSTS 환경변수 제어 방식 유지:
+
+```python
+_hsts_seconds = int(os.environ.get('HSTS_SECONDS', '0'))
+if _hsts_seconds > 0:
+    SECURE_HSTS_SECONDS = _hsts_seconds
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = False  # 프리로드는 명시적 신청 시만
+```
+
+**Railway 단계적 활성화 계획**:
+
+| 단계           | HSTS_SECONDS 값 | 기간                     |
+| -------------- | --------------- | ------------------------ |
+| 1단계 (파일럿) | `300`           | 5분 — 브라우저 헤더 확인 |
+| 2단계          | `86400`         | 1일 — 안정성 확인        |
+| 3단계          | `31536000`      | 1년 — 장기 운영          |
+
+현재 기본값: `0` (HSTS 비활성화) — 즉시 배포 가능
+
+---
+
+### 6. 환경변수 목록
+
+#### 필수
+
+| 환경변수       | 설명             | 미설정 시 동작              |
+| -------------- | ---------------- | --------------------------- |
+| `SECRET_KEY`   | Django 시크릿 키 | RuntimeError (앱 시작 불가) |
+| `DATABASE_URL` | PostgreSQL       | Railway 플러그인 자동 설정  |
+
+#### 강력 권장 (기능 비활성화 위험)
+
+| 환경변수               | 설명             | 미설정 시 동작                      |
+| ---------------------- | ---------------- | ----------------------------------- |
+| `EMAIL_ENCRYPTION_KEY` | Fernet 암호화 키 | IMAP/SMTP 기능 비활성화 + 경고 로그 |
+
+#### 보안 강화 (선택)
+
+| 환경변수                | 기본값            | 설명                                               |
+| ----------------------- | ----------------- | -------------------------------------------------- |
+| `HSTS_SECONDS`          | `0`               | HSTS 유효기간(초). `300`부터 시작 권장             |
+| `SECURE_SSL_REDIRECT`   | `False`           | HTTP→HTTPS 강제 (Railway 프록시가 처리하므로 선택) |
+| `RAILWAY_PUBLIC_DOMAIN` | Railway 자동 설정 | ALLOWED_HOSTS/SITE_DOMAIN 동적 추가                |
+
+#### 백업 / 기능 연동
+
+| 환경변수                                                       | 설명                  |
+| -------------------------------------------------------------- | --------------------- |
+| `BACKUP_API_TOKEN`                                             | 백업 API Bearer Token |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI` | Gmail OAuth2          |
+| `OPENAI_API_KEY`                                               | AI 분석 기능          |
+| `REDIS_URL`                                                    | Celery 브로커         |
+
+---
+
+### 7. 명령어 실행 결과
+
+```
+python manage.py check
+→ System check identified no issues (0 silenced). ✅
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected ✅
+
+python manage.py test reporting --verbosity=1
+→ Ran 87 tests in 67.479s
+→ OK ✅
+  (기존 75개 + 신규 12개: ProductionSettingsTests 6개, EmailEncryptionSafetyTests 6개)
+```
+
+---
+
+### 8. 배포 체크리스트
+
+- [ ] Railway Variables: `EMAIL_ENCRYPTION_KEY` → Fernet 키로 설정
+  ```bash
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+- [ ] 기존 IMAP/SMTP 비밀번호 재입력 여부 확인 (키 변경 시)
+- [ ] Railway Variables: `HSTS_SECONDS=300` 추가 (HSTS 1단계 활성화)
+- [ ] Railway Variables: `RAILWAY_PUBLIC_DOMAIN` 확인 (Railway가 자동 설정)
+- [ ] `BACKUP_API_TOKEN` 설정 확인
+- [ ] 배포 후 브라우저 Network 탭에서 보안 헤더 확인:
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Strict-Transport-Security: max-age=300...` (HSTS 활성화 후)
+- [ ] `/reporting/debug/user-company/` → 404 확인
+- [ ] `/reporting/login/` → 200 확인
+
+---
+
+### 9. 잔존 위험
+
+| 위험                                            | 수준               | 내용                                                             | 대응                              |
+| ----------------------------------------------- | ------------------ | ---------------------------------------------------------------- | --------------------------------- |
+| `EMAIL_ENCRYPTION_KEY` 미설정 시 IMAP 기능 중단 | 🟡 Medium          | 환경변수 없으면 `get_cipher()` ValueError → 빈 문자열 반환       | Railway에 키 설정하면 즉시 해소   |
+| HSTS 미활성화                                   | 🟢 Low             | 현재 `HSTS_SECONDS=0` — HTTPS 강제 없음                          | 단계적 활성화 계획 적용           |
+| `RAILWAY_PUBLIC_DOMAIN` 미설정                  | 🟢 Low             | 하드코딩 도메인 `web-production-5096.up.railway.app`이 이미 존재 | 도메인 변경 시 코드 수정 필요     |
+| `SECRET_KEY` insecure 기본값                    | 🟢 Low (로컬 전용) | 로컬 `.env`에서 insecure key 사용 중                             | Railway에는 별도 강력한 키 설정됨 |
+
+---
+
+### 10. 다음 단계 권장
+
+1. **즉시**: Railway에 `EMAIL_ENCRYPTION_KEY` 설정
+2. **단기**: `HSTS_SECONDS=300` → 동작 확인 → `86400` → `31536000`
+3. **Phase 10 후보**: 검색/필터 UX 개선, 모바일 영업노트 입력 최적화

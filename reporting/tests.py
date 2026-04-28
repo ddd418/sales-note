@@ -679,3 +679,148 @@ class FileUploadValidationTests(TestCase):
         ok, msg = validate_file_upload(f)
         self.assertTrue(ok, msg=f"Valid DOCX should be accepted: {msg}")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 9: 프로덕션 설정 보안 검증 테스트
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ProductionSettingsTests(TestCase):
+    """Phase 9: settings_production.py 보안 설정 유효성 검증"""
+
+    def test_allowed_hosts_no_invalid_wildcards(self):
+        """ALLOWED_HOSTS에 Django 미지원 와일드카드(*.xxx)가 없음을 확인"""
+        from django.conf import settings as django_settings
+        for host in django_settings.ALLOWED_HOSTS:
+            self.assertFalse(
+                host.startswith('*.'),
+                f"ALLOWED_HOSTS에 미지원 와일드카드 발견: {host}"
+            )
+
+    def test_email_encryption_key_is_bytes_or_none(self):
+        """EMAIL_ENCRYPTION_KEY가 bytes 또는 None인지 확인 (문자열 금지)"""
+        from django.conf import settings as django_settings
+        key = getattr(django_settings, 'EMAIL_ENCRYPTION_KEY', 'NOT_SET')
+        if key != 'NOT_SET' and key is not None:
+            self.assertIsInstance(
+                key, bytes,
+                f"EMAIL_ENCRYPTION_KEY는 bytes여야 합니다. 현재 타입: {type(key)}"
+            )
+
+    def test_email_encryption_key_not_hardcoded_default(self):
+        """EMAIL_ENCRYPTION_KEY가 알려진 하드코딩 기본값이 아님을 확인"""
+        from django.conf import settings as django_settings
+        key = getattr(django_settings, 'EMAIL_ENCRYPTION_KEY', None)
+        # 이전에 사용된 안전하지 않은 공개 기본값
+        UNSAFE_FALLBACK = b'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY='
+        if key is not None:
+            self.assertNotEqual(
+                key, UNSAFE_FALLBACK,
+                "EMAIL_ENCRYPTION_KEY가 알려진 안전하지 않은 기본값으로 설정되어 있습니다."
+            )
+
+    def test_hsts_seconds_env_non_negative(self):
+        """HSTS_SECONDS 환경변수가 있으면 0 이상인지 확인"""
+        import os
+        val_str = os.environ.get('HSTS_SECONDS', '0')
+        val = int(val_str)
+        self.assertGreaterEqual(val, 0, "HSTS_SECONDS는 0 이상이어야 합니다")
+
+    def test_secure_content_type_nosniff(self):
+        """프로덕션 환경(not DEBUG)에서 MIME 스니핑 방지 헤더가 활성화됨"""
+        from django.conf import settings as django_settings
+        if not django_settings.DEBUG:
+            self.assertTrue(
+                getattr(django_settings, 'SECURE_CONTENT_TYPE_NOSNIFF', False),
+                "프로덕션에서 SECURE_CONTENT_TYPE_NOSNIFF가 활성화되어야 합니다"
+            )
+
+    def test_secret_key_not_insecure_prefix_in_production(self):
+        """RAILWAY_ENVIRONMENT가 설정된 실제 프로덕션에서 django-insecure- 접두어 금지"""
+        import os
+        from django.conf import settings as django_settings
+        # RAILWAY_ENVIRONMENT가 실제로 설정된 경우에만 검증 (로컬 개발 환경 제외)
+        if os.environ.get('RAILWAY_ENVIRONMENT'):
+            self.assertFalse(
+                django_settings.SECRET_KEY.startswith('django-insecure-'),
+                "Railway 프로덕션에서 insecure SECRET_KEY(django-insecure- 접두어)를 사용하면 안 됩니다."
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 9: EmailEncryption 안전성 테스트
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EmailEncryptionSafetyTests(TestCase):
+    """Phase 9: EmailEncryption 클래스의 안전한 키 처리 검증"""
+
+    def test_get_cipher_without_key_raises_value_error(self):
+        """EMAIL_ENCRYPTION_KEY=None일 때 get_cipher()가 ValueError 발생"""
+        from unittest.mock import patch
+        from reporting.imap_utils import EmailEncryption
+
+        with patch.object(
+            __import__('django.conf', fromlist=['settings']).settings,
+            'EMAIL_ENCRYPTION_KEY',
+            None
+        ):
+            with self.assertRaises(ValueError):
+                EmailEncryption.get_cipher()
+
+    def test_encrypt_password_without_key_returns_empty(self):
+        """EMAIL_ENCRYPTION_KEY=None일 때 encrypt_password()가 빈 문자열 반환 (예외 미전파)"""
+        from unittest.mock import patch
+        from reporting.imap_utils import EmailEncryption
+
+        with patch.object(
+            __import__('django.conf', fromlist=['settings']).settings,
+            'EMAIL_ENCRYPTION_KEY',
+            None
+        ):
+            result = EmailEncryption.encrypt_password('my_password')
+            self.assertEqual(result, '', "키 없이 암호화 시 빈 문자열을 반환해야 합니다")
+
+    def test_decrypt_password_without_key_returns_empty(self):
+        """EMAIL_ENCRYPTION_KEY=None일 때 decrypt_password()가 빈 문자열 반환 (예외 미전파)"""
+        from unittest.mock import patch
+        from reporting.imap_utils import EmailEncryption
+
+        with patch.object(
+            __import__('django.conf', fromlist=['settings']).settings,
+            'EMAIL_ENCRYPTION_KEY',
+            None
+        ):
+            result = EmailEncryption.decrypt_password('some_encrypted_data')
+            self.assertEqual(result, '', "키 없이 복호화 시 빈 문자열을 반환해야 합니다")
+
+    def test_encrypt_decrypt_roundtrip_with_valid_key(self):
+        """유효한 Fernet 키로 암호화 후 복호화하면 원본과 동일"""
+        from unittest.mock import patch
+        from cryptography.fernet import Fernet
+        from reporting.imap_utils import EmailEncryption
+
+        test_key = Fernet.generate_key()
+        with patch.object(
+            __import__('django.conf', fromlist=['settings']).settings,
+            'EMAIL_ENCRYPTION_KEY',
+            test_key
+        ):
+            original = 'my_secure_password_123!'
+            encrypted = EmailEncryption.encrypt_password(original)
+            self.assertNotEqual(encrypted, original, "암호화된 값은 원본과 달라야 합니다")
+            self.assertNotEqual(encrypted, '', "유효한 키로 암호화 시 빈 문자열이 아니어야 합니다")
+
+            decrypted = EmailEncryption.decrypt_password(encrypted)
+            self.assertEqual(decrypted, original, "복호화된 값이 원본과 일치해야 합니다")
+
+    def test_encrypt_empty_password_returns_empty(self):
+        """빈 비밀번호 입력 시 빈 문자열 반환"""
+        from reporting.imap_utils import EmailEncryption
+        result = EmailEncryption.encrypt_password('')
+        self.assertEqual(result, '')
+
+    def test_decrypt_empty_password_returns_empty(self):
+        """빈 암호화 비밀번호 입력 시 빈 문자열 반환"""
+        from reporting.imap_utils import EmailEncryption
+        result = EmailEncryption.decrypt_password('')
+        self.assertEqual(result, '')
+

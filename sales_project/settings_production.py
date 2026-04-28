@@ -20,11 +20,8 @@ DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
-    '192.168.0.54',
-    '192.168.0.1',
-    'web-production-5096.up.railway.app',  # Railway 도메인 추가
-    '*.railway.app',
-    '*.up.railway.app',
+    'web-production-5096.up.railway.app',  # Railway 명시적 도메인
+    # *.railway.app 와일드카드는 Django ALLOWED_HOSTS에서 지원되지 않으므로 제거
 ]
 
 # CSRF 설정 (초기화)
@@ -37,16 +34,16 @@ CSRF_TRUSTED_ORIGINS = [
     'http://*.up.railway.app',
 ]
 
-# Railway 환경 감지
+# Railway 환경 감지 — 명시적 도메인만 추가 (와일드카드 미지원)
 if 'RENDER' in os.environ:
-    ALLOWED_HOSTS.extend(['*.onrender.com'])
+    ALLOWED_HOSTS.extend(['onrender.com'])
 elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
-    ALLOWED_HOSTS.extend(['*.railway.app', '*.up.railway.app'])
-    # Railway에서 제공하는 실제 URL이 있다면 추가
+    # RAILWAY_PUBLIC_DOMAIN 환경변수가 있으면 동적으로 추가
     if 'RAILWAY_PUBLIC_DOMAIN' in os.environ:
         railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
-        ALLOWED_HOSTS.append(railway_domain)
-        CSRF_TRUSTED_ORIGINS.extend([f'https://{railway_domain}', f'http://{railway_domain}'])
+        if railway_domain and railway_domain not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(railway_domain)
+            CSRF_TRUSTED_ORIGINS.extend([f'https://{railway_domain}', f'http://{railway_domain}'])
 
 # CSRF 쿠키 설정
 CSRF_COOKIE_SECURE = not DEBUG
@@ -70,11 +67,9 @@ if _hsts_seconds > 0:
     SECURE_HSTS_PRELOAD = False  # 프리로드는 사이트 운영자가 명시적으로 신청할 때만
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Railway 환경에서 CSRF 더 관대하게 설정 (임시 디버깅용)
-if DEBUG or 'RAILWAY_ENVIRONMENT' in os.environ:
-    # 임시로 CSRF 검증을 느슨하게 설정
-    CSRF_COOKIE_SAMESITE = 'Lax'
-    CSRF_USE_SESSIONS = False
+# CSRF 쿠키 SameSite 정책 — Lax는 Railway 환경에서 Cross-origin POST를 허용하는 안전한 기본값
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_USE_SESSIONS = False
 
 # Application definition
 INSTALLED_APPS = [
@@ -244,25 +239,29 @@ FILE_CLEANUP_SETTINGS = {
 }
 
 # 절대 URL 생성을 위한 도메인 설정
+# RAILWAY_PUBLIC_DOMAIN 환경변수가 있으면 우선 사용, 없으면 하드코딩 fallback
 if 'RAILWAY_ENVIRONMENT' in os.environ:
-    SITE_DOMAIN = 'https://web-production-5096.up.railway.app'
+    _railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'web-production-5096.up.railway.app')
+    SITE_DOMAIN = f'https://{_railway_domain}'
 else:
     SITE_DOMAIN = 'http://127.0.0.1:8000'
 
 # Gmail API 설정
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
-GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'https://your-domain.com/reporting/gmail/callback/')
+GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
 
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)
-# 환경변수가 없으면 경고를 남기고 기본값을 사용합니다.
-# (기존 배포 환경과의 호환성 유지 — 새 배포시 반드시 설정 권장)
+# Railway 환경변수 EMAIL_ENCRYPTION_KEY 에 Fernet 키를 설정해야 합니다.
+# 키 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# 환경변수가 없으면 IMAP/SMTP 암호화 기능은 비활성화되며 명확한 오류가 발생합니다.
 _email_encryption_key = os.environ.get('EMAIL_ENCRYPTION_KEY')
 if not _email_encryption_key:
     import logging as _logging
     _logging.getLogger(__name__).warning(
         'EMAIL_ENCRYPTION_KEY 환경변수가 설정되지 않았습니다. '
-        'IMAP/SMTP 비밀번호 암호화가 기본값으로 동작합니다. '
-        '프로덕션에서는 반드시 강력한 키를 설정하세요.'
+        'IMAP/SMTP 이메일 비밀번호 암호화 기능이 비활성화됩니다. '
+        '프로덕션에서는 반드시 Fernet 키를 생성하여 설정하세요. '
+        '키 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     )
-EMAIL_ENCRYPTION_KEY = (_email_encryption_key or 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()
+EMAIL_ENCRYPTION_KEY = _email_encryption_key.encode() if _email_encryption_key else None
