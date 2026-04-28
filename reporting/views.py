@@ -176,16 +176,54 @@ def validate_file_upload(file):
         '.txt', '.jpg', '.jpeg', '.png', '.gif', '.zip', '.rar',
         '.hwp', '.hwpx',
     ]
-    
+
     # 파일 크기 검사
     if file.size > MAX_FILE_SIZE:
         return False, f"파일 크기가 너무 큽니다. 최대 {MAX_FILE_SIZE // (1024*1024)}MB까지 업로드 가능합니다."
-    
+
     # 파일 확장자 검사
     file_extension = os.path.splitext(file.name)[1].lower()
     if file_extension not in ALLOWED_EXTENSIONS:
         return False, f"지원하지 않는 파일 형식입니다. 허용된 확장자: {', '.join(ALLOWED_EXTENSIONS)}"
-    
+
+    # MIME 매직 바이트 검사 (확장자 위장 방지)
+    # 파일 포인터를 앞부분으로 이동 후 검사, 마지막에 원위치
+    MIME_SIGNATURES = [
+        (b'%PDF',           ['.pdf']),
+        (b'PK\x03\x04',    ['.docx', '.xlsx', '.pptx', '.zip', '.hwpx']),  # ZIP 계열
+        (b'\xff\xd8\xff',  ['.jpg', '.jpeg']),
+        (b'\x89PNG\r\n',   ['.png']),
+        (b'GIF87a',        ['.gif']),
+        (b'GIF89a',        ['.gif']),
+        (b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1',  # OLE2 구형 MS Office
+                            ['.doc', '.xls', '.ppt', '.hwp']),
+        (b'Rar!',          ['.rar']),
+    ]
+    SKIP_MAGIC_EXTENSIONS = ['.txt', '.hwp', '.hwpx', '.rar']  # 매직 검사 제외 (다양한 형식)
+
+    if file_extension not in SKIP_MAGIC_EXTENSIONS:
+        try:
+            file.seek(0)
+            header = file.read(16)
+            file.seek(0)
+
+            magic_ok = False
+            for signature, allowed_exts in MIME_SIGNATURES:
+                if header.startswith(signature):
+                    if file_extension in allowed_exts:
+                        magic_ok = True
+                    else:
+                        return False, "파일 형식이 확장자와 일치하지 않습니다."
+                    break
+
+            if not magic_ok and header:
+                # 알 수 없는 시그니처 — txt나 단순 텍스트는 허용, 나머지는 차단
+                if file_extension not in ['.txt']:
+                    return False, "파일 형식을 확인할 수 없습니다."
+        except Exception:
+            # seek 불가 파일(InMemoryUploadedFile 오류 등)은 확장자 검사만으로 통과
+            pass
+
     return True, "유효한 파일입니다."
 
 def handle_file_uploads(files, history, user):
@@ -10052,124 +10090,6 @@ def schedule_delivery_items_api(request, schedule_id):
     except Exception as e:
         logger.error(f"Schedule 납품 품목 API 오류: {str(e)}")
         return JsonResponse({'error': '서버 오류가 발생했습니다.'}, status=500)
-
-@login_required
-def debug_user_company_info(request):
-    """사용자 회사 정보 디버깅용 임시 뷰"""
-    if not request.user.is_superuser:
-        return JsonResponse({'error': '관리자만 접근 가능합니다.'}, status=403)
-    
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    debug_info = {}
-    
-    try:
-        # 현재 사용자 정보
-        debug_info['username'] = request.user.username
-        debug_info['has_userprofile'] = hasattr(request.user, 'userprofile')
-        
-        if hasattr(request.user, 'userprofile'):
-            profile = request.user.userprofile
-            debug_info['userprofile_id'] = profile.id
-            debug_info['userprofile_role'] = profile.role
-            debug_info['has_company'] = profile.company is not None
-            
-            if profile.company:
-                debug_info['company_id'] = profile.company.id
-                debug_info['company_name'] = profile.company.name
-                debug_info['company_name_repr'] = repr(profile.company.name)
-                debug_info['company_name_clean'] = profile.company.name.strip().replace(' ', '').lower()
-                
-                # 하나과학 인식 로직 테스트 (더 상세하게)
-                company_name = profile.company.name
-                company_name_clean = company_name.strip().replace(' ', '').lower()
-                hanagwahak_variations = ['하나과학', 'hanagwahak', 'hana', '하나']
-                
-                # 각 패턴별 매칭 결과
-                pattern_results = {}
-                for variation in hanagwahak_variations:
-                    pattern_results[variation] = {
-                        'pattern_lower': variation.lower(),
-                        'in_company_name': variation.lower() in company_name_clean,
-                        'bytes_pattern': variation.encode('utf-8'),
-                        'bytes_company': company_name_clean.encode('utf-8')
-                    }
-                
-                is_hanagwahak = any(variation.lower() in company_name_clean for variation in hanagwahak_variations)
-                debug_info['pattern_results'] = pattern_results
-                debug_info['is_hanagwahak_calculated'] = is_hanagwahak
-                
-                # 인코딩 정보도 추가
-                debug_info['company_name_utf8'] = company_name.encode('utf-8').hex()
-                debug_info['company_name_bytes'] = [hex(ord(c)) for c in company_name]
-                
-        # request 객체의 정보
-        debug_info['request_user_company'] = str(getattr(request, 'user_company', 'Not set'))
-        debug_info['request_user_company_name'] = getattr(request, 'user_company_name', 'Not set')
-        debug_info['request_is_hanagwahak'] = getattr(request, 'is_hanagwahak', 'Not set')
-        debug_info['request_is_admin'] = getattr(request, 'is_admin', 'Not set')
-        
-        # 모든 회사 목록
-        from .models import UserCompany, Company
-        user_companies = UserCompany.objects.all()
-        client_companies = Company.objects.all()
-        
-        debug_info['user_companies_count'] = user_companies.count()
-        debug_info['client_companies_count'] = client_companies.count()
-        
-        debug_info['all_user_companies'] = []
-        for c in user_companies:
-            company_info = {
-                'id': c.id,
-                'name': c.name,
-                'name_repr': repr(c.name),
-                'clean_name': c.name.strip().replace(' ', '').lower(),
-                'utf8_hex': c.name.encode('utf-8').hex()
-            }
-            
-            # 각 회사별로 하나과학 패턴 매칭 테스트
-            clean_name = c.name.strip().replace(' ', '').lower()
-            hanagwahak_variations = [
-                '하나과학', 'hanagwahak', 'hana', '하나',
-                'hanagwahac', 'hana gwahak', '하나 과학',
-                'hanascience', 'hana science'
-            ]
-            company_info['is_hanagwahak'] = any(variation.lower() in clean_name for variation in hanagwahak_variations)
-            company_info['pattern_matches'] = {
-                variation: variation.lower() in clean_name for variation in hanagwahak_variations
-            }
-            
-            debug_info['all_user_companies'].append(company_info)
-        
-        debug_info['all_client_companies'] = []
-        for c in client_companies:
-            company_info = {
-                'id': c.id,
-                'name': c.name,
-                'created_by': c.created_by.username if c.created_by else 'Unknown',
-                'department_count': c.departments.count(),
-                'followup_count': c.followup_companies.count()
-            }
-            debug_info['all_client_companies'].append(company_info)
-        
-        # 특별히 "고려대학교" 검색
-        korea_companies = client_companies.filter(name__icontains='고려대')
-        debug_info['korea_university_companies'] = []
-        for c in korea_companies:
-            company_info = {
-                'id': c.id,
-                'name': c.name,
-                'created_by': c.created_by.username if c.created_by else 'Unknown',
-                'created_by_company': c.created_by.userprofile.company.name if c.created_by and hasattr(c.created_by, 'userprofile') and c.created_by.userprofile.company else 'Unknown'
-            }
-            debug_info['korea_university_companies'].append(company_info)
-        
-        return JsonResponse(debug_info, ensure_ascii=False, json_dumps_params={'indent': 2})
-        
-    except Exception as e:
-        logger.error(f"디버그 뷰 에러: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=500)
 
 
 # ============ Admin 전용 API 뷰들 ============

@@ -568,3 +568,114 @@ class ManagerRolePermissionTests(TestCase):
         self.assertEqual(r.status_code, 200,
                          msg=f"Manager GET followup_list: expected 200, got {r.status_code}")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 8: 디버그 엔드포인트 제거 확인 테스트
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DebugEndpointTests(TestCase):
+    """Phase 8: debug/user-company/ 엔드포인트가 제거되었는지 확인"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='디버그테스트회사')
+        self.superuser = User.objects.create_superuser(
+            username='superuser_debug', password='TestPass123!'
+        )
+        self.regular_user = make_user('regular_debug', role='salesman', company=self.company)
+
+    def test_debug_endpoint_does_not_exist(self):
+        """debug/user-company/ URL이 URL 설정에 존재하지 않음"""
+        from django.urls import NoReverseMatch
+        with self.assertRaises(NoReverseMatch):
+            reverse('reporting:debug_user_company_info')
+
+    def test_debug_url_returns_404(self):
+        """debug/user-company/ 직접 접근 시 404 반환"""
+        self.client.force_login(self.superuser)
+        r = self.client.get('/reporting/debug/user-company/')
+        self.assertEqual(r.status_code, 404,
+                         msg=f"debug URL should be 404, got {r.status_code}")
+
+    def test_debug_url_anonymous_returns_404(self):
+        """미인증 사용자 debug URL 접근 시 404 반환"""
+        r = self.client.get('/reporting/debug/user-company/')
+        self.assertEqual(r.status_code, 404,
+                         msg=f"anonymous debug URL should be 404, got {r.status_code}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 8: 파일 업로드 MIME 검증 테스트
+# ─────────────────────────────────────────────────────────────────────────────
+
+class FileUploadValidationTests(TestCase):
+    """Phase 8: 파일 업로드 MIME 검증 및 확장자 화이트리스트 테스트"""
+
+    def _make_file(self, name, content):
+        """테스트용 가짜 InMemoryUploadedFile 생성"""
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(name, content)
+
+    def test_valid_pdf_accepted(self):
+        """올바른 PDF 파일 (매직 바이트 + 확장자 일치) 허용"""
+        from reporting.views import validate_file_upload
+        f = self._make_file('test.pdf', b'%PDF-1.4 valid pdf content')
+        ok, msg = validate_file_upload(f)
+        self.assertTrue(ok, msg=f"Valid PDF should be accepted: {msg}")
+
+    def test_valid_jpeg_accepted(self):
+        """올바른 JPEG 파일 허용"""
+        from reporting.views import validate_file_upload
+        f = self._make_file('photo.jpg', b'\xff\xd8\xff\xe0' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertTrue(ok, msg=f"Valid JPEG should be accepted: {msg}")
+
+    def test_valid_png_accepted(self):
+        """올바른 PNG 파일 허용"""
+        from reporting.views import validate_file_upload
+        f = self._make_file('image.png', b'\x89PNG\r\n\x1a\n' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertTrue(ok, msg=f"Valid PNG should be accepted: {msg}")
+
+    def test_invalid_extension_rejected(self):
+        """허용되지 않은 확장자 차단"""
+        from reporting.views import validate_file_upload
+        f = self._make_file('malware.exe', b'MZ\x90\x00' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertFalse(ok, msg="EXE file should be rejected")
+
+    def test_disguised_exe_as_pdf_rejected(self):
+        """EXE 파일을 PDF로 위장한 경우 차단 (MIME 스푸핑 방지)"""
+        from reporting.views import validate_file_upload
+        # .pdf 확장자지만 실제로는 EXE 매직 바이트 MZ
+        f = self._make_file('fake.pdf', b'MZ\x90\x00' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertFalse(ok, msg=f"EXE disguised as PDF should be rejected: {msg}")
+
+    def test_disguised_exe_as_jpg_rejected(self):
+        """EXE 파일을 JPG로 위장한 경우 차단"""
+        from reporting.views import validate_file_upload
+        f = self._make_file('photo.jpg', b'MZ\x90\x00' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertFalse(ok, msg=f"EXE disguised as JPG should be rejected: {msg}")
+
+    def test_oversized_file_rejected(self):
+        """10MB 초과 파일 차단"""
+        from reporting.views import validate_file_upload
+        import io
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+        content = b'%PDF' + b'\x00' * (10 * 1024 * 1024 + 1)
+        buf = io.BytesIO(content)
+        f = InMemoryUploadedFile(buf, 'file', 'big.pdf', 'application/pdf', len(content), None)
+        ok, msg = validate_file_upload(f)
+        self.assertFalse(ok, msg="Oversized file should be rejected")
+
+    def test_valid_docx_accepted(self):
+        """올바른 DOCX 파일 (ZIP 기반) 허용"""
+        from reporting.views import validate_file_upload
+        # DOCX는 ZIP 포맷 (PK\x03\x04 시그니처)
+        f = self._make_file('report.docx', b'PK\x03\x04' + b'\x00' * 100)
+        ok, msg = validate_file_upload(f)
+        self.assertTrue(ok, msg=f"Valid DOCX should be accepted: {msg}")
+

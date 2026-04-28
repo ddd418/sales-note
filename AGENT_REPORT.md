@@ -3811,3 +3811,147 @@ Django 검증 명령어 4종 모두 통과, 53개 자동화 테스트 전원 통
 3. **자동화 테스트 확장**: 파이프라인 sync, 주간보고 Quill 렌더링, 분석 CSV 내보내기 테스트 추가
 4. **`debug_user_company_info` 정리**: 디버그 엔드포인트 제거 또는 관리자 페이지로 통합
 5. **성능 최적화**: N+1 쿼리 프로파일링, DB 인덱스 추가 검토
+
+---
+
+## Phase 8 — 보안 강화 (Security Hardening)
+
+**날짜**: 2026-04-28  
+**상태**: 완료
+
+---
+
+### 요약
+
+Phase 8은 Phase 7 완료 후 식별된 보안 취약점을 제거하고 프로덕션 보안 헤더를 강화했습니다.
+비즈니스 기능 추가나 UI 변경 없이 보안 항목만 집중적으로 개선했습니다.
+
+---
+
+### 변경된 파일
+
+#### 1. `reporting/urls.py`
+
+- **삭제**: `path('debug/user-company/', views.debug_user_company_info, name='debug_user_company_info')`
+- **이유**: 디버깅용 임시 엔드포인트였으며 내부 회사 목록, 사용자 역할 등 민감 정보를 JSON으로 노출
+
+#### 2. `reporting/views.py`
+
+- **삭제**: `debug_user_company_info()` 함수 전체 제거 (118줄)
+  - 내부 회사 ID/명칭, 모든 UserCompany 목록, 사용자 역할 등 노출하던 민감 정보 제거
+- **강화**: `validate_file_upload()` 함수에 MIME 매직 바이트 검사 추가
+  - 기존: 파일 크기 + 확장자 화이트리스트만 검사
+  - 추가: 파일 헤더(magic bytes) 검사로 확장자 위장 공격 차단
+  - PDF (`%PDF`), JPEG (`\xff\xd8\xff`), PNG (`\x89PNG`), ZIP계열 (`PK\x03\x04`), OLE2 (`\xd0\xcf\x11\xe0`), RAR (`Rar!`) 등 지원
+
+#### 3. `reporting/file_views.py`
+
+- **강화**: `schedule_file_upload()` 함수에 MIME 매직 바이트 검사 추가
+  - views.py의 validate_file_upload와 동일한 시그니처 기반 검사 적용
+
+#### 4. `sales_project/settings_production.py`
+
+- **추가**: Phase 8 보안 헤더 블록
+
+  ```python
+  SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')   # Railway 프록시 신뢰
+  SECURE_CONTENT_TYPE_NOSNIFF = True                               # MIME 스니핑 방지
+  SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'       # Referer 정책
+  SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() == 'true'
+  _hsts_seconds = int(os.environ.get('HSTS_SECONDS', '0'))
+  if _hsts_seconds > 0:
+      SECURE_HSTS_SECONDS = _hsts_seconds
+      SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+      SECURE_HSTS_PRELOAD = False
+  ```
+
+- **개선**: `EMAIL_ENCRYPTION_KEY` 처리 방식 개선
+  - 이전: 하드코딩된 기본값 사용 (보안 취약)
+  - 이후: 환경변수 미설정 시 경고 로그 출력 후 기본값 사용 (기존 배포 호환성 유지)
+
+#### 5. `reporting/tests.py`
+
+- **추가**: Phase 8 신규 테스트 클래스 2개 (11개 테스트)
+
+  **`DebugEndpointTests`** (3개):
+  - `test_debug_endpoint_does_not_exist`: URL 역방향 조회 시 NoReverseMatch 확인
+  - `test_debug_url_returns_404`: 직접 URL 접근 시 404 반환 확인
+  - `test_debug_url_anonymous_returns_404`: 미인증 접근 시 404 반환 확인
+
+  **`FileUploadValidationTests`** (8개):
+  - PDF/JPEG/PNG/DOCX 정상 파일 허용 확인
+  - 허용되지 않은 확장자(.exe) 차단 확인
+  - EXE를 PDF로 위장한 MIME 스푸핑 차단 확인
+  - EXE를 JPG로 위장한 MIME 스푸핑 차단 확인
+  - 10MB 초과 파일 차단 확인
+
+---
+
+### 기존 기능 보존 확인
+
+| 기능 영역 | 상태 |
+|---|---|
+| 인증/로그인 플로우 | ✅ 변경 없음 |
+| 거래처/고객 관리 | ✅ 변경 없음 |
+| 영업 활동 히스토리 | ✅ 변경 없음 |
+| 일정 관리 | ✅ 변경 없음 |
+| 파이프라인/펀널 | ✅ 변경 없음 |
+| 주간보고 | ✅ 변경 없음 |
+| 서류 관리 | ✅ 변경 없음 |
+| 분석/대시보드 | ✅ 변경 없음 |
+| AI 기능 | ✅ 변경 없음 |
+| Manager 뷰어 권한 | ✅ 변경 없음 |
+
+---
+
+### 실행한 명령어 및 결과
+
+```
+conda run -n sales-env python manage.py check
+→ System check identified no issues (0 silenced)
+  (EMAIL_ENCRYPTION_KEY 경고: 개발환경 미설정 — 정상)
+
+conda run -n sales-env python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+conda run -n sales-env python manage.py test reporting --verbosity=2
+→ Ran 75 tests in 64.843s — OK
+  (기존 64개 + Phase 8 신규 11개, 모두 통과)
+```
+
+---
+
+### 보안 개선 요약
+
+| 항목 | 이전 상태 | 이후 상태 |
+|---|---|---|
+| 디버그 엔드포인트 | `/reporting/debug/user-company/` 공개 접근 가능 | URL 및 뷰 함수 완전 제거 |
+| 파일 업로드 검증 | 확장자 화이트리스트만 | 확장자 + MIME 매직 바이트 이중 검사 |
+| MIME 스니핑 | 미설정 | `SECURE_CONTENT_TYPE_NOSNIFF = True` |
+| Referer 정책 | 미설정 | `strict-origin-when-cross-origin` |
+| Railway 프록시 SSL | 미설정 | `SECURE_PROXY_SSL_HEADER` 설정 |
+| HSTS | 미설정 | 환경변수 `HSTS_SECONDS`로 제어 가능 |
+| SSL 리다이렉트 | 미설정 | 환경변수 `SECURE_SSL_REDIRECT`로 제어 가능 |
+| EMAIL_ENCRYPTION_KEY | 하드코딩 기본값 노출 | 경고 로그 + 기존 배포 호환성 유지 |
+
+---
+
+### 제한 사항
+
+- `ALLOWED_HOSTS`에 `*.railway.app` 와일드카드는 Django가 지원하지 않음.  
+  Railway 환경 감지 코드(`RAILWAY_ENVIRONMENT` 체크)가 이를 보완하고 있으나,  
+  향후 명시적 도메인 목록으로 교체 권장.
+- `EMAIL_ENCRYPTION_KEY` 기본값은 여전히 코드에 존재 (기존 배포 호환성 유지).  
+  프로덕션 Railway에서는 반드시 환경변수를 설정해야 함.
+- HSTS는 기본 비활성화 — Railway에서 `HSTS_SECONDS=31536000` 환경변수 설정 후 활성화 가능.
+
+---
+
+### 권장 다음 Phase (Phase 9)
+
+1. **`ALLOWED_HOSTS` 와일드카드 정리**: `*.railway.app` 제거, 명시적 도메인 사용
+2. **`EMAIL_ENCRYPTION_KEY` 기본값 제거**: 기존 배포에 환경변수 설정 후 코드 정리
+3. **HSTS 활성화**: Railway 환경변수 `HSTS_SECONDS=31536000` 설정
+4. **성능 최적화**: N+1 쿼리 프로파일링, select_related/prefetch_related 추가
+5. **파이프라인 sync 테스트**: Opportunity tracking 자동 동기화 로직 테스트 추가
+

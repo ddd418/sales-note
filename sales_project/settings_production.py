@@ -53,6 +53,23 @@ CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False  # JavaScript에서 CSRF 토큰을 읽을 수 있도록 False로 설정
 SESSION_COOKIE_SECURE = not DEBUG
 
+# Phase 8: 보안 헤더 설정 ─────────────────────────────────────────────────────
+# Railway는 HTTPS를 프록시에서 종료하므로 X-Forwarded-Proto 헤더를 신뢰합니다.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# 브라우저가 Content-Type을 변경하지 못하게 합니다. (MIME 스니핑 방지)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+# Referer 헤더 정책
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+# SSL 리다이렉트: 환경변수로 제어 (Railway에서는 프록시가 처리하므로 기본 비활성화)
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() == 'true'
+# HSTS: 환경변수 HSTS_SECONDS가 설정된 경우에만 활성화 (기본 비활성화)
+_hsts_seconds = int(os.environ.get('HSTS_SECONDS', '0'))
+if _hsts_seconds > 0:
+    SECURE_HSTS_SECONDS = _hsts_seconds
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = False  # 프리로드는 사이트 운영자가 명시적으로 신청할 때만
+# ──────────────────────────────────────────────────────────────────────────────
+
 # Railway 환경에서 CSRF 더 관대하게 설정 (임시 디버깅용)
 if DEBUG or 'RAILWAY_ENVIRONMENT' in os.environ:
     # 임시로 CSRF 검증을 느슨하게 설정
@@ -238,4 +255,14 @@ GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
 GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI', 'https://your-domain.com/reporting/gmail/callback/')
 
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)
-EMAIL_ENCRYPTION_KEY = os.environ.get('EMAIL_ENCRYPTION_KEY', 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()  # Base64 encoded key
+# 환경변수가 없으면 경고를 남기고 기본값을 사용합니다.
+# (기존 배포 환경과의 호환성 유지 — 새 배포시 반드시 설정 권장)
+_email_encryption_key = os.environ.get('EMAIL_ENCRYPTION_KEY')
+if not _email_encryption_key:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        'EMAIL_ENCRYPTION_KEY 환경변수가 설정되지 않았습니다. '
+        'IMAP/SMTP 비밀번호 암호화가 기본값으로 동작합니다. '
+        '프로덕션에서는 반드시 강력한 키를 설정하세요.'
+    )
+EMAIL_ENCRYPTION_KEY = (_email_encryption_key or 'YXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGY=').encode()

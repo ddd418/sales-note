@@ -149,6 +149,19 @@ def schedule_file_upload(request, schedule_id):
         
         uploaded_files = []
         allowed_extensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'zip', 'rar', 'hwp', 'hwpx']
+
+        # MIME 매직 바이트 시그니처 (확장자 위장 방지)
+        MIME_SIGNATURES = [
+            (b'%PDF',           ['pdf']),
+            (b'PK\x03\x04',    ['docx', 'xlsx', 'pptx', 'zip', 'hwpx']),
+            (b'\xff\xd8\xff',  ['jpg', 'jpeg']),
+            (b'\x89PNG\r\n',   ['png']),
+            (b'GIF87a',        ['gif']),
+            (b'GIF89a',        ['gif']),
+            (b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1', ['doc', 'xls', 'ppt', 'hwp']),
+            (b'Rar!',          ['rar']),
+        ]
+        SKIP_MAGIC_EXTENSIONS = ['txt', 'hwp', 'hwpx', 'rar']
         
         for file in files:
             # 파일 크기 제한 (10MB)
@@ -165,6 +178,31 @@ def schedule_file_upload(request, schedule_id):
                     'success': False,
                     'error': f'지원하지 않는 파일 형식입니다: {file_extension}'
                 }, status=400)
+
+            # MIME 매직 바이트 검사 (확장자 위장 방지)
+            if file_extension not in SKIP_MAGIC_EXTENSIONS:
+                try:
+                    file.seek(0)
+                    header = file.read(16)
+                    file.seek(0)
+                    magic_ok = False
+                    for signature, allowed_exts in MIME_SIGNATURES:
+                        if header.startswith(signature):
+                            if file_extension in allowed_exts:
+                                magic_ok = True
+                            else:
+                                return JsonResponse({
+                                    'success': False,
+                                    'error': f'파일 "{file.name}": 형식이 확장자와 일치하지 않습니다.'
+                                }, status=400)
+                            break
+                    if not magic_ok and header and file_extension not in ['txt']:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'파일 "{file.name}": 파일 형식을 확인할 수 없습니다.'
+                        }, status=400)
+                except Exception:
+                    pass  # seek 불가 파일은 확장자 검사만으로 통과
             
             # 파일 저장
             schedule_file = ScheduleFile.objects.create(
