@@ -87,7 +87,12 @@ urlpatterns = [
     # API 엔드포인트들
     path('api/followup/<int:followup_pk>/schedules/', views.api_followup_schedules, name='api_followup_schedules'),
     path('api/followup/<int:followup_id>/histories/', views.followup_histories_api, name='followup_histories_api'),
-    
+    # Phase 8.6-1: 세금계산서 요청 API
+    path('api/followup/<int:followup_id>/tax-invoices/', views.followup_tax_invoices_api, name='followup_tax_invoices_api'),
+    path('api/tax-invoice/<int:request_id>/status/', views.tax_invoice_update_status_api, name='tax_invoice_update_status_api'),
+    # [재현] 대시보드 통합 검색 API
+    path('api/dashboard/search/', views.dashboard_search_api, name='dashboard_search_api'),
+
     # 자동완성 API 엔드포인트들
     path('api/companies/autocomplete/', views.company_autocomplete, name='company_autocomplete'),
     path('api/companies/autocomplete/', views.company_autocomplete, name='company_autocomplete'),

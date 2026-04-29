@@ -990,6 +990,26 @@ small.text-muted {
                 </div>
                 {% else %}
                 <!-- 생성 모드: 품목 입력 UI -->
+                <!-- 부가세 모드 선택 -->
+                <div class="card mb-3" id="vat-mode-card">
+                  <div class="card-body py-2">
+                    <label class="form-label fw-bold mb-2"><i class="fas fa-percent me-1"></i>부가세 모드</label>
+                    <div class="d-flex gap-3 flex-wrap">
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="vat_mode" id="vat_excluded" value="excluded" checked onchange="onVatModeChange()">
+                        <label class="form-check-label" for="vat_excluded">부가세 별도 <small class="text-muted">(공급가+VAT 10%)</small></label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="vat_mode" id="vat_included" value="included" onchange="onVatModeChange()">
+                        <label class="form-check-label" for="vat_included">부가세 포함 <small class="text-muted">(입력금액에 VAT 포함)</small></label>
+                      </div>
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="vat_mode" id="vat_none" value="none" onchange="onVatModeChange()">
+                        <label class="form-check-label" for="vat_none">부가세 없음 <small class="text-muted">(VAT=0원)</small></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <!-- 견적 품목 UI -->
                 <div class="card" id="quote-items-card">
                   <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
@@ -1016,7 +1036,7 @@ small.text-muted {
                                   placeholder="'품목 관리' 버튼을 클릭하여 견적 품목을 추가하세요."></textarea>
                       </div>
                       <div class="col-md-4">
-                        <label class="form-label fw-bold">총 금액 (부가세 포함)</label>
+                        <label id="quote-total-label" class="form-label fw-bold">총 금액 (공급가+VAT 10%)</label>
                         <div class="input-group">
                           <input type="number" id="quote-total-amount" class="form-control" readonly value="0">
                           <span class="input-group-text">원</span>
@@ -1053,7 +1073,7 @@ small.text-muted {
                                   placeholder="'품목 관리' 버튼을 클릭하여 납품 품목을 추가하세요."></textarea>
                       </div>
                       <div class="col-md-4">
-                        <label class="form-label fw-bold">총 금액 (부가세 포함)</label>
+                        <label id="delivery-total-label" class="form-label fw-bold">총 금액 (공급가+VAT 10%)</label>
                         <div class="input-group">
                           <input type="number" id="schedule-delivery-total-amount" class="form-control" readonly value="0">
                           <span class="input-group-text">원</span>
@@ -2839,11 +2859,18 @@ function calculateItemTotal(event) {
     const item = event.target.closest('.item-row');
     const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
     const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
-    
-    // 부가세 포함 계산: (단가 * 수량) * 1.1
+
     const subtotal = quantity * unitPrice;
-    const total = subtotal * 1.1;
-    
+    const vatMode = getSelectedVatMode();
+    let total;
+    if (vatMode === 'none') {
+        total = subtotal;  // 부가세 없음
+    } else if (vatMode === 'included') {
+        total = subtotal;  // 단가에 부가세 포함
+    } else {
+        total = subtotal * 1.1;  // excluded: 공급가 + VAT 10%
+    }
+
     item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
     calculateTotal();
 }
@@ -2851,21 +2878,34 @@ function calculateItemTotal(event) {
 function calculateTotal() {
     const items = document.querySelectorAll('.item-row');
     let subtotal = 0;
-    
+
     items.forEach(item => {
         const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
         const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
         subtotal += quantity * unitPrice;
     });
-    
-    const tax = subtotal * 0.1;
-    const total = subtotal + tax;
-    
+
+    const vatMode = getSelectedVatMode();
+    let tax, total;
+    if (vatMode === 'included') {
+        // 입력 금액에 VAT 포함: 공급가 역산
+        const supplyPrice = Math.round(subtotal / 1.1);
+        tax = subtotal - supplyPrice;
+        total = subtotal;
+    } else if (vatMode === 'none') {
+        tax = 0;
+        total = subtotal;
+    } else {
+        // excluded (기본): 공급가 + VAT 10%
+        tax = subtotal * 0.1;
+        total = subtotal + tax;
+    }
+
     // 화면 업데이트
     document.getElementById('subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
     document.getElementById('tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
     document.getElementById('total-amount').textContent = Math.round(total).toLocaleString() + '원';
-    
+
     // 예상 매출액 필드에 자동 반영
     const expectedRevenueField = document.querySelector('[name="expected_revenue"]');
     if (expectedRevenueField) {
@@ -3162,6 +3202,33 @@ let scheduleDeliveryItemIndex = 0;
 let scheduleDeliveryItemsData = [];
 let currentItemsContext = null;  // 'delivery' 또는 'quote' - 현재 모달이 어떤 컨텍스트에서 열렸는지
 
+// 부가세 모드 헬퍼
+function getSelectedVatMode() {
+  const checked = document.querySelector('input[name="vat_mode"]:checked');
+  return checked ? checked.value : 'excluded';
+}
+
+function onVatModeChange() {
+  // 품목이 열려 있으면 총액 재계산
+  if (document.getElementById('schedule-delivery-items-container')) {
+    calculateScheduleTotal();
+  }
+  // 총 금액 라벨을 선택된 부가세 모드에 맞게 업데이트
+  const vatMode = getSelectedVatMode();
+  let labelText;
+  if (vatMode === 'none') {
+    labelText = '총 금액 (부가세 없음)';
+  } else if (vatMode === 'included') {
+    labelText = '총 금액 (부가세 포함)';
+  } else {
+    labelText = '총 금액 (공급가+VAT 10%)';
+  }
+  const qLabel = document.getElementById('quote-total-label');
+  const dLabel = document.getElementById('delivery-total-label');
+  if (qLabel) qLabel.textContent = labelText;
+  if (dLabel) dLabel.textContent = labelText;
+}
+
 function openScheduleDeliveryModal(context) {
   // context 인자가 없으면 현재 activity_type 보고 fallback
   if (!context) {
@@ -3203,7 +3270,7 @@ function openScheduleDeliveryModal(context) {
             <div class="d-flex justify-content-between align-items-center mb-3">
               <div class="alert alert-info mb-0 flex-grow-1 me-3">
                 <i class="fas fa-info-circle me-2"></i>
-                품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 부가세 10%가 자동으로 포함된 총액이 계산됩니다.
+                품목명과 수량은 필수 입력 사항입니다. 단가를 입력하면 선택한 부가세 모드에 따라 총액이 계산됩니다.
               </div>
               <button type="button" class="btn btn-success" onclick="addScheduleDeliveryItem()">
                 <i class="fas fa-plus me-1"></i>품목 추가
@@ -3228,7 +3295,7 @@ function openScheduleDeliveryModal(context) {
                       </div>
                       <div class="col-md-4">
                         <div class="d-flex justify-content-between">
-                          <span>부가세 (10%):</span>
+                          <span id="schedule-tax-label">부가세 (10%):</span>
                           <span id="schedule-tax-amount" class="fw-bold">0원</span>
                         </div>
                       </div>
@@ -3540,33 +3607,63 @@ function calculateScheduleItemTotal(event) {
   const item = event.target.closest('.delivery-item');
   const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
   const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
-  
-  // 부가세 포함 계산: (단가 * 수량) * 1.1
-  const subtotal = quantity * unitPrice;
-  const total = subtotal * 1.1;
-  
-  item.querySelector('.item-total').textContent = Math.round(total).toLocaleString() + '원';
+
+  const vatMode = getSelectedVatMode();
+  const itemSubtotal = quantity * unitPrice;
+  let displayTotal;
+
+  if (vatMode === 'included') {
+    displayTotal = itemSubtotal;  // 이미 VAT 포함
+  } else if (vatMode === 'none') {
+    displayTotal = itemSubtotal;
+  } else {
+    displayTotal = itemSubtotal * 1.1;  // 부가세 별도
+  }
+
+  item.querySelector('.item-total').textContent = Math.round(displayTotal).toLocaleString() + '원';
   calculateScheduleTotal();
 }
 
 function calculateScheduleTotal() {
   const items = document.querySelectorAll('#schedule-delivery-items-container .delivery-item');
-  let subtotal = 0;
-  
+  let rawSubtotal = 0;
+
   items.forEach(item => {
     const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
     const unitPrice = parseFloat(item.querySelector('.unit-price-input').value) || 0;
-    subtotal += quantity * unitPrice;
+    rawSubtotal += quantity * unitPrice;
   });
-  
-  const tax = subtotal * 0.1;
-  const total = subtotal + tax;
-  
+
+  const vatMode = getSelectedVatMode();
+  let subtotal, tax, total;
+
+  if (vatMode === 'included') {
+    subtotal = Math.round(rawSubtotal / 1.1);
+    tax = rawSubtotal - subtotal;
+    total = rawSubtotal;
+  } else if (vatMode === 'none') {
+    subtotal = rawSubtotal;
+    tax = 0;
+    total = rawSubtotal;
+  } else {
+    subtotal = rawSubtotal;
+    tax = rawSubtotal * 0.1;
+    total = rawSubtotal + tax;
+  }
+
+  // 부가세 라벨 업데이트
+  const taxLabel = document.getElementById('schedule-tax-label');
+  if (taxLabel) {
+    if (vatMode === 'included') taxLabel.textContent = '부가세 (포함):';
+    else if (vatMode === 'none') taxLabel.textContent = '부가세 (없음):';
+    else taxLabel.textContent = '부가세 (10%):';
+  }
+
   // 화면 업데이트
   document.getElementById('schedule-subtotal-amount').textContent = Math.round(subtotal).toLocaleString() + '원';
   document.getElementById('schedule-tax-amount').textContent = Math.round(tax).toLocaleString() + '원';
   document.getElementById('schedule-total-amount').textContent = Math.round(total).toLocaleString() + '원';
-  
+
   // 선결제 계산 자동 업데이트
   if (typeof updatePrepaymentCalculation === 'function') {
     updatePrepaymentCalculation();
@@ -3601,20 +3698,28 @@ function saveScheduleDeliveryItems() {
     
     
     if (itemName && quantity > 0) {
-      const subtotal = quantity * unitPrice;
-      const total = subtotal * 1.1;
-      
+      const rawSubtotal = quantity * unitPrice;
+      const vatMode = getSelectedVatMode();
+      let displayTotal;
+      if (vatMode === 'included') {
+        displayTotal = rawSubtotal;  // 이미 VAT 포함
+      } else if (vatMode === 'none') {
+        displayTotal = rawSubtotal;
+      } else {
+        displayTotal = rawSubtotal * 1.1;  // 부가세 별도
+      }
+
       scheduleDeliveryItemsData.push({
         name: itemName,
         item_name: itemName,
         quantity: quantity,
         unit_price: unitPrice,
-        total_price: total,
+        total_price: displayTotal,
         product_id: productId
       });
-      
-      totalAmount += total;
-      itemsText.push(`${itemName}: ${quantity}개 (${Math.round(total).toLocaleString()}원)`);
+
+      totalAmount += displayTotal;
+      itemsText.push(`${itemName}: ${quantity}개 (${Math.round(displayTotal).toLocaleString()}원)`);
     }
   });
   

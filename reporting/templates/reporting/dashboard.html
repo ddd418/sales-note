@@ -1276,6 +1276,25 @@ html, body {
   </div>
   {% endif %}
 
+  <!-- [재현] 통합 검색 위젯 -->
+  <div class="card border-0 shadow-sm mb-3" id="dashSearchCard" style="border-radius:1rem; border-left: 4px solid #6f42c1 !important;">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small text-nowrap"><i class="fas fa-search me-1" style="color:#6f42c1;"></i><strong style="color:#6f42c1;">[재현] 검색:</strong></span>
+        <input type="text" id="dashSearchInput" class="form-control form-control-sm"
+               placeholder="품목명, 연구실, 메모 키워드 입력... (예: PCR)"
+               style="border-color:#6f42c1; border-radius:.5rem;"
+               autocomplete="off">
+        <button class="btn btn-sm text-white text-nowrap" id="dashSearchBtn"
+                style="background:#6f42c1; border-radius:.5rem; white-space:nowrap;">
+          <i class="fas fa-search me-1"></i>검색
+        </button>
+      </div>
+    </div>
+    <!-- 검색 결과 -->
+    <div id="dashSearchResults" class="px-3 pb-2" style="display:none;"></div>
+  </div>
+
   <!-- Phase 5: 오늘 예정 일정 -->
   {% if today_schedules or today_personal_schedules %}
   <div class="card border-0 shadow-sm mb-3" style="border-radius:1rem; border-left: 4px solid var(--bs-info, #0dcaf0) !important;">
@@ -2873,5 +2892,115 @@ document.addEventListener('DOMContentLoaded', function() {
     dnmSubmitUrl = '';
   });
 })();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// [재현] 대시보드 통합 검색 기능
+// ──────────────────────────────────────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  const SEARCH_URL = '{% url "reporting:dashboard_search_api" %}';
+
+  function getTypeLabel(type) {
+    const labels = {
+      delivery_item: '<span class="badge rounded-pill text-bg-warning text-dark me-1" style="font-size:0.7em;">품목</span>',
+      schedule:      '<span class="badge rounded-pill text-bg-info me-1" style="font-size:0.7em;">일정</span>',
+      history:       '<span class="badge rounded-pill text-bg-secondary me-1" style="font-size:0.7em;">활동</span>',
+    };
+    return labels[type] || '';
+  }
+
+  function renderSearchResults(data) {
+    const container = document.getElementById('dashSearchResults');
+    container.style.display = 'block';
+
+    if (!data.success) {
+      container.innerHTML = `<div class="alert alert-danger py-2 small">${data.error || '검색 오류가 발생했습니다.'}</div>`;
+      return;
+    }
+
+    if (!data.departments || data.departments.length === 0) {
+      container.innerHTML = `<div class="text-muted small py-2"><i class="fas fa-info-circle me-1"></i><strong>"${data.query}"</strong>에 해당하는 연구실을 찾지 못했습니다.</div>`;
+      return;
+    }
+
+    let html = `<div class="mb-1 small text-muted"><i class="fas fa-check-circle me-1 text-success"></i><strong>${data.departments.length}개 연구실</strong> 검색됨</div>`;
+
+    data.departments.forEach(dept => {
+      const deptLabel = dept.department_name
+        ? `<strong>${dept.department_name}</strong>`
+        : '<em class="text-muted">연구실 미지정</em>';
+
+      let matchRows = '';
+      (dept.matches || []).forEach(m => {
+        const label = getTypeLabel(m.type);
+        const snippet = m.snippet ? m.snippet.substring(0, 60) + (m.snippet.length > 60 ? '…' : '') : '';
+        const dateStr = m.date ? `<span class="text-muted ms-1" style="font-size:0.72em;">${m.date}</span>` : '';
+        matchRows += `<div class="d-flex align-items-start gap-1 mt-1 ps-2 border-start border-2" style="border-color:#6f42c1 !important;">
+          ${label}<span class="small">${snippet}${dateStr}</span>
+        </div>`;
+      });
+
+      html += `<div class="card mb-2 border-0 shadow-sm" style="border-radius:.75rem; background:#f9f7ff;">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="small">${deptLabel}
+                <span class="text-muted ms-1" style="font-size:0.82em;">${dept.company_name || ''}</span>
+              </div>
+              <div class="text-muted" style="font-size:0.8em;">
+                <i class="fas fa-user me-1"></i>${dept.customer_name || '-'}
+                <span class="badge text-bg-light text-secondary ms-2 border">${dept.match_count}건 매칭</span>
+              </div>
+              ${matchRows}
+            </div>
+            <a href="${dept.followup_url}" class="btn btn-sm btn-outline-secondary ms-2 text-nowrap" style="font-size:0.78em; border-radius:.5rem;">거래처 상세 →</a>
+          </div>
+        </div>
+      </div>`;
+    });
+
+    container.innerHTML = html;
+  }
+
+  window.dashboardSearch = function () {
+    const input = document.getElementById('dashSearchInput');
+    const q = (input.value || '').trim();
+    const container = document.getElementById('dashSearchResults');
+
+    if (q.length < 2) {
+      container.style.display = 'block';
+      container.innerHTML = '<div class="text-warning small py-1"><i class="fas fa-exclamation-triangle me-1"></i>2자 이상 입력하세요.</div>';
+      return;
+    }
+
+    // 로딩 표시
+    container.style.display = 'block';
+    container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div> <span class="small text-muted ms-1">검색 중...</span></div>';
+
+    fetch(`${SEARCH_URL}?q=${encodeURIComponent(q)}`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+    })
+      .then(r => r.json())
+      .then(data => renderSearchResults(data))
+      .catch(() => {
+        container.innerHTML = '<div class="alert alert-danger py-2 small">검색 요청 중 오류가 발생했습니다.</div>';
+      });
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('dashSearchInput');
+    const btn   = document.getElementById('dashSearchBtn');
+    if (input) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); dashboardSearch(); }
+      });
+    }
+    if (btn) {
+      btn.addEventListener('click', dashboardSearch);
+    }
+  });
+}());
 </script>
 {% endblock %}

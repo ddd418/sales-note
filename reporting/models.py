@@ -582,7 +582,21 @@ class Schedule(models.Model):
     use_prepayment = models.BooleanField(default=False, verbose_name="선결제 사용", help_text="선결제 잔액에서 차감하는 경우 체크")
     prepayment = models.ForeignKey('Prepayment', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_schedules', verbose_name="사용한 선결제")
     prepayment_amount = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="선결제 사용 금액", help_text="선결제에서 차감된 금액")
-    
+
+    # 부가세 모드
+    VAT_MODE_CHOICES = [
+        ('excluded', '부가세 별도'),
+        ('included', '부가세 포함'),
+        ('none', '부가세 없음 / 0원'),
+    ]
+    vat_mode = models.CharField(
+        max_length=20,
+        choices=VAT_MODE_CHOICES,
+        default='excluded',
+        verbose_name="부가세 모드",
+        help_text="부가세 별도: 공급가+VAT10%, 부가세 포함: 입력금액에 VAT포함, 부가세 없음: VAT=0",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
@@ -903,26 +917,41 @@ class Quote(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def save(self, *args, **kwargs):
-        from decimal import Decimal
-        
+        from decimal import Decimal, ROUND_HALF_UP
+
         # 할인액 계산
         if self.discount_rate > 0:
             self.discount_amount = self.subtotal * (Decimal(str(self.discount_rate)) / Decimal('100'))
         else:
             self.discount_amount = 0
-        
-        # 부가세 계산 (10%)
+
         taxable_amount = self.subtotal - self.discount_amount
-        self.tax_amount = taxable_amount * Decimal('0.1')
-        
-        # 총액 계산
-        self.total_amount = taxable_amount + self.tax_amount
-        
+
+        # 부가세 모드: 연결된 Schedule의 vat_mode를 우선 사용, 없으면 'excluded'
+        vat_mode = 'excluded'
+        if self.schedule_id:
+            try:
+                vat_mode = self.schedule.vat_mode or 'excluded'
+            except Exception:
+                pass
+
+        if vat_mode == 'included':
+            # 입력금액이 부가세 포함 총액 → 공급가 = 총액 / 1.1
+            supply = (taxable_amount / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            self.tax_amount = taxable_amount - supply
+            self.total_amount = taxable_amount
+        elif vat_mode == 'none':
+            self.tax_amount = Decimal('0')
+            self.total_amount = taxable_amount
+        else:  # 'excluded' 또는 기타 → 기존 동작 유지
+            self.tax_amount = (taxable_amount * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            self.total_amount = taxable_amount + self.tax_amount
+
         # 가중매출 계산
         self.weighted_revenue = self.total_amount * (Decimal(str(self.probability)) / Decimal('100'))
-        
+
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return f"{self.quote_number} - {self.followup.customer_name}"
     
@@ -1786,3 +1815,127 @@ class WeeklyReport(models.Model):
 
     def __str__(self):
         return self.title
+
+
+# ============================================================
+# 세금계산서 요청 (TaxInvoiceRequest) 모델 — Phase 8.6-1
+# ============================================================
+
+class TaxInvoiceRequest(models.Model):
+    """세금계산서 발행 상태 관리 모델.
+
+    영업 담당자가 발행을 요청하고 관리자/어드민이 발행 처리/취소할 수 있는
+    간단한 워크플로를 제공한다.
+    """
+
+    STATUS_CHOICES = [
+        ('not_requested', '미요청'),
+        ('requested',     '발행요청'),
+        ('issued',        '발행완료'),
+        ('cancelled',     '발행취소'),
+        ('on_hold',       '보류'),
+    ]
+
+    # ── 연결 대상 ────────────────────────────────────────────────────────────
+    followup = models.ForeignKey(
+        FollowUp,
+        on_delete=models.CASCADE,
+        related_name='tax_invoice_requests',
+        verbose_name="관련 거래처",
+    )
+    schedule = models.ForeignKey(
+        Schedule,
+        on_delete=models.CASCADE,
+        related_name='tax_invoice_requests',
+        null=True,
+        blank=True,
+        verbose_name="관련 납품 일정",
+    )
+
+    # ── 상태 ────────────────────────────────────────────────────────────────
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='requested',
+        verbose_name="상태",
+        db_index=True,
+    )
+
+    # ── 금액 스냅샷 ─────────────────────────────────────────────────────────
+    supply_amount = models.DecimalField(
+        max_digits=15, decimal_places=0,
+        default=0,
+        verbose_name="공급가액",
+    )
+    tax_amount = models.DecimalField(
+        max_digits=15, decimal_places=0,
+        default=0,
+        verbose_name="부가세",
+    )
+    total_amount = models.DecimalField(
+        max_digits=15, decimal_places=0,
+        default=0,
+        verbose_name="합계금액",
+    )
+
+    # ── 요청 정보 ────────────────────────────────────────────────────────────
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='tax_invoice_requests_made',
+        verbose_name="요청자",
+    )
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name="요청일시")
+    request_memo = models.TextField(blank=True, verbose_name="요청 메모")
+
+    # ── 발행 처리 정보 ───────────────────────────────────────────────────────
+    issued_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tax_invoices_issued',
+        verbose_name="발행 처리자",
+    )
+    issued_at = models.DateTimeField(null=True, blank=True, verbose_name="발행 처리일시")
+    issue_memo = models.TextField(blank=True, verbose_name="발행 메모")
+
+    # ── 취소/보류 정보 ──────────────────────────────────────────────────────
+    cancelled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tax_invoices_cancelled',
+        verbose_name="취소/보류 처리자",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True, verbose_name="취소/보류일시")
+    cancel_reason = models.TextField(blank=True, verbose_name="취소/보류 사유")
+
+    class Meta:
+        verbose_name = "세금계산서 요청"
+        verbose_name_plural = "세금계산서 요청 목록"
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['followup', 'status']),
+            models.Index(fields=['schedule', 'status']),
+        ]
+
+    def __str__(self):
+        customer = (
+            self.followup.customer_name or str(self.followup)
+            if self.followup_id else '미지정'
+        )
+        return f"[{self.get_status_display()}] {customer} ({self.requested_at.strftime('%Y-%m-%d') if self.requested_at else '-'})"
+
+    @property
+    def status_badge_class(self):
+        return {
+            'not_requested': 'secondary',
+            'requested':     'warning',
+            'issued':        'success',
+            'cancelled':     'danger',
+            'on_hold':       'info',
+        }.get(self.status, 'secondary')
+

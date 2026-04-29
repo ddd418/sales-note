@@ -465,8 +465,8 @@ class ScheduleForm(forms.ModelForm):
     
     class Meta:
         model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes', 
-                  'use_prepayment', 'prepayment', 'prepayment_amount']
+        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes',
+                  'use_prepayment', 'prepayment', 'prepayment_amount', 'vat_mode']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
@@ -2274,14 +2274,18 @@ def dashboard_view(request):
     ).select_related('followup', 'followup__company', 'user').order_by('visit_time')[:5]
     context['today_schedules'] = today_schedules
 
-    # Phase 5: 이번 주 예정 일정 (오늘 초과 ~ 7일 이내)
-    week_later = today + timedelta(days=7)
+    # Phase 5: 이번 주 예정 일정 (오늘 초과 ~ 6일 이내, 완료 포함)
+    # Bug 2 fix: status='scheduled'→status__in 으로 완료 일정도 포함
+    week_end = today + timedelta(days=6)
     upcoming_schedules_dash = schedules.filter(
         visit_date__gt=today,
-        visit_date__lte=week_later,
-        status='scheduled'
+        visit_date__lte=week_end,
+        status__in=['scheduled', 'completed'],
     ).select_related('followup', 'followup__company', 'user').order_by('visit_date', 'visit_time')[:5]
     context['upcoming_schedules_dash'] = upcoming_schedules_dash
+
+    # Bug 3 fix: schedule_count는 오늘+이번주 표시 목록 기준으로 재계산 (표시 수와 일치)
+    context['schedule_count'] = today_schedules.count() + upcoming_schedules_dash.count()
 
     # Phase 5+: 개인 일정 포함 (오늘 + 이번 주 예정)
     from .models import PersonalSchedule as _PersonalSchedule
@@ -2293,7 +2297,7 @@ def dashboard_view(request):
 
     upcoming_personal_schedules_dash = _PersonalSchedule.objects.filter(
         schedule_date__gt=today,
-        schedule_date__lte=week_later,
+        schedule_date__lte=week_end,
         **user_filter_for_dashboard
     ).select_related('user').order_by('schedule_date', 'schedule_time')[:5]
     context['upcoming_personal_schedules_dash'] = upcoming_personal_schedules_dash
@@ -4442,7 +4446,371 @@ def followup_histories_api(request, followup_id):
         logger.error(f"followup_histories_api error for followup_id={followup_id}: {str(e)}", exc_info=True)
         return JsonResponse({'error': f'서버 에러: {str(e)}'}, status=500)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 8.6-1: 세금계산서 요청 API
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def followup_tax_invoices_api(request, followup_id):
+    """거래처별 세금계산서 요청 목록 반환 (GET) 또는 신규 요청 생성 (POST)."""
+    from .models import TaxInvoiceRequest
+    from decimal import Decimal
+
+    followup = get_object_or_404(FollowUp, pk=followup_id)
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+
+    if request.method == 'POST':
+        # ── 발행 요청 생성 ────────────────────────────────────────────────────
+        schedule_id = request.POST.get('schedule_id') or None
+        schedule = None
+        if schedule_id:
+            try:
+                schedule = Schedule.objects.get(pk=schedule_id, followup=followup)
+            except Schedule.DoesNotExist:
+                return JsonResponse({'error': '해당 일정을 찾을 수 없습니다.'}, status=404)
+
+        # 같은 일정에 이미 요청 중인 건이 있으면 중복 생성 방지
+        if schedule:
+            existing = TaxInvoiceRequest.objects.filter(
+                followup=followup,
+                schedule=schedule,
+                status__in=['requested', 'on_hold'],
+            ).first()
+            if existing:
+                return JsonResponse({
+                    'error': f'이미 {existing.get_status_display()} 상태의 요청이 있습니다.',
+                }, status=400)
+
+        # 금액 계산: 납품 품목 기준
+        supply_amount = Decimal('0')
+        if schedule:
+            for item in schedule.delivery_items_set.all():
+                if item.total_price:
+                    # total_price는 부가세 포함이므로 1.1로 나누어 공급가액 산출
+                    supply_amount += item.total_price / Decimal('1.1')
+        tax_amount = (supply_amount * Decimal('0.1')).quantize(Decimal('1'))
+        supply_amount = supply_amount.quantize(Decimal('1'))
+        total_amount = supply_amount + tax_amount
+
+        tax_req = TaxInvoiceRequest.objects.create(
+            followup=followup,
+            schedule=schedule,
+            status='requested',
+            supply_amount=supply_amount,
+            tax_amount=tax_amount,
+            total_amount=total_amount,
+            requested_by=request.user,
+            request_memo=request.POST.get('memo', ''),
+        )
+        return JsonResponse({
+            'success': True,
+            'id': tax_req.pk,
+            'status': tax_req.status,
+            'status_display': tax_req.get_status_display(),
+            'message': '발행 요청이 등록되었습니다.',
+        })
+
+    # ── GET: 목록 반환 ────────────────────────────────────────────────────────
+    qs = (
+        TaxInvoiceRequest.objects
+        .filter(followup=followup)
+        .select_related('schedule', 'requested_by', 'issued_by', 'cancelled_by')
+        .order_by('-requested_at')
+    )
+    items = []
+    for r in qs:
+        items.append({
+            'id': r.pk,
+            'status': r.status,
+            'status_display': r.get_status_display(),
+            'status_badge': r.status_badge_class,
+            'schedule_id': r.schedule_id,
+            'schedule_date': r.schedule.visit_date.strftime('%Y-%m-%d') if r.schedule else '',
+            'supply_amount': int(r.supply_amount),
+            'tax_amount': int(r.tax_amount),
+            'total_amount': int(r.total_amount),
+            'requested_by': r.requested_by.username if r.requested_by else '',
+            'requested_at': r.requested_at.strftime('%Y-%m-%d %H:%M'),
+            'request_memo': r.request_memo,
+            'issued_by': r.issued_by.username if r.issued_by else '',
+            'issued_at': r.issued_at.strftime('%Y-%m-%d %H:%M') if r.issued_at else '',
+            'issue_memo': r.issue_memo,
+            'cancelled_by': r.cancelled_by.username if r.cancelled_by else '',
+            'cancelled_at': r.cancelled_at.strftime('%Y-%m-%d %H:%M') if r.cancelled_at else '',
+            'cancel_reason': r.cancel_reason,
+        })
+
+    # 발행 가능한 납품 일정 목록 (이미 요청 진행 중인 건 제외)
+    delivery_schedules = (
+        Schedule.objects
+        .filter(followup=followup, activity_type='delivery')
+        .prefetch_related('delivery_items_set')
+        .order_by('-visit_date')
+    )
+    already_requested = set(
+        TaxInvoiceRequest.objects
+        .filter(followup=followup, status__in=['requested', 'on_hold', 'issued'])
+        .values_list('schedule_id', flat=True)
+    )
+    schedules_list = []
+    for s in delivery_schedules:
+        total = sum(
+            float(item.total_price or 0)
+            for item in s.delivery_items_set.all()
+        )
+        schedules_list.append({
+            'id': s.pk,
+            'date': s.visit_date.strftime('%Y-%m-%d'),
+            'status': s.get_status_display(),
+            'notes': s.notes or '',
+            'total_amount': total,
+            'has_active_request': s.pk in already_requested,
+            'item_count': s.delivery_items_set.count(),
+        })
+
+    return JsonResponse({
+        'success': True,
+        'tax_invoices': items,
+        'delivery_schedules': schedules_list,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def tax_invoice_update_status_api(request, request_id):
+    """세금계산서 요청 상태 업데이트 (발행완료 / 발행취소 / 보류)."""
+    from .models import TaxInvoiceRequest
+    from django.utils import timezone
+
+    tax_req = get_object_or_404(TaxInvoiceRequest, pk=request_id)
+    user_profile = get_user_profile(request.user)
+
+    # 접근 권한: followup 접근 가능해야 함
+    if not can_access_followup(request.user, tax_req.followup):
+        return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
+
+    new_status = request.POST.get('status', '').strip()
+    if new_status not in dict(TaxInvoiceRequest.STATUS_CHOICES):
+        return JsonResponse({'error': '올바르지 않은 상태값입니다.'}, status=400)
+
+    # 권한별 허용 액션
+    can_issue_or_cancel_others = user_profile.is_admin() or user_profile.is_manager()
+    is_requester = tax_req.requested_by_id == request.user.pk
+
+    if new_status == 'issued':
+        if not can_issue_or_cancel_others:
+            return JsonResponse({'error': '발행 완료 처리는 관리자/매니저만 가능합니다.'}, status=403)
+        tax_req.issued_by = request.user
+        tax_req.issued_at = timezone.now()
+        tax_req.issue_memo = request.POST.get('memo', '')
+
+    elif new_status == 'cancelled':
+        # 자신의 요청은 취소 가능, 다른 사람 것은 admin/manager만
+        if not (is_requester or can_issue_or_cancel_others):
+            return JsonResponse({'error': '취소는 요청자 본인 또는 관리자/매니저만 가능합니다.'}, status=403)
+        tax_req.cancelled_by = request.user
+        tax_req.cancelled_at = timezone.now()
+        tax_req.cancel_reason = request.POST.get('memo', '')
+
+    elif new_status == 'on_hold':
+        if not can_issue_or_cancel_others:
+            return JsonResponse({'error': '보류 처리는 관리자/매니저만 가능합니다.'}, status=403)
+        tax_req.cancelled_by = request.user
+        tax_req.cancelled_at = timezone.now()
+        tax_req.cancel_reason = request.POST.get('memo', '')
+
+    elif new_status == 'requested':
+        # 보류→재요청: 요청자 또는 admin/manager
+        if not (is_requester or can_issue_or_cancel_others):
+            return JsonResponse({'error': '재요청은 요청자 본인 또는 관리자/매니저만 가능합니다.'}, status=403)
+
+    tax_req.status = new_status
+    tax_req.save()
+
+    return JsonResponse({
+        'success': True,
+        'id': tax_req.pk,
+        'status': tax_req.status,
+        'status_display': tax_req.get_status_display(),
+        'status_badge': tax_req.status_badge_class,
+        'message': f'상태가 {tax_req.get_status_display()}으로 변경되었습니다.',
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [재현] 대시보드 통합 검색 API — Phase 검색 기능
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+@require_http_methods(["GET"])
+def dashboard_search_api(request):
+    """키워드로 연구실(Department) 단위 통합 검색.
+
+    납품/견적 품목명, 일정 메모, 활동 내용을 탐색해
+    키워드가 연관된 연구실(Department)을 그루핑하여 반환합니다.
+
+    Query params:
+        q (str): 검색어 (필수, 2자 이상)
+
+    Returns:
+        JSON { success, query, result_count, departments: [ ... ] }
+    """
+    q = request.GET.get('q', '').strip()
+    if len(q) < 2:
+        return JsonResponse({'error': '검색어를 2자 이상 입력하세요.'}, status=400)
+
+    user_profile = get_user_profile(request.user)
+
+    # ── 사용자의 소속 UserCompany ─────────────────────────────────────────────
+    # UserProfile.company → FK to UserCompany
+    user_company = user_profile.company
+    if not user_company:
+        return JsonResponse({'success': True, 'query': q, 'result_count': 0, 'departments': []})
+
+    # 같은 회사 소속 FollowUp으로 검색 범위를 제한
+    # (FollowUp.user_company 는 작성자의 소속 회사를 기록)
+    base_followups = FollowUp.objects.filter(user_company=user_company)
+
+    # ── 매칭 결과 수집: Department 기준으로 그루핑 ────────────────────────────
+    # {department_id → {meta, matches: []}} 딕셔너리 사용
+    dept_map = {}
+
+    def _ensure_dept(followup):
+        """dept_map에 연구실 엔트리 초기화."""
+        if followup is None:
+            return None
+        dept = followup.department
+        if dept is None:
+            return None
+        dept_id = dept.id
+        if dept_id not in dept_map:
+            dept_map[dept_id] = {
+                'department_id': dept_id,
+                'department_name': dept.name,
+                'company_name': dept.company.name if dept.company else '',
+                'followup_id': followup.id,
+                'customer_name': followup.customer_name or '',
+                'followup_url': reverse('reporting:followup_detail', args=[followup.id]),
+                'match_count': 0,
+                'matches': [],
+            }
+        return dept_id
+
+    def _add_match(dept_id, match_type, snippet, date_str, url=''):
+        if dept_id is None:
+            return
+        entry = dept_map[dept_id]
+        entry['match_count'] += 1
+        # 스니펫 최대 2개만 표시 (UI 간결성)
+        if len(entry['matches']) < 2:
+            entry['matches'].append({
+                'type': match_type,
+                'snippet': snippet[:80] if snippet else '',
+                'date': date_str,
+                'url': url,
+            })
+
+    # ── 1. FollowUp 직접 매칭 (고객명, 회사명, 연구실명) ────────────────────
+    matched_followups = base_followups.filter(
+        Q(customer_name__icontains=q) |
+        Q(company__name__icontains=q) |
+        Q(department__name__icontains=q)
+    ).select_related('department', 'department__company', 'company')
+
+    for fu in matched_followups:
+        dept_id = _ensure_dept(fu)
+        if dept_id is not None:
+            # 이미 dept_map에 기록됐으므로 match_count만 올림
+            dept_map[dept_id]['match_count'] += 1
+
+    # ── 2. 납품/견적 품목명 (DeliveryItem.item_name) ─────────────────────────
+    delivery_matches = (
+        DeliveryItem.objects
+        .filter(item_name__icontains=q)
+        .filter(
+            Q(schedule__followup__in=base_followups) |
+            Q(history__followup__in=base_followups)
+        )
+        .select_related(
+            'schedule__followup__department__company',
+            'history__followup__department__company',
+        )
+        .order_by('-id')[:200]
+    )
+    for item in delivery_matches:
+        fu = None
+        if item.schedule_id and item.schedule and item.schedule.followup_id:
+            fu = item.schedule.followup
+        elif item.history_id and item.history and item.history.followup_id:
+            fu = item.history.followup
+        if fu is None:
+            continue
+        dept_id = _ensure_dept(fu)
+        date_str = ''
+        if item.schedule:
+            date_str = item.schedule.visit_date.strftime('%Y-%m-%d') if item.schedule.visit_date else ''
+        elif item.history:
+            date_str = item.history.created_at.strftime('%Y-%m-%d') if item.history.created_at else ''
+        _add_match(dept_id, 'delivery_item', f'{item.item_name} (×{item.quantity})', date_str)
+
+    # ── 3. 일정 메모 (Schedule.notes) ────────────────────────────────────────
+    schedule_matches = (
+        Schedule.objects
+        .filter(notes__icontains=q, followup__in=base_followups)
+        .select_related('followup__department__company')
+        .order_by('-visit_date')[:100]
+    )
+    for s in schedule_matches:
+        fu = s.followup
+        if fu is None:
+            continue
+        dept_id = _ensure_dept(fu)
+        date_str = s.visit_date.strftime('%Y-%m-%d') if s.visit_date else ''
+        url = reverse('reporting:schedule_detail', args=[s.id])
+        _add_match(dept_id, 'schedule', s.notes, date_str, url)
+
+    # ── 4. 활동 내용 (History.content, History.delivery_items) ───────────────
+    history_matches = (
+        History.objects
+        .filter(
+            Q(content__icontains=q) | Q(delivery_items__icontains=q),
+            followup__in=base_followups,
+            parent_history__isnull=True,
+        )
+        .select_related('followup__department__company')
+        .order_by('-created_at')[:100]
+    )
+    for h in history_matches:
+        fu = h.followup
+        if fu is None:
+            continue
+        dept_id = _ensure_dept(fu)
+        date_str = h.created_at.strftime('%Y-%m-%d') if h.created_at else ''
+        url = reverse('reporting:followup_detail', args=[fu.id])
+        snippet = h.content or h.delivery_items or ''
+        _add_match(dept_id, 'history', snippet, date_str, url)
+
+    # ── 결과 정렬: match_count 내림차순, 최대 20개 ───────────────────────────
+    departments = sorted(
+        dept_map.values(),
+        key=lambda x: x['match_count'],
+        reverse=True,
+    )[:20]
+
+    return JsonResponse({
+        'success': True,
+        'query': q,
+        'result_count': len(departments),
+        'departments': departments,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ============ 인증 관련 뷰들 ============
+
 
 class CustomLoginView(LoginView):
     """커스텀 로그인 뷰 (성공 메시지 추가)"""
@@ -11830,6 +12198,8 @@ def product_create(request):
             # 선택 필드들
             if request.POST.get('description'):
                 product.description = request.POST.get('description')
+            product.specification = request.POST.get('specification', '')
+            product.unit = request.POST.get('unit', 'EA') or 'EA'
             
             # 프로모션 설정
             if request.POST.get('is_promo') == 'on':
@@ -11984,6 +12354,8 @@ def product_edit(request, product_id):
             
             # 선택 필드들
             product.description = request.POST.get('description', '')
+            product.specification = request.POST.get('specification', '')
+            product.unit = request.POST.get('unit', 'EA') or 'EA'
             
             # 프로모션 설정
             product.is_promo = request.POST.get('is_promo') == 'on'
@@ -12776,10 +13148,24 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     temp_path = tmp_file.name
                 
                 
-                # 총액 계산
-                subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
-                tax = subtotal * Decimal('0.1')
-                total = subtotal + tax
+                # 총액 계산 (부가세 모드 반영)
+                _raw_subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
+                _vat_mode = getattr(schedule, 'vat_mode', 'excluded') or 'excluded'
+
+                from decimal import ROUND_HALF_UP
+                if _vat_mode == 'included':
+                    # 입력 금액이 부가세 포함 총액 → 공급가 분리
+                    subtotal = (_raw_subtotal / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+                    tax = _raw_subtotal - subtotal
+                    total = _raw_subtotal
+                elif _vat_mode == 'none':
+                    subtotal = _raw_subtotal
+                    tax = Decimal('0')
+                    total = _raw_subtotal
+                else:  # 'excluded' (default)
+                    subtotal = _raw_subtotal
+                    tax = (_raw_subtotal * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+                    total = _raw_subtotal + tax
                 
                 # 총액을 한글로 변환
                 def number_to_korean(number):
@@ -12926,18 +13312,33 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     item_subtotal = item.unit_price * item.quantity
                     # 단위 결정: DeliveryItem에 있으면 사용, 없으면 Product에서, 그것도 없으면 'EA'
                     item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
-                    
+
+                    # 품목별 부가세 계산 (schedule의 vat_mode 반영)
+                    if _vat_mode == 'included':
+                        _item_supply = (item_subtotal / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+                        _item_tax = item_subtotal - _item_supply
+                        _item_total = item_subtotal
+                        _item_supply_display = _item_supply
+                    elif _vat_mode == 'none':
+                        _item_supply_display = item_subtotal
+                        _item_tax = Decimal('0')
+                        _item_total = item_subtotal
+                    else:
+                        _item_supply_display = item_subtotal
+                        _item_tax = (item_subtotal * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+                        _item_total = item_subtotal + _item_tax
+
                     data_map[f'품목{idx}_이름'] = item.item_name
                     data_map[f'품목{idx}_품목명'] = item.item_name
                     data_map[f'품목{idx}_수량'] = str(item.quantity)
                     data_map[f'품목{idx}_단위'] = item_unit
                     data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
-                    data_map[f'품목{idx}_공급가액'] = f"{int(item_subtotal):,}"
+                    data_map[f'품목{idx}_공급가액'] = f"{int(_item_supply_display):,}"
                     data_map[f'품목{idx}_단가'] = f"{int(item.unit_price):,}"
-                    data_map[f'품목{idx}_부가세액'] = f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}"
-                    data_map[f'품목{idx}_금액'] = f"{int(item_subtotal):,}"
-                    data_map[f'품목{idx}_총액'] = f"{int(item_subtotal * Decimal('1.1')):,}"
+                    data_map[f'품목{idx}_부가세액'] = f"{int(_item_tax):,}"
+                    data_map[f'품목{idx}_금액'] = f"{int(_item_supply_display):,}"
+                    data_map[f'품목{idx}_총액'] = f"{int(_item_total):,}"
                 
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}

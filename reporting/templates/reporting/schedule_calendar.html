@@ -7023,7 +7023,9 @@
 
     // 고객 활동기록 Offcanvas 표시 함수 (중첩 모달 제거 → Offcanvas 전환)
     // Bootstrap 5는 중첩 모달을 공식 지원하지 않아 첫 번째 모달이 사라지는 버그가 있음
+    let currentFollowupId = null;  // 활성 offcanvas 팔로업 ID (세금계산서 탭에서 사용)
     window.showCustomerHistories = function(followupId, customerName) {
+      currentFollowupId = followupId;
       const offcanvasEl = document.getElementById('customerHistoryOffcanvas');
       const label = document.getElementById('customerHistoryOffcanvasLabel');
       const content = document.getElementById('customerHistoryOffcanvasContent');
@@ -7080,13 +7082,15 @@
       }
       
       if (data.histories.length === 0) {
-        content.innerHTML = `
+        const emptyHistoryHtml = `
           <div class="text-center py-4">
             <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
             <h6 class="text-muted">등록된 활동 기록이 없습니다</h6>
             <p class="text-muted small">아직 ${data.customer_name}님과 관련된 활동 기록이 없습니다.</p>
           </div>
         `;
+        content.innerHTML = buildTabWrapper(emptyHistoryHtml);
+        setupTaxInvoiceTabListener();
         return;
       }
 
@@ -7310,8 +7314,56 @@
         });
       }
 
-      content.innerHTML = historiesHtml;
+      content.innerHTML = buildTabWrapper(historiesHtml);
+      setupTaxInvoiceTabListener();
     }
+
+    // ── 탭 구조 헬퍼: 활동기록 + 세금계산서 탭 ────────────────────────────────
+    function buildTabWrapper(historyPaneHtml) {
+      return `
+        <ul class="nav nav-tabs border-bottom mb-3" id="customerHistoryTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="historyTab-btn"
+                    data-bs-toggle="tab" data-bs-target="#historyTabPane"
+                    type="button" role="tab">
+              <i class="fas fa-history me-1"></i>활동기록
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="taxInvoiceTab-btn"
+                    data-bs-toggle="tab" data-bs-target="#taxInvoiceTabPane"
+                    type="button" role="tab">
+              <i class="fas fa-file-invoice-dollar me-1"></i>세금계산서
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="historyTabPane" role="tabpanel">
+            ${historyPaneHtml}
+          </div>
+          <div class="tab-pane fade" id="taxInvoiceTabPane" role="tabpanel">
+            <div class="text-center py-4 text-muted" id="taxInvoiceTabLoader">
+              <i class="fas fa-file-invoice-dollar fa-2x mb-2"></i>
+              <p class="small">탭을 클릭하면 세금계산서 정보를 불러옵니다.</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 세금계산서 탭 클릭 시 데이터 로드 (1회)
+    function setupTaxInvoiceTabListener() {
+      const tabBtn = document.getElementById('taxInvoiceTab-btn');
+      if (!tabBtn) return;
+      let loaded = false;
+      tabBtn.addEventListener('shown.bs.tab', function () {
+        if (!loaded) {
+          loaded = true;
+          loadTaxInvoiceTab(currentFollowupId);
+        }
+      });
+    }
+
 
     // 텍스트 포맷팅 함수 (일정 상세 모달과 동일)
     function formatText(text) {
@@ -7369,7 +7421,169 @@
       return escapedText;
     }
 
+    // ── 세금계산서 탭 JS 함수들 (Phase 8.6-1) ────────────────────────────────
+
+    function loadTaxInvoiceTab(followupId) {
+      const pane = document.getElementById('taxInvoiceTabPane');
+      if (!pane) return;
+      pane.innerHTML = `
+        <div class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <p class="mt-2 text-muted small">세금계산서 정보를 불러오는 중...</p>
+        </div>`;
+      fetch(`/reporting/api/followup/${followupId}/tax-invoices/`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            displayTaxInvoiceTab(data, followupId);
+          } else {
+            pane.innerHTML = `<div class="alert alert-danger">세금계산서 정보를 불러오는데 실패했습니다.</div>`;
+          }
+        })
+        .catch(() => {
+          pane.innerHTML = `<div class="alert alert-danger">네트워크 오류가 발생했습니다.</div>`;
+        });
+    }
+
+    function displayTaxInvoiceTab(data, followupId) {
+      const pane = document.getElementById('taxInvoiceTabPane');
+      if (!pane) return;
+
+      const statusBadgeMap = {
+        not_requested: 'secondary',
+        requested:     'warning',
+        issued:        'success',
+        cancelled:     'danger',
+        on_hold:       'info',
+      };
+      const statusLabelMap = {
+        not_requested: '미요청',
+        requested:     '발행요청',
+        issued:        '발행완료',
+        cancelled:     '발행취소',
+        on_hold:       '보류',
+      };
+
+      // ── 기존 요청 목록 ────────────────────────────────────────────────────
+      let html = '';
+      if (data.tax_invoices && data.tax_invoices.length > 0) {
+        html += `<h6 class="text-muted mb-2"><i class="fas fa-list me-1"></i>요청 현황</h6>`;
+        data.tax_invoices.forEach(req => {
+          const badge = statusBadgeMap[req.status] || 'secondary';
+          const label = statusLabelMap[req.status] || req.status_display;
+          html += `
+            <div class="card mb-2 border-start border-3 border-${badge}">
+              <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="badge bg-${badge}">${label}</span>
+                  <small class="text-muted">${req.requested_at}</small>
+                </div>
+                ${req.schedule_date ? `<div class="small text-muted mb-1"><i class="fas fa-calendar me-1"></i>납품일: ${req.schedule_date}</div>` : ''}
+                ${req.total_amount ? `
+                  <div class="small mb-1">
+                    공급가액: <strong>${req.supply_amount.toLocaleString()}원</strong>
+                    &nbsp;|&nbsp; 부가세: ${req.tax_amount.toLocaleString()}원
+                    &nbsp;|&nbsp; 합계: <strong class="text-primary">${req.total_amount.toLocaleString()}원</strong>
+                  </div>` : ''}
+                ${req.request_memo ? `<div class="small text-muted">${req.request_memo}</div>` : ''}
+                ${req.issue_memo ? `<div class="small text-success"><i class="fas fa-check me-1"></i>${req.issue_memo}</div>` : ''}
+                ${req.cancel_reason ? `<div class="small text-danger"><i class="fas fa-times me-1"></i>${req.cancel_reason}</div>` : ''}
+                <div class="mt-2 d-flex gap-1 flex-wrap">
+                  ${req.status === 'requested' || req.status === 'on_hold' ? `
+                    <button class="btn btn-success btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'issued', '')">
+                      <i class="fas fa-check me-1"></i>발행완료
+                    </button>
+                    <button class="btn btn-outline-info btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'on_hold', '')">
+                      <i class="fas fa-pause me-1"></i>보류
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'cancelled', '')">
+                      <i class="fas fa-times me-1"></i>취소
+                    </button>
+                  ` : ''}
+                  ${req.status === 'on_hold' ? `
+                    <button class="btn btn-outline-warning btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'requested', '')">
+                      <i class="fas fa-redo me-1"></i>재요청
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>`;
+        });
+      } else {
+        html += `<p class="text-muted small"><i class="fas fa-info-circle me-1"></i>등록된 세금계산서 요청이 없습니다.</p>`;
+      }
+
+      // ── 새 요청 생성: 발행 가능한 납품 일정 ────────────────────────────────
+      const available = (data.delivery_schedules || []).filter(s => !s.has_active_request);
+      if (available.length > 0) {
+        html += `
+          <hr>
+          <h6 class="text-muted mb-2"><i class="fas fa-plus me-1"></i>발행 요청</h6>
+          <select class="form-select form-select-sm mb-2" id="taxInvoiceScheduleSelect">
+            <option value="">납품 일정 선택...</option>
+            ${available.map(s => `
+              <option value="${s.id}">
+                ${s.date} — ${s.total_amount.toLocaleString()}원 (${s.status})
+              </option>
+            `).join('')}
+          </select>
+          <textarea class="form-control form-control-sm mb-2" id="taxInvoiceRequestMemo"
+                    rows="2" placeholder="메모 (선택)"></textarea>
+          <button class="btn btn-primary btn-sm w-100" onclick="requestTaxInvoice(${followupId})">
+            <i class="fas fa-file-invoice me-1"></i>세금계산서 발행 요청
+          </button>`;
+      }
+
+      pane.innerHTML = html;
+    }
+
+    window.requestTaxInvoice = function(followupId) {
+      const scheduleId = document.getElementById('taxInvoiceScheduleSelect')?.value || '';
+      const memo = document.getElementById('taxInvoiceRequestMemo')?.value || '';
+      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+      const body = new URLSearchParams({ memo });
+      if (scheduleId) body.append('schedule_id', scheduleId);
+      fetch(`/reporting/api/followup/${followupId}/tax-invoices/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          loadTaxInvoiceTab(followupId);
+        } else {
+          alert(data.error || '요청 등록에 실패했습니다.');
+        }
+      })
+      .catch(() => alert('네트워크 오류가 발생했습니다.'));
+    };
+
+    window.updateTaxInvoiceStatus = function(requestId, newStatus, memo) {
+      if (!memo && (newStatus === 'cancelled' || newStatus === 'on_hold')) {
+        memo = prompt(newStatus === 'cancelled' ? '취소 사유를 입력하세요 (생략 가능):' : '보류 사유를 입력하세요 (생략 가능):') || '';
+      }
+      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+      fetch(`/reporting/api/tax-invoice/${requestId}/status/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ status: newStatus, memo }).toString(),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          loadTaxInvoiceTab(currentFollowupId);
+        } else {
+          alert(data.error || '상태 변경에 실패했습니다.');
+        }
+      })
+      .catch(() => alert('네트워크 오류가 발생했습니다.'));
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     // 납품 품목 전용 포맷팅 함수는 window.formatDeliveryItems로 이미 정의됨 (중복 제거)
+
     
     // 히스토리 파일 삭제 (모달용) - 전역 함수로 설정
     window.deleteHistoryFile = function(fileId, historyId, scheduleId) {

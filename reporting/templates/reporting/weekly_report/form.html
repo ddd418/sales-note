@@ -386,22 +386,23 @@ function insertSelected(category) {
   const lines = Array.from(checked).map(cb => buildInsertText(cb));
   const insertText = lines.join('\n');
 
-  const targetId = category === 'quote_delivery' ? 'quoteDeliveryNotes' : 'activityNotes';
-  const ta = document.getElementById(targetId);
-  if (!ta) return;
+  // Bug 4 fix: 존재하지 않는 textarea ID 대신 Quill 인스턴스를 직접 사용
+  const quill = category === 'quote_delivery' ? window.quillQuoteDelivery : window.quillActivity;
+  if (!quill) return;
 
-  const cur = ta.value.trim();
-  ta.value = cur ? cur + '\n' + insertText : insertText;
-  ta.scrollTop = ta.scrollHeight;
-  ta.focus();
+  const currentText = quill.getText().trim();
+  const len = quill.getLength();
+  if (currentText) {
+    // 기존 내용 뒤에 줄바꿈과 함께 삽입
+    quill.insertText(len - 1, '\n' + insertText, 'user');
+  } else {
+    quill.insertText(0, insertText, 'user');
+  }
+  quill.setSelection(quill.getLength(), 0);
 
   // 체크박스 해제
   checked.forEach(cb => { cb.checked = false; });
   updateInsertBtns();
-
-  // 시각적 피드백
-  ta.classList.add('border-primary');
-  setTimeout(() => ta.classList.remove('border-primary'), 800);
 }
 
 // 기존 단순 클릭 방식 (하위 호환, 사용 안 됨)
