@@ -1,204 +1,894 @@
 {% extends 'reporting/base.html' %}
 {% load static %}
 
-{% block title %}AI 부서 분석{% endblock %}
+{% block title %}AI 분석/프롬프트{% endblock %}
 
 {% block extra_css %}
 <style>
-  .ai-dept-list {
-    max-width: 960px;
+  .ai-workspace-page {
+    background: #f8fafc;
+    color: #0f172a;
+    min-height: calc(100vh - 72px);
+    padding: 1.5rem;
+  }
+
+  .ai-workspace-shell {
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 2rem 1rem;
   }
-  .ai-page-header {
+
+  .ai-hero {
+    align-items: flex-start;
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 2rem;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
   }
-  .ai-page-header h2 {
-    color: var(--text-primary);
-    font-size: 1.5rem;
-    font-weight: 700;
+
+  .ai-hero h1 {
+    color: #0f172a;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 0;
     margin: 0;
   }
-  .ai-page-header .badge-ai {
-    background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    color: #fff;
-    font-size: 0.7rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-weight: 600;
-  }
-  .ai-page-desc {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    margin-bottom: 1.5rem;
+
+  .ai-hero p {
+    color: #64748b;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    margin: 0.4rem 0 0;
+    max-width: 720px;
   }
 
-  /* 검색 */
-  .ai-search-box {
-    margin-bottom: 1.5rem;
+  .ai-hero-badge {
+    align-items: center;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    border-radius: 999px;
+    color: #1d4ed8;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    white-space: nowrap;
   }
-  .ai-search-input {
-    width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
+
+  .ai-flow-grid {
+    align-items: start;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.4fr);
+  }
+
+  .ai-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
-    color: var(--text-primary);
-    padding: 0.6rem 0.85rem;
-    font-size: 0.85rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    padding: 1rem;
   }
-  .ai-search-input:focus {
-    outline: none;
-    border-color: var(--primary);
-  }
-  .ai-search-input::placeholder { color: var(--text-secondary); }
 
-  /* 부서 카드 */
-  .ai-dept-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    margin-bottom: 0.75rem;
-    transition: all 0.2s;
-    cursor: pointer;
-    text-decoration: none !important;
-    display: block;
+  .ai-panel + .ai-panel {
+    margin-top: 1rem;
   }
-  .ai-dept-card:hover {
-    border-color: var(--primary);
-    background: var(--surface-hover);
-    transform: translateY(-1px);
+
+  .ai-panel-header {
+    align-items: center;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.8rem;
   }
-  .dept-name {
+
+  .ai-panel-header h2 {
+    color: #0f172a;
     font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
+    font-weight: 800;
+    margin: 0;
   }
+
+  .step-pill {
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+    border-radius: 999px;
+    color: #2563eb;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.25rem 0.55rem;
+    white-space: nowrap;
+  }
+
+  .dept-search {
+    margin-bottom: 0.75rem;
+  }
+
+  .dept-search input,
+  .goal-input {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: #0f172a;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    padding: 0.65rem 0.75rem;
+    width: 100%;
+  }
+
+  .dept-search input:focus,
+  .goal-input:focus,
+  .prompt-preview:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    outline: none;
+  }
+
+  .dept-card-list {
+    display: grid;
+    gap: 0.65rem;
+    max-height: 680px;
+    overflow: auto;
+    padding-right: 0.2rem;
+  }
+
+  .dept-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #0f172a;
+    display: block;
+    padding: 0.85rem;
+    text-decoration: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .dept-card:hover,
+  .dept-card.selected {
+    border-color: #2563eb;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.1);
+    color: #0f172a;
+  }
+
+  .dept-name-row {
+    align-items: flex-start;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .dept-name {
+    color: #0f172a;
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
   .dept-company {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
+    color: #64748b;
+    display: block;
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
   }
+
   .dept-stats {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
     flex-wrap: wrap;
-  }
-  .dept-stat {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--background);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-  }
-  .badge-analyzed {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    font-size: 0.7rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-weight: 600;
-  }
-  .badge-not-analyzed {
-    background: rgba(100, 116, 139, 0.15);
-    color: var(--text-secondary);
-    font-size: 0.7rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-weight: 600;
+    gap: 0.35rem;
+    margin-top: 0.65rem;
   }
 
-  .ai-empty-state {
-    text-align: center;
-    padding: 4rem 2rem;
-    color: var(--text-secondary);
+  .dept-stat,
+  .status-badge {
+    align-items: center;
+    border-radius: 6px;
+    display: inline-flex;
+    font-size: 0.72rem;
+    font-weight: 700;
+    gap: 0.25rem;
+    padding: 0.25rem 0.45rem;
   }
-  .ai-empty-state i {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    color: var(--border);
+
+  .dept-stat {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+  }
+
+  .status-badge.done {
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
+  }
+
+  .status-badge.empty {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+  }
+
+  .summary-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .summary-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.8rem;
+  }
+
+  .summary-box h3 {
+    align-items: center;
+    color: #0f172a;
+    display: flex;
+    font-size: 0.86rem;
+    font-weight: 800;
+    gap: 0.4rem;
+    margin: 0 0 0.55rem;
+  }
+
+  .summary-box ul {
+    color: #334155;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .summary-box li + li {
+    margin-top: 0.35rem;
+  }
+
+  .analysis-meta {
+    align-items: center;
+    color: #64748b;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .analysis-meta span {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+  }
+
+  .goal-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .goal-card {
+    align-items: flex-start;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #0f172a;
+    cursor: pointer;
+    display: flex;
+    gap: 0.7rem;
+    min-height: 130px;
+    padding: 0.85rem;
+    text-align: left;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    width: 100%;
+  }
+
+  .goal-card:hover,
+  .goal-card.selected {
+    background: #eff6ff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+  }
+
+  .goal-icon {
+    align-items: center;
+    background: #dbeafe;
+    border-radius: 8px;
+    color: #1d4ed8;
+    display: inline-flex;
+    flex: 0 0 34px;
+    height: 34px;
+    justify-content: center;
+    width: 34px;
+  }
+
+  .goal-title {
+    color: #0f172a;
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .goal-desc,
+  .goal-reason,
+  .field-help {
+    color: #64748b;
+    display: block;
+    font-size: 0.76rem;
+    line-height: 1.5;
+    margin-top: 0.25rem;
+  }
+
+  .goal-reason {
+    color: #475569;
+  }
+
+  .direct-goal {
+    margin-top: 1rem;
+  }
+
+  .direct-goal label {
+    color: #0f172a;
+    display: block;
+    font-size: 0.84rem;
+    font-weight: 800;
+    margin-bottom: 0.35rem;
+  }
+
+  .prompt-preview {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: #0f172a;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.86rem;
+    line-height: 1.65;
+    min-height: 420px;
+    padding: 0.9rem;
+    resize: vertical;
+    width: 100%;
+  }
+
+  .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: 0.85rem;
+  }
+
+  .ai-btn {
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.86rem;
+    font-weight: 800;
+    gap: 0.42rem;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0.55rem 0.85rem;
+    text-decoration: none;
+  }
+
+  .ai-btn.primary {
+    background: #2563eb;
+    color: #ffffff;
+  }
+
+  .ai-btn.success {
+    background: #16a34a;
+    color: #ffffff;
+  }
+
+  .ai-btn.secondary {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #334155;
+  }
+
+  .ai-btn.warning {
+    background: #f59e0b;
+    color: #ffffff;
+  }
+
+  .ai-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .notice {
+    align-items: flex-start;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    color: #334155;
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.95rem 1rem;
+  }
+
+  .notice.warning {
+    border-left-color: #f59e0b;
+  }
+
+  .notice.error {
+    border-left-color: #dc2626;
+  }
+
+  .notice i {
+    color: #2563eb;
+    margin-top: 0.18rem;
+  }
+
+  .notice.warning i {
+    color: #f59e0b;
+  }
+
+  .notice.error i {
+    color: #dc2626;
+  }
+
+  .notice strong {
+    color: #0f172a;
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 0.15rem;
+  }
+
+  .notice span {
+    color: #64748b;
+    display: block;
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+
+  .empty-state {
+    color: #64748b;
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  .empty-state i {
+    color: #94a3b8;
+    display: block;
+    font-size: 2rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .copy-status {
+    color: #64748b;
+    font-size: 0.8rem;
+    margin-top: 0.45rem;
+    min-height: 1.2rem;
+  }
+
+  .ai-loading-overlay {
+    align-items: center;
+    background: rgba(15, 23, 42, 0.45);
+    bottom: 0;
+    display: none;
+    justify-content: center;
+    left: 0;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 9999;
+  }
+
+  .ai-loading-box {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+    max-width: 360px;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .ai-loading-box .spinner {
+    animation: aiSpin 0.8s linear infinite;
+    border: 3px solid #e2e8f0;
+    border-radius: 50%;
+    border-top-color: #2563eb;
+    height: 42px;
+    margin: 0 auto 1rem;
+    width: 42px;
+  }
+
+  .ai-loading-box h6 {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 800;
+    margin: 0 0 0.25rem;
+  }
+
+  .ai-loading-box p {
+    color: #64748b;
+    font-size: 0.84rem;
+    margin: 0;
+  }
+
+  @keyframes aiSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (max-width: 1080px) {
+    .ai-flow-grid,
+    .summary-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dept-card-list {
+      max-height: none;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .ai-workspace-page {
+      padding: 1rem 0.75rem;
+    }
+
+    .ai-hero {
+      flex-direction: column;
+    }
+
+    .goal-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .ai-btn {
+      width: 100%;
+    }
+
+    .prompt-preview {
+      min-height: 340px;
+    }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="ai-dept-list">
-  <div class="ai-page-header">
-    <h2><i class="fas fa-brain"></i> AI 부서 분석</h2>
-    <span class="badge-ai">AI</span>
-  </div>
-  <p class="ai-page-desc">
-    부서(연구실)를 선택하면 최근 6개월 미팅 내역과 견적/납품 패턴을 종합 분석합니다.
-  </p>
-
-  {% if dept_data %}
-  <div class="ai-search-box">
-    <input type="text" class="ai-search-input" id="deptSearch"
-           placeholder="업체명, 부서명, 연구원명으로 검색..." oninput="filterDepts()">
-  </div>
-
-  <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem; text-transform: uppercase;">
-    분석 가능 부서 ({{ dept_data|length }})
-  </div>
-
-  {% for item in dept_data %}
-  <a href="{% url 'ai_chat:department_analysis' department_id=item.department.id %}"
-     class="ai-dept-card"
-     data-search="{{ item.department.company.name|lower }} {{ item.department.name|lower }} {% for name in item.customer_names %}{{ name|lower }} {% endfor %}">
-    <div class="d-flex justify-content-between align-items-start">
+<div class="ai-workspace-page">
+  <div class="ai-workspace-shell">
+    <header class="ai-hero">
       <div>
-        <div class="dept-name">
-          {{ item.department.name }}
-        </div>
-        <div class="dept-company">
-          {{ item.department.company.name }}
-        </div>
-        <div class="dept-stats">
-          <span class="dept-stat"><i class="fas fa-users me-1"></i>팔로우업 {{ item.followup_count }}건</span>
-          {% if item.analysis %}
-            <span class="dept-stat"><i class="fas fa-handshake me-1"></i>미팅 {{ item.analysis.meeting_count }}건</span>
-            <span class="dept-stat"><i class="fas fa-file-invoice me-1"></i>견적 {{ item.analysis.quote_count }}건</span>
-            <span class="dept-stat"><i class="fas fa-truck me-1"></i>납품 {{ item.analysis.delivery_count }}건</span>
-          {% endif %}
-        </div>
+        <h1>AI 업무 프롬프트 생성</h1>
+        <p>부서를 선택하면 AI 부서분석 결과를 바탕으로 현재 상황, 핵심 문제, 참고 조건을 자동 정리하고 목표에 맞는 외부 AI용 프롬프트를 만들어줍니다.</p>
       </div>
-      <div class="d-flex gap-2 align-items-center">
-        {% if item.has_analysis %}
-          <span class="badge-analyzed">
-            <i class="fas fa-check-circle"></i> 분석완료
-          </span>
-          <span style="font-size: 0.7rem; color: var(--text-secondary);">
-            {{ item.analysis.updated_at|date:"m/d H:i" }}
-          </span>
-        {% else %}
-          <span class="badge-not-analyzed">미분석</span>
-        {% endif %}
-        <i class="fas fa-chevron-right" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-      </div>
-    </div>
-  </a>
-  {% endfor %}
+      <span class="ai-hero-badge">
+        <i class="fas fa-brain"></i>
+        부서분석 기반
+      </span>
+    </header>
 
-  {% else %}
-  <div class="ai-empty-state">
-    <i class="fas fa-building"></i>
-    <h5>분석 가능한 부서가 없습니다</h5>
-    <p>부서가 할당된 팔로우업이 필요합니다.<br>팔로우업의 부서(연구실)를 설정해주세요.</p>
+    <div class="ai-flow-grid">
+      <aside class="ai-panel">
+        <div class="ai-panel-header">
+          <h2>부서 선택</h2>
+          <span class="step-pill">Step 1</span>
+        </div>
+
+        {% if dept_data %}
+        <div class="dept-search">
+          <input type="text" id="deptSearch" placeholder="고객사, 부서명, 고객명으로 검색" oninput="filterDepartments()">
+        </div>
+
+        <div class="dept-card-list">
+          {% for item in dept_data %}
+          <a href="{% url 'ai_chat:department_list' %}?department={{ item.department.id }}"
+             class="dept-card {% if item.is_selected %}selected{% endif %}"
+             data-search="{{ item.department.company.name|lower }} {{ item.department.name|lower }} {% for name in item.customer_names %}{{ name|lower }} {% endfor %}">
+            <div class="dept-name-row">
+              <span>
+                <span class="dept-name">{{ item.department.name }}</span>
+                <span class="dept-company">{{ item.department.company.name }}</span>
+              </span>
+              {% if item.has_analysis %}
+              <span class="status-badge done"><i class="fas fa-check-circle"></i>분석완료</span>
+              {% else %}
+              <span class="status-badge empty">미분석</span>
+              {% endif %}
+            </div>
+            <div class="dept-stats">
+              <span class="dept-stat"><i class="fas fa-users"></i>팔로우업 {{ item.followup_count }}건</span>
+              {% if item.analysis %}
+              <span class="dept-stat"><i class="fas fa-handshake"></i>미팅 {{ item.analysis.meeting_count }}건</span>
+              <span class="dept-stat"><i class="fas fa-file-invoice"></i>견적 {{ item.analysis.quote_count }}건</span>
+              <span class="dept-stat"><i class="fas fa-truck"></i>납품 {{ item.analysis.delivery_count }}건</span>
+              <span class="dept-stat"><i class="fas fa-clock"></i>{{ item.analysis.updated_at|date:"m/d H:i" }}</span>
+              {% endif %}
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-building"></i>
+          <strong>분석 가능한 부서가 없습니다</strong>
+          <p>부서가 할당된 팔로우업이 필요합니다.</p>
+        </div>
+        {% endif %}
+      </aside>
+
+      <main>
+        {% if selected_department %}
+        <section class="ai-panel">
+          <div class="ai-panel-header">
+            <h2>{{ selected_department.company.name }} / {{ selected_department.name }}</h2>
+            <span class="step-pill">Step 2</span>
+          </div>
+
+          {% if selected_analysis %}
+          <div class="analysis-meta">
+            {% if selected_analysis.analysis_period_start and selected_analysis.analysis_period_end %}
+            <span>분석 기간 {{ selected_analysis.analysis_period_start|date:"Y.m.d" }} ~ {{ selected_analysis.analysis_period_end|date:"Y.m.d" }}</span>
+            {% endif %}
+            <span>미팅 {{ selected_analysis.meeting_count }}건</span>
+            <span>견적 {{ selected_analysis.quote_count }}건</span>
+            <span>납품 {{ selected_analysis.delivery_count }}건</span>
+            <span>업데이트 {{ selected_analysis.updated_at|date:"Y.m.d H:i" }}</span>
+          </div>
+
+          <div class="summary-grid">
+            <div class="summary-box">
+              <h3><i class="fas fa-chart-line"></i>현재 상황</h3>
+              <ul>
+                {% for item in analysis_summary.current_situation %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="summary-box">
+              <h3><i class="fas fa-triangle-exclamation"></i>핵심 문제</h3>
+              <ul>
+                {% for item in analysis_summary.pain_points %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="summary-box">
+              <h3><i class="fas fa-list-check"></i>참고 조건</h3>
+              <ul>
+                {% for item in analysis_summary.reference_conditions %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% if analysis_summary.recommended_actions %}
+          <div class="summary-box" style="margin-top: 0.75rem;">
+            <h3><i class="fas fa-bullseye"></i>추천 액션</h3>
+            <ul>
+              {% for item in analysis_summary.recommended_actions %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          <div class="action-row">
+            <button class="ai-btn secondary" type="button" onclick="runAnalysis({{ selected_department.id }})">
+              <i class="fas fa-rotate"></i>
+              다시 분석
+            </button>
+            <a class="ai-btn secondary" href="{% url 'ai_chat:department_analysis' department_id=selected_department.id %}">
+              <i class="fas fa-chart-pie"></i>
+              상세 분석 보기
+            </a>
+          </div>
+          {% else %}
+          <div class="notice warning">
+            <i class="fas fa-circle-info"></i>
+            <div>
+              <strong>아직 이 부서의 AI 분석 결과가 없습니다.</strong>
+              <span>먼저 부서 분석을 실행하면 목표 후보와 프롬프트를 자동 생성할 수 있습니다.</span>
+            </div>
+          </div>
+          <div class="action-row">
+            <button class="ai-btn primary" type="button" onclick="runAnalysis({{ selected_department.id }})">
+              <i class="fas fa-play"></i>
+              AI 분석 실행
+            </button>
+          </div>
+          {% endif %}
+        </section>
+
+        {% if selected_analysis %}
+        <form method="post" id="departmentPromptForm">
+          {% csrf_token %}
+          <input type="hidden" name="department_id" value="{{ selected_department.id }}">
+          <input type="hidden" name="selected_goal" id="selectedGoalInput" value="{{ selected_goal }}">
+
+          <section class="ai-panel">
+            <div class="ai-panel-header">
+              <h2>목표 선택</h2>
+              <span class="step-pill">Step 3</span>
+            </div>
+
+            <div class="goal-grid" id="goalGrid">
+              {% for goal in goal_cards %}
+              <button type="button"
+                      class="goal-card {% if goal.title == selected_goal %}selected{% endif %}"
+                      data-goal="{{ goal.title }}">
+                <span class="goal-icon"><i class="fas fa-bullseye"></i></span>
+                <span>
+                  <span class="goal-title">{{ goal.title }}</span>
+                  <span class="goal-desc">{{ goal.description }}</span>
+                  <span class="goal-reason">추천 이유: {{ goal.reason }}</span>
+                </span>
+              </button>
+              {% endfor %}
+            </div>
+
+            <div class="direct-goal">
+              <label for="customGoal">직접 목표 입력</label>
+              <input type="text"
+                     id="customGoal"
+                     name="custom_goal"
+                     class="goal-input"
+                     maxlength="160"
+                     value="{{ custom_goal }}"
+                     placeholder="예: 우선 연락할 고객 순서를 정하고 싶다">
+              <span class="field-help">원하는 결과를 한 문장으로 적어주세요. 직접 입력값이 있으면 목표 카드보다 우선 사용합니다.</span>
+            </div>
+
+            {% if prompt_error %}
+            <div class="notice error" style="margin-top: 0.85rem;">
+              <i class="fas fa-triangle-exclamation"></i>
+              <div>
+                <strong>프롬프트 생성 안내</strong>
+                <span>{{ prompt_error }}</span>
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="action-row">
+              <button type="submit" class="ai-btn primary" id="generatePromptBtn">
+                <i class="fas fa-wand-magic-sparkles"></i>
+                프롬프트 생성
+              </button>
+            </div>
+          </section>
+
+          <section class="ai-panel">
+            <div class="ai-panel-header">
+              <h2>프롬프트 생성</h2>
+              <span class="step-pill">Step 4</span>
+            </div>
+
+            <div class="notice warning" style="margin-bottom: 0.85rem;">
+              <i class="fas fa-shield-halved"></i>
+              <div>
+                <strong>민감정보 확인</strong>
+                <span>외부 AI에 붙여넣기 전 고객 개인정보, 연락처, 계약금액 등 민감정보가 포함되어 있는지 반드시 확인하세요.</span>
+              </div>
+            </div>
+
+            <textarea id="promptPreview"
+                      class="prompt-preview"
+                      readonly
+                      placeholder="목표 카드를 선택하거나 직접 목표를 입력한 뒤 프롬프트를 생성하세요.">{{ generated_prompt }}</textarea>
+            <div class="action-row">
+              <button type="button" class="ai-btn success" id="copyPromptBtn">
+                <i class="fas fa-copy"></i>
+                프롬프트 복사
+              </button>
+            </div>
+            <div id="copyStatus" class="copy-status"></div>
+          </section>
+        </form>
+        {% endif %}
+
+        {% else %}
+        <section class="ai-panel">
+          <div class="notice">
+            <i class="fas fa-arrow-left"></i>
+            <div>
+              <strong>부서를 선택하세요.</strong>
+              <span>왼쪽 목록에서 부서를 선택하면 최신 AI 분석 요약, 추천 목표, 프롬프트 생성 도구가 표시됩니다.</span>
+            </div>
+          </div>
+        </section>
+        {% endif %}
+
+      </main>
+    </div>
   </div>
-  {% endif %}
+</div>
+
+<div class="ai-loading-overlay" id="aiPromptLoadingOverlay" style="display:none;">
+  <div class="ai-loading-box">
+    <div class="spinner"></div>
+    <h6>AI 분석 중...</h6>
+    <p>부서 데이터를 분석하고 있습니다.</p>
+  </div>
 </div>
 
 <script>
-function filterDepts() {
-  const query = document.getElementById('deptSearch').value.toLowerCase();
-  document.querySelectorAll('.ai-dept-card').forEach(card => {
-    const text = card.getAttribute('data-search');
-    card.style.display = text.includes(query) ? '' : 'none';
+(function() {
+  const csrfToken = '{{ csrf_token }}';
+  const selectedGoalInput = document.getElementById('selectedGoalInput');
+  const customGoal = document.getElementById('customGoal');
+  const generatePromptBtn = document.getElementById('generatePromptBtn');
+  const promptPreview = document.getElementById('promptPreview');
+  const copyPromptBtn = document.getElementById('copyPromptBtn');
+  const copyStatus = document.getElementById('copyStatus');
+
+  window.filterDepartments = function() {
+    const input = document.getElementById('deptSearch');
+    const query = input ? input.value.toLowerCase() : '';
+    document.querySelectorAll('.dept-card').forEach((card) => {
+      const text = card.getAttribute('data-search') || '';
+      card.style.display = text.includes(query) ? '' : 'none';
+    });
+  };
+
+  function updateGenerateState() {
+    if (!generatePromptBtn) return;
+    const hasCardGoal = selectedGoalInput && selectedGoalInput.value.trim();
+    const hasCustomGoal = customGoal && customGoal.value.trim();
+    generatePromptBtn.disabled = !(hasCardGoal || hasCustomGoal);
+  }
+
+  document.querySelectorAll('.goal-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.goal-card').forEach((item) => item.classList.remove('selected'));
+      card.classList.add('selected');
+      if (selectedGoalInput) selectedGoalInput.value = card.dataset.goal || '';
+      updateGenerateState();
+    });
   });
-}
+
+  if (customGoal) {
+    customGoal.addEventListener('input', updateGenerateState);
+  }
+  updateGenerateState();
+
+  if (copyPromptBtn) {
+    copyPromptBtn.addEventListener('click', async () => {
+      const value = promptPreview ? promptPreview.value.trim() : '';
+      if (!value) {
+        copyStatus.textContent = '먼저 프롬프트를 생성하세요.';
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(value);
+        copyStatus.textContent = '외부 AI에 붙여넣을 수 있도록 프롬프트를 복사했습니다.';
+      } catch (error) {
+        promptPreview.focus();
+        promptPreview.select();
+        copyStatus.textContent = '자동 복사에 실패했습니다. 프롬프트 영역을 직접 선택해 복사하세요.';
+      }
+    });
+  }
+
+  window.runAnalysis = function(departmentId) {
+    const overlay = document.getElementById('aiPromptLoadingOverlay');
+    if (overlay) overlay.style.display = 'flex';
+    fetch(`/ai/department/${departmentId}/run/`, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrfToken}
+    })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.success) {
+        window.location.href = `{% url 'ai_chat:department_list' %}?department=${departmentId}`;
+      } else {
+        alert(data.error || '분석 실패');
+        if (overlay) overlay.style.display = 'none';
+      }
+    })
+    .catch((error) => {
+      alert('분석 요청 실패: ' + error.message);
+      if (overlay) overlay.style.display = 'none';
+    });
+  };
+})();
 </script>
 {% endblock %}

@@ -2,7 +2,6 @@
 AI 부서 분석 - Views
 부서 목록, 분석 실행, 결과 조회, PainPoint 검증
 """
-import json
 import logging
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
@@ -13,6 +12,11 @@ from django.utils import timezone
 
 from reporting.models import FollowUp, Department
 from .models import AIDepartmentAnalysis, PainPointCard, AIFollowUpAnalysis
+from .department_prompt import (
+    build_prompt_from_department_analysis,
+    summarize_department_analysis,
+    suggest_goals_from_department_analysis,
+)
 from .services import analyze_department, gather_meeting_data, gather_quote_delivery_data
 
 logger = logging.getLogger(__name__)
@@ -38,7 +42,7 @@ def ai_permission_required(view_func):
 @login_required
 @ai_permission_required
 def department_list(request):
-    """내 팔로우업이 있는 부서 목록"""
+    """AI 부서분석 기반 프롬프트 생성 허브"""
     # 사용자의 팔로우업에서 부서 목록 추출
     department_ids = FollowUp.objects.filter(
         user=request.user,
@@ -56,6 +60,55 @@ def department_list(request):
     )
     analysis_map = {a.department_id: a for a in analyses}
 
+    selected_department = None
+    selected_analysis = None
+    analysis_summary = None
+    goal_cards = []
+    generated_prompt = ''
+    selected_goal = ''
+    custom_goal = ''
+    prompt_error = ''
+
+    selected_department_id = request.POST.get('department_id') or request.GET.get('department')
+    allowed_department_ids = set(departments.values_list('id', flat=True))
+
+    if selected_department_id:
+        try:
+            selected_department_id = int(selected_department_id)
+        except (TypeError, ValueError):
+            selected_department_id = None
+
+    if selected_department_id and selected_department_id in allowed_department_ids:
+        selected_department = departments.filter(id=selected_department_id).first()
+        selected_analysis = analysis_map.get(selected_department_id)
+    elif selected_department_id:
+        from django.contrib import messages
+        messages.error(request, '해당 부서에 접근 권한이 없습니다.')
+
+    if selected_analysis:
+        analysis_summary = summarize_department_analysis(selected_analysis)
+        goal_cards = suggest_goals_from_department_analysis(selected_analysis)
+
+    if request.method == 'POST':
+        selected_goal = (request.POST.get('selected_goal') or '').strip()
+        custom_goal = (request.POST.get('custom_goal') or '').strip()
+
+        if not selected_department:
+            prompt_error = '프롬프트를 생성할 부서를 선택하세요.'
+        elif not selected_analysis:
+            prompt_error = '먼저 부서 분석을 실행해야 프롬프트를 생성할 수 있습니다.'
+        elif not selected_goal and not custom_goal:
+            prompt_error = '목표 카드를 선택하거나 직접 목표를 한 문장으로 입력하세요.'
+        else:
+            try:
+                generated_prompt = build_prompt_from_department_analysis(
+                    selected_analysis,
+                    selected_goal=selected_goal,
+                    custom_goal=custom_goal,
+                )
+            except ValueError as exc:
+                prompt_error = str(exc)
+
     dept_data = []
     for dept in departments:
         analysis = analysis_map.get(dept.id)
@@ -69,10 +122,19 @@ def department_list(request):
             'followup_count': len(customer_names),
             'has_analysis': analysis is not None,
             'customer_names': customer_names,
+            'is_selected': selected_department is not None and dept.id == selected_department.id,
         })
 
     return render(request, 'ai_chat/department_list.html', {
         'dept_data': dept_data,
+        'selected_department': selected_department,
+        'selected_analysis': selected_analysis,
+        'analysis_summary': analysis_summary,
+        'goal_cards': goal_cards,
+        'generated_prompt': generated_prompt,
+        'selected_goal': selected_goal,
+        'custom_goal': custom_goal,
+        'prompt_error': prompt_error,
     })
 
 
