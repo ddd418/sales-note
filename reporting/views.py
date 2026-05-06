@@ -1475,7 +1475,8 @@ def dashboard_view(request):
         salesman_users = get_accessible_users(request.user, request)
     
     # 현재 연도와 월 가져오기
-    now = timezone.now()
+    # Dashboard date filters must follow the service local timezone.
+    now = timezone.localtime()
     current_year = now.year
     current_month = now.month
     
@@ -1577,7 +1578,7 @@ def dashboard_view(request):
         user_filter_for_dashboard = {'user': target_user}
     
     # 납품 일정 조회 (올해, 완료된 것만 - 일정 페이지와 동일한 조건)
-    today = timezone.now().date()
+    today = timezone.localdate()
     delivery_schedules = Schedule.objects.filter(
         visit_date__year=current_year,
         visit_date__lte=today,  # 오늘까지만 포함 (미래 일정 제외)
@@ -1658,7 +1659,7 @@ def dashboard_view(request):
     recent_activities = recent_activities_queryset.order_by('-created_at')[:5]
     
     # 월별 고객 추가 현황 (최근 6개월)
-    now = timezone.now()
+    now = timezone.localtime()
     monthly_customers = []
     for i in range(6):
         month_start = (now.replace(day=1) - timedelta(days=32*i)).replace(day=1)
