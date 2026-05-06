@@ -8,19 +8,13 @@
    🎨 LOVABLE FOLLOWUP LIST STYLES
    ============================================ */
 
-/* 모달 Z-INDEX 및 오버레이 수정 */
-.modal-backdrop {
-  display: none !important;
-}
-
+/* 모달은 Bootstrap 기본 backdrop/focus 동작을 유지한다. */
 .modal {
   z-index: 1055 !important;
-  pointer-events: none !important;
 }
 
 .modal-dialog {
   z-index: 1056 !important;
-  pointer-events: auto !important;
 }
 
 .modal-content {
@@ -815,7 +809,7 @@
                 <i class="fas fa-user-check me-3"></i>{{ page_title }}
             </h1>
             <p class="subtitle mb-3">
-                고객 팔로우업 및 관계 관리 시스템
+                고객, 담당자, 파이프라인 상태를 빠르게 검색하고 후속조치를 확인합니다.
             </p>
             
             <div class="followup-header-actions">
@@ -857,7 +851,7 @@
         <!-- 실무자용 추가 버튼 및 엑셀 다운로드 -->
         <div class="btn-group" role="group">
           <a href="{% url 'reporting:followup_create' %}" class="btn btn-premium-white">
-            <i class="fas fa-plus me-2"></i>새 고객 정보 추가
+            <i class="fas fa-plus me-2"></i>새 고객 등록
           </a>
           
           <!-- 엑셀 다운로드 드롭다운 -->
@@ -1169,16 +1163,16 @@
                 <i class="fas fa-times me-1"></i>검색 초기화
               </a>
               {% else %}
-              <h5 class="card-title">등록된 고객 정보가 없습니다</h5>
+              <h5 class="card-title">아직 등록된 고객/팔로우업이 없습니다.</h5>
               <p class="card-text text-muted">
-                첫 번째 고객 정보를 추가해보세요.
+                첫 고객을 등록하고 영업 활동을 기록해보세요.
               </p>
               {% if user.is_authenticated %}
               <a
                 href="{% url 'reporting:followup_create' %}"
                 class="btn btn-primary"
               >
-                <i class="fas fa-plus me-1"></i>새 고객 정보 추가
+                <i class="fas fa-plus me-1"></i>새 고객 등록
               </a>
               {% endif %} {% endif %}
             </div>
@@ -1568,8 +1562,6 @@ function closeProgressModal() {
     if (modalElement) {
         modalElement.remove();
     }
-    // backdrop 제거
-    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
 }
 
 // 관리자 권한 필요 알림 함수

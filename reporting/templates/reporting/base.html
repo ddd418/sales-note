@@ -1487,6 +1487,9 @@
   </style>
 
   {% block extra_css %}{% endblock %}
+
+  <!-- CRM light UI override -->
+  <link rel="stylesheet" href="{% static 'reporting/css/crm-ui.css' %}?v=20260506-rework">
 </head>
 <body>
   <!-- 모바일 메뉴 토글 -->
@@ -1509,7 +1512,7 @@
     {% if user.is_authenticated and user.userprofile and user.userprofile.role == 'admin' %}
     <div class="admin-filter-section" style="padding: 1rem 1.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.1);">
       <div class="mb-2">
-        <label class="form-label text-white-50 small mb-1">
+        <label class="form-label text-muted small mb-1">
           <i class="fas fa-filter me-1"></i>관리자 필터
         </label>
       </div>
@@ -1548,17 +1551,17 @@
         <button type="button" id="applyAdminFilter" class="btn btn-sm btn-primary">
           <i class="fas fa-check me-1"></i>필터 적용
         </button>
-        <button type="button" id="resetAdminFilter" class="btn btn-sm btn-outline-light">
+        <button type="button" id="resetAdminFilter" class="btn btn-sm btn-outline-secondary">
           <i class="fas fa-redo me-1"></i>필터 초기화
         </button>
       </div>
       
       <!-- 현재 보기 정보 -->
       <div class="mt-2 pt-2" style="border-top: 1px solid rgba(255, 255, 255, 0.1);">
-        <small class="text-white-50 d-block">
+        <small class="text-muted d-block">
           <i class="fas fa-eye me-1"></i>현재 보기:
         </small>
-        <small class="text-white fw-bold d-block mt-1">
+        <small class="text-dark fw-bold d-block mt-1">
           {% if request.admin_filter_user %}
             {{ request.admin_filter_user.get_full_name|default:request.admin_filter_user.username }}
           {% elif request.admin_filter_company %}
@@ -1587,7 +1590,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:user_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':4' == 'user' %}active{% endif %}">
             <i class="fas fa-users"></i>
-            <span>사용자 관리</span>
+            <span>관리자</span>
           </a>
         </li>
         {% endif %}
@@ -1596,7 +1599,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:manager_user_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':12' == 'manager_user' %}active{% endif %}">
             <i class="fas fa-user-friends"></i>
-            <span>직원 관리</span>
+            <span>관리자</span>
           </a>
         </li>
         {% endif %}
@@ -1606,7 +1609,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:company_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'company' or request.resolver_match.url_name|slice:':10' == 'department' %}active{% endif %}">
             <i class="fas fa-building"></i>
-            <span>업체 관리</span>
+            <span>고객사</span>
           </a>
         </li>
         {% endif %}
@@ -1616,7 +1619,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:followup_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'followup' %}active{% endif %}">
             <i class="fas fa-user-check"></i>
-            <span>팔로우업</span>
+            <span>고객/팔로우업</span>
           </a>
         </li>
         {% if user.userprofile.role == 'manager' %}
@@ -1645,7 +1648,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name == 'schedule_list' %}active{% endif %}">
             <i class="fas fa-list"></i>
-            <span>일정 목록</span>
+            <span>일정</span>
           </a>
         </li>
         <li class="nav-item">
@@ -1657,19 +1660,19 @@
         <li class="nav-item">
           <a href="{% url 'reporting:history_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}">
             <i class="fas fa-history"></i>
-            <span>히스토리</span>
+            <span>영업노트</span>
           </a>
         </li>
         <li class="nav-item">
           <a href="{% url 'reporting:customer_report' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}">
             <i class="fas fa-chart-bar"></i>
-            <span>고객 리포트</span>
+            <span>리포트</span>
           </a>
         </li>
         <li class="nav-item">
           <a href="{% url 'reporting:funnel_list' %}" class="nav-link {% if request.resolver_match.url_name == 'funnel_list' %}active{% endif %}">
             <i class="fas fa-filter"></i>
-            <span>펀넬 관리</span>
+            <span>파이프라인</span>
           </a>
         </li>
         <li class="nav-item">
@@ -1731,7 +1734,7 @@
         <li class="nav-item">
           <a href="{% url 'reporting:analytics_dashboard' %}" class="nav-link {% if request.resolver_match.url_name|slice:':9' == 'analytics' %}active{% endif %}">
             <i class="fas fa-chart-line"></i>
-            <span>분석 보고서</span>
+            <span>리포트</span>
           </a>
         </li>
         <li class="nav-item">
@@ -1756,52 +1759,85 @@
   <!-- 메인 컨텐츠 -->
   <main class="main-content">
     <!-- 상단 바 -->
-    <div class="top-bar">
-      <div class="user-info">
-        <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
-        <span><strong>{{ request.user.username }}</strong></span>
-        
+    <div class="top-bar crm-topbar">
+      <div class="crm-topbar-title">
+        <span class="crm-eyebrow">Sales CRM</span>
+        <span class="crm-page-name">
+          {% if request.resolver_match.url_name == 'dashboard' %}대시보드
+          {% elif request.resolver_match.url_name|slice:':8' == 'followup' %}고객/팔로우업
+          {% elif request.resolver_match.url_name|slice:':8' == 'schedule' %}일정
+          {% elif request.resolver_match.url_name|slice:':7' == 'history' %}영업노트
+          {% elif request.resolver_match.url_name|slice:':11' == 'opportunity' %}견적
+          {% elif request.resolver_match.url_name|slice:':6' == 'funnel' %}파이프라인
+          {% elif request.resolver_match.url_name|slice:':9' == 'analytics' %}리포트
+          {% elif request.resolver_match.url_name|slice:':7' == 'manager' %}관리자
+          {% else %}영업관리{% endif %}
+        </span>
+      </div>
+
+      <form class="crm-global-search" method="get" action="{% url 'reporting:followup_list' %}">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="fas fa-search"></i></span>
+          <input type="search" name="search" class="form-control" placeholder="고객, 업체, 담당자, 메모 검색" autocomplete="off" aria-label="통합 검색">
+        </div>
+      </form>
+
+      <div class="crm-quick-actions">
+        <a href="{% url 'reporting:followup_create' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-user-plus me-1"></i>새 고객
+        </a>
+        <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-calendar-plus me-1"></i>새 일정
+        </a>
+        <a href="{% url 'reporting:dashboard' %}#dashboardNoteModal" class="btn btn-primary btn-sm">
+          <i class="fas fa-pen me-1"></i>영업노트
+        </a>
+        <a href="{% url 'reporting:opportunity_list' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-file-invoice-dollar me-1"></i>견적
+        </a>
+        <a href="{% url 'reporting:history_list' %}?review_filter=unreviewed" class="crm-icon-btn" aria-label="알림">
+          <i class="fas fa-bell"></i>
+        </a>
+        <a href="{% url 'reporting:profile' %}" class="crm-profile-link" aria-label="프로필">
+          <i class="fas fa-user-circle me-1"></i>{{ request.user.username }}
+        </a>
+
         <!-- 매니저용 실무자 선택 드롭다운 -->
         {% if request.user.is_authenticated and request.user.userprofile and request.user.userprofile.role == 'manager' %}
-        <div class="dropdown ms-3" style="display: inline-block;">
+        <div class="dropdown">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="userFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-filter"></i>
+            <i class="fas fa-filter me-1"></i>
             {% if request.GET.view_all %}
               전체 팀원
             {% elif request.GET.user or manager_selected_user_id %}
               {% for user in accessible_salesmen %}
                 {% if user.id|stringformat:"s" == request.GET.user or user.id|stringformat:"s" == manager_selected_user_id %}
-                  {{ user.get_full_name|default:user.username }}({{ user.username }})
+                  {{ user.get_full_name|default:user.username }}
                 {% endif %}
               {% endfor %}
             {% else %}
-              필터링
+              필터
             {% endif %}
           </button>
           <ul class="dropdown-menu" aria-labelledby="userFilterDropdown">
-            <li><a class="dropdown-item" href="?view_all=true">
-              <i class="fas fa-users"></i> 전체 팀원
-            </a></li>
+            <li><a class="dropdown-item" href="?view_all=true"><i class="fas fa-users me-2"></i>전체 팀원</a></li>
             <li><hr class="dropdown-divider"></li>
             {% for user in accessible_salesmen %}
-            <li><a class="dropdown-item" href="?user={{ user.id }}">
-              <i class="fas fa-user"></i> {{ user.get_full_name|default:user.username }}({{ user.username }})
-            </a></li>
+            <li><a class="dropdown-item" href="?user={{ user.id }}"><i class="fas fa-user me-2"></i>{{ user.get_full_name|default:user.username }}({{ user.username }})</a></li>
             {% endfor %}
             <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="?view_all=true">
-              <i class="fas fa-times"></i> 필터 해제
-            </a></li>
+            <li><a class="dropdown-item" href="?view_all=true"><i class="fas fa-times me-2"></i>필터 해제</a></li>
           </ul>
         </div>
         {% endif %}
+
+        <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-sign-out-alt me-1"></i>로그아웃
+          </button>
+        </form>
       </div>
-      <form method="post" action="{% url 'reporting:logout' %}" style="margin: 0;">
-        {% csrf_token %}
-        <button type="submit" class="logout-btn">
-          <i class="fas fa-sign-out-alt"></i> 로그아웃
-        </button>
-      </form>
     </div>
 
     <!-- Django Messages -->
@@ -2509,6 +2545,19 @@
 
   <!-- 페이지별 모달 슬롯: stacking context 바깥(body 직접 하위)에 배치 -->
   {% block modals %}{% endblock %}
+
+  <!-- Top Bar quick action: dashboard note modal deep-link -->
+  <script>
+  (function() {
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.location.hash !== '#dashboardNoteModal') return;
+      var modalEl = document.getElementById('dashboardNoteModal');
+      if (!modalEl || !window.bootstrap) return;
+      var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.show();
+    });
+  })();
+  </script>
 
   <!-- 전역: Django 폼 에러 발생 시 해당 필드에 is-invalid CSS 자동 적용 -->
   <script>

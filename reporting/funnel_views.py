@@ -837,11 +837,21 @@ def funnel_pipeline_view(request):
 
     # 단계별 그룹핑
     stage_map = {s[0]: [] for s in PIPELINE_STAGES}
+    stage_amounts = {s[0]: 0 for s in PIPELINE_STAGES}
+    stage_overdue_counts = {s[0]: 0 for s in PIPELINE_STAGES}
     for fu in followups:
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
         latest_quote = fu.all_quotes[0] if fu.all_quotes else None
+        has_overdue_action = any(
+            h.next_action_date and h.next_action_date < today
+            for h in getattr(fu, 'all_histories', [])
+        )
+        if latest_quote:
+            stage_amounts[stage] += latest_quote.total_amount or 0
+        if has_overdue_action:
+            stage_overdue_counts[stage] += 1
 
         # 최근 30일 일정·히스토리를 단계 추천에 사용 (날짜 필터 필수)
         recent_schedules = getattr(fu, 'recent_schedules', [])
@@ -888,6 +898,8 @@ def funnel_pipeline_view(request):
             'icon': s[3],
             'cards': stage_map[s[0]],
             'count': len(stage_map[s[0]]),
+            'amount': int(stage_amounts.get(s[0], 0) or 0),
+            'overdue_count': stage_overdue_counts.get(s[0], 0),
         }
         for s in PIPELINE_STAGES
     ]

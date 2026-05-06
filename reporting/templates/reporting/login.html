@@ -55,7 +55,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+  background: #f8fafc;
   overflow: hidden;
   padding: 1.5rem;
   z-index: 9999;
@@ -68,9 +68,9 @@ html, body {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background: none;
   background-size: 50px 50px;
-  animation: bgMove 20s linear infinite;
+  animation: none;
   pointer-events: none;
 }
 
@@ -82,8 +82,8 @@ html, body {
 .login-page .floating-circle {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  animation: float 15s ease-in-out infinite;
+  display: none;
+  animation: none;
   pointer-events: none;
 }
 
@@ -119,7 +119,8 @@ html, body {
 .login-card {
   background: var(--surface);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   padding: 3rem;
   max-width: 460px;
   width: 100%;
@@ -148,13 +149,13 @@ html, body {
   width: 72px;
   height: 72px;
   margin: 0 auto 1rem;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  background: rgba(37, 99, 235, 0.1);
   border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
-  animation: logoFloat 3s ease-in-out infinite;
+  box-shadow: none;
+  animation: none;
 }
 
 @keyframes logoFloat {
@@ -164,7 +165,7 @@ html, body {
 
 .login-logo-icon i {
   font-size: 36px;
-  color: white;
+  color: var(--primary);
 }
 
 .login-title {
@@ -227,13 +228,13 @@ html, body {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
-  transform: translateY(-2px);
+  transform: none;
 }
 
 .login-submit-btn {
   width: 100%;
   padding: 1rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: #2563eb;
   border: none;
   border-radius: 0.75rem;
   color: white;
@@ -250,8 +251,19 @@ html, body {
 }
 
 .login-submit-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+  transform: none;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.18);
+}
+
+.login-trust-note {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 1rem;
 }
 
 .login-footer {
@@ -286,6 +298,11 @@ html, body {
       </div>
       <h1 class="login-title">영업 보고 시스템</h1>
       <p class="login-subtitle">계정에 로그인하세요</p>
+    </div>
+
+    <div class="login-trust-note">
+      <i class="fas fa-shield-alt" style="color:#2563eb; margin-right:0.35rem;"></i>
+      내부 영업 데이터와 고객 이력을 안전하게 관리하는 CRM 업무 공간입니다.
     </div>
 
     {% if form.errors %}
@@ -352,11 +369,11 @@ document.addEventListener('DOMContentLoaded', function() {
   
   inputs.forEach(input => {
     input.addEventListener('focus', function() {
-      this.parentElement.style.transform = 'scale(1.02)';
+      this.parentElement.style.transform = 'none';
     });
     
     input.addEventListener('blur', function() {
-      this.parentElement.style.transform = 'scale(1)';
+      this.parentElement.style.transform = 'none';
     });
   });
   

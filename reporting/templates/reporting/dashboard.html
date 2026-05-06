@@ -1104,6 +1104,29 @@ html, body {
 {% block content %}
 <!-- 🎯 NEW: 인포그래픽 대시보드 -->
 <div class="infographic-dashboard">
+  <div class="crm-dashboard-summary card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <span class="crm-eyebrow">TODAY</span>
+        <h2 class="h4 mb-1">오늘의 영업관리</h2>
+        <p class="text-muted mb-0">일정, 견적, 지연 후속조치와 최근 활동을 한 화면에서 확인합니다.</p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        {% if user.userprofile.role != 'manager' %}
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#dashboardNoteModal">
+          <i class="fas fa-pen me-1"></i>영업노트
+        </button>
+        <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-calendar-plus me-1"></i>새 일정
+        </a>
+        <a href="{% url 'reporting:followup_create' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-user-plus me-1"></i>새 고객
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <!-- Hero Section: 오늘의 핵심 지표 -->
   <div class="hero-metrics">
     <div class="hero-primary">
@@ -1111,7 +1134,7 @@ html, body {
         <i class="fas fa-trophy"></i>
       </div>
       <div class="hero-content">
-        <div class="hero-label">{{ current_year }}년 총 납품 실적</div>
+        <div class="hero-label">{{ current_year }}년 핵심 영업 실적</div>
         <div class="hero-value">
           {% load currency_filters %}
           {{ total_delivery_amount|currency_format|default:"0" }}

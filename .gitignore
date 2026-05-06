@@ -39,6 +39,9 @@ railway_backup_*.json
 *_backup_*.json
 emergency_backup*.json
 
+# Local validation artifacts
+output/playwright/
+
 # Static files (will be collected in production)
 staticfiles/
 static_collected/
