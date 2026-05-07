@@ -302,23 +302,18 @@
     </div>
   </div>
 
-  <!-- 영업 기회 섹션 -->
+  <!-- 파이프라인 섹션 -->
   <div class="row mt-4">
     <div class="col-12">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="card-title mb-0">
-            <i class="fas fa-chart-line me-2"></i>영업 기회
+            <i class="fas fa-filter me-2"></i>파이프라인
             <span class="badge bg-secondary ms-2">{{ opportunities.count }}</span>
           </h5>
-          <div class="d-flex gap-2">
-            <a href="{% url 'reporting:opportunity_create' followup.pk %}" class="btn btn-sm btn-success">
-              <i class="fas fa-plus me-1"></i>기회 등록
-            </a>
-            <a href="{% url 'reporting:opportunity_list' %}" class="btn btn-sm btn-outline-primary">
-              <i class="fas fa-list me-1"></i>전체 목록
-            </a>
-          </div>
+          <a href="{% url 'reporting:funnel_list' %}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-list me-1"></i>파이프라인 목록
+          </a>
         </div>
         {% if opportunities %}
         <div class="card-body p-0">
@@ -331,7 +326,6 @@
                   <th>예상 매출</th>
                   <th>확률</th>
                   <th>예상 계약일</th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -352,16 +346,6 @@
                   <td>{% if opp.expected_revenue %}{{ opp.expected_revenue|floatformat:0 }}원{% else %}-{% endif %}</td>
                   <td>{{ opp.probability }}%</td>
                   <td>{{ opp.expected_close_date|date:"Y-m-d"|default:"-" }}</td>
-                  <td>
-                    <div class="d-flex gap-1">
-                      <a href="{% url 'reporting:opportunity_detail' opp.pk %}" class="btn btn-sm btn-outline-primary" title="상세보기">
-                        <i class="fas fa-eye"></i>
-                      </a>
-                      <a href="{% url 'reporting:opportunity_edit' opp.pk %}" class="btn btn-sm btn-outline-secondary" title="수정">
-                        <i class="fas fa-edit"></i>
-                      </a>
-                    </div>
-                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -370,10 +354,10 @@
         </div>
         {% else %}
         <div class="card-body text-center py-4">
-          <i class="fas fa-chart-line fa-2x text-muted mb-2"></i>
-          <p class="text-muted mb-2">아직 등록된 영업 기회가 없습니다.</p>
-          <a href="{% url 'reporting:opportunity_create' followup.pk %}" class="btn btn-success btn-sm">
-            <i class="fas fa-plus me-1"></i>첫 번째 기회 등록하기
+          <i class="fas fa-filter fa-2x text-muted mb-2"></i>
+          <p class="text-muted mb-2">이 고객의 파이프라인 정보는 파이프라인 목록에서 관리합니다.</p>
+          <a href="{% url 'reporting:funnel_list' %}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-list me-1"></i>파이프라인 목록 보기
           </a>
         </div>
         {% endif %}

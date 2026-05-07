@@ -538,3 +538,27 @@ python pre_deployment_check.py
 - `python manage.py test reporting.tests.OpportunityListDataScopeTests`
 - `python manage.py test`
 - `git diff --check`
+
+---
+
+## Hotfix — 별도 영업기회 화면 제거 및 상단 파이프라인 진입점 정리
+
+**목표**: 최종 영업 흐름을 `/reporting/funnel/` 파이프라인 화면으로 단일화하고, 별도 `/reporting/opportunities/` 화면과 관련 UI를 제거한다.
+
+**작업 범위**:
+
+- `/reporting/opportunities/` 및 하위 생성/상세/수정 URL 제거
+- 영업기회 전용 view/form/template 제거
+- 상단 quick action의 `견적` 버튼을 `/reporting/funnel/`로 이동하는 `파이프라인` 버튼으로 변경
+- 팔로우업 상세의 영업기회 생성/상세/수정 링크를 제거하고 파이프라인 목록 안내로 대체
+- `/reporting/opportunities/` 제거와 상단 파이프라인 링크 회귀 테스트 추가/수정
+
+**DB 변경 필요 여부**: 없음. `OpportunityTracking` 데이터/모델은 파이프라인 및 기존 자동 동기화에서 사용할 수 있으므로 삭제하지 않는다.
+
+**검증 계획**:
+
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests`
+- `python manage.py test`
+- `git diff --check`

@@ -5056,3 +5056,65 @@ python manage.py test --verbosity=1
 git diff --check
 → OK (LF→CRLF warning only)
 ```
+
+---
+
+## Hotfix — 별도 영업기회 화면 제거 및 파이프라인 진입점 정리
+
+### 1. Summary
+
+`/reporting/opportunities/` 별도 영업기회 화면을 제거하고, 상단 quick action의 `견적` 버튼을 `/reporting/funnel/`로 이동하는 `파이프라인` 버튼으로 변경했습니다. 팔로우업 상세의 영업기회 생성/상세/수정 링크도 제거하고 파이프라인 목록 안내로 대체했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 별도 영업기회 화면 제거 계획 추가 |
+| `reporting/urls.py` | `/reporting/opportunities/` 및 생성/상세/수정 URL 제거 |
+| `reporting/views.py` | 영업기회 전용 form/list/create/edit/detail view 제거 |
+| `reporting/templates/reporting/base.html` | 상단 `견적` 버튼을 `파이프라인` 링크로 변경 |
+| `reporting/templates/reporting/followup_detail.html` | 영업기회 전용 액션을 제거하고 파이프라인 목록 안내로 변경 |
+| `reporting/templates/reporting/opportunity_*.html` | 별도 영업기회 화면 템플릿 삭제 |
+| `reporting/tests.py` | 제거된 URL 404 및 상단 파이프라인 링크 회귀 테스트 추가/정리 |
+
+### 3. CRM Improvements
+
+- 영업 흐름 진입점을 `/reporting/funnel/` 파이프라인 화면으로 단일화했습니다.
+- 사용자가 상단 메뉴의 `견적`에서 별도 영업기회 목록으로 이동하던 혼선을 제거했습니다.
+- 기존 `OpportunityTracking` 모델/데이터와 자동 동기화 로직은 보존해 파이프라인 데이터 안정성을 유지했습니다.
+
+### 4. Existing Functionality Preserved
+
+- `/reporting/funnel/`, `/reporting/funnel/pipeline/` 유지
+- 기존 팔로우업/일정/영업노트/대시보드 기능 유지
+- 인증/권한 정책 변경 없음
+- DB 모델/migration 변경 없음
+
+### 5. Commands Run and Results
+
+```text
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests --verbosity=1
+→ Ran 13 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 144 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- `OpportunityTracking` 모델과 migration은 데이터 보존 및 파이프라인 연동을 위해 유지했습니다.
+- `/reporting/opportunities/`는 최종 방향에 따라 404가 정상입니다.
+
+### 7. Recommended Next Task
+
+1. 운영 배포 후 상단 `파이프라인` 버튼이 `/reporting/funnel/`로 이동하는지 확인
+2. 파이프라인 화면 안에서 견적/수주 단계 문구와 필터 UX 정리

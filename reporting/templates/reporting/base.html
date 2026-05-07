@@ -1767,7 +1767,6 @@
           {% elif request.resolver_match.url_name|slice:':8' == 'followup' %}고객/팔로우업
           {% elif request.resolver_match.url_name|slice:':8' == 'schedule' %}일정
           {% elif request.resolver_match.url_name|slice:':7' == 'history' %}영업노트
-          {% elif request.resolver_match.url_name|slice:':11' == 'opportunity' %}견적
           {% elif request.resolver_match.url_name|slice:':6' == 'funnel' %}파이프라인
           {% elif request.resolver_match.url_name|slice:':9' == 'analytics' %}리포트
           {% elif request.resolver_match.url_name|slice:':7' == 'manager' %}관리자
@@ -1792,8 +1791,8 @@
         <a href="{% url 'reporting:dashboard' %}#dashboardNoteModal" class="btn btn-primary btn-sm">
           <i class="fas fa-pen me-1"></i>영업노트
         </a>
-        <a href="{% url 'reporting:opportunity_list' %}" class="btn btn-outline-primary btn-sm">
-          <i class="fas fa-file-invoice-dollar me-1"></i>견적
+        <a href="{% url 'reporting:funnel_list' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-filter me-1"></i>파이프라인
         </a>
         <a href="{% url 'reporting:history_list' %}?review_filter=unreviewed" class="crm-icon-btn" aria-label="알림">
           <i class="fas fa-bell"></i>

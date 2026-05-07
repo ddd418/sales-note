@@ -2,10 +2,6 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 from reporting.models import (
-    Company,
-    Department,
-    FollowUp,
-    OpportunityTracking,
     UserProfile,
     UserCompany,
 )
@@ -73,16 +69,11 @@ class AuthenticationSmoke(TestCase):
         response = self.client.get(reverse('reporting:followup_list'))
         self.assertEqual(response.status_code, 200)
 
-    def test_opportunity_list_authenticated(self):
-        """인증 후 영업 기회 목록 200 응답"""
+    def test_opportunity_list_url_removed(self):
+        """별도 영업기회 목록 URL은 제거되어야 함"""
         self.client.force_login(self.user)
-        response = self.client.get(reverse('reporting:opportunity_list'))
-        self.assertEqual(response.status_code, 200)
-
-    def test_opportunity_list_unauthenticated_redirects(self):
-        """미인증 상태에서 영업 기회 목록 접근 시 리다이렉트"""
-        response = self.client.get(reverse('reporting:opportunity_list'))
-        self.assertIn(response.status_code, [302, 301])
+        response = self.client.get('/reporting/opportunities/')
+        self.assertEqual(response.status_code, 404)
 
     def test_schedule_list_authenticated(self):
         """인증 후 일정 목록 200 응답"""
@@ -95,90 +86,6 @@ class AuthenticationSmoke(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:history_list'))
         self.assertEqual(response.status_code, 200)
-
-
-class OpportunityListDataScopeTests(TestCase):
-    """영업기회 목록 데이터 범위 검증"""
-
-    def setUp(self):
-        self.client = Client()
-        self.company = UserCompany.objects.create(name='영업기회범위회사')
-        self.other_company = UserCompany.objects.create(name='외부회사')
-        self.user = make_user('opp_scope_me', role='salesman', company=self.company)
-        self.coworker = make_user('opp_scope_coworker', role='salesman', company=self.company)
-        self.outsider = make_user('opp_scope_outsider', role='salesman', company=self.other_company)
-        self.url = reverse('reporting:opportunity_list')
-
-        self.own_opp = self._make_opportunity(self.user, '내 영업기회')
-        self.coworker_opp = self._make_opportunity(self.coworker, '동료 영업기회')
-        self.outsider_opp = self._make_opportunity(self.outsider, '외부 영업기회')
-
-    def _make_opportunity(self, owner, title):
-        company = Company.objects.create(name=f'{title} 고객사', created_by=owner)
-        department = Department.objects.create(name=f'{title} 부서', company=company, created_by=owner)
-        followup = FollowUp.objects.create(
-            user=owner,
-            user_company=owner.userprofile.company,
-            customer_name=f'{title} 고객',
-            company=company,
-            department=department,
-        )
-        return OpportunityTracking.objects.create(
-            followup=followup,
-            title=title,
-            current_stage='contact',
-            expected_revenue=1000000,
-            probability=50,
-        )
-
-    def test_opportunity_list_defaults_to_current_user_only(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.own_opp.title)
-        self.assertNotContains(response, self.coworker_opp.title)
-        self.assertNotContains(response, self.outsider_opp.title)
-        self.assertEqual(response.context['data_filter'], 'me')
-
-    def test_opportunity_list_can_select_same_company_user(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(
-            self.url,
-            {'data_filter': 'user', 'filter_user': str(self.coworker.id)},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.coworker_opp.title)
-        self.assertNotContains(response, self.own_opp.title)
-        self.assertNotContains(response, self.outsider_opp.title)
-        self.assertEqual(response.context['selected_filter_user'], self.coworker)
-
-    def test_opportunity_list_does_not_allow_all_scope(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.url, {'data_filter': 'all'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.own_opp.title)
-        self.assertNotContains(response, self.coworker_opp.title)
-        self.assertEqual(response.context['data_filter'], 'me')
-
-    def test_opportunity_list_rejects_user_outside_access_scope(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(
-            self.url,
-            {'data_filter': 'user', 'filter_user': str(self.outsider.id)},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.own_opp.title)
-        self.assertNotContains(response, self.outsider_opp.title)
-        self.assertEqual(response.context['data_filter'], 'me')
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 익명 사용자 URL 차단 테스트
@@ -213,9 +120,6 @@ class AnonymousAccessTests(TestCase):
 
     def test_schedule_calendar_blocked(self):
         self._assert_redirects_to_login(reverse('reporting:schedule_calendar'))
-
-    def test_opportunity_list_blocked(self):
-        self._assert_redirects_to_login(reverse('reporting:opportunity_list'))
 
     def test_funnel_pipeline_blocked(self):
         self._assert_redirects_to_login(reverse('reporting:funnel_pipeline'))
@@ -412,6 +316,16 @@ class DashboardSmokeTests(TestCase):
         self.assertIn('href="/reporting/dashboard/#dashboardNoteModal"', content)
         self.assertIn('window.addEventListener(\'hashchange\', openDashboardNoteModalFromHash)', content)
         self.assertIn('event.target.closest(\'a[href$="#dashboardNoteModal"]\')', content)
+
+    def test_topbar_pipeline_link_replaces_quote_opportunity_link(self):
+        """상단 견적 버튼은 파이프라인 목록 링크로 대체되어야 함"""
+        self.client.force_login(self.user)
+        r = self.client.get(reverse('reporting:dashboard'))
+        self.assertEqual(r.status_code, 200)
+        content = r.content.decode('utf-8', errors='replace')
+        self.assertIn('href="/reporting/funnel/"', content)
+        self.assertIn('파이프라인', content)
+        self.assertNotIn('href="/reporting/opportunities/"', content)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
