@@ -42,6 +42,16 @@ export type Deal = {
     source?: string;
     basisType?: string;
   } | null;
+  quoteComparison?: {
+    quotedAmount: number;
+    actualAmount: number;
+    deltaAmount: number;
+    deltaRate: number;
+    status: 'over' | 'under' | 'match';
+    statusLabel: string;
+    source: string;
+    number: string;
+  } | null;
   nextSchedule?: {
     id: number;
     type: string;
@@ -195,6 +205,24 @@ export const mockDeals: Deal[] = [
     risk: 'low',
     tags: ['수주'],
     lastActivity: '발주서 수신',
+    latestQuote: {
+      number: '납품 #6',
+      stage: '완료됨',
+      amount: 21400000,
+      probability: 100,
+      source: '실제 납품 매출',
+      basisType: 'delivery',
+    },
+    quoteComparison: {
+      quotedAmount: 22000000,
+      actualAmount: 21400000,
+      deltaAmount: -600000,
+      deltaRate: -2.7,
+      status: 'under',
+      statusLabel: '실매출 미달',
+      source: '수주 견적',
+      number: 'Q-2026-006',
+    },
   },
 ];
 

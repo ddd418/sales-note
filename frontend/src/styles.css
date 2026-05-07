@@ -1921,6 +1921,63 @@ h2 {
   font-weight: 800;
 }
 
+.quote-delta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  font-size: 11px;
+}
+
+.quote-delta span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.quote-delta strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.quote-delta small {
+  color: inherit;
+  font-size: 10px;
+}
+
+.quote-delta.over {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.quote-delta.over strong {
+  color: #166534;
+}
+
+.quote-delta.under {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.quote-delta.under strong {
+  color: #9a3412;
+}
+
+.quote-delta.match {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.quote-delta.match strong {
+  color: #1d4ed8;
+}
+
 .risk-badge {
   flex: 0 0 auto;
   padding: 3px 7px;
@@ -2271,6 +2328,74 @@ tbody tr:hover {
 
 .detail-box.quote {
   background: #eff6ff;
+}
+
+.detail-box.quote-comparison {
+  border-color: #dbeafe;
+  background: #f8fafc;
+}
+
+.detail-box.quote-comparison.over {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.detail-box.quote-comparison.under {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.detail-box.quote-comparison.match {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.comparison-grid,
+.comparison-delta {
+  display: grid;
+  grid-template-columns: minmax(76px, 1fr) auto;
+  gap: 7px 10px;
+  align-items: baseline;
+}
+
+.comparison-grid span,
+.comparison-delta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.comparison-grid strong,
+.comparison-delta strong {
+  text-align: right;
+  font-size: 14px;
+}
+
+.comparison-delta {
+  padding-top: 7px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.comparison-delta small {
+  grid-column: 1 / -1;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quote-comparison.over .comparison-delta strong,
+.quote-comparison.over .comparison-delta small {
+  color: #166534;
+}
+
+.quote-comparison.under .comparison-delta strong,
+.quote-comparison.under .comparison-delta small {
+  color: #9a3412;
+}
+
+.quote-comparison.match .comparison-delta strong,
+.quote-comparison.match .comparison-delta small {
+  color: #1d4ed8;
 }
 
 .quote-line strong {

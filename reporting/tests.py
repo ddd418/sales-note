@@ -1146,6 +1146,10 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deals[won_followup.id]['value'], 4400000)
         self.assertEqual(deals[won_followup.id]['latestQuote']['source'], '실제 납품 매출')
         self.assertEqual(deals[won_followup.id]['latestQuote']['basisType'], 'delivery')
+        self.assertEqual(deals[won_followup.id]['quoteComparison']['quotedAmount'], 4400000)
+        self.assertEqual(deals[won_followup.id]['quoteComparison']['actualAmount'], 4400000)
+        self.assertEqual(deals[won_followup.id]['quoteComparison']['deltaAmount'], 0)
+        self.assertEqual(deals[won_followup.id]['quoteComparison']['status'], 'match')
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 4400000)
 
@@ -1186,6 +1190,11 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['value'], 5500000)
         self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
         self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
+        self.assertEqual(deal['quoteComparison']['quotedAmount'], 1100000)
+        self.assertEqual(deal['quoteComparison']['actualAmount'], 5500000)
+        self.assertEqual(deal['quoteComparison']['deltaAmount'], 4400000)
+        self.assertEqual(deal['quoteComparison']['deltaRate'], 400.0)
+        self.assertEqual(deal['quoteComparison']['status'], 'over')
 
     def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
         for index in range(12):

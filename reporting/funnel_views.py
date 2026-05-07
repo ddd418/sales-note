@@ -859,6 +859,8 @@ def funnel_pipeline_view(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
         pricing_amount = pricing['amount']
+        quote_reference = _select_quote_reference_pricing(fu, stage)
+        quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
         has_overdue_action = any(
             h.next_action_date and h.next_action_date < today
             for h in getattr(fu, 'all_histories', [])
@@ -899,6 +901,7 @@ def funnel_pipeline_view(request):
             'latest_quote_stage': pricing['stage'] if pricing['source'] else None,
             'latest_quote_amount': f'{int(pricing_amount):,}원' if pricing_amount > 0 else None,
             'latest_quote_source': pricing['source'],
+            'quote_comparison': _quote_comparison_template_payload(quote_comparison),
             # 추천 단계 (자동 동기화 대상)
             'suggested_stage': suggested_stage,
             'suggested_stage_label': stage_labels.get(suggested_stage, '') if suggested_stage else '',
@@ -1042,6 +1045,161 @@ def _select_latest_quote_history(followup):
     return with_amount[0] if with_amount else (quote_histories[0] if quote_histories else None)
 
 
+def _quote_model_pricing(followup, stage):
+    prefetched_quotes = getattr(followup, 'all_quotes', None)
+    quotes = (
+        list(prefetched_quotes)
+        if prefetched_quotes is not None
+        else list(followup.quotes.all().order_by('-created_at'))
+    )
+    if not quotes:
+        return None
+
+    def first_matching(predicate):
+        with_amount = [quote for quote in quotes if predicate(quote) and _quote_amount(quote) > 0]
+        if with_amount:
+            return with_amount[0]
+        return next((quote for quote in quotes if predicate(quote)), None)
+
+    def build(quote, source):
+        return {
+            'object': quote,
+            'kind': 'quote',
+            'amount': _quote_amount(quote),
+            'source': source,
+            'number': quote.quote_number,
+            'stage': quote.get_stage_display(),
+            'probability': int(quote.probability or 0),
+            'valid_until': quote.valid_until,
+        }
+
+    if stage == 'won':
+        quote = first_matching(
+            lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
+        )
+        if quote:
+            return build(quote, '수주 견적')
+
+    for quote_stage in PIPELINE_QUOTE_PRIORITY.get(stage, ()):
+        quote = first_matching(lambda item, expected=quote_stage: item.stage == expected)
+        if quote:
+            source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
+            return build(quote, source_label)
+
+    quote = first_matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES)
+    if quote:
+        return build(quote, '진행 견적')
+
+    quote = first_matching(lambda item: True)
+    return build(quote, '최근 견적') if quote else None
+
+
+def _select_quote_reference_pricing(followup, stage):
+    quote_schedule = _select_latest_quote_schedule(followup)
+    if quote_schedule:
+        amount = _schedule_quote_amount(quote_schedule)
+        if amount > 0:
+            return {
+                'object': quote_schedule,
+                'kind': 'schedule',
+                'amount': amount,
+                'source': '견적 일정',
+                'number': f'일정 #{quote_schedule.id}',
+                'stage': quote_schedule.get_activity_type_display(),
+                'probability': quote_schedule.probability or STAGE_PROBABILITY.get(stage, 30),
+                'valid_until': quote_schedule.expected_close_date,
+            }
+
+    quote_history = _select_latest_quote_history(followup)
+    if quote_history:
+        amount = _history_pricing_amount(quote_history)
+        if amount > 0:
+            return {
+                'object': quote_history,
+                'kind': 'history',
+                'amount': amount,
+                'source': '견적 활동',
+                'number': f'활동 #{quote_history.id}',
+                'stage': quote_history.get_action_type_display(),
+                'probability': STAGE_PROBABILITY.get(stage, 30),
+                'valid_until': None,
+            }
+
+    return _quote_model_pricing(followup, stage)
+
+
+def _build_quote_comparison(stage, pricing, quote_reference):
+    if stage != 'won' or pricing.get('kind') != 'delivery' or not quote_reference:
+        return None
+
+    actual_amount = pricing['amount'] or Decimal('0')
+    quoted_amount = quote_reference['amount'] or Decimal('0')
+    if actual_amount <= 0 or quoted_amount <= 0:
+        return None
+
+    delta_amount = actual_amount - quoted_amount
+    delta_rate = round(float(delta_amount * Decimal('100') / quoted_amount), 1)
+    if delta_amount > 0:
+        status = 'over'
+        status_label = '실매출 초과'
+    elif delta_amount < 0:
+        status = 'under'
+        status_label = '실매출 미달'
+    else:
+        status = 'match'
+        status_label = '견적 일치'
+
+    return {
+        'quoted_amount': quoted_amount,
+        'actual_amount': actual_amount,
+        'delta_amount': delta_amount,
+        'delta_rate': delta_rate,
+        'status': status,
+        'status_label': status_label,
+        'source': quote_reference['source'],
+        'number': quote_reference['number'],
+    }
+
+
+def _format_signed_money(value):
+    amount = int(value or Decimal('0'))
+    if amount > 0:
+        return f'+{amount:,}원'
+    if amount < 0:
+        return f'-{abs(amount):,}원'
+    return '0원'
+
+
+def _quote_comparison_template_payload(comparison):
+    if not comparison:
+        return None
+    return {
+        'quoted_amount': f"{int(comparison['quoted_amount']):,}원",
+        'actual_amount': f"{int(comparison['actual_amount']):,}원",
+        'delta_amount': _format_signed_money(comparison['delta_amount']),
+        'delta_rate': comparison['delta_rate'],
+        'status': comparison['status'],
+        'status_label': comparison['status_label'],
+        'source': comparison['source'],
+        'number': comparison['number'],
+    }
+
+
+def _quote_comparison_api_payload(comparison):
+    if not comparison:
+        return None
+    return {
+        'quotedAmount': _money_int(comparison['quoted_amount']),
+        'actualAmount': _money_int(comparison['actual_amount']),
+        'deltaAmount': _money_int(comparison['delta_amount']),
+        'deltaRate': comparison['delta_rate'],
+        'status': comparison['status'],
+        'statusLabel': comparison['status_label'],
+        'source': comparison['source'],
+        'number': comparison['number'],
+    }
+
+
 def _actual_delivery_revenue(followup):
     schedules = list(getattr(followup, 'pricing_schedules', []))
     completed_delivery_schedules = [
@@ -1096,113 +1254,23 @@ def _select_pipeline_pricing(followup, stage):
             }
 
     if stage in ('quote', 'negotiation'):
-        quote_schedule = _select_latest_quote_schedule(followup)
-        if quote_schedule:
-            amount = _schedule_quote_amount(quote_schedule)
-            if amount > 0:
-                return {
-                    'object': quote_schedule,
-                    'kind': 'schedule',
-                    'amount': amount,
-                    'source': '견적 일정',
-                    'number': f'일정 #{quote_schedule.id}',
-                    'stage': quote_schedule.get_activity_type_display(),
-                    'probability': quote_schedule.probability or STAGE_PROBABILITY.get(stage, 30),
-                    'valid_until': quote_schedule.expected_close_date,
-                }
-        quote_history = _select_latest_quote_history(followup)
-        if quote_history:
-            amount = _history_pricing_amount(quote_history)
-            if amount > 0:
-                return {
-                    'object': quote_history,
-                    'kind': 'history',
-                    'amount': amount,
-                    'source': '견적 활동',
-                    'number': f'활동 #{quote_history.id}',
-                    'stage': quote_history.get_action_type_display(),
-                    'probability': STAGE_PROBABILITY.get(stage, 30),
-                    'valid_until': None,
-                }
+        quote_reference = _select_quote_reference_pricing(followup, stage)
+        if quote_reference:
+            return quote_reference
 
-    prefetched_quotes = getattr(followup, 'all_quotes', None)
-    quotes = (
-        list(prefetched_quotes)
-        if prefetched_quotes is not None
-        else list(followup.quotes.all().order_by('-created_at'))
-    )
-    if not quotes:
-        return {
-            'object': None,
-            'kind': '',
-            'amount': Decimal('0'),
-            'source': '',
-            'number': '',
-            'stage': '',
-            'probability': STAGE_PROBABILITY.get(stage, 30),
-            'valid_until': None,
-        }
+    quote_pricing = _quote_model_pricing(followup, stage)
+    if quote_pricing:
+        return quote_pricing
 
-    def first_matching(predicate):
-        with_amount = [quote for quote in quotes if predicate(quote) and _quote_amount(quote) > 0]
-        if with_amount:
-            return with_amount[0]
-        return next((quote for quote in quotes if predicate(quote)), None)
-
-    if stage == 'won':
-        quote = first_matching(
-            lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
-        )
-        if quote:
-            return {
-                'object': quote,
-                'kind': 'quote',
-                'amount': _quote_amount(quote),
-                'source': '수주 견적',
-                'number': quote.quote_number,
-                'stage': quote.get_stage_display(),
-                'probability': int(quote.probability or 0),
-                'valid_until': quote.valid_until,
-            }
-
-    for quote_stage in PIPELINE_QUOTE_PRIORITY.get(stage, ()):
-        quote = first_matching(lambda item, expected=quote_stage: item.stage == expected)
-        if quote:
-            source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
-            return {
-                'object': quote,
-                'kind': 'quote',
-                'amount': _quote_amount(quote),
-                'source': source_label,
-                'number': quote.quote_number,
-                'stage': quote.get_stage_display(),
-                'probability': int(quote.probability or 0),
-                'valid_until': quote.valid_until,
-            }
-
-    quote = first_matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES)
-    if quote:
-        return {
-            'object': quote,
-            'kind': 'quote',
-            'amount': _quote_amount(quote),
-            'source': '진행 견적',
-            'number': quote.quote_number,
-            'stage': quote.get_stage_display(),
-            'probability': int(quote.probability or 0),
-            'valid_until': quote.valid_until,
-        }
-
-    quote = first_matching(lambda item: True)
     return {
-        'object': quote,
-        'kind': 'quote',
-        'amount': _quote_amount(quote),
-        'source': '최근 견적',
-        'number': quote.quote_number,
-        'stage': quote.get_stage_display(),
-        'probability': int(quote.probability or 0),
-        'valid_until': quote.valid_until,
+        'object': None,
+        'kind': '',
+        'amount': Decimal('0'),
+        'source': '',
+        'number': '',
+        'stage': '',
+        'probability': STAGE_PROBABILITY.get(stage, 30),
+        'valid_until': None,
     }
 
 
@@ -1310,6 +1378,8 @@ def pipeline_command_center_api(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
         pricing_amount = pricing['amount']
+        quote_reference = _select_quote_reference_pricing(fu, stage)
+        quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
         probability = pricing['probability'] or STAGE_PROBABILITY.get(stage, 30)
         next_action_date = last_history.next_action_date if last_history else None
         has_overdue_action = bool(next_action_date and next_action_date < today)
@@ -1384,6 +1454,7 @@ def pipeline_command_center_api(request):
             'isPotentialOverflow': False,
             'recentActivities': recent_activities,
             'latestQuote': latest_quote_payload,
+            'quoteComparison': _quote_comparison_api_payload(quote_comparison),
             'nextSchedule': next_schedule_payload,
             'detailUrl': f'/reporting/followups/{fu.id}/',
         }

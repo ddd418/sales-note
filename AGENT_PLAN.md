@@ -1126,3 +1126,35 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Pipeline Won Cards — 견적 대비 실제 납품 매출 차이 표시
+
+**목표**: 수주 단계 카드에서 대표 금액은 실제 납품 매출로 유지하되, 기준 견적 금액과 차액/차이율을 함께 보여준다.
+
+**작업 범위**:
+
+- `won` 단계 카드에 실제 납품 매출과 비교할 기준 견적 데이터를 계산한다.
+- 기준 견적은 기존 운영 데이터 우선순위를 따른다: 견적 일정 품목 → 견적 히스토리 품목 → 승인/전환된 Quote → 진행/최근 Quote fallback.
+- React `/` 파이프라인 상세 패널과 리스트, Django `/reporting/funnel/pipeline/` 보드에 견적 대비 차이를 표시한다.
+- API 응답에 `quoteComparison`을 추가해 `quotedAmount`, `actualAmount`, `deltaAmount`, `deltaRate`, `status`, `source`를 내려준다.
+- 기존 파이프라인 대표 금액, 단계 이동, 인증/권한 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `History`, `DeliveryItem`, `Quote` 조회만 사용한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1~2시간.
+- 배포와 운영 smoke까지 포함하면 추가 30~60분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

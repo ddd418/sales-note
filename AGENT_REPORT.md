@@ -6599,3 +6599,84 @@ git diff --check
 
 - 운영 배포 및 smoke: 약 20~40분.
 - 운영 로그인 육안 확인: 약 10~20분.
+
+---
+
+## Pipeline Won Cards — 견적 대비 실제 납품 매출 차이 표시
+
+**날짜**: 2026-05-08
+**상태**: 완료
+
+### 1. Summary
+
+수주 단계 카드의 대표 금액은 실제 납품 매출 기준으로 유지하면서, 같은 카드에서 기준 견적 금액과 실제 납품 매출의 차액/차이율을 함께 볼 수 있도록 보강했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 수주 카드 견적 대비 실제 납품 매출 차이 표시 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `reporting/funnel_views.py` | `quoteComparison` 계산 및 API/템플릿 payload 추가 |
+| `reporting/templates/reporting/funnel/pipeline.html` | Django 파이프라인 카드에 견적 대비 차이 표시 |
+| `reporting/tests.py` | 수주 실제 납품 매출과 기준 견적 비교 회귀 테스트 추가 |
+| `frontend/src/App.tsx` | React 파이프라인 카드, 리스트, 상세 패널에 견적 대비 차이 표시 |
+| `frontend/src/mockData.ts` | `quoteComparison` 타입과 mock 데이터 추가 |
+| `frontend/src/styles.css` | 견적 대비 차이 UI 스타일 추가 |
+
+### 3. CRM Improvements
+
+- `won` 카드의 대표 금액은 실제 납품 매출 기준을 유지합니다.
+- `won` 카드에 기준 견적 금액, 실제 납품 매출, 차액, 차이율, 초과/미달/일치 상태를 함께 제공합니다.
+- 기준 견적은 견적 일정 품목 → 견적 활동 품목 → 수주/전환 견적 → 진행/최근 견적 순으로 찾습니다.
+- React 파이프라인의 카드, 표, 상세 패널과 Django 파이프라인 보드 모두 동일한 비교 정보를 표시합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 운영 화면은 유지했습니다.
+- 기존 파이프라인 대표 금액, 단계 계산, 상세 링크, 인증/권한 정책은 변경하지 않았습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 10 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 162 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 174 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 실제 수주 카드의 견적 대비 차이 표시가 의도한 고객 데이터와 맞는지 육안 확인이 필요합니다.
+- 실제 납품 매출이나 기준 견적 금액이 0원이면 비교 정보는 표시하지 않습니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 로그인 상태에서 수주 카드의 `대표 금액`, `견적 대비`, 상세 패널의 실제 납품 매출 비교 박스를 확인합니다.
+- 다음 업무 화면 전환은 React 고객 화면의 검색/담당자/우선순위 필터 연결을 진행합니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 20~40분.
+- 운영 로그인 육안 확인: 약 10~20분.
+- 다음 고객 화면 실제 데이터 연결: 약 2~4시간.

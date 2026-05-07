@@ -178,6 +178,14 @@ const formatWon = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
+const formatSignedWon = (value: number) => {
+  if (value > 0) return `+${formatWon(value)}`;
+  if (value < 0) return `-${formatWon(Math.abs(value))}`;
+  return formatWon(0);
+};
+
+const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value}%`;
+
 const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
 
 const formatDateLabel = (value?: string | null) => {
@@ -1867,6 +1875,15 @@ function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean;
         <span>{formatWon(deal.value)}</span>
         <small>{deal.probability}%</small>
       </div>
+      {deal.quoteComparison ? (
+        <div className={`quote-delta ${deal.quoteComparison.status}`}>
+          <span>견적 대비</span>
+          <strong>
+            {formatSignedWon(deal.quoteComparison.deltaAmount)}
+            <small>{formatSignedPercent(deal.quoteComparison.deltaRate)}</small>
+          </strong>
+        </div>
+      ) : null}
       <p>{deal.nextAction}</p>
       {deal.attentionReason ? <small className="attention-reason">{deal.attentionReason}</small> : null}
       <div className="deal-meta">
@@ -2044,7 +2061,8 @@ function PipelineList({
           <tr>
             <th>고객</th>
             <th>단계</th>
-            <th>예상 매출</th>
+            <th>대표 금액</th>
+            <th>견적 대비</th>
             <th>확률</th>
             <th>다음 액션</th>
             <th>담당</th>
@@ -2059,6 +2077,16 @@ function PipelineList({
               </td>
               <td>{stages.find((stage) => stage.id === deal.stage)?.label}</td>
               <td>{formatWon(deal.value)}</td>
+              <td>
+                {deal.quoteComparison ? (
+                  <>
+                    <strong>{formatSignedWon(deal.quoteComparison.deltaAmount)}</strong>
+                    <span>{deal.quoteComparison.statusLabel}</span>
+                  </>
+                ) : (
+                  '-'
+                )}
+              </td>
               <td>{deal.probability}%</td>
               <td>{deal.nextAction}</td>
               <td>{deal.owner}</td>
@@ -2144,7 +2172,7 @@ function DetailPanel({
         {moveError ? <small className="move-status error">{moveError}</small> : null}
       </div>
       <div className="detail-value">
-        <span>예상 매출</span>
+        <span>{deal.latestQuote?.basisType === 'delivery' ? '실제 납품 매출' : '예상 매출'}</span>
         <strong>{formatWon(deal.value)}</strong>
       </div>
       <div className="progress-wrap">
@@ -2183,6 +2211,26 @@ function DetailPanel({
             <span>{deal.latestQuote.probability}%</span>
           </div>
           {deal.latestQuote.validUntil ? <small>유효기한 {deal.latestQuote.validUntil}</small> : null}
+        </div>
+      ) : null}
+      {deal.quoteComparison ? (
+        <div className={`detail-box quote-comparison ${deal.quoteComparison.status}`}>
+          <div className="section-title">견적 대비 실제 납품</div>
+          <div className="comparison-grid">
+            <span>기준 견적</span>
+            <strong>{formatWon(deal.quoteComparison.quotedAmount)}</strong>
+            <span>실제 납품</span>
+            <strong>{formatWon(deal.quoteComparison.actualAmount)}</strong>
+          </div>
+          <div className="comparison-delta">
+            <span>{deal.quoteComparison.statusLabel}</span>
+            <strong>{formatSignedWon(deal.quoteComparison.deltaAmount)}</strong>
+            <small>{formatSignedPercent(deal.quoteComparison.deltaRate)}</small>
+          </div>
+          <small>
+            {deal.quoteComparison.source}
+            {deal.quoteComparison.number ? ` · ${deal.quoteComparison.number}` : ''}
+          </small>
         </div>
       ) : null}
       <div className="tag-row">
