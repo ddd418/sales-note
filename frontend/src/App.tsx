@@ -26,12 +26,21 @@ import { loadPipelineData, moveDealStage } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
 const navItems = [
-  { label: '대시보드', icon: LayoutDashboard },
-  { label: '고객', icon: Users },
-  { label: '파이프라인', icon: Columns3, active: true },
-  { label: '영업노트', icon: FileText },
-  { label: '일정', icon: CalendarDays },
-  { label: 'AI', icon: Sparkles },
+  { label: '대시보드', icon: LayoutDashboard, href: '/reporting/dashboard/' },
+  { label: '고객', icon: Users, href: '/reporting/followups/' },
+  { label: '파이프라인', icon: Columns3, href: '/', active: true },
+  { label: '영업노트', icon: FileText, href: '/reporting/histories/' },
+  { label: '일정', icon: CalendarDays, href: '/reporting/schedules/' },
+  { label: 'AI', icon: Sparkles, href: '/ai/' },
+];
+
+type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
+
+const savedViews: Array<{ id: SavedView; label: string }> = [
+  { id: 'priority', label: '내 담당 우선' },
+  { id: 'thisWeek', label: '이번 주 마감' },
+  { id: 'quoteDelay', label: '견적 제출 후 지연' },
+  { id: 'managerReview', label: '관리자 검토' },
 ];
 
 const formatWon = (value: number) =>
@@ -62,10 +71,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button className={`nav-item ${item.active ? 'active' : ''}`} key={item.label}>
+              <a className={`nav-item ${item.active ? 'active' : ''}`} href={item.href} key={item.label}>
                 <Icon size={18} />
                 <span>{item.label}</span>
-              </button>
+              </a>
             );
           })}
         </nav>
@@ -80,7 +89,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TopBar() {
+function TopBar({
+  searchQuery,
+  onSearchChange,
+}: {
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+}) {
   return (
     <header className="topbar">
       <div>
@@ -90,15 +105,19 @@ function TopBar() {
       <div className="topbar-actions">
         <label className="search-box">
           <Search size={17} />
-          <input placeholder="고객, 담당자, 품목, 다음 액션 검색" />
+          <input
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="고객, 담당자, 품목, 다음 액션 검색"
+            value={searchQuery}
+          />
         </label>
-        <button className="icon-button" aria-label="알림">
+        <a className="icon-button" aria-label="알림" href="/reporting/dashboard/">
           <Bell size={18} />
-        </button>
-        <button className="primary-button">
+        </a>
+        <a className="primary-button" href="/reporting/dashboard/#dashboardNoteModal">
           <Plus size={17} />
           새 영업노트
-        </button>
+        </a>
       </div>
     </header>
   );
@@ -154,7 +173,17 @@ function MetricStrip({ data }: { data: PipelineData }) {
   );
 }
 
-function FilterRail({ tasks, source }: { tasks: PriorityTask[]; source: PipelineData['source'] }) {
+function FilterRail({
+  onViewChange,
+  selectedView,
+  source,
+  tasks,
+}: {
+  onViewChange: (view: SavedView) => void;
+  selectedView: SavedView;
+  source: PipelineData['source'];
+  tasks: PriorityTask[];
+}) {
   return (
     <aside className="filter-rail">
       <div className="rail-section">
@@ -170,9 +199,14 @@ function FilterRail({ tasks, source }: { tasks: PriorityTask[]; source: Pipeline
           <span>저장된 뷰</span>
           <ChevronDown size={16} />
         </div>
-        {['내 담당 우선', '이번 주 마감', '견적 제출 후 지연', '관리자 검토'].map((view, index) => (
-          <button className={`view-chip ${index === 0 ? 'selected' : ''}`} key={view}>
-            {view}
+        {savedViews.map((view) => (
+          <button
+            className={`view-chip ${selectedView === view.id ? 'selected' : ''}`}
+            key={view.id}
+            onClick={() => onViewChange(view.id)}
+            type="button"
+          >
+            {view.label}
           </button>
         ))}
       </div>
@@ -565,6 +599,8 @@ export function App() {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedView, setSelectedView] = useState<SavedView>('priority');
   const [movingDealId, setMovingDealId] = useState<number | null>(null);
   const [moveError, setMoveError] = useState('');
   const [moveMessage, setMoveMessage] = useState('');
@@ -583,7 +619,6 @@ export function App() {
     };
   }, []);
 
-  const selectedDeal = pipelineData.deals.find((deal) => deal.id === selectedDealId) ?? pipelineData.deals[0];
   const selectDeal = (deal: Deal) => {
     setSelectedDealId(deal.id);
     setMoveError('');
@@ -608,13 +643,51 @@ export function App() {
       setMovingDealId(null);
     }
   };
+  const visibleDeals = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    return pipelineData.deals.filter((deal) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          deal.company,
+          deal.contact,
+          deal.department || '',
+          deal.owner,
+          deal.nextAction,
+          deal.lastActivity,
+          ...deal.tags,
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery);
+      if (!matchesQuery) {
+        return false;
+      }
+      if (selectedView === 'thisWeek') {
+        return deal.due === '오늘' || deal.due === '내일' || deal.due.includes('일 후');
+      }
+      if (selectedView === 'quoteDelay') {
+        return deal.stage === 'quote' && deal.risk === 'high';
+      }
+      if (selectedView === 'managerReview') {
+        return deal.tags.some((tag) => tag.includes('관리자')) || deal.stage === 'negotiation';
+      }
+      return true;
+    });
+  }, [pipelineData.deals, searchQuery, selectedView]);
+  const visibleSelectedDeal = visibleDeals.find((deal) => deal.id === selectedDealId) ?? visibleDeals[0];
 
   return (
     <AppShell>
-      <TopBar />
+      <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <MetricStrip data={pipelineData} />
       <div className="content-grid">
-        <FilterRail tasks={pipelineData.priorityTasks} source={pipelineData.source} />
+        <FilterRail
+          onViewChange={setSelectedView}
+          selectedView={selectedView}
+          tasks={pipelineData.priorityTasks}
+          source={pipelineData.source}
+        />
         <section className="center-panel">
           <div className="panel-toolbar">
             <div>
@@ -632,22 +705,27 @@ export function App() {
               </button>
             </div>
           </div>
-          {mode === 'board' ? (
+          {visibleDeals.length === 0 ? (
+            <div className="empty-state">
+              <strong>조건에 맞는 파이프라인이 없습니다</strong>
+              <span>검색어를 지우거나 저장된 뷰를 변경해보세요.</span>
+            </div>
+          ) : mode === 'board' ? (
             <PipelineBoard
-              selectedDeal={selectedDeal}
+              selectedDeal={visibleSelectedDeal}
               onSelect={selectDeal}
               stages={pipelineData.stages}
-              deals={pipelineData.deals}
+              deals={visibleDeals}
             />
           ) : (
-            <PipelineList onSelect={selectDeal} stages={pipelineData.stages} deals={pipelineData.deals} />
+            <PipelineList onSelect={selectDeal} stages={pipelineData.stages} deals={visibleDeals} />
           )}
         </section>
         <DetailPanel
-          deal={selectedDeal}
+          deal={visibleSelectedDeal}
           stages={pipelineData.stages}
           canMove={pipelineData.source === 'django'}
-          moving={Boolean(selectedDeal && movingDealId === selectedDeal.id)}
+          moving={Boolean(visibleSelectedDeal && movingDealId === visibleSelectedDeal.id)}
           moveError={moveError}
           moveMessage={moveMessage}
           onMoveStage={handleMoveStage}

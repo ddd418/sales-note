@@ -89,14 +89,23 @@ function proxyToDjango(clientRequest, clientResponse) {
   clientRequest.pipe(proxyRequest);
 }
 
+function shouldProxy(requestUrl) {
+  return (
+    requestUrl.startsWith('/reporting/') ||
+    requestUrl === '/reporting' ||
+    requestUrl.startsWith('/ai/') ||
+    requestUrl === '/ai'
+  );
+}
+
 createServer((request, response) => {
   const requestUrl = request.url || '/';
-  if (requestUrl.startsWith('/reporting/') || requestUrl === '/reporting') {
+  if (shouldProxy(requestUrl)) {
     proxyToDjango(request, response);
     return;
   }
   sendStatic(response, resolveStaticPath(requestUrl));
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
-  console.log(`Proxying /reporting/* to ${djangoBaseUrl.origin}`);
+  console.log(`Proxying /reporting/* and /ai/* to ${djangoBaseUrl.origin}`);
 });
