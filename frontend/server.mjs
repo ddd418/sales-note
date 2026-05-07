@@ -93,7 +93,11 @@ function shouldProxy(requestUrl) {
     requestUrl.startsWith('/reporting/') ||
     requestUrl === '/reporting' ||
     requestUrl.startsWith('/ai/') ||
-    requestUrl === '/ai'
+    requestUrl === '/ai' ||
+    requestUrl.startsWith('/static/') ||
+    requestUrl === '/static' ||
+    requestUrl.startsWith('/media/') ||
+    requestUrl === '/media'
   );
 }
 
@@ -106,5 +110,5 @@ createServer((request, response) => {
   sendStatic(response, resolveStaticPath(requestUrl));
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
-  console.log(`Proxying /reporting/* and /ai/* to ${djangoBaseUrl.origin}`);
+  console.log(`Proxying /reporting/*, /ai/*, /static/* and /media/* to ${djangoBaseUrl.origin}`);
 });

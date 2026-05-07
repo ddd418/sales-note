@@ -757,3 +757,32 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 배포 URL smoke 확인
+
+---
+
+## Frontend Hotfix — 프록시된 Django 정적 자산 라우팅
+
+**목표**: 프론트 Railway 도메인에서 `/reporting/*` Django 화면으로 이동했을 때 `crm-ui.css` 라이트 테마가 정상 로드되어 모든 CRM 화면이 화이트 모드로 보이게 한다.
+
+**원인**:
+
+- `frontend/server.mjs`는 `/reporting/*`와 `/ai/*` HTML/API 요청만 Django로 proxy한다.
+- Django 템플릿이 참조하는 `/static/reporting/css/crm-ui.css` 요청은 프론트 React fallback으로 처리되어 CSS 대신 `index.html`이 내려간다.
+- 그 결과 `base.html`의 기존 inline dark token만 적용되고 schedules 화면이 다크 모드로 보인다.
+
+**작업 범위**:
+
+- 프론트 Node 서버에서 `/static/*` 요청을 Django 백엔드로 proxy한다.
+- 첨부/업로드 자산을 위해 `/media/*` 요청도 Django 백엔드로 proxy한다.
+- React 빌드 자산인 `/assets/*`는 기존처럼 프론트 서비스가 직접 서빙한다.
+- DB, migration, Django 인증/CSRF 정책은 변경하지 않는다.
+
+**검증 계획**:
+
+- `cd frontend && node --check server.mjs`
+- `cd frontend && npm run build`
+- 로컬 프론트 서버에서 `/static/reporting/css/crm-ui.css`가 HTML이 아니라 CSS로 반환되는지 확인
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Railway 프론트 배포 후 운영 프론트 도메인의 `/static/reporting/css/crm-ui.css`와 `/reporting/login/` smoke 확인

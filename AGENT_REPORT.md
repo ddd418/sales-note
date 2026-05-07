@@ -5711,3 +5711,66 @@ Playwright screenshot
 ### 6. Recommended Next Task
 
 - 운영 로그인 세션에서 React 파이프라인 실제 데이터와 백엔드 복귀 링크를 함께 smoke test합니다.
+
+---
+
+## Frontend Hotfix — 프록시된 Django 정적 자산 라우팅
+
+### 1. Summary
+
+프론트 Railway 도메인에서 `/reporting/schedules/`로 이동하면 다크 모드로 보이던 원인을 수정했습니다. Django HTML은 프론트 Node 서버가 proxy하고 있었지만, Django 템플릿의 `/static/reporting/css/crm-ui.css` 요청은 React fallback으로 처리되어 CSS 대신 `index.html`이 내려가고 있었습니다. 프론트 서버가 `/static/*`와 `/media/*`를 Django 백엔드로 proxy하도록 변경해, `crm-ui.css` 라이트 테마가 정상 적용됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 프록시 정적 자산 라우팅 hotfix 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/server.mjs` | `/static/*`, `/media/*` Django proxy 추가 및 로그 문구 갱신 |
+
+### 3. CRM Improvements
+
+- 프론트 도메인에서 열리는 Django `/reporting/*` 화면이 운영 CRM 라이트 테마를 정상 로드합니다.
+- `/assets/*` React 빌드 자산은 기존처럼 프론트 서버가 직접 서빙합니다.
+- Django 인증, CSRF, URL, DB 모델은 변경하지 않았습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+node --check server.mjs
+→ OK
+
+cd frontend
+npm run build
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+Local frontend proxy smoke
+GET /static/reporting/css/crm-ui.css?v=20260506-rework
+→ 200 text/css, starts with :root, contains --crm-bg: #f8fafc
+
+Local frontend proxy smoke
+GET /assets/index-CUot_Oah.css
+→ 200 text/css, React asset remains served by frontend
+
+python manage.py test --verbosity=1
+→ Ran 152 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- 인증이 필요한 `/reporting/schedules/` 화면은 운영 로그인 세션에서 최종 육안 확인이 필요합니다.
+- 이번 수정은 proxy routing hotfix이며, 기존 `base.html` 안에 남은 dark inline token 자체를 제거한 것은 아닙니다.
+
+### 6. Recommended Next Task
+
+- 운영 프론트 도메인에서 로그인 후 `/reporting/schedules/`, `/reporting/dashboard/`, `/reporting/followups/`의 라이트 테마 적용을 함께 확인합니다.
