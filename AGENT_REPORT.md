@@ -5598,3 +5598,48 @@ git diff --check
 - Railway CLI는 설치되어 있으나 현재 세션은 `Unauthorized. Please run railway login again.` 상태입니다.
 - 실제 Railway 서비스 생성은 CLI 재로그인 또는 Railway API 토큰이 필요합니다.
 - 프론트 서비스 생성 후 `DJANGO_BASE_URL=https://web-production-5096.up.railway.app` 환경변수를 설정해야 합니다.
+
+---
+
+## Frontend Pilot — Django 대시보드 디자인 톤 정렬
+
+### 1. Summary
+
+React 파이프라인 화면이 기존 `/reporting/dashboard/`와 다른 별도 제품처럼 보이던 문제를 정리했습니다. 기존 Django 대시보드의 다크 CRM 디자인 시스템을 기준으로 배경, 사이드바, 카드, 버튼, 파이프라인 보드, 우측 상세 패널을 어두운 남색 표면과 파란색/보라색 포인트 톤으로 맞췄습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 디자인 톤 정렬 계획과 검증 계획 추가 |
+| `frontend/index.html` | 브라우저 title을 운영 화면명으로 변경 |
+| `frontend/src/App.tsx` | 파일럿 문구를 운영 파이프라인 문구로 정리 |
+| `frontend/src/styles.css` | Django 대시보드 다크 토큰 기반으로 전체 프론트 톤 정렬 |
+
+### 3. CRM Improvements
+
+- 기존 영업 보고 시스템의 대시보드와 같은 다크 CRM 시각 언어를 적용했습니다.
+- KPI 카드, 필터, 보드, 상세 패널이 운영 화면과 더 일관되게 보이도록 정리했습니다.
+- 기존 파이프라인 API, Django proxy, 클릭/검색/필터 동작은 유지했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Playwright desktop/mobile smoke
+→ 영업 보고 시스템/파이프라인 관리 렌더링 확인
+```
+
+### 5. Known Limitations
+
+- 이번 작업은 기존 대시보드 톤 정렬 1차입니다.
+- 로그인 후 실제 운영 데이터가 표시되는 상태에서 카드 밀도와 상세 패널 높이는 추가 확인이 필요합니다.

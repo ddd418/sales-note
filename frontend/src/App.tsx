@@ -63,8 +63,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div className="brand">
           <div className="brand-mark">SN</div>
           <div>
-            <strong>Sales Note</strong>
-            <span>Frontend Pilot</span>
+            <strong>영업 보고 시스템</strong>
+            <span>Pipeline</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="CRM navigation">
@@ -79,9 +79,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="sidebar-note">
-          <span>파일럿 범위</span>
-          <strong>파이프라인 Command Center</strong>
-          <p>Django API 연결 전 디자인과 사용 흐름을 먼저 검증합니다.</p>
+          <span>오늘 우선순위</span>
+          <strong>파이프라인 집중 관리</strong>
+          <p>지연 후속과 견적 단계 고객을 먼저 확인합니다.</p>
         </div>
       </aside>
       <main className="workspace">{children}</main>
@@ -100,7 +100,7 @@ function TopBar({
     <header className="topbar">
       <div>
         <div className="eyebrow">Sales CRM / Pipeline</div>
-        <h1>파이프라인 Command Center</h1>
+        <h1>파이프라인 관리</h1>
       </div>
       <div className="topbar-actions">
         <label className="search-box">

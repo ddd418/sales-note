@@ -710,3 +710,25 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
 - `git diff --check`
+
+---
+
+## Frontend Pilot — Django 대시보드 디자인 톤 정렬
+
+**목표**: React 파이프라인 파일럿이 기존 `/reporting/dashboard/`와 다른 별도 제품처럼 보이지 않도록, Django 대시보드의 다크 CRM 디자인 시스템을 따라간다.
+
+**작업 범위**:
+
+- `reporting/base.html` 및 `dashboard.html`의 핵심 토큰을 기준으로 프론트 색상 체계 정리
+- 다크 남색 배경, 다크 사이드바, 표면 카드, 파란색/보라색 그라데이션 포인트 반영
+- KPI 카드, 필터 rail, 파이프라인 보드, 우측 상세 패널의 border/shadow/hover 톤 정렬
+- 기존 클릭 동작, Django proxy, 파이프라인 API 연결은 유지
+
+**DB 변경 필요 여부**: 없음. CSS 중심의 프론트 디자인 변경이다.
+
+**검증 계획**:
+
+- `npm run build`
+- `node --check server.mjs`
+- 로컬 또는 배포 URL smoke 확인
+- `git diff --check`
