@@ -1,3 +1,5 @@
+import json
+
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
@@ -326,6 +328,169 @@ class DashboardSmokeTests(TestCase):
         self.assertIn('href="/reporting/funnel/"', content)
         self.assertIn('파이프라인', content)
         self.assertNotIn('href="/reporting/opportunities/"', content)
+
+
+class PipelineApiTests(TestCase):
+    """React 파일럿용 파이프라인 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='파이프라인API회사')
+        self.user = make_user('pipeline_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('pipeline_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('pipeline_api_manager', role='manager', company=self.company)
+        self.url = reverse('reporting:pipeline_command_center_api')
+        self.move_url = reverse('reporting:funnel_pipeline_move')
+
+    def _create_pipeline_customer(self, owner, name, stage='quote'):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import Company, Department, FollowUp, History, Quote, Schedule
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            company=customer_company,
+            department=department,
+            pipeline_stage=stage,
+            customer_grade='A',
+        )
+        schedule = Schedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+        )
+        Quote.objects.create(
+            quote_number=f'Q-{name}',
+            schedule=schedule,
+            followup=followup,
+            user=owner,
+            valid_until=timezone.localdate() + timedelta(days=30),
+            subtotal=1000000,
+            probability=65,
+            stage='sent',
+        )
+        History.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            action_type='quote',
+            content='견적 후속 필요',
+            next_action='견적서 확인 전화',
+            next_action_date=timezone.localdate() - timedelta(days=1),
+        )
+        return followup
+
+    def test_pipeline_api_requires_login(self):
+        response = self.client.get(self.url)
+        self.assertIn(response.status_code, [301, 302])
+        self.assertIn('login', response.get('Location', ''))
+
+    def test_pipeline_api_returns_current_user_scope(self):
+        own = self._create_pipeline_customer(self.user, '내고객')
+        coworker = self._create_pipeline_customer(self.coworker, '동료고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'django')
+        deal_ids = {deal['id'] for deal in payload['deals']}
+        self.assertIn(own.id, deal_ids)
+        self.assertNotIn(coworker.id, deal_ids)
+
+    def test_pipeline_api_includes_metrics_stages_and_tasks(self):
+        own = self._create_pipeline_customer(self.user, '지표고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(payload['metrics']['totalPipelineValue'], 1000000)
+        self.assertEqual(payload['metrics']['activeCount'], 1)
+        self.assertEqual(payload['metrics']['overdueCount'], 1)
+        self.assertTrue(any(stage['id'] == own.pipeline_stage for stage in payload['stages']))
+        self.assertTrue(any(task['title'] == '견적 후속 지연 고객' for task in payload['priorityTasks']))
+        deal = payload['deals'][0]
+        self.assertEqual(deal['stageLabel'], '견적 제출')
+        self.assertIn('recentActivities', deal)
+        self.assertEqual(deal['latestQuote']['amount'], 1100000)
+        self.assertEqual(deal['nextSchedule']['type'], '견적 제출')
+        self.assertIn('csrftoken', response.cookies)
+
+    def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
+        for index in range(12):
+            self._create_pipeline_customer(self.user, f'잠재{index}', stage='potential')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        potential_deals = [deal for deal in response.json()['deals'] if deal['stage'] == 'potential']
+        self.assertEqual(len(potential_deals), 12)
+        self.assertEqual(sum(1 for deal in potential_deals if deal['isPotentialOverflow']), 2)
+        self.assertTrue(all('attentionScore' in deal for deal in potential_deals))
+        self.assertTrue(all('attentionReason' in deal for deal in potential_deals))
+
+    def test_pipeline_move_updates_accessible_followup_stage(self):
+        followup = self._create_pipeline_customer(self.user, '이동고객', stage='potential')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.move_url,
+            data=json.dumps({'followup_id': followup.id, 'stage': 'quote'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'quote')
+        self.assertTrue(followup.pipeline_manually_set)
+
+    def test_pipeline_move_rejects_invalid_stage(self):
+        followup = self._create_pipeline_customer(self.user, '잘못된단계', stage='potential')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.move_url,
+            data=json.dumps({'followup_id': followup.id, 'stage': 'invalid'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'potential')
+
+    def test_pipeline_move_rejects_manager(self):
+        followup = self._create_pipeline_customer(self.user, '매니저차단', stage='potential')
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            self.move_url,
+            data=json.dumps({'followup_id': followup.id, 'stage': 'quote'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'potential')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

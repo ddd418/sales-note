@@ -562,3 +562,151 @@ python pre_deployment_check.py
 - `python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests`
 - `python manage.py test`
 - `git diff --check`
+
+---
+
+## Frontend Pilot — React 파이프라인 Command Center 시안
+
+**목표**: Django template의 디자인 자유도 한계를 줄이기 위해 별도 `/frontend` Vite React 파일럿을 만들고, `/reporting/funnel/` 대체 후보가 될 파이프라인 Command Center mock 화면을 구현한다.
+
+**작업 범위**:
+
+- `/frontend` 독립 Vite + React + TypeScript 프로젝트 생성
+- Django API 연결 전 mock data 기반 파이프라인 화면 구현
+- 좌측 CRM 내비게이션, 상단 검색/액션, KPI strip, 파이프라인 board/list 전환, 고객 상세 패널 구성
+- 내부 CRM 업무툴 기준의 밝고 정돈된 디자인 시스템 적용
+- 기존 Django 라우트/DB/권한/모델은 변경하지 않음
+
+**DB 변경 필요 여부**: 없음. 이번 단계는 프론트 시안 프로젝트만 추가한다.
+
+**검증 계획**:
+
+- `npm install`
+- `npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Frontend Pilot — 파이프라인 읽기 API 연결
+
+**목표**: React 파일럿이 mock data만 사용하는 상태에서 벗어나, 기존 Django 권한 정책을 타는 읽기 전용 파이프라인 API를 우선 조회하도록 연결한다.
+
+**작업 범위**:
+
+- `/reporting/api/pipeline/` GET API 추가
+- `funnel_views._get_accessible_followups()`를 재사용해 현재 사용자 권한 범위만 반환
+- API 응답에 stages, deals, metrics, priorityTasks 포함
+- Vite dev server에서 `/reporting/*` 요청을 Django `127.0.0.1:8000`으로 proxy
+- React 파일럿은 API 성공 시 실제 데이터, 실패/미로그인/서버 미실행 시 mock fallback 사용
+- API 회귀 테스트 추가
+
+**DB 변경 필요 여부**: 없음. 읽기 전용 endpoint와 프론트 연결만 수행한다.
+
+**검증 계획**:
+
+- `npm run build`
+- `npm audit --audit-level=moderate`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.PipelineApiTests`
+- `git diff --check`
+
+---
+
+## Frontend Pilot — 잠재 고객 컬럼 밀도 축소
+
+**목표**: 파이프라인 보드에서 `잠재` 고객이 과도하게 많아지는 문제를 줄이기 위해, DB 단계 변경 없이 API/프론트에서 우선순위 높은 잠재 고객만 먼저 보여준다.
+
+**작업 범위**:
+
+- API deal payload에 `attentionScore`, `attentionReason`, `isPotentialOverflow` 추가
+- 잠재 고객은 점수순으로 정렬하고 보드에서는 TOP 10만 기본 노출
+- React 보드의 `잠재` 컬럼은 기본 접힘 상태로 표시
+- 접힌 상태에서는 우선 대응 잠재 고객 요약과 펼치기 버튼 제공
+- 리스트 탭에서는 전체 잠재 고객 유지
+
+**DB 변경 필요 여부**: 없음. 기존 `pipeline_stage` 값을 그대로 사용하고 화면/API 표현만 조정한다.
+
+**검증 계획**:
+
+- `npm run build`
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Pilot — 파이프라인 상세 패널 확장
+
+**목표**: 카드 클릭 시 우측 상세 패널이 단순 금액/다음 액션을 넘어서, 실제 영업 판단에 필요한 최근 활동·견적·일정 요약과 기존 Django 상세 바로가기를 제공하도록 개선한다.
+
+**작업 범위**:
+
+- API deal payload에 `recentActivities`, `latestQuote`, `nextSchedule`, `stageLabel` 추가
+- 우측 상세 패널에 핵심 상태, 다음 액션, 최근 활동, 최근 견적, 다음 일정, 기존 고객 상세 링크 표시
+- mock data에도 상세 패널용 필드 추가
+- API 테스트에서 상세 필드 응답 검증
+
+**DB 변경 필요 여부**: 없음. 기존 prefetch된 History/Quote/Schedule 데이터만 읽는다.
+
+**검증 계획**:
+
+- `npm run build`
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Pilot — 파이프라인 단계 변경 API 연결
+
+**목표**: React 파일럿 상세 패널에서 기존 Django 파이프라인 단계 이동 API를 호출해, 선택 고객의 영업 단계를 변경하고 최신 파이프라인 데이터를 다시 불러온다.
+
+**작업 범위**:
+
+- React API helper에 CSRF 토큰 포함 POST 함수 추가
+- 상세 패널에 단계 변경 버튼과 저장 상태/오류 메시지 표시
+- Django API 데이터 연결 상태에서만 단계 변경 활성화, mock fallback 상태에서는 비활성 안내
+- 기존 `reporting:funnel_pipeline_move` 권한 정책과 수동 단계 설정 로직 재사용
+- 파이프라인 이동 API 회귀 테스트 추가
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp.pipeline_stage`, `pipeline_manually_set` 필드만 갱신한다.
+
+**검증 계획**:
+
+- `npm run build`
+- `npm audit --audit-level=moderate`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Pilot — Railway 프론트 서비스 배포 준비
+
+**목표**: React 파일럿을 Railway 별도 프론트 서비스로 배포할 수 있도록, 정적 파일 서빙과 기존 Django `/reporting/*` proxy를 제공하는 최소 Node 서버를 추가한다.
+
+**작업 범위**:
+
+- `frontend/server.mjs` 추가
+- `npm start`로 Railway `$PORT`에서 React `dist` 정적 파일 서빙
+- `/reporting/*` 요청은 기존 Django Railway 서버로 proxy
+- 프론트 README에 Railway build/start/env 설정 기록
+- Railway CLI 인증 상태 확인 및 서비스 생성 시도
+
+**DB 변경 필요 여부**: 없음.
+
+**검증 계획**:
+
+- `npm run build`
+- `node --check server.mjs`
+- `npm audit --audit-level=moderate`
+- 로컬 `node server.mjs`로 `/`, `/reporting/login/` 200 확인
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `git diff --check`

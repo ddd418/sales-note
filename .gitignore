@@ -48,6 +48,8 @@ static_collected/
 
 # Node modules (if any)
 node_modules/
+frontend/dist/
+*.tsbuildinfo
 
 copilot*
 

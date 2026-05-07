@@ -295,6 +295,7 @@ urlpatterns = [
     path('funnel/', funnel_views.funnel_list_view, name='funnel_list'),
     path('funnel/pipeline/', funnel_views.funnel_pipeline_view, name='funnel_pipeline'),
     path('funnel/<int:department_id>/', funnel_views.funnel_detail_view, name='funnel_detail'),
+    path('api/pipeline/', funnel_views.pipeline_command_center_api, name='pipeline_command_center_api'),
     path('funnel/api/save-target/', funnel_views.funnel_save_target, name='funnel_save_target'),
     path('funnel/api/auto-target/', funnel_views.funnel_auto_target, name='funnel_auto_target'),
     path('funnel/api/bulk-auto-target/', funnel_views.funnel_bulk_auto_target, name='funnel_bulk_auto_target'),

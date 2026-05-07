@@ -10,6 +10,7 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db.models import Sum, Count, Q, Prefetch
 from django.utils import timezone
 
@@ -915,6 +916,249 @@ def funnel_pipeline_view(request):
         'stages_json': json.dumps(stages_context, ensure_ascii=False),
         'total': sum(len(v) for v in stage_map.values()),
         'sync_count': sync_count,
+    })
+
+
+STAGE_CAPTIONS = {
+    'potential': '관심 확인',
+    'contact': '요구사항 파악',
+    'quote': '금액/범위 협의',
+    'negotiation': '의사결정 추적',
+    'won': '납품 전환',
+    'lost': '실주 원인 정리',
+}
+
+STAGE_PROBABILITY = {
+    'potential': 18,
+    'contact': 42,
+    'quote': 60,
+    'negotiation': 78,
+    'won': 100,
+    'lost': 0,
+}
+
+
+def _date_label(target_date, today):
+    if not target_date:
+        return '일정 없음'
+    delta = (target_date - today).days
+    if delta == 0:
+        return '오늘'
+    if delta == 1:
+        return '내일'
+    if delta == -1:
+        return '어제'
+    if delta > 1:
+        return f'{delta}일 후'
+    return f'{abs(delta)}일 지연'
+
+
+def _money_int(value):
+    return int(value or Decimal('0'))
+
+
+def _attention_score(stage, latest_quote, next_schedule, last_history, has_overdue_action, today):
+    score = 0
+    reasons = []
+    if latest_quote:
+        score += 40
+        reasons.append('견적 이력')
+    if next_schedule:
+        days = (next_schedule.visit_date - today).days
+        score += 30 if days <= 7 else 15
+        reasons.append('예정 일정')
+    if last_history:
+        score += 15
+        reasons.append('최근 활동')
+    if has_overdue_action:
+        score += 35
+        reasons.append('후속 지연')
+    if stage in ('quote', 'negotiation'):
+        score += 20
+        reasons.append('진행 단계')
+    return score, ' · '.join(reasons[:3]) if reasons else '추가 활동 필요'
+
+
+@login_required
+@require_GET
+@ensure_csrf_cookie
+def pipeline_command_center_api(request):
+    """React 파일럿용 읽기 전용 파이프라인 데이터 API."""
+    from datetime import timedelta
+
+    today = timezone.localdate()
+    thirty_days_ago = today - timedelta(days=30)
+
+    recent_histories_qs = History.objects.filter(
+        parent_history__isnull=True,
+    ).filter(
+        Q(meeting_date__gte=thirty_days_ago) |
+        Q(meeting_date__isnull=True, created_at__date__gte=thirty_days_ago)
+    ).order_by('-created_at')
+
+    followups = (
+        _get_accessible_followups(request.user, request)
+        .select_related('company', 'department', 'user')
+        .prefetch_related(
+            Prefetch('schedules', queryset=Schedule.objects.filter(
+                visit_date__gte=today,
+                status='scheduled',
+            ).order_by('visit_date', 'visit_time'), to_attr='upcoming_schedules'),
+            Prefetch('schedules', queryset=Schedule.objects.filter(
+                visit_date__gte=thirty_days_ago,
+                visit_date__lte=today,
+            ).exclude(status='cancelled').order_by('-visit_date'), to_attr='recent_schedules'),
+            Prefetch('histories', queryset=History.objects.filter(
+                parent_history__isnull=True,
+            ).order_by('-created_at'), to_attr='all_histories'),
+            Prefetch('histories', queryset=recent_histories_qs,
+                     to_attr='recent_histories_for_stage'),
+            Prefetch('quotes', queryset=Quote.objects.order_by('-created_at'),
+                     to_attr='all_quotes'),
+        )
+        .order_by('pipeline_stage', 'company__name', 'customer_name')
+    )
+
+    stage_map = {stage_key: [] for stage_key, *_ in PIPELINE_STAGES}
+    stage_amounts = {stage_key: Decimal('0') for stage_key, *_ in PIPELINE_STAGES}
+    stage_overdue_counts = {stage_key: 0 for stage_key, *_ in PIPELINE_STAGES}
+    deals = []
+
+    for fu in followups:
+        stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
+        next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
+        last_history = fu.all_histories[0] if fu.all_histories else None
+        latest_quote = fu.all_quotes[0] if fu.all_quotes else None
+        latest_quote_amount = latest_quote.total_amount if latest_quote else Decimal('0')
+        probability = (
+            latest_quote.probability if latest_quote and latest_quote.probability is not None
+            else STAGE_PROBABILITY.get(stage, 30)
+        )
+        next_action_date = last_history.next_action_date if last_history else None
+        has_overdue_action = bool(next_action_date and next_action_date < today)
+        due_date = next_action_date or (next_schedule.visit_date if next_schedule else None)
+        risk = 'high' if has_overdue_action else ('medium' if stage in ('quote', 'negotiation') else 'low')
+        next_action = (
+            (last_history.next_action or '').strip()
+            if last_history and last_history.next_action else
+            (f"{next_schedule.get_activity_type_display()} 예정" if next_schedule else '다음 액션 등록 필요')
+        )
+        last_activity = (
+            f"{last_history.get_action_type_display()} · {last_history.created_at.strftime('%m/%d')}"
+            if last_history else '최근 활동 없음'
+        )
+        recent_activities = [
+            {
+                'type': history.get_action_type_display(),
+                'date': history.created_at.strftime('%m/%d'),
+                'summary': (history.next_action or history.content or '').strip()[:80],
+            }
+            for history in getattr(fu, 'all_histories', [])[:3]
+        ]
+        latest_quote_payload = None
+        if latest_quote:
+            latest_quote_payload = {
+                'number': latest_quote.quote_number,
+                'stage': latest_quote.get_stage_display(),
+                'amount': _money_int(latest_quote.total_amount),
+                'probability': int(latest_quote.probability or 0),
+                'validUntil': latest_quote.valid_until.isoformat() if latest_quote.valid_until else None,
+            }
+        next_schedule_payload = None
+        if next_schedule:
+            next_schedule_payload = {
+                'id': next_schedule.id,
+                'type': next_schedule.get_activity_type_display(),
+                'date': next_schedule.visit_date.isoformat(),
+                'time': next_schedule.visit_time.strftime('%H:%M') if next_schedule.visit_time else '',
+                'location': next_schedule.location or '',
+            }
+        tags = []
+        if latest_quote:
+            tags.append('견적 있음')
+        if has_overdue_action:
+            tags.append('후속 지연')
+        if fu.customer_grade:
+            tags.append(f'{fu.customer_grade} 등급')
+        attention_score, attention_reason = _attention_score(
+            stage, latest_quote, next_schedule, last_history, has_overdue_action, today
+        )
+
+        deal = {
+            'id': fu.id,
+            'company': str(fu.company) if fu.company else fu.customer_name or '고객명 미정',
+            'contact': fu.customer_name or fu.manager or '담당자 미정',
+            'department': str(fu.department) if fu.department else '',
+            'owner': fu.user.get_full_name() or fu.user.username,
+            'stage': stage,
+            'stageLabel': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
+            'value': _money_int(latest_quote_amount),
+            'probability': int(probability or 0),
+            'nextAction': next_action[:80],
+            'due': _date_label(due_date, today),
+            'risk': risk,
+            'tags': tags[:3],
+            'lastActivity': last_activity,
+            'attentionScore': attention_score,
+            'attentionReason': attention_reason,
+            'isPotentialOverflow': False,
+            'recentActivities': recent_activities,
+            'latestQuote': latest_quote_payload,
+            'nextSchedule': next_schedule_payload,
+            'detailUrl': f'/reporting/followups/{fu.id}/',
+        }
+        stage_map[stage].append(deal)
+        stage_amounts[stage] += latest_quote_amount or Decimal('0')
+        if has_overdue_action:
+            stage_overdue_counts[stage] += 1
+        deals.append(deal)
+
+    for potential_index, deal in enumerate(
+        sorted(stage_map.get('potential', []), key=lambda item: item['attentionScore'], reverse=True)
+    ):
+        deal['isPotentialOverflow'] = potential_index >= 10
+
+    for stage_key in stage_map:
+        stage_map[stage_key].sort(
+            key=lambda item: (item['isPotentialOverflow'], -item['attentionScore'], item['company'])
+        )
+    deals.sort(key=lambda item: (item['stage'] != 'potential', item['isPotentialOverflow'], -item['attentionScore'], item['company']))
+
+    stages_payload = [
+        {
+            'id': stage_key,
+            'label': label,
+            'caption': STAGE_CAPTIONS.get(stage_key, ''),
+            'color': color,
+            'count': len(stage_map[stage_key]),
+            'totalValue': _money_int(stage_amounts[stage_key]),
+            'overdueCount': stage_overdue_counts[stage_key],
+        }
+        for stage_key, label, color, _icon in PIPELINE_STAGES
+    ]
+    total_value = sum(deal['value'] for deal in deals)
+    weighted_value = sum(deal['value'] * (deal['probability'] / 100) for deal in deals)
+    overdue_count = sum(1 for deal in deals if deal['risk'] == 'high')
+    contact_count = sum(1 for deal in deals if deal['stage'] == 'contact')
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'stages': stages_payload,
+        'deals': deals,
+        'metrics': {
+            'totalPipelineValue': int(total_value),
+            'weightedPipelineValue': int(weighted_value),
+            'activeCount': len(deals),
+            'overdueCount': overdue_count,
+            'contactCount': contact_count,
+        },
+        'priorityTasks': [
+            {'title': '견적 후속 지연 고객', 'count': overdue_count, 'tone': 'danger'},
+            {'title': '오늘 연락 필요', 'count': sum(1 for deal in deals if deal['due'] == '오늘'), 'tone': 'warning'},
+            {'title': '협상/견적 단계', 'count': sum(1 for deal in deals if deal['stage'] in ('quote', 'negotiation')), 'tone': 'info'},
+        ],
     })
 
 

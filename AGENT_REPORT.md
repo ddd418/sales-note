@@ -5118,3 +5118,483 @@ git diff --check
 
 1. 운영 배포 후 상단 `파이프라인` 버튼이 `/reporting/funnel/`로 이동하는지 확인
 2. 파이프라인 화면 안에서 견적/수주 단계 문구와 필터 UX 정리
+
+---
+
+## Frontend Pilot — React 파이프라인 Command Center 시안
+
+### 1. Summary
+
+별도 프론트 서버 전환 가능성을 검증하기 위해 `/frontend`에 Vite + React + TypeScript 파일럿 프로젝트를 추가했습니다. 첫 시안은 `/reporting/funnel/` 대체 후보인 파이프라인 Command Center이며, Django API 연결 전 mock data로 디자인과 화면 구조를 확인할 수 있습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `.gitignore` | `frontend/dist/`, `*.tsbuildinfo` 빌드 산출물 제외 |
+| `AGENT_PLAN.md` | React 프론트 파일럿 계획 추가 |
+| `frontend/package.json` | Vite/React/TypeScript 실행 스크립트와 의존성 정의 |
+| `frontend/package-lock.json` | npm 의존성 lockfile 추가 |
+| `frontend/index.html` | Vite 앱 entry HTML |
+| `frontend/vite.config.ts` | React plugin 및 dev server 설정 |
+| `frontend/tsconfig.json` | React/TypeScript 설정 |
+| `frontend/src/App.tsx` | 파이프라인 Command Center mock 화면 구현 |
+| `frontend/src/mockData.ts` | 파이프라인 mock data 정의 |
+| `frontend/src/main.tsx` | React root mount |
+| `frontend/src/styles.css` | CRM 파일럿 디자인 시스템 및 반응형 CSS |
+| `frontend/README.md` | 실행 방법과 파일럿 범위 문서화 |
+
+### 3. CRM Improvements
+
+- Django template과 분리된 독립 프론트 서버 구조를 검증할 수 있게 했습니다.
+- 파이프라인 화면을 KPI, 저장 뷰, Kanban/List 전환, 고객 상세 패널 중심으로 재구성했습니다.
+- 업무툴 기준의 밝은 UI, compact card, 명확한 필터/액션 동선을 적용했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django route/template/model/API 변경 없음
+- 인증/권한/DB 변경 없음
+- migration 생성 없음
+- 기존 `/reporting/*` 화면은 그대로 유지
+
+### 5. Commands Run and Results
+
+```text
+cd frontend
+npm install
+→ OK, Vite 8.0.10 기준 설치
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+npm run build
+→ OK, production build 성공
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Local Preview
+
+```text
+http://127.0.0.1:5174/
+→ HTTP 200, Sales Note Frontend Pilot served
+```
+
+기존 `5173` 포트는 다른 Node/Vite 프로세스가 사용 중이어서 이번 파일럿은 `5174`로 실행했습니다.
+
+### 7. Known Limitations
+
+- 현재는 mock data 기반 시안이며 Django API와 연결하지 않았습니다.
+- 로그인/세션/CSRF 연동은 다음 단계에서 설계해야 합니다.
+- 실제 `/reporting/funnel/` 대체 전에는 API 계약과 권한 검증이 필요합니다.
+
+### 8. Recommended Next Task
+
+1. 파일럿 화면 확인 후 디자인 방향 확정
+2. Django `/api/pipeline/` 읽기 전용 endpoint 설계
+3. React에서 실제 파이프라인 데이터 조회 연결
+
+---
+
+## Frontend Pilot — 파이프라인 읽기 API 연결
+
+### 1. Summary
+
+React 파일럿이 mock data만 쓰던 상태에서 벗어나 `/reporting/api/pipeline/` 읽기 전용 Django API를 우선 조회하도록 연결했습니다. API는 기존 `funnel_views._get_accessible_followups()` 권한 범위를 그대로 사용하며, 미로그인/서버 미실행/API 오류 시 프론트는 mock data로 자동 fallback합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 파이프라인 API 연결 계획 추가 |
+| `AGENT_REPORT.md` | API 연결 결과 기록 |
+| `reporting/funnel_views.py` | `/reporting/api/pipeline/` 응답 생성 view 추가 |
+| `reporting/urls.py` | `pipeline_command_center_api` URL 추가 |
+| `reporting/tests.py` | 로그인 필요, 현재 사용자 범위, metrics/stages/tasks 응답 테스트 추가 |
+| `frontend/vite.config.ts` | `/reporting/*` 요청을 Django `127.0.0.1:8000`으로 proxy |
+| `frontend/src/api.ts` | 파이프라인 API fetch 및 mock fallback helper 추가 |
+| `frontend/src/mockData.ts` | API 응답 형태와 맞춘 타입/mock 데이터 정리 |
+| `frontend/src/App.tsx` | API 우선 조회, 데이터 source 표시, stages/deals props 기반 렌더링 |
+| `frontend/src/styles.css` | API/mock source badge 및 빈 상세 패널 스타일 추가 |
+| `frontend/README.md` | API proxy/fallback 설명 추가 |
+
+### 3. CRM Improvements
+
+- React 파일럿이 실제 Django 권한 범위의 파이프라인 데이터를 받을 수 있는 첫 연결점을 만들었습니다.
+- API payload에 `stages`, `deals`, `metrics`, `priorityTasks`를 포함해 프론트 화면 상태 관리가 단순해졌습니다.
+- 기존 Django 세션 인증을 그대로 사용하므로 별도 토큰/권한 체계를 추가하지 않았습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/funnel/` 및 `/reporting/funnel/pipeline/` 화면 유지
+- 기존 파이프라인 이동/동기화 API 유지
+- DB 모델/migration 변경 없음
+- 권한 정책은 기존 `_get_accessible_followups()` 기준 유지
+
+### 5. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 147 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- API는 현재 읽기 전용입니다. 카드 이동/수정은 기존 Django API와 별도 연결이 필요합니다.
+- 로컬 React에서 실제 데이터를 보려면 Django dev server(`127.0.0.1:8000`)와 로그인 세션이 필요합니다.
+- 현재 API 응답은 프론트 파일럿용 최소 필드 중심입니다. 상세 패널 확장 시 히스토리/견적 상세 endpoint가 추가로 필요합니다.
+
+### 7. Recommended Next Task
+
+1. Django 서버 로그인 상태에서 React 파일럿의 실제 API 데이터 표시 확인
+2. 파이프라인 카드 클릭 시 기존 `/reporting/followups/<id>/` 또는 React 상세 drawer 중 어느 흐름을 쓸지 결정
+3. 다음 단계로 카드 이동 API 연결 여부 검토
+
+### 8. UI Adjustment
+
+- 파이프라인 Kanban 보드 상단에 동기화된 가로 스크롤바를 추가했습니다.
+- 하단 기본 스크롤바는 유지해 긴 보드에서 위/아래 어느 위치에서도 가로 이동할 수 있게 했습니다.
+- `npm run build` 재검증 완료.
+
+---
+
+## Frontend Pilot — 잠재 고객 컬럼 밀도 축소
+
+### 1. Summary
+
+잠재 고객이 너무 많아 보드 사용성이 떨어지는 문제를 줄이기 위해, DB 단계는 그대로 두고 API/프론트 표현만 조정했습니다. API는 각 deal에 `attentionScore`, `attentionReason`, `isPotentialOverflow`를 내려주며, React 보드의 `잠재` 컬럼은 기본 접힘 상태에서 우선 잠재 고객 요약만 보여줍니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 잠재 고객 컬럼 밀도 축소 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/funnel_views.py` | attention score/reason 계산 및 잠재 TOP 10 overflow 표시 |
+| `reporting/tests.py` | 잠재 고객 10건 초과 시 overflow flag 검증 추가 |
+| `frontend/src/mockData.ts` | deal attention 필드 타입/mock 추가 |
+| `frontend/src/App.tsx` | 잠재 컬럼 기본 접힘, TOP 10 펼침, 리스트 전체 유지 |
+| `frontend/src/styles.css` | 접힘 컬럼, 미니 리스트, overflow 안내 스타일 추가 |
+
+### 3. CRM Improvements
+
+- `잠재` 컬럼은 기본 접힘 상태로 두어 보드 전체 가독성을 높였습니다.
+- 우선순위가 높은 잠재 고객만 먼저 드러나도록 TOP 10 중심으로 정리했습니다.
+- 전체 잠재 고객은 리스트 탭에서 계속 확인할 수 있어 데이터는 숨기지 않았습니다.
+- DB 모델/단계 변경 없이 화면 밀도 문제만 먼저 해결했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 148 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- attention score는 현재 견적/일정/최근 활동/후속 지연 기반의 1차 휴리스틱입니다.
+- 실제 운영 데이터에서 점수 기준은 샘플 확인 후 조정하는 것이 좋습니다.
+
+### 6. Recommended Next Task
+
+1. 실제 API 데이터에서 잠재 TOP 10 품질 확인
+2. 우선순위 점수 기준 조정
+3. 필요 시 `미분류/보관` 단계 추가 여부 검토
+
+---
+
+## Frontend Pilot — 파이프라인 상세 패널 확장
+
+### 1. Summary
+
+파이프라인 카드 클릭 시 우측 상세 패널에서 더 많은 실무 정보를 확인할 수 있도록 확장했습니다. API는 최근 활동, 최근 견적, 다음 일정, 단계 라벨을 내려주고 React 패널은 상태/위험도, 다음 액션, 일정, 견적, 활동 이력, 기존 Django 고객 상세 바로가기를 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 상세 패널 확장 계획 추가 |
+| `AGENT_REPORT.md` | 상세 패널 확장 결과 기록 |
+| `reporting/funnel_views.py` | deal payload에 `recentActivities`, `latestQuote`, `nextSchedule`, `stageLabel` 추가 |
+| `reporting/tests.py` | 상세 패널용 API 필드 검증 추가 |
+| `frontend/src/mockData.ts` | 상세 필드 타입/mock 데이터 추가 |
+| `frontend/src/App.tsx` | 우측 상세 패널 UI 확장 및 Django 상세 링크 추가 |
+| `frontend/src/styles.css` | 상세 패널, 견적 요약, 일정 요약, 바로가기 버튼 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 카드 선택 후 별도 페이지 이동 없이 핵심 후속 판단 정보를 바로 볼 수 있습니다.
+- 최근 견적 금액/상태/확률과 다음 일정이 패널에 표시됩니다.
+- 기존 Django 고객 상세 페이지로 바로 이동할 수 있는 링크를 유지했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 148 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- 상세 패널은 아직 읽기 전용입니다.
+- 메모 작성, 일정 생성, 단계 이동은 다음 단계에서 별도 API/CSRF 연결이 필요합니다.
+
+### 6. Recommended Next Task
+
+1. 상세 패널에서 단계 변경/카드 이동 API 연결 검토
+2. 다음 액션 등록 또는 영업노트 작성 shortcut 추가
+
+---
+
+## Frontend Pilot — 파이프라인 단계 변경 API 연결
+
+### 1. Summary
+
+React 파일럿 상세 패널에서 선택 고객의 파이프라인 단계를 변경할 수 있도록 기존 Django `funnel_pipeline_move` API를 연결했습니다. 실제 Django API 데이터 상태에서만 단계 버튼이 활성화되고, 저장 성공 후 파이프라인 읽기 API를 다시 불러와 보드/리스트/상세 패널을 최신 상태로 맞춥니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 단계 변경 API 연결 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/src/api.ts` | CSRF 쿠키 읽기 및 `moveDealStage()` POST helper 추가 |
+| `frontend/src/App.tsx` | 상세 패널 단계 변경 버튼, 저장/오류 상태, 데이터 재조회 흐름 추가 |
+| `frontend/src/styles.css` | 단계 변경 버튼, 상태 메시지, 로딩 spinner 스타일 추가 |
+| `reporting/funnel_views.py` | 파이프라인 읽기 API에 `ensure_csrf_cookie` 적용 |
+| `reporting/tests.py` | 이동 API 성공/잘못된 단계/manager 차단/CSRF cookie 회귀 검증 추가 |
+| `sales_project/settings.py` | 로컬 Vite 개발 서버 origin을 CSRF trusted origins에 추가 |
+
+### 3. CRM Improvements
+
+- React 파일럿이 읽기 전용을 벗어나 실제 파이프라인 단계 변경까지 검증할 수 있습니다.
+- 기존 Django 권한 정책을 그대로 사용하므로 manager는 카드 이동이 차단됩니다.
+- mock fallback 상태에서는 단계 변경을 비활성화해 실제 데이터와 혼동하지 않게 했습니다.
+- CSRF 쿠키와 header를 맞춰 세션 기반 Django 인증 흐름을 유지했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 151 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- 현재 단계 변경은 우측 상세 패널 버튼 방식입니다. 보드 drag/drop은 아직 React 쪽에 붙이지 않았습니다.
+- 운영 배포 전에는 React 앱을 Django와 어떤 방식으로 배포할지 결정해야 합니다.
+- 단계 변경 후 성공 메시지는 현재 선택 고객 기준으로만 표시됩니다.
+
+### 6. Recommended Next Task
+
+1. React 보드 drag/drop 단계 이동 추가 여부 결정
+2. 새 영업노트/다음 일정 작성 shortcut 연결
+3. React 파일럿 배포 구조 검토
+
+---
+
+## UI Fix — 선택 고객 카드 텍스트 겹침 수정
+
+### 1. Summary
+
+오른쪽 선택 고객 카드에서 업체명과 담당자/소유자 텍스트가 겹치는 문제를 수정했습니다. 공통 `.muted` 클래스의 음수 margin이 상세 카드 제목 영역에도 적용되어 긴 업체명에서 줄 간격이 깨지는 구조였고, 상세 카드 내부에서만 margin과 line-height를 정상화했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/src/styles.css` | 상세 카드 제목/보조 텍스트 wrapping, line-height, margin 보정 |
+
+### 3. CRM Improvements
+
+- 긴 업체명, 담당자명, 사용자명이 들어와도 선택 고객 카드 상단 텍스트가 겹치지 않도록 했습니다.
+- 상세 카드 안에서만 보정해 다른 화면의 `.muted` 사용처에는 영향이 없게 했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- 이번 수정은 오른쪽 상세 카드 제목 영역에 대한 CSS 보정입니다.
+- 실제 운영 데이터에서 매우 긴 문자열이 더 있으면 다른 카드/표 영역도 별도 확인이 필요합니다.
+
+---
+
+## UI Fix — 실주 컬럼 위치 수정
+
+### 1. Summary
+
+파이프라인 보드의 단계는 6개인데 CSS grid가 5열로 설정되어 `실주` 컬럼이 다음 줄로 내려가는 문제가 있었습니다. 특별한 제품 의도는 없었고 레이아웃 설정 누락이 원인이므로, 보드 컬럼을 6열로 변경해 `실주`가 `수주` 오른쪽 끝에 배치되도록 수정했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/src/styles.css` | 파이프라인 보드 desktop/mobile grid를 6열로 변경 |
+
+### 3. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+---
+
+## Frontend Pilot — Railway 프론트 서비스 배포 준비
+
+### 1. Summary
+
+React 파일럿을 Railway 별도 프론트 서비스로 올릴 수 있도록 `npm start`용 Node 서버를 추가했습니다. 이 서버는 `dist` 정적 파일을 서빙하고 `/reporting/*` 요청은 기존 Django Railway 서버로 proxy합니다. 별도 CORS 패키지 없이 프론트 도메인에서 Django 로그인/세션 흐름을 통과시키기 위한 배포 구조입니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | Railway 프론트 서비스 배포 준비 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/package.json` | `npm start` script 추가 |
+| `frontend/server.mjs` | 정적 파일 서빙 및 `/reporting/*` proxy Node 서버 추가 |
+| `frontend/README.md` | Railway build/start/env 설정 문서화 |
+
+### 3. CRM Improvements
+
+- 프론트 서비스가 별도 Railway 도메인으로 떠도 기존 Django `/reporting/*` 기능을 proxy로 이어서 사용할 수 있습니다.
+- React 앱의 상대 경로 API 호출 구조를 유지해 로컬 개발과 Railway 배포 사이 차이를 줄였습니다.
+- CORS 라이브러리나 Django 인증 정책 변경 없이 프론트 파일럿 배포가 가능하도록 준비했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+node --check server.mjs
+→ OK
+
+npm audit --audit-level=moderate
+→ found 0 vulnerabilities
+
+PORT=4180 node server.mjs
+GET /
+→ 200
+
+GET /reporting/login/
+→ 200
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- Railway CLI는 설치되어 있으나 현재 세션은 `Unauthorized. Please run railway login again.` 상태입니다.
+- 실제 Railway 서비스 생성은 CLI 재로그인 또는 Railway API 토큰이 필요합니다.
+- 프론트 서비스 생성 후 `DJANGO_BASE_URL=https://web-production-5096.up.railway.app` 환경변수를 설정해야 합니다.
