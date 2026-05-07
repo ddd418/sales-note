@@ -888,3 +888,149 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Frontend Migration — React Dashboard 실제 데이터 연결
+
+**목표**: React `/dashboard/` placeholder를 Django CRM 데이터 기반 업무 대시보드로 교체한다.
+
+**작업 범위**:
+
+- Django에 인증이 필요한 읽기 전용 `/reporting/api/dashboard/` JSON API를 추가한다.
+- API는 기존 `FollowUp`, `Schedule`, `History`, `PersonalSchedule` 데이터를 사용해 KPI, 오늘 일정, 이번 주 일정, 지연 후속조치, 최근 영업노트, 우선순위 고객, 파이프라인 요약을 반환한다.
+- 권한 범위는 기존 대시보드/파이프라인 패턴을 따른다. Salesman은 본인 데이터, Manager는 같은 회사 실무자, Admin은 기존 관리자 필터가 있으면 필터를 반영하고 없으면 전체 데이터를 본다.
+- React `/dashboard/`는 새 API를 호출해 실제 KPI/오늘 일정/최근 활동/우선 고객을 표시하고, 저장/상세 작업은 기존 Django 운영 화면 링크로 연결한다.
+- `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/`는 이번 작업에서 확장하지 않는다.
+- 기존 `/reporting/*`, `/ai/*`, 파이프라인 API, 인증, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드만 조회하므로 migration은 만들지 않는다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Migration — React Customers 실제 데이터 연결
+
+**목표**: React `/customers/` placeholder를 Django CRM 고객 데이터 기반 화면으로 교체한다.
+
+**작업 범위**:
+
+- 대시보드 API의 미로그인 HTML 200 문제를 방지하기 위해 React용 JSON API는 미인증 시 401 JSON을 반환하도록 보정한다.
+- Django에 인증이 필요한 읽기 전용 `/reporting/api/customers/` JSON API를 추가한다.
+- API는 기존 `FollowUp`, `Company`, `Department`, `History` 데이터를 사용해 고객 목록, 우선순위 고객, 검색/담당자/우선순위 필터 옵션, 기본 KPI를 반환한다.
+- 권한 범위는 기존 dashboard API와 동일하게 유지한다.
+- React `/customers/`는 고객 검색, 담당자 필터, 우선순위 필터, 우선 고객 리스트, 실제 고객 리스트를 표시하고 기존 Django 상세/등록/리포트 화면으로 연결한다.
+- 기존 `/reporting/*`, `/ai/*`, 파이프라인 API, 인증, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드만 조회하므로 migration은 만들지 않는다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Migration — React Notes 실제 데이터 연결
+
+**목표**: React `/notes/` placeholder를 Django CRM 영업노트/활동 히스토리 데이터 기반 화면으로 교체한다.
+
+**작업 범위**:
+
+- Django에 인증이 필요한 읽기 전용 `/reporting/api/notes/` JSON API를 추가한다.
+- API는 기존 `History`, `FollowUp`, `Schedule`, `User` 데이터를 사용해 영업노트 목록, 지연/예정 다음 액션, 미검토 노트, 활동 유형/담당자 필터 옵션, 기본 KPI를 반환한다.
+- 권한 범위는 dashboard/customers API와 동일하게 유지한다.
+- React `/notes/`는 키워드 검색, 담당자 필터, 활동 유형 필터, 검토 상태 필터, 다음 액션 필터와 실제 영업노트 목록을 표시하고 기존 Django 상세/작성 화면으로 연결한다.
+- 기존 `/reporting/*`, `/ai/*`, 파이프라인 API, 인증, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드만 조회하므로 migration은 만들지 않는다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Migration — React Schedules 실제 데이터 연결
+
+**목표**: React `/schedules/` placeholder를 Django CRM 일정 데이터 기반 화면으로 교체한다.
+
+**작업 범위**:
+
+- Django에 인증이 필요한 읽기 전용 `/reporting/api/schedules/` JSON API를 추가한다.
+- API는 기존 `Schedule`, `PersonalSchedule`, `FollowUp`, `History`, `User` 데이터를 사용해 일정 목록, 오늘 일정, 이번 주 일정, 지연 일정, 상태/활동유형/담당자 필터 옵션, 기본 KPI를 반환한다.
+- 권한 범위는 dashboard/customers/notes API와 동일하게 유지한다.
+- React `/schedules/`는 키워드 검색, 담당자 필터, 상태 필터, 활동 유형 필터, 기간 필터와 실제 일정 목록을 표시하고 기존 Django 상세/등록/캘린더/보고 작성 화면으로 연결한다.
+- 기존 `/reporting/*`, `/ai/*`, 파이프라인 API, 인증, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드만 조회하므로 migration은 만들지 않는다.
+
+**예상 소요**:
+
+- 현재 `/schedules/` 실제 데이터 연결 및 검증: 약 1~2시간.
+- 로그인된 운영 브라우저 왕복 동선 확인과 배포까지 포함하면 추가 20~40분.
+- `/schedules/` 이후 남은 React shell 전환 핵심 작업은 `/ai-workspace/`이며, 범위 확정 후 약 2~4시간 예상.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Frontend Migration — React AI Workspace 실제 데이터 연결
+
+**목표**: React `/ai-workspace/` placeholder를 기존 Django AI 운영 기능 상태를 보여주는 실제 업무 화면으로 교체한다.
+
+**작업 범위**:
+
+- Django에 인증이 필요한 읽기 전용 `/reporting/api/ai-workspace/` JSON API를 추가한다.
+- API는 기존 `ai_chat`의 `AIDepartmentAnalysis`, `PainPointCard`, `AIFollowUpAnalysis`와 reporting의 `FollowUp`, `WeeklyReport` 데이터를 사용한다.
+- 권한은 기존 AI 정책을 유지한다. 로그인은 필수이며, `can_use_ai=False` 사용자는 AI 데이터 없이 권한 없음 상태만 받는다.
+- React `/ai-workspace/`는 AI 권한 상태, 부서 분석 대상, 분석 완료 현황, 미검증 PainPoint, 고객 분석 대상, 주간보고 AI 초안 링크를 표시하고 기존 Django AI 운영 화면으로 연결한다.
+- 새 AI 생성/외부 API 호출은 하지 않는다. 분석 실행, 프롬프트 생성, 주간보고 초안 생성은 기존 Django 운영 화면/API로 연결한다.
+- 기존 `/ai/*`, `/reporting/*`, 인증, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드만 조회하므로 migration은 만들지 않는다.
+
+**예상 소요**:
+
+- 현재 `/ai-workspace/` 실제 데이터 연결 및 검증: 약 2~4시간.
+- 운영 로그인 세션에서 AI 권한 사용자/비권한 사용자 육안 확인과 배포까지 포함하면 추가 30~60분.
+- 이 작업 완료 후 목표한 React shell 핵심 메뉴 실제 데이터 연결은 1차 완료 상태로 볼 수 있다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test ai_chat --verbosity=1`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

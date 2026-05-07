@@ -337,6 +337,621 @@ class DashboardSmokeTests(TestCase):
         self.assertNotIn('href="/reporting/opportunities/"', content)
 
 
+class DashboardSummaryApiTests(TestCase):
+    """React 대시보드 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='대시보드API회사')
+        self.other_company = UserCompany.objects.create(name='대시보드API타사회사')
+        self.user = make_user('dash_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('dash_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('dash_api_manager', role='manager', company=self.company)
+        self.other_user = make_user('dash_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:dashboard_summary_api')
+
+    def _create_customer(self, owner, name, overdue=True, today_schedule=True):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import Company, Department, FollowUp, History, Schedule
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            company=customer_company,
+            department=department,
+            priority='urgent',
+            pipeline_stage='quote',
+            customer_grade='A',
+            ai_score=82,
+        )
+        if today_schedule:
+            Schedule.objects.create(
+                user=owner,
+                company=owner.userprofile.company,
+                followup=followup,
+                visit_date=timezone.localdate(),
+                visit_time=time(10, 0),
+                status='scheduled',
+                activity_type='customer_meeting',
+                notes='오늘 미팅',
+            )
+        History.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content=f'{name} 미팅 기록',
+            next_action='후속 전화',
+            next_action_date=timezone.localdate() - timedelta(days=1) if overdue else timezone.localdate(),
+        )
+        return followup
+
+    def test_dashboard_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_dashboard_summary_api_uses_salesman_own_scope(self):
+        own = self._create_customer(self.user, '내고객')
+        coworker = self._create_customer(self.coworker, '동료고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'django')
+        self.assertEqual(payload['metrics']['totalCustomers'], 1)
+        priority_ids = {item['id'] for item in payload['priorityCustomers']}
+        self.assertIn(own.id, priority_ids)
+        self.assertNotIn(coworker.id, priority_ids)
+
+    def test_dashboard_summary_api_includes_dashboard_sections(self):
+        followup = self._create_customer(self.user, '요약고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['metrics']['todaySchedules'], 1)
+        self.assertEqual(payload['metrics']['overdueActions'], 1)
+        self.assertEqual(payload['today']['items'][0]['customer'], '요약고객 담당자')
+        self.assertEqual(payload['overdueActions'][0]['nextAction'], '후속 전화')
+        self.assertEqual(payload['recentActivities'][0]['customer'], '요약고객 담당자')
+        self.assertTrue(any(item['stage'] == followup.pipeline_stage for item in payload['pipelineSummary']))
+        self.assertIn('/reporting/dashboard/#dashboardNoteModal', payload['links']['createNote'])
+
+    def test_dashboard_summary_api_manager_sees_same_company_only(self):
+        own = self._create_customer(self.user, '회사내고객')
+        coworker = self._create_customer(self.coworker, '회사내동료')
+        other = self._create_customer(self.other_user, '타사고객')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['metrics']['totalCustomers'], 2)
+        priority_ids = {item['id'] for item in payload['priorityCustomers']}
+        self.assertIn(own.id, priority_ids)
+        self.assertIn(coworker.id, priority_ids)
+        self.assertNotIn(other.id, priority_ids)
+        self.assertTrue(payload['scope']['canViewAll'])
+
+
+class CustomersSummaryApiTests(TestCase):
+    """React 고객 화면 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='고객API회사')
+        self.other_company = UserCompany.objects.create(name='고객API타사회사')
+        self.user = make_user('customers_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('customers_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('customers_api_manager', role='manager', company=self.company)
+        self.other_user = make_user('customers_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:customers_summary_api')
+
+    def _create_customer(self, owner, name, priority='urgent', stage='quote'):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import Company, Department, FollowUp, History
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} 책임',
+            company=customer_company,
+            department=department,
+            priority=priority,
+            pipeline_stage=stage,
+            customer_grade='A',
+            ai_score=80,
+        )
+        History.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content=f'{name} 고객 상담',
+            next_action='다음 연락',
+            next_action_date=timezone.localdate() - timedelta(days=1),
+        )
+        return followup
+
+    def test_customers_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_customers_summary_api_uses_salesman_own_scope(self):
+        own = self._create_customer(self.user, '내고객')
+        coworker = self._create_customer(self.coworker, '동료고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['customers']}
+        self.assertIn(own.id, ids)
+        self.assertNotIn(coworker.id, ids)
+        self.assertEqual(payload['metrics']['totalCustomers'], 1)
+
+    def test_customers_summary_api_filters_search_owner_and_priority(self):
+        target = self._create_customer(self.user, 'PCR핵심', priority='urgent')
+        self._create_customer(self.user, '일반', priority='scheduled')
+        self._create_customer(self.coworker, '동료PCR', priority='urgent')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {
+            'q': 'PCR',
+            'owner': str(self.user.id),
+            'priority': 'urgent',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [item['id'] for item in payload['customers']]
+        self.assertEqual(ids, [target.id])
+        self.assertEqual(payload['filters']['q'], 'PCR')
+        self.assertTrue(any(option['id'] == self.user.id for option in payload['options']['owners']))
+
+    def test_customers_summary_api_manager_sees_same_company_only(self):
+        own = self._create_customer(self.user, '회사내고객')
+        coworker = self._create_customer(self.coworker, '회사내동료')
+        other = self._create_customer(self.other_user, '타사고객')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['customers']}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        priority_ids = {item['id'] for item in payload['priorityCustomers']}
+        self.assertIn(own.id, priority_ids)
+        self.assertTrue(payload['scope']['canViewAll'])
+
+
+class NotesSummaryApiTests(TestCase):
+    """React 영업노트 화면 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='노트API회사')
+        self.other_company = UserCompany.objects.create(name='노트API타사회사')
+        self.user = make_user('notes_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('notes_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('notes_api_manager', role='manager', company=self.company)
+        self.other_user = make_user('notes_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:notes_summary_api')
+
+    def _create_note(
+        self,
+        owner,
+        name,
+        action_type='customer_meeting',
+        content='고객 상담 기록',
+        next_action='후속 연락',
+        next_action_date=None,
+        reviewed=False,
+    ):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import Company, Department, FollowUp, History
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} 책임',
+            company=customer_company,
+            department=department,
+            priority='urgent',
+            pipeline_stage='quote',
+        )
+        history = History.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            action_type=action_type,
+            content=content,
+            next_action=next_action,
+            next_action_date=next_action_date or timezone.localdate() - timedelta(days=1),
+            reviewed_at=timezone.now() if reviewed else None,
+            reviewer=self.manager if reviewed else None,
+        )
+        return history
+
+    def test_notes_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_notes_summary_api_uses_salesman_own_scope(self):
+        own = self._create_note(self.user, '내노트')
+        coworker = self._create_note(self.coworker, '동료노트')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['notes']}
+        self.assertIn(own.id, ids)
+        self.assertNotIn(coworker.id, ids)
+        self.assertEqual(payload['metrics']['totalNotes'], 1)
+
+    def test_notes_summary_api_filters_search_owner_action_review_and_next_action(self):
+        target = self._create_note(
+            self.user,
+            'PCR핵심',
+            action_type='quote',
+            content='PCR 견적 후속 필요',
+            reviewed=False,
+        )
+        self._create_note(self.user, 'PCR완료', action_type='quote', content='PCR 견적 완료', reviewed=True)
+        self._create_note(self.user, '서비스', action_type='service', content='PCR 서비스', reviewed=False)
+        self._create_note(self.coworker, 'PCR동료', action_type='quote', content='PCR 동료 건', reviewed=False)
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {
+            'q': 'PCR',
+            'owner': str(self.user.id),
+            'actionType': 'quote',
+            'review': 'unreviewed',
+            'nextAction': 'overdue',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [item['id'] for item in payload['notes']]
+        self.assertEqual(ids, [target.id])
+        self.assertEqual(payload['filters']['q'], 'PCR')
+        self.assertTrue(any(option['value'] == 'quote' for option in payload['options']['actionTypes']))
+        self.assertEqual(payload['metrics']['filteredNotes'], 1)
+
+    def test_notes_summary_api_manager_sees_same_company_only(self):
+        own = self._create_note(self.user, '회사내노트')
+        coworker = self._create_note(self.coworker, '회사내동료노트')
+        other = self._create_note(self.other_user, '타사노트')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['notes']}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['metrics']['totalNotes'], 2)
+        self.assertTrue(payload['scope']['canViewAll'])
+
+
+class SchedulesSummaryApiTests(TestCase):
+    """React 일정 화면 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='일정API회사')
+        self.other_company = UserCompany.objects.create(name='일정API타사회사')
+        self.user = make_user('schedules_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('schedules_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('schedules_api_manager', role='manager', company=self.company)
+        self.other_user = make_user('schedules_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:schedules_summary_api')
+
+    def _create_customer(self, owner, name):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        return FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} 책임',
+            company=customer_company,
+            department=department,
+            priority='urgent',
+            pipeline_stage='quote',
+        )
+
+    def _create_schedule(
+        self,
+        owner,
+        name,
+        activity_type='customer_meeting',
+        status='scheduled',
+        visit_date=None,
+    ):
+        import datetime
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        followup = self._create_customer(owner, name)
+        return Schedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            visit_date=visit_date or timezone.localdate(),
+            visit_time=datetime.time(9, 0),
+            activity_type=activity_type,
+            status=status,
+            location=f'{name} 회의실',
+            notes=f'{name} 일정 메모',
+        )
+
+    def _create_personal_schedule(self, owner, title, schedule_date=None):
+        import datetime
+        from django.utils import timezone
+        from reporting.models import PersonalSchedule
+
+        return PersonalSchedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            title=title,
+            content=f'{title} 내용',
+            schedule_date=schedule_date or timezone.localdate(),
+            schedule_time=datetime.time(14, 0),
+        )
+
+    def test_schedules_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_schedules_summary_api_uses_salesman_own_scope(self):
+        own = self._create_schedule(self.user, '내일정')
+        personal = self._create_personal_schedule(self.user, '내 개인 일정')
+        coworker = self._create_schedule(self.coworker, '동료일정')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {(item['type'], item['id']) for item in payload['schedules']}
+        self.assertIn(('customer', own.id), ids)
+        self.assertIn(('personal', personal.id), ids)
+        self.assertNotIn(('customer', coworker.id), ids)
+        self.assertEqual(payload['metrics']['totalSchedules'], 2)
+
+    def test_schedules_summary_api_filters_search_owner_status_activity_and_range(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        target = self._create_schedule(
+            self.user,
+            'PCR핵심',
+            activity_type='quote',
+            status='scheduled',
+            visit_date=timezone.localdate() + timedelta(days=1),
+        )
+        self._create_schedule(
+            self.user,
+            'PCR완료',
+            activity_type='quote',
+            status='completed',
+            visit_date=timezone.localdate() + timedelta(days=1),
+        )
+        self._create_schedule(
+            self.user,
+            'PCR서비스',
+            activity_type='service',
+            status='scheduled',
+            visit_date=timezone.localdate() + timedelta(days=1),
+        )
+        self._create_schedule(
+            self.coworker,
+            'PCR동료',
+            activity_type='quote',
+            status='scheduled',
+            visit_date=timezone.localdate() + timedelta(days=1),
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {
+            'q': 'PCR',
+            'owner': str(self.user.id),
+            'status': 'scheduled',
+            'activityType': 'quote',
+            'range': 'week',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [(item['type'], item['id']) for item in payload['schedules']]
+        self.assertEqual(ids, [('customer', target.id)])
+        self.assertEqual(payload['filters']['q'], 'PCR')
+        self.assertTrue(any(option['value'] == 'quote' for option in payload['options']['activityTypes']))
+        self.assertEqual(payload['metrics']['filteredSchedules'], 1)
+
+    def test_schedules_summary_api_manager_sees_same_company_only(self):
+        own = self._create_schedule(self.user, '회사내일정')
+        coworker = self._create_schedule(self.coworker, '회사내동료일정')
+        other = self._create_schedule(self.other_user, '타사일정')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['schedules'] if item['type'] == 'customer'}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['metrics']['totalSchedules'], 2)
+        self.assertTrue(payload['scope']['canViewAll'])
+
+
+class AIWorkspaceSummaryApiTests(TestCase):
+    """React AI workspace 읽기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='AI워크스페이스회사')
+        self.other_company = UserCompany.objects.create(name='AI워크스페이스타사회사')
+        self.user = make_user('ai_workspace_me', role='salesman', can_use_ai=True, company=self.company)
+        self.no_ai_user = make_user('ai_workspace_no_permission', role='salesman', can_use_ai=False, company=self.company)
+        self.coworker = make_user('ai_workspace_coworker', role='salesman', can_use_ai=True, company=self.company)
+        self.url = reverse('reporting:ai_workspace_summary_api')
+
+    def _create_customer(self, owner, name):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} 책임',
+            company=customer_company,
+            department=department,
+            priority='urgent',
+            customer_grade='A',
+            ai_score=88,
+        )
+        return followup, department
+
+    def _create_department_analysis(self, owner, department):
+        from datetime import date
+        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
+
+        analysis = AIDepartmentAnalysis.objects.create(
+            user=owner,
+            department=department,
+            analysis_data={
+                'department_summary': '후속 연락이 지연되고 있어 견적 대응이 필요합니다.',
+                'next_actions': [{'action': '견적 후속 연락', 'priority': 'high'}],
+            },
+            quote_delivery_data={'total_quotes': 2, 'total_deliveries': 1},
+            meeting_count=3,
+            quote_count=2,
+            delivery_count=1,
+            analysis_period_start=date(2026, 4, 1),
+            analysis_period_end=date(2026, 5, 1),
+        )
+        PainPointCard.objects.create(
+            analysis=analysis,
+            category='delivery',
+            hypothesis='납기 확인이 늦어지고 있습니다.',
+            confidence='high',
+            confidence_score=84,
+            evidence=[],
+            attribution='lab',
+            verification_question='납기 기준일을 다시 확인할까요?',
+            action_if_yes='납기 가능 일정을 제시합니다.',
+            action_if_no='대체 제품을 제안합니다.',
+        )
+        return analysis
+
+    def test_ai_workspace_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_ai_workspace_summary_api_returns_permission_state_without_ai_access(self):
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['permission']['canUseAi'])
+        self.assertEqual(payload['departments'], [])
+        self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
+
+    def test_ai_workspace_summary_api_lists_own_ai_operational_data(self):
+        followup, department = self._create_customer(self.user, 'PCR핵심')
+        self._create_department_analysis(self.user, department)
+
+        from ai_chat.models import AIFollowUpAnalysis
+        AIFollowUpAnalysis.objects.create(
+            followup=followup,
+            user=self.user,
+            analysis_data={'customer_summary': 'PCR 고객은 후속 견적 대응이 필요합니다.'},
+            meeting_count=2,
+        )
+        self._create_customer(self.coworker, '동료고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['permission']['canUseAi'])
+        self.assertEqual(payload['metrics']['departmentsWithCustomers'], 1)
+        self.assertEqual(payload['metrics']['analyzedDepartments'], 1)
+        self.assertEqual(payload['metrics']['unverifiedPainpoints'], 1)
+        self.assertEqual(payload['departments'][0]['id'], department.id)
+        self.assertEqual(payload['followupTargets'][0]['id'], followup.id)
+        self.assertIn('/ai/department/', payload['departments'][0]['href'])
+        self.assertIn('week_start=', payload['links']['weeklyAiDraft'])
+        self.assertTrue(payload['recommendedGoals'])
+
+
 class PipelineApiTests(TestCase):
     """React 파일럿용 파이프라인 읽기 API 검증"""
 

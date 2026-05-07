@@ -1,10 +1,14 @@
 import {
+  Activity,
+  AlertTriangle,
   Bell,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  Clock,
   Columns3,
   FileText,
   Filter,
@@ -22,7 +26,28 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { loadPipelineData, moveDealStage } from './api';
+import {
+  DashboardData,
+  DashboardHistoryItem,
+  DashboardScheduleItem,
+  CustomersData,
+  CustomerItem,
+  NotesData,
+  NoteItem,
+  SchedulesData,
+  ScheduleItem,
+  AIWorkspaceData,
+  AIWorkspaceDepartment,
+  AIWorkspaceFollowupTarget,
+  AIWorkspacePainpoint,
+  loadDashboardData,
+  loadCustomersData,
+  loadNotesData,
+  loadSchedulesData,
+  loadAIWorkspaceData,
+  loadPipelineData,
+  moveDealStage,
+} from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
 const navItems = [
@@ -150,6 +175,30 @@ const formatWon = (value: number) =>
     currency: 'KRW',
     maximumFractionDigits: 0,
   }).format(value);
+
+const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
+
+const formatDateLabel = (value?: string | null) => {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return value;
+  return `${Number(month)}월 ${Number(day)}일`;
+};
+
+const formatDateTimeLabel = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
+const sortScheduleItems = (items: DashboardScheduleItem[]) =>
+  [...items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
 const riskLabel: Record<Deal['risk'], string> = {
   low: '정상',
@@ -311,6 +360,1380 @@ function WorkspaceRoutePage({ data, view }: { data: PipelineData; view: MainView
           </div>
         </article>
       </div>
+    </section>
+  );
+}
+
+function DashboardMetricCard({
+  detail,
+  href,
+  icon: Icon,
+  label,
+  tone,
+  value,
+}: {
+  detail: string;
+  href?: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+  tone: 'blue' | 'green' | 'amber' | 'red' | 'teal';
+  value: string;
+}) {
+  const content = (
+    <>
+      <div className="dashboard-metric-icon">
+        <Icon size={19} />
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a className={`dashboard-metric-card ${tone}`} href={href}>
+        {content}
+      </a>
+    );
+  }
+
+  return <article className={`dashboard-metric-card ${tone}`}>{content}</article>;
+}
+
+function DashboardEmpty({ label }: { label: string }) {
+  return <div className="dashboard-empty">{label}</div>;
+}
+
+function DashboardScheduleList({ items }: { items: DashboardScheduleItem[] }) {
+  if (items.length === 0) {
+    return <DashboardEmpty label="표시할 일정이 없습니다" />;
+  }
+
+  return (
+    <div className="dashboard-list">
+      {sortScheduleItems(items).map((item) => (
+        <a className="dashboard-list-row" href={item.href} key={`${item.type}-${item.id}`}>
+          <div className="dashboard-row-icon">
+            {item.type === 'personal' ? <Clock size={17} /> : <CalendarDays size={17} />}
+          </div>
+          <div className="dashboard-row-main">
+            <strong>{item.customer}</strong>
+            <span>
+              {[item.company, item.department, item.activityLabel].filter(Boolean).join(' · ')}
+            </span>
+            {item.notes ? <small>{item.notes}</small> : null}
+          </div>
+          <time>
+            {formatDateLabel(item.date)}
+            {item.time ? ` ${item.time}` : ''}
+          </time>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function DashboardHistoryList({
+  emptyLabel,
+  items,
+  urgent,
+}: {
+  emptyLabel: string;
+  items: DashboardHistoryItem[];
+  urgent?: boolean;
+}) {
+  if (items.length === 0) {
+    return <DashboardEmpty label={emptyLabel} />;
+  }
+
+  return (
+    <div className="dashboard-list">
+      {items.map((item) => (
+        <a className={`dashboard-list-row ${urgent ? 'urgent' : ''}`} href={item.href} key={item.id}>
+          <div className="dashboard-row-icon">
+            {urgent ? <AlertTriangle size={17} /> : <FileText size={17} />}
+          </div>
+          <div className="dashboard-row-main">
+            <strong>{item.customer}</strong>
+            <span>
+              {[item.company, item.actionLabel, item.owner].filter(Boolean).join(' · ')}
+            </span>
+            <small>{item.nextAction || item.summary || '내용 없음'}</small>
+          </div>
+          <time>{item.nextActionDate ? formatDateLabel(item.nextActionDate) : formatDateTimeLabel(item.createdAt)}</time>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function DashboardCustomerList({ items }: { items: DashboardData['priorityCustomers'] }) {
+  if (items.length === 0) {
+    return <DashboardEmpty label="표시할 우선 고객이 없습니다" />;
+  }
+
+  return (
+    <div className="dashboard-customer-list">
+      {items.map((item) => (
+        <a className={`dashboard-customer-row ${item.overdue ? 'overdue' : ''}`} href={item.href} key={item.id}>
+          <div>
+            <strong>{item.company || item.customer}</strong>
+            <span>
+              {[item.customer, item.department, item.owner].filter(Boolean).join(' · ')}
+            </span>
+            {item.nextAction ? <small>{item.nextAction}</small> : null}
+          </div>
+          <div className="dashboard-customer-meta">
+            <span>{item.priorityLabel}</span>
+            <strong>{Math.round(item.score)}</strong>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function DashboardPipelineSummary({ data }: { data: DashboardData['pipelineSummary'] }) {
+  const maxCount = Math.max(...data.map((item) => item.count), 1);
+  return (
+    <div className="dashboard-pipeline-summary">
+      {data.map((item) => (
+        <a className="dashboard-pipeline-row" href={`/reporting/followups/?pipeline_stage=${item.stage}`} key={item.stage}>
+          <div>
+            <span>{item.label}</span>
+            <strong>{formatNumber(item.count)}건</strong>
+          </div>
+          <div className="dashboard-pipeline-bar">
+            <div style={{ width: `${(item.count / maxCount) * 100}%` }} />
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function DashboardTeamActivity({ data }: { data: DashboardData['teamActivity'] }) {
+  if (data.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="dashboard-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Team</span>
+          <h2>팀 활동 현황</h2>
+        </div>
+        <Users size={18} />
+      </div>
+      <div className="dashboard-team-grid">
+        {data.map((item) => (
+          <article className="dashboard-team-row" key={item.userId}>
+            <strong>{item.name}</strong>
+            <span>최근 30일 {formatNumber(item.recentCount)}건</span>
+            <small>지연 {formatNumber(item.overdueCount)}건</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CustomerStatusBadge({ customer }: { customer: CustomerItem }) {
+  return (
+    <div className="customer-badge-row">
+      <span className={`customer-priority ${customer.priority}`}>{customer.priorityLabel}</span>
+      <span>{customer.pipelineLabel}</span>
+      {customer.grade ? <span>{customer.grade}</span> : null}
+    </div>
+  );
+}
+
+function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
+  if (customers.length === 0) {
+    return <DashboardEmpty label="우선 고객이 없습니다" />;
+  }
+
+  return (
+    <div className="customers-priority-list">
+      {customers.map((customer) => (
+        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={customer.href} key={customer.id}>
+          <div>
+            <strong>{customer.company || customer.customer}</strong>
+            <span>{[customer.customer, customer.owner].filter(Boolean).join(' · ')}</span>
+            {customer.nextAction ? <small>{customer.nextAction}</small> : null}
+          </div>
+          <strong className="customer-score">{Math.round(customer.score)}</strong>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function CustomersTable({ customers }: { customers: CustomerItem[] }) {
+  if (customers.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 고객이 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap">
+      <table className="customers-table">
+        <thead>
+          <tr>
+            <th>고객</th>
+            <th>상태</th>
+            <th>다음 액션</th>
+            <th>최근 활동</th>
+            <th>담당자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((customer) => (
+            <tr key={customer.id}>
+              <td>
+                <a className="customer-name-link" href={customer.href}>
+                  <strong>{customer.company || customer.customer}</strong>
+                  <span>{[customer.customer, customer.department].filter(Boolean).join(' · ')}</span>
+                </a>
+              </td>
+              <td>
+                <CustomerStatusBadge customer={customer} />
+              </td>
+              <td>
+                <span className={customer.overdue ? 'customer-overdue-text' : ''}>
+                  {customer.nextAction || '다음 액션 없음'}
+                </span>
+                {customer.nextActionDate ? <small>{formatDateLabel(customer.nextActionDate)}</small> : null}
+              </td>
+              <td>
+                <span>{customer.lastActivityLabel || '활동 없음'}</span>
+                {customer.lastActivityAt ? <small>{formatDateTimeLabel(customer.lastActivityAt)}</small> : null}
+              </td>
+              <td>
+                <span>{customer.owner}</span>
+                <a className="customer-row-action" href={customer.createScheduleHref}>일정</a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CustomersPage({
+  data,
+  loading,
+  owner,
+  priority,
+  query,
+  stage,
+  onOwnerChange,
+  onPriorityChange,
+  onQueryChange,
+  onStageChange,
+}: {
+  data: CustomersData | null;
+  loading: boolean;
+  owner: string;
+  priority: string;
+  query: string;
+  stage: string;
+  onOwnerChange: (value: string) => void;
+  onPriorityChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onStageChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>고객 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 고객', value: `${formatNumber(data.metrics.totalCustomers)}건`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
+    { label: '검색 결과', value: `${formatNumber(data.metrics.filteredCustomers)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
+    { label: '긴급 고객', value: `${formatNumber(data.metrics.urgentCustomers)}건`, detail: '우선 대응', icon: AlertTriangle, tone: 'red' as const },
+    { label: 'VIP/A 고객', value: `${formatNumber(data.metrics.vipCustomers)}건`, detail: '등급 기준', icon: Target, tone: 'amber' as const },
+  ];
+
+  return (
+    <section className="customers-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>고객 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Customers</span>
+          <h2>{data.scope.label || '고객 관리'}</h2>
+          <p>검색, 담당자, 우선순위 기준으로 고객과 후속조치를 확인합니다.</p>
+        </div>
+        <a className="route-primary-action" href={data.links.createCustomer}>
+          새 고객 등록
+          <Plus size={16} />
+        </a>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="고객 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고객, 회사, 연구실, 연락처 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onPriorityChange(event.target.value)} value={priority}>
+          <option value="">우선순위 전체</option>
+          {data.options.priorities.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onStageChange(event.target.value)} value={stage}>
+          <option value="">파이프라인 전체</option>
+          {data.options.stages.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="customers-layout">
+        <section className="dashboard-panel customers-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Customer list</span>
+              <h2>고객 목록</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
+          </div>
+          <CustomersTable customers={data.customers} />
+        </section>
+
+        <aside className="dashboard-panel customers-side-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Priority</span>
+              <h2>우선 고객</h2>
+            </div>
+            <Bell size={18} />
+          </div>
+          <CustomersPriorityList customers={data.priorityCustomers} />
+          <div className="customers-side-actions">
+            <a href={data.links.customerReport}>고객 리포트</a>
+            <a href={data.links.companies}>고객사 관리</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function NoteStatusBadge({ note }: { note: NoteItem }) {
+  const reviewLabel = note.reviewed ? '검토 완료' : note.reviewRequired ? '미검토' : '검토 불필요';
+  return (
+    <div className="customer-badge-row notes-badge-row">
+      <span className={`note-action ${note.actionType}`}>{note.actionLabel}</span>
+      <span className={note.reviewed ? 'note-reviewed' : note.reviewRequired ? 'note-unreviewed' : ''}>
+        {reviewLabel}
+      </span>
+      {note.overdue ? <span className="note-overdue">지연</span> : null}
+      {note.serviceStatusLabel ? <span>{note.serviceStatusLabel}</span> : null}
+    </div>
+  );
+}
+
+function NotesActionCounts({ data }: { data: NotesData }) {
+  const maxCount = Math.max(...data.actionCounts.map((item) => item.count), 1);
+  return (
+    <div className="notes-action-counts">
+      {data.actionCounts.map((item) => (
+        <div className="notes-action-count-row" key={item.value}>
+          <div>
+            <span>{item.label}</span>
+            <strong>{formatNumber(item.count)}건</strong>
+          </div>
+          <div className="notes-count-bar">
+            <div style={{ width: `${(item.count / maxCount) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NotesTable({ notes }: { notes: NoteItem[] }) {
+  if (notes.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 영업노트가 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap notes-table-wrap">
+      <table className="customers-table notes-table">
+        <thead>
+          <tr>
+            <th>영업노트</th>
+            <th>다음 액션</th>
+            <th>상태</th>
+            <th>연결</th>
+            <th>담당자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {notes.map((note) => (
+            <tr key={note.id}>
+              <td>
+                <a className="customer-name-link" href={note.href}>
+                  <strong>{note.company || note.customer}</strong>
+                  <span>{[note.customer, note.department, note.actionLabel].filter(Boolean).join(' · ')}</span>
+                  {note.summary ? <small>{note.summary}</small> : null}
+                </a>
+              </td>
+              <td>
+                <span className={note.overdue ? 'customer-overdue-text' : ''}>
+                  {note.nextAction || '다음 액션 없음'}
+                </span>
+                {note.nextActionDate ? <small>{formatDateLabel(note.nextActionDate)}</small> : null}
+              </td>
+              <td>
+                <NoteStatusBadge note={note} />
+              </td>
+              <td>
+                <div className="notes-row-actions">
+                  <a className="customer-row-action" href={note.href}>상세</a>
+                  {note.customerHref ? <a className="customer-row-action" href={note.customerHref}>고객</a> : null}
+                  {note.scheduleHref ? <a className="customer-row-action" href={note.scheduleHref}>일정</a> : null}
+                </div>
+              </td>
+              <td>
+                <span>{note.owner}</span>
+                <small>{note.activityDate ? formatDateLabel(note.activityDate) : formatDateTimeLabel(note.createdAt)}</small>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function NotesPage({
+  actionType,
+  data,
+  loading,
+  nextAction,
+  owner,
+  query,
+  review,
+  onActionTypeChange,
+  onNextActionChange,
+  onOwnerChange,
+  onQueryChange,
+  onReviewChange,
+}: {
+  actionType: string;
+  data: NotesData | null;
+  loading: boolean;
+  nextAction: string;
+  owner: string;
+  query: string;
+  review: string;
+  onActionTypeChange: (value: string) => void;
+  onNextActionChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onReviewChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>영업노트 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 노트', value: `${formatNumber(data.metrics.totalNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
+    { label: '검색 결과', value: `${formatNumber(data.metrics.filteredNotes)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
+    { label: '미검토', value: `${formatNumber(data.metrics.unreviewedNotes)}건`, detail: '검토 필요', icon: CheckCircle2, tone: 'amber' as const },
+    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
+    { label: '7일 이내', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '다가오는 액션', icon: Clock, tone: 'green' as const },
+  ];
+
+  return (
+    <section className="notes-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>영업노트 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Notes</span>
+          <h2>{data.scope.label || '영업노트'}</h2>
+          <p>활동 기록, 검토 상태, 다음 액션을 같은 목록에서 확인합니다.</p>
+        </div>
+        <a className="route-primary-action" href={data.links.createNote}>
+          노트 작성
+          <Plus size={16} />
+        </a>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="영업노트 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="notes-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고객, 회사, 노트 내용, 다음 액션 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onActionTypeChange(event.target.value)} value={actionType}>
+          <option value="">활동 유형 전체</option>
+          {data.options.actionTypes.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onReviewChange(event.target.value)} value={review}>
+          <option value="">검토 상태 전체</option>
+          {data.options.reviewStates.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onNextActionChange(event.target.value)} value={nextAction}>
+          <option value="">다음 액션 전체</option>
+          {data.options.nextActionStates.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="notes-layout">
+        <section className="dashboard-panel notes-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Note list</span>
+              <h2>영업노트 목록</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <MessageSquareText size={18} />}
+          </div>
+          <NotesTable notes={data.notes} />
+        </section>
+
+        <aside className="dashboard-panel notes-side-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Activity type</span>
+              <h2>유형별 현황</h2>
+            </div>
+            <Filter size={18} />
+          </div>
+          <NotesActionCounts data={data} />
+          <div className="customers-side-actions">
+            <a href={data.links.notes}>Django 영업노트</a>
+            <a href={data.links.unreviewed}>미검토 노트</a>
+            <a href={data.links.weeklyReports}>주간보고</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function ScheduleStatusBadge({ schedule }: { schedule: ScheduleItem }) {
+  return (
+    <div className="customer-badge-row schedules-badge-row">
+      <span className={`schedule-status ${schedule.status}`}>{schedule.statusLabel}</span>
+      <span>{schedule.activityLabel}</span>
+      {schedule.priorityLabel ? <span>{schedule.priorityLabel}</span> : null}
+      {schedule.overdue ? <span className="schedule-overdue">지연</span> : null}
+    </div>
+  );
+}
+
+function SchedulesCompactList({
+  emptyLabel,
+  items,
+  urgent,
+}: {
+  emptyLabel: string;
+  items: ScheduleItem[];
+  urgent?: boolean;
+}) {
+  if (items.length === 0) {
+    return <DashboardEmpty label={emptyLabel} />;
+  }
+
+  return (
+    <div className="schedules-compact-list">
+      {items.map((item) => (
+        <a className={`schedules-compact-row ${urgent || item.overdue ? 'urgent' : ''}`} href={item.href} key={`${item.type}-${item.id}`}>
+          <div>
+            <strong>{item.company || item.title || item.customer}</strong>
+            <span>{[item.customer, item.activityLabel, item.owner].filter(Boolean).join(' · ')}</span>
+            {item.notes ? <small>{item.notes}</small> : null}
+          </div>
+          <time>
+            {item.date ? formatDateLabel(item.date) : ''}
+            {item.time ? ` ${item.time}` : ''}
+          </time>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function SchedulesCountRows({ data }: { data: SchedulesData }) {
+  const maxCount = Math.max(...data.statusCounts.map((item) => item.count), 1);
+  return (
+    <div className="notes-action-counts">
+      {data.statusCounts.map((item) => (
+        <div className="notes-action-count-row" key={item.value}>
+          <div>
+            <span>{item.label}</span>
+            <strong>{formatNumber(item.count)}건</strong>
+          </div>
+          <div className="notes-count-bar">
+            <div style={{ width: `${(item.count / maxCount) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SchedulesTable({ schedules }: { schedules: ScheduleItem[] }) {
+  if (schedules.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 일정이 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap schedules-table-wrap">
+      <table className="customers-table schedules-table">
+        <thead>
+          <tr>
+            <th>일정</th>
+            <th>일시</th>
+            <th>상태</th>
+            <th>금액/보고</th>
+            <th>담당자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schedules.map((schedule) => (
+            <tr key={`${schedule.type}-${schedule.id}`}>
+              <td>
+                <a className="customer-name-link" href={schedule.href}>
+                  <strong>{schedule.company || schedule.title || schedule.customer}</strong>
+                  <span>{[schedule.customer, schedule.department, schedule.location].filter(Boolean).join(' · ')}</span>
+                  {schedule.notes ? <small>{schedule.notes}</small> : null}
+                </a>
+              </td>
+              <td>
+                <span className={schedule.overdue ? 'customer-overdue-text' : ''}>
+                  {schedule.date ? formatDateLabel(schedule.date) : '날짜 없음'}
+                </span>
+                {schedule.time ? <small>{schedule.time}</small> : null}
+              </td>
+              <td>
+                <ScheduleStatusBadge schedule={schedule} />
+              </td>
+              <td>
+                {schedule.expectedRevenue > 0 ? <span>{formatWon(schedule.expectedRevenue)}</span> : <span>예상 매출 없음</span>}
+                <small>보고 {formatNumber(schedule.historyCount)}건</small>
+                <div className="notes-row-actions">
+                  {schedule.createHistoryHref ? <a className="customer-row-action" href={schedule.createHistoryHref}>보고</a> : null}
+                  {schedule.customerHref ? <a className="customer-row-action" href={schedule.customerHref}>고객</a> : null}
+                </div>
+              </td>
+              <td>
+                <span>{schedule.owner}</span>
+                <a className="customer-row-action" href={schedule.href}>상세</a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SchedulesPage({
+  activityType,
+  data,
+  loading,
+  owner,
+  query,
+  range,
+  status,
+  onActivityTypeChange,
+  onOwnerChange,
+  onQueryChange,
+  onRangeChange,
+  onStatusChange,
+}: {
+  activityType: string;
+  data: SchedulesData | null;
+  loading: boolean;
+  owner: string;
+  query: string;
+  range: string;
+  status: string;
+  onActivityTypeChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onRangeChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>일정 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 일정', value: `${formatNumber(data.metrics.totalSchedules)}건`, detail: data.scope.label, icon: CalendarDays, tone: 'blue' as const },
+    { label: '오늘 일정', value: `${formatNumber(data.metrics.todaySchedules)}건`, detail: '금일 업무', icon: Clock, tone: 'green' as const },
+    { label: '7일 이내', value: `${formatNumber(data.metrics.weekSchedules)}건`, detail: '다가오는 일정', icon: Bell, tone: 'teal' as const },
+    { label: '지연 일정', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
+    { label: '완료 일정', value: `${formatNumber(data.metrics.completedSchedules)}건`, detail: '고객 일정 기준', icon: CheckCircle2, tone: 'amber' as const },
+  ];
+
+  return (
+    <section className="schedules-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>일정 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Schedules</span>
+          <h2>{data.scope.label || '일정'}</h2>
+          <p>고객 일정과 개인 일정을 함께 보고 후속 보고 작성으로 연결합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.createPersonalSchedule}>
+            개인 일정
+          </a>
+          <a className="route-primary-action" href={data.links.createSchedule}>
+            일정 등록
+            <Plus size={16} />
+          </a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="일정 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="schedules-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고객, 회사, 장소, 메모 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
+          <option value="">상태 전체</option>
+          {data.options.statuses.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onActivityTypeChange(event.target.value)} value={activityType}>
+          <option value="">활동 유형 전체</option>
+          {data.options.activityTypes.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onRangeChange(event.target.value)} value={range}>
+          <option value="">기간 전체</option>
+          {data.options.ranges.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="schedules-layout">
+        <section className="dashboard-panel schedules-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Schedule list</span>
+              <h2>일정 목록</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <CalendarDays size={18} />}
+          </div>
+          <SchedulesTable schedules={data.schedules} />
+        </section>
+
+        <aside className="dashboard-panel schedules-side-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Today</span>
+              <h2>오늘 일정</h2>
+            </div>
+            <Clock size={18} />
+          </div>
+          <SchedulesCompactList emptyLabel="오늘 일정이 없습니다" items={data.today} />
+          <div className="dashboard-panel-heading schedules-side-heading">
+            <div>
+              <span className="eyebrow">Overdue</span>
+              <h2>지연 일정</h2>
+            </div>
+            <AlertTriangle size={18} />
+          </div>
+          <SchedulesCompactList emptyLabel="지연 일정이 없습니다" items={data.overdue} urgent />
+          <div className="dashboard-panel-heading schedules-side-heading">
+            <div>
+              <span className="eyebrow">Status</span>
+              <h2>상태별 현황</h2>
+            </div>
+            <Filter size={18} />
+          </div>
+          <SchedulesCountRows data={data} />
+          <div className="customers-side-actions">
+            <a href={data.links.calendar}>일정 캘린더</a>
+            <a href={data.links.schedules}>Django 일정 목록</a>
+            <a href={data.links.weeklyReports}>주간보고</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function AIWorkspaceDepartmentList({ departments }: { departments: AIWorkspaceDepartment[] }) {
+  if (departments.length === 0) {
+    return <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />;
+  }
+
+  return (
+    <div className="ai-department-list">
+      {departments.map((department) => (
+        <a className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''}`} href={department.hubHref} key={department.id}>
+          <div>
+            <strong>{department.company || department.name}</strong>
+            <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
+            {department.summary ? <small>{department.summary}</small> : null}
+            {!department.summary && department.customerPreview.length > 0 ? (
+              <small>{department.customerPreview.join(', ')}</small>
+            ) : null}
+          </div>
+          <div className="ai-row-meta">
+            <span>{department.hasAnalysis ? '분석 완료' : '분석 필요'}</span>
+            <strong>{formatNumber(department.unverifiedPainpointCount)}</strong>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function AIWorkspacePainpointList({ painpoints }: { painpoints: AIWorkspacePainpoint[] }) {
+  if (painpoints.length === 0) {
+    return <DashboardEmpty label="미검증 PainPoint가 없습니다" />;
+  }
+
+  return (
+    <div className="ai-painpoint-list">
+      {painpoints.map((painpoint) => (
+        <a className="ai-painpoint-row" href={painpoint.href} key={painpoint.id}>
+          <div>
+            <strong>{painpoint.hypothesis}</strong>
+            <span>{[painpoint.company, painpoint.department, painpoint.categoryLabel].filter(Boolean).join(' · ')}</span>
+            {painpoint.question ? <small>{painpoint.question}</small> : null}
+          </div>
+          <div className="ai-confidence">
+            <span>{painpoint.confidenceLabel}</span>
+            <strong>{painpoint.confidenceScore}</strong>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function AIWorkspaceFollowupTargets({ targets }: { targets: AIWorkspaceFollowupTarget[] }) {
+  if (targets.length === 0) {
+    return <DashboardEmpty label="AI 고객 분석 대상이 없습니다" />;
+  }
+
+  return (
+    <div className="ai-followup-grid">
+      {targets.map((target) => (
+        <article className="ai-followup-card" key={target.id}>
+          <div>
+            <strong>{target.company || target.customer}</strong>
+            <span>{[target.customer, target.department, target.priorityLabel].filter(Boolean).join(' · ')}</span>
+            {target.analysisSummary ? <small>{target.analysisSummary}</small> : null}
+          </div>
+          <div className="ai-followup-card-footer">
+            <strong>{Math.round(target.score)}</strong>
+            <div>
+              <a href={target.href}>{target.hasAnalysis ? '분석 보기' : '분석 시작'}</a>
+              <a href={target.customerHref}>고객</a>
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; loading: boolean }) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>AI 업무 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '분석 대상 부서', value: `${formatNumber(data.metrics.departmentsWithCustomers)}개`, detail: data.currentUser.name || '현재 사용자', icon: Building2, tone: 'blue' as const },
+    { label: '분석 완료', value: `${formatNumber(data.metrics.analyzedDepartments)}개`, detail: '부서 분석', icon: Sparkles, tone: 'teal' as const },
+    { label: '미검증 PainPoint', value: `${formatNumber(data.metrics.unverifiedPainpoints)}건`, detail: '확인 필요', icon: AlertTriangle, tone: 'red' as const },
+    { label: '고객 분석', value: `${formatNumber(data.metrics.followupAnalyses)}건`, detail: '개별 고객', icon: Target, tone: 'amber' as const },
+    { label: '이번 달 보고', value: `${formatNumber(data.metrics.weeklyReportsThisMonth)}건`, detail: '주간보고', icon: FileText, tone: 'green' as const },
+  ];
+
+  return (
+    <section className="ai-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>AI workspace API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      {!data.permission.canUseAi ? (
+        <div className="dashboard-api-alert ai-permission-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>AI 기능 권한이 없습니다</strong>
+            <span>{data.permission.message || '관리자에게 AI 기능 권한을 요청해야 합니다.'}</span>
+          </div>
+          <a href={data.links.dashboard}>대시보드</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">AI Workspace</span>
+          <h2>{data.currentUser.company || 'AI 업무도구'}</h2>
+          <p>부서 분석, 고객 분석, PainPoint 검증, 주간보고 초안을 한 흐름에서 확인합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.weeklyReportCreate}>
+            주간보고
+          </a>
+          <a className="route-primary-action" href={data.links.aiHub}>
+            AI 허브
+            <MoveUpRight size={16} />
+          </a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="AI 업무 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="ai-layout">
+        <section className="dashboard-panel ai-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Department analysis</span>
+              <h2>부서 분석 대상</h2>
+            </div>
+            <Sparkles size={18} />
+          </div>
+          <AIWorkspaceDepartmentList departments={data.departments} />
+        </section>
+
+        <aside className="dashboard-panel ai-side-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Action</span>
+              <h2>바로 실행</h2>
+            </div>
+            <MoveUpRight size={18} />
+          </div>
+          <div className="ai-tool-list">
+            <a href={data.links.aiHub}>
+              <Sparkles size={17} />
+              <span>부서 분석/프롬프트</span>
+            </a>
+            <a href={data.links.weeklyAiDraft}>
+              <FileText size={17} />
+              <span>이번 주 AI 초안</span>
+            </a>
+            <a href={data.links.customers}>
+              <Users size={17} />
+              <span>고객 목록</span>
+            </a>
+            <a href={data.links.notes}>
+              <MessageSquareText size={17} />
+              <span>영업노트</span>
+            </a>
+          </div>
+
+          <div className="dashboard-panel-heading ai-side-heading">
+            <div>
+              <span className="eyebrow">PainPoint</span>
+              <h2>검증 대기</h2>
+            </div>
+            <AlertTriangle size={18} />
+          </div>
+          <AIWorkspacePainpointList painpoints={data.painpoints} />
+        </aside>
+      </div>
+
+      <section className="dashboard-panel ai-followup-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Account AI</span>
+            <h2>고객 분석 대상</h2>
+          </div>
+          <Target size={18} />
+        </div>
+        <AIWorkspaceFollowupTargets targets={data.followupTargets} />
+      </section>
+
+      {data.recommendedGoals.length > 0 ? (
+        <section className="dashboard-panel ai-goal-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Prompt goals</span>
+              <h2>추천 목표</h2>
+            </div>
+            <CheckCircle2 size={18} />
+          </div>
+          <div className="ai-goal-grid">
+            {data.recommendedGoals.map((goal) => (
+              <article className="ai-goal-card" key={goal.title}>
+                <strong>{goal.title}</strong>
+                <span>{goal.description}</span>
+                {goal.reason ? <small>{goal.reason}</small> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function DashboardPage({ data, loading }: { data: DashboardData | null; loading: boolean }) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>대시보드 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metricCards = [
+    {
+      label: '활성 고객',
+      value: `${formatNumber(data.metrics.activeCustomers)}건`,
+      detail: `전체 ${formatNumber(data.metrics.totalCustomers)}건`,
+      icon: Users,
+      tone: 'blue' as const,
+      href: data.links.customers,
+    },
+    {
+      label: '오늘 일정',
+      value: `${formatNumber(data.metrics.todaySchedules)}건`,
+      detail: `이번 주 ${formatNumber(data.metrics.weeklySchedules)}건`,
+      icon: CalendarDays,
+      tone: 'green' as const,
+      href: data.links.calendar,
+    },
+    {
+      label: '지연 후속',
+      value: `${formatNumber(data.metrics.overdueActions)}건`,
+      detail: `오늘 예정 ${formatNumber(data.metrics.dueTodayActions)}건`,
+      icon: AlertTriangle,
+      tone: 'red' as const,
+      href: data.links.notes,
+    },
+    {
+      label: '이번 달 활동',
+      value: `${formatNumber(data.metrics.monthlyActivity)}건`,
+      detail: data.scope.label || data.currentUser.name || '현재 범위',
+      icon: Activity,
+      tone: 'teal' as const,
+      href: data.links.notes,
+    },
+    {
+      label: '이번 달 매출',
+      value: formatWon(data.metrics.monthlyRevenue),
+      detail: '납품 일정 기준',
+      icon: CircleDollarSign,
+      tone: 'amber' as const,
+      href: data.links.operationalDashboard,
+    },
+  ];
+
+  if (data.scope.canViewAll) {
+    metricCards.push({
+      label: '미검토 노트',
+      value: `${formatNumber(data.metrics.pendingReviews)}건`,
+      detail: '관리자 검토 대기',
+      icon: CheckCircle2,
+      tone: 'blue' as const,
+      href: data.links.pendingReviews,
+    });
+  }
+
+  const quickActions = [
+    { label: '영업노트 작성', href: data.links.createNote, icon: Plus, primary: true },
+    { label: '고객 목록', href: data.links.customers, icon: Users },
+    { label: '일정 캘린더', href: data.links.calendar, icon: CalendarDays },
+    { label: '운영 대시보드', href: data.links.operationalDashboard, icon: MoveUpRight },
+  ];
+
+  return (
+    <section className="dashboard-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>대시보드 API에 연결되지 않았습니다</strong>
+            <span>{data.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Live dashboard</span>
+          <h2>{data.scope.label || '내 영업 현황'}</h2>
+          <p>
+            {data.currentUser.company ? `${data.currentUser.company} · ` : ''}
+            {data.currentUser.roleLabel}
+          </p>
+        </div>
+        <div className={`source-badge ${data.source === 'django' ? 'django' : 'mock'}`}>
+          {data.source === 'django' ? 'Django API 연결됨' : '연결 필요'}
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="대시보드 핵심 지표">
+        {metricCards.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            href={metric.href}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="dashboard-action-strip">
+        {quickActions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <a className={action.primary ? 'primary' : ''} href={action.href} key={action.label}>
+              <Icon size={17} />
+              {action.label}
+            </a>
+          );
+        })}
+      </div>
+
+      <div className="dashboard-layout">
+        <section className="dashboard-panel dashboard-panel-large">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Today</span>
+              <h2>오늘 일정</h2>
+            </div>
+            <CalendarDays size={18} />
+          </div>
+          <DashboardScheduleList items={data.today.items} />
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Follow-up</span>
+              <h2>지연 후속조치</h2>
+            </div>
+            <Bell size={18} />
+          </div>
+          <DashboardHistoryList emptyLabel="지연된 후속조치가 없습니다" items={data.overdueActions} urgent />
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Customers</span>
+              <h2>우선 고객</h2>
+            </div>
+            <Building2 size={18} />
+          </div>
+          <DashboardCustomerList items={data.priorityCustomers} />
+        </section>
+
+        <section className="dashboard-panel dashboard-panel-large">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Recent notes</span>
+              <h2>최근 영업노트</h2>
+            </div>
+            <FileText size={18} />
+          </div>
+          <DashboardHistoryList emptyLabel="최근 영업노트가 없습니다" items={data.recentActivities} />
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">This week</span>
+              <h2>이번 주 예정</h2>
+            </div>
+            <Clock size={18} />
+          </div>
+          <DashboardScheduleList items={data.upcomingSchedules} />
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Pipeline</span>
+              <h2>파이프라인 현황</h2>
+            </div>
+            <Target size={18} />
+          </div>
+          <DashboardPipelineSummary data={data.pipelineSummary} />
+        </section>
+      </div>
+
+      <DashboardTeamActivity data={data.teamActivity} />
     </section>
   );
 }
@@ -791,6 +2214,30 @@ export function App() {
   const currentView = getCurrentView();
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
+  const [customersData, setCustomersData] = useState<CustomersData | null>(null);
+  const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerOwner, setCustomerOwner] = useState('');
+  const [customerPriority, setCustomerPriority] = useState('');
+  const [customerStage, setCustomerStage] = useState('');
+  const [notesData, setNotesData] = useState<NotesData | null>(null);
+  const [notesLoading, setNotesLoading] = useState(currentView === 'notes');
+  const [noteQuery, setNoteQuery] = useState('');
+  const [noteOwner, setNoteOwner] = useState('');
+  const [noteActionType, setNoteActionType] = useState('');
+  const [noteReview, setNoteReview] = useState('');
+  const [noteNextAction, setNoteNextAction] = useState('');
+  const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
+  const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules');
+  const [scheduleQuery, setScheduleQuery] = useState('');
+  const [scheduleOwner, setScheduleOwner] = useState('');
+  const [scheduleStatus, setScheduleStatus] = useState('');
+  const [scheduleActivityType, setScheduleActivityType] = useState('');
+  const [scheduleRange, setScheduleRange] = useState('');
+  const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
+  const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
   const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<SavedView>('priority');
@@ -799,6 +2246,9 @@ export function App() {
   const [moveMessage, setMoveMessage] = useState('');
 
   useEffect(() => {
+    if (currentView === 'dashboard') {
+      return;
+    }
     let alive = true;
     loadPipelineData().then((data) => {
       if (!alive) {
@@ -810,7 +2260,114 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'dashboard') {
+      return;
+    }
+    let alive = true;
+    setDashboardLoading(true);
+    loadDashboardData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setDashboardData(data);
+      setDashboardLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'customers') {
+      return;
+    }
+    let alive = true;
+    setCustomersLoading(true);
+    loadCustomersData({
+      q: customerQuery,
+      owner: customerOwner,
+      priority: customerPriority,
+      stage: customerStage,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setCustomersData(data);
+      setCustomersLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, customerOwner, customerPriority, customerQuery, customerStage]);
+
+  useEffect(() => {
+    if (currentView !== 'notes') {
+      return;
+    }
+    let alive = true;
+    setNotesLoading(true);
+    loadNotesData({
+      q: noteQuery,
+      owner: noteOwner,
+      actionType: noteActionType,
+      review: noteReview,
+      nextAction: noteNextAction,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setNotesData(data);
+      setNotesLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, noteActionType, noteNextAction, noteOwner, noteQuery, noteReview]);
+
+  useEffect(() => {
+    if (currentView !== 'schedules') {
+      return;
+    }
+    let alive = true;
+    setSchedulesLoading(true);
+    loadSchedulesData({
+      q: scheduleQuery,
+      owner: scheduleOwner,
+      status: scheduleStatus,
+      activityType: scheduleActivityType,
+      range: scheduleRange,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setSchedulesData(data);
+      setSchedulesLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, scheduleActivityType, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
+
+  useEffect(() => {
+    if (currentView !== 'ai') {
+      return;
+    }
+    let alive = true;
+    setAiWorkspaceLoading(true);
+    loadAIWorkspaceData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setAiWorkspaceData(data);
+      setAiWorkspaceLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView]);
 
   const selectDeal = (deal: Deal) => {
     setSelectedDealId(deal.id);
@@ -876,6 +2433,88 @@ export function App() {
     });
   }, [pipelineData.deals, searchQuery, selectedView]);
   const visibleSelectedDeal = visibleDeals.find((deal) => deal.id === selectedDealId) ?? visibleDeals[0];
+
+  if (currentView === 'dashboard') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <DashboardPage data={dashboardData} loading={dashboardLoading} />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'customers') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <CustomersPage
+          data={customersData}
+          loading={customersLoading}
+          owner={customerOwner}
+          priority={customerPriority}
+          query={customerQuery}
+          stage={customerStage}
+          onOwnerChange={setCustomerOwner}
+          onPriorityChange={setCustomerPriority}
+          onQueryChange={setCustomerQuery}
+          onStageChange={setCustomerStage}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'notes') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <NotesPage
+          actionType={noteActionType}
+          data={notesData}
+          loading={notesLoading}
+          nextAction={noteNextAction}
+          owner={noteOwner}
+          query={noteQuery}
+          review={noteReview}
+          onActionTypeChange={setNoteActionType}
+          onNextActionChange={setNoteNextAction}
+          onOwnerChange={setNoteOwner}
+          onQueryChange={setNoteQuery}
+          onReviewChange={setNoteReview}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'schedules') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <SchedulesPage
+          activityType={scheduleActivityType}
+          data={schedulesData}
+          loading={schedulesLoading}
+          owner={scheduleOwner}
+          query={scheduleQuery}
+          range={scheduleRange}
+          status={scheduleStatus}
+          onActivityTypeChange={setScheduleActivityType}
+          onOwnerChange={setScheduleOwner}
+          onQueryChange={setScheduleQuery}
+          onRangeChange={setScheduleRange}
+          onStatusChange={setScheduleStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'ai') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <AIWorkspacePage data={aiWorkspaceData} loading={aiWorkspaceLoading} />
+      </AppShell>
+    );
+  }
 
   if (currentView !== 'pipeline') {
     return (

@@ -97,6 +97,7 @@ urlpatterns = [
     # Phase 8.6-1: 세금계산서 요청 API
     path('api/followup/<int:followup_id>/tax-invoices/', views.followup_tax_invoices_api, name='followup_tax_invoices_api'),
     path('api/tax-invoice/<int:request_id>/status/', views.tax_invoice_update_status_api, name='tax_invoice_update_status_api'),
+    path('api/dashboard/', views.dashboard_summary_api, name='dashboard_summary_api'),
     # [재현] 대시보드 통합 검색 API
     path('api/dashboard/search/', views.dashboard_search_api, name='dashboard_search_api'),
 
@@ -170,6 +171,10 @@ urlpatterns = [
     
     # Admin 전용 API URL들
     path('api/users/', views.api_users_list, name='api_users_list'),
+    path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
+    path('api/notes/', views.notes_summary_api, name='notes_summary_api'),
+    path('api/schedules/', views.schedules_summary_api, name='schedules_summary_api'),
+    path('api/ai-workspace/', views.ai_workspace_summary_api, name='ai_workspace_summary_api'),
     path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
     path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
     path('api/companies/<int:company_id>/customers/', views.api_company_customers, name='api_company_customers'),

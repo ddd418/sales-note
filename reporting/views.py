@@ -2145,6 +2145,1438 @@ def dashboard_view(request):
 
     return render(request, 'reporting/dashboard.html', context)
 
+
+def _api_login_required_response(request):
+    if request.user.is_authenticated:
+        return None
+    return JsonResponse({
+        'success': False,
+        'error': 'login_required',
+        'message': '로그인이 필요합니다.',
+        'loginUrl': reverse('reporting:login'),
+    }, status=401)
+
+
+def _dashboard_scope_users(request, user_profile):
+    """React dashboard API에서 사용할 사용자 범위를 기존 대시보드 규칙으로 계산."""
+    user_filter = request.GET.get('user') or request.session.get('selected_user_id')
+    view_all = request.GET.get('view_all') == 'true'
+    selected_user = None
+
+    if user_profile.is_admin():
+        if hasattr(request, 'admin_filter_user') and request.admin_filter_user:
+            users = User.objects.filter(id=request.admin_filter_user.id)
+            selected_user = request.admin_filter_user
+        elif hasattr(request, 'admin_filter_company') and request.admin_filter_company:
+            users = User.objects.filter(
+                userprofile__company=request.admin_filter_company,
+                userprofile__role__in=['salesman', 'manager'],
+                is_active=True,
+            )
+        elif user_filter and not view_all:
+            try:
+                selected_user = User.objects.get(id=user_filter, is_active=True)
+                users = User.objects.filter(id=selected_user.id)
+            except (User.DoesNotExist, ValueError):
+                users = User.objects.filter(is_active=True)
+        else:
+            users = User.objects.filter(is_active=True)
+    elif user_profile.can_view_all_users():
+        users = get_accessible_users(request.user, request).filter(is_active=True)
+        if user_filter and not view_all:
+            selected_user = users.filter(id=user_filter).first()
+            if selected_user:
+                users = users.filter(id=selected_user.id)
+    else:
+        users = User.objects.filter(id=request.user.id)
+
+    return users.select_related('userprofile'), selected_user
+
+
+def _user_display_name(user):
+    return user.get_full_name() or user.username
+
+
+def _date_or_none(value):
+    return value.isoformat() if value else None
+
+
+def _datetime_or_none(value):
+    return timezone.localtime(value).isoformat() if value else None
+
+
+def _money_int(value):
+    return int(value or 0)
+
+
+def _dashboard_schedule_payload(schedule):
+    followup = schedule.followup
+    return {
+        'id': schedule.id,
+        'type': 'schedule',
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'owner': _user_display_name(schedule.user),
+        'date': schedule.visit_date.isoformat(),
+        'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+        'activityType': schedule.activity_type,
+        'activityLabel': schedule.get_activity_type_display(),
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'notes': (schedule.notes or '').strip()[:120],
+        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _dashboard_personal_schedule_payload(schedule):
+    return {
+        'id': schedule.id,
+        'type': 'personal',
+        'customer': schedule.title,
+        'company': schedule.company.name if schedule.company else '',
+        'department': '',
+        'owner': _user_display_name(schedule.user),
+        'date': schedule.schedule_date.isoformat(),
+        'time': schedule.schedule_time.strftime('%H:%M') if schedule.schedule_time else '',
+        'activityType': 'personal',
+        'activityLabel': '개인 일정',
+        'status': 'personal',
+        'statusLabel': '개인 일정',
+        'notes': (schedule.content or '').strip()[:120],
+        'href': reverse('reporting:personal_schedule_detail', args=[schedule.id]),
+        'customerHref': '',
+    }
+
+
+def _dashboard_history_payload(history):
+    followup = history.followup
+    return {
+        'id': history.id,
+        'customer': (
+            followup.customer_name or followup.manager or '고객명 미정'
+        ) if followup else '일반 메모',
+        'company': followup.company.name if followup and followup.company else '',
+        'department': followup.department.name if followup and followup.department else '',
+        'owner': _user_display_name(history.user),
+        'actionType': history.action_type,
+        'actionLabel': history.get_action_type_display(),
+        'summary': (
+            history.next_action or history.meeting_next_action or history.content or ''
+        ).strip()[:140],
+        'nextAction': (history.next_action or history.meeting_next_action or '').strip()[:140],
+        'nextActionDate': _date_or_none(history.next_action_date),
+        'createdAt': _datetime_or_none(history.created_at),
+        'reviewed': bool(history.reviewed_at),
+        'href': reverse('reporting:history_detail', args=[history.id]),
+        'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+    }
+
+
+def _dashboard_followup_payload(followup, latest_history=None, overdue=False):
+    return {
+        'id': followup.id,
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'owner': _user_display_name(followup.user),
+        'priority': followup.priority,
+        'priorityLabel': followup.get_priority_display(),
+        'status': followup.status,
+        'statusLabel': followup.get_status_display(),
+        'pipelineStage': followup.pipeline_stage,
+        'pipelineLabel': followup.get_pipeline_stage_display(),
+        'grade': followup.customer_grade or '',
+        'score': float(followup.get_combined_score()),
+        'overdue': overdue,
+        'lastActivity': _datetime_or_none(latest_history.created_at) if latest_history else None,
+        'nextAction': (
+            latest_history.next_action or latest_history.meeting_next_action or ''
+        ).strip()[:140] if latest_history else '',
+        'nextActionDate': _date_or_none(latest_history.next_action_date) if latest_history else None,
+        'href': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+@never_cache
+@require_http_methods(["GET"])
+def dashboard_summary_api(request):
+    """React CRM dashboard용 읽기 전용 요약 API."""
+    from datetime import timedelta
+    from django.db.models import Case, IntegerField, Value, When
+    from reporting.models import PersonalSchedule
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+    week_end = today + timedelta(days=6)
+    month_start = today.replace(day=1)
+    if today.month == 12:
+        month_end = today.replace(year=today.year + 1, month=1, day=1)
+    else:
+        month_end = today.replace(month=today.month + 1, day=1)
+
+    followups = FollowUp.objects.filter(user__in=scope_users)
+    schedules = Schedule.objects.filter(user__in=scope_users)
+    histories = History.objects.filter(user__in=scope_users, parent_history__isnull=True)
+    personal_schedules = PersonalSchedule.objects.filter(user__in=scope_users)
+
+    today_business_schedules_qs = schedules.filter(
+        visit_date=today,
+    ).exclude(status='cancelled')
+    today_personal_qs = personal_schedules.filter(schedule_date=today)
+    upcoming_business_schedules_qs = schedules.filter(
+        visit_date__gt=today,
+        visit_date__lte=week_end,
+    ).exclude(status='cancelled')
+    upcoming_personal_qs = personal_schedules.filter(
+        schedule_date__gt=today,
+        schedule_date__lte=week_end,
+    )
+
+    today_business_schedules = list(
+        today_business_schedules_qs.select_related(
+            'user', 'followup', 'followup__company', 'followup__department'
+        ).order_by('visit_time')[:8]
+    )
+    today_personal = list(
+        today_personal_qs.select_related('user', 'company').order_by('schedule_time')[:5]
+    )
+    upcoming_business_schedules = list(
+        upcoming_business_schedules_qs.select_related(
+            'user', 'followup', 'followup__company', 'followup__department'
+        ).order_by('visit_date', 'visit_time')[:8]
+    )
+    upcoming_personal = list(
+        upcoming_personal_qs.select_related('user', 'company').order_by('schedule_date', 'schedule_time')[:5]
+    )
+
+    overdue_actions_qs = histories.filter(
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+    ).exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).order_by('next_action_date', '-created_at')
+    due_today_actions_qs = histories.filter(
+        next_action_date=today,
+    ).exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).order_by('-created_at')
+    recent_histories_qs = histories.exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).order_by('-created_at')
+
+    overdue_actions = list(overdue_actions_qs[:6])
+    due_today_actions = list(due_today_actions_qs[:6])
+    recent_histories = list(recent_histories_qs[:8])
+    overdue_followup_ids = {
+        followup_id for followup_id in overdue_actions_qs.values_list('followup_id', flat=True)[:100]
+        if followup_id
+    }
+
+    priority_order = Case(
+        When(priority='urgent', then=Value(0)),
+        When(priority='followup', then=Value(1)),
+        When(priority='scheduled', then=Value(2)),
+        When(priority='long_term', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+    priority_followups = list(
+        followups.filter(
+            Q(priority__in=['urgent', 'followup']) |
+            Q(customer_grade__in=['VIP', 'A']) |
+            Q(id__in=overdue_followup_ids)
+        ).select_related('user', 'company', 'department').annotate(
+            priority_rank=priority_order
+        ).order_by('priority_rank', '-ai_score', '-updated_at')[:6]
+    )
+    if not priority_followups:
+        priority_followups = list(
+            followups.filter(status='active').select_related(
+                'user', 'company', 'department'
+            ).annotate(priority_rank=priority_order).order_by(
+                'priority_rank', '-ai_score', '-updated_at'
+            )[:6]
+        )
+
+    latest_history_by_followup = {}
+    for followup in priority_followups:
+        latest_history_by_followup[followup.id] = followup.histories.filter(
+            parent_history__isnull=True,
+        ).exclude(action_type='memo').order_by('-created_at').first()
+
+    pipeline_stage_labels = dict(FollowUp.PIPELINE_STAGE_CHOICES)
+    pipeline_stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    pipeline_counts = {
+        item['pipeline_stage']: item['count']
+        for item in followups.values('pipeline_stage').annotate(count=Count('id'))
+    }
+    pipeline_summary = [
+        {
+            'stage': stage,
+            'label': pipeline_stage_labels.get(stage, stage),
+            'count': pipeline_counts.get(stage, 0),
+        }
+        for stage in pipeline_stage_order
+    ]
+
+    thirty_days_ago = today - timedelta(days=30)
+    pending_review_count = 0
+    team_activity = []
+    if user_profile.can_view_all_users():
+        pending_review_count = histories.filter(
+            action_type__in=['customer_meeting', 'delivery_schedule', 'quote', 'service'],
+            reviewed_at__isnull=True,
+            created_at__date__gte=thirty_days_ago,
+        ).exclude(action_type='memo').count()
+        team_users = list(scope_users.filter(userprofile__role='salesman')[:8])
+        activity_counts = {
+            item['user_id']: item['count']
+            for item in histories.filter(
+                user__in=team_users,
+                created_at__date__gte=thirty_days_ago,
+            ).exclude(action_type='memo').values('user_id').annotate(count=Count('id'))
+        }
+        overdue_counts = {
+            item['user_id']: item['count']
+            for item in histories.filter(
+                user__in=team_users,
+                next_action_date__lt=today,
+                next_action_date__isnull=False,
+            ).exclude(action_type='memo').values('user_id').annotate(count=Count('id'))
+        }
+        team_activity = [
+            {
+                'userId': user.id,
+                'name': _user_display_name(user),
+                'recentCount': activity_counts.get(user.id, 0),
+                'overdueCount': overdue_counts.get(user.id, 0),
+            }
+            for user in team_users
+        ]
+
+    monthly_revenue = DeliveryItem.objects.filter(
+        schedule__in=schedules,
+        schedule__activity_type='delivery',
+        schedule__status__in=['scheduled', 'completed'],
+        schedule__visit_date__gte=month_start,
+        schedule__visit_date__lt=month_end,
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    monthly_activity_count = histories.exclude(action_type='memo').filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=month_end,
+    ).count()
+
+    scope_user_count = scope_users.count()
+    scope_label = '전체'
+    if selected_user:
+        scope_label = _user_display_name(selected_user)
+    elif not user_profile.can_view_all_users():
+        scope_label = _user_display_name(request.user)
+    elif user_profile.company:
+        scope_label = f'{user_profile.company.name} 팀'
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'userCount': scope_user_count,
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'currentUser': {
+            'id': request.user.id,
+            'name': _user_display_name(request.user),
+            'role': user_profile.role,
+            'roleLabel': user_profile.get_role_display(),
+            'company': user_profile.company.name if user_profile.company else '',
+        },
+        'metrics': {
+            'totalCustomers': followups.count(),
+            'activeCustomers': followups.filter(status='active').count(),
+            'todaySchedules': today_business_schedules_qs.count() + today_personal_qs.count(),
+            'weeklySchedules': (
+                today_business_schedules_qs.count() +
+                today_personal_qs.count() +
+                upcoming_business_schedules_qs.count() +
+                upcoming_personal_qs.count()
+            ),
+            'overdueActions': overdue_actions_qs.count(),
+            'dueTodayActions': due_today_actions_qs.count(),
+            'recentNotes': histories.exclude(action_type='memo').count(),
+            'pendingReviews': pending_review_count,
+            'monthlyActivity': monthly_activity_count,
+            'monthlyRevenue': _money_int(monthly_revenue),
+        },
+        'links': {
+            'operationalDashboard': reverse('reporting:dashboard'),
+            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+            'customers': reverse('reporting:followup_list'),
+            'customerReport': reverse('reporting:customer_report'),
+            'notes': reverse('reporting:history_list'),
+            'schedules': reverse('reporting:schedule_list'),
+            'calendar': reverse('reporting:schedule_calendar'),
+            'pipeline': reverse('reporting:funnel_pipeline'),
+            'weeklyReports': reverse('reporting:weekly_report_list'),
+            'pendingReviews': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
+        },
+        'today': {
+            'date': today.isoformat(),
+            'items': (
+                [_dashboard_schedule_payload(schedule) for schedule in today_business_schedules] +
+                [_dashboard_personal_schedule_payload(schedule) for schedule in today_personal]
+            ),
+        },
+        'upcomingSchedules': [
+            _dashboard_schedule_payload(schedule)
+            for schedule in upcoming_business_schedules
+        ] + [
+            _dashboard_personal_schedule_payload(schedule)
+            for schedule in upcoming_personal
+        ],
+        'overdueActions': [
+            _dashboard_history_payload(history)
+            for history in overdue_actions
+        ],
+        'dueTodayActions': [
+            _dashboard_history_payload(history)
+            for history in due_today_actions
+        ],
+        'recentActivities': [
+            _dashboard_history_payload(history)
+            for history in recent_histories
+        ],
+        'priorityCustomers': [
+            _dashboard_followup_payload(
+                followup,
+                latest_history=latest_history_by_followup.get(followup.id),
+                overdue=followup.id in overdue_followup_ids,
+            )
+            for followup in priority_followups
+        ],
+        'pipelineSummary': pipeline_summary,
+        'teamActivity': team_activity,
+    })
+
+
+def _customers_followup_payload(followup, today):
+    recent_histories = list(getattr(followup, 'customer_recent_histories', []))
+    latest_history = recent_histories[0] if recent_histories else None
+    next_action_date = latest_history.next_action_date if latest_history else None
+    return {
+        'id': followup.id,
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'manager': followup.manager or '',
+        'owner': _user_display_name(followup.user),
+        'ownerId': followup.user_id,
+        'priority': followup.priority,
+        'priorityLabel': followup.get_priority_display(),
+        'status': followup.status,
+        'statusLabel': followup.get_status_display(),
+        'pipelineStage': followup.pipeline_stage,
+        'pipelineLabel': followup.get_pipeline_stage_display(),
+        'grade': followup.customer_grade or '',
+        'score': float(followup.get_combined_score()),
+        'phone': followup.phone_number or '',
+        'email': followup.email or '',
+        'notes': (followup.notes or '').strip()[:140],
+        'lastActivityAt': _datetime_or_none(latest_history.created_at) if latest_history else None,
+        'lastActivityLabel': latest_history.get_action_type_display() if latest_history else '',
+        'lastActivitySummary': (
+            latest_history.content or latest_history.meeting_next_action or latest_history.next_action or ''
+        ).strip()[:140] if latest_history else '',
+        'nextAction': (
+            latest_history.next_action or latest_history.meeting_next_action or ''
+        ).strip()[:140] if latest_history else '',
+        'nextActionDate': _date_or_none(next_action_date),
+        'overdue': bool(next_action_date and next_action_date < today),
+        'href': reverse('reporting:followup_detail', args=[followup.id]),
+        'companyHref': reverse('reporting:company_detail', args=[followup.company_id]) if followup.company_id else '',
+        'createScheduleHref': f"{reverse('reporting:schedule_create')}?followup={followup.id}",
+    }
+
+
+@never_cache
+@require_http_methods(["GET"])
+def customers_summary_api(request):
+    """React CRM customers 화면용 읽기 전용 API."""
+    from django.db.models import Case, IntegerField, Value, When
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+
+    q = request.GET.get('q', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    priority = request.GET.get('priority', '').strip()
+    stage = request.GET.get('stage', '').strip()
+
+    base_followups = FollowUp.objects.filter(user__in=scope_users)
+    followups = base_followups
+
+    if q:
+        followups = followups.filter(
+            Q(customer_name__icontains=q) |
+            Q(manager__icontains=q) |
+            Q(company__name__icontains=q) |
+            Q(department__name__icontains=q) |
+            Q(email__icontains=q) |
+            Q(phone_number__icontains=q) |
+            Q(notes__icontains=q)
+        )
+
+    if owner:
+        try:
+            owner_id = int(owner)
+            if scope_users.filter(id=owner_id).exists():
+                followups = followups.filter(user_id=owner_id)
+        except ValueError:
+            pass
+
+    valid_priorities = {value for value, _label in FollowUp.PRIORITY_CHOICES}
+    if priority in valid_priorities:
+        followups = followups.filter(priority=priority)
+
+    valid_stages = {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}
+    if stage in valid_stages:
+        followups = followups.filter(pipeline_stage=stage)
+
+    priority_order = Case(
+        When(priority='urgent', then=Value(0)),
+        When(priority='followup', then=Value(1)),
+        When(priority='scheduled', then=Value(2)),
+        When(priority='long_term', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+    recent_histories_qs = History.objects.filter(
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').order_by('-created_at')
+
+    followups = followups.select_related('user', 'company', 'department').prefetch_related(
+        Prefetch('histories', queryset=recent_histories_qs, to_attr='customer_recent_histories')
+    ).annotate(priority_rank=priority_order).order_by(
+        'priority_rank', '-ai_score', '-updated_at', 'company__name', 'customer_name'
+    )
+
+    customers = list(followups[:60])
+
+    overdue_followup_ids = {
+        followup_id
+        for followup_id in History.objects.filter(
+            user__in=scope_users,
+            next_action_date__lt=today,
+            next_action_date__isnull=False,
+            parent_history__isnull=True,
+        ).exclude(action_type='memo').values_list('followup_id', flat=True)[:200]
+        if followup_id
+    }
+    priority_customers = list(
+        base_followups.filter(
+            Q(priority__in=['urgent', 'followup']) |
+            Q(customer_grade__in=['VIP', 'A']) |
+            Q(id__in=overdue_followup_ids)
+        ).select_related('user', 'company', 'department').prefetch_related(
+            Prefetch('histories', queryset=recent_histories_qs, to_attr='customer_recent_histories')
+        ).annotate(priority_rank=priority_order).order_by(
+            'priority_rank', '-ai_score', '-updated_at'
+        )[:10]
+    )
+
+    owner_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+        }
+        for user in scope_users.order_by('username')
+    ]
+
+    scope_label = '전체'
+    if selected_user:
+        scope_label = _user_display_name(selected_user)
+    elif not user_profile.can_view_all_users():
+        scope_label = _user_display_name(request.user)
+    elif user_profile.company:
+        scope_label = f'{user_profile.company.name} 팀'
+
+    filtered_count = followups.count()
+    active_count = base_followups.filter(status='active').count()
+    urgent_count = base_followups.filter(priority='urgent').count()
+    followup_count = base_followups.filter(priority='followup').count()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'owner': owner,
+            'priority': priority,
+            'stage': stage,
+        },
+        'options': {
+            'owners': owner_options,
+            'priorities': [
+                {'value': value, 'label': label}
+                for value, label in FollowUp.PRIORITY_CHOICES
+            ],
+            'stages': [
+                {'value': value, 'label': label}
+                for value, label in FollowUp.PIPELINE_STAGE_CHOICES
+            ],
+        },
+        'metrics': {
+            'totalCustomers': base_followups.count(),
+            'filteredCustomers': filtered_count,
+            'activeCustomers': active_count,
+            'urgentCustomers': urgent_count,
+            'followupCustomers': followup_count,
+            'priorityCustomers': len(priority_customers),
+            'overdueCustomers': base_followups.filter(id__in=overdue_followup_ids).count(),
+            'vipCustomers': base_followups.filter(customer_grade__in=['VIP', 'A']).count(),
+        },
+        'links': {
+            'createCustomer': reverse('reporting:followup_create'),
+            'customers': reverse('reporting:followup_list'),
+            'companies': reverse('reporting:company_list'),
+            'customerReport': reverse('reporting:customer_report'),
+            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+        },
+        'customers': [
+            _customers_followup_payload(followup, today)
+            for followup in customers
+        ],
+        'priorityCustomers': [
+            _customers_followup_payload(followup, today)
+            for followup in priority_customers
+        ],
+    })
+
+
+def _notes_history_payload(history, today):
+    followup = history.followup
+    activity_date = history.meeting_date or history.delivery_date
+    if not activity_date and history.schedule_id and history.schedule:
+        activity_date = history.schedule.visit_date
+    if not activity_date and history.personal_schedule_id and history.personal_schedule:
+        activity_date = history.personal_schedule.schedule_date
+    if not activity_date:
+        activity_date = history.created_at.date()
+
+    next_action = (history.next_action or history.meeting_next_action or '').strip()
+    next_action_date = history.next_action_date
+    review_required_types = {'customer_meeting', 'delivery_schedule', 'quote', 'service'}
+
+    return {
+        'id': history.id,
+        'customer': (
+            followup.customer_name or followup.manager or '고객명 미정'
+        ) if followup else '일반 메모',
+        'company': followup.company.name if followup and followup.company else '',
+        'department': followup.department.name if followup and followup.department else '',
+        'owner': _user_display_name(history.user),
+        'ownerId': history.user_id,
+        'actionType': history.action_type,
+        'actionLabel': history.get_action_type_display(),
+        'serviceStatus': history.service_status or '',
+        'serviceStatusLabel': history.get_service_status_display() if history.service_status else '',
+        'summary': (
+            history.content or history.meeting_situation or history.meeting_next_action or history.delivery_items or ''
+        ).strip()[:180],
+        'nextAction': next_action[:160],
+        'nextActionDate': _date_or_none(next_action_date),
+        'overdue': bool(next_action_date and next_action_date < today and not history.reviewed_at),
+        'activityDate': _date_or_none(activity_date),
+        'createdAt': _datetime_or_none(history.created_at),
+        'reviewed': bool(history.reviewed_at),
+        'reviewRequired': history.action_type in review_required_types,
+        'href': reverse('reporting:history_detail', args=[history.id]),
+        'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        'scheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
+    }
+
+
+@never_cache
+@require_http_methods(["GET"])
+def notes_summary_api(request):
+    """React CRM notes 화면용 읽기 전용 API."""
+    from datetime import timedelta
+    from django.db.models import Case, DateField, F, When
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+
+    q = request.GET.get('q', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    action_type = request.GET.get('actionType', '').strip()
+    review = request.GET.get('review', '').strip()
+    next_action = request.GET.get('nextAction', '').strip()
+
+    base_notes = History.objects.filter(
+        user__in=scope_users,
+        parent_history__isnull=True,
+    )
+    notes = base_notes.select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule'
+    )
+
+    if q:
+        notes = notes.filter(
+            Q(content__icontains=q) |
+            Q(meeting_situation__icontains=q) |
+            Q(meeting_next_action__icontains=q) |
+            Q(next_action__icontains=q) |
+            Q(delivery_items__icontains=q) |
+            Q(followup__customer_name__icontains=q) |
+            Q(followup__manager__icontains=q) |
+            Q(followup__company__name__icontains=q) |
+            Q(followup__department__name__icontains=q)
+        )
+
+    if owner:
+        try:
+            owner_id = int(owner)
+            if scope_users.filter(id=owner_id).exists():
+                notes = notes.filter(user_id=owner_id)
+        except ValueError:
+            pass
+
+    valid_action_types = {value for value, _label in History.ACTION_CHOICES}
+    if action_type in valid_action_types:
+        notes = notes.filter(action_type=action_type)
+
+    review_required_types = ['customer_meeting', 'delivery_schedule', 'quote', 'service']
+    if review == 'unreviewed':
+        notes = notes.filter(action_type__in=review_required_types, reviewed_at__isnull=True)
+    elif review == 'reviewed':
+        notes = notes.filter(reviewed_at__isnull=False)
+
+    if next_action == 'overdue':
+        notes = notes.filter(next_action_date__lt=today, next_action_date__isnull=False)
+    elif next_action == 'upcoming':
+        week_end = today + timedelta(days=7)
+        notes = notes.filter(
+            next_action_date__gte=today,
+            next_action_date__lte=week_end,
+            next_action_date__isnull=False,
+        )
+    elif next_action == 'has_date':
+        notes = notes.filter(next_action_date__isnull=False)
+
+    notes = notes.annotate(
+        sort_date=Case(
+            When(schedule__isnull=False, then=F('schedule__visit_date')),
+            When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
+            default=F('created_at__date'),
+            output_field=DateField(),
+        )
+    ).order_by('-sort_date', '-created_at')
+
+    owner_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+        }
+        for user in scope_users.order_by('username')
+    ]
+
+    scope_label = '전체'
+    if selected_user:
+        scope_label = _user_display_name(selected_user)
+    elif not user_profile.can_view_all_users():
+        scope_label = _user_display_name(request.user)
+    elif user_profile.company:
+        scope_label = f'{user_profile.company.name} 팀'
+
+    filtered_count = notes.count()
+    base_non_memo = base_notes.exclude(action_type='memo')
+    unreviewed_count = base_notes.filter(
+        action_type__in=review_required_types,
+        reviewed_at__isnull=True,
+    ).count()
+    overdue_count = base_notes.filter(
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+    ).exclude(action_type='memo').count()
+    upcoming_count = base_notes.filter(
+        next_action_date__gte=today,
+        next_action_date__lte=today + timedelta(days=7),
+        next_action_date__isnull=False,
+    ).exclude(action_type='memo').count()
+
+    action_counts = {
+        item['action_type']: item['count']
+        for item in base_notes.values('action_type').annotate(count=Count('id'))
+    }
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'owner': owner,
+            'actionType': action_type,
+            'review': review,
+            'nextAction': next_action,
+        },
+        'options': {
+            'owners': owner_options,
+            'actionTypes': [
+                {'value': value, 'label': label}
+                for value, label in History.ACTION_CHOICES
+            ],
+            'reviewStates': [
+                {'value': 'unreviewed', 'label': '미검토'},
+                {'value': 'reviewed', 'label': '검토 완료'},
+            ],
+            'nextActionStates': [
+                {'value': 'overdue', 'label': '지연'},
+                {'value': 'upcoming', 'label': '7일 이내'},
+                {'value': 'has_date', 'label': '예정일 있음'},
+            ],
+        },
+        'metrics': {
+            'totalNotes': base_notes.count(),
+            'activityNotes': base_non_memo.count(),
+            'filteredNotes': filtered_count,
+            'unreviewedNotes': unreviewed_count,
+            'overdueActions': overdue_count,
+            'upcomingActions': upcoming_count,
+        },
+        'actionCounts': [
+            {
+                'value': value,
+                'label': label,
+                'count': action_counts.get(value, 0),
+            }
+            for value, label in History.ACTION_CHOICES
+        ],
+        'links': {
+            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+            'notes': reverse('reporting:history_list'),
+            'unreviewed': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
+            'weeklyReports': reverse('reporting:weekly_report_list'),
+        },
+        'notes': [
+            _notes_history_payload(note, today)
+            for note in list(notes[:80])
+        ],
+    })
+
+
+def _schedules_schedule_payload(schedule, today):
+    followup = schedule.followup
+    history_count = getattr(schedule, 'history_count', None)
+    return {
+        'id': schedule.id,
+        'type': 'customer',
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'title': followup.customer_name or followup.manager or '고객 일정',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'owner': _user_display_name(schedule.user),
+        'ownerId': schedule.user_id,
+        'date': _date_or_none(schedule.visit_date),
+        'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+        'activityType': schedule.activity_type,
+        'activityLabel': schedule.get_activity_type_display(),
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'location': schedule.location or '',
+        'notes': (schedule.notes or '').strip()[:180],
+        'priority': followup.priority,
+        'priorityLabel': followup.get_priority_display(),
+        'expectedRevenue': _money_int(schedule.expected_revenue),
+        'probability': schedule.probability or 0,
+        'expectedCloseDate': _date_or_none(schedule.expected_close_date),
+        'overdue': bool(schedule.status == 'scheduled' and schedule.visit_date < today),
+        'historyCount': history_count if history_count is not None else schedule.histories.count(),
+        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+    }
+
+
+def _schedules_personal_payload(personal_schedule, today):
+    return {
+        'id': personal_schedule.id,
+        'type': 'personal',
+        'customer': personal_schedule.title,
+        'title': personal_schedule.title,
+        'company': personal_schedule.company.name if personal_schedule.company else '',
+        'department': '',
+        'owner': _user_display_name(personal_schedule.user),
+        'ownerId': personal_schedule.user_id,
+        'date': _date_or_none(personal_schedule.schedule_date),
+        'time': personal_schedule.schedule_time.strftime('%H:%M') if personal_schedule.schedule_time else '',
+        'activityType': 'personal',
+        'activityLabel': '개인 일정',
+        'status': 'personal',
+        'statusLabel': '개인 일정',
+        'location': '',
+        'notes': (personal_schedule.content or '').strip()[:180],
+        'priority': '',
+        'priorityLabel': '',
+        'expectedRevenue': 0,
+        'probability': 0,
+        'expectedCloseDate': None,
+        'overdue': False,
+        'historyCount': getattr(personal_schedule, 'history_count', 0),
+        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'customerHref': '',
+        'createHistoryHref': '',
+    }
+
+
+def _schedules_combined_items(schedules, personal_schedules, today, limit=80):
+    items = [
+        _schedules_schedule_payload(schedule, today)
+        for schedule in schedules
+    ] + [
+        _schedules_personal_payload(personal_schedule, today)
+        for personal_schedule in personal_schedules
+    ]
+    items.sort(key=lambda item: (item['date'] or '', item['time'] or '', item['type'], item['id']))
+    return items[:limit]
+
+
+@never_cache
+@require_http_methods(["GET"])
+def schedules_summary_api(request):
+    """React CRM schedules 화면용 읽기 전용 API."""
+    from datetime import timedelta
+    from .models import PersonalSchedule
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+    week_end = today + timedelta(days=7)
+
+    q = request.GET.get('q', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    status = request.GET.get('status', '').strip()
+    activity_type = request.GET.get('activityType', '').strip()
+    range_filter = request.GET.get('range', '').strip()
+
+    base_schedules = Schedule.objects.filter(user__in=scope_users)
+    base_personal_schedules = PersonalSchedule.objects.filter(user__in=scope_users)
+    schedules = base_schedules.select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    )
+    personal_schedules = base_personal_schedules.select_related('user', 'company')
+
+    if q:
+        schedules = schedules.filter(
+            Q(followup__customer_name__icontains=q) |
+            Q(followup__manager__icontains=q) |
+            Q(followup__company__name__icontains=q) |
+            Q(followup__department__name__icontains=q) |
+            Q(location__icontains=q) |
+            Q(notes__icontains=q)
+        )
+        personal_schedules = personal_schedules.filter(
+            Q(title__icontains=q) |
+            Q(content__icontains=q) |
+            Q(company__name__icontains=q)
+        )
+
+    if owner:
+        try:
+            owner_id = int(owner)
+            if scope_users.filter(id=owner_id).exists():
+                schedules = schedules.filter(user_id=owner_id)
+                personal_schedules = personal_schedules.filter(user_id=owner_id)
+        except ValueError:
+            pass
+
+    include_customer = True
+    include_personal = True
+    valid_statuses = {value for value, _label in Schedule.STATUS_CHOICES}
+    if status in valid_statuses:
+        schedules = schedules.filter(status=status)
+        include_personal = False
+    elif status == 'personal':
+        include_customer = False
+
+    valid_activity_types = {value for value, _label in Schedule.ACTIVITY_TYPE_CHOICES}
+    if activity_type in valid_activity_types:
+        schedules = schedules.filter(activity_type=activity_type)
+        include_personal = False
+    elif activity_type == 'personal':
+        include_customer = False
+
+    if range_filter == 'today':
+        schedules = schedules.filter(visit_date=today)
+        personal_schedules = personal_schedules.filter(schedule_date=today)
+    elif range_filter == 'week':
+        schedules = schedules.filter(visit_date__gte=today, visit_date__lte=week_end)
+        personal_schedules = personal_schedules.filter(schedule_date__gte=today, schedule_date__lte=week_end)
+    elif range_filter == 'overdue':
+        schedules = schedules.filter(visit_date__lt=today, status='scheduled')
+        include_personal = False
+    elif range_filter == 'past':
+        schedules = schedules.filter(visit_date__lt=today)
+        personal_schedules = personal_schedules.filter(schedule_date__lt=today)
+
+    if not include_customer:
+        schedules = Schedule.objects.none()
+    if not include_personal:
+        personal_schedules = PersonalSchedule.objects.none()
+
+    schedules = schedules.annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('visit_date', 'visit_time')
+    personal_schedules = personal_schedules.annotate(
+        history_count=Count('histories', distinct=True)
+    ).order_by('schedule_date', 'schedule_time')
+
+    owner_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+        }
+        for user in scope_users.order_by('username')
+    ]
+
+    scope_label = '전체'
+    if selected_user:
+        scope_label = _user_display_name(selected_user)
+    elif not user_profile.can_view_all_users():
+        scope_label = _user_display_name(request.user)
+    elif user_profile.company:
+        scope_label = f'{user_profile.company.name} 팀'
+
+    status_counts = {
+        item['status']: item['count']
+        for item in base_schedules.values('status').annotate(count=Count('id'))
+    }
+    activity_counts = {
+        item['activity_type']: item['count']
+        for item in base_schedules.values('activity_type').annotate(count=Count('id'))
+    }
+    personal_count = base_personal_schedules.count()
+
+    today_schedules = base_schedules.filter(visit_date=today).select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('visit_time')
+    today_personal_schedules = base_personal_schedules.filter(schedule_date=today).select_related(
+        'user', 'company'
+    ).annotate(history_count=Count('histories', distinct=True)).order_by('schedule_time')
+
+    upcoming_schedules = base_schedules.filter(
+        visit_date__gt=today,
+        visit_date__lte=week_end,
+    ).select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('visit_date', 'visit_time')
+    upcoming_personal_schedules = base_personal_schedules.filter(
+        schedule_date__gt=today,
+        schedule_date__lte=week_end,
+    ).select_related('user', 'company').annotate(
+        history_count=Count('histories', distinct=True)
+    ).order_by('schedule_date', 'schedule_time')
+
+    overdue_schedules = base_schedules.filter(
+        visit_date__lt=today,
+        status='scheduled',
+    ).select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('-visit_date', 'visit_time')[:10]
+
+    filtered_customer_count = schedules.count()
+    filtered_personal_count = personal_schedules.count()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'owner': owner,
+            'status': status,
+            'activityType': activity_type,
+            'range': range_filter,
+        },
+        'options': {
+            'owners': owner_options,
+            'statuses': [
+                {'value': value, 'label': label}
+                for value, label in Schedule.STATUS_CHOICES
+            ] + [{'value': 'personal', 'label': '개인 일정'}],
+            'activityTypes': [
+                {'value': value, 'label': label}
+                for value, label in Schedule.ACTIVITY_TYPE_CHOICES
+            ] + [{'value': 'personal', 'label': '개인 일정'}],
+            'ranges': [
+                {'value': 'today', 'label': '오늘'},
+                {'value': 'week', 'label': '7일 이내'},
+                {'value': 'overdue', 'label': '지연'},
+                {'value': 'past', 'label': '지난 일정'},
+            ],
+        },
+        'metrics': {
+            'totalSchedules': base_schedules.count() + personal_count,
+            'customerSchedules': base_schedules.count(),
+            'personalSchedules': personal_count,
+            'filteredSchedules': filtered_customer_count + filtered_personal_count,
+            'todaySchedules': base_schedules.filter(visit_date=today).count() + base_personal_schedules.filter(schedule_date=today).count(),
+            'weekSchedules': base_schedules.filter(visit_date__gte=today, visit_date__lte=week_end).count() + base_personal_schedules.filter(schedule_date__gte=today, schedule_date__lte=week_end).count(),
+            'overdueSchedules': base_schedules.filter(visit_date__lt=today, status='scheduled').count(),
+            'scheduledSchedules': base_schedules.filter(status='scheduled').count(),
+            'completedSchedules': base_schedules.filter(status='completed').count(),
+            'cancelledSchedules': base_schedules.filter(status='cancelled').count(),
+        },
+        'statusCounts': [
+            {
+                'value': value,
+                'label': label,
+                'count': status_counts.get(value, 0),
+            }
+            for value, label in Schedule.STATUS_CHOICES
+        ] + [{'value': 'personal', 'label': '개인 일정', 'count': personal_count}],
+        'activityCounts': [
+            {
+                'value': value,
+                'label': label,
+                'count': activity_counts.get(value, 0),
+            }
+            for value, label in Schedule.ACTIVITY_TYPE_CHOICES
+        ] + [{'value': 'personal', 'label': '개인 일정', 'count': personal_count}],
+        'links': {
+            'createSchedule': reverse('reporting:schedule_create'),
+            'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
+            'schedules': reverse('reporting:schedule_list'),
+            'calendar': reverse('reporting:schedule_calendar'),
+            'weeklyReports': reverse('reporting:weekly_report_list'),
+        },
+        'today': _schedules_combined_items(today_schedules[:20], today_personal_schedules[:20], today, limit=20),
+        'upcoming': _schedules_combined_items(upcoming_schedules[:30], upcoming_personal_schedules[:30], today, limit=30),
+        'overdue': [
+            _schedules_schedule_payload(schedule, today)
+            for schedule in overdue_schedules
+        ],
+        'schedules': _schedules_combined_items(schedules[:80], personal_schedules[:80], today, limit=80),
+    })
+
+
+def _ai_workspace_analysis_summary(analysis):
+    data = analysis.analysis_data or {}
+    if isinstance(data, dict):
+        return (
+            data.get('department_summary') or
+            data.get('customer_summary') or
+            data.get('summary') or
+            ''
+        )
+    return ''
+
+
+@never_cache
+@require_http_methods(["GET"])
+def ai_workspace_summary_api(request):
+    """React CRM AI workspace 화면용 읽기 전용 API."""
+    from datetime import timedelta
+    from ai_chat.department_prompt import suggest_goals_from_department_analysis
+    from ai_chat.models import AIDepartmentAnalysis, AIFollowUpAnalysis, PainPointCard
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    can_use_ai = bool(user_profile and user_profile.can_use_ai)
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=4)
+
+    base_links = {
+        'aiHub': reverse('ai_chat:department_list'),
+        'weeklyReports': reverse('reporting:weekly_report_list'),
+        'weeklyReportCreate': reverse('reporting:weekly_report_create'),
+        'weeklyAiDraft': (
+            f"{reverse('reporting:weekly_report_ai_draft')}"
+            f"?week_start={week_start.isoformat()}&week_end={week_end.isoformat()}"
+        ),
+        'customers': reverse('reporting:followup_list'),
+        'notes': reverse('reporting:history_list'),
+        'dashboard': reverse('reporting:dashboard'),
+    }
+
+    current_user = {
+        'id': request.user.id,
+        'name': _user_display_name(request.user),
+        'role': user_profile.role,
+        'roleLabel': user_profile.get_role_display(),
+        'company': user_profile.company.name if user_profile.company else '',
+        'canUseAi': can_use_ai,
+    }
+
+    if not can_use_ai:
+        return JsonResponse({
+            'success': True,
+            'source': 'django',
+            'generatedAt': timezone.now().isoformat(),
+            'currentUser': current_user,
+            'permission': {
+                'canUseAi': False,
+                'message': 'AI 기능 사용 권한이 없습니다. 관리자에게 문의하세요.',
+            },
+            'metrics': {
+                'departmentsWithCustomers': 0,
+                'analyzedDepartments': 0,
+                'painpointCards': 0,
+                'unverifiedPainpoints': 0,
+                'followupAnalyses': 0,
+                'weeklyReportsThisMonth': 0,
+            },
+            'links': base_links,
+            'week': {
+                'start': week_start.isoformat(),
+                'end': week_end.isoformat(),
+            },
+            'departments': [],
+            'recentDepartmentAnalyses': [],
+            'painpoints': [],
+            'followupTargets': [],
+            'recentFollowupAnalyses': [],
+            'recommendedGoals': [],
+        })
+
+    followup_rows = list(FollowUp.objects.filter(
+        user=request.user,
+        department__isnull=False,
+    ).values('department_id', 'customer_name').order_by('department_id', 'customer_name'))
+    customer_names_by_department = {}
+    followup_counts_by_department = {}
+    for row in followup_rows:
+        department_id = row['department_id']
+        followup_counts_by_department[department_id] = followup_counts_by_department.get(department_id, 0) + 1
+        if row['customer_name']:
+            customer_names_by_department.setdefault(department_id, []).append(row['customer_name'])
+
+    department_ids = list(followup_counts_by_department.keys())
+    departments = list(Department.objects.filter(
+        id__in=department_ids,
+    ).select_related('company').order_by('company__name', 'name'))
+    analyses = list(AIDepartmentAnalysis.objects.filter(
+        user=request.user,
+        department_id__in=department_ids,
+    ).select_related('department', 'department__company').order_by('-updated_at'))
+    analysis_map = {analysis.department_id: analysis for analysis in analyses}
+
+    painpoint_counts = {
+        item['analysis_id']: item['count']
+        for item in PainPointCard.objects.filter(
+            analysis__user=request.user,
+        ).values('analysis_id').annotate(count=Count('id'))
+    }
+    unverified_counts = {
+        item['analysis_id']: item['count']
+        for item in PainPointCard.objects.filter(
+            analysis__user=request.user,
+            verification_status='unverified',
+        ).values('analysis_id').annotate(count=Count('id'))
+    }
+
+    department_payload = []
+    for department in departments:
+        analysis = analysis_map.get(department.id)
+        customer_names = customer_names_by_department.get(department.id, [])
+        department_payload.append({
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+            'customerCount': followup_counts_by_department.get(department.id, 0),
+            'customerPreview': customer_names[:4],
+            'hasAnalysis': analysis is not None,
+            'meetingCount': analysis.meeting_count if analysis else 0,
+            'quoteCount': analysis.quote_count if analysis else 0,
+            'deliveryCount': analysis.delivery_count if analysis else 0,
+            'painpointCount': painpoint_counts.get(analysis.id, 0) if analysis else 0,
+            'unverifiedPainpointCount': unverified_counts.get(analysis.id, 0) if analysis else 0,
+            'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+            'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
+            'href': reverse('ai_chat:department_analysis', args=[department.id]),
+            'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}",
+            'runHref': reverse('ai_chat:run_analysis', args=[department.id]),
+        })
+
+    painpoint_payload = []
+    for card in PainPointCard.objects.filter(
+        analysis__user=request.user,
+        verification_status='unverified',
+    ).select_related('analysis', 'analysis__department', 'analysis__department__company').order_by(
+        '-confidence_score', '-created_at'
+    )[:8]:
+        department = card.analysis.department
+        painpoint_payload.append({
+            'id': card.id,
+            'category': card.category,
+            'categoryLabel': card.get_category_display(),
+            'hypothesis': card.hypothesis[:180],
+            'confidence': card.confidence,
+            'confidenceLabel': card.get_confidence_display(),
+            'confidenceScore': card.confidence_score,
+            'department': department.name,
+            'company': department.company.name if department.company else '',
+            'question': card.verification_question[:160],
+            'href': reverse('ai_chat:department_analysis', args=[department.id]),
+        })
+
+    followup_analyses = list(AIFollowUpAnalysis.objects.filter(
+        user=request.user,
+    ).select_related('followup', 'followup__company', 'followup__department').order_by('-updated_at')[:8])
+    followup_analysis_map = {analysis.followup_id: analysis for analysis in followup_analyses}
+    followup_targets = []
+    for followup in FollowUp.objects.filter(
+        user=request.user,
+    ).select_related('company', 'department').order_by('-ai_score', '-updated_at')[:10]:
+        analysis = followup_analysis_map.get(followup.id)
+        followup_targets.append({
+            'id': followup.id,
+            'customer': followup.customer_name or followup.manager or '고객명 미정',
+            'company': followup.company.name if followup.company else '',
+            'department': followup.department.name if followup.department else '',
+            'grade': followup.customer_grade or '',
+            'score': float(followup.get_combined_score()),
+            'priority': followup.priority,
+            'priorityLabel': followup.get_priority_display(),
+            'hasAnalysis': analysis is not None,
+            'analysisUpdatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
+            'analysisSummary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:160],
+            'href': reverse('ai_chat:followup_analysis', args=[followup.id]),
+            'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        })
+
+    recent_department_analyses = []
+    for analysis in analyses[:6]:
+        department = analysis.department
+        recent_department_analyses.append({
+            'id': analysis.id,
+            'departmentId': department.id,
+            'department': department.name,
+            'company': department.company.name if department.company else '',
+            'summary': _ai_workspace_analysis_summary(analysis)[:180],
+            'meetingCount': analysis.meeting_count,
+            'quoteCount': analysis.quote_count,
+            'deliveryCount': analysis.delivery_count,
+            'updatedAt': _datetime_or_none(analysis.updated_at),
+            'href': reverse('ai_chat:department_analysis', args=[department.id]),
+        })
+
+    recent_followup_analyses = []
+    for analysis in followup_analyses:
+        followup = analysis.followup
+        recent_followup_analyses.append({
+            'id': analysis.id,
+            'followupId': followup.id,
+            'customer': followup.customer_name or followup.manager or '고객명 미정',
+            'company': followup.company.name if followup.company else '',
+            'department': followup.department.name if followup.department else '',
+            'summary': _ai_workspace_analysis_summary(analysis)[:180],
+            'meetingCount': analysis.meeting_count,
+            'updatedAt': _datetime_or_none(analysis.updated_at),
+            'href': reverse('ai_chat:followup_analysis', args=[followup.id]),
+        })
+
+    recommended_goals = []
+    latest_analysis = analyses[0] if analyses else None
+    if latest_analysis:
+        recommended_goals = suggest_goals_from_department_analysis(latest_analysis)[:6]
+
+    month_start = today.replace(day=1)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'currentUser': current_user,
+        'permission': {
+            'canUseAi': True,
+            'message': '',
+        },
+        'metrics': {
+            'departmentsWithCustomers': len(department_payload),
+            'analyzedDepartments': len(analyses),
+            'painpointCards': PainPointCard.objects.filter(analysis__user=request.user).count(),
+            'unverifiedPainpoints': PainPointCard.objects.filter(
+                analysis__user=request.user,
+                verification_status='unverified',
+            ).count(),
+            'followupAnalyses': AIFollowUpAnalysis.objects.filter(user=request.user).count(),
+            'weeklyReportsThisMonth': WeeklyReport.objects.filter(
+                user=request.user,
+                week_start__gte=month_start,
+            ).count(),
+        },
+        'links': base_links,
+        'week': {
+            'start': week_start.isoformat(),
+            'end': week_end.isoformat(),
+        },
+        'departments': department_payload,
+        'recentDepartmentAnalyses': recent_department_analyses,
+        'painpoints': painpoint_payload,
+        'followupTargets': followup_targets,
+        'recentFollowupAnalyses': recent_followup_analyses,
+        'recommendedGoals': [
+            {
+                'title': goal.get('title', ''),
+                'description': goal.get('description', ''),
+                'reason': goal.get('reason', ''),
+            }
+            for goal in recommended_goals
+        ],
+    })
+
 # ============ 일정(Schedule) 관련 뷰들 ============
 
 @login_required

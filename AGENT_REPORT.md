@@ -6007,3 +6007,428 @@ python manage.py test --verbosity=1
 - P1: React `/dashboard/`에 Django 대시보드 요약 API를 연결해 실제 KPI/오늘 일정/최근 활동을 표시합니다.
 - P2: React `/customers/`에 고객 검색/담당자 필터와 우선순위 고객 리스트를 연결합니다.
 - P3: React `/notes/`, `/schedules/`, `/ai-workspace/`를 실제 Django API 기반 화면으로 순차 전환합니다.
+
+---
+
+## Frontend Migration — React Dashboard 실제 데이터 연결
+
+### 1. Summary
+
+React `/dashboard/` placeholder를 실제 Django CRM 데이터 화면으로 교체했습니다. 새 `/reporting/api/dashboard/` 읽기 전용 API가 KPI, 오늘/이번 주 일정, 지연 후속조치, 최근 영업노트, 우선 고객, 파이프라인 요약, 팀 활동 현황을 반환하고, React 대시보드는 이 데이터를 카드/리스트 중심 업무 화면으로 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React dashboard 실제 데이터 연결 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/views.py` | 인증 기반 dashboard summary API와 직렬화 helper 추가 |
+| `reporting/urls.py` | `/reporting/api/dashboard/` route 추가 |
+| `reporting/tests.py` | dashboard API 로그인/권한 범위/payload 테스트 추가 |
+| `frontend/src/api.ts` | Dashboard API 타입과 `loadDashboardData()` 추가 |
+| `frontend/src/App.tsx` | `/dashboard/` 전용 실제 데이터 화면 추가 |
+| `frontend/src/styles.css` | dashboard KPI, 일정, 후속조치, 고객, 파이프라인 반응형 스타일 추가 |
+| `frontend/README.md` | dashboard 실제 API 연결 상태 문서화 |
+
+### 3. CRM Improvements
+
+- `/dashboard/`에서 실제 고객 수, 오늘 일정, 지연 후속, 이번 달 활동/매출을 확인할 수 있습니다.
+- 지연 후속조치, 최근 영업노트, 우선 고객이 기존 Django 상세 화면으로 바로 연결됩니다.
+- Salesman은 본인 데이터만, Manager는 같은 회사 사용자 데이터만, Admin은 기존 관리자 필터 또는 전체 데이터를 보는 권한 범위를 유지했습니다.
+- 데이터 저장/수정은 기존 Django 운영 화면으로 연결해 `/reporting/*` 기능을 보존했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/dashboard/`, `/reporting/followups/`, `/reporting/histories/`, `/reporting/schedules/`, `/reporting/funnel/*`, `/ai/*` route는 유지했습니다.
+- 파이프라인 API와 단계 이동 API는 변경하지 않았습니다.
+- 모델 변경과 migration은 없습니다.
+- 인증, 세션, CSRF 정책은 약화하지 않았습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 144 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 156 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Local smoke:
+→ http://127.0.0.1:5173/dashboard/ returned 200
+→ http://127.0.0.1:8000/reporting/api/dashboard/ returned 302 when unauthenticated
+→ http://127.0.0.1:5173/reporting/api/dashboard/ returned 302 when unauthenticated through Vite proxy
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 실제 데이터가 채워진 `/dashboard/` UI를 브라우저로 추가 육안 확인하는 것이 좋습니다.
+- `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/`는 여전히 프론트 shell + Django 운영 화면 handoff 단계입니다.
+- 대시보드 API가 미로그인/비JSON 응답이면 React는 mock 데이터를 보여주지 않고 연결 필요 상태를 표시합니다.
+- `EMAIL_ENCRYPTION_KEY` 미설정 경고는 기존 환경 경고이며 이번 변경과 무관합니다.
+
+### 7. Recommended Next Task
+
+- React `/customers/`에 고객 검색, 담당자 필터, 우선순위 고객 리스트를 연결합니다.
+- 그 다음 `/notes/`와 `/schedules/`를 API 기반 실제 화면으로 순차 전환합니다.
+
+---
+
+## Frontend Migration — React Customers 실제 데이터 연결
+
+### 1. Summary
+
+React `/customers/` placeholder를 실제 Django CRM 고객 데이터 화면으로 교체했습니다. 또한 프론트에서 `/reporting/api/dashboard/` 호출 시 미로그인 상태가 로그인 HTML 200으로 보이던 문제를 수정해, React용 JSON API는 미인증 시 401 JSON을 반환하도록 했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React customers 실제 데이터 연결 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/views.py` | API 미인증 JSON 401 helper, `/reporting/api/customers/` 데이터 API 추가 |
+| `reporting/urls.py` | `/reporting/api/customers/` route 추가 |
+| `reporting/tests.py` | dashboard API 401 JSON 기대값 수정, customers API 권한/필터 테스트 추가 |
+| `frontend/src/api.ts` | Customers API 타입과 `loadCustomersData()` 추가, dashboard API JSON error 처리 개선 |
+| `frontend/src/App.tsx` | `/customers/` 검색/담당자/우선순위/파이프라인 필터 UI와 실제 고객 리스트 추가 |
+| `frontend/src/styles.css` | customers 화면 필터, 테이블, 우선 고객 패널, 반응형 스타일 추가 |
+| `frontend/README.md` | dashboard/customers 실제 API 연결 상태 문서화 |
+
+### 3. CRM Improvements
+
+- `/customers/`에서 실제 고객 목록을 검색하고 담당자, 우선순위, 파이프라인 단계로 필터링할 수 있습니다.
+- 우선 고객 패널은 긴급/팔로업/VIP/A/지연 후속 고객을 빠르게 보여줍니다.
+- 고객 행에서 기존 Django 고객 상세와 일정 등록으로 바로 이동할 수 있습니다.
+- API 미로그인 상태가 HTML 200으로 오인되지 않고 401 JSON으로 처리됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/followups/`, `/reporting/followups/<id>/`, `/reporting/companies/`, `/reporting/customer-report/` 운영 화면은 유지했습니다.
+- 기존 Django 인증/권한 범위를 유지했습니다. Salesman은 본인 고객만, Manager는 같은 회사 고객만 볼 수 있습니다.
+- DB 모델과 migration 변경은 없습니다.
+- 파이프라인 API와 Django 운영 화면은 변경하지 않았습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 148 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 160 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Local smoke:
+→ http://127.0.0.1:5173/customers/ returned 200
+→ http://127.0.0.1:5173/reporting/api/dashboard/ returned 401 when unauthenticated
+→ http://127.0.0.1:5173/reporting/api/customers/ returned 401 when unauthenticated
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 `/dashboard/`와 `/customers/`의 실제 데이터 표시를 브라우저로 추가 확인하는 것이 좋습니다.
+- `/notes/`, `/schedules/`, `/ai-workspace/`는 아직 프론트 shell + Django 운영 화면 handoff 단계입니다.
+- 고객 API는 현재 상위 60건 목록과 우선 고객 10건을 반환합니다. 대량 고객용 서버 페이지네이션은 다음 개선에서 다룰 수 있습니다.
+- `EMAIL_ENCRYPTION_KEY` 미설정 경고는 기존 환경 경고이며 이번 변경과 무관합니다.
+
+### 7. Recommended Next Task
+
+- React `/notes/`를 실제 영업노트 API 기반 목록/필터 화면으로 전환합니다.
+- 이어서 React `/schedules/`를 일정 API 기반 오늘/주간 일정 화면으로 전환합니다.
+
+---
+
+## Frontend Migration — React Notes 실제 데이터 연결
+
+### 1. Summary
+
+React `/notes/` placeholder를 실제 Django 영업노트 데이터 화면으로 교체했습니다. 새 `/reporting/api/notes/` 읽기 전용 API가 영업 활동 기록, 검토 상태, 다음 액션, 유형별 현황, 담당자/활동유형/검토/후속 필터 옵션을 반환하고, React 화면은 이를 검색/필터 가능한 업무 목록으로 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React notes 실제 데이터 연결 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/views.py` | `/reporting/api/notes/` 데이터 API와 history payload helper 추가 |
+| `reporting/urls.py` | `/reporting/api/notes/` route 추가 |
+| `reporting/tests.py` | notes API 로그인/권한 범위/필터 테스트 추가 |
+| `frontend/src/api.ts` | Notes API 타입과 `loadNotesData()` 추가 |
+| `frontend/src/App.tsx` | `/notes/` 검색/담당자/활동유형/검토/후속 필터 UI와 실제 노트 목록 추가 |
+| `frontend/src/styles.css` | notes 화면 필터, 테이블, 유형별 현황, 반응형 스타일 추가 |
+| `frontend/README.md` | notes 실제 API 연결 상태 문서화 |
+
+### 3. CRM Improvements
+
+- `/notes/`에서 실제 영업노트를 고객/회사/내용/다음 액션 기준으로 검색할 수 있습니다.
+- 담당자, 활동 유형, 검토 상태, 다음 액션 상태(지연/7일 이내/예정일 있음) 필터를 제공합니다.
+- 미검토 노트, 지연 후속, 7일 이내 후속을 KPI로 보여줍니다.
+- 노트 행에서 기존 Django 영업노트 상세, 고객 상세, 일정 상세로 바로 이동할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/histories/`, `/reporting/histories/<id>/`, `/reporting/weekly-reports/` 운영 화면은 유지했습니다.
+- 기존 Django 인증/권한 범위를 유지했습니다. Salesman은 본인 노트만, Manager는 같은 회사 사용자 노트만 볼 수 있습니다.
+- DB 모델과 migration 변경은 없습니다.
+- `/reporting/*`, `/ai/*`, 파이프라인 API는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=2
+→ Ran 4 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 152 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 164 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Local smoke:
+→ http://127.0.0.1:5173/notes/ returned 200
+→ http://127.0.0.1:5173/reporting/api/notes/ returned 401 JSON when unauthenticated
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 `/notes/` 실제 데이터 표시를 브라우저로 추가 확인하는 것이 좋습니다.
+- `/schedules/`, `/ai-workspace/`는 아직 프론트 shell + Django 운영 화면 handoff 단계입니다.
+- Notes API는 현재 상위 80건 목록을 반환합니다. 대량 노트용 서버 페이지네이션은 다음 개선에서 다룰 수 있습니다.
+- `EMAIL_ENCRYPTION_KEY` 미설정 경고는 기존 환경 경고이며 이번 변경과 무관합니다.
+
+### 7. Recommended Next Task
+
+- React `/schedules/`를 실제 일정 API 기반 오늘/주간 일정 화면으로 전환합니다.
+- 이후 `/ai-workspace/`를 기존 Django AI 운영 기능과 연결된 실제 업무 화면으로 정리합니다.
+
+---
+
+## Frontend Migration — React Schedules 실제 데이터 연결
+
+### 1. Summary
+
+React `/schedules/` placeholder를 실제 Django 일정 데이터 화면으로 교체했습니다. 새 `/reporting/api/schedules/` 읽기 전용 API가 고객 일정, 개인 일정, 오늘 일정, 7일 이내 일정, 지연 일정, 상태/활동유형/담당자 필터 옵션을 반환하고, React 화면은 이를 검색/필터 가능한 업무 목록으로 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React schedules 실제 데이터 연결 계획과 예상 소요 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 남은 목표 예상 소요 기록 |
+| `reporting/views.py` | `/reporting/api/schedules/` 데이터 API와 Schedule/PersonalSchedule payload helper 추가 |
+| `reporting/urls.py` | `/reporting/api/schedules/` route 추가 |
+| `reporting/tests.py` | schedules API 로그인/권한 범위/필터 테스트 추가 |
+| `frontend/src/api.ts` | Schedules API 타입과 `loadSchedulesData()` 추가 |
+| `frontend/src/App.tsx` | `/schedules/` 검색/담당자/상태/활동유형/기간 필터 UI와 실제 일정 목록 추가 |
+| `frontend/src/styles.css` | schedules 화면 필터, 테이블, 오늘/지연 일정 패널, 반응형 스타일 추가 |
+| `frontend/README.md` | schedules 실제 API 연결 상태 문서화 |
+
+### 3. CRM Improvements
+
+- `/schedules/`에서 실제 고객 일정과 개인 일정을 함께 확인할 수 있습니다.
+- 검색, 담당자, 상태, 활동 유형, 기간 필터를 제공합니다.
+- 오늘 일정, 7일 이내 일정, 지연 일정, 완료 일정 KPI를 보여줍니다.
+- 일정 행에서 기존 Django 일정 상세, 고객 상세, 보고 작성 화면으로 바로 이동할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/schedules/`, `/reporting/schedules/calendar/`, `/reporting/schedules/<id>/`, `/reporting/personal-schedules/*` 운영 화면은 유지했습니다.
+- 기존 Django 인증/권한 범위를 유지했습니다. Salesman은 본인 일정만, Manager는 같은 회사 사용자 일정만 볼 수 있습니다.
+- DB 모델과 migration 변경은 없습니다.
+- `/reporting/*`, `/ai/*`, 파이프라인 API는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=2
+→ Ran 4 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 156 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 168 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Local smoke:
+→ http://127.0.0.1:5173/schedules/ returned 200
+→ http://127.0.0.1:5173/reporting/api/schedules/ returned 401 JSON when unauthenticated
+```
+
+### 6. Estimated Time / Remaining
+
+- 이번 `/schedules/` 실제 데이터 연결은 로컬 구현과 검증까지 완료했습니다.
+- 운영 로그인 세션에서 실제 데이터 육안 확인과 배포까지 진행하면 추가 20~40분 예상입니다.
+- 남은 React shell 핵심 전환은 `/ai-workspace/` 1개입니다. 기존 Django AI 기능 연결 중심이면 약 2~4시간, AI 작업 화면을 더 깊게 재구성하면 반나절 수준으로 보는 것이 안전합니다.
+
+### 7. Known Limitations
+
+- 운영 로그인 세션에서 `/schedules/` 실제 데이터 표시를 브라우저로 추가 확인하는 것이 좋습니다.
+- `/ai-workspace/`는 아직 프론트 shell + Django 운영 화면 handoff 단계입니다.
+- Schedules API는 현재 상위 80건 목록을 반환합니다. 대량 일정용 서버 페이지네이션은 다음 개선에서 다룰 수 있습니다.
+- `EMAIL_ENCRYPTION_KEY` 미설정 경고는 기존 환경 경고이며 이번 변경과 무관합니다.
+
+### 8. Recommended Next Task
+
+- React `/ai-workspace/`를 기존 Django AI 운영 기능과 연결된 실제 업무 화면으로 전환합니다.
+- 이후 운영 로그인 상태에서 `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/` 왕복 동선을 확인하고 배포/커밋을 진행합니다.
+
+---
+
+## Frontend Migration — React AI Workspace 실제 데이터 연결
+
+### 1. Summary
+
+React `/ai-workspace/` placeholder를 실제 Django AI 운영 상태 화면으로 교체했습니다. 새 `/reporting/api/ai-workspace/` 읽기 전용 API가 AI 권한 상태, 부서 분석 대상, 분석 완료 현황, 미검증 PainPoint, 고객 분석 대상, 주간보고 AI 초안 링크를 반환하고, React 화면은 기존 `/ai/*` 및 `/reporting/*` 운영 기능으로 연결합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React AI workspace 실제 데이터 연결 계획과 예상 소요 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 목표 달성/남은 예상 소요 기록 |
+| `reporting/views.py` | `/reporting/api/ai-workspace/` 데이터 API와 AI summary helper 추가 |
+| `reporting/urls.py` | `/reporting/api/ai-workspace/` route 추가 |
+| `reporting/tests.py` | AI workspace API 로그인/권한/데이터 범위 테스트 추가 |
+| `frontend/src/api.ts` | AI workspace API 타입과 `loadAIWorkspaceData()` 추가 |
+| `frontend/src/App.tsx` | `/ai-workspace/` AI 권한, 부서 분석, PainPoint, 고객 분석, 주간보고 링크 UI 추가 |
+| `frontend/src/styles.css` | AI workspace 레이아웃, 분석 리스트, PainPoint, 고객 분석 카드 스타일 추가 |
+| `frontend/README.md` | AI workspace 실제 API 연결 상태 문서화 |
+
+### 3. CRM Improvements
+
+- `/ai-workspace/`에서 AI 권한 상태와 실제 AI 운영 데이터를 확인할 수 있습니다.
+- 부서별 AI 분석 대상, 분석 완료 여부, 미검증 PainPoint 수를 표시합니다.
+- 미검증 PainPoint와 고객별 AI 분석 대상에서 기존 Django AI 상세 화면으로 이동할 수 있습니다.
+- 이번 주 주간보고 AI 초안 API 링크와 주간보고 작성 화면을 연결했습니다.
+- `can_use_ai=False` 사용자는 AI 데이터를 받지 않고 권한 없음 상태만 확인합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/ai/`, `/ai/department/<id>/`, `/ai/followup/<id>/`, `/reporting/api/weekly-reports/ai-draft/` 운영 기능은 유지했습니다.
+- 새 API는 읽기 전용이며 외부 AI API 호출을 수행하지 않습니다.
+- 기존 AI 권한 모델(`UserProfile.can_use_ai`)을 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=2
+→ Ran 3 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test ai_chat --verbosity=1
+→ Ran 12 tests, OK
+
+python manage.py test reporting --verbosity=1
+→ Ran 159 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 171 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Local smoke:
+→ http://127.0.0.1:5173/ai-workspace/ returned 200
+→ http://127.0.0.1:5173/reporting/api/ai-workspace/ returned 401 JSON when unauthenticated
+```
+
+### 6. Estimated Time / Remaining
+
+- `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/` 실제 데이터 연결은 로컬 구현/검증 기준으로 완료했습니다.
+- 남은 필수 작업은 운영 로그인 상태에서 프론트 메뉴 왕복 동선 확인, 필요 시 UI 미세 조정, 커밋/푸시/배포입니다.
+- 운영 smoke + 커밋/푸시까지 약 30~60분 예상입니다.
+- 배포 후 Railway 프론트/웹 상태 확인과 실제 계정 브라우저 확인까지 포함하면 총 1~1.5시간 정도 잡는 것이 안전합니다.
+
+### 7. Known Limitations
+
+- 운영 로그인 세션에서 AI 권한 사용자와 비권한 사용자 각각의 `/ai-workspace/` 화면을 육안 확인하는 것이 좋습니다.
+- React 화면에서 AI 분석 실행 자체는 하지 않고 기존 Django `/ai/*` 운영 화면으로 연결합니다.
+- AI workspace API는 현재 로그인 사용자 본인의 AI 분석 대상/결과만 표시합니다. 팀 단위 AI 운영 화면은 별도 정책 확정 후 확장하는 것이 안전합니다.
+- `EMAIL_ENCRYPTION_KEY` 미설정 경고는 기존 환경 경고이며 이번 변경과 무관합니다.
+
+### 8. Recommended Next Task
+
+- 운영 로그인 상태에서 `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/` 프론트 메뉴와 Django 운영 화면 왕복 동선을 확인합니다.
+- 문제가 없으면 현재 변경사항을 커밋/푸시하고 Railway 배포 상태를 확인합니다.
