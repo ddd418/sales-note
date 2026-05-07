@@ -313,6 +313,16 @@ class DashboardSmokeTests(TestCase):
         # 대시보드에 기본 섹션 존재 여부 (HTML content 체크)
         self.assertIn('dashboard', content.lower())
 
+    def test_dashboard_note_quick_action_handles_same_page_hash(self):
+        """상단 영업노트 링크는 같은 대시보드 페이지에서도 모달을 열 수 있어야 함"""
+        self.client.force_login(self.user)
+        r = self.client.get(reverse('reporting:dashboard'))
+        self.assertEqual(r.status_code, 200)
+        content = r.content.decode('utf-8', errors='replace')
+        self.assertIn('href="/reporting/dashboard/#dashboardNoteModal"', content)
+        self.assertIn('window.addEventListener(\'hashchange\', openDashboardNoteModalFromHash)', content)
+        self.assertIn('event.target.closest(\'a[href$="#dashboardNoteModal"]\')', content)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 권한 격리 테스트 (can_access_user_data)

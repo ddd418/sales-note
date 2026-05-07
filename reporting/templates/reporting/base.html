@@ -2549,13 +2549,33 @@
   <!-- Top Bar quick action: dashboard note modal deep-link -->
   <script>
   (function() {
-    document.addEventListener('DOMContentLoaded', function() {
+    function openDashboardNoteModalFromHash() {
       if (window.location.hash !== '#dashboardNoteModal') return;
       var modalEl = document.getElementById('dashboardNoteModal');
       if (!modalEl || !window.bootstrap) return;
       var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
       modal.show();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      openDashboardNoteModalFromHash();
+
+      document.addEventListener('click', function(event) {
+        var link = event.target.closest('a[href$="#dashboardNoteModal"]');
+        if (!link) return;
+
+        var modalEl = document.getElementById('dashboardNoteModal');
+        if (!modalEl || !window.bootstrap) return;
+
+        event.preventDefault();
+        if (window.location.hash !== '#dashboardNoteModal') {
+          history.pushState(null, '', '#dashboardNoteModal');
+        }
+        openDashboardNoteModalFromHash();
+      });
     });
+
+    window.addEventListener('hashchange', openDashboardNoteModalFromHash);
   })();
   </script>
 

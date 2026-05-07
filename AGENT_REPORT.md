@@ -4971,3 +4971,44 @@ git diff --check
 1. 운영 배포 후 `reporting.0094` migration 적용 및 실제 응답 시간 확인
 2. 대시보드 위젯별 fragment cache 또는 AJAX 분리 검토
 3. 로그인/세션 비용 분석: `SESSION_SAVE_EVERY_REQUEST`, 세션 backend, 인증 해시 비용 확인
+
+---
+
+## Hotfix — 대시보드 영업노트 quick action 모달 버그
+
+### 1. Summary
+
+대시보드 상단 `영업노트` quick action 클릭 시 URL만 `/reporting/dashboard/#dashboardNoteModal`로 바뀌고 모달이 뜨지 않는 문제를 수정했습니다. 원인은 같은 대시보드 페이지에서 hash만 변경될 때 기존 스크립트가 `DOMContentLoaded` 이후 변화를 처리하지 않았기 때문입니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `reporting/templates/reporting/base.html` | `#dashboardNoteModal` hash deep-link를 `DOMContentLoaded`, `hashchange`, 같은 페이지 클릭 이벤트에서 모두 처리 |
+| `reporting/tests.py` | 대시보드 영업노트 quick action hash 처리 스크립트 회귀 테스트 추가 |
+| `AGENT_REPORT.md` | hotfix 결과 기록 |
+
+### 3. Existing Functionality Preserved
+
+- 기존 대시보드 내부 `data-bs-toggle="modal"` 버튼 유지
+- 다른 페이지에서 `/reporting/dashboard/#dashboardNoteModal`로 이동하는 deep-link 유지
+- 인증/권한/DB 모델 변경 없음
+
+### 4. Commands Run and Results
+
+```text
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.DashboardSmokeTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 145 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
