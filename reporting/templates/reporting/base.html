@@ -1670,9 +1670,15 @@
           </a>
         </li>
         <li class="nav-item">
+          <a href="{{ frontend_pipeline_url }}" class="nav-link">
+            <i class="fas fa-table-columns"></i>
+            <span>신규 파이프라인</span>
+          </a>
+        </li>
+        <li class="nav-item">
           <a href="{% url 'reporting:funnel_list' %}" class="nav-link {% if request.resolver_match.url_name == 'funnel_list' %}active{% endif %}">
             <i class="fas fa-filter"></i>
-            <span>파이프라인</span>
+            <span>파이프라인 리스트</span>
           </a>
         </li>
         <li class="nav-item">
@@ -1791,8 +1797,8 @@
         <a href="{% url 'reporting:dashboard' %}#dashboardNoteModal" class="btn btn-primary btn-sm">
           <i class="fas fa-pen me-1"></i>영업노트
         </a>
-        <a href="{% url 'reporting:funnel_list' %}" class="btn btn-outline-primary btn-sm">
-          <i class="fas fa-filter me-1"></i>파이프라인
+        <a href="{{ frontend_pipeline_url }}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-table-columns me-1"></i>신규 파이프라인
         </a>
         <a href="{% url 'reporting:history_list' %}?review_filter=unreviewed" class="crm-icon-btn" aria-label="알림">
           <i class="fas fa-bell"></i>

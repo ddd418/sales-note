@@ -294,6 +294,13 @@ class DashboardSmokeTests(TestCase):
         r = self.client.get(reverse('reporting:dashboard'))
         self.assertEqual(r.status_code, 200)
 
+    def test_dashboard_has_frontend_pipeline_return_link(self):
+        """백엔드 대시보드에서 React 파이프라인으로 돌아갈 수 있어야 함"""
+        self.client.force_login(self.user)
+        r = self.client.get(reverse('reporting:dashboard'))
+        self.assertContains(r, '신규 파이프라인')
+        self.assertContains(r, 'https://sales-note-frontend-production.up.railway.app/')
+
     def test_dashboard_unauthenticated_redirects(self):
         """미인증 대시보드 접근 → 로그인 리다이렉트"""
         r = self.client.get(reverse('reporting:dashboard'))

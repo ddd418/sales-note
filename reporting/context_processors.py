@@ -2,11 +2,23 @@
 Context processors for the reporting app.
 """
 
+from django.conf import settings
+
+
+DEFAULT_FRONTEND_PIPELINE_URL = "https://sales-note-frontend-production.up.railway.app/"
+
+
 def manager_filter_context(request):
     """
     매니저가 모든 페이지에서 실무자 필터를 사용할 수 있도록 컨텍스트 제공
     """
-    context = {}
+    context = {
+        "frontend_pipeline_url": getattr(
+            settings,
+            "FRONTEND_PIPELINE_URL",
+            DEFAULT_FRONTEND_PIPELINE_URL,
+        )
+    }
     
     if request.user.is_authenticated:
         try:

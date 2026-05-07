@@ -1,36 +1,36 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Noto Sans KR", sans-serif;
-  background: hsl(222, 47%, 11%);
-  color: hsl(210, 40%, 98%);
-  --bg: hsl(222, 47%, 11%);
-  --sidebar-bg: linear-gradient(180deg, hsl(222, 47%, 8%) 0%, hsl(222, 47%, 11%) 100%);
-  --panel: hsl(222, 47%, 14%);
-  --panel-soft: hsl(217, 33%, 17%);
-  --panel-raised: hsl(222, 47%, 16%);
-  --panel-hover: hsl(217, 33%, 20%);
-  --text: hsl(210, 40%, 98%);
-  --muted: hsl(215, 20%, 75%);
-  --muted-soft: hsl(215, 20%, 65%);
-  --line: hsl(217, 33%, 22%);
-  --line-strong: hsl(217, 33%, 30%);
-  --primary: hsl(217, 91%, 60%);
-  --primary-light: hsl(217, 91%, 70%);
-  --primary-strong: hsl(217, 91%, 70%);
-  --primary-bg: hsla(217, 91%, 60%, 0.16);
-  --purple: hsl(262, 83%, 66%);
-  --green: hsl(142, 76%, 42%);
-  --amber: hsl(38, 92%, 55%);
-  --red: hsl(0, 84%, 64%);
-  --teal: hsl(188, 86%, 53%);
-  --success-bg: hsla(142, 76%, 36%, 0.14);
-  --warning-bg: hsla(38, 92%, 50%, 0.14);
-  --danger-bg: hsla(0, 84%, 60%, 0.14);
-  --info-bg: hsla(199, 89%, 48%, 0.14);
-  --shadow: 0 14px 34px rgba(0, 0, 0, 0.36);
-  --shadow-glow: 0 0 20px hsla(217, 91%, 60%, 0.15);
+  background: #f8fafc;
+  color: #0f172a;
+  --bg: #f8fafc;
+  --sidebar-bg: #ffffff;
+  --panel: #ffffff;
+  --panel-soft: #f1f5f9;
+  --panel-raised: #ffffff;
+  --panel-hover: #f8fafc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --muted-soft: #94a3b8;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --primary: #2563eb;
+  --primary-light: #3b82f6;
+  --primary-strong: #1d4ed8;
+  --primary-bg: rgba(37, 99, 235, 0.1);
+  --purple: #8b5cf6;
+  --green: #16a34a;
+  --amber: #d97706;
+  --red: #dc2626;
+  --teal: #0f766e;
+  --success-bg: #dcfce7;
+  --warning-bg: #fef3c7;
+  --danger-bg: #fee2e2;
+  --info-bg: #ecfeff;
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 8px 20px rgba(37, 99, 235, 0.14);
   --gradient-primary: linear-gradient(135deg, var(--primary) 0%, var(--purple) 100%);
 }
 
@@ -42,10 +42,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 18% -12%, hsla(217, 91%, 60%, 0.16), transparent 32rem),
-    radial-gradient(circle at 86% 4%, hsla(262, 83%, 66%, 0.13), transparent 28rem),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -74,7 +71,7 @@ button {
   padding: 22px 18px;
   border-right: 1px solid var(--line);
   background: var(--sidebar-bg);
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .brand {
@@ -123,16 +120,16 @@ button {
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: var(--muted);
+  color: #475569;
   text-align: left;
   text-decoration: none;
 }
 
 .nav-item.active,
 .nav-item:hover {
-  border-color: hsla(217, 91%, 60%, 0.42);
+  border-color: #bfdbfe;
   background: var(--primary-bg);
-  color: var(--primary-light);
+  color: var(--primary-strong);
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
@@ -141,8 +138,8 @@ button {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(180deg, hsla(217, 33%, 17%, 0.88), hsla(222, 47%, 14%, 0.88));
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.25));
+  background: var(--panel-soft);
+  box-shadow: none;
 }
 
 .sidebar-note span {
@@ -262,7 +259,13 @@ h2 {
   box-shadow: var(--shadow-glow);
 }
 
-.icon-button:hover,
+.icon-button:hover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-strong);
+  transform: translateY(-1px);
+}
+
 .primary-button:hover {
   border-color: var(--primary-light);
   color: #ffffff;
@@ -291,8 +294,8 @@ h2 {
 }
 
 .metric-card.alert {
-  border-color: hsla(0, 84%, 64%, 0.45);
-  background: linear-gradient(180deg, hsla(0, 84%, 60%, 0.12), var(--panel));
+  border-color: #fecaca;
+  background: linear-gradient(180deg, #fff7f7, var(--panel));
 }
 
 .metric-card::before {
@@ -311,7 +314,7 @@ h2 {
   height: 38px;
   border-radius: 10px;
   background: var(--primary-bg);
-  color: var(--primary-light);
+  color: var(--primary-strong);
 }
 
 .metric-card span,
@@ -389,9 +392,9 @@ h2 {
 }
 
 .view-chip.selected {
-  border-color: hsla(217, 91%, 60%, 0.45);
+  border-color: #bfdbfe;
   background: var(--primary-bg);
-  color: var(--primary-light);
+  color: var(--primary-strong);
   font-weight: 700;
 }
 
@@ -438,12 +441,12 @@ h2 {
 
 .source-badge.django {
   background: var(--success-bg);
-  color: #86efac;
+  color: #166534;
 }
 
 .source-badge.mock {
   background: var(--warning-bg);
-  color: #facc15;
+  color: #92400e;
 }
 
 .center-panel {
@@ -536,7 +539,7 @@ h2 {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(180deg, var(--panel-soft), hsla(222, 47%, 13%, 0.95));
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
 }
 
 .stage-header {
@@ -589,7 +592,7 @@ h2 {
 }
 
 .stage-column.collapsed {
-  background: hsla(217, 33%, 17%, 0.72);
+  background: #f3f6fb;
 }
 
 .stage-deals {
@@ -613,7 +616,7 @@ h2 {
 .deal-card.selected {
   border-color: var(--primary);
   box-shadow: var(--shadow-glow);
-  background: linear-gradient(180deg, hsla(217, 91%, 60%, 0.08), var(--panel));
+  background: linear-gradient(180deg, #f8fbff, var(--panel));
 }
 
 .deal-card-top,
@@ -671,17 +674,17 @@ h2 {
 
 .risk-badge.low {
   background: var(--success-bg);
-  color: #86efac;
+  color: #166534;
 }
 
 .risk-badge.medium {
   background: var(--warning-bg);
-  color: #facc15;
+  color: #92400e;
 }
 
 .risk-badge.high {
   background: var(--danger-bg);
-  color: #fca5a5;
+  color: #991b1b;
 }
 
 .collapsed-stage-summary {
@@ -737,7 +740,7 @@ h2 {
 
 .show-stage-button {
   height: 34px;
-  border: 1px solid hsla(217, 91%, 60%, 0.45);
+  border: 1px solid #bfdbfe;
   border-radius: 9px;
   background: var(--primary-bg);
   color: var(--primary-strong);
@@ -882,9 +885,9 @@ tbody tr:hover {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid hsla(217, 91%, 60%, 0.32);
+  border: 1px solid #bfdbfe;
   border-radius: 12px;
-  background: hsla(217, 91%, 60%, 0.08);
+  background: #eff6ff;
 }
 
 .stage-move-heading {
@@ -942,12 +945,12 @@ tbody tr:hover {
 }
 
 .move-status.success {
-  color: #86efac;
+  color: #166534;
   font-weight: 800;
 }
 
 .move-status.error {
-  color: #fca5a5;
+  color: #b42318;
   font-weight: 800;
 }
 
@@ -1010,7 +1013,7 @@ tbody tr:hover {
 }
 
 .detail-box.quote {
-  background: hsla(217, 91%, 60%, 0.08);
+  background: #eff6ff;
 }
 
 .quote-line strong {
@@ -1057,8 +1060,8 @@ tbody tr:hover {
 .tag-row span {
   padding: 5px 8px;
   border-radius: 999px;
-  background: hsla(262, 83%, 66%, 0.15);
-  color: #c4b5fd;
+  background: #f3e8ff;
+  color: #6d28d9;
   font-size: 12px;
   font-weight: 700;
 }

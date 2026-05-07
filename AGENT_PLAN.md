@@ -732,3 +732,28 @@ python pre_deployment_check.py
 - `node --check server.mjs`
 - 로컬 또는 배포 URL smoke 확인
 - `git diff --check`
+
+---
+
+## Frontend Pilot — 라이트 CRM 톤 재정렬 및 백엔드 복귀 링크
+
+**목표**: React 파이프라인 화면을 운영 `/reporting/dashboard/`에 적용된 CRM light UI 토큰과 맞추고, Django 백엔드 화면에서 React 파이프라인으로 돌아오는 명확한 동선을 추가한다.
+
+**작업 범위**:
+
+- React 파이프라인 CSS를 `crm-ui.css` 기준의 화이트 모드로 재정렬
+- 카드, 사이드바, 보드, 상세 패널, 상태 배지의 white-on-light/low contrast 여부 점검
+- Django 공통 context에 프론트 파이프라인 URL 제공
+- Django 사이드바와 상단 빠른 액션에 `신규 파이프라인` 링크 추가
+- 기존 `/reporting/*` 라우트, 인증, CSRF, 파이프라인 API는 유지
+
+**DB 변경 필요 여부**: 없음. UI/CSS와 template/context 설정 변경만 수행한다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 배포 URL smoke 확인

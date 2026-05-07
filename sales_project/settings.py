@@ -98,6 +98,10 @@ else:
     
     # 절대 URL 생성을 위한 도메인 설정
     SITE_DOMAIN = "http://127.0.0.1:8000"
+    FRONTEND_PIPELINE_URL = os.environ.get(
+        "FRONTEND_PIPELINE_URL",
+        "https://sales-note-frontend-production.up.railway.app/",
+    )
     
     LOGIN_URL = "/reporting/login/"
     LOGIN_REDIRECT_URL = "/reporting/dashboard/"

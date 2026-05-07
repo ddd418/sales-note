@@ -5643,3 +5643,71 @@ Playwright desktop/mobile smoke
 
 - 이번 작업은 기존 대시보드 톤 정렬 1차입니다.
 - 로그인 후 실제 운영 데이터가 표시되는 상태에서 카드 밀도와 상세 패널 높이는 추가 확인이 필요합니다.
+
+---
+
+## Frontend Pilot — 라이트 CRM 톤 재정렬 및 백엔드 복귀 링크
+
+### 1. Summary
+
+React 파이프라인 화면을 운영 `/reporting/dashboard/`에 적용된 `crm-ui.css` 라이트 토큰 기준으로 다시 맞췄습니다. 백엔드 Django 화면으로 이동한 뒤에도 프론트 파이프라인으로 돌아올 수 있도록 공통 사이드바와 상단 빠른 액션에 `신규 파이프라인` 링크를 추가했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 라이트 톤 재정렬 및 복귀 링크 작업 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/src/styles.css` | React 파이프라인을 화이트 CRM 토큰으로 재정렬 |
+| `reporting/context_processors.py` | 공통 template context에 `frontend_pipeline_url` 제공 |
+| `reporting/templates/reporting/base.html` | 사이드바/상단 액션에 프론트 파이프라인 복귀 링크 추가 |
+| `reporting/tests.py` | 대시보드에 프론트 파이프라인 링크가 표시되는지 테스트 추가 |
+| `sales_project/settings.py` | 로컬 `FRONTEND_PIPELINE_URL` 설정 추가 |
+| `sales_project/settings_production.py` | 운영 `FRONTEND_PIPELINE_URL` 설정 추가 |
+
+### 3. CRM Improvements
+
+- React 파이프라인 화면이 기존 운영 대시보드처럼 밝은 배경, 흰 카드, 회색 border, 파란 primary 버튼을 사용합니다.
+- 백엔드 화면의 사이드바와 상단 액션에서 프론트 파이프라인으로 즉시 돌아갈 수 있습니다.
+- 프론트 URL은 환경변수로 교체 가능하며 기본값은 Railway 프론트 서비스 URL입니다.
+- 기존 `/reporting/*` 인증, CSRF, 파이프라인 API, Django 기존 파이프라인 라우트는 유지했습니다.
+
+### 4. Commands Run and Results
+
+```text
+cd frontend
+npm run build
+→ OK
+
+cd frontend
+node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.DashboardSmokeTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 152 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Playwright screenshot
+→ output/playwright/frontend-pipeline-light-desktop.png
+→ output/playwright/frontend-pipeline-light-mobile.png
+```
+
+### 5. Known Limitations
+
+- Playwright 확인은 인증 없는 mock fallback 화면 기준입니다. 운영 데이터가 있는 로그인 세션에서 세부 카드 밀도는 추가 확인이 필요합니다.
+- 백엔드 복귀 링크는 Django 배포가 완료된 뒤 운영 백엔드에서 보입니다.
+
+### 6. Recommended Next Task
+
+- 운영 로그인 세션에서 React 파이프라인 실제 데이터와 백엔드 복귀 링크를 함께 smoke test합니다.
