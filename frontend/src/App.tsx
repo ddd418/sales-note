@@ -59,6 +59,8 @@ const navItems = [
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
+const scheduleCalendarUrl = '/reporting/schedules/calendar/';
+
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
 type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'ai';
 
@@ -129,12 +131,12 @@ const routeMeta: Record<
   schedules: {
     eyebrow: 'Sales CRM / Schedule',
     title: '일정',
-    summary: '방문, 견적, 납품, 후속 연락 일정을 한 흐름에서 관리합니다.',
-    primaryHref: '/reporting/schedules/',
-    primaryLabel: '일정 목록 열기',
+    summary: '방문, 견적, 납품, 후속 연락 일정을 캘린더 중심으로 관리합니다.',
+    primaryHref: scheduleCalendarUrl,
+    primaryLabel: '일정 캘린더 열기',
     actions: [
-      { label: '새 일정 등록', href: '/reporting/schedules/create/', primary: true },
-      { label: '일정 캘린더', href: '/reporting/schedules/calendar/' },
+      { label: '일정 캘린더', href: scheduleCalendarUrl, primary: true },
+      { label: '새 일정 등록', href: '/reporting/schedules/create/' },
       { label: '이번 주 보고', href: '/reporting/weekly-reports/' },
     ],
   },
@@ -2171,7 +2173,7 @@ function DetailPanel({
       ) : null}
       {deal.latestQuote ? (
         <div className="detail-box quote">
-          <div className="section-title">최근 견적</div>
+          <div className="section-title">{deal.latestQuote.source || '가격 기준 견적'}</div>
           <div className="quote-line">
             <strong>{deal.latestQuote.number}</strong>
             <span>{deal.latestQuote.stage}</span>
@@ -2244,6 +2246,12 @@ export function App() {
   const [movingDealId, setMovingDealId] = useState<number | null>(null);
   const [moveError, setMoveError] = useState('');
   const [moveMessage, setMoveMessage] = useState('');
+
+  useEffect(() => {
+    if (currentView === 'schedules') {
+      window.location.replace(scheduleCalendarUrl);
+    }
+  }, [currentView]);
 
   useEffect(() => {
     if (currentView === 'dashboard') {
@@ -2331,25 +2339,8 @@ export function App() {
     if (currentView !== 'schedules') {
       return;
     }
-    let alive = true;
-    setSchedulesLoading(true);
-    loadSchedulesData({
-      q: scheduleQuery,
-      owner: scheduleOwner,
-      status: scheduleStatus,
-      activityType: scheduleActivityType,
-      range: scheduleRange,
-    }).then((data) => {
-      if (!alive) {
-        return;
-      }
-      setSchedulesData(data);
-      setSchedulesLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [currentView, scheduleActivityType, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
+    setSchedulesLoading(false);
+  }, [currentView]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -2489,20 +2480,10 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <SchedulesPage
-          activityType={scheduleActivityType}
-          data={schedulesData}
-          loading={schedulesLoading}
-          owner={scheduleOwner}
-          query={scheduleQuery}
-          range={scheduleRange}
-          status={scheduleStatus}
-          onActivityTypeChange={setScheduleActivityType}
-          onOwnerChange={setScheduleOwner}
-          onQueryChange={setScheduleQuery}
-          onRangeChange={setScheduleRange}
-          onStatusChange={setScheduleStatus}
-        />
+        <section className="dashboard-loading">
+          <Loader2 className="spin-icon" size={24} />
+          <span>일정 캘린더로 이동 중입니다</span>
+        </section>
       </AppShell>
     );
   }

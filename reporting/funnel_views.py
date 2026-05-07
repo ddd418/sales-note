@@ -844,13 +844,13 @@ def funnel_pipeline_view(request):
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
-        latest_quote = fu.all_quotes[0] if fu.all_quotes else None
+        latest_quote, latest_quote_amount, latest_quote_source = _select_pipeline_pricing_quote(fu, stage)
         has_overdue_action = any(
             h.next_action_date and h.next_action_date < today
             for h in getattr(fu, 'all_histories', [])
         )
         if latest_quote:
-            stage_amounts[stage] += latest_quote.total_amount or 0
+            stage_amounts[stage] += latest_quote_amount
         if has_overdue_action:
             stage_overdue_counts[stage] += 1
 
@@ -883,7 +883,8 @@ def funnel_pipeline_view(request):
             'last_history_snippet': (last_history.content or '')[:40] if last_history else None,
             # 최근 견적
             'latest_quote_stage': latest_quote.get_stage_display() if latest_quote else None,
-            'latest_quote_amount': f'{int(latest_quote.total_amount):,}원' if latest_quote else None,
+            'latest_quote_amount': f'{int(latest_quote_amount):,}원' if latest_quote else None,
+            'latest_quote_source': latest_quote_source,
             # 추천 단계 (자동 동기화 대상)
             'suggested_stage': suggested_stage,
             'suggested_stage_label': stage_labels.get(suggested_stage, '') if suggested_stage else '',
@@ -936,6 +937,62 @@ STAGE_PROBABILITY = {
     'won': 100,
     'lost': 0,
 }
+
+PIPELINE_QUOTE_PRIORITY = {
+    'quote': ('sent', 'review', 'draft', 'negotiation', 'approved', 'converted'),
+    'negotiation': ('negotiation', 'review', 'sent', 'approved', 'converted', 'draft'),
+}
+
+PIPELINE_ACTIVE_QUOTE_STAGES = {'draft', 'sent', 'review', 'negotiation', 'approved', 'converted'}
+PIPELINE_WON_QUOTE_STAGES = {'approved', 'converted'}
+
+
+def _quote_amount(quote):
+    return quote.total_amount or Decimal('0')
+
+
+def _select_pipeline_pricing_quote(followup, stage):
+    """
+    Return the Quote that should drive the pipeline card value for the current stage.
+
+    A customer can have newer rejected/expired drafts after a real submitted,
+    negotiated, or won quote. The pipeline value should follow the business stage,
+    not blindly the newest Quote row.
+    """
+    prefetched_quotes = getattr(followup, 'all_quotes', None)
+    quotes = (
+        list(prefetched_quotes)
+        if prefetched_quotes is not None
+        else list(followup.quotes.all().order_by('-created_at'))
+    )
+    if not quotes:
+        return None, Decimal('0'), ''
+
+    def first_matching(predicate):
+        with_amount = [quote for quote in quotes if predicate(quote) and _quote_amount(quote) > 0]
+        if with_amount:
+            return with_amount[0]
+        return next((quote for quote in quotes if predicate(quote)), None)
+
+    if stage == 'won':
+        quote = first_matching(
+            lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
+        )
+        if quote:
+            return quote, _quote_amount(quote), '수주 견적'
+
+    for quote_stage in PIPELINE_QUOTE_PRIORITY.get(stage, ()):
+        quote = first_matching(lambda item, expected=quote_stage: item.stage == expected)
+        if quote:
+            source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
+            return quote, _quote_amount(quote), source_label
+
+    quote = first_matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES)
+    if quote:
+        return quote, _quote_amount(quote), '진행 견적'
+
+    quote = first_matching(lambda item: True)
+    return quote, _quote_amount(quote), '최근 견적'
 
 
 def _date_label(target_date, today):
@@ -1028,8 +1085,7 @@ def pipeline_command_center_api(request):
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
-        latest_quote = fu.all_quotes[0] if fu.all_quotes else None
-        latest_quote_amount = latest_quote.total_amount if latest_quote else Decimal('0')
+        latest_quote, latest_quote_amount, latest_quote_source = _select_pipeline_pricing_quote(fu, stage)
         probability = (
             latest_quote.probability if latest_quote and latest_quote.probability is not None
             else STAGE_PROBABILITY.get(stage, 30)
@@ -1060,9 +1116,10 @@ def pipeline_command_center_api(request):
             latest_quote_payload = {
                 'number': latest_quote.quote_number,
                 'stage': latest_quote.get_stage_display(),
-                'amount': _money_int(latest_quote.total_amount),
+                'amount': _money_int(latest_quote_amount),
                 'probability': int(latest_quote.probability or 0),
                 'validUntil': latest_quote.valid_until.isoformat() if latest_quote.valid_until else None,
+                'source': latest_quote_source,
             }
         next_schedule_payload = None
         if next_schedule:
@@ -1075,7 +1132,7 @@ def pipeline_command_center_api(request):
             }
         tags = []
         if latest_quote:
-            tags.append('견적 있음')
+            tags.append(latest_quote_source or '견적 있음')
         if has_overdue_action:
             tags.append('후속 지연')
         if fu.customer_grade:

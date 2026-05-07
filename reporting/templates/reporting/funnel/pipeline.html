@@ -69,7 +69,7 @@
         <span class="badge rounded-pill" style="background: {{ stage.color }};">{{ stage.count }}</span>
       </div>
       <div class="d-flex align-items-center justify-content-between gap-2 small text-muted">
-        <span>견적 {{ stage.amount|intcomma }}원</span>
+        <span>금액 {{ stage.amount|intcomma }}원</span>
         <span class="{% if stage.overdue_count > 0 %}text-danger fw-semibold{% endif %}">
           지연 {{ stage.overdue_count }}건
         </span>
@@ -127,10 +127,10 @@
             {% endif %}
           </div>
           {% endif %}
-          <!-- 최근 견적 -->
+          <!-- 가격 기준 견적 -->
           {% if card.latest_quote_stage %}
           <div class="mt-1" style="font-size: 0.73em; color: #f59e0b;">
-            <i class="fas fa-file-invoice me-1"></i>{{ card.latest_quote_stage }}{% if card.latest_quote_amount %} · {{ card.latest_quote_amount }}{% endif %}
+            <i class="fas fa-file-invoice me-1"></i>{% if card.latest_quote_source %}{{ card.latest_quote_source }} · {% endif %}{{ card.latest_quote_stage }}{% if card.latest_quote_amount %} · {{ card.latest_quote_amount }}{% endif %}
           </div>
           {% endif %}
           <!-- 최근 히스토리 -->

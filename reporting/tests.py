@@ -1014,6 +1014,24 @@ class PipelineApiTests(TestCase):
         )
         return followup
 
+    def _create_quote_for_followup(self, followup, owner, suffix, stage, subtotal, converted=False):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import Quote
+
+        schedule = followup.schedules.first()
+        return Quote.objects.create(
+            quote_number=f'Q-{suffix}',
+            schedule=schedule,
+            followup=followup,
+            user=owner,
+            valid_until=timezone.localdate() + timedelta(days=30),
+            subtotal=subtotal,
+            probability=100 if stage in ('approved', 'converted') else 65,
+            stage=stage,
+            converted_to_delivery=converted,
+        )
+
     def test_pipeline_api_requires_login(self):
         response = self.client.get(self.url)
         self.assertIn(response.status_code, [301, 302])
@@ -1053,6 +1071,41 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['latestQuote']['amount'], 1100000)
         self.assertEqual(deal['nextSchedule']['type'], '견적 제출')
         self.assertIn('csrftoken', response.cookies)
+
+    def test_pipeline_api_uses_stage_relevant_quote_amount(self):
+        quote_followup = self._create_pipeline_customer(self.user, '견적가격', stage='quote')
+        self._create_quote_for_followup(
+            quote_followup, self.user, 'quote-latest-rejected', 'rejected', 3000000
+        )
+        negotiation_followup = self._create_pipeline_customer(self.user, '협상가격', stage='negotiation')
+        self._create_quote_for_followup(
+            negotiation_followup, self.user, 'negotiation-active', 'negotiation', 2000000
+        )
+        self._create_quote_for_followup(
+            negotiation_followup, self.user, 'negotiation-latest-expired', 'expired', 5000000
+        )
+        won_followup = self._create_pipeline_customer(self.user, '수주가격', stage='won')
+        self._create_quote_for_followup(
+            won_followup, self.user, 'won-approved', 'approved', 4000000
+        )
+        self._create_quote_for_followup(
+            won_followup, self.user, 'won-latest-draft', 'draft', 9000000
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        deals = {deal['id']: deal for deal in payload['deals']}
+        self.assertEqual(deals[quote_followup.id]['value'], 1100000)
+        self.assertEqual(deals[quote_followup.id]['latestQuote']['source'], '제출 견적')
+        self.assertEqual(deals[negotiation_followup.id]['value'], 2200000)
+        self.assertEqual(deals[negotiation_followup.id]['latestQuote']['source'], '협상 견적')
+        self.assertEqual(deals[won_followup.id]['value'], 4400000)
+        self.assertEqual(deals[won_followup.id]['latestQuote']['source'], '수주 견적')
+        stages = {stage['id']: stage for stage in payload['stages']}
+        self.assertEqual(stages['won']['totalValue'], 4400000)
 
     def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
         for index in range(12):

@@ -6432,3 +6432,90 @@ Local smoke:
 
 - 운영 로그인 상태에서 `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/` 프론트 메뉴와 Django 운영 화면 왕복 동선을 확인합니다.
 - 문제가 없으면 현재 변경사항을 커밋/푸시하고 Railway 배포 상태를 확인합니다.
+
+---
+
+## Pipeline Pricing + Schedule Calendar Routing
+
+**날짜**: 2026-05-07
+**상태**: 완료
+
+### 1. Summary
+
+React 파이프라인과 Django 파이프라인 보드에서 `견적 제출`, `협상`, `수주` 단계의 금액이 기존 `Quote` 데이터에서 단계에 맞게 반영되도록 수정했습니다.
+프론트 `/schedules/`는 일정 목록 대신 기존 Django 일정 캘린더(`/reporting/schedules/calendar/`)로 이동하도록 변경했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 작업 계획과 예상 소요 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `reporting/funnel_views.py` | 파이프라인 단계별 가격 기준 Quote 선택 로직 추가 |
+| `reporting/templates/reporting/funnel/pipeline.html` | Django 보드의 금액/견적 표시 문구 보정 |
+| `reporting/tests.py` | 견적/협상/수주 단계 금액 선택 회귀 테스트 추가 |
+| `frontend/server.mjs` | `/schedules/` → `/reporting/schedules/calendar/` 서버 리디렉션 추가 |
+| `frontend/src/App.tsx` | 일정 메뉴 문구를 캘린더 중심으로 정리하고 런타임 리디렉션 보정 |
+| `frontend/src/mockData.ts` | 파이프라인 견적 source 필드 타입 추가 |
+| `frontend/README.md` | 일정 캘린더 우선 동선 문서화 |
+
+### 3. CRM Improvements
+
+- `quote` 단계는 발송/검토/초안 등 진행 중 견적 금액을 우선 반영합니다.
+- `negotiation` 단계는 협상중 견적 금액을 우선 반영합니다.
+- `won` 단계는 승인/계약전환/납품전환 견적 금액을 우선 반영합니다.
+- 최신 견적이 거절/만료여도 현재 파이프라인 단계에 맞는 견적 금액이 있으면 그 금액을 사용합니다.
+- `/schedules/`는 현업 사용 빈도가 높은 일정 캘린더로 바로 연결됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 운영 화면은 유지했습니다.
+- 기존 Django 일정 목록, 일정 등록, 일정 상세, 캘린더, 일정 API는 제거하지 않았습니다.
+- 인증/권한/CSRF 정책 변경은 없습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py test reporting --verbosity=1
+→ Ran 160 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 172 tests, OK
+
+git diff --check
+→ OK
+
+local frontend smoke: GET /schedules/
+→ 302 /reporting/schedules/calendar/
+```
+
+### 6. Known Limitations
+
+- 운영에서 로그인된 브라우저 캘린더 화면의 실제 육안 확인은 사용자 세션이 필요합니다.
+- 수주 금액은 현재 Quote의 승인/계약전환/납품전환 상태를 기준으로 반영합니다. 별도 발주서/납품 실매출 기준으로 바꾸려면 추가 정책 정의가 필요합니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 `/`, `/reporting/api/pipeline/`, `/schedules/`, `/reporting/schedules/calendar/` smoke를 확인합니다.
+- 이후 수주 단계에서 “견적 금액”과 “실제 납품/매출 금액” 중 어떤 값을 대표 금액으로 볼지 정책을 확정하면 더 정밀하게 맞출 수 있습니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 20~40분.
+- 수주 금액 기준을 실제 납품/매출 기준으로 확장할 경우: 약 1~2시간.

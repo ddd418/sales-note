@@ -1034,3 +1034,61 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Pipeline Pricing — 견적/협상/수주 단계 가격 반영
+
+**목표**: React 파이프라인과 Django 파이프라인 보드에서 견적 제출, 협상, 수주 단계 고객의 금액을 기존 Quote 데이터에서 정확히 끌어온다.
+
+**작업 범위**:
+
+- `/reporting/api/pipeline/`가 파이프라인 단계에 맞는 Quote를 가격 기준으로 선택하도록 보정한다.
+- `quote` 단계는 발송/검토/초안 등 진행 중 견적을 우선 사용한다.
+- `negotiation` 단계는 협상중 견적을 우선 사용한다.
+- `won` 단계는 계약전환/승인/납품전환 견적을 우선 사용한다.
+- 최신 견적이 거절/만료 등 현재 단계와 맞지 않아도 단계에 맞는 견적 금액이 있으면 그 금액을 우선 반영한다.
+- 기존 `/reporting/funnel/pipeline/` Django 보드도 같은 가격 기준을 사용한다.
+- 인증, 권한 범위, 기존 `/reporting/*` 기능은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Quote` 필드만 조회하므로 migration은 만들지 않는다.
+
+**예상 소요**:
+
+- 구현 및 테스트: 약 1~2시간.
+- 운영 배포 및 미로그인/로그인 smoke 포함: 추가 20~40분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `python manage.py test reporting --verbosity=1`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Schedules Navigation — 일정 캘린더 우선 동선
+
+**목표**: 프론트 `/schedules/` 진입 시 목록 화면 대신 기존 Django 일정 캘린더를 기본 업무 화면으로 연다.
+
+**작업 범위**:
+
+- 프론트 운영 서버에서 `/schedules/`와 `/schedules` 요청을 `/reporting/schedules/calendar/`로 리디렉션한다.
+- React 런타임에서도 `/schedules/` 진입 시 일정 캘린더로 이동하게 보정한다.
+- 일정 메뉴의 문구와 README를 캘린더 우선 동선으로 정리한다.
+- 기존 Django 일정 목록, 일정 API, 일정 등록/상세/캘린더 기능은 유지한다.
+
+**DB 변경 필요 여부**: 없음.
+
+**예상 소요**:
+
+- 구현 및 검증: 약 30~60분.
+- 운영 배포 및 smoke 포함: 추가 20~40분.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- 운영/로컬에서 `/schedules/`가 `/reporting/schedules/calendar/`로 이동하는지 확인
