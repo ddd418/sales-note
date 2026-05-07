@@ -664,7 +664,14 @@ export function App() {
         return false;
       }
       if (selectedView === 'thisWeek') {
-        return deal.due === '오늘' || deal.due === '내일' || deal.due.includes('일 후');
+        const dueText = deal.due || '';
+        return (
+          dueText.includes('오늘') ||
+          dueText.includes('내일') ||
+          dueText.includes('금요일') ||
+          dueText.includes('이번 주') ||
+          dueText.includes('일 후')
+        );
       }
       if (selectedView === 'quoteDelay') {
         return deal.stage === 'quote' && deal.risk === 'high';
