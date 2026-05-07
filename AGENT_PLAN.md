@@ -836,3 +836,29 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## UI Hotfix — 고객 리포트 흰 텍스트 정리
+
+**목표**: `/reporting/customer-report/` 화면의 고객명 배지에서 라이트 배경 위 흰 텍스트가 남는 문제를 수정한다.
+
+**원인**:
+
+- `customer_report_list.html`에 `.badge.bg-secondary.text-decoration-none { color: #ffffff !important; }` 규칙이 남아 있다.
+- 공통 `crm-ui.css`는 `bg-secondary` 배지를 라이트 배경으로 바꾸지만, 페이지 전용 selector의 specificity가 더 높아 흰 텍스트가 유지된다.
+
+**작업 범위**:
+
+- 고객명 링크 배지를 라이트 회색 배경/슬레이트 텍스트/hover 상태로 변경한다.
+- 버튼/활성 드롭다운처럼 색상 배경 위 흰 텍스트가 필요한 요소는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 템플릿 CSS 수정만 수행한다.
+
+**검증 계획**:
+
+- `customer_report_list.html` 흰 텍스트 패턴 재확인
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `git diff --check`

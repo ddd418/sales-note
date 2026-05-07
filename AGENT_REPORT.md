@@ -5890,3 +5890,53 @@ python manage.py test --verbosity=1
 ### 6. Recommended Next Task
 
 - 운영에서 `/reporting/dashboard/`, `/reporting/schedules/create/`, `/reporting/followups/`, `/reporting/followups/<id>/`, `/reporting/prepayment/create/`를 새로고침해 라이트 배경 위 흰 글자가 더 남는지 확인합니다.
+
+---
+
+## UI Hotfix — 고객 리포트 흰 텍스트 정리
+
+### 1. Summary
+
+운영 `/reporting/customer-report/` 화면에 고객명 배지 텍스트가 흰색으로 남는 문제를 수정했습니다. 원인은 `customer_report_list.html`의 페이지 전용 CSS가 `.badge.bg-secondary.text-decoration-none`을 `#ffffff !important`로 고정하고 있었기 때문입니다. 공통 라이트 테마의 `bg-secondary` 배지는 밝은 회색 배경이므로, 고객명 배지를 슬레이트 텍스트와 라이트 hover 상태로 변경했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 리포트 흰 텍스트 hotfix 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/templates/reporting/customer_report_list.html` | 고객명 링크 배지의 흰 텍스트를 라이트 모드용 슬레이트 텍스트로 변경 |
+
+### 3. CRM Improvements
+
+- `/reporting/customer-report/`의 고객명 배지가 흰 배경/라이트 회색 배경 위에서 읽히도록 변경됩니다.
+- 활성 드롭다운, 버튼, 모달 헤더처럼 색상 배경 위 흰 텍스트가 필요한 요소는 유지했습니다.
+- view, model, migration, 권한 정책은 변경하지 않았습니다.
+
+### 4. Commands Run and Results
+
+```text
+rg -n "고객 이름|badge\.bg-secondary\.text-decoration-none|color:\s*(#ffffff|white)\s*!important" reporting/templates/reporting/customer_report_list.html
+→ 고객명 배지 규칙 수정 확인. 남은 white !important는 활성 드롭다운 항목용.
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+python manage.py test reporting --verbosity=1
+→ Ran 140 tests, OK
+```
+
+### 5. Known Limitations
+
+- 운영 페이지는 로그인 세션이 필요하므로 미인증 smoke는 로그인 리다이렉트까지만 확인 가능합니다.
+- 카테고리 배지는 사용자가 지정한 색상에 따라 JS가 텍스트 색상을 자동 계산합니다.
+
+### 6. Recommended Next Task
+
+- 운영 로그인 세션에서 `/reporting/customer-report/`를 새로고침해 고객명 배지와 카테고리 배지의 가독성을 확인합니다.
