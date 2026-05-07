@@ -26,15 +26,116 @@ import { loadPipelineData, moveDealStage } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
 const navItems = [
-  { label: '대시보드', icon: LayoutDashboard, href: '/reporting/dashboard/' },
-  { label: '고객', icon: Users, href: '/reporting/followups/' },
-  { label: '파이프라인', icon: Columns3, href: '/', active: true },
-  { label: '영업노트', icon: FileText, href: '/reporting/histories/' },
-  { label: '일정', icon: CalendarDays, href: '/reporting/schedules/' },
-  { label: 'AI', icon: Sparkles, href: '/ai/' },
+  { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
+  { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
+  { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
+  { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
+  { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/' },
+  { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
+type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'ai';
+
+type RouteAction = {
+  label: string;
+  href: string;
+  primary?: boolean;
+};
+
+const routeMeta: Record<
+  MainView,
+  {
+    eyebrow: string;
+    title: string;
+    summary: string;
+    primaryHref: string;
+    primaryLabel: string;
+    actions: RouteAction[];
+  }
+> = {
+  dashboard: {
+    eyebrow: 'Sales CRM / Dashboard',
+    title: '대시보드',
+    summary: '영업 현황, 지연 후속, 이번 주 접촉을 한 화면에서 확인합니다.',
+    primaryHref: '/reporting/dashboard/',
+    primaryLabel: '운영 대시보드 열기',
+    actions: [
+      { label: '영업노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
+      { label: '미검토 노트', href: '/reporting/histories/?review_filter=unreviewed' },
+      { label: '고객 리포트', href: '/reporting/customer-report/' },
+    ],
+  },
+  customers: {
+    eyebrow: 'Sales CRM / Customers',
+    title: '고객',
+    summary: '고객, 업체, 팔로우업, 고객 리포트를 하나의 고객 업무 흐름으로 묶습니다.',
+    primaryHref: '/reporting/followups/',
+    primaryLabel: '고객/팔로우업 열기',
+    actions: [
+      { label: '새 고객 등록', href: '/reporting/followups/create/', primary: true },
+      { label: '고객사 관리', href: '/reporting/companies/' },
+      { label: '고객 리포트', href: '/reporting/customer-report/' },
+    ],
+  },
+  pipeline: {
+    eyebrow: 'Sales CRM / Pipeline',
+    title: '파이프라인 관리',
+    summary: '견적, 협상, 수주 가능성을 중심으로 이번 주 우선 영업 건을 관리합니다.',
+    primaryHref: '/',
+    primaryLabel: '파이프라인 보기',
+    actions: [
+      { label: 'Django 파이프라인 리스트', href: '/reporting/funnel/' },
+      { label: 'Django 파이프라인 보드', href: '/reporting/funnel/pipeline/' },
+    ],
+  },
+  notes: {
+    eyebrow: 'Sales CRM / Notes',
+    title: '영업노트',
+    summary: '영업 활동 기록, 검토 상태, 고객별 히스토리를 빠르게 확인합니다.',
+    primaryHref: '/reporting/histories/',
+    primaryLabel: '영업노트 목록 열기',
+    actions: [
+      { label: '대시보드 노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
+      { label: '미검토 노트', href: '/reporting/histories/?review_filter=unreviewed' },
+      { label: '주간보고', href: '/reporting/weekly-reports/' },
+    ],
+  },
+  schedules: {
+    eyebrow: 'Sales CRM / Schedule',
+    title: '일정',
+    summary: '방문, 견적, 납품, 후속 연락 일정을 한 흐름에서 관리합니다.',
+    primaryHref: '/reporting/schedules/',
+    primaryLabel: '일정 목록 열기',
+    actions: [
+      { label: '새 일정 등록', href: '/reporting/schedules/create/', primary: true },
+      { label: '일정 캘린더', href: '/reporting/schedules/calendar/' },
+      { label: '이번 주 보고', href: '/reporting/weekly-reports/' },
+    ],
+  },
+  ai: {
+    eyebrow: 'Sales CRM / AI',
+    title: 'AI 업무도구',
+    summary: '부서 분석 결과와 목표를 조합해 외부 AI용 업무 프롬프트를 생성합니다.',
+    primaryHref: '/ai/',
+    primaryLabel: 'AI 분석/프롬프트 열기',
+    actions: [
+      { label: 'AI 허브 열기', href: '/ai/', primary: true },
+      { label: '고객 리포트', href: '/reporting/customer-report/' },
+      { label: '영업노트', href: '/reporting/histories/' },
+    ],
+  },
+};
+
+function getCurrentView(): MainView {
+  const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
+  if (pathname.startsWith('/dashboard/')) return 'dashboard';
+  if (pathname.startsWith('/customers/')) return 'customers';
+  if (pathname.startsWith('/notes/')) return 'notes';
+  if (pathname.startsWith('/schedules/')) return 'schedules';
+  if (pathname.startsWith('/ai-workspace/')) return 'ai';
+  return 'pipeline';
+}
 
 const savedViews: Array<{ id: SavedView; label: string }> = [
   { id: 'priority', label: '내 담당 우선' },
@@ -56,7 +157,7 @@ const riskLabel: Record<Deal['risk'], string> = {
   high: '지연',
 };
 
-function AppShell({ children }: { children: React.ReactNode }) {
+function AppShell({ activeView, children }: { activeView: MainView; children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -64,14 +165,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <div className="brand-mark">SN</div>
           <div>
             <strong>영업 보고 시스템</strong>
-            <span>Pipeline</span>
+            <span>CRM Workspace</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="CRM navigation">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <a className={`nav-item ${item.active ? 'active' : ''}`} href={item.href} key={item.label}>
+              <a className={`nav-item ${item.id === activeView ? 'active' : ''}`} href={item.href} key={item.label}>
                 <Icon size={18} />
                 <span>{item.label}</span>
               </a>
@@ -79,9 +180,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="sidebar-note">
-          <span>오늘 우선순위</span>
-          <strong>파이프라인 집중 관리</strong>
-          <p>지연 후속과 견적 단계 고객을 먼저 확인합니다.</p>
+          <span>운영 기준</span>
+          <strong>React Shell + Django API</strong>
+          <p>핵심 메뉴는 프론트에서 시작하고, 저장/상세 작업은 검증된 Django 화면과 연결합니다.</p>
         </div>
       </aside>
       <main className="workspace">{children}</main>
@@ -90,27 +191,33 @@ function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function TopBar({
+  activeView,
   searchQuery,
   onSearchChange,
 }: {
+  activeView: MainView;
   searchQuery: string;
   onSearchChange: (value: string) => void;
 }) {
+  const meta = routeMeta[activeView];
+  const showSearch = activeView === 'pipeline';
   return (
     <header className="topbar">
       <div>
-        <div className="eyebrow">Sales CRM / Pipeline</div>
-        <h1>파이프라인 관리</h1>
+        <div className="eyebrow">{meta.eyebrow}</div>
+        <h1>{meta.title}</h1>
       </div>
       <div className="topbar-actions">
-        <label className="search-box">
-          <Search size={17} />
-          <input
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="고객, 담당자, 품목, 다음 액션 검색"
-            value={searchQuery}
-          />
-        </label>
+        {showSearch ? (
+          <label className="search-box">
+            <Search size={17} />
+            <input
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="고객, 담당자, 품목, 다음 액션 검색"
+              value={searchQuery}
+            />
+          </label>
+        ) : null}
         <a className="icon-button" aria-label="알림" href="/reporting/dashboard/">
           <Bell size={18} />
         </a>
@@ -120,6 +227,91 @@ function TopBar({
         </a>
       </div>
     </header>
+  );
+}
+
+function WorkspaceRoutePage({ data, view }: { data: PipelineData; view: MainView }) {
+  const meta = routeMeta[view];
+  const urgentDeals = data.deals
+    .filter((deal) => deal.risk === 'high' || deal.stage === 'quote' || deal.stage === 'negotiation')
+    .slice(0, 5);
+  const routeStats = [
+    {
+      label: '활성 고객',
+      value: `${data.metrics.activeCount}건`,
+      detail: '파이프라인 기준',
+    },
+    {
+      label: '지연 후속',
+      value: `${data.metrics.overdueCount}건`,
+      detail: '우선 대응',
+    },
+    {
+      label: '예상 매출',
+      value: formatWon(data.metrics.weightedPipelineValue),
+      detail: '확률 가중',
+    },
+  ];
+
+  return (
+    <section className="workspace-route-page">
+      <div className="route-hero">
+        <div>
+          <span className="eyebrow">{meta.eyebrow}</span>
+          <h2>{meta.title}</h2>
+          <p>{meta.summary}</p>
+        </div>
+        <a className="route-primary-action" href={meta.primaryHref}>
+          {meta.primaryLabel}
+          <MoveUpRight size={16} />
+        </a>
+      </div>
+
+      <div className="route-stat-grid">
+        {routeStats.map((stat) => (
+          <article className="route-stat-card" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+            <small>{stat.detail}</small>
+          </article>
+        ))}
+      </div>
+
+      <div className="route-content-grid">
+        <article className="route-card">
+          <div className="panel-heading">
+            <span>주요 작업</span>
+            <ArrowRightLeft size={15} />
+          </div>
+          <div className="route-action-list">
+            {meta.actions.map((action) => (
+              <a className={action.primary ? 'primary' : ''} href={action.href} key={action.label}>
+                {action.label}
+                <ChevronRight size={15} />
+              </a>
+            ))}
+          </div>
+        </article>
+
+        <article className="route-card">
+          <div className="panel-heading">
+            <span>우선 확인 고객</span>
+            <Users size={15} />
+          </div>
+          <div className="route-deal-list">
+            {urgentDeals.map((deal) => (
+              <a href={deal.detailUrl || '/reporting/followups/'} key={deal.id}>
+                <div>
+                  <strong>{deal.company}</strong>
+                  <span>{deal.contact} · {deal.owner}</span>
+                </div>
+                <small className={`risk-badge ${deal.risk}`}>{riskLabel[deal.risk]}</small>
+              </a>
+            ))}
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -596,6 +788,7 @@ function DetailPanel({
 }
 
 export function App() {
+  const currentView = getCurrentView();
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
@@ -684,9 +877,18 @@ export function App() {
   }, [pipelineData.deals, searchQuery, selectedView]);
   const visibleSelectedDeal = visibleDeals.find((deal) => deal.id === selectedDealId) ?? visibleDeals[0];
 
+  if (currentView !== 'pipeline') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <WorkspaceRoutePage data={pipelineData} view={currentView} />
+      </AppShell>
+    );
+  }
+
   return (
-    <AppShell>
-      <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+    <AppShell activeView={currentView}>
+      <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <MetricStrip data={pipelineData} />
       <div className="content-grid">
         <FilterRail

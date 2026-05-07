@@ -327,12 +327,12 @@ class DashboardSmokeTests(TestCase):
         self.assertIn('event.target.closest(\'a[href$="#dashboardNoteModal"]\')', content)
 
     def test_topbar_pipeline_link_replaces_quote_opportunity_link(self):
-        """상단 견적 버튼은 파이프라인 목록 링크로 대체되어야 함"""
+        """상단 견적 버튼은 프론트 파이프라인 링크로 대체되어야 함"""
         self.client.force_login(self.user)
         r = self.client.get(reverse('reporting:dashboard'))
         self.assertEqual(r.status_code, 200)
         content = r.content.decode('utf-8', errors='replace')
-        self.assertIn('href="/reporting/funnel/"', content)
+        self.assertIn('href="https://sales-note-frontend-production.up.railway.app/"', content)
         self.assertIn('파이프라인', content)
         self.assertNotIn('href="/reporting/opportunities/"', content)
 

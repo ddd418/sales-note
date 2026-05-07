@@ -862,3 +862,29 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `python manage.py test reporting --verbosity=1`
 - `git diff --check`
+
+---
+
+## Frontend Migration — CRM Shell 단일 진입점 1차 정리
+
+**목표**: React 프론트를 CRM의 메인 진입점으로 세우고, 대시보드/고객/파이프라인/영업노트/일정/AI 핵심 메뉴를 프론트 Shell에서 소유하게 한다.
+
+**작업 범위**:
+
+- React 앱에 `/dashboard/`, `/customers/`, `/pipeline/`, `/notes/`, `/schedules/`, `/ai-workspace/` 라우트형 화면을 추가한다.
+- 아직 완전 이관 전인 기능은 프론트 Shell 안에서 운영 Django 화면으로 이어지는 명확한 작업 버튼을 제공한다.
+- Django context에 프론트 핵심 메뉴 URL을 공통 제공한다.
+- Django sidebar의 핵심 CRM 메뉴는 프론트 URL로 연결하고, 중복되는 Django 메뉴 노출을 줄인다.
+- 기존 Django `/reporting/*`, `/ai/*` route, 인증, CSRF, API, DB 모델은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 프론트 라우팅/UI와 Django template/context 변경만 수행한다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

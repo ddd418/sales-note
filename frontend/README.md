@@ -2,7 +2,7 @@
 
 React/Vite 기반 프론트 분리 파일럿입니다.
 
-현재 목적은 Django API 연결 전후의 디자인과 화면 구조를 빠르게 검증하는 것입니다. `/reporting/api/pipeline/`이 응답하면 실제 데이터를 사용하고, Django 서버 미실행/미로그인/응답 오류 시 `src/mockData.ts`의 mock data로 fallback합니다.
+현재 목적은 React를 CRM의 메인 Shell로 세우고 핵심 메뉴를 단계적으로 프론트로 이관하는 것입니다. `/reporting/api/pipeline/`이 응답하면 실제 데이터를 사용하고, Django 서버 미실행/미로그인/응답 오류 시 `src/mockData.ts`의 mock data로 fallback합니다.
 
 ## 실행
 
@@ -20,19 +20,20 @@ http://127.0.0.1:5173/
 
 ## 범위
 
-- 파이프라인 Command Center 시안
-- 좌측 CRM 내비게이션
+- 프론트 CRM Shell 및 좌측 핵심 내비게이션
+- `/dashboard/`, `/customers/`, `/pipeline/`, `/notes/`, `/schedules/`, `/ai-workspace/` route shell
 - KPI strip
 - Kanban/List 전환
 - 고객 상세 패널
 - 모바일 대응 기본 레이아웃
 - Django pipeline API 우선 조회
 - mock data fallback
+- Django 운영 화면 handoff 링크
 
 ## 비범위
 
 - 인증/세션 연동
-- 실제 저장/수정
+- 대시보드/고객/영업노트/일정/AI 전체 기능의 React 재구현
 - 기존 Django template 제거
 
 ## API Proxy

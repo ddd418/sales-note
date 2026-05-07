@@ -5940,3 +5940,70 @@ python manage.py test reporting --verbosity=1
 ### 6. Recommended Next Task
 
 - 운영 로그인 세션에서 `/reporting/customer-report/`를 새로고침해 고객명 배지와 카테고리 배지의 가독성을 확인합니다.
+
+---
+
+## Frontend Migration — CRM Shell 단일 진입점 1차 정리
+
+### 1. Summary
+
+React 프론트를 파이프라인 단일 화면이 아니라 CRM 메인 shell로 확장했습니다. `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/`는 프론트 안에서 같은 화이트 모드 레이아웃과 메뉴를 보여주고, 실제 상세 업무는 기존 Django `/reporting/*`, `/ai/*` 운영 화면으로 연결합니다. Django 사이드바의 핵심 CRM 메뉴도 프론트 shell URL로 보내도록 정리해 사용자가 장고/프론트를 오가더라도 공통 메뉴 흐름이 유지됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | CRM shell 단일 진입점 1차 정리 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `frontend/src/App.tsx` | React 라우트 shell 추가, 메뉴 active 처리, 대시보드/고객/영업노트/일정/AI placeholder 화면과 Django handoff 링크 구성 |
+| `frontend/src/styles.css` | 새 workspace route 화면, 액션 카드, 통계 카드, 반응형 스타일 추가 |
+| `frontend/README.md` | 프론트 shell 역할과 Django handoff 구조 문서화 |
+| `reporting/context_processors.py` | `frontend_dashboard_url`, `frontend_customers_url`, `frontend_notes_url`, `frontend_schedules_url`, `frontend_ai_url` 컨텍스트 추가 |
+| `reporting/templates/reporting/base.html` | Django 사이드바 핵심 CRM 메뉴를 프론트 shell URL로 정리 |
+| `ai_chat/tests.py` | AI 사이드바 링크 기대값을 프론트 AI workspace 기준으로 수정 |
+| `reporting/tests.py` | 상단 파이프라인 버튼 테스트를 프론트 파이프라인 링크 기준으로 수정 |
+
+### 3. CRM Improvements
+
+- 프론트 도메인에서 `대시보드`, `고객`, `파이프라인`, `영업노트`, `일정`, `AI` 메뉴가 모두 같은 React shell 안에서 열립니다.
+- 기존 `/reporting/*`, `/ai/*` 기능은 삭제하지 않고 운영 화면/API로 유지했습니다.
+- Django 화면의 핵심 사이드바 메뉴도 프론트 shell로 돌아가도록 정리했습니다.
+- 수동 프롬프트 생성기 제거 방향은 유지되어 `/ai/prompt-builder/`는 404 상태입니다.
+- 모델, migration, requirements 변경은 없습니다.
+
+### 4. Commands Run and Results
+
+```text
+npm run build
+→ OK
+
+node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+python manage.py test reporting --verbosity=1
+→ Ran 140 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 152 tests, OK
+```
+
+### 5. Known Limitations
+
+- `/dashboard/`, `/customers/`, `/notes/`, `/schedules/`, `/ai-workspace/`는 아직 완전한 React 재구현이 아니라 프론트 shell과 Django 운영 화면 연결 단계입니다.
+- 파이프라인만 현재 React에서 실제 API 데이터를 보드/리스트/상세 카드로 표시합니다.
+- 운영 로그인 세션에서 프론트 메뉴와 Django 운영 화면 간 이동을 육안으로 추가 확인하는 것이 좋습니다.
+
+### 6. Recommended Next Task
+
+- P1: React `/dashboard/`에 Django 대시보드 요약 API를 연결해 실제 KPI/오늘 일정/최근 활동을 표시합니다.
+- P2: React `/customers/`에 고객 검색/담당자 필터와 우선순위 고객 리스트를 연결합니다.
+- P3: React `/notes/`, `/schedules/`, `/ai-workspace/`를 실제 Django API 기반 화면으로 순차 전환합니다.

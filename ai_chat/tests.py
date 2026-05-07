@@ -184,7 +184,10 @@ class AIDepartmentPromptHubViewTests(TestCase):
         response = self.client.get(self.url)
         html = response.content.decode('utf-8')
 
-        self.assertRegex(html, r'href="/ai/" class="nav-link\s+active"')
+        self.assertRegex(
+            html,
+            r'href="https://sales-note-frontend-production\.up\.railway\.app/ai-workspace/" class="nav-link\s+active"',
+        )
         self.assertNotRegex(
             html,
             r'href="/reporting/companies/" class="nav-link\s+active"',
