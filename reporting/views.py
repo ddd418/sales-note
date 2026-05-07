@@ -1325,16 +1325,44 @@ def opportunity_edit_view(request, pk):
 
 @login_required
 def opportunity_list_view(request):
-    """영업 기회 목록 (자신 담당 고객 기준, 매니저는 팀 전체)"""
+    """영업 기회 목록.
+
+    기본은 현재 사용자 담당 고객만 표시한다. 같은 회사/접근 가능 사용자 데이터는
+    담당자를 명시 선택했을 때만 조회한다.
+    """
     from datetime import date as date_cls
+    from urllib.parse import urlencode
+
     user_profile = get_user_profile(request.user)
     accessible_users = get_accessible_users(request.user, request)
 
-    opportunities = OpportunityTracking.objects.filter(
-        followup__user__in=accessible_users
+    data_filter = request.GET.get('data_filter', 'me')
+    filter_user_id = request.GET.get('filter_user')
+    selected_filter_user = None
+    filter_users = User.objects.filter(id=request.user.id)
+
+    company_users = accessible_users.exclude(id=request.user.id).select_related(
+        'userprofile'
+    ).order_by('username')
+
+    if data_filter == 'user' and filter_user_id:
+        try:
+            selected_filter_user = accessible_users.get(id=filter_user_id)
+            filter_users = User.objects.filter(id=selected_filter_user.id)
+        except (User.DoesNotExist, ValueError):
+            data_filter = 'me'
+            filter_user_id = ''
+    else:
+        # 영업기회 목록에서는 data_filter=all 우회도 기본 내 데이터로 처리한다.
+        data_filter = 'me'
+        filter_user_id = ''
+
+    base_opportunities = OpportunityTracking.objects.filter(
+        followup__user__in=filter_users
     ).select_related(
         'followup', 'followup__company', 'followup__department', 'followup__user'
     ).order_by('-updated_at')
+    opportunities = base_opportunities
 
     # 단계 필터
     stage_filter = request.GET.get('stage', '')
@@ -1363,24 +1391,69 @@ def opportunity_list_view(request):
     )
 
     # 단계별 개수 (필터 전 전체 기준)
-    all_opps = OpportunityTracking.objects.filter(followup__user__in=accessible_users)
     stage_counts = {}
     for value, _label in OPPORTUNITY_STAGE_CHOICES:
-        stage_counts[value] = all_opps.filter(current_stage=value).count()
+        stage_counts[value] = base_opportunities.filter(current_stage=value).count()
 
     paginator = Paginator(opportunities, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
+
+    def build_query(**overrides):
+        params = {'data_filter': data_filter}
+        if data_filter == 'user' and selected_filter_user:
+            params['filter_user'] = selected_filter_user.id
+        if stage_filter:
+            params['stage'] = stage_filter
+        if close_filter:
+            params['close'] = close_filter
+        params.update(overrides)
+        return urlencode({
+            key: value for key, value in params.items()
+            if value not in ('', None)
+        })
+
+    stage_filter_links = [
+        {
+            'value': value,
+            'label': label,
+            'query': build_query(stage=value),
+            'count': stage_counts.get(value, 0),
+        }
+        for value, label in OPPORTUNITY_STAGE_CHOICES
+    ]
+    employee_filter_links = [
+        {
+            'user': employee,
+            'query': build_query(data_filter='user', filter_user=employee.id),
+        }
+        for employee in company_users
+    ]
+    pagination_query = build_query()
 
     context = {
         'opportunities': page_obj,
         'stage_filter': stage_filter,
         'close_filter': close_filter,
         'stage_choices': OPPORTUNITY_STAGE_CHOICES,
+        'stage_filter_links': stage_filter_links,
         'stats': stats,
         'stage_counts': stage_counts,
         'today': today,
         'page_title': '영업 기회 목록',
         'user_profile': user_profile,
+        'data_filter': data_filter,
+        'filter_user_id': str(filter_user_id) if filter_user_id else '',
+        'selected_filter_user': selected_filter_user,
+        'company_users': company_users,
+        'employee_filter_links': employee_filter_links,
+        'is_viewing_others': data_filter == 'user' and selected_filter_user is not None,
+        'scope_query': build_query(stage='', close=''),
+        'me_scope_query': build_query(data_filter='me', filter_user=''),
+        'all_stage_query': build_query(stage=''),
+        'this_month_query': build_query(close='this_month'),
+        'overdue_query': build_query(close='overdue'),
+        'clear_close_query': build_query(close=''),
+        'pagination_query': pagination_query,
     }
     return render(request, 'reporting/opportunity_list.html', context)
 

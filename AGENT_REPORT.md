@@ -5012,3 +5012,47 @@ python manage.py test --verbosity=1
 git diff --check
 → OK (LF→CRLF warning only)
 ```
+
+---
+
+## Hotfix — 영업기회 목록 기본 데이터 범위 제한
+
+### 1. Summary
+
+`/reporting/opportunities/` 영업기회 목록의 기본 조회 범위를 현재 로그인 사용자 담당 데이터로 제한했습니다. 같은 회사 직원의 영업기회는 목록 상단의 직원 선택 드롭다운에서 담당자를 명시적으로 선택한 경우에만 표시됩니다. `data_filter=all` 우회 요청도 이 화면에서는 기본 `me`로 처리합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | hotfix 계획 추가 |
+| `AGENT_REPORT.md` | hotfix 결과 기록 |
+| `reporting/views.py` | `opportunity_list_view` 기본 범위 `request.user`로 제한, 선택 사용자 필터/쿼리 링크 구성 |
+| `reporting/templates/reporting/opportunity_list.html` | 데이터 범위 필터 UI 추가, 단계/마감/페이지네이션 링크에 선택 범위 유지 |
+| `reporting/tests.py` | 기본 내 데이터, 같은 회사 직원 선택, `data_filter=all` 차단, 외부 사용자 선택 차단 테스트 추가 |
+
+### 3. Existing Functionality Preserved
+
+- 영업기회 상세/수정 권한 로직 변경 없음
+- 기존 단계 필터, 마감 필터, 페이지네이션 유지
+- DB 모델/migration 변경 없음
+- 익명 접근 차단 유지
+
+### 4. Commands Run and Results
+
+```text
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.OpportunityListDataScopeTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 149 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```

@@ -24,47 +24,99 @@
     </div>
   </div>
 
+  <!-- 데이터 범위 필터 -->
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <span class="fw-semibold text-muted small">
+            <i class="fas fa-users me-1"></i>데이터 범위
+          </span>
+          <a href="{% url 'reporting:opportunity_list' %}?{{ me_scope_query }}"
+             class="btn btn-sm {% if data_filter == 'me' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+            <i class="fas fa-user me-1"></i>나
+          </a>
+
+          {% if employee_filter_links %}
+          <div class="dropdown">
+            <button class="btn btn-sm {% if data_filter == 'user' %}btn-primary{% else %}btn-outline-primary{% endif %} dropdown-toggle"
+                    type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              {% if selected_filter_user %}
+                {{ selected_filter_user.get_full_name|default:selected_filter_user.username }}
+              {% else %}
+                직원 선택
+              {% endif %}
+            </button>
+            <ul class="dropdown-menu">
+              {% for item in employee_filter_links %}
+              <li>
+                <a class="dropdown-item {% if selected_filter_user.id == item.user.id %}active{% endif %}"
+                   href="{% url 'reporting:opportunity_list' %}?{{ item.query }}">
+                  {{ item.user.get_full_name|default:item.user.username }}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+
+        <div>
+          {% if is_viewing_others and selected_filter_user %}
+            <span class="badge bg-info">
+              <i class="fas fa-eye me-1"></i>{{ selected_filter_user.get_full_name|default:selected_filter_user.username }} 데이터
+            </span>
+          {% else %}
+            <span class="badge bg-secondary">
+              <i class="fas fa-user me-1"></i>내 데이터
+            </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 단계 필터 버튼 -->
   <div class="card mb-3">
     <div class="card-body py-2">
       <div class="d-flex flex-wrap" style="gap: 5px;">
-        <a href="{% url 'reporting:opportunity_list' %}{% if close_filter %}?close={{ close_filter }}{% endif %}"
+        <a href="{% url 'reporting:opportunity_list' %}?{{ all_stage_query }}"
            class="btn btn-sm {% if not stage_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
           전체 ({{ stats.total|default:0 }})
         </a>
-        {% for value, label in stage_choices %}
-        <a href="{% url 'reporting:opportunity_list' %}?stage={{ value }}{% if close_filter %}&close={{ close_filter }}{% endif %}"
+        {% for item in stage_filter_links %}
+        <a href="{% url 'reporting:opportunity_list' %}?{{ item.query }}"
            class="btn btn-sm
-             {% if stage_filter == value %}
-               {% if value == 'won' %}btn-success
-               {% elif value == 'quote_lost' %}btn-danger
-               {% elif value == 'closing' %}btn-primary
-               {% elif value == 'quote' %}btn-info
-               {% elif value == 'contact' %}btn-warning
+             {% if stage_filter == item.value %}
+               {% if item.value == 'won' %}btn-success
+               {% elif item.value == 'quote_lost' %}btn-danger
+               {% elif item.value == 'closing' %}btn-primary
+               {% elif item.value == 'quote' %}btn-info
+               {% elif item.value == 'contact' %}btn-warning
                {% else %}btn-secondary{% endif %}
              {% else %}
-               {% if value == 'won' %}btn-outline-success
-               {% elif value == 'quote_lost' %}btn-outline-danger
-               {% elif value == 'closing' %}btn-outline-primary
-               {% elif value == 'quote' %}btn-outline-info
-               {% elif value == 'contact' %}btn-outline-warning
+               {% if item.value == 'won' %}btn-outline-success
+               {% elif item.value == 'quote_lost' %}btn-outline-danger
+               {% elif item.value == 'closing' %}btn-outline-primary
+               {% elif item.value == 'quote' %}btn-outline-info
+               {% elif item.value == 'contact' %}btn-outline-warning
                {% else %}btn-outline-secondary{% endif %}
              {% endif %}">
-          {{ label }}
+          {{ item.label }}
         </a>
         {% endfor %}
       </div>
       <div class="mt-2 d-flex gap-2 flex-wrap">
-        <a href="{% url 'reporting:opportunity_list' %}?close=this_month{% if stage_filter %}&stage={{ stage_filter }}{% endif %}"
+        <a href="{% url 'reporting:opportunity_list' %}?{{ this_month_query }}"
            class="btn btn-sm {% if close_filter == 'this_month' %}btn-warning{% else %}btn-outline-warning{% endif %}">
           <i class="fas fa-calendar me-1"></i>이번 달 마감
         </a>
-        <a href="{% url 'reporting:opportunity_list' %}?close=overdue{% if stage_filter %}&stage={{ stage_filter }}{% endif %}"
+        <a href="{% url 'reporting:opportunity_list' %}?{{ overdue_query }}"
            class="btn btn-sm {% if close_filter == 'overdue' %}btn-danger{% else %}btn-outline-danger{% endif %}">
           <i class="fas fa-exclamation-circle me-1"></i>기한 초과
         </a>
         {% if close_filter %}
-        <a href="{% url 'reporting:opportunity_list' %}{% if stage_filter %}?stage={{ stage_filter }}{% endif %}"
+        <a href="{% url 'reporting:opportunity_list' %}?{{ clear_close_query }}"
            class="btn btn-sm btn-outline-secondary">
           <i class="fas fa-times me-1"></i>날짜 필터 해제
         </a>
@@ -157,7 +209,7 @@
     <ul class="pagination justify-content-center">
       {% if opportunities.has_previous %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ opportunities.previous_page_number }}{% if stage_filter %}&stage={{ stage_filter }}{% endif %}{% if close_filter %}&close={{ close_filter }}{% endif %}">이전</a>
+        <a class="page-link" href="?page={{ opportunities.previous_page_number }}&{{ pagination_query }}">이전</a>
       </li>
       {% endif %}
       <li class="page-item disabled">
@@ -165,7 +217,7 @@
       </li>
       {% if opportunities.has_next %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ opportunities.next_page_number }}{% if stage_filter %}&stage={{ stage_filter }}{% endif %}{% if close_filter %}&close={{ close_filter }}{% endif %}">다음</a>
+        <a class="page-link" href="?page={{ opportunities.next_page_number }}&{{ pagination_query }}">다음</a>
       </li>
       {% endif %}
     </ul>

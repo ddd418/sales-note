@@ -514,3 +514,27 @@ python pre_deployment_check.py
 
 - `ai_chat.views`: AI 분석 실행 함수에서만 `ai_chat.services`를 import하도록 변경
 - `reporting.urls`: Gmail/IMAP view callable을 lazy wrapper로 연결해 대시보드 cold start import 비용 축소
+
+---
+
+## Hotfix — 영업기회 목록 기본 데이터 범위 제한
+
+**목표**: `/reporting/opportunities/`에서 기본 목록은 현재 로그인 사용자 담당 영업기회만 보여주고, 같은 회사 직원의 영업기회는 사용자가 담당자를 명시 선택했을 때만 보여준다.
+
+**작업 범위**:
+
+- `opportunity_list_view` 기본 필터를 접근 가능 사용자 전체가 아니라 `request.user`로 변경
+- 같은 회사/접근 가능 사용자 선택 드롭다운 제공
+- `data_filter=all` 우회 요청도 영업기회 목록에서는 기본 `me`로 처리
+- 단계/마감/페이지네이션 링크가 선택된 데이터 범위를 유지하도록 수정
+- 회귀 테스트 추가
+
+**DB 변경 필요 여부**: 없음. view/template/test 변경만 수행한다.
+
+**검증 계획**:
+
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.OpportunityListDataScopeTests`
+- `python manage.py test`
+- `git diff --check`
