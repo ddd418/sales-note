@@ -267,6 +267,21 @@ body {
   color: var(--crm-text) !important;
 }
 
+.card-title,
+.modal-title,
+.form-label,
+.form-check-label,
+.form-text,
+.help-text {
+  color: var(--crm-text) !important;
+}
+
+.form-text,
+.help-text,
+.original-email-header {
+  color: var(--crm-text-muted) !important;
+}
+
 .btn {
   border-radius: var(--crm-radius-sm);
   font-weight: 650;
@@ -362,6 +377,180 @@ body {
 .form-select:focus {
   border-color: var(--crm-primary) !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea,
+.form-card input.form-control,
+.form-card select.form-select,
+.form-card textarea.form-control,
+#id_payer_name,
+#id_amount,
+#id_balance,
+#id_payment_date,
+#id_payment_method,
+#id_status,
+#id_memo {
+  background: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+.form-select option,
+select option {
+  background: var(--crm-surface) !important;
+  color: var(--crm-text) !important;
+}
+
+.form-control::placeholder,
+.form-select::placeholder {
+  color: var(--crm-text-subtle) !important;
+}
+
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: none !important;
+}
+
+input[type="file"].form-control,
+input[type="file"].form-control:focus {
+  background: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+input[type="file"].form-control::-webkit-file-upload-button,
+input[type="file"].form-control::file-selector-button {
+  background: var(--crm-surface-subtle) !important;
+  border: 1px solid var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--crm-surface) inset !important;
+  -webkit-text-fill-color: var(--crm-text) !important;
+  border-color: var(--crm-border) !important;
+}
+
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple,
+.select2-dropdown,
+.select2-results,
+.select2-results__options,
+.select2-container--default .select2-search--dropdown .select2-search__field,
+.select2-container--default .select2-results__option {
+  background: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered,
+.select2-results__message {
+  color: var(--crm-text-muted) !important;
+}
+
+.select2-container--default .select2-results__option--highlighted,
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.select2-container--default .select2-results__option:hover,
+.select2-results__option--highlighted {
+  background: #eff6ff !important;
+  color: var(--crm-primary) !important;
+}
+
+.ql-toolbar,
+.ql-container,
+.ql-editor,
+#editor-container,
+#html-editor,
+.ql-picker-options {
+  background: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+.ql-editor.ql-blank::before,
+.ql-picker-item,
+.ql-toolbar button,
+.ql-toolbar .ql-picker-label {
+  color: var(--crm-text-muted) !important;
+}
+
+.ql-toolbar .ql-stroke {
+  stroke: var(--crm-text-muted) !important;
+}
+
+.ql-toolbar .ql-fill {
+  fill: var(--crm-text-muted) !important;
+}
+
+.signature-preview,
+#signature-preview,
+.original-email,
+.original-email-body,
+.email-message,
+.email-message-header,
+.email-message-body,
+.email-body-content,
+#threadAnalysisResults,
+#threadAnalysisResults *,
+#aiSummaryModal .modal-body,
+#aiSummaryModal .modal-footer,
+.ai-summary-content p,
+.ai-summary-content li,
+.ai-summary-content ul {
+  background: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+.signature-preview *,
+#signature-preview *,
+.original-email-body *,
+.email-body-content * {
+  color: var(--crm-text) !important;
+}
+
+.signature-preview a,
+#signature-preview a,
+.email-body-content a,
+#threadAnalysisResults h4,
+#threadAnalysisResults h5,
+.ai-summary-content h3,
+.ai-summary-content h4,
+.ai-summary-content h5 {
+  color: var(--crm-primary) !important;
+}
+
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="hsl(222, 47%, 11%)"],
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="hsl(222, 47%, 14%)"],
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="hsl(222, 47%, 17%)"],
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="hsl(222, 47%, 18%)"] {
+  background: var(--crm-surface) !important;
+  background-color: var(--crm-surface) !important;
+  border-color: var(--crm-border) !important;
+  color: var(--crm-text) !important;
+}
+
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="color: hsl(210, 40%, 98%)"],
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="color: hsl(0, 0%, 95%)"],
+body :not(.btn):not(.badge):not(.modal-header):not(.offcanvas-header):not(.mobile-toggle):not(.logout-btn)[style*="color: hsl(0, 0%, 90%)"] {
+  color: var(--crm-text) !important;
 }
 
 .table {

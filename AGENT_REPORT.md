@@ -5833,3 +5833,60 @@ python manage.py test --verbosity=1
 ### 6. Recommended Next Task
 
 - 운영 로그인 세션에서 `/reporting/profile/`와 `/reporting/profile/edit/`를 새로고침해 카드/필드가 모두 화이트 모드인지 확인합니다.
+
+---
+
+## UI Hotfix — 화이트 모드 잔여 흰 텍스트/다크 토큰 정리
+
+### 1. Summary
+
+화이트 모드 전환 후에도 일부 화면에서 흰 텍스트/다크 HSL 토큰이 남을 수 있는 공통 원인을 정리했습니다. `base.html`의 기본 디자인 토큰을 라이트 CRM 값으로 바꾸고, `crm-ui.css`에 Select2/Quill/파일 input/인라인 다크 스타일 보정 규칙을 추가했습니다. 팔로우업 삭제/상세 화면의 강한 인라인 다크 스타일은 템플릿에서 직접 라이트 토큰으로 교체했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 화이트 모드 잔여 흰 텍스트 정리 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/templates/reporting/base.html` | 기본 CSS/Bootstrap 변수를 라이트 CRM 토큰으로 정규화, `crm-ui.css` cache bust 갱신 |
+| `reporting/static/reporting/css/crm-ui.css` | 라이트 표면/텍스트 보정 규칙 추가, Select2/Quill/file input/인라인 다크 HSL 보정 |
+| `reporting/templates/reporting/followup_delete.html` | 삭제 확인 화면 인라인 다크 배경/흰 텍스트를 라이트 토큰으로 변경 |
+| `reporting/templates/reporting/followup_detail.html` | 납품/히스토리 카드와 AI 모달의 인라인 다크 스타일을 라이트 토큰으로 변경 |
+
+### 3. CRM Improvements
+
+- 공통 CRM 기본값이 화이트 모드 기준으로 시작하므로 static CSS 로딩 전후 색상 흔들림이 줄어듭니다.
+- 페이지별로 남아 있던 다크 모드 CSS가 라이트 표면/슬레이트 텍스트로 보정됩니다.
+- 버튼, 배지, 위험/성공 헤더처럼 색상 배경 위 흰 텍스트가 필요한 요소는 유지했습니다.
+- 인증/권한, view, model, migration은 변경하지 않았습니다.
+
+### 4. Commands Run and Results
+
+```text
+rg -n "hsl\(222,\s*47%,\s*(11|14|17|18)%\)|hsl\(210,\s*40%,\s*98%\)|hsl\(0,\s*0%,\s*(95|90|100)%\)" reporting/templates reporting/static frontend/src
+→ 잔여 다크/흰 텍스트 패턴 확인 후 공통 CSS 보정 및 팔로우업 템플릿 직접 수정
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+python manage.py test reporting --verbosity=1
+→ Ran 140 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 152 tests, OK
+```
+
+### 5. Known Limitations
+
+- 템플릿에는 버튼/배지/그라데이션 헤더용 `color: white`가 정상 용도로 남아 있습니다.
+- 운영 로그인 세션에서 메일 작성, 일정 작성, 선결제 등록처럼 페이지 전용 CSS가 많았던 화면은 추가 육안 확인을 권장합니다.
+
+### 6. Recommended Next Task
+
+- 운영에서 `/reporting/dashboard/`, `/reporting/schedules/create/`, `/reporting/followups/`, `/reporting/followups/<id>/`, `/reporting/prepayment/create/`를 새로고침해 라이트 배경 위 흰 글자가 더 남는지 확인합니다.

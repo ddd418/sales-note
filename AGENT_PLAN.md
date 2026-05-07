@@ -812,3 +812,27 @@ python pre_deployment_check.py
 - 로그인된 로컬 클라이언트로 `/reporting/profile/`, `/reporting/profile/edit/` 200 확인
 - 템플릿에 프로필 전용 다크 HSL 토큰이 남지 않았는지 확인
 - `git diff --check`
+
+---
+
+## UI Hotfix — 화이트 모드 잔여 흰 텍스트/다크 토큰 정리
+
+**목표**: CRM이 화이트 모드로 확정된 상태에서 라이트 배경 위 흰 텍스트 또는 다크 모드 잔여 토큰이 보이는 화면을 정리한다.
+
+**작업 범위**:
+
+- `base.html`의 기본 CSS 변수와 Bootstrap 변수 기본값을 라이트 CRM 토큰으로 정규화한다.
+- `crm-ui.css`에 페이지별 다크 CSS, Select2, Quill, 파일 input, 인라인 다크 HSL 스타일을 라이트 표면/텍스트로 보정하는 공통 규칙을 추가한다.
+- 팔로우업 삭제/상세 화면처럼 인라인 다크 스타일이 강한 템플릿은 직접 라이트 스타일로 교체한다.
+- 버튼, 배지, 위험/성공 헤더처럼 색상 배경 위에서 흰 텍스트가 필요한 요소는 유지한다.
+
+**DB 변경 필요 여부**: 없음. CSS/template 표시 수정만 수행한다.
+
+**검증 계획**:
+
+- 흰 텍스트/다크 HSL 패턴 재스캔
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

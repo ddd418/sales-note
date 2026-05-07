@@ -26,119 +26,119 @@
 
   <style>
     /* ============================================
-       🎨 LOVABLE DARK THEME - Modern Design System
+       CRM LIGHT THEME - Modern Design System
        ============================================ */
     :root {
       /* Primary Colors - Blue accent */
-      --primary: hsl(217, 91%, 60%);
-      --primary-light: hsl(217, 91%, 70%);
-      --primary-dark: hsl(217, 91%, 50%);
-      --primary-bg: hsla(217, 91%, 60%, 0.1);
+      --primary: #2563eb;
+      --primary-light: #3b82f6;
+      --primary-dark: #1d4ed8;
+      --primary-bg: rgba(37, 99, 235, 0.1);
       
       /* Semantic Colors */
-      --success: hsl(142, 76%, 36%);
-      --warning: hsl(38, 92%, 50%);
-      --danger: hsl(0, 84%, 60%);
-      --info: hsl(199, 89%, 48%);
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --danger: #dc2626;
+      --info: #0ea5e9;
       
-      /* Dark Theme Background Colors */
-      --background: hsl(222, 47%, 11%);
-      --surface: hsl(222, 47%, 14%);
-      --surface-hover: hsl(217, 33%, 17%);
-      --border: hsl(217, 33%, 22%);
-      --border-light: hsl(217, 33%, 17%);
+      /* Light Theme Background Colors */
+      --background: #f8fafc;
+      --surface: #ffffff;
+      --surface-hover: #f1f5f9;
+      --border: #e2e8f0;
+      --border-light: #edf2f7;
       
-      /* Dark Theme Text Colors */
-      --text-primary: hsl(210, 40%, 98%);
-      --text-secondary: hsl(215, 20%, 75%);
-      --text-muted: hsl(215, 20%, 65%);
+      /* Light Theme Text Colors */
+      --text-primary: #0f172a;
+      --text-secondary: #334155;
+      --text-muted: #64748b;
       
-      /* Sidebar (Darker) */
-      --sidebar-bg: linear-gradient(180deg, hsl(222, 47%, 8%) 0%, hsl(222, 47%, 11%) 100%);
-      --sidebar-text: hsl(210, 40%, 98%);
-      --sidebar-text-muted: hsl(215, 20%, 65%);
-      --sidebar-border: hsl(217, 33%, 17%);
-      --sidebar-hover: hsla(217, 33%, 22%, 0.5);
-      --sidebar-active: hsla(217, 91%, 60%, 0.2);
+      /* Sidebar */
+      --sidebar-bg: #ffffff;
+      --sidebar-text: #0f172a;
+      --sidebar-text-muted: #64748b;
+      --sidebar-border: #e2e8f0;
+      --sidebar-hover: #f1f5f9;
+      --sidebar-active: rgba(37, 99, 235, 0.1);
       
       /* Card Colors */
-      --card: hsl(222, 47%, 14%);
-      --card-foreground: hsl(210, 40%, 98%);
-      --card-border: hsl(217, 33%, 22%);
+      --card: #ffffff;
+      --card-foreground: #0f172a;
+      --card-border: #e2e8f0;
       
       /* Chart Colors */
-      --chart-1: hsl(217, 91%, 60%);
-      --chart-2: hsl(142, 76%, 36%);
-      --chart-3: hsl(38, 92%, 50%);
-      --chart-4: hsl(280, 65%, 60%);
-      --chart-5: hsl(0, 84%, 60%);
+      --chart-1: #2563eb;
+      --chart-2: #16a34a;
+      --chart-3: #f59e0b;
+      --chart-4: #8b5cf6;
+      --chart-5: #dc2626;
       
       /* Effects */
-      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
-      --shadow-glow: 0 0 20px hsla(217, 91%, 60%, 0.15);
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+      --shadow-glow: none;
       
       --radius: 12px;
       --radius-sm: 8px;
       --radius-lg: 16px;
 
-      /* ── Bootstrap 5.3 CSS Variable Overrides (Dark Theme) ── */
-      --bs-body-color: hsl(210, 40%, 98%);
-      --bs-body-bg: hsl(222, 47%, 11%);
-      --bs-secondary-color: hsl(215, 20%, 75%);
-      --bs-secondary-bg: hsl(217, 33%, 17%);
-      --bs-tertiary-color: hsl(215, 20%, 65%);
-      --bs-tertiary-bg: hsl(222, 47%, 14%);
-      --bs-emphasis-color: hsl(210, 40%, 98%);
-      --bs-link-color: hsl(217, 91%, 60%);
-      --bs-link-hover-color: hsl(217, 91%, 70%);
-      --bs-border-color: hsl(217, 33%, 22%);
-      --bs-border-color-translucent: hsla(217, 33%, 22%, 0.5);
-      --bs-heading-color: hsl(210, 40%, 98%);
-      --bs-card-bg: hsl(222, 47%, 14%);
-      --bs-card-color: hsl(210, 40%, 98%);
-      --bs-card-border-color: hsl(217, 33%, 22%);
-      --bs-card-cap-bg: hsl(222, 47%, 14%);
-      --bs-list-group-bg: hsl(222, 47%, 14%);
-      --bs-list-group-color: hsl(210, 40%, 98%);
-      --bs-list-group-border-color: hsl(217, 33%, 22%);
-      --bs-modal-bg: hsl(222, 47%, 14%);
-      --bs-modal-color: hsl(210, 40%, 98%);
-      --bs-dropdown-bg: hsl(222, 47%, 14%);
-      --bs-dropdown-color: hsl(210, 40%, 98%);
-      --bs-dropdown-border-color: hsl(217, 33%, 22%);
-      --bs-dropdown-link-color: hsl(210, 40%, 98%);
-      --bs-dropdown-link-hover-color: hsl(210, 40%, 98%);
-      --bs-dropdown-link-hover-bg: hsl(217, 33%, 17%);
-      --bs-input-bg: hsl(222, 47%, 14%);
-      --bs-input-color: hsl(210, 40%, 98%);
-      --bs-input-border-color: hsl(217, 33%, 22%);
-      --bs-input-placeholder-color: hsl(215, 20%, 65%);
-      --bs-table-color: hsl(210, 40%, 98%);
+      /* Bootstrap 5.3 CSS Variable Overrides (Light Theme) */
+      --bs-body-color: #0f172a;
+      --bs-body-bg: #f8fafc;
+      --bs-secondary-color: #64748b;
+      --bs-secondary-bg: #f1f5f9;
+      --bs-tertiary-color: #94a3b8;
+      --bs-tertiary-bg: #f8fafc;
+      --bs-emphasis-color: #0f172a;
+      --bs-link-color: #2563eb;
+      --bs-link-hover-color: #1d4ed8;
+      --bs-border-color: #e2e8f0;
+      --bs-border-color-translucent: rgba(226, 232, 240, 0.82);
+      --bs-heading-color: #0f172a;
+      --bs-card-bg: #ffffff;
+      --bs-card-color: #0f172a;
+      --bs-card-border-color: #e2e8f0;
+      --bs-card-cap-bg: #ffffff;
+      --bs-list-group-bg: #ffffff;
+      --bs-list-group-color: #0f172a;
+      --bs-list-group-border-color: #e2e8f0;
+      --bs-modal-bg: #ffffff;
+      --bs-modal-color: #0f172a;
+      --bs-dropdown-bg: #ffffff;
+      --bs-dropdown-color: #0f172a;
+      --bs-dropdown-border-color: #e2e8f0;
+      --bs-dropdown-link-color: #0f172a;
+      --bs-dropdown-link-hover-color: #0f172a;
+      --bs-dropdown-link-hover-bg: #f1f5f9;
+      --bs-input-bg: #ffffff;
+      --bs-input-color: #0f172a;
+      --bs-input-border-color: #e2e8f0;
+      --bs-input-placeholder-color: #94a3b8;
+      --bs-table-color: #0f172a;
       --bs-table-bg: transparent;
-      --bs-table-striped-bg: hsla(217, 33%, 17%, 0.3);
-      --bs-table-hover-bg: hsl(217, 33%, 17%);
-      --bs-table-border-color: hsl(217, 33%, 22%);
-      --bs-pagination-bg: hsl(222, 47%, 14%);
-      --bs-pagination-color: hsl(215, 20%, 75%);
-      --bs-pagination-border-color: hsl(217, 33%, 22%);
-      --bs-pagination-hover-bg: hsl(217, 33%, 17%);
-      --bs-pagination-hover-color: hsl(217, 91%, 60%);
-      --bs-pagination-hover-border-color: hsl(217, 33%, 22%);
-      --bs-pagination-disabled-bg: hsl(222, 47%, 14%);
-      --bs-pagination-disabled-color: hsl(215, 20%, 65%);
-      --bs-accordion-bg: hsl(222, 47%, 14%);
-      --bs-accordion-color: hsl(210, 40%, 98%);
-      --bs-accordion-border-color: hsl(217, 33%, 22%);
-      --bs-accordion-button-bg: hsl(222, 47%, 14%);
-      --bs-accordion-button-color: hsl(210, 40%, 98%);
-      --bs-accordion-button-active-bg: hsl(217, 33%, 17%);
-      --bs-accordion-button-active-color: hsl(217, 91%, 60%);
-      --bs-toast-bg: hsl(222, 47%, 14%);
-      --bs-toast-color: hsl(210, 40%, 98%);
-      --bs-offcanvas-bg: hsl(222, 47%, 14%);
-      --bs-offcanvas-color: hsl(210, 40%, 98%);
+      --bs-table-striped-bg: #f8fafc;
+      --bs-table-hover-bg: #f1f5f9;
+      --bs-table-border-color: #e2e8f0;
+      --bs-pagination-bg: #ffffff;
+      --bs-pagination-color: #64748b;
+      --bs-pagination-border-color: #e2e8f0;
+      --bs-pagination-hover-bg: #f1f5f9;
+      --bs-pagination-hover-color: #2563eb;
+      --bs-pagination-hover-border-color: #e2e8f0;
+      --bs-pagination-disabled-bg: #ffffff;
+      --bs-pagination-disabled-color: #94a3b8;
+      --bs-accordion-bg: #ffffff;
+      --bs-accordion-color: #0f172a;
+      --bs-accordion-border-color: #e2e8f0;
+      --bs-accordion-button-bg: #ffffff;
+      --bs-accordion-button-color: #0f172a;
+      --bs-accordion-button-active-bg: #f1f5f9;
+      --bs-accordion-button-active-color: #2563eb;
+      --bs-toast-bg: #ffffff;
+      --bs-toast-color: #0f172a;
+      --bs-offcanvas-bg: #ffffff;
+      --bs-offcanvas-color: #0f172a;
     }
 
     * {
@@ -177,7 +177,7 @@
     }
 
     /* ============================================
-       🎯 사이드바 (Modern Dark Sidebar)
+       사이드바 (Light Sidebar)
        ============================================ */
     .sidebar {
       position: fixed !important;
@@ -273,7 +273,7 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      color: white;
+      color: var(--sidebar-text);
     }
 
     .sidebar-title i {
@@ -441,7 +441,7 @@
     .top-bar {
       position: sticky;
       top: 0;
-      background: hsla(222, 47%, 14%, 0.9);
+      background: rgba(255, 255, 255, 0.94);
       backdrop-filter: blur(12px);
       padding: 0.875rem 1.5rem;
       margin: 0 !important;
@@ -547,7 +547,7 @@
     }
 
     /* ============================================
-       🎨 Modern Bootstrap Override
+       Modern Bootstrap Override
        ============================================ */
     
     /* Cards - Glass Effect */
@@ -654,7 +654,7 @@
       color: var(--text-muted) !important;
     }
     
-    /* Form check (checkbox, radio) - Dark Theme */
+    /* Form check (checkbox, radio) */
     .form-check-input {
       background-color: var(--surface) !important;
       border-color: var(--border) !important;
@@ -737,7 +737,7 @@
       background: var(--surface-hover) !important;
     }
 
-    /* Outline Buttons - Dark Mode */
+    /* Outline Buttons */
     .btn-outline-secondary {
       border-color: var(--text-muted) !important;
       color: var(--text-secondary) !important;
@@ -778,7 +778,7 @@
       font-size: 0.75rem !important;
     }
 
-    /* Alerts - Dark Theme */
+    /* Alerts */
     .alert {
       border-radius: var(--radius) !important;
       border: none !important;
@@ -895,7 +895,7 @@
       color: var(--text-muted) !important;
     }
 
-    /* Progress - Dark Theme */
+    /* Progress */
     .progress {
       background: var(--border) !important;
       border-radius: var(--radius) !important;
@@ -906,7 +906,7 @@
       border-radius: var(--radius) !important;
     }
 
-    /* List Groups - Dark Theme */
+    /* List Groups */
     .list-group-item {
       border-color: var(--border) !important;
       padding: 0.875rem 1.25rem !important;
@@ -918,7 +918,7 @@
       background: var(--surface-hover) !important;
     }
 
-    /* Nav Tabs - Dark Theme */
+    /* Nav Tabs */
     .nav-tabs {
       border-bottom: 2px solid var(--border) !important;
     }
@@ -942,7 +942,7 @@
       background: transparent !important;
     }
 
-    /* Nav Pills - Dark Theme */
+    /* Nav Pills */
     .nav-pills .nav-link {
       border-radius: var(--radius-sm) !important;
       color: var(--text-secondary) !important;
@@ -957,7 +957,7 @@
       color: white !important;
     }
 
-    /* Accordion - Dark Theme */
+    /* Accordion */
     .accordion-item {
       border: 1px solid var(--border) !important;
       border-radius: var(--radius) !important;
@@ -1489,7 +1489,7 @@
   {% block extra_css %}{% endblock %}
 
   <!-- CRM light UI override -->
-  <link rel="stylesheet" href="{% static 'reporting/css/crm-ui.css' %}?v=20260506-rework">
+  <link rel="stylesheet" href="{% static 'reporting/css/crm-ui.css' %}?v=20260507-light-text">
 </head>
 <body>
   <!-- 모바일 메뉴 토글 -->
