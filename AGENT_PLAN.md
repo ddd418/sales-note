@@ -786,3 +786,29 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - Railway 프론트 배포 후 운영 프론트 도메인의 `/static/reporting/css/crm-ui.css`와 `/reporting/login/` smoke 확인
+
+---
+
+## UI Hotfix — 프로필 화면 라이트 CRM 테마 정리
+
+**목표**: `/reporting/profile/`와 `/reporting/profile/edit/`가 공통 CRM 라이트 테마를 따르도록 페이지 전용 다크 CSS를 제거한다.
+
+**원인**:
+
+- `profile.html`과 `profile_edit.html`에 `hsl(222, 47%, 14%)`, `hsl(210, 40%, 98%)` 기반의 페이지 전용 다크 모드 CSS가 남아 있다.
+- 이 스타일이 공통 `crm-ui.css` 라이트 토큰보다 늦게 적용되어 프로필 카드/입력 필드가 다크 모드로 보인다.
+
+**작업 범위**:
+
+- 프로필 보기 화면의 카드, 본문, 읽기 전용 필드, 이메일 연동 카드, alert 스타일을 라이트 CRM 토큰으로 변경한다.
+- 프로필 수정 화면의 카드, 폼 필드, 안내 alert, 계정 정보 필드를 라이트 CRM 토큰으로 변경한다.
+- 인증/권한, view, model, migration은 변경하지 않는다.
+
+**검증 계획**:
+
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- 로그인된 로컬 클라이언트로 `/reporting/profile/`, `/reporting/profile/edit/` 200 확인
+- 템플릿에 프로필 전용 다크 HSL 토큰이 남지 않았는지 확인
+- `git diff --check`

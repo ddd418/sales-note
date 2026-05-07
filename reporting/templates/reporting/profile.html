@@ -4,64 +4,71 @@
 
 {% block extra_css %}
 <style>
-/* 🌙 프로필 페이지 다크 모드 */
+/* 프로필 페이지: CRM light theme */
 .card {
-    background: hsl(222, 47%, 14%) !important;
-    border-color: hsl(217, 33%, 22%) !important;
+    background: var(--crm-surface, #ffffff) !important;
+    border-color: var(--crm-border, #e2e8f0) !important;
+    box-shadow: var(--crm-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.06)) !important;
 }
 
 .card-header {
-    border-color: hsl(217, 33%, 22%) !important;
+    border-color: var(--crm-border, #e2e8f0) !important;
 }
 
 .card-body {
-    background: hsl(222, 47%, 14%) !important;
-    color: hsl(210, 40%, 98%) !important;
+    background: var(--crm-surface, #ffffff) !important;
+    color: var(--crm-text, #0f172a) !important;
 }
 
 .card-body h4 {
-    color: hsl(210, 40%, 98%) !important;
+    color: var(--crm-text, #0f172a) !important;
 }
 
 .form-label {
-    color: hsl(210, 40%, 98%) !important;
+    color: var(--crm-text, #0f172a) !important;
 }
 
-/* bg-light 필드 다크 모드 */
+/* 읽기 전용 정보 필드 */
 .form-control-plaintext.bg-light {
-    background-color: hsl(222, 47%, 17%) !important;
-    color: hsl(210, 40%, 98%) !important;
-    border-color: hsl(217, 33%, 22%) !important;
+    background-color: var(--crm-surface-subtle, #f1f5f9) !important;
+    color: var(--crm-text, #0f172a) !important;
+    border-color: var(--crm-border, #e2e8f0) !important;
 }
 
 /* Gmail 연동 카드 */
 .card.border-info {
-    border-color: hsl(217, 33%, 22%) !important;
+    border-color: var(--crm-border, #e2e8f0) !important;
 }
 
 .card.border-info .card-body {
-    background: hsl(222, 47%, 14%) !important;
+    background: var(--crm-surface, #ffffff) !important;
 }
 
-/* alert 다크 모드 */
+/* alert light theme */
 .alert-success {
-    background: rgba(16, 185, 129, 0.15) !important;
-    border-color: rgba(16, 185, 129, 0.3) !important;
-    color: #10b981 !important;
+    background: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+    color: #166534 !important;
+}
+
+.alert-info {
+    background: #eff6ff !important;
+    border-color: #bfdbfe !important;
+    color: #1e40af !important;
 }
 
 .alert-warning {
-    background: rgba(245, 158, 11, 0.15) !important;
-    border-color: rgba(245, 158, 11, 0.3) !important;
-    color: #f59e0b !important;
+    background: #fffbeb !important;
+    border-color: #fde68a !important;
+    color: #92400e !important;
 }
 
 .text-muted {
-    color: hsl(215, 20%, 65%) !important;
+    color: var(--crm-text-muted, #64748b) !important;
 }
 
 ul.text-muted li {
-    color: hsl(215, 20%, 65%) !important;
+    color: var(--crm-text-muted, #64748b) !important;
 }
 </style>
 {% endblock %}

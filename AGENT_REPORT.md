@@ -5774,3 +5774,62 @@ git diff --check
 ### 6. Recommended Next Task
 
 - 운영 프론트 도메인에서 로그인 후 `/reporting/schedules/`, `/reporting/dashboard/`, `/reporting/followups/`의 라이트 테마 적용을 함께 확인합니다.
+
+---
+
+## UI Hotfix — 프로필 화면 라이트 CRM 테마 정리
+
+### 1. Summary
+
+프론트 도메인의 `/reporting/profile/`가 아직 다크 모드로 보이던 원인을 확인하고 수정했습니다. 이번 원인은 static proxy가 아니라 `profile.html`과 `profile_edit.html`에 남아 있던 페이지 전용 다크 CSS였습니다. 카드, 본문, 읽기 전용 필드, 폼 입력, 안내 alert 스타일을 공통 CRM 라이트 토큰 기준으로 바꿨습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 프로필 라이트 테마 hotfix 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+| `reporting/templates/reporting/profile.html` | 프로필 보기 화면 전용 다크 CSS를 라이트 토큰으로 변경 |
+| `reporting/templates/reporting/profile_edit.html` | 프로필 수정 화면 전용 다크 CSS를 라이트 토큰으로 변경 |
+
+### 3. CRM Improvements
+
+- `/reporting/profile/`의 정보 카드와 이메일 연동 카드가 흰 배경/슬레이트 텍스트로 표시됩니다.
+- `/reporting/profile/edit/`의 입력 필드, 비밀번호 안내, 계정 정보 카드도 라이트 CRM 톤을 따릅니다.
+- 인증/권한, view, model, migration은 변경하지 않았습니다.
+
+### 4. Commands Run and Results
+
+```text
+rg -n "hsl\(222|hsl\(210|프로필.*다크|다크 모드" reporting/templates/reporting/profile.html reporting/templates/reporting/profile_edit.html
+→ No matches
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 140 tests, OK
+
+Local authenticated render smoke
+GET /reporting/profile/
+→ 200, crm-ui.css included
+
+Local authenticated render smoke
+GET /reporting/profile/edit/
+→ 200, crm-ui.css included
+
+python manage.py test --verbosity=1
+→ Ran 152 tests, OK
+```
+
+### 5. Known Limitations
+
+- 운영 화면은 로그인 세션이 필요해 미인증 HTTP smoke에서는 `/reporting/login/?next=/reporting/profile/` 리다이렉트까지만 확인 가능합니다.
+- `base.html`에는 기존 inline dark token이 아직 남아 있으나, `crm-ui.css`와 페이지별 라이트 토큰이 운영 라이트 테마를 덮도록 유지하고 있습니다.
+
+### 6. Recommended Next Task
+
+- 운영 로그인 세션에서 `/reporting/profile/`와 `/reporting/profile/edit/`를 새로고침해 카드/필드가 모두 화이트 모드인지 확인합니다.
