@@ -810,6 +810,16 @@ def funnel_pipeline_view(request):
         Q(meeting_date__gte=thirty_days_ago) |
         Q(meeting_date__isnull=True, created_at__date__gte=thirty_days_ago)
     ).order_by('-created_at')
+    pricing_histories_qs = History.objects.filter(
+        parent_history__isnull=True,
+        action_type__in=['quote', 'delivery_schedule'],
+    ).prefetch_related('delivery_items_set').order_by('-created_at')
+    pricing_schedules_qs = Schedule.objects.filter(
+        activity_type__in=['quote', 'delivery'],
+    ).prefetch_related(
+        'delivery_items_set',
+        Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
+    ).order_by('-visit_date', '-created_at')
 
     followups = followups.select_related(
         'company', 'department', 'user'
@@ -824,10 +834,13 @@ def funnel_pipeline_view(request):
             visit_date__gte=thirty_days_ago,
             visit_date__lte=today,
         ).exclude(status='cancelled').order_by('visit_date'), to_attr='recent_schedules'),
+        # 가격 기준: 실제 견적/납품 일정 품목
+        Prefetch('schedules', queryset=pricing_schedules_qs, to_attr='pricing_schedules'),
         # 표시용: 전체 히스토리 (카드에 최근 활동 표시)
         Prefetch('histories', queryset=History.objects.filter(
             parent_history__isnull=True
         ).order_by('-created_at'), to_attr='all_histories'),
+        Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
         # 단계 추천용: 최근 30일 히스토리 (날짜 필터)
         Prefetch('histories', queryset=recent_histories_qs,
                  to_attr='recent_histories_for_stage'),
@@ -844,13 +857,14 @@ def funnel_pipeline_view(request):
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
-        latest_quote, latest_quote_amount, latest_quote_source = _select_pipeline_pricing_quote(fu, stage)
+        pricing = _select_pipeline_pricing(fu, stage)
+        pricing_amount = pricing['amount']
         has_overdue_action = any(
             h.next_action_date and h.next_action_date < today
             for h in getattr(fu, 'all_histories', [])
         )
-        if latest_quote:
-            stage_amounts[stage] += latest_quote_amount
+        if pricing_amount > 0:
+            stage_amounts[stage] += pricing_amount
         if has_overdue_action:
             stage_overdue_counts[stage] += 1
 
@@ -881,10 +895,10 @@ def funnel_pipeline_view(request):
             'last_history_type': last_history.get_action_type_display() if last_history else None,
             'last_history_date': last_history.created_at.strftime('%m/%d') if last_history else None,
             'last_history_snippet': (last_history.content or '')[:40] if last_history else None,
-            # 최근 견적
-            'latest_quote_stage': latest_quote.get_stage_display() if latest_quote else None,
-            'latest_quote_amount': f'{int(latest_quote_amount):,}원' if latest_quote else None,
-            'latest_quote_source': latest_quote_source,
+            # 가격 기준 데이터
+            'latest_quote_stage': pricing['stage'] if pricing['source'] else None,
+            'latest_quote_amount': f'{int(pricing_amount):,}원' if pricing_amount > 0 else None,
+            'latest_quote_source': pricing['source'],
             # 추천 단계 (자동 동기화 대상)
             'suggested_stage': suggested_stage,
             'suggested_stage_label': stage_labels.get(suggested_stage, '') if suggested_stage else '',
@@ -951,14 +965,166 @@ def _quote_amount(quote):
     return quote.total_amount or Decimal('0')
 
 
-def _select_pipeline_pricing_quote(followup, stage):
-    """
-    Return the Quote that should drive the pipeline card value for the current stage.
+def _delivery_item_total(items):
+    total = Decimal('0')
+    for item in items:
+        if item.total_price is not None:
+            total += item.total_price
+        elif item.unit_price is not None and item.quantity:
+            total += item.unit_price * item.quantity * Decimal('1.1')
+    return total
 
-    A customer can have newer rejected/expired drafts after a real submitted,
-    negotiated, or won quote. The pipeline value should follow the business stage,
-    not blindly the newest Quote row.
+
+def _schedule_item_total(schedule):
+    return _delivery_item_total(list(schedule.delivery_items_set.all()))
+
+
+def _history_item_total(history):
+    return _delivery_item_total(list(history.delivery_items_set.all()))
+
+
+def _history_pricing_amount(history):
+    item_total = _history_item_total(history)
+    if item_total > 0:
+        return item_total
+    return history.delivery_amount or Decimal('0')
+
+
+def _latest_schedule_history_amount(schedule, action_type=None):
+    histories = getattr(schedule, 'pricing_histories', None)
+    if histories is None:
+        histories = schedule.histories.filter(
+            parent_history__isnull=True,
+        )
+        if action_type:
+            histories = histories.filter(action_type=action_type)
+        histories = histories.prefetch_related('delivery_items_set').order_by('-created_at')
+    for history in histories:
+        if action_type and history.action_type != action_type:
+            continue
+        amount = _history_pricing_amount(history)
+        if amount > 0:
+            return amount
+    return Decimal('0')
+
+
+def _schedule_quote_amount(schedule):
+    item_total = _schedule_item_total(schedule)
+    if item_total > 0:
+        return item_total
+    history_amount = _latest_schedule_history_amount(schedule, 'quote')
+    if history_amount > 0:
+        return history_amount
+    return schedule.expected_revenue or Decimal('0')
+
+
+def _delivery_schedule_amount(schedule):
+    item_total = _schedule_item_total(schedule)
+    if item_total > 0:
+        return item_total
+    history_amount = _latest_schedule_history_amount(schedule, 'delivery_schedule')
+    if history_amount > 0:
+        return history_amount
+    return schedule.expected_revenue or Decimal('0')
+
+
+def _select_latest_quote_schedule(followup):
+    schedules = list(getattr(followup, 'pricing_schedules', []))
+    quote_schedules = [schedule for schedule in schedules if schedule.activity_type == 'quote']
+    with_amount = [schedule for schedule in quote_schedules if _schedule_quote_amount(schedule) > 0]
+    return with_amount[0] if with_amount else (quote_schedules[0] if quote_schedules else None)
+
+
+def _select_latest_quote_history(followup):
+    histories = list(getattr(followup, 'pricing_histories', []))
+    quote_histories = [history for history in histories if history.action_type == 'quote']
+    with_amount = [history for history in quote_histories if _history_pricing_amount(history) > 0]
+    return with_amount[0] if with_amount else (quote_histories[0] if quote_histories else None)
+
+
+def _actual_delivery_revenue(followup):
+    schedules = list(getattr(followup, 'pricing_schedules', []))
+    completed_delivery_schedules = [
+        schedule
+        for schedule in schedules
+        if schedule.activity_type == 'delivery' and schedule.status == 'completed'
+    ]
+    total = Decimal('0')
+    processed_schedule_ids = set()
+    latest_schedule = None
+
+    for schedule in completed_delivery_schedules:
+        amount = _delivery_schedule_amount(schedule)
+        if amount > 0:
+            total += amount
+            processed_schedule_ids.add(schedule.id)
+            if latest_schedule is None:
+                latest_schedule = schedule
+
+    histories = list(getattr(followup, 'pricing_histories', getattr(followup, 'all_histories', [])))
+    for history in histories:
+        if history.action_type != 'delivery_schedule':
+            continue
+        if history.schedule_id and history.schedule_id in processed_schedule_ids:
+            continue
+        amount = _history_pricing_amount(history)
+        if amount > 0:
+            total += amount
+
+    return total, latest_schedule
+
+
+def _select_pipeline_pricing(followup, stage):
     """
+    Return the object and amount that should drive the pipeline card value.
+
+    운영 데이터는 Quote 모델뿐 아니라 견적/납품 Schedule의 DeliveryItem과
+    납품 History 금액에도 저장된다. 파이프라인 단계별로 실제 업무 소스를 우선한다.
+    """
+    if stage == 'won':
+        amount, delivery_schedule = _actual_delivery_revenue(followup)
+        if amount > 0:
+            return {
+                'object': delivery_schedule,
+                'kind': 'delivery',
+                'amount': amount,
+                'source': '실제 납품 매출',
+                'number': f'납품 #{delivery_schedule.id}' if delivery_schedule else '납품 히스토리',
+                'stage': '완료됨',
+                'probability': 100,
+                'valid_until': None,
+            }
+
+    if stage in ('quote', 'negotiation'):
+        quote_schedule = _select_latest_quote_schedule(followup)
+        if quote_schedule:
+            amount = _schedule_quote_amount(quote_schedule)
+            if amount > 0:
+                return {
+                    'object': quote_schedule,
+                    'kind': 'schedule',
+                    'amount': amount,
+                    'source': '견적 일정',
+                    'number': f'일정 #{quote_schedule.id}',
+                    'stage': quote_schedule.get_activity_type_display(),
+                    'probability': quote_schedule.probability or STAGE_PROBABILITY.get(stage, 30),
+                    'valid_until': quote_schedule.expected_close_date,
+                }
+        quote_history = _select_latest_quote_history(followup)
+        if quote_history:
+            amount = _history_pricing_amount(quote_history)
+            if amount > 0:
+                return {
+                    'object': quote_history,
+                    'kind': 'history',
+                    'amount': amount,
+                    'source': '견적 활동',
+                    'number': f'활동 #{quote_history.id}',
+                    'stage': quote_history.get_action_type_display(),
+                    'probability': STAGE_PROBABILITY.get(stage, 30),
+                    'valid_until': None,
+                }
+
     prefetched_quotes = getattr(followup, 'all_quotes', None)
     quotes = (
         list(prefetched_quotes)
@@ -966,7 +1132,16 @@ def _select_pipeline_pricing_quote(followup, stage):
         else list(followup.quotes.all().order_by('-created_at'))
     )
     if not quotes:
-        return None, Decimal('0'), ''
+        return {
+            'object': None,
+            'kind': '',
+            'amount': Decimal('0'),
+            'source': '',
+            'number': '',
+            'stage': '',
+            'probability': STAGE_PROBABILITY.get(stage, 30),
+            'valid_until': None,
+        }
 
     def first_matching(predicate):
         with_amount = [quote for quote in quotes if predicate(quote) and _quote_amount(quote) > 0]
@@ -979,20 +1154,56 @@ def _select_pipeline_pricing_quote(followup, stage):
             lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
         )
         if quote:
-            return quote, _quote_amount(quote), '수주 견적'
+            return {
+                'object': quote,
+                'kind': 'quote',
+                'amount': _quote_amount(quote),
+                'source': '수주 견적',
+                'number': quote.quote_number,
+                'stage': quote.get_stage_display(),
+                'probability': int(quote.probability or 0),
+                'valid_until': quote.valid_until,
+            }
 
     for quote_stage in PIPELINE_QUOTE_PRIORITY.get(stage, ()):
         quote = first_matching(lambda item, expected=quote_stage: item.stage == expected)
         if quote:
             source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
-            return quote, _quote_amount(quote), source_label
+            return {
+                'object': quote,
+                'kind': 'quote',
+                'amount': _quote_amount(quote),
+                'source': source_label,
+                'number': quote.quote_number,
+                'stage': quote.get_stage_display(),
+                'probability': int(quote.probability or 0),
+                'valid_until': quote.valid_until,
+            }
 
     quote = first_matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES)
     if quote:
-        return quote, _quote_amount(quote), '진행 견적'
+        return {
+            'object': quote,
+            'kind': 'quote',
+            'amount': _quote_amount(quote),
+            'source': '진행 견적',
+            'number': quote.quote_number,
+            'stage': quote.get_stage_display(),
+            'probability': int(quote.probability or 0),
+            'valid_until': quote.valid_until,
+        }
 
     quote = first_matching(lambda item: True)
-    return quote, _quote_amount(quote), '최근 견적'
+    return {
+        'object': quote,
+        'kind': 'quote',
+        'amount': _quote_amount(quote),
+        'source': '최근 견적',
+        'number': quote.quote_number,
+        'stage': quote.get_stage_display(),
+        'probability': int(quote.probability or 0),
+        'valid_until': quote.valid_until,
+    }
 
 
 def _date_label(target_date, today):
@@ -1052,6 +1263,16 @@ def pipeline_command_center_api(request):
         Q(meeting_date__gte=thirty_days_ago) |
         Q(meeting_date__isnull=True, created_at__date__gte=thirty_days_ago)
     ).order_by('-created_at')
+    pricing_histories_qs = History.objects.filter(
+        parent_history__isnull=True,
+        action_type__in=['quote', 'delivery_schedule'],
+    ).prefetch_related('delivery_items_set').order_by('-created_at')
+    pricing_schedules_qs = Schedule.objects.filter(
+        activity_type__in=['quote', 'delivery'],
+    ).prefetch_related(
+        'delivery_items_set',
+        Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
+    ).order_by('-visit_date', '-created_at')
 
     followups = (
         _get_accessible_followups(request.user, request)
@@ -1065,9 +1286,11 @@ def pipeline_command_center_api(request):
                 visit_date__gte=thirty_days_ago,
                 visit_date__lte=today,
             ).exclude(status='cancelled').order_by('-visit_date'), to_attr='recent_schedules'),
+            Prefetch('schedules', queryset=pricing_schedules_qs, to_attr='pricing_schedules'),
             Prefetch('histories', queryset=History.objects.filter(
                 parent_history__isnull=True,
             ).order_by('-created_at'), to_attr='all_histories'),
+            Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
             Prefetch('histories', queryset=recent_histories_qs,
                      to_attr='recent_histories_for_stage'),
             Prefetch('quotes', queryset=Quote.objects.order_by('-created_at'),
@@ -1085,11 +1308,9 @@ def pipeline_command_center_api(request):
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
-        latest_quote, latest_quote_amount, latest_quote_source = _select_pipeline_pricing_quote(fu, stage)
-        probability = (
-            latest_quote.probability if latest_quote and latest_quote.probability is not None
-            else STAGE_PROBABILITY.get(stage, 30)
-        )
+        pricing = _select_pipeline_pricing(fu, stage)
+        pricing_amount = pricing['amount']
+        probability = pricing['probability'] or STAGE_PROBABILITY.get(stage, 30)
         next_action_date = last_history.next_action_date if last_history else None
         has_overdue_action = bool(next_action_date and next_action_date < today)
         due_date = next_action_date or (next_schedule.visit_date if next_schedule else None)
@@ -1112,14 +1333,16 @@ def pipeline_command_center_api(request):
             for history in getattr(fu, 'all_histories', [])[:3]
         ]
         latest_quote_payload = None
-        if latest_quote:
+        if pricing['source'] or pricing_amount > 0:
+            valid_until = pricing['valid_until']
             latest_quote_payload = {
-                'number': latest_quote.quote_number,
-                'stage': latest_quote.get_stage_display(),
-                'amount': _money_int(latest_quote_amount),
-                'probability': int(latest_quote.probability or 0),
-                'validUntil': latest_quote.valid_until.isoformat() if latest_quote.valid_until else None,
-                'source': latest_quote_source,
+                'number': pricing['number'],
+                'stage': pricing['stage'],
+                'amount': _money_int(pricing_amount),
+                'probability': int(probability or 0),
+                'validUntil': valid_until.isoformat() if valid_until else None,
+                'source': pricing['source'],
+                'basisType': pricing['kind'],
             }
         next_schedule_payload = None
         if next_schedule:
@@ -1131,14 +1354,14 @@ def pipeline_command_center_api(request):
                 'location': next_schedule.location or '',
             }
         tags = []
-        if latest_quote:
-            tags.append(latest_quote_source or '견적 있음')
+        if pricing['source']:
+            tags.append(pricing['source'])
         if has_overdue_action:
             tags.append('후속 지연')
         if fu.customer_grade:
             tags.append(f'{fu.customer_grade} 등급')
         attention_score, attention_reason = _attention_score(
-            stage, latest_quote, next_schedule, last_history, has_overdue_action, today
+            stage, pricing_amount > 0, next_schedule, last_history, has_overdue_action, today
         )
 
         deal = {
@@ -1149,7 +1372,7 @@ def pipeline_command_center_api(request):
             'owner': fu.user.get_full_name() or fu.user.username,
             'stage': stage,
             'stageLabel': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
-            'value': _money_int(latest_quote_amount),
+            'value': _money_int(pricing_amount),
             'probability': int(probability or 0),
             'nextAction': next_action[:80],
             'due': _date_label(due_date, today),
@@ -1165,7 +1388,7 @@ def pipeline_command_center_api(request):
             'detailUrl': f'/reporting/followups/{fu.id}/',
         }
         stage_map[stage].append(deal)
-        stage_amounts[stage] += latest_quote_amount or Decimal('0')
+        stage_amounts[stage] += pricing_amount or Decimal('0')
         if has_overdue_action:
             stage_overdue_counts[stage] += 1
         deals.append(deal)

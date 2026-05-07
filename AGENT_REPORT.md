@@ -6519,3 +6519,83 @@ local frontend smoke: GET /schedules/
 
 - 운영 배포 및 smoke: 약 20~40분.
 - 수주 금액 기준을 실제 납품/매출 기준으로 확장할 경우: 약 1~2시간.
+
+---
+
+## Pipeline Pricing — 실제 견적/납품 품목 기준 보강
+
+**날짜**: 2026-05-07
+**상태**: 완료
+
+### 1. Summary
+
+파이프라인 카드 금액 기준을 기존 `Quote` 중심에서 실제 운영 입력 데이터 중심으로 보강했습니다. 견적/협상 단계는 견적 일정 품목과 견적 히스토리 품목을 먼저 사용하고, 수주 단계는 완료된 납품 일정/납품 히스토리의 실제 납품 매출을 합산합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 실제 견적/납품 품목 기준 보강 계획과 예상 소요 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `reporting/funnel_views.py` | 파이프라인 가격 기준을 Schedule/History DeliveryItem과 납품금액 기반으로 보강 |
+| `reporting/tests.py` | 견적 일정 품목, 견적 히스토리 품목, 실제 납품 히스토리 품목 회귀 테스트 추가 |
+| `frontend/src/mockData.ts` | 파이프라인 가격 기준 타입(`basisType`) 추가 |
+
+### 3. CRM Improvements
+
+- `quote`, `negotiation` 단계 금액은 견적 일정의 품목 총액을 우선 표시합니다.
+- 견적 일정 품목이 없으면 견적 활동 히스토리에 직접 입력된 품목 총액을 사용합니다.
+- 실제 견적/활동 품목 데이터가 없을 때만 `Quote` 모델 금액으로 fallback합니다.
+- `won` 단계 금액은 완료된 납품 일정 품목, 연결된 납품 히스토리 품목/금액, 독립 납품 히스토리 품목/금액을 실제 납품 매출로 합산합니다.
+- API 응답의 `latestQuote.source`와 `basisType`으로 금액 출처를 구분할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 운영 화면은 유지했습니다.
+- 일정, 히스토리, 견적, 납품 품목 저장 구조는 변경하지 않았습니다.
+- 인증/권한/CSRF 정책 변경은 없습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 10 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 162 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 174 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 실제 고객명/금액이 맞는지 육안 확인은 필요합니다.
+- 품목 총액은 기존 `DeliveryItem.save()` 계산과 동일하게 단가 × 수량 × VAT 10% 포함 금액을 사용합니다.
+- 수주 금액은 실제 납품 기준이므로, 아직 납품 완료/납품 히스토리가 없는 수주 카드는 기존 수주 견적 fallback으로 표시됩니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 로그인 상태에서 파이프라인 `견적 제출`, `협상`, `수주` 카드의 금액 출처와 실제 금액을 확인합니다.
+- 이후 수주 카드에서 견적 대비 실제 납품 매출 차이를 함께 보여줄지 검토합니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 20~40분.
+- 운영 로그인 육안 확인: 약 10~20분.

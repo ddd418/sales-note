@@ -1032,6 +1032,43 @@ class PipelineApiTests(TestCase):
             converted_to_delivery=converted,
         )
 
+    def _create_delivery_item(self, schedule, item_name, unit_price, quantity=1):
+        from reporting.models import DeliveryItem
+
+        return DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name=item_name,
+            quantity=quantity,
+            unit_price=unit_price,
+        )
+
+    def _create_history_item(self, history, item_name, unit_price, quantity=1):
+        from reporting.models import DeliveryItem
+
+        return DeliveryItem.objects.create(
+            history=history,
+            item_name=item_name,
+            quantity=quantity,
+            unit_price=unit_price,
+        )
+
+    def _create_delivery_schedule(self, followup, owner, name, unit_price, quantity=1):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        schedule = Schedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate() - timedelta(days=1),
+            visit_time=time(11, 0),
+            status='completed',
+            activity_type='delivery',
+        )
+        self._create_delivery_item(schedule, name, unit_price, quantity)
+        return schedule
+
     def test_pipeline_api_requires_login(self):
         response = self.client.get(self.url)
         self.assertIn(response.status_code, [301, 302])
@@ -1074,10 +1111,12 @@ class PipelineApiTests(TestCase):
 
     def test_pipeline_api_uses_stage_relevant_quote_amount(self):
         quote_followup = self._create_pipeline_customer(self.user, '견적가격', stage='quote')
+        self._create_delivery_item(quote_followup.schedules.first(), '견적품목', 2000000)
         self._create_quote_for_followup(
             quote_followup, self.user, 'quote-latest-rejected', 'rejected', 3000000
         )
         negotiation_followup = self._create_pipeline_customer(self.user, '협상가격', stage='negotiation')
+        self._create_delivery_item(negotiation_followup.schedules.first(), '협상품목', 2000000)
         self._create_quote_for_followup(
             negotiation_followup, self.user, 'negotiation-active', 'negotiation', 2000000
         )
@@ -1085,6 +1124,7 @@ class PipelineApiTests(TestCase):
             negotiation_followup, self.user, 'negotiation-latest-expired', 'expired', 5000000
         )
         won_followup = self._create_pipeline_customer(self.user, '수주가격', stage='won')
+        self._create_delivery_schedule(won_followup, self.user, '납품품목', 4000000)
         self._create_quote_for_followup(
             won_followup, self.user, 'won-approved', 'approved', 4000000
         )
@@ -1098,14 +1138,54 @@ class PipelineApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         deals = {deal['id']: deal for deal in payload['deals']}
-        self.assertEqual(deals[quote_followup.id]['value'], 1100000)
-        self.assertEqual(deals[quote_followup.id]['latestQuote']['source'], '제출 견적')
+        self.assertEqual(deals[quote_followup.id]['value'], 2200000)
+        self.assertEqual(deals[quote_followup.id]['latestQuote']['source'], '견적 일정')
+        self.assertEqual(deals[quote_followup.id]['latestQuote']['basisType'], 'schedule')
         self.assertEqual(deals[negotiation_followup.id]['value'], 2200000)
-        self.assertEqual(deals[negotiation_followup.id]['latestQuote']['source'], '협상 견적')
+        self.assertEqual(deals[negotiation_followup.id]['latestQuote']['source'], '견적 일정')
         self.assertEqual(deals[won_followup.id]['value'], 4400000)
-        self.assertEqual(deals[won_followup.id]['latestQuote']['source'], '수주 견적')
+        self.assertEqual(deals[won_followup.id]['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(deals[won_followup.id]['latestQuote']['basisType'], 'delivery')
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 4400000)
+
+    def test_pipeline_api_uses_quote_history_items_before_quote_model_fallback(self):
+        followup = self._create_pipeline_customer(self.user, '견적히스토리', stage='quote')
+        quote_history = followup.histories.filter(action_type='quote').first()
+        self._create_history_item(quote_history, '히스토리견적품목', 3000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['value'], 3300000)
+        self.assertEqual(deal['latestQuote']['source'], '견적 활동')
+        self.assertEqual(deal['latestQuote']['basisType'], 'history')
+
+    def test_pipeline_api_uses_delivery_history_items_for_won_revenue(self):
+        from django.utils import timezone
+        from reporting.models import History
+
+        followup = self._create_pipeline_customer(self.user, '수주히스토리', stage='won')
+        delivery_history = History.objects.create(
+            user=self.user,
+            company=self.user.userprofile.company,
+            followup=followup,
+            action_type='delivery_schedule',
+            content='실제 납품 완료',
+            delivery_date=timezone.localdate(),
+        )
+        self._create_history_item(delivery_history, '히스토리납품품목', 5000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['value'], 5500000)
+        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
 
     def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
         for index in range(12):

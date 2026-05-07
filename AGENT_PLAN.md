@@ -1092,3 +1092,37 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - 운영/로컬에서 `/schedules/`가 `/reporting/schedules/calendar/`로 이동하는지 확인
+
+---
+
+## Pipeline Pricing — 실제 견적/납품 품목 기준 보강
+
+**목표**: React 파이프라인과 Django 파이프라인 보드의 카드 금액을 운영에서 실제 입력하는 견적/납품 품목 데이터 기준으로 표시한다.
+
+**작업 범위**:
+
+- `quote`, `negotiation` 단계는 `Schedule(activity_type='quote')`의 `DeliveryItem` 금액을 우선 사용한다.
+- 견적 일정에 품목 금액이 없으면 `History(action_type='quote')`에 직접 연결된 `DeliveryItem` 금액을 사용한다.
+- 위 실제 업무 품목 데이터가 없을 때만 기존 `Quote` 모델 금액으로 fallback한다.
+- `won` 단계는 완료된 납품 일정의 `DeliveryItem` 금액을 우선 합산한다.
+- 납품 일정 품목이 없으면 연결된 납품 히스토리의 `DeliveryItem` 또는 `delivery_amount`를 사용한다.
+- 일정 없이 등록된 납품 히스토리 품목/금액도 실제 납품 매출로 합산한다.
+- 기존 `/reporting/*` 운영 화면, 인증/권한, CSRF 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `History`, `DeliveryItem`, `Quote` 필드만 조회한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1~2시간.
+- 전체 테스트와 운영 배포/smoke 포함: 추가 40~80분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

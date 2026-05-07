@@ -40,6 +40,7 @@ export type Deal = {
     probability: number;
     validUntil?: string | null;
     source?: string;
+    basisType?: string;
   } | null;
   nextSchedule?: {
     id: number;
