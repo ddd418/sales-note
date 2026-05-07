@@ -24,7 +24,6 @@ const mimeTypes = {
 
 const hopByHopHeaders = new Set([
   'connection',
-  'content-length',
   'host',
   'keep-alive',
   'proxy-authenticate',
