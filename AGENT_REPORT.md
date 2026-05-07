@@ -4798,3 +4798,176 @@ python manage.py test reporting --verbosity=1
 2. 제품 목록 페이지 검색/필터 개선
 3. 대시보드 모바일 최적화
 4. 영업노트 빠른 작성 (Quick Note) 기능
+
+---
+
+## Phase 10 — 서버 응답 속도 개선 1차/2차 보고
+
+### 1. Summary
+
+주요 느림 원인으로 확인된 반복 쿼리를 DB 모델 변경 없이 줄였습니다. `/ai/` 부서 선택 허브, `/reporting/followups/` 팔로우업 목록, `/reporting/dashboard/` 대시보드 집계를 단계적으로 최적화했습니다. 2차 작업에서는 대시보드의 월간/연간 일정 집계, 선결제 집계, 고객 분포 합계, 오늘/예정 일정 카운트의 추가 쿼리를 줄였습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | Phase 10 서버 응답 속도 개선 계획 추가 |
+| `ai_chat/views.py` | `/ai/` 부서 목록의 부서별 팔로우업 조회 N+1 제거 |
+| `reporting/views.py` | 팔로우업 업체 카운트 N+1 제거, 대시보드 날짜/월별/연간 반복 집계와 선결제 집계를 grouped query/aggregate로 변경 |
+
+### 3. CRM Improvements
+
+- `/ai/` 부서 카드 렌더링 시 부서별 고객명 조회를 반복하지 않도록 개선
+- 팔로우업 목록의 업체 필터 카운트를 한 번의 팔로우업 조회 결과로 계산
+- 대시보드 14일 활동 추이, 월별 고객/매출/서비스/납품 통계, 현재 달 활동 히트맵, 팀 활동 현황 일부를 grouped query로 축소
+- 대시보드 월간/연간 일정 지표와 선결제 요약을 단일 aggregate 중심으로 재사용
+- 고객 분포 합계와 오늘/예정 일정 개수를 기존 조회 결과에서 계산해 추가 count 쿼리 제거
+
+### 4. Existing Functionality Preserved
+
+- DB 모델 및 migration 변경 없음
+- 권한/인증 로직 변경 없음
+- 기존 `/ai/`, `/reporting/followups/`, `/reporting/dashboard/` URL 유지
+- 기존 AI 분석 실행/프롬프트 생성 흐름 유지
+
+### 5. Performance Check
+
+로컬 DB 기준 측정 결과입니다. 첫 요청은 Django 템플릿/프로세스 warm-up 영향으로 튈 수 있어 쿼리 수를 핵심 지표로 확인했습니다.
+
+| URL | 변경 전 쿼리 수 | 1차 후 | 2차 후 |
+| --- | --------------: | -----: | -----: |
+| `/ai/` | 87 | 8 | 8 |
+| `/ai/?department=<id>` | 88 | 8 | 8 |
+| `/reporting/followups/` | 83 | 12 | 12 |
+| `/reporting/dashboard/` | 141 | 61 | 41 |
+
+2차 최종 측정 기준으로 `/reporting/dashboard/`는 141쿼리에서 41쿼리까지 줄었습니다. `/ai/` 첫 요청은 개발 서버 warm-up 영향으로 시간 값이 튈 수 있으나, 같은 프로세스의 `/ai/?department=<id>` 요청은 8쿼리/약 0.026초로 확인했습니다.
+
+### 6. Commands Run and Results
+
+```text
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test ai_chat
+→ Ran 12 tests, OK
+
+python manage.py test reporting
+→ Ran 132 tests, OK
+
+python manage.py test
+→ Ran 144 tests, OK
+
+git diff --check
+→ OK
+```
+
+### 7. Known Limitations
+
+- `/reporting/dashboard/`는 아직 41쿼리입니다. 대시보드가 여러 독립 위젯을 한 화면에 렌더링하므로 추가 축소는 캐싱/인덱스/위젯 분리까지 함께 봐야 합니다.
+- 첫 요청 지연은 Django 템플릿 로딩/개발 서버 warm-up 영향이 있어 실제 운영에서는 gunicorn worker 상태와 별도 확인이 필요합니다.
+- 인덱스 추가는 migration이 필요하므로 이번 단계에서는 제외했습니다.
+
+### 8. Recommended Next Task
+
+1. 실제 운영 DB에서 `/reporting/dashboard/`, `/ai/`, `/reporting/followups/` 응답 시간 재측정
+2. `Schedule`, `History`, `FollowUp`, `DeliveryItem` 주요 필터 필드 인덱스 추가 여부 검토
+3. `SESSION_SAVE_EVERY_REQUEST` 개발/운영 설정 분리 검토
+
+---
+
+## Phase 11 — DB 인덱스 및 cold start 개선 보고
+
+### 1. Summary
+
+대시보드/팔로우업/AI 허브의 주요 필터 경로에 복합 인덱스를 추가했습니다. 또한 대시보드 첫 요청 지연 원인이 쿼리보다 URL resolver의 무거운 모듈 import에 있다는 점을 확인하고, AI 분석 서비스와 Gmail/IMAP view import를 실제 호출 시점으로 늦췄습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | Phase 11 성능 개선 계획 추가 |
+| `AGENT_REPORT.md` | Phase 11 작업 결과 기록 |
+| `reporting/models.py` | `FollowUp`, `Schedule`, `History`, `Prepayment`, `PersonalSchedule` 복합 인덱스 추가 |
+| `reporting/migrations/0094_followup_follow_user_created_idx_and_more.py` | 성능 인덱스 migration 생성 |
+| `reporting/urls.py` | Gmail/IMAP view lazy import wrapper 적용 |
+| `ai_chat/views.py` | OpenAI 서비스 import를 분석 실행 함수 내부로 이동 |
+| `ai_chat/tests.py` | lazy import 구조에 맞춰 OpenAI 서비스 미호출 테스트 수정 |
+
+### 3. CRM Improvements
+
+- 대시보드에서 자주 쓰는 `user + visit_date`, `user + activity_type + status + visit_date`, `user + created_at`, `user + next_action_date` 조회 경로 최적화
+- 팔로우업 목록/AI 허브에서 쓰는 `user + department`, `user + created_at`, `user + pipeline_stage` 조회 경로 최적화
+- 선결제 요약에서 쓰는 `created_by + payment_date`, `created_by + status` 조회 경로 최적화
+- 개인 일정 대시보드 조회에서 쓰는 `user + schedule_date + schedule_time` 조회 경로 최적화
+- `/reporting/dashboard/` cold start에서 AI/OpenAI 및 Gmail/IMAP 모듈을 불필요하게 import하지 않도록 개선
+
+### 4. Performance Check
+
+로컬 DB 기준입니다. 인덱스는 데이터가 커질수록 효과가 커지고, 쿼리 수 자체를 줄이는 변경은 아닙니다.
+
+| URL | 상태 | 쿼리 수 | 측정 시간 |
+| --- | ---: | -----: | --------: |
+| `/reporting/dashboard/` | 200 | 41 | 0.906s |
+| `/reporting/followups/` | 200 | 12 | 0.162s |
+| `/ai/` | 200 | 8 | 0.070s |
+| `/ai/?department=<id>` | 200 | 8 | 0.053s |
+
+대시보드 cold/warm 별도 측정:
+
+| 항목 | 변경 전 | 변경 후 |
+| ---- | ------: | ------: |
+| cold dashboard request | 약 2.9~5.2s | 0.789s |
+| warm dashboard request | 약 0.147s | 0.098s |
+
+### 5. Existing Functionality Preserved
+
+- 기존 URL 구조 유지
+- 인증/권한 정책 변경 없음
+- 신규 DB 필드 없음
+- OpenAI 호출 로직 자체 변경 없음
+- Gmail/IMAP 기능은 URL 요청 시 기존 view를 그대로 import해 실행
+
+### 6. Commands Run and Results
+
+```text
+python manage.py makemigrations reporting
+→ reporting.0094 생성, AddIndex만 포함
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py migrate --plan
+→ reporting.0094 AddIndex 계획만 확인
+
+python manage.py migrate reporting 0094
+→ OK, 로컬 DB에 인덱스 적용
+
+python manage.py test ai_chat reporting --verbosity=1
+→ 1차 실행: lazy import 반영으로 테스트 patch 위치 오류 1건 확인
+→ 테스트 수정 후 재실행: Ran 144 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 144 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 7. Known Limitations
+
+- 운영 DB에는 배포 후 migration 적용이 필요합니다.
+- `/reporting/dashboard/` 쿼리 수는 41개로 유지됩니다. 추가 축소는 캐싱 또는 위젯별 비동기 로딩 설계가 필요합니다.
+- 로그인 POST가 테스트 로그에서 1초 이상 걸리는 경우가 있습니다. 이는 페이지 렌더링보다 인증/세션/해시 비용에 가까워 별도 분석 대상입니다.
+
+### 8. Recommended Next Task
+
+1. 운영 배포 후 `reporting.0094` migration 적용 및 실제 응답 시간 확인
+2. 대시보드 위젯별 fragment cache 또는 AJAX 분리 검토
+3. 로그인/세션 비용 분석: `SESSION_SAVE_EVERY_REQUEST`, 세션 backend, 인증 해시 비용 확인

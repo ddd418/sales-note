@@ -446,3 +446,71 @@ python pre_deployment_check.py
 **다음 권장 단계**: Phase 7 계획 재개
 
 권장 실행 순서: Phase 7C (빠른 정리) → Phase 7A (영업기회 CRUD) → Phase 7B (테스트)
+
+---
+
+## Phase 10 — 서버 응답 속도 개선 1차
+
+**목표**: 모델 변경 없이 현재 주요 화면의 반복 쿼리를 줄여 개발/운영 서버 응답 시간을 안정화한다.
+
+**작업 범위**:
+
+- `/ai/` 부서 선택 허브의 부서별 팔로우업 조회 N+1 제거
+- `/reporting/followups/` 업체 필터 목록의 업체별 팔로우업 카운트 N+1 제거
+- `/reporting/dashboard/` 반복 집계 일부를 날짜/월 단위 grouped query로 축소
+
+**DB 변경 필요 여부**: 없음. 이번 단계는 view/query 최적화만 수행하며 migration은 만들지 않는다.
+
+**검증 계획**:
+
+- 최적화 전후 URL별 응답 시간/쿼리 수 비교: `/ai/`, `/reporting/followups/`, `/reporting/dashboard/`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test ai_chat`
+- `python manage.py test reporting`
+- `python manage.py test`
+- `git diff --check`
+
+**2차 추가 범위**:
+
+- 대시보드 월간/연간 일정 카운트를 `aggregate()` 결과로 재사용
+- 대시보드 선결제 통계를 단일 aggregate로 축소
+- 오늘/이번 주 일정 목록은 리스트 평가 결과 길이를 사용해 추가 count 제거
+- 고객사별 매출 분포의 전체 합계를 별도 aggregate 없이 기존 grouped query 결과에서 계산
+
+---
+
+## Phase 11 — 주요 CRM 조회 경로 DB 인덱스 추가
+
+**목표**: Phase 10에서 남은 체감 지연 가능 구간을 줄이기 위해 대시보드, 팔로우업, AI 부서 허브에서 반복적으로 사용하는 필터 조합에 복합 인덱스를 추가한다.
+
+**작업 범위**:
+
+- `Schedule`: 사용자/방문일/상태/활동유형 기반 대시보드 집계와 오늘·이번 주 일정 조회 최적화
+- `History`: 사용자/작성일/활동유형/다음 액션 기반 최근 활동, 지연 후속, 팀 활동 조회 최적화
+- `FollowUp`: 사용자/생성일/파이프라인/부서 기반 고객 목록, 대시보드, AI 부서 허브 조회 최적화
+- `Prepayment`: 등록자/결제일/상태 기반 선결제 월간·요약 조회 최적화
+- `PersonalSchedule`: 사용자/일정일/시간 기반 대시보드 개인 일정 조회 최적화
+
+**DB 변경 필요 여부**: 있음. 신규 필드 없이 `models.Index`만 추가하며 migration을 생성한다.
+
+**검증 계획**:
+
+- `python manage.py makemigrations --check --dry-run`로 migration 상태 확인
+- `python manage.py migrate --plan`으로 적용 계획 확인
+- `python manage.py check`
+- `python manage.py test reporting`
+- `python manage.py test`
+- 주요 URL 쿼리 수 재측정: `/reporting/dashboard/`, `/reporting/followups/`, `/ai/`
+- `git diff --check`
+
+**추가 확인된 병목**:
+
+- `/reporting/dashboard/` 첫 요청 지연은 쿼리 수가 아니라 URL resolver가 `ai_chat.services`, Gmail/IMAP view 모듈을 한꺼번에 import하는 cold start 비용이 큼.
+- `ai_chat.services`는 OpenAI 관련 의존성을 포함하므로 `/reporting/dashboard/` 요청에서는 즉시 필요하지 않음.
+- Gmail/IMAP view는 대시보드 요청과 무관하므로 URL 매칭 시점까지 lazy import로 늦춘다.
+
+**추가 작업 범위**:
+
+- `ai_chat.views`: AI 분석 실행 함수에서만 `ai_chat.services`를 import하도록 변경
+- `reporting.urls`: Gmail/IMAP view callable을 lazy wrapper로 연결해 대시보드 cold start import 비용 축소

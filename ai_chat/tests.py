@@ -1,5 +1,5 @@
 from datetime import date
-from unittest.mock import patch
+import sys
 
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
@@ -220,15 +220,20 @@ class AIDepartmentPromptHubViewTests(TestCase):
         make_department_analysis(user, department)
         self.client.force_login(user)
 
-        with patch('ai_chat.views.analyze_department') as mocked_analyze:
+        previous_services_module = sys.modules.pop('ai_chat.services', None)
+        try:
             response = self.client.post(self.url, data={
                 'department_id': str(department.id),
                 'selected_goal': '견적 후속 연락 전략 작성',
                 'custom_goal': '',
             })
+            services_imported_during_request = 'ai_chat.services' in sys.modules
+        finally:
+            if previous_services_module is not None:
+                sys.modules['ai_chat.services'] = previous_services_module
 
         self.assertEqual(response.status_code, 200)
-        mocked_analyze.assert_not_called()
+        self.assertFalse(services_imported_during_request)
         self.assertContains(response, '# 역할')
         self.assertContains(response, '견적 후속 연락 전략 작성')
         self.assertIn('견적 후속 연락 전략 작성', response.context['generated_prompt'])

@@ -3,6 +3,7 @@ AI 부서 분석 - Views
 부서 목록, 분석 실행, 결과 조회, PainPoint 검증
 """
 import logging
+from collections import defaultdict
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -17,7 +18,6 @@ from .department_prompt import (
     summarize_department_analysis,
     suggest_goals_from_department_analysis,
 )
-from .services import analyze_department, gather_meeting_data, gather_quote_delivery_data
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +43,30 @@ def ai_permission_required(view_func):
 @ai_permission_required
 def department_list(request):
     """AI 부서분석 기반 프롬프트 생성 허브"""
-    # 사용자의 팔로우업에서 부서 목록 추출
-    department_ids = FollowUp.objects.filter(
+    # 사용자의 팔로우업에서 부서 목록과 검색용 고객명을 한 번에 추출한다.
+    followup_rows = list(FollowUp.objects.filter(
         user=request.user,
         department__isnull=False
-    ).values_list('department_id', flat=True).distinct()
+    ).values('department_id', 'customer_name').order_by('department_id', 'customer_name'))
 
-    departments = Department.objects.filter(
+    customer_names_by_department = defaultdict(list)
+    followup_counts_by_department = defaultdict(int)
+    for row in followup_rows:
+        department_id = row['department_id']
+        followup_counts_by_department[department_id] += 1
+        if row['customer_name']:
+            customer_names_by_department[department_id].append(row['customer_name'])
+
+    department_ids = list(followup_counts_by_department.keys())
+    departments = list(Department.objects.filter(
         id__in=department_ids
-    ).select_related('company').order_by('company__name', 'name')
+    ).select_related('company').order_by('company__name', 'name'))
+    department_map = {department.id: department for department in departments}
 
     # 기존 분석 정보
     analyses = AIDepartmentAnalysis.objects.filter(
         user=request.user,
-        department__in=departments
+        department_id__in=department_ids
     )
     analysis_map = {a.department_id: a for a in analyses}
 
@@ -70,7 +80,7 @@ def department_list(request):
     prompt_error = ''
 
     selected_department_id = request.POST.get('department_id') or request.GET.get('department')
-    allowed_department_ids = set(departments.values_list('id', flat=True))
+    allowed_department_ids = set(department_map.keys())
 
     if selected_department_id:
         try:
@@ -79,7 +89,7 @@ def department_list(request):
             selected_department_id = None
 
     if selected_department_id and selected_department_id in allowed_department_ids:
-        selected_department = departments.filter(id=selected_department_id).first()
+        selected_department = department_map.get(selected_department_id)
         selected_analysis = analysis_map.get(selected_department_id)
     elif selected_department_id:
         from django.contrib import messages
@@ -112,14 +122,11 @@ def department_list(request):
     dept_data = []
     for dept in departments:
         analysis = analysis_map.get(dept.id)
-        followups = FollowUp.objects.filter(
-            user=request.user, department=dept
-        )
-        customer_names = list(followups.values_list('customer_name', flat=True))
+        customer_names = customer_names_by_department.get(dept.id, [])
         dept_data.append({
             'department': dept,
             'analysis': analysis,
-            'followup_count': len(customer_names),
+            'followup_count': followup_counts_by_department.get(dept.id, 0),
             'has_analysis': analysis is not None,
             'customer_names': customer_names,
             'is_selected': selected_department is not None and dept.id == selected_department.id,
@@ -181,6 +188,8 @@ def department_analysis(request, department_id):
 @require_POST
 def run_analysis(request, department_id):
     """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
+    from .services import analyze_department, gather_meeting_data
+
     department = get_object_or_404(Department, id=department_id)
 
     # 권한 확인

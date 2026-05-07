@@ -3,10 +3,22 @@ from django.urls import path
 from . import views
 from . import backup_api
 from . import personal_schedule_views
-from . import gmail_views
-from . import imap_views
 from . import funnel_views
 from django.contrib.auth import views as auth_views # auth_views 임포트
+from importlib import import_module
+
+
+def lazy_view(view_path):
+    """Import rarely used view modules only when their URL is requested."""
+    module_path, view_name = view_path.rsplit('.', 1)
+
+    def _wrapped(request, *args, **kwargs):
+        view = getattr(import_module(module_path), view_name)
+        return view(request, *args, **kwargs)
+
+    _wrapped.__name__ = view_name
+    _wrapped.__module__ = module_path
+    return _wrapped
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
 
@@ -223,51 +235,51 @@ urlpatterns = [
     # ============================================
     
     # Gmail OAuth2 인증
-    path('gmail/connect/', gmail_views.gmail_connect, name='gmail_connect'),
-    path('gmail/callback/', gmail_views.gmail_callback, name='gmail_callback'),
-    path('gmail/disconnect/', gmail_views.gmail_disconnect, name='gmail_disconnect'),
+    path('gmail/connect/', lazy_view('reporting.gmail_views.gmail_connect'), name='gmail_connect'),
+    path('gmail/callback/', lazy_view('reporting.gmail_views.gmail_callback'), name='gmail_callback'),
+    path('gmail/disconnect/', lazy_view('reporting.gmail_views.gmail_disconnect'), name='gmail_disconnect'),
     
     # 이메일 발송
-    path('gmail/send/schedule/<int:schedule_id>/', gmail_views.send_email_from_schedule, name='send_email_from_schedule'),
-    path('gmail/send/mailbox/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox'),
-    path('gmail/send/mailbox/<int:followup_id>/', gmail_views.send_email_from_mailbox, name='send_email_from_mailbox_with_followup'),
-    path('gmail/reply/<int:email_log_id>/', gmail_views.reply_email, name='reply_email'),
+    path('gmail/send/schedule/<int:schedule_id>/', lazy_view('reporting.gmail_views.send_email_from_schedule'), name='send_email_from_schedule'),
+    path('gmail/send/mailbox/', lazy_view('reporting.gmail_views.send_email_from_mailbox'), name='send_email_from_mailbox'),
+    path('gmail/send/mailbox/<int:followup_id>/', lazy_view('reporting.gmail_views.send_email_from_mailbox'), name='send_email_from_mailbox_with_followup'),
+    path('gmail/reply/<int:email_log_id>/', lazy_view('reporting.gmail_views.reply_email'), name='reply_email'),
     
     # ============================================
     # IMAP/SMTP 연동 URL들 (커스텀 도메인 지원)
     # ============================================
     
     # IMAP/SMTP 연결 설정
-    path('imap/connect/', imap_views.imap_connect, name='imap_connect'),
-    path('imap/disconnect/', imap_views.imap_disconnect, name='imap_disconnect'),
+    path('imap/connect/', lazy_view('reporting.imap_views.imap_connect'), name='imap_connect'),
+    path('imap/disconnect/', lazy_view('reporting.imap_views.imap_disconnect'), name='imap_disconnect'),
     
     # IMAP 이메일 동기화
-    path('imap/sync/', imap_views.sync_imap_emails, name='sync_imap_emails'),
+    path('imap/sync/', lazy_view('reporting.imap_views.sync_imap_emails'), name='sync_imap_emails'),
     
     # SMTP 이메일 발송
-    path('imap/send/', imap_views.send_email_imap, name='send_email_imap'),
+    path('imap/send/', lazy_view('reporting.imap_views.send_email_imap'), name='send_email_imap'),
     
     # 메일함
-    path('mailbox/inbox/', gmail_views.mailbox_inbox, name='mailbox_inbox'),
-    path('mailbox/sent/', gmail_views.mailbox_sent, name='mailbox_sent'),
-    path('mailbox/starred/', gmail_views.mailbox_starred, name='mailbox_starred'),
-    path('mailbox/trash/', gmail_views.mailbox_trash, name='mailbox_trash'),
-    path('mailbox/thread/<str:thread_id>/', gmail_views.mailbox_thread, name='mailbox_thread'),
-    path('mailbox/sync/', gmail_views.sync_received_emails, name='sync_received_emails'),
-    path('mailbox/delete/<int:email_id>/', gmail_views.delete_email, name='delete_email'),
-    path('mailbox/toggle-star/<int:email_id>/', gmail_views.toggle_star_email, name='toggle_star_email'),
-    path('mailbox/move-to-trash/<int:email_id>/', gmail_views.move_to_trash_email, name='move_to_trash_email'),
-    path('mailbox/restore/<int:email_id>/', gmail_views.restore_email, name='restore_email'),
+    path('mailbox/inbox/', lazy_view('reporting.gmail_views.mailbox_inbox'), name='mailbox_inbox'),
+    path('mailbox/sent/', lazy_view('reporting.gmail_views.mailbox_sent'), name='mailbox_sent'),
+    path('mailbox/starred/', lazy_view('reporting.gmail_views.mailbox_starred'), name='mailbox_starred'),
+    path('mailbox/trash/', lazy_view('reporting.gmail_views.mailbox_trash'), name='mailbox_trash'),
+    path('mailbox/thread/<str:thread_id>/', lazy_view('reporting.gmail_views.mailbox_thread'), name='mailbox_thread'),
+    path('mailbox/sync/', lazy_view('reporting.gmail_views.sync_received_emails'), name='sync_received_emails'),
+    path('mailbox/delete/<int:email_id>/', lazy_view('reporting.gmail_views.delete_email'), name='delete_email'),
+    path('mailbox/toggle-star/<int:email_id>/', lazy_view('reporting.gmail_views.toggle_star_email'), name='toggle_star_email'),
+    path('mailbox/move-to-trash/<int:email_id>/', lazy_view('reporting.gmail_views.move_to_trash_email'), name='move_to_trash_email'),
+    path('mailbox/restore/<int:email_id>/', lazy_view('reporting.gmail_views.restore_email'), name='restore_email'),
     
     # 명함 관리
-    path('business-cards/', gmail_views.business_card_list, name='business_card_list'),
-    path('business-cards/create/', gmail_views.business_card_create, name='business_card_create'),
-    path('business-cards/<int:card_id>/edit/', gmail_views.business_card_edit, name='business_card_edit'),
-    path('business-cards/<int:card_id>/delete/', gmail_views.business_card_delete, name='business_card_delete'),
-    path('business-cards/<int:card_id>/set-default/', gmail_views.business_card_set_default, name='business_card_set_default'),
+    path('business-cards/', lazy_view('reporting.gmail_views.business_card_list'), name='business_card_list'),
+    path('business-cards/create/', lazy_view('reporting.gmail_views.business_card_create'), name='business_card_create'),
+    path('business-cards/<int:card_id>/edit/', lazy_view('reporting.gmail_views.business_card_edit'), name='business_card_edit'),
+    path('business-cards/<int:card_id>/delete/', lazy_view('reporting.gmail_views.business_card_delete'), name='business_card_delete'),
+    path('business-cards/<int:card_id>/set-default/', lazy_view('reporting.gmail_views.business_card_set_default'), name='business_card_set_default'),
     
     # 이미지 업로드
-    path('upload-image/', gmail_views.upload_editor_image, name='upload_editor_image'),
+    path('upload-image/', lazy_view('reporting.gmail_views.upload_editor_image'), name='upload_editor_image'),
     
     # 관리자 필터 API
     path('set-admin-filter/', views.set_admin_filter, name='set_admin_filter'),

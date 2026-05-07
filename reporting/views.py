@@ -848,19 +848,24 @@ def followup_list_view(request):
         ('minimal', '📌 최소 (30점 미만)'),
     ]
     
-    # 업체 목록 (필터용) - 각 업체별 팔로우업 개수 계산
+    # 업체 목록 (필터용) - 업체별 팔로우업 개수를 한 번의 조회 결과로 계산
     accessible_users = get_accessible_users(request.user, request)
-    companies = Company.objects.filter(
-        Q(followup_companies__user__in=accessible_users) |
-        Q(departments__followup_departments__user__in=accessible_users)
-    ).distinct().order_by('name')
-    
-    # 각 업체별 팔로우업 개수 계산
+    from collections import defaultdict
+    company_followup_ids = defaultdict(set)
+    for row in FollowUp.objects.filter(user__in=accessible_users).values(
+        'id', 'company_id', 'department__company_id'
+    ).order_by():
+        if row['company_id']:
+            company_followup_ids[row['company_id']].add(row['id'])
+        if row['department__company_id']:
+            company_followup_ids[row['department__company_id']].add(row['id'])
+
+    companies = list(Company.objects.filter(
+        id__in=company_followup_ids.keys()
+    ).order_by('name'))
+    company_map = {company.id: company for company in companies}
     for company in companies:
-        company.followup_count = FollowUp.objects.filter(
-            Q(company=company) | Q(department__company=company),
-            user__in=accessible_users
-        ).count()
+        company.followup_count = len(company_followup_ids.get(company.id, set()))
     
     # 선택된 우선순위 정보
     selected_priority = None
@@ -880,8 +885,8 @@ def followup_list_view(request):
     selected_company = None
     if company_filter:
         try:
-            selected_company = Company.objects.get(id=company_filter)
-        except (Company.DoesNotExist, ValueError):
+            selected_company = company_map.get(int(company_filter))
+        except (TypeError, ValueError):
             pass
     
     # 페이지네이션 처리
@@ -1426,6 +1431,7 @@ def opportunity_detail_view(request, pk):
 @never_cache
 def dashboard_view(request):
     from django.db.models import Count, Sum
+    from django.db.models.functions import TruncDate, TruncMonth
     from django.utils import timezone
     from datetime import datetime, timedelta
     from reporting.models import DeliveryItem, PrepaymentUsage
@@ -1479,6 +1485,9 @@ def dashboard_view(request):
     now = timezone.localtime()
     current_year = now.year
     current_month = now.month
+
+    def month_key(value):
+        return (value.year, value.month)
     
     # 권한에 따른 데이터 필터링
     if user_profile.is_admin() and not selected_user:
@@ -1624,6 +1633,14 @@ def dashboard_view(request):
     
     # 활동 유형별 통계 (Schedule 기준, 현재 연도)
     schedules_current_year_filter = schedules.filter(visit_date__year=current_year)
+    year_schedule_stats = schedules_current_year_filter.aggregate(
+        meeting_count=Count('id', filter=Q(activity_type='customer_meeting')),
+        quote_count=Count('id', filter=Q(activity_type='quote')),
+        delivery_count=Count('id', filter=Q(activity_type='delivery', status__in=['scheduled', 'completed'])),
+        scheduled_delivery_count=Count('id', filter=Q(activity_type='delivery', status='scheduled')),
+        completed_delivery_count=Count('id', filter=Q(activity_type='delivery', status='completed')),
+        completed_service_count=Count('id', filter=Q(activity_type='service', status='completed')),
+    )
     
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
         activity_stats = schedules_current_year_filter.values('activity_type').annotate(
@@ -1637,18 +1654,10 @@ def dashboard_view(request):
     
     # 서비스 통계 추가 (완료된 서비스만 카운팅) - Admin이나 하나과학만
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
-        service_count = schedules_current_year_filter.filter(activity_type='service', status='completed').count()
-        
-        # 이번 달 서비스 수 (완료된 것만)
-        this_month_service_count = schedules.filter(
-            activity_type='service',
-            status='completed',
-            visit_date__month=current_month,
-            visit_date__year=current_year
-        ).count()
+        service_count = year_schedule_stats['completed_service_count']
     else:
         service_count = 0
-        this_month_service_count = 0
+    this_month_service_count = 0
     
     # 최근 활동 (현재 연도, 최근 5개, 메모 제외)
     recent_activities_queryset = histories_current_year.exclude(action_type='memo')
@@ -1660,30 +1669,37 @@ def dashboard_view(request):
     
     # 월별 고객 추가 현황 (최근 6개월)
     now = timezone.localtime()
-    monthly_customers = []
-    for i in range(6):
-        month_start = (now.replace(day=1) - timedelta(days=32*i)).replace(day=1)
-        month_end = (month_start.replace(day=calendar.monthrange(month_start.year, month_start.month)[1]))
-        
-        count = followups.filter(
-            created_at__gte=month_start,
-            created_at__lte=month_end
-        ).count()
-        
-        monthly_customers.append({
+    customer_months = [
+        (now.replace(day=1) - timedelta(days=32*i)).replace(day=1)
+        for i in range(5, -1, -1)
+    ]
+    customer_month_counts = {
+        month_key(item['month']): item['count']
+        for item in followups.filter(
+            created_at__gte=customer_months[0],
+            created_at__lt=(customer_months[-1].replace(day=calendar.monthrange(
+                customer_months[-1].year, customer_months[-1].month
+            )[1]) + timedelta(days=1)),
+        ).annotate(month=TruncMonth('created_at')).values('month').annotate(
+            count=Count('id')
+        )
+    }
+    monthly_customers = [
+        {
             'month': month_start.strftime('%Y-%m'),
             'month_name': f"{month_start.year}년 {month_start.month}월",
-            'count': count
-        })
-    
-    monthly_customers.reverse()  # 시간순 정렬
+            'count': customer_month_counts.get(month_key(month_start), 0),
+        }
+        for month_start in customer_months
+    ]
     
     # 일정 완료율 통계
     schedule_stats = schedules.aggregate(
         total=Count('id'),
         completed=Count('id', filter=Q(status='completed')),
         cancelled=Count('id', filter=Q(status='cancelled')),
-        scheduled=Count('id', filter=Q(status='scheduled'))
+        scheduled=Count('id', filter=Q(status='scheduled')),
+        scheduled_quote_count=Count('id', filter=Q(activity_type='quote', status='scheduled')),
     )
     
     completion_rate = 0
@@ -1691,24 +1707,25 @@ def dashboard_view(request):
         completion_rate = round((schedule_stats['completed'] / schedule_stats['total']) * 100, 1)
       # 영업 기록 추이 (최근 14일, 미팅/납품만 - 서비스 제외)
     fourteen_days_ago = now - timedelta(days=14)
-    daily_activities = []
-    for i in range(14):
-        day = fourteen_days_ago + timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        
-        # 영업 활동만 카운팅 (미팅, 납품 - 서비스 제외)
-        activity_count = histories_current_year.filter(
-            created_at__gte=day_start,
-            created_at__lt=day_end,
+    activity_days = [(fourteen_days_ago + timedelta(days=i)).date() for i in range(14)]
+    daily_activity_counts = {
+        item['day']: item['count']
+        for item in histories_current_year.filter(
+            created_at__date__gte=activity_days[0],
+            created_at__date__lte=activity_days[-1],
             action_type__in=['customer_meeting', 'delivery_schedule']
-        ).count()
-        
-        daily_activities.append({
+        ).annotate(day=TruncDate('created_at')).values('day').annotate(
+            count=Count('id')
+        )
+    }
+    daily_activities = [
+        {
             'date': day.strftime('%m/%d'),
             'full_date': day.strftime('%Y-%m-%d'),
-            'count': activity_count
-        })
+            'count': daily_activity_counts.get(day, 0),
+        }
+        for day in activity_days
+    ]
     
     # 오늘 일정
     today = now.date()
@@ -1764,47 +1781,41 @@ def dashboard_view(request):
     from calendar import monthrange
     last_day = monthrange(current_year, current_month)[1]
     month_last_date = now.replace(day=last_day, hour=23, minute=59, second=59, microsecond=999999)
-    
-    # 이번 달 미팅 일정 수 (일정 기준)
-    monthly_meetings = schedules.filter(
-        activity_type='customer_meeting',
-        visit_date__gte=month_start.date(),
-        visit_date__lt=month_end.date()
-    ).count()
-    
-    # 처리해야 할 견적 (예정 상태의 견적만)
-    # 견적은 납품 생성 시 자동으로 완료 처리되므로, 예정 상태인 것만 처리 대상
-    quote_count = schedules.filter(
-        activity_type='quote',
-        status='scheduled'
-    ).count()
-    
-    # 이번 달 견적 횟수 (이번 달의 모든 견적 일정)
-    monthly_quote_count = schedules.filter(
-        activity_type='quote',
-        visit_date__gte=month_start.date(),
-        visit_date__lt=month_end.date()
-    ).count()
-    
-    # 이번 달 납품 일정 수 (취소된 일정 제외)
-    monthly_delivery_count = schedules.filter(
-        activity_type='delivery',
-        status__in=['scheduled', 'completed'],  # 취소된 일정 제외
-        visit_date__gte=month_start.date(),
-        visit_date__lt=month_end.date()
-    ).count()
-    
-    # 이번 달 매출 (납품 일정의 DeliveryItem 총액)
-    monthly_delivery_schedules = schedules.filter(
-        activity_type='delivery',
-        status__in=['scheduled', 'completed'],  # 취소된 일정 제외
+
+    monthly_schedules = schedules.filter(
         visit_date__gte=month_start.date(),
         visit_date__lt=month_end.date()
     )
+    monthly_schedule_stats = monthly_schedules.aggregate(
+        meeting_count=Count('id', filter=Q(activity_type='customer_meeting')),
+        quote_count=Count('id', filter=Q(activity_type='quote')),
+        delivery_count=Count('id', filter=Q(activity_type='delivery', status__in=['scheduled', 'completed'])),
+        completed_service_count=Count('id', filter=Q(activity_type='service', status='completed')),
+    )
+
+    # 이번 달 미팅 일정 수 (일정 기준)
+    monthly_meetings = monthly_schedule_stats['meeting_count']
+
+    # 처리해야 할 견적 (예정 상태의 견적만)
+    # 견적은 납품 생성 시 자동으로 완료 처리되므로, 예정 상태인 것만 처리 대상
+    quote_count = schedule_stats['scheduled_quote_count']
     
+    # 이번 달 견적 횟수 (이번 달의 모든 견적 일정)
+    monthly_quote_count = monthly_schedule_stats['quote_count']
+    
+    # 이번 달 납품 일정 수 (취소된 일정 제외)
+    monthly_delivery_count = monthly_schedule_stats['delivery_count']
+    if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
+        this_month_service_count = monthly_schedule_stats['completed_service_count']
+    
+    # 이번 달 매출 (납품 일정의 DeliveryItem 총액)
     # 납품 일정의 DeliveryItem 총액 (선결제 여부 상관없이 전체)
     monthly_revenue = DeliveryItem.objects.filter(
-        schedule__in=monthly_delivery_schedules
+        schedule__in=schedules,
+        schedule__activity_type='delivery',
+        schedule__status__in=['scheduled', 'completed'],
+        schedule__visit_date__gte=month_start.date(),
+        schedule__visit_date__lt=month_end.date(),
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
     from .models import Prepayment, PrepaymentUsage
@@ -1841,28 +1852,26 @@ def dashboard_view(request):
     ).count()
       # 전환율 계산 (현재 연도 기준)
     # Schedule 테이블 기반으로 계산 (현재 활성 데이터)
-    schedules_current_year = schedules.filter(visit_date__year=current_year)
-    
-    total_meetings = schedules_current_year.filter(activity_type='customer_meeting').count()
-    total_quotes = schedules_current_year.filter(activity_type='quote').count()
-    total_deliveries = schedules_current_year.filter(activity_type='delivery', status__in=['scheduled', 'completed']).count()  # 취소된 일정 제외
+    schedules_current_year = schedules_current_year_filter
+
+    total_meetings = year_schedule_stats['meeting_count']
+    total_quotes = year_schedule_stats['quote_count']
+    total_deliveries = year_schedule_stats['delivery_count']
     
     # 견적 → 납품 전환율: 같은 고객에 견적과 납품이 모두 있는 비율
     quote_schedules = schedules_current_year.filter(activity_type='quote')
-    quotes_with_delivery = 0
-    
-    for quote in quote_schedules:
-        # 같은 고객(followup)에 납품 일정이 있는지 확인
-        has_delivery = schedules.filter(
-            followup=quote.followup,
-            activity_type='delivery'
-        ).exists()
-        if has_delivery:
-            quotes_with_delivery += 1
+    quotes_with_delivery = quote_schedules.annotate(
+        has_delivery=Exists(
+            schedules.filter(
+                followup_id=OuterRef('followup_id'),
+                activity_type='delivery'
+            )
+        )
+    ).filter(has_delivery=True).count()
     
     # 미팅 → 납품 전환율 (일정 기준: 일정 중 미팅 건수 대비 납품 완료 건수)
-    schedule_meetings = schedules_current_year.filter(activity_type='customer_meeting').count()
-    schedule_deliveries_completed = schedules_current_year.filter(activity_type='delivery', status='completed').count()
+    schedule_meetings = year_schedule_stats['meeting_count']
+    schedule_deliveries_completed = year_schedule_stats['completed_delivery_count']
     meeting_to_delivery_rate = (schedule_deliveries_completed / schedule_meetings * 100) if schedule_meetings > 0 else 0
     
     # 견적 → 납품 전환율 (견적을 낸 것 중 납품으로 전환된 비율)
@@ -1875,20 +1884,32 @@ def dashboard_view(request):
     ).aggregate(avg=Avg('delivery_amount'))['avg'] or 0
     
     # 월별 납품 금액 데이터 (최근 6개월)
-    monthly_revenue_data = []
-    monthly_revenue_labels = []
-    
-    for i in range(5, -1, -1):
-        target_date = now - timedelta(days=30*i)
-        month_revenue = histories.filter(
+    revenue_months = [
+        (now - timedelta(days=30*i)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        for i in range(5, -1, -1)
+    ]
+    revenue_month_end = revenue_months[-1].replace(
+        day=calendar.monthrange(revenue_months[-1].year, revenue_months[-1].month)[1]
+    ) + timedelta(days=1)
+    revenue_by_month = {
+        month_key(item['month']): item['total'] or 0
+        for item in histories.filter(
             action_type='delivery_schedule',
-            created_at__month=target_date.month,
-            created_at__year=target_date.year,
+            created_at__gte=revenue_months[0],
+            created_at__lt=revenue_month_end,
             delivery_amount__isnull=False
-        ).aggregate(total=Sum('delivery_amount'))['total'] or 0
-        
-        monthly_revenue_data.append(float(month_revenue))
-        monthly_revenue_labels.append(f"{target_date.year}년 {target_date.month}월")
+        ).annotate(month=TruncMonth('created_at')).values('month').annotate(
+            total=Sum('delivery_amount')
+        )
+    }
+    monthly_revenue_data = [
+        float(revenue_by_month.get(month_key(target_date), 0))
+        for target_date in revenue_months
+    ]
+    monthly_revenue_labels = [
+        f"{target_date.year}년 {target_date.month}월"
+        for target_date in revenue_months
+    ]
       # 고객별 납품 현황 (현재 연도 기준, 상위 5개)
     customer_revenue_data = histories_current_year.filter(
         action_type='delivery_schedule',
@@ -1903,19 +1924,25 @@ def dashboard_view(request):
 
     # 월별 서비스 데이터 (최근 6개월, 완료된 서비스만) - Admin이나 하나과학만
     if getattr(request, 'is_admin', False) or getattr(request, 'is_hanagwahak', False):
-        monthly_service_data = []
-        monthly_service_labels = []
-        for i in range(5, -1, -1):
-            target_date = now - timedelta(days=30*i)
-            service_count_monthly = histories.filter(
+        service_by_month = {
+            month_key(item['month']): item['count']
+            for item in histories.filter(
                 action_type='service',
                 service_status='completed',
-                created_at__month=target_date.month,
-                created_at__year=target_date.year
-            ).count()
-            
-            monthly_service_data.append(service_count_monthly)
-            monthly_service_labels.append(f"{target_date.year}년 {target_date.month}월")
+                created_at__gte=revenue_months[0],
+                created_at__lt=revenue_month_end,
+            ).annotate(month=TruncMonth('created_at')).values('month').annotate(
+                count=Count('id')
+            )
+        }
+        monthly_service_data = [
+            service_by_month.get(month_key(target_date), 0)
+            for target_date in revenue_months
+        ]
+        monthly_service_labels = [
+            f"{target_date.year}년 {target_date.month}월"
+            for target_date in revenue_months
+        ]
     else:
         monthly_service_data = []
         monthly_service_labels = []
@@ -1925,47 +1952,56 @@ def dashboard_view(request):
     # ============================================
     
     # 1️⃣ 매출 및 납품 추이 (월별 납품 금액 + 건수) - Schedule 기준
-    monthly_delivery_stats = {
-        'labels': [],
-        'amounts': [],
-        'counts': []
-    }
-    
-    for i in range(11, -1, -1):  # 최근 12개월
-        target_date = now - timedelta(days=30*i)
-        month_start = target_date.replace(day=1)
-        if target_date.month == 12:
-            month_end = target_date.replace(year=target_date.year+1, month=1, day=1)
-        else:
-            month_end = target_date.replace(month=target_date.month+1, day=1)
-        
-        month_schedules = schedules.filter(
-            visit_date__gte=month_start.date(),
-            visit_date__lt=month_end.date(),
+    delivery_months = [
+        (now - timedelta(days=30*i)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        for i in range(11, -1, -1)
+    ]
+    delivery_month_end = delivery_months[-1].replace(
+        day=calendar.monthrange(delivery_months[-1].year, delivery_months[-1].month)[1]
+    ) + timedelta(days=1)
+    delivery_schedule_counts = {
+        month_key(item['month']): item['count']
+        for item in schedules.filter(
+            visit_date__gte=delivery_months[0].date(),
+            visit_date__lt=delivery_month_end.date(),
             activity_type='delivery',
-            status__in=['scheduled', 'completed']  # 취소된 일정 제외
+            status__in=['scheduled', 'completed']
+        ).annotate(month=TruncMonth('visit_date')).values('month').annotate(
+            count=Count('id')
         )
-        
-        # 납품 금액 합산
-        month_amount = DeliveryItem.objects.filter(
-            schedule__in=month_schedules
-        ).aggregate(total=Sum('total_price'))['total'] or 0
-        
-        # 납품 건수 (일정 개수)
-        month_count = month_schedules.count()
-        
-        monthly_delivery_stats['labels'].append(f"{target_date.month}월")
-        monthly_delivery_stats['amounts'].append(float(month_amount))
-        monthly_delivery_stats['counts'].append(month_count)
+    }
+    delivery_amounts = {
+        month_key(item['month']): item['total'] or 0
+        for item in DeliveryItem.objects.filter(
+            schedule__in=schedules,
+            schedule__visit_date__gte=delivery_months[0].date(),
+            schedule__visit_date__lt=delivery_month_end.date(),
+            schedule__activity_type='delivery',
+            schedule__status__in=['scheduled', 'completed']
+        ).annotate(month=TruncMonth('schedule__visit_date')).values('month').annotate(
+            total=Sum('total_price')
+        )
+    }
+    monthly_delivery_stats = {
+        'labels': [f"{target_date.month}월" for target_date in delivery_months],
+        'amounts': [
+            float(delivery_amounts.get(month_key(target_date), 0))
+            for target_date in delivery_months
+        ],
+        'counts': [
+            delivery_schedule_counts.get(month_key(target_date), 0)
+            for target_date in delivery_months
+        ],
+    }
     
     # 2️⃣ 영업 퍼널 (미팅 → 견적 제출 → 발주 예정 → 납품 완료)
     # 기준: 모두 일정(Schedule) 기반으로 집계
-    schedules_current_year = schedules.filter(visit_date__year=current_year)
-    
-    meeting_count = schedules_current_year.filter(activity_type='customer_meeting').count()
-    quote_count_funnel = schedules_current_year.filter(activity_type='quote').count()
-    scheduled_delivery_count = schedules_current_year.filter(activity_type='delivery', status='scheduled').count()
-    completed_delivery_count = schedules_current_year.filter(activity_type='delivery', status='completed').count()
+    schedules_current_year = schedules_current_year_filter
+
+    meeting_count = year_schedule_stats['meeting_count']
+    quote_count_funnel = year_schedule_stats['quote_count']
+    scheduled_delivery_count = year_schedule_stats['scheduled_delivery_count']
+    completed_delivery_count = year_schedule_stats['completed_delivery_count']
     
     sales_funnel = {
         'stages': ['미팅', '견적 제출', '발주 예정', '납품 완료'],
@@ -2003,14 +2039,20 @@ def dashboard_view(request):
     # 고객사별 매출 합산
     from collections import defaultdict
     company_revenue = defaultdict(float)
+    schedule_total = 0
+    history_total = 0
     
     for item in schedule_top_customers:
         company_name = item['schedule__followup__company__name'] or '미정'
-        company_revenue[company_name] += float(item['total_revenue'])
+        revenue = float(item['total_revenue'] or 0)
+        company_revenue[company_name] += revenue
+        schedule_total += revenue
     
     for item in history_top_customers:
         company_name = item['history__followup__company__name'] or '미정'
-        company_revenue[company_name] += float(item['total_revenue'])
+        revenue = float(item['total_revenue'] or 0)
+        company_revenue[company_name] += revenue
+        history_total += revenue
     
     # 상위 5개 추출
     sorted_companies = sorted(company_revenue.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -2027,16 +2069,7 @@ def dashboard_view(request):
         total_top5_revenue += revenue
     
     # 기타 금액 계산 - Schedule + History 합산
-    schedule_total = DeliveryItem.objects.filter(
-        schedule__in=schedules_current_year,
-        schedule__status__in=['scheduled', 'completed']
-    ).aggregate(total=Sum('total_price'))['total'] or 0
-    
-    history_total = DeliveryItem.objects.filter(
-        history__in=histories_current_year
-    ).aggregate(total=Sum('total_price'))['total'] or 0
-    
-    total_all_revenue = float(schedule_total) + float(history_total)
+    total_all_revenue = schedule_total + history_total
     other_revenue = total_all_revenue - total_top5_revenue
     if other_revenue > 0:
         customer_distribution['labels'].append('기타')
@@ -2120,17 +2153,21 @@ def dashboard_view(request):
         next_month = now.replace(month=now.month + 1, day=1)
     current_month_end = (next_month - timedelta(days=1)).date()
     
+    heatmap_counts = {
+        item['visit_date']: item['count']
+        for item in schedules.filter(
+            visit_date__gte=current_month_start,
+            visit_date__lte=current_month_end
+        ).values('visit_date').annotate(count=Count('id'))
+    }
+
     # 현재 달의 각 날짜별 활동 카운트 (현재 사용자만)
     current_date = current_month_start
     while current_date <= current_month_end:
-        day_activity_count = schedules.filter(
-            visit_date=current_date
-        ).count()
-        
         daily_activity_heatmap.append({
             'date': current_date.strftime('%Y-%m-%d'),
             'day_of_week': current_date.weekday(),  # 0=월, 6=일
-            'intensity': day_activity_count
+            'intensity': heatmap_counts.get(current_date, 0)
         })
         
         current_date += timedelta(days=1)
@@ -2226,16 +2263,19 @@ def dashboard_view(request):
     # 선결제 통계 계산
     prepayment_total = prepayments.aggregate(
         total_amount=Sum('amount'),
-        total_balance=Sum('balance')
+        total_balance=Sum('balance'),
+        active_count=Count('id', filter=Q(status='active', balance__gt=0)),
+        depleted_count=Count('id', filter=Q(status='depleted')),
+        total_count=Count('id'),
     )
     
     prepayment_stats = {
         'total_amount': prepayment_total['total_amount'] or Decimal('0'),
         'total_balance': prepayment_total['total_balance'] or Decimal('0'),
         'total_used': (prepayment_total['total_amount'] or Decimal('0')) - (prepayment_total['total_balance'] or Decimal('0')),
-        'active_count': prepayments.filter(status='active', balance__gt=0).count(),
-        'depleted_count': prepayments.filter(status='depleted').count(),
-        'total_count': prepayments.count(),
+        'active_count': prepayment_total['active_count'],
+        'depleted_count': prepayment_total['depleted_count'],
+        'total_count': prepayment_total['total_count'],
         'monthly_count': monthly_prepayment_count,  # 이번 달 선결제 등록 건수
     }
     
@@ -2269,24 +2309,24 @@ def dashboard_view(request):
     context['overdue_next_actions'] = overdue_next_actions
 
     # Phase 5: 오늘 예정 일정 (scheduled + completed 포함 — 노트 작성 가능하도록)
-    today_schedules = schedules.filter(
+    today_schedules = list(schedules.filter(
         visit_date=today,
         status__in=['scheduled', 'completed']
-    ).select_related('followup', 'followup__company', 'user').order_by('visit_time')[:5]
+    ).select_related('followup', 'followup__company', 'user').order_by('visit_time')[:5])
     context['today_schedules'] = today_schedules
 
     # Phase 5: 이번 주 예정 일정 (오늘 초과 ~ 6일 이내, 완료 포함)
     # Bug 2 fix: status='scheduled'→status__in 으로 완료 일정도 포함
     week_end = today + timedelta(days=6)
-    upcoming_schedules_dash = schedules.filter(
+    upcoming_schedules_dash = list(schedules.filter(
         visit_date__gt=today,
         visit_date__lte=week_end,
         status__in=['scheduled', 'completed'],
-    ).select_related('followup', 'followup__company', 'user').order_by('visit_date', 'visit_time')[:5]
+    ).select_related('followup', 'followup__company', 'user').order_by('visit_date', 'visit_time')[:5])
     context['upcoming_schedules_dash'] = upcoming_schedules_dash
 
     # Bug 3 fix: schedule_count는 오늘+이번주 표시 목록 기준으로 재계산 (표시 수와 일치)
-    context['schedule_count'] = today_schedules.count() + upcoming_schedules_dash.count()
+    context['schedule_count'] = len(today_schedules) + len(upcoming_schedules_dash)
 
     # Phase 5+: 개인 일정 포함 (오늘 + 이번 주 예정)
     from .models import PersonalSchedule as _PersonalSchedule
@@ -2322,23 +2362,35 @@ def dashboard_view(request):
     # Phase 5: 팀 활동 현황 (매니저/관리자 전용, 최근 30일)
     if user_profile.can_view_all_users() and salesman_users:
         thirty_days_ago = today - timedelta(days=30)
-        team_activity = []
-        for u in list(salesman_users)[:8]:
-            recent_cnt = History.objects.filter(
-                user=u,
+        team_users = list(salesman_users)[:8]
+        team_user_ids = [user.id for user in team_users]
+        recent_activity_counts = {
+            item['user_id']: item['count']
+            for item in History.objects.filter(
+                user_id__in=team_user_ids,
                 created_at__date__gte=thirty_days_ago,
                 parent_history__isnull=True,
-            ).exclude(action_type='memo').count()
-            overdue_cnt = History.objects.filter(
-                user=u,
+            ).exclude(action_type='memo').values('user_id').annotate(
+                count=Count('id')
+            )
+        }
+        overdue_activity_counts = {
+            item['user_id']: item['count']
+            for item in History.objects.filter(
+                user_id__in=team_user_ids,
                 next_action_date__lt=today,
                 next_action_date__isnull=False,
                 parent_history__isnull=True,
-            ).exclude(action_type='memo').count()
+            ).exclude(action_type='memo').values('user_id').annotate(
+                count=Count('id')
+            )
+        }
+        team_activity = []
+        for u in team_users:
             team_activity.append({
                 'user': u,
-                'recent_count': recent_cnt,
-                'overdue_count': overdue_cnt,
+                'recent_count': recent_activity_counts.get(u.id, 0),
+                'overdue_count': overdue_activity_counts.get(u.id, 0),
             })
         context['team_activity'] = team_activity
     else:

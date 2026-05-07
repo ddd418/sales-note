@@ -545,6 +545,11 @@ class FollowUp(models.Model):
         verbose_name = "팔로우업"
         verbose_name_plural = "팔로우업 목록"
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at'], name='follow_user_created_idx'),
+            models.Index(fields=['user', 'pipeline_stage'], name='follow_user_stage_idx'),
+            models.Index(fields=['user', 'department'], name='follow_user_dept_idx'),
+        ]
 
 # 일정 (Schedule) 모델
 class Schedule(models.Model):
@@ -607,6 +612,12 @@ class Schedule(models.Model):
         verbose_name = "일정"
         verbose_name_plural = "일정 목록"
         ordering = ['visit_date', 'visit_time']
+        indexes = [
+            models.Index(fields=['user', 'visit_date'], name='sched_user_visit_idx'),
+            models.Index(fields=['user', 'activity_type', 'status', 'visit_date'], name='sched_user_act_stat_date_idx'),
+            models.Index(fields=['visit_date', 'activity_type', 'status'], name='sched_date_act_stat_idx'),
+            models.Index(fields=['followup', 'activity_type'], name='sched_follow_act_idx'),
+        ]
 
 # 히스토리 (History) 모델
 class History(models.Model):
@@ -703,6 +714,13 @@ class History(models.Model):
         verbose_name = "활동 히스토리"
         verbose_name_plural = "활동 히스토리 목록"
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at'], name='hist_user_created_idx'),
+            models.Index(fields=['user', 'action_type', '-created_at'], name='hist_user_action_date_idx'),
+            models.Index(fields=['user', 'parent_history', '-created_at'], name='hist_user_parent_date_idx'),
+            models.Index(fields=['user', 'next_action_date'], name='hist_user_next_idx'),
+            models.Index(fields=['schedule', '-created_at'], name='hist_sched_created_idx'),
+        ]
 
 # 히스토리 첨부파일 (HistoryFile) 모델
 class HistoryFile(models.Model):
@@ -1299,6 +1317,10 @@ class Prepayment(models.Model):
         verbose_name = "선결제"
         verbose_name_plural = "선결제 목록"
         ordering = ['-payment_date', '-created_at']
+        indexes = [
+            models.Index(fields=['created_by', 'payment_date'], name='prepay_user_date_idx'),
+            models.Index(fields=['created_by', 'status'], name='prepay_user_status_idx'),
+        ]
 
 
 # 선결제 사용 내역 (PrepaymentUsage) 모델
@@ -1346,6 +1368,9 @@ class PersonalSchedule(models.Model):
         verbose_name = "개인 일정"
         verbose_name_plural = "개인 일정 목록"
         ordering = ['-schedule_date', '-schedule_time']
+        indexes = [
+            models.Index(fields=['user', 'schedule_date', 'schedule_time'], name='pers_user_date_time_idx'),
+        ]
 
 
 # 서류 템플릿 (DocumentTemplate) 모델 - 회사별 견적서/거래명세서 등
