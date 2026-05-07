@@ -176,6 +176,20 @@ class AIDepartmentPromptHubViewTests(TestCase):
         self.assertNotContains(response, '수동 프롬프트 생성기')
         self.assertNotContains(response, '/ai/prompt-builder/')
 
+    def test_ai_main_only_marks_ai_sidebar_item_active(self):
+        user = make_ai_user('ai_sidebar_user', can_use_ai=True)
+        make_department_with_followup(user)
+        self.client.force_login(user)
+
+        response = self.client.get(self.url)
+        html = response.content.decode('utf-8')
+
+        self.assertRegex(html, r'href="/ai/" class="nav-link\s+active"')
+        self.assertNotRegex(
+            html,
+            r'href="/reporting/companies/" class="nav-link\s+active"',
+        )
+
     def test_ai_main_shows_empty_analysis_state(self):
         user = make_ai_user('ai_empty_analysis_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
