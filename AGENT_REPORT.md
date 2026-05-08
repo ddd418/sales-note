@@ -7102,13 +7102,28 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "fix: redirect unauthenticated frontend users to login"
+→ 7a95f0c
+
+git push
+→ main -> main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy frontend auth redirect 7a95f0c" --ci
+→ Deploy complete, deployment 8d1efec9-6e40-4480-8f26-015e27dace15 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/
+→ 200, assets/index-DDI1KGEv.js
+
+npx --yes --package @playwright/cli playwright-cli delete-data/open/eval
+→ 미로그인 루트 접속 후 https://sales-note-frontend-production.up.railway.app/reporting/login/?next=%2F 로 이동 확인
 ```
 
 ### 6. Known Limitations
 
 - 리다이렉트는 정적 HTML 응답 이전의 서버 차단이 아니라 React 앱이 첫 API 응답을 확인한 뒤 수행합니다. 운영에서는 거의 즉시 로그인 화면으로 전환됩니다.
-- 운영 배포 후 실제 비로그인 브라우저 세션에서 루트 URL smoke 확인이 필요합니다.
+- 운영 비로그인 브라우저 루트 smoke는 완료했습니다.
 
 ### 7. Recommended Next Task
 
-- Railway 배포 완료 후 시크릿/시크릿 모드에서 운영 루트 URL이 `/reporting/login/?next=%2F`로 이동하는지 확인합니다.
+- 로그인된 운영 계정에서 루트와 주요 프론트 메뉴(`/dashboard/`, `/customers/`, `/notes/`, `/ai-workspace/`)가 정상 데이터로 로딩되는지 한 번 더 육안 확인합니다.
