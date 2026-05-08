@@ -7884,3 +7884,78 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 고객 삭제 또는 고객 상세 내 업체/부서 신규 생성까지 React로 옮길지 범위를 정하고, 우선 삭제는 위험도가 높으므로 고객 상세의 보조 관리 기능부터 단계적으로 전환합니다.
+
+---
+
+## React Sales Note Detail Edit — 영업노트 상세/수정 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/notes/<id>/` 영업노트 상세 화면과 수정 패널을 추가했습니다. 기존 Django 히스토리 상세/수정 화면은 보조 링크로 유지하고, React 저장은 새 JSON API를 통해 처리합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 영업노트 상세/수정 전환 계획 추가 |
+| `frontend/src/App.tsx` | `/notes/<id>/` 상세 route, 수정 패널, 검토 토글, 관련 노트/첨부/댓글 표시 추가 |
+| `frontend/src/api.ts` | 노트 상세/수정 타입과 `loadNoteDetailData`, `updateNote` API 함수 추가 |
+| `frontend/src/styles.css` | 노트 상세/수정 화면 레이아웃과 파일/댓글 목록 스타일 추가 |
+| `reporting/views.py` | React 노트 상세 API, 수정 API, React 상세 링크 payload 추가 |
+| `reporting/urls.py` | `/reporting/api/notes/<id>/`, `/reporting/api/notes/<id>/update/` 라우트 추가 |
+| `reporting/tests.py` | 노트 상세 조회, 수정 성공, manager/타사 고객 차단, React 상세 링크 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 영업노트 목록과 고객 상세의 노트 링크가 React `/notes/<id>/` 상세로 이어집니다.
+- 상세 화면에서 활동 내용, 미팅 구조화 필드, 납품 정보, 다음 액션, 첨부파일, 댓글, 같은 고객의 최근 노트를 확인할 수 있습니다.
+- 권한이 있는 사용자는 React에서 고객, 활동 유형, 활동일, 내용, 다음 액션, 미팅/납품/서비스 필드를 수정할 수 있습니다.
+- Manager는 상세 조회와 검토 토글은 가능하지만 수정은 계속 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/histories/<id>/` 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- 미로그인 API 요청은 JSON `401 login_required`로 보호됩니다.
+- Salesman/manager/admin의 기존 조회·수정 권한 흐름을 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 15 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-BZQVHQlm.js / assets/index-B3aL91g4.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:8000/reporting/login/
+→ 200
+
+Invoke-WebRequest http://127.0.0.1:5173/notes/
+→ 200
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/notes/<id>/` 진입, 수정 저장, manager 검토 토글까지 이어지는 육안 확인은 아직 필요합니다.
+- 기존 `History` 모델에 별도 quote/service 활동일 필드가 없어 React 수정 화면의 활동일 저장은 기존 구조대로 고객 미팅/납품 일정 유형에 한정됩니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 일정 상세/수정의 React 전환 또는 영업노트 첨부파일 업로드/삭제를 React 상세 화면에 확장하는 작업입니다.

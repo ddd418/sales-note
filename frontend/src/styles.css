@@ -1433,6 +1433,115 @@ h2 {
   background: var(--primary);
 }
 
+.note-detail-page {
+  display: grid;
+  gap: 16px;
+}
+
+.note-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+
+.note-detail-main,
+.note-detail-side,
+.note-related-panel {
+  min-width: 0;
+}
+
+.note-detail-content {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.note-detail-content p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-detail-field-grid,
+.note-edit-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.note-detail-field {
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.note-detail-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.note-detail-field p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-file-list,
+.note-reply-list {
+  display: grid;
+  gap: 8px;
+}
+
+.note-file-list a,
+.note-reply-list a {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.note-file-list a:hover,
+.note-reply-list a:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.note-file-list span,
+.note-reply-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.note-reply-list p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-detail-actions {
+  margin-top: 12px;
+}
+
 .schedules-page {
   display: grid;
   gap: 16px;
@@ -2929,6 +3038,9 @@ tbody tr:hover {
   .notes-create-grid,
   .notes-layout,
   .notes-filter-bar,
+  .note-detail-layout,
+  .note-detail-field-grid,
+  .note-edit-section-grid,
   .customer-detail-layout,
   .schedules-layout,
   .schedules-filter-bar,

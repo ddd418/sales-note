@@ -1057,6 +1057,8 @@ class NotesSummaryApiTests(TestCase):
         self.assertFalse(payload['scope']['canReview'])
         self.assertFalse(note['canReview'])
         self.assertEqual(note['reviewToggleHref'], '')
+        self.assertEqual(note['href'], f'/notes/{own.id}/')
+        self.assertIn(f'/reporting/histories/{own.id}/', note['djangoHref'])
 
     def test_notes_summary_api_filters_search_owner_action_review_and_next_action(self):
         target = self._create_note(
@@ -1239,6 +1241,114 @@ class NotesSummaryApiTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(other_owner_response.status_code, 403)
+
+    def test_notes_detail_api_returns_detail_and_edit_config(self):
+        from django.utils import timezone
+
+        target = self._create_note(
+            self.user,
+            '상세대상',
+            action_type='customer_meeting',
+            content='초기 상담',
+        )
+        target.meeting_date = timezone.localdate()
+        target.meeting_situation = '예산 검토 중'
+        target.meeting_next_action = '견적서 발송'
+        target.save()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:notes_detail_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['note']['id'], target.id)
+        self.assertEqual(payload['note']['href'], f'/notes/{target.id}/')
+        self.assertEqual(payload['note']['content'], '초기 상담')
+        self.assertEqual(payload['note']['meetingSituation'], '예산 검토 중')
+        self.assertEqual(payload['links']['notes'], '/notes/')
+        self.assertIn(f'/reporting/histories/{target.id}/', payload['links']['djangoDetail'])
+        self.assertTrue(payload['edit']['canEdit'])
+        self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:notes_update_api', args=[target.id]))
+        customer_ids = {item['id'] for item in payload['edit']['customers']}
+        self.assertIn(target.followup_id, customer_ids)
+
+    def test_notes_detail_api_manager_read_only_and_other_company_blocked(self):
+        target = self._create_note(self.user, '매니저상세', action_type='quote', content='견적 확인')
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.get(reverse('reporting:notes_detail_api', args=[target.id]))
+        self.assertEqual(manager_response.status_code, 200)
+        manager_payload = manager_response.json()
+        self.assertFalse(manager_payload['edit']['canEdit'])
+        self.assertTrue(manager_payload['scope']['canReview'])
+
+        self.client.force_login(self.other_manager)
+        other_response = self.client.get(reverse('reporting:notes_detail_api', args=[target.id]))
+        self.assertEqual(other_response.status_code, 403)
+
+    def test_notes_update_api_updates_owned_note(self):
+        from django.utils import timezone
+
+        target = self._create_note(self.user, '수정대상', action_type='customer_meeting', content='수정 전')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:notes_update_api', args=[target.id]),
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'customer_meeting',
+                'activityDate': timezone.localdate().isoformat(),
+                'content': 'React 상세에서 수정',
+                'meetingSituation': '도입 검토',
+                'meetingResearcherQuote': '다음 주에 다시 확인하겠습니다',
+                'meetingConfirmedFacts': '예산은 6월 배정',
+                'meetingObstacles': '내부 승인 필요',
+                'meetingNextAction': '승인자 연락',
+                'nextAction': '견적서 재발송',
+                'nextActionDate': timezone.localdate().isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['message'], '영업노트를 수정했습니다.')
+        target.refresh_from_db()
+        self.assertEqual(target.content, 'React 상세에서 수정')
+        self.assertEqual(target.meeting_situation, '도입 검토')
+        self.assertEqual(target.meeting_next_action, '승인자 연락')
+        self.assertEqual(target.next_action, '견적서 재발송')
+        self.assertEqual(target.meeting_date, timezone.localdate())
+
+    def test_notes_update_api_blocks_manager_and_other_company_customer(self):
+        target = self._create_note(self.user, '수정차단', action_type='quote', content='견적 전')
+        other_target = self._create_note(self.other_user, '타사고객', action_type='quote', content='타사')
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(
+            reverse('reporting:notes_update_api', args=[target.id]),
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'quote',
+                'content': '매니저 수정 시도',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        other_company_response = self.client.post(
+            reverse('reporting:notes_update_api', args=[target.id]),
+            data=json.dumps({
+                'followupId': other_target.followup_id,
+                'actionType': 'quote',
+                'content': '타사 고객으로 변경 시도',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(other_company_response.status_code, 403)
 
     def test_history_toggle_reviewed_allows_manager_only(self):
         target = self._create_note(

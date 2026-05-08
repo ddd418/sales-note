@@ -381,8 +381,91 @@ export type NoteItem = {
   replyCount: number;
   fileCount: number;
   href: string;
+  djangoHref: string;
   customerHref: string;
+  djangoCustomerHref: string;
   scheduleHref: string;
+};
+
+export type NoteFileItem = {
+  id: number;
+  filename: string;
+  size: string;
+  downloadHref: string;
+  uploadedAt: string | null;
+};
+
+export type NoteReplyItem = {
+  id: number;
+  content: string;
+  author: string;
+  createdAt: string | null;
+  djangoHref: string;
+};
+
+export type NoteDetailItem = NoteItem & {
+  content: string;
+  createdBy: string;
+  followupId: number | null;
+  scheduleId: number | null;
+  personalScheduleId: number | null;
+  meetingDate: string | null;
+  meetingSituation: string;
+  meetingResearcherQuote: string;
+  meetingConfirmedFacts: string;
+  meetingObstacles: string;
+  meetingNextAction: string;
+  deliveryDate: string | null;
+  deliveryAmount: number;
+  deliveryItems: string;
+  taxInvoiceIssued: boolean;
+  files: NoteFileItem[];
+  replies: NoteReplyItem[];
+  canEdit: boolean;
+};
+
+export type NoteDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    canReview: boolean;
+    selectedUserId: number | null;
+  };
+  note: NoteDetailItem | null;
+  links: {
+    notes: string;
+    djangoDetail: string;
+    djangoEdit: string;
+    customer: string;
+    djangoCustomer: string;
+    schedule: string;
+    createNote: string;
+  };
+  edit: {
+    canEdit: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+    actionTypes: Array<{ value: string; label: string }>;
+    serviceStatuses: Array<{ value: string; label: string }>;
+    customers: Array<{
+      id: number;
+      label: string;
+      customer: string;
+      company: string;
+      department: string;
+      priorityLabel: string;
+      href: string;
+      djangoHref?: string;
+    }>;
+  };
+  relatedNotes: NoteItem[];
 };
 
 export type NotesData = {
@@ -464,6 +547,29 @@ export type NoteCreateResponse = {
   historyId?: number;
   href?: string;
   note?: NoteItem;
+};
+
+export type NoteEditPayload = {
+  actionType: string;
+  activityDate?: string;
+  content: string;
+  deliveryAmount?: string;
+  deliveryItems?: string;
+  followupId: number;
+  meetingConfirmedFacts?: string;
+  meetingNextAction?: string;
+  meetingObstacles?: string;
+  meetingResearcherQuote?: string;
+  meetingSituation?: string;
+  nextAction?: string;
+  nextActionDate?: string;
+  serviceStatus?: string;
+};
+
+export type NoteEditResponse = NoteDetailData & {
+  success: boolean;
+  error?: string;
+  message?: string;
 };
 
 export type ScheduleItem = {
@@ -915,6 +1021,39 @@ const emptyNotesData: NotesData = {
     customers: [],
   },
   notes: [],
+};
+
+const emptyNoteDetailData: NoteDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    userCount: 0,
+    canViewAll: false,
+    canReview: false,
+    selectedUserId: null,
+  },
+  note: null,
+  links: {
+    notes: '/notes/',
+    djangoDetail: '',
+    djangoEdit: '',
+    customer: '',
+    djangoCustomer: '',
+    schedule: '',
+    createNote: '/notes/?create=1',
+  },
+  edit: {
+    canEdit: false,
+    message: '',
+    submitUrl: '',
+    djangoUrl: '',
+    actionTypes: [],
+    serviceStatuses: [],
+    customers: [],
+  },
+  relatedNotes: [],
 };
 
 const emptySchedulesData: SchedulesData = {
@@ -1436,6 +1575,51 @@ export async function loadNotesData(params: {
   }
 }
 
+export async function loadNoteDetailData(noteId: number): Promise<NoteDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/notes/${noteId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Note detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<NoteDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Note detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyNoteDetailData,
+      ...payload,
+      scope: {
+        ...emptyNoteDetailData.scope,
+        ...(payload.scope ?? {}),
+      },
+      links: {
+        ...emptyNoteDetailData.links,
+        ...(payload.links ?? {}),
+      },
+      edit: {
+        ...emptyNoteDetailData.edit,
+        ...(payload.edit ?? {}),
+      },
+      note: payload.note ?? emptyNoteDetailData.note,
+      relatedNotes: payload.relatedNotes ?? emptyNoteDetailData.relatedNotes,
+    };
+  } catch (error) {
+    return {
+      ...emptyNoteDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Note detail API unavailable',
+    };
+  }
+}
+
 export async function createNote(payload: NoteCreatePayload, submitUrl = '/reporting/api/notes/create/'): Promise<NoteCreateResponse> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(submitUrl, {
@@ -1457,6 +1641,31 @@ export async function createNote(payload: NoteCreatePayload, submitUrl = '/repor
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Note create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateNote(payload: NoteEditPayload, submitUrl: string): Promise<NoteEditResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteEditResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note update failed: ${response.status}`);
   }
   return data;
 }

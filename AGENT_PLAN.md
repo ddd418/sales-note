@@ -1583,3 +1583,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Sales Note Detail Edit — 영업노트 상세/수정 전환
+
+**목표**: React `/notes/<id>/`에서 영업노트 상세를 확인하고, 권한이 있는 사용자는 Django 수정 화면으로 이동하지 않고 주요 노트 내용을 바로 수정한다.
+
+**작업 범위**:
+
+- `/reporting/api/notes/<id>/` 상세 API를 추가해 기존 `History` 기반 영업노트 상세, 고객/일정 연결, 검토 상태, 첨부/댓글 요약, 수정 옵션을 제공한다.
+- `/reporting/api/notes/<id>/update/` POST API를 추가해 활동 유형, 고객, 활동일, 내용, 다음 액션, 다음 예정일, 미팅/납품/서비스 관련 필드를 저장한다.
+- 기존 권한 정책을 유지해 manager는 상세 조회와 검토만 가능하고 수정은 차단하며, salesman은 본인 노트만 수정 가능하게 한다.
+- React `/notes/<id>/` route를 추가하고 목록/고객 상세의 영업노트 링크가 React 상세로 이어지게 한다.
+- 기존 Django `/reporting/histories/<id>/` 상세/수정 화면은 보조 경로로 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History`, `FollowUp`, `Schedule`, `HistoryFile` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

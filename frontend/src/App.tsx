@@ -38,6 +38,9 @@ import {
   CustomersData,
   CustomerItem,
   NotesData,
+  NoteDetailData,
+  NoteDetailItem,
+  NoteEditPayload,
   NoteItem,
   SchedulesData,
   ScheduleItem,
@@ -56,6 +59,7 @@ import {
   loadDashboardData,
   loadCustomerDetailData,
   loadCustomersData,
+  loadNoteDetailData,
   loadNotesData,
   loadSchedulesData,
   loadAIWorkspaceData,
@@ -63,6 +67,7 @@ import {
   moveDealStage,
   toggleNoteReviewed,
   updateCustomer as updateCustomerRecord,
+  updateNote as updateSalesNote,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -93,6 +98,17 @@ type NoteCreateFormState = {
   followupId: string;
   nextAction: string;
   nextActionDate: string;
+};
+
+type NoteEditFormState = NoteCreateFormState & {
+  deliveryAmount: string;
+  deliveryItems: string;
+  meetingConfirmedFacts: string;
+  meetingNextAction: string;
+  meetingObstacles: string;
+  meetingResearcherQuote: string;
+  meetingSituation: string;
+  serviceStatus: string;
 };
 
 type ScheduleCreateFormState = {
@@ -146,6 +162,23 @@ const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   followupId: '',
   nextAction: '',
   nextActionDate: '',
+});
+
+const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
+  actionType: note?.actionType || 'customer_meeting',
+  activityDate: note?.meetingDate || note?.deliveryDate || note?.activityDate || '',
+  content: note?.content || '',
+  deliveryAmount: note?.deliveryAmount ? String(note.deliveryAmount) : '',
+  deliveryItems: note?.deliveryItems || '',
+  followupId: note?.followupId ? String(note.followupId) : '',
+  meetingConfirmedFacts: note?.meetingConfirmedFacts || '',
+  meetingNextAction: note?.meetingNextAction || '',
+  meetingObstacles: note?.meetingObstacles || '',
+  meetingResearcherQuote: note?.meetingResearcherQuote || '',
+  meetingSituation: note?.meetingSituation || '',
+  nextAction: note?.nextAction || '',
+  nextActionDate: note?.nextActionDate || '',
+  serviceStatus: note?.serviceStatus || 'received',
 });
 
 const makeEmptyScheduleCreateForm = (): ScheduleCreateFormState => ({
@@ -281,6 +314,15 @@ function getCurrentView(): MainView {
 
 function getCustomerDetailId(): number | null {
   const match = window.location.pathname.match(/^\/customers\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getNoteDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/notes\/(\d+)\/?$/);
   if (!match) {
     return null;
   }
@@ -1698,6 +1740,475 @@ function NotesTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function NoteDetailPage({
+  data,
+  loading,
+  onRefresh,
+}: {
+  data: NoteDetailData | null;
+  loading: boolean;
+  onRefresh: () => Promise<NoteDetailData | null>;
+}) {
+  const currentNote = data?.note ?? null;
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<NoteEditFormState>(() => makeNoteEditForm(currentNote));
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+
+  useEffect(() => {
+    setEditForm(makeNoteEditForm(currentNote));
+    setEditError('');
+    setEditMessage('');
+    setEditOpen(false);
+  }, [currentNote?.id]);
+
+  const editConfig = data?.edit;
+  const activityDateVisible = editForm.actionType === 'customer_meeting' || editForm.actionType === 'delivery_schedule';
+
+  const handleEditFieldChange = (field: keyof NoteEditFormState, value: string) => {
+    setEditForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setEditError('');
+    setEditMessage('');
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentNote || !editConfig || editSaving) {
+      return;
+    }
+    if (!editConfig.canEdit) {
+      setEditError(editConfig.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const followupId = Number(editForm.followupId);
+    if (!followupId) {
+      setEditError('고객을 선택하세요.');
+      return;
+    }
+    if (!editForm.actionType) {
+      setEditError('활동 유형을 선택하세요.');
+      return;
+    }
+    if (editForm.actionType !== 'customer_meeting' && !editForm.content.trim()) {
+      setEditError('활동 내용을 입력하세요.');
+      return;
+    }
+    if (editForm.actionType === 'service' && !editForm.serviceStatus) {
+      setEditError('서비스 상태를 선택하세요.');
+      return;
+    }
+
+    const payload: NoteEditPayload = {
+      actionType: editForm.actionType,
+      activityDate: activityDateVisible ? editForm.activityDate || undefined : undefined,
+      content: editForm.content.trim(),
+      deliveryAmount: editForm.deliveryAmount.trim() || undefined,
+      deliveryItems: editForm.deliveryItems.trim() || undefined,
+      followupId,
+      meetingConfirmedFacts: editForm.meetingConfirmedFacts.trim() || undefined,
+      meetingNextAction: editForm.meetingNextAction.trim() || undefined,
+      meetingObstacles: editForm.meetingObstacles.trim() || undefined,
+      meetingResearcherQuote: editForm.meetingResearcherQuote.trim() || undefined,
+      meetingSituation: editForm.meetingSituation.trim() || undefined,
+      nextAction: editForm.nextAction.trim() || undefined,
+      nextActionDate: editForm.nextActionDate || undefined,
+      serviceStatus: editForm.actionType === 'service' ? editForm.serviceStatus : undefined,
+    };
+
+    setEditSaving(true);
+    setEditError('');
+    setEditMessage('');
+    try {
+      const updated = await updateSalesNote(payload, editConfig.submitUrl);
+      await onRefresh();
+      setEditMessage(updated.message || '영업노트를 수정했습니다.');
+      setEditOpen(false);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '영업노트 수정에 실패했습니다.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleToggleReview = async () => {
+    if (!currentNote?.reviewToggleHref || reviewing) {
+      return;
+    }
+    setReviewing(true);
+    setEditError('');
+    setEditMessage('');
+    try {
+      await toggleNoteReviewed(currentNote.reviewToggleHref);
+      await onRefresh();
+      setEditMessage(currentNote.reviewed ? '검토 상태를 해제했습니다.' : '검토 완료로 처리했습니다.');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '검토 상태 변경에 실패했습니다.');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>영업노트 상세 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data || !data.note) {
+    return (
+      <section className="notes-page">
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>영업노트 상세를 불러오지 못했습니다</strong>
+            <span>{data?.error || '영업노트 상세 API에 연결되지 않았습니다.'}</span>
+          </div>
+          <a href="/notes/">목록</a>
+        </div>
+      </section>
+    );
+  }
+
+  const note = data.note;
+  const metrics = [
+    { label: '활동 유형', value: note.actionLabel, detail: note.owner, icon: FileText, tone: 'blue' as const },
+    { label: '검토 상태', value: note.reviewed ? '완료' : note.reviewRequired ? '미검토' : '불필요', detail: note.reviewer || data.scope.label, icon: CheckCircle2, tone: note.reviewed ? 'green' as const : 'amber' as const },
+    { label: '다음 예정일', value: note.nextActionDate ? formatDateLabel(note.nextActionDate) : '없음', detail: note.overdue ? '지연' : '후속 액션', icon: Clock, tone: note.overdue ? 'red' as const : 'teal' as const },
+    { label: '첨부/댓글', value: `${formatNumber(note.fileCount)} / ${formatNumber(note.replyCount)}`, detail: '파일 / 댓글', icon: MessageSquareText, tone: 'green' as const },
+  ];
+
+  return (
+    <section className="notes-page note-detail-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>영업노트 상세 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Note detail</span>
+          <h2>{note.company || note.customer || note.actionLabel}</h2>
+          <p>{[note.customer, note.department, note.actionLabel, note.owner].filter(Boolean).join(' · ')}</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href="/notes/">목록</a>
+          {data.links.customer ? <a className="route-secondary-action" href={data.links.customer}>고객</a> : null}
+          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          {note.canReview && note.reviewToggleHref ? (
+            <button className="route-secondary-action" disabled={reviewing} onClick={handleToggleReview} type="button">
+              {reviewing ? <Loader2 className="spin-icon" size={15} /> : <CheckCircle2 size={15} />}
+              {note.reviewed ? '검토 해제' : '검토 완료'}
+            </button>
+          ) : null}
+          {data.edit.canEdit ? (
+            <button className="route-primary-action" onClick={() => setEditOpen((open) => !open)} type="button">
+              수정
+              <Check size={16} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="영업노트 상세 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      {editOpen || editMessage || editError ? (
+        <section className="dashboard-panel notes-create-panel note-edit-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Edit note</span>
+              <h2>영업노트 수정</h2>
+            </div>
+            {editSaving ? <Loader2 className="spin-icon" size={18} /> : <FileText size={18} />}
+          </div>
+          {editError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{editError}</span></div> : null}
+          {editMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{editMessage}</span></div> : null}
+          {editOpen ? (
+            <form className="notes-create-form note-edit-form" onSubmit={handleEditSubmit}>
+              <div className="notes-create-grid">
+                <label>
+                  <span>고객</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('followupId', event.target.value)}
+                    required
+                    value={editForm.followupId}
+                  >
+                    <option value="">고객 선택</option>
+                    {data.edit.customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>{customer.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동 유형</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('actionType', event.target.value)}
+                    required
+                    value={editForm.actionType}
+                  >
+                    {data.edit.actionTypes.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                {activityDateVisible ? (
+                  <label>
+                    <span>{editForm.actionType === 'delivery_schedule' ? '납품일' : '미팅일'}</span>
+                    <input
+                      onChange={(event) => handleEditFieldChange('activityDate', event.target.value)}
+                      type="date"
+                      value={editForm.activityDate}
+                    />
+                  </label>
+                ) : null}
+                <label>
+                  <span>다음 예정일</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('nextActionDate', event.target.value)}
+                    type="date"
+                    value={editForm.nextActionDate}
+                  />
+                </label>
+                {editForm.actionType === 'service' ? (
+                  <label>
+                    <span>서비스 상태</span>
+                    <select
+                      onChange={(event) => handleEditFieldChange('serviceStatus', event.target.value)}
+                      required
+                      value={editForm.serviceStatus}
+                    >
+                      {data.edit.serviceStatuses.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {editForm.actionType === 'delivery_schedule' ? (
+                  <label>
+                    <span>납품 금액</span>
+                    <input
+                      min="0"
+                      onChange={(event) => handleEditFieldChange('deliveryAmount', event.target.value)}
+                      type="number"
+                      value={editForm.deliveryAmount}
+                    />
+                  </label>
+                ) : null}
+              </div>
+              <label>
+                <span>활동 내용</span>
+                <textarea
+                  onChange={(event) => handleEditFieldChange('content', event.target.value)}
+                  required={editForm.actionType !== 'customer_meeting'}
+                  rows={4}
+                  value={editForm.content}
+                />
+              </label>
+              {editForm.actionType === 'customer_meeting' ? (
+                <div className="note-edit-section-grid">
+                  <label>
+                    <span>오늘 상황</span>
+                    <textarea onChange={(event) => handleEditFieldChange('meetingSituation', event.target.value)} rows={3} value={editForm.meetingSituation} />
+                  </label>
+                  <label>
+                    <span>연구원 발언</span>
+                    <textarea onChange={(event) => handleEditFieldChange('meetingResearcherQuote', event.target.value)} rows={3} value={editForm.meetingResearcherQuote} />
+                  </label>
+                  <label>
+                    <span>확인한 사실</span>
+                    <textarea onChange={(event) => handleEditFieldChange('meetingConfirmedFacts', event.target.value)} rows={3} value={editForm.meetingConfirmedFacts} />
+                  </label>
+                  <label>
+                    <span>장애물/반대</span>
+                    <textarea onChange={(event) => handleEditFieldChange('meetingObstacles', event.target.value)} rows={3} value={editForm.meetingObstacles} />
+                  </label>
+                  <label>
+                    <span>미팅 다음 액션</span>
+                    <textarea onChange={(event) => handleEditFieldChange('meetingNextAction', event.target.value)} rows={3} value={editForm.meetingNextAction} />
+                  </label>
+                </div>
+              ) : null}
+              {editForm.actionType === 'delivery_schedule' ? (
+                <label>
+                  <span>납품 품목</span>
+                  <textarea
+                    onChange={(event) => handleEditFieldChange('deliveryItems', event.target.value)}
+                    rows={3}
+                    value={editForm.deliveryItems}
+                  />
+                </label>
+              ) : null}
+              <label>
+                <span>다음 액션</span>
+                <textarea
+                  onChange={(event) => handleEditFieldChange('nextAction', event.target.value)}
+                  rows={2}
+                  value={editForm.nextAction}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
+                  Django 수정
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={editSaving} type="submit">
+                  {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
+
+      <div className="note-detail-layout">
+        <section className="dashboard-panel note-detail-main">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Activity</span>
+              <h2>활동 내용</h2>
+            </div>
+            <NoteStatusBadge note={note} />
+          </div>
+          <div className="note-detail-content">
+            {note.content ? <p>{note.content}</p> : <DashboardEmpty label="활동 내용이 없습니다" />}
+          </div>
+          {note.actionType === 'customer_meeting' ? (
+            <div className="note-detail-field-grid">
+              {[
+                ['오늘 상황', note.meetingSituation],
+                ['연구원 발언', note.meetingResearcherQuote],
+                ['확인한 사실', note.meetingConfirmedFacts],
+                ['장애물/반대', note.meetingObstacles],
+                ['미팅 다음 액션', note.meetingNextAction],
+              ].map(([label, value]) => (
+                value ? (
+                  <div className="note-detail-field" key={label}>
+                    <span>{label}</span>
+                    <p>{value}</p>
+                  </div>
+                ) : null
+              ))}
+            </div>
+          ) : null}
+          {note.actionType === 'delivery_schedule' ? (
+            <div className="note-detail-field-grid">
+              <div className="note-detail-field">
+                <span>납품 금액</span>
+                <p>{formatWon(note.deliveryAmount)}</p>
+              </div>
+              {note.deliveryItems ? (
+                <div className="note-detail-field">
+                  <span>납품 품목</span>
+                  <p>{note.deliveryItems}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <aside className="dashboard-panel note-detail-side">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Follow-up</span>
+              <h2>연결 정보</h2>
+            </div>
+            <PanelRight size={18} />
+          </div>
+          <div className="customer-detail-summary">
+            <dl>
+              <div>
+                <dt>고객</dt>
+                <dd>{[note.company, note.department, note.customer].filter(Boolean).join(' · ') || '고객 없음'}</dd>
+              </div>
+              <div>
+                <dt>담당자</dt>
+                <dd>{note.owner}</dd>
+              </div>
+              <div>
+                <dt>활동일</dt>
+                <dd>{note.activityDate ? formatDateLabel(note.activityDate) : formatDateTimeLabel(note.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>다음 액션</dt>
+                <dd className={note.overdue ? 'customer-overdue-text' : ''}>{note.nextAction || '다음 액션 없음'}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="customers-side-actions note-detail-actions">
+            {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
+            {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
+            {data.links.schedule ? <a href={data.links.schedule}>연결 일정</a> : null}
+            <a href={data.links.createNote}>새 노트 작성</a>
+          </div>
+          <h3 className="customer-detail-section-heading">첨부파일</h3>
+          {note.files.length === 0 ? (
+            <DashboardEmpty label="첨부파일이 없습니다" />
+          ) : (
+            <div className="note-file-list">
+              {note.files.map((file) => (
+                <a href={file.downloadHref} key={file.id}>
+                  <strong>{file.filename}</strong>
+                  <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
+                </a>
+              ))}
+            </div>
+          )}
+          <h3 className="customer-detail-section-heading">댓글</h3>
+          {note.replies.length === 0 ? (
+            <DashboardEmpty label="댓글이 없습니다" />
+          ) : (
+            <div className="note-reply-list">
+              {note.replies.map((reply) => (
+                <a href={reply.djangoHref} key={reply.id}>
+                  <strong>{reply.author}</strong>
+                  <span>{reply.createdAt ? formatDateTimeLabel(reply.createdAt) : ''}</span>
+                  <p>{reply.content}</p>
+                </a>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+
+      <section className="dashboard-panel note-related-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Related notes</span>
+            <h2>같은 고객의 최근 노트</h2>
+          </div>
+          <MessageSquareText size={18} />
+        </div>
+        <CustomerDetailNoteList emptyLabel="같은 고객의 다른 영업노트가 없습니다" notes={data.relatedNotes} />
+      </section>
+    </section>
   );
 }
 
@@ -3465,6 +3976,7 @@ function DetailPanel({
 export function App() {
   const currentView = getCurrentView();
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
+  const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -3488,7 +4000,9 @@ export function App() {
   const [customerCompanyCreating, setCustomerCompanyCreating] = useState(false);
   const [customerDepartmentCreating, setCustomerDepartmentCreating] = useState(false);
   const [notesData, setNotesData] = useState<NotesData | null>(null);
-  const [notesLoading, setNotesLoading] = useState(currentView === 'notes');
+  const [notesLoading, setNotesLoading] = useState(currentView === 'notes' && !noteDetailId);
+  const [noteDetailData, setNoteDetailData] = useState<NoteDetailData | null>(null);
+  const [noteDetailLoading, setNoteDetailLoading] = useState(Boolean(noteDetailId));
   const [noteQuery, setNoteQuery] = useState('');
   const [noteOwner, setNoteOwner] = useState('');
   const [noteActionType, setNoteActionType] = useState('');
@@ -3624,7 +4138,7 @@ export function App() {
   }, [currentView, customerDetailId, customersData]);
 
   useEffect(() => {
-    if (currentView !== 'notes') {
+    if (currentView !== 'notes' || noteDetailId) {
       return;
     }
     let alive = true;
@@ -3648,10 +4162,30 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, noteActionType, noteNextAction, noteOwner, noteQuery, noteReview]);
+  }, [currentView, noteActionType, noteDetailId, noteNextAction, noteOwner, noteQuery, noteReview]);
 
   useEffect(() => {
-    if (currentView !== 'notes' || !notesData?.create.canCreate) {
+    if (currentView !== 'notes' || !noteDetailId) {
+      setNoteDetailData(null);
+      setNoteDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setNoteDetailLoading(true);
+    loadNoteDetailData(noteDetailId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setNoteDetailData(data);
+      setNoteDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, noteDetailId]);
+
+  useEffect(() => {
+    if (currentView !== 'notes' || noteDetailId || !notesData?.create.canCreate) {
       return;
     }
     const requestedCustomerId = getCreateCustomerParam();
@@ -3665,7 +4199,7 @@ export function App() {
         ? String(requestedCustomer.id)
         : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : ''),
     }));
-  }, [currentView, notesData]);
+  }, [currentView, noteDetailId, notesData]);
 
   useEffect(() => {
     if (currentView !== 'schedules') {
@@ -3931,6 +4465,14 @@ export function App() {
       nextAction: noteNextAction,
     });
     setNotesData(data);
+  };
+  const refreshNoteDetailData = async () => {
+    if (!noteDetailId) {
+      return null;
+    }
+    const data = await loadNoteDetailData(noteDetailId);
+    setNoteDetailData(data);
+    return data;
   };
   const handleToggleNoteReview = async (note: NoteItem) => {
     if (!note.reviewToggleHref || noteReviewingId) {
@@ -4206,6 +4748,19 @@ export function App() {
   }
 
   if (currentView === 'notes') {
+    if (noteDetailId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <NoteDetailPage
+            data={noteDetailData}
+            loading={noteDetailLoading}
+            onRefresh={refreshNoteDetailData}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

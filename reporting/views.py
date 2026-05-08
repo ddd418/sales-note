@@ -3249,8 +3249,10 @@ def _notes_history_payload(history, today, can_review=False):
         'reviewToggleHref': reverse('reporting:history_toggle_reviewed', args=[history.id]) if can_review and review_required else '',
         'replyCount': int(getattr(history, 'reply_count', 0) or 0),
         'fileCount': int(getattr(history, 'file_count', 0) or 0),
-        'href': reverse('reporting:history_detail', args=[history.id]),
-        'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        'href': f'/notes/{history.id}/',
+        'djangoHref': reverse('reporting:history_detail', args=[history.id]),
+        'customerHref': f'/customers/{followup.id}/' if followup else '',
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
         'scheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
     }
 
@@ -3279,6 +3281,14 @@ def _notes_create_targets(user, limit=120):
     ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
 
 
+def _notes_edit_targets(user, limit=160):
+    return list(FollowUp.objects.filter(
+        user__in=get_same_company_users(user),
+    ).select_related(
+        'company', 'department'
+    ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
+
+
 def _notes_create_target_payload(followup):
     customer = followup.customer_name or followup.manager or '고객명 미정'
     company = followup.company.name if followup.company else ''
@@ -3291,7 +3301,8 @@ def _notes_create_target_payload(followup):
         'company': company,
         'department': department,
         'priorityLabel': followup.get_priority_display(),
-        'href': reverse('reporting:followup_detail', args=[followup.id]),
+        'href': f'/customers/{followup.id}/',
+        'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
 
@@ -3305,6 +3316,327 @@ def _parse_iso_date_or_none(value):
         return date.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _notes_action_types_for_edit(request, history):
+    action_types = _notes_create_action_types(request)
+    action_values = {item['value'] for item in action_types}
+    if history.action_type not in action_values:
+        action_labels = dict(History.ACTION_CHOICES)
+        action_types = [
+            {
+                'value': history.action_type,
+                'label': action_labels.get(history.action_type, history.action_type),
+            },
+            *action_types,
+        ]
+    return action_types
+
+
+def _notes_edit_config(request, history, can_edit):
+    editable_history = history.parent_history_id is None and history.action_type != 'memo'
+    allowed_customers = _notes_edit_targets(history.user) if can_edit and editable_history else []
+    if history.followup_id and can_edit and editable_history:
+        allowed_customer_ids = {followup.id for followup in allowed_customers}
+        if history.followup_id not in allowed_customer_ids:
+            allowed_customers = [history.followup, *allowed_customers]
+    message = ''
+    if not editable_history:
+        message = '메모 또는 댓글은 React 영업노트 수정 대상이 아닙니다.'
+    elif not can_edit:
+        message = '수정 권한이 없습니다.'
+
+    return {
+        'canEdit': bool(can_edit and editable_history),
+        'message': message,
+        'submitUrl': reverse('reporting:notes_update_api', args=[history.id]) if editable_history else '',
+        'djangoUrl': reverse('reporting:history_edit', args=[history.id]) if editable_history else '',
+        'actionTypes': _notes_action_types_for_edit(request, history),
+        'serviceStatuses': [
+            {'value': value, 'label': label}
+            for value, label in History.SERVICE_STATUS_CHOICES
+        ],
+        'customers': [_notes_create_target_payload(followup) for followup in allowed_customers],
+    }
+
+
+def _file_size_label(size):
+    size = int(size or 0)
+    if size < 1024:
+        return f'{size} bytes'
+    if size < 1024 * 1024:
+        return f'{size / 1024:.1f} KB'
+    return f'{size / (1024 * 1024):.1f} MB'
+
+
+def _notes_detail_payload(request, history, user_profile):
+    today = timezone.localdate()
+    can_review = _can_review_notes(user_profile)
+    can_edit = can_modify_user_data(request.user, history.user)
+    history.reply_count = history.reply_memos.count()
+    history.file_count = history.files.count()
+    note_payload = _notes_history_payload(history, today, can_review)
+    followup = history.followup
+    schedule = history.schedule
+
+    files = [
+        {
+            'id': file.id,
+            'filename': file.original_filename,
+            'size': _file_size_label(file.file_size),
+            'downloadHref': reverse('reporting:file_download', args=[file.id]),
+            'uploadedAt': _datetime_or_none(file.uploaded_at),
+        }
+        for file in history.files.all().order_by('-uploaded_at')
+    ]
+    replies = [
+        {
+            'id': reply.id,
+            'content': (reply.content or '').strip(),
+            'author': _user_display_name(reply.created_by or reply.user),
+            'createdAt': _datetime_or_none(reply.created_at),
+            'djangoHref': reverse('reporting:history_detail', args=[reply.id]),
+        }
+        for reply in history.reply_memos.select_related('created_by', 'user').order_by('created_at')
+    ]
+
+    detail = {
+        **note_payload,
+        'content': history.content or '',
+        'createdBy': _user_display_name(history.created_by) if history.created_by else '',
+        'followupId': history.followup_id,
+        'scheduleId': history.schedule_id,
+        'personalScheduleId': history.personal_schedule_id,
+        'meetingDate': _date_or_none(history.meeting_date),
+        'meetingSituation': history.meeting_situation or '',
+        'meetingResearcherQuote': history.meeting_researcher_quote or '',
+        'meetingConfirmedFacts': history.meeting_confirmed_facts or '',
+        'meetingObstacles': history.meeting_obstacles or '',
+        'meetingNextAction': history.meeting_next_action or '',
+        'deliveryDate': _date_or_none(history.delivery_date),
+        'deliveryAmount': _money_int(history.delivery_amount),
+        'deliveryItems': history.delivery_items or '',
+        'taxInvoiceIssued': bool(history.tax_invoice_issued),
+        'files': files,
+        'replies': replies,
+        'canEdit': bool(can_edit and history.parent_history_id is None and history.action_type != 'memo'),
+    }
+
+    related_notes = []
+    if followup:
+        related_qs = History.objects.filter(
+            followup=followup,
+            parent_history__isnull=True,
+        ).exclude(
+            id=history.id,
+        ).exclude(
+            action_type='memo',
+        ).select_related(
+            'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule', 'reviewer'
+        ).annotate(
+            reply_count=Count('reply_memos', distinct=True),
+            file_count=Count('files', distinct=True),
+        ).order_by('-created_at')[:8]
+        related_notes = [
+            _notes_history_payload(related, today, can_review)
+            for related in related_qs
+            if can_access_user_data(request.user, related.user)
+        ]
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _user_display_name(history.user),
+            'userCount': 1,
+            'canViewAll': user_profile.can_view_all_users(),
+            'canReview': can_review,
+            'selectedUserId': history.user_id,
+        },
+        'note': detail,
+        'links': {
+            'notes': '/notes/',
+            'djangoDetail': reverse('reporting:history_detail', args=[history.id]),
+            'djangoEdit': reverse('reporting:history_edit', args=[history.id]),
+            'customer': f'/customers/{followup.id}/' if followup else '',
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+            'schedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+            'createNote': f'/notes/?create=1&customer={followup.id}' if followup else '/notes/?create=1',
+        },
+        'edit': _notes_edit_config(request, history, can_edit),
+        'relatedNotes': related_notes,
+    }
+
+
+def _notes_get_detail_history(history_id):
+    return get_object_or_404(
+        History.objects.select_related(
+            'user',
+            'created_by',
+            'followup',
+            'followup__company',
+            'followup__department',
+            'schedule',
+            'personal_schedule',
+            'reviewer',
+        ).prefetch_related(
+            'files',
+            'reply_memos__created_by',
+            'reply_memos__user',
+        ),
+        pk=history_id,
+    )
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def notes_detail_api(request, history_id):
+    """React CRM notes 상세 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    history = _notes_get_detail_history(history_id)
+    if not can_access_user_data(request.user, history.user):
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없습니다.',
+        }, status=403)
+
+    user_profile = get_user_profile(request.user)
+    return JsonResponse(_notes_detail_payload(request, history, user_profile))
+
+
+def _parse_nonnegative_int_or_none(value):
+    value = str(value or '').strip().replace(',', '')
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+@never_cache
+@require_http_methods(["POST"])
+def notes_update_api(request, history_id):
+    """React notes 상세 화면용 영업노트 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    history = _notes_get_detail_history(history_id)
+    if history.parent_history_id or history.action_type == 'memo':
+        return JsonResponse({
+            'success': False,
+            'error': '메모 또는 댓글은 React 영업노트 수정 대상이 아닙니다.',
+        }, status=400)
+    if not can_modify_user_data(request.user, history.user):
+        return JsonResponse({
+            'success': False,
+            'error': '수정 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    try:
+        followup_id = int(payload.get('followupId') or 0)
+    except (TypeError, ValueError):
+        followup_id = 0
+
+    followup = FollowUp.objects.filter(
+        id=followup_id,
+        user__in=get_same_company_users(history.user),
+    ).select_related('company', 'department').first()
+    if not followup:
+        return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+
+    allowed_action_types = {item['value'] for item in _notes_action_types_for_edit(request, history)}
+    action_type = str(payload.get('actionType') or '').strip()
+    if action_type not in allowed_action_types or action_type == 'memo':
+        return JsonResponse({'success': False, 'error': '활동 유형을 선택하세요.'}, status=400)
+
+    content = str(payload.get('content') or '').strip()
+    if action_type != 'customer_meeting' and not content:
+        return JsonResponse({'success': False, 'error': '활동 내용을 입력하세요.'}, status=400)
+
+    activity_date = _parse_iso_date_or_none(payload.get('activityDate'))
+    next_action_date = _parse_iso_date_or_none(payload.get('nextActionDate'))
+    service_status = str(payload.get('serviceStatus') or '').strip()
+    valid_service_statuses = {value for value, _label in History.SERVICE_STATUS_CHOICES}
+    if action_type == 'service' and service_status not in valid_service_statuses:
+        return JsonResponse({'success': False, 'error': '서비스 상태를 선택하세요.'}, status=400)
+
+    history.followup = followup
+    if history.schedule_id and history.schedule.followup_id != followup.id:
+        history.schedule = None
+    history.action_type = action_type
+    history.content = content
+    history.next_action = str(payload.get('nextAction') or '').strip()
+    history.next_action_date = next_action_date
+    history.service_status = service_status if action_type == 'service' else None
+
+    if action_type == 'customer_meeting':
+        history.meeting_date = activity_date
+        history.meeting_situation = str(payload.get('meetingSituation') or '').strip()
+        history.meeting_researcher_quote = str(payload.get('meetingResearcherQuote') or '').strip()
+        history.meeting_confirmed_facts = str(payload.get('meetingConfirmedFacts') or '').strip()
+        history.meeting_obstacles = str(payload.get('meetingObstacles') or '').strip()
+        history.meeting_next_action = str(payload.get('meetingNextAction') or '').strip()
+        history.delivery_date = None
+        history.delivery_amount = None
+        history.delivery_items = ''
+    elif action_type == 'delivery_schedule':
+        history.delivery_date = activity_date
+        history.delivery_amount = _parse_nonnegative_int_or_none(payload.get('deliveryAmount'))
+        history.delivery_items = str(payload.get('deliveryItems') or '').strip()
+        history.meeting_date = None
+        history.meeting_situation = ''
+        history.meeting_researcher_quote = ''
+        history.meeting_confirmed_facts = ''
+        history.meeting_obstacles = ''
+        history.meeting_next_action = ''
+    else:
+        history.meeting_date = None
+        history.meeting_situation = ''
+        history.meeting_researcher_quote = ''
+        history.meeting_confirmed_facts = ''
+        history.meeting_obstacles = ''
+        history.meeting_next_action = ''
+        history.delivery_date = None
+        history.delivery_amount = None
+        history.delivery_items = ''
+
+    history.save(update_fields=[
+        'followup',
+        'schedule',
+        'action_type',
+        'content',
+        'next_action',
+        'next_action_date',
+        'service_status',
+        'meeting_date',
+        'meeting_situation',
+        'meeting_researcher_quote',
+        'meeting_confirmed_facts',
+        'meeting_obstacles',
+        'meeting_next_action',
+        'delivery_date',
+        'delivery_amount',
+        'delivery_items',
+    ])
+
+    refreshed = _notes_get_detail_history(history.id)
+    return JsonResponse({
+        **_notes_detail_payload(request, refreshed, get_user_profile(request.user)),
+        'message': '영업노트를 수정했습니다.',
+    })
 
 
 @never_cache
