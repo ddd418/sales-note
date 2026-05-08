@@ -5122,6 +5122,21 @@ python manage.py test --verbosity=1
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+railway up --service web --environment production --message "Deploy React customer detail edit API 42af689" --ci
+→ Deploy complete, deployment id 17301121-4dc1-4e9b-a182-a47862ac6834
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React customer detail edit 42af689" --ci
+→ Deploy complete, deployment id 90af287f-51d9-4cd3-8a23-7c4ee3c97fb5
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/1/
+→ 200, assets/index-bdBLCFoN.js / assets/index-DlWngxDV.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-bdBLCFoN.js
+→ 고객 정보 수정=True, Customer update failed=True, Django 수정=True
+
+Unauthenticated GET/POST smoke for /reporting/api/customers/1/ and /update/
+→ GET 401 login_required, POST with CSRF 401 login_required
 ```
 
 ### 6. Known Limitations
