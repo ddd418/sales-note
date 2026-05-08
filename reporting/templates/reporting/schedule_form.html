@@ -2979,8 +2979,13 @@ function showQuoteSelectionModal(quotes) {
                                         <div>
                                             <h6 class="mb-1">
                                                 <i class="fas fa-file-alt text-primary me-2"></i>
-                                                ${'견적 ' + (index + 1)}
+                                                ${quote.customer_name ? quote.customer_name + ' 견적' : '견적 ' + (index + 1)}
                                             </h6>
+                                            ${quote.company_name || quote.department_name ? `
+                                                <div class="small text-muted mb-1">
+                                                    ${[quote.company_name, quote.department_name, quote.schedule_id ? '일정 #' + quote.schedule_id : ''].filter(Boolean).join(' · ')}
+                                                </div>
+                                            ` : ''}
                                             <p class="mb-1">
                                                 <span class="badge bg-success me-2">예상 매출: ${quote.expected_revenue.toLocaleString()}원</span>
                                                 <span class="badge bg-info">품목 ${quote.items.length}개</span>

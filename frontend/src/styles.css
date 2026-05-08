@@ -932,7 +932,7 @@ h2 {
 }
 
 .customers-table {
-  min-width: 920px;
+  min-width: 1080px;
 }
 
 .customers-table th,
@@ -953,6 +953,13 @@ h2 {
 
 .customer-name-link:hover {
   color: var(--primary-strong);
+}
+
+.customer-contact-line,
+.customer-muted-cell {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .customer-badge-row {
@@ -990,6 +997,58 @@ h2 {
   border: 1px solid #bfdbfe;
   background: #eff6ff;
   color: var(--primary-strong);
+}
+
+.customer-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.customer-row-actions .customer-row-action {
+  margin-top: 0;
+}
+
+.customer-schedule-link {
+  display: grid;
+  gap: 3px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.customer-schedule-link:hover {
+  color: var(--primary-strong);
+}
+
+.customer-schedule-link span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.customer-count-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.customer-count-grid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-count-grid strong {
+  color: var(--text);
 }
 
 .customers-priority-list {
@@ -1043,6 +1102,23 @@ h2 {
 .customer-score {
   color: var(--primary-strong);
   font-size: 18px;
+}
+
+.customer-priority-meta {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.customer-priority-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-priority-warning {
+  color: #991b1b !important;
 }
 
 .customers-side-actions {

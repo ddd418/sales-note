@@ -554,6 +554,154 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn(own.id, priority_ids)
         self.assertTrue(payload['scope']['canViewAll'])
 
+    def test_customers_summary_api_includes_activity_and_schedule_snapshot(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import History, Schedule
+
+        target = self._create_customer(self.user, '일정있는고객', priority='urgent')
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            action_type='quote',
+            content='견적 재확인',
+            next_action='견적 후속',
+            next_action_date=timezone.localdate() + timedelta(days=2),
+        )
+        upcoming = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 30),
+            activity_type='quote',
+            status='scheduled',
+            location='고객 연구실',
+        )
+        Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() - timedelta(days=3),
+            visit_time=time(9, 0),
+            activity_type='customer_meeting',
+            status='completed',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        customer = next(item for item in payload['customers'] if item['id'] == target.id)
+        self.assertEqual(customer['activityCount'], 2)
+        self.assertEqual(customer['scheduleCount'], 2)
+        self.assertEqual(customer['upcomingScheduleCount'], 1)
+        self.assertEqual(customer['overdueActionCount'], 1)
+        self.assertEqual(customer['upcomingSchedule']['id'], upcoming.id)
+        self.assertEqual(customer['upcomingSchedule']['activityLabel'], '견적 제출')
+        self.assertEqual(customer['upcomingSchedule']['time'], '10:30')
+        self.assertEqual(payload['metrics']['scheduledCustomers'], 1)
+
+
+class QuoteItemsApiTests(TestCase):
+    """부서 기준 견적 품목 불러오기 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='견적품목API회사')
+        self.user = make_user('quote_items_me', role='salesman', company=self.company)
+        self.coworker = make_user('quote_items_coworker', role='salesman', company=self.company)
+
+        from reporting.models import Company, Department
+
+        self.customer_company = Company.objects.create(name='견적품목 고객사', created_by=self.user)
+        self.department = Department.objects.create(
+            company=self.customer_company,
+            name='공동 연구실',
+            created_by=self.user,
+        )
+        self.other_department = Department.objects.create(
+            company=self.customer_company,
+            name='다른 연구실',
+            created_by=self.user,
+        )
+
+    def _create_followup(self, owner, name, department=None):
+        from reporting.models import FollowUp
+
+        return FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=name,
+            company=self.customer_company,
+            department=department or self.department,
+            priority='urgent',
+            pipeline_stage='quote',
+        )
+
+    def _create_quote_schedule(self, followup, owner, item_name, unit_price):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = Schedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name=item_name,
+            quantity=1,
+            unit_price=unit_price,
+        )
+        return schedule
+
+    def test_quote_items_api_returns_all_own_quotes_in_same_department(self):
+        target = self._create_followup(self.user, '대표 고객')
+        same_department = self._create_followup(self.user, '같은 부서 고객')
+        other_department = self._create_followup(self.user, '다른 부서 고객', self.other_department)
+        coworker_customer = self._create_followup(self.coworker, '동료 고객')
+        first = self._create_quote_schedule(target, self.user, 'PCR 장비', 1000000)
+        second = self._create_quote_schedule(same_department, self.user, '원심분리기', 2000000)
+        self._create_quote_schedule(other_department, self.user, '다른 부서 품목', 3000000)
+        self._create_quote_schedule(coworker_customer, self.coworker, '동료 품목', 4000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['count'], 2)
+        schedule_ids = {item['schedule_id'] for item in payload['quotes']}
+        self.assertEqual(schedule_ids, {first.id, second.id})
+        customer_names = {item['customer_name'] for item in payload['quotes']}
+        self.assertEqual(customer_names, {'대표 고객', '같은 부서 고객'})
+
+    def test_customer_records_api_includes_quote_schedules_without_quote_model(self):
+        target = self._create_followup(self.user, '기록 대표')
+        same_department = self._create_followup(self.user, '기록 같은 부서')
+        first = self._create_quote_schedule(target, self.user, '견적A', 1000000)
+        second = self._create_quote_schedule(same_department, self.user, '견적B', 2000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_records_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['quote_count'], 2)
+        quote_ids = {item['id'] for item in payload['quotes']}
+        self.assertEqual(quote_ids, {first.id, second.id})
+        self.assertEqual(payload['total_quote_amount'], 3300000.0)
+
 
 class NotesSummaryApiTests(TestCase):
     """React 영업노트 화면 읽기 API 검증"""
@@ -1152,6 +1300,33 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deals[won_followup.id]['quoteComparison']['status'], 'match')
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 4400000)
+
+    def test_pipeline_api_sums_multiple_quote_schedules(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        followup = self._create_pipeline_customer(self.user, '복수견적', stage='quote')
+        self._create_delivery_item(followup.schedules.first(), '첫 견적품목', 1000000)
+        second_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.user.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate() + timedelta(days=2),
+            visit_time=time(14, 0),
+            status='scheduled',
+            activity_type='quote',
+        )
+        self._create_delivery_item(second_schedule, '두번째 견적품목', 2000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['value'], 3300000)
+        self.assertEqual(deal['latestQuote']['source'], '견적 일정 2건')
+        self.assertIn('외 1건', deal['latestQuote']['number'])
 
     def test_pipeline_api_uses_quote_history_items_before_quote_model_fallback(self):
         followup = self._create_pipeline_customer(self.user, '견적히스토리', stage='quote')

@@ -1055,47 +1055,119 @@ def _quote_model_pricing(followup, stage):
     if not quotes:
         return None
 
-    def first_matching(predicate):
-        with_amount = [quote for quote in quotes if predicate(quote) and _quote_amount(quote) > 0]
-        if with_amount:
-            return with_amount[0]
-        return next((quote for quote in quotes if predicate(quote)), None)
+    def matching(predicate):
+        return [quote for quote in quotes if predicate(quote)]
 
-    def build(quote, source):
+    def build(quote_matches, source):
+        if not quote_matches:
+            return None
+        priced_quotes = [quote for quote in quote_matches if _quote_amount(quote) > 0]
+        selected_quotes = priced_quotes if priced_quotes else quote_matches[:1]
+        primary_quote = selected_quotes[0]
+        amount = sum((_quote_amount(quote) for quote in selected_quotes), Decimal('0'))
+        if amount > 0:
+            probability = round(
+                sum(
+                    _quote_amount(quote) * Decimal(str(quote.probability or 0))
+                    for quote in selected_quotes
+                ) / amount
+            )
+        else:
+            probability = int(primary_quote.probability or 0)
+        count = len(selected_quotes)
         return {
-            'object': quote,
+            'object': primary_quote,
             'kind': 'quote',
-            'amount': _quote_amount(quote),
-            'source': source,
-            'number': quote.quote_number,
-            'stage': quote.get_stage_display(),
-            'probability': int(quote.probability or 0),
-            'valid_until': quote.valid_until,
+            'amount': amount,
+            'source': f'{source} {count}건' if count > 1 else source,
+            'number': (
+                f'{primary_quote.quote_number} 외 {count - 1}건'
+                if count > 1 else primary_quote.quote_number
+            ),
+            'stage': primary_quote.get_stage_display() if count == 1 else f'{primary_quote.get_stage_display()} 외 {count - 1}건',
+            'probability': int(probability or 0),
+            'valid_until': primary_quote.valid_until,
+            'count': count,
         }
 
     if stage == 'won':
-        quote = first_matching(
-            lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
+        pricing = build(
+            matching(
+                lambda item: item.converted_to_delivery or item.stage in PIPELINE_WON_QUOTE_STAGES
+            ),
+            '수주 견적',
         )
-        if quote:
-            return build(quote, '수주 견적')
+        if pricing:
+            return pricing
 
     for quote_stage in PIPELINE_QUOTE_PRIORITY.get(stage, ()):
-        quote = first_matching(lambda item, expected=quote_stage: item.stage == expected)
-        if quote:
-            source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
-            return build(quote, source_label)
+        source_label = '협상 견적' if stage == 'negotiation' else '제출 견적'
+        pricing = build(matching(lambda item, expected=quote_stage: item.stage == expected), source_label)
+        if pricing:
+            return pricing
 
-    quote = first_matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES)
-    if quote:
-        return build(quote, '진행 견적')
+    pricing = build(matching(lambda item: item.stage in PIPELINE_ACTIVE_QUOTE_STAGES), '진행 견적')
+    if pricing:
+        return pricing
 
-    quote = first_matching(lambda item: True)
-    return build(quote, '최근 견적') if quote else None
+    return build(matching(lambda item: True), '최근 견적')
 
 
 def _select_quote_reference_pricing(followup, stage):
-    quote_schedule = _select_latest_quote_schedule(followup)
+    schedules = list(getattr(followup, 'pricing_schedules', []))
+    quote_schedules = [schedule for schedule in schedules if schedule.activity_type == 'quote']
+    priced_schedules = [
+        (schedule, _schedule_quote_amount(schedule))
+        for schedule in quote_schedules
+        if _schedule_quote_amount(schedule) > 0
+    ]
+    if priced_schedules:
+        total_amount = sum((amount for _schedule, amount in priced_schedules), Decimal('0'))
+        primary_schedule = priced_schedules[0][0]
+        count = len(priced_schedules)
+        probability = round(
+            sum(
+                amount * Decimal(str(schedule.probability or STAGE_PROBABILITY.get(stage, 30)))
+                for schedule, amount in priced_schedules
+            ) / total_amount
+        ) if total_amount > 0 else STAGE_PROBABILITY.get(stage, 30)
+        return {
+            'object': primary_schedule,
+            'kind': 'schedule',
+            'amount': total_amount,
+            'source': f'견적 일정 {count}건' if count > 1 else '견적 일정',
+            'number': f'일정 #{primary_schedule.id} 외 {count - 1}건' if count > 1 else f'일정 #{primary_schedule.id}',
+            'stage': primary_schedule.get_activity_type_display() if count == 1 else f'{primary_schedule.get_activity_type_display()} 외 {count - 1}건',
+            'probability': int(probability or 0),
+            'valid_until': primary_schedule.expected_close_date,
+            'count': count,
+        }
+
+    histories = list(getattr(followup, 'pricing_histories', []))
+    quote_histories = [history for history in histories if history.action_type == 'quote']
+    priced_histories = [
+        (history, _history_pricing_amount(history))
+        for history in quote_histories
+        if _history_pricing_amount(history) > 0
+    ]
+    if priced_histories:
+        total_amount = sum((amount for _history, amount in priced_histories), Decimal('0'))
+        primary_history = priced_histories[0][0]
+        count = len(priced_histories)
+        return {
+            'object': primary_history,
+            'kind': 'history',
+            'amount': total_amount,
+            'source': f'견적 활동 {count}건' if count > 1 else '견적 활동',
+            'number': f'활동 #{primary_history.id} 외 {count - 1}건' if count > 1 else f'활동 #{primary_history.id}',
+            'stage': primary_history.get_action_type_display() if count == 1 else f'{primary_history.get_action_type_display()} 외 {count - 1}건',
+            'probability': STAGE_PROBABILITY.get(stage, 30),
+            'valid_until': None,
+            'count': count,
+        }
+
+    # 금액이 없는 견적 일정/활동은 가격 기준으로 쓰지 않고 Quote 모델로 fallback한다.
+    quote_schedule = quote_schedules[0] if quote_schedules else None
     if quote_schedule:
         amount = _schedule_quote_amount(quote_schedule)
         if amount > 0:
@@ -1110,7 +1182,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'valid_until': quote_schedule.expected_close_date,
             }
 
-    quote_history = _select_latest_quote_history(followup)
+    quote_history = quote_histories[0] if quote_histories else None
     if quote_history:
         amount = _history_pricing_amount(quote_history)
         if amount > 0:

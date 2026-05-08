@@ -148,6 +148,7 @@ export type CustomerItem = {
   score: number;
   phone: string;
   email: string;
+  contactSummary: string;
   notes: string;
   lastActivityAt: string | null;
   lastActivityLabel: string;
@@ -155,6 +156,23 @@ export type CustomerItem = {
   nextAction: string;
   nextActionDate: string | null;
   overdue: boolean;
+  activityCount: number;
+  scheduleCount: number;
+  upcomingScheduleCount: number;
+  overdueActionCount: number;
+  upcomingSchedule: {
+    id: number;
+    date: string | null;
+    time: string;
+    activityType: string;
+    activityLabel: string;
+    status: string;
+    statusLabel: string;
+    location: string;
+    notes: string;
+    href: string;
+    createHistoryHref: string;
+  } | null;
   href: string;
   companyHref: string;
   createScheduleHref: string;
@@ -189,6 +207,7 @@ export type CustomersData = {
     activeCustomers: number;
     urgentCustomers: number;
     followupCustomers: number;
+    scheduledCustomers: number;
     priorityCustomers: number;
     overdueCustomers: number;
     vipCustomers: number;
@@ -560,6 +579,7 @@ const emptyCustomersData: CustomersData = {
     activeCustomers: 0,
     urgentCustomers: 0,
     followupCustomers: 0,
+    scheduledCustomers: 0,
     priorityCustomers: 0,
     overdueCustomers: 0,
     vipCustomers: 0,

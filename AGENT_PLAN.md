@@ -1158,3 +1158,66 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Customers Page — 실제 고객 데이터 연결 보강
+
+**목표**: React `/customers/` 화면을 기존 Django 고객/팔로우업 운영 데이터에 더 직접 연결해, 검색/담당자/우선순위 필터뿐 아니라 실제 활동 이력과 예정 일정까지 한 화면에서 확인한다.
+
+**작업 범위**:
+
+- `/reporting/api/customers/` payload에 고객별 활동 수, 일정 수, 예정 일정 수, 지연 후속 수, 다음 예정 일정 정보를 추가한다.
+- 고객 목록에서 연락처, 최근 활동, 다음 액션, 예정 일정, 활동/일정 카운트를 함께 표시한다.
+- 우선 고객 패널에서 지연 후속과 예정 일정 정보를 바로 볼 수 있게 한다.
+- 기존 고객 상세, 고객 등록, 일정 등록, 고객 리포트 링크는 Django 운영 화면으로 유지한다.
+- 인증/권한 범위는 기존 대시보드 scope 규칙을 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp`, `History`, `Schedule` 조회와 annotate/prefetch만 사용한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1~2시간.
+- 전체 테스트와 운영 배포/smoke 포함: 추가 40~80분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`
+
+---
+
+## Quote Loading — 부서 내 여러 견적 누락 보정
+
+**목표**: 같은 부서/연구실에 견적이 여러 건 있을 때 한 건만 불러오는 문제를 해결한다.
+
+**작업 범위**:
+
+- 납품 일정 작성의 `견적에서 품목 불러오기` API가 선택 고객 1명 기준이 아니라 같은 부서의 접근 가능한 본인 견적 일정 전체를 반환하게 한다.
+- 같은 부서의 여러 견적을 구분할 수 있도록 고객명, 업체/부서명, 일정 ID, 견적일, 금액을 payload와 모달에 표시한다.
+- 고객 기록 API도 `Quote` 모델뿐 아니라 견적 일정의 품목/예상금액까지 포함해 부서 기준 견적 목록을 누락 없이 보여준다.
+- 파이프라인 가격 기준은 동일 고객에 여러 견적 일정/견적 활동/Quote가 있으면 대표 1건이 아니라 같은 우선순위 소스의 금액을 합산해 표시한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `History`, `DeliveryItem`, `Quote` 조회만 사용한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1~2시간.
+- 고객 화면 배포와 함께 운영 smoke까지 포함하면 추가 40~80분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.PipelineApiTests reporting.tests.QuoteItemsApiTests --verbosity=1`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

@@ -2567,10 +2567,60 @@ def dashboard_summary_api(request):
     })
 
 
+def _customers_schedule_payload(schedule):
+    return {
+        'id': schedule.id,
+        'date': _date_or_none(schedule.visit_date),
+        'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+        'activityType': schedule.activity_type,
+        'activityLabel': schedule.get_activity_type_display(),
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'location': schedule.location or '',
+        'notes': (schedule.notes or '').strip()[:100],
+        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+    }
+
+
+def _customers_enriched_queryset(queryset, today, priority_order, recent_histories_qs, upcoming_schedules_qs):
+    activity_types = [
+        value
+        for value, _label in History.ACTION_CHOICES
+        if value != 'memo'
+    ]
+    activity_filter = Q(
+        histories__parent_history__isnull=True,
+        histories__action_type__in=activity_types,
+    )
+    overdue_filter = activity_filter & Q(
+        histories__next_action_date__lt=today,
+        histories__next_action_date__isnull=False,
+    )
+    upcoming_schedule_filter = Q(
+        schedules__status='scheduled',
+        schedules__visit_date__gte=today,
+    )
+    return queryset.select_related('user', 'company', 'department').prefetch_related(
+        Prefetch('histories', queryset=recent_histories_qs, to_attr='customer_recent_histories'),
+        Prefetch('schedules', queryset=upcoming_schedules_qs, to_attr='customer_upcoming_schedules'),
+    ).annotate(
+        priority_rank=priority_order,
+        activity_count=Count('histories', filter=activity_filter, distinct=True),
+        schedule_count=Count('schedules', distinct=True),
+        upcoming_schedule_count=Count('schedules', filter=upcoming_schedule_filter, distinct=True),
+        overdue_action_count=Count('histories', filter=overdue_filter, distinct=True),
+    )
+
+
 def _customers_followup_payload(followup, today):
     recent_histories = list(getattr(followup, 'customer_recent_histories', []))
     latest_history = recent_histories[0] if recent_histories else None
     next_action_date = latest_history.next_action_date if latest_history else None
+    upcoming_schedules = list(getattr(followup, 'customer_upcoming_schedules', []))
+    upcoming_schedule = upcoming_schedules[0] if upcoming_schedules else None
+    phone = followup.phone_number or ''
+    email = followup.email or ''
     return {
         'id': followup.id,
         'customer': followup.customer_name or followup.manager or '고객명 미정',
@@ -2587,8 +2637,9 @@ def _customers_followup_payload(followup, today):
         'pipelineLabel': followup.get_pipeline_stage_display(),
         'grade': followup.customer_grade or '',
         'score': float(followup.get_combined_score()),
-        'phone': followup.phone_number or '',
-        'email': followup.email or '',
+        'phone': phone,
+        'email': email,
+        'contactSummary': ' · '.join([item for item in [phone, email] if item]),
         'notes': (followup.notes or '').strip()[:140],
         'lastActivityAt': _datetime_or_none(latest_history.created_at) if latest_history else None,
         'lastActivityLabel': latest_history.get_action_type_display() if latest_history else '',
@@ -2600,6 +2651,11 @@ def _customers_followup_payload(followup, today):
         ).strip()[:140] if latest_history else '',
         'nextActionDate': _date_or_none(next_action_date),
         'overdue': bool(next_action_date and next_action_date < today),
+        'activityCount': int(getattr(followup, 'activity_count', 0) or 0),
+        'scheduleCount': int(getattr(followup, 'schedule_count', 0) or 0),
+        'upcomingScheduleCount': int(getattr(followup, 'upcoming_schedule_count', 0) or 0),
+        'overdueActionCount': int(getattr(followup, 'overdue_action_count', 0) or 0),
+        'upcomingSchedule': _customers_schedule_payload(upcoming_schedule) if upcoming_schedule else None,
         'href': reverse('reporting:followup_detail', args=[followup.id]),
         'companyHref': reverse('reporting:company_detail', args=[followup.company_id]) if followup.company_id else '',
         'createScheduleHref': f"{reverse('reporting:schedule_create')}?followup={followup.id}",
@@ -2666,10 +2722,18 @@ def customers_summary_api(request):
     recent_histories_qs = History.objects.filter(
         parent_history__isnull=True,
     ).exclude(action_type='memo').order_by('-created_at')
+    upcoming_schedules_qs = Schedule.objects.filter(
+        status='scheduled',
+        visit_date__gte=today,
+    ).order_by('visit_date', 'visit_time')
 
-    followups = followups.select_related('user', 'company', 'department').prefetch_related(
-        Prefetch('histories', queryset=recent_histories_qs, to_attr='customer_recent_histories')
-    ).annotate(priority_rank=priority_order).order_by(
+    followups = _customers_enriched_queryset(
+        followups,
+        today,
+        priority_order,
+        recent_histories_qs,
+        upcoming_schedules_qs,
+    ).order_by(
         'priority_rank', '-ai_score', '-updated_at', 'company__name', 'customer_name'
     )
 
@@ -2686,13 +2750,17 @@ def customers_summary_api(request):
         if followup_id
     }
     priority_customers = list(
-        base_followups.filter(
-            Q(priority__in=['urgent', 'followup']) |
-            Q(customer_grade__in=['VIP', 'A']) |
-            Q(id__in=overdue_followup_ids)
-        ).select_related('user', 'company', 'department').prefetch_related(
-            Prefetch('histories', queryset=recent_histories_qs, to_attr='customer_recent_histories')
-        ).annotate(priority_rank=priority_order).order_by(
+        _customers_enriched_queryset(
+            base_followups.filter(
+                Q(priority__in=['urgent', 'followup']) |
+                Q(customer_grade__in=['VIP', 'A']) |
+                Q(id__in=overdue_followup_ids)
+            ),
+            today,
+            priority_order,
+            recent_histories_qs,
+            upcoming_schedules_qs,
+        ).order_by(
             'priority_rank', '-ai_score', '-updated_at'
         )[:10]
     )
@@ -2717,6 +2785,10 @@ def customers_summary_api(request):
     active_count = base_followups.filter(status='active').count()
     urgent_count = base_followups.filter(priority='urgent').count()
     followup_count = base_followups.filter(priority='followup').count()
+    scheduled_customer_count = base_followups.filter(
+        schedules__status='scheduled',
+        schedules__visit_date__gte=today,
+    ).distinct().count()
 
     return JsonResponse({
         'success': True,
@@ -2751,6 +2823,7 @@ def customers_summary_api(request):
             'activeCustomers': active_count,
             'urgentCustomers': urgent_count,
             'followupCustomers': followup_count,
+            'scheduledCustomers': scheduled_customer_count,
             'priorityCustomers': len(priority_customers),
             'overdueCustomers': base_followups.filter(id__in=overdue_followup_ids).count(),
             'vipCustomers': base_followups.filter(customer_grade__in=['VIP', 'A']).count(),
@@ -12015,8 +12088,10 @@ def followup_quote_items_api(request, followup_id):
     """
     특정 팔로우업의 견적 품목을 가져오는 API
     납품 일정 생성 시 견적에서 품목을 불러오기 위해 사용
-    같은 회사 소속이면 동료 고객의 견적도 불러올 수 있음
+    같은 부서/연구실에 연결된 본인 견적 일정도 함께 불러옴
     """
+    from decimal import Decimal
+
     try:
         followup = get_object_or_404(FollowUp, pk=followup_id)
         
@@ -12026,17 +12101,26 @@ def followup_quote_items_api(request, followup_id):
                 'error': '접근 권한이 없습니다.'
             }, status=403)
         
-        # 해당 팔로우업의 본인 견적 일정 조회 (납품되지 않은 것만)
-        # 동료 고객이라도 본인이 작성한 견적만 불러올 수 있음
+        if followup.department_id:
+            quote_followups = FollowUp.objects.filter(
+                department_id=followup.department_id,
+                user__in=get_accessible_users(request.user, request),
+            )
+        else:
+            quote_followups = FollowUp.objects.filter(pk=followup.pk)
+
+        # 같은 부서의 본인 견적 일정 조회 (납품되지 않은 것만)
         quote_schedules = Schedule.objects.filter(
-            followup=followup,
+            followup__in=quote_followups,
             activity_type='quote',
-            user=request.user  # 본인이 작성한 견적만
-        ).order_by('-visit_date', '-visit_time')
+            user=request.user,
+        ).select_related('followup', 'followup__company', 'followup__department').prefetch_related(
+            'delivery_items_set',
+        ).order_by('-visit_date', '-visit_time', '-created_at')
         
         if not quote_schedules.exists():
             return JsonResponse({
-                'error': '이 고객에 대한 본인 작성 견적이 없습니다.'
+                'error': '이 부서에 대한 본인 작성 견적이 없습니다.'
             })
         
         # 모든 견적 정보 수집 (납품되지 않은 것만)
@@ -12049,7 +12133,7 @@ def followup_quote_items_api(request, followup_id):
             # 이미 납품된 견적인지 확인
             # 이 견적(Schedule)에서 직접 복사된 납품 일정이 있는지 확인
             has_delivery = Schedule.objects.filter(
-                followup=followup,
+                followup=quote_schedule.followup,
                 activity_type='delivery',
                 notes__icontains=f'견적 ID {quote_schedule.id}'  # 납품 메모에 견적 ID가 포함되어 있는지
             ).exists()
@@ -12061,7 +12145,7 @@ def followup_quote_items_api(request, followup_id):
                 if quote_items.exists():
                     # 같은 품목 구성의 완료된 납품이 있는지 확인
                     for delivery_schedule in Schedule.objects.filter(
-                        followup=followup,
+                        followup=quote_schedule.followup,
                         activity_type='delivery',
                         status='completed'
                     ):
@@ -12076,26 +12160,41 @@ def followup_quote_items_api(request, followup_id):
             if has_delivery:
                 continue
             
-            items = DeliveryItem.objects.filter(schedule=quote_schedule)
+            items = list(quote_schedule.delivery_items_set.all())
             
-            if items.exists():
+            if items:
                 items_data = [{
                     'item_name': item.item_name,
                     'quantity': item.quantity,
                     'unit_price': float(item.unit_price) if item.unit_price else 0,
                 } for item in items]
-                
+                quote_total = sum(
+                    item.total_price or (
+                        (item.unit_price or Decimal('0')) * item.quantity * Decimal('1.1')
+                    )
+                    for item in items
+                )
+            else:
+                items_data = []
+                quote_total = quote_schedule.expected_revenue or Decimal('0')
+
+            if items_data or quote_total > 0:
+                quote_followup = quote_schedule.followup
+
                 quote_data = {
                     'schedule_id': quote_schedule.id,
                     'quote_date': quote_schedule.visit_date.strftime('%Y-%m-%d'),
-                    'expected_revenue': float(quote_schedule.expected_revenue) if quote_schedule.expected_revenue else 0,
+                    'expected_revenue': float(quote_total),
+                    'customer_name': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
+                    'company_name': quote_followup.company.name if quote_followup.company else '',
+                    'department_name': quote_followup.department.name if quote_followup.department else '',
                     'items': items_data,
                 }
                 quotes_data.append(quote_data)
-        
+
         if not quotes_data:
             return JsonResponse({
-                'error': '견적 품목이 없습니다.'
+                'error': '불러올 수 있는 견적 품목이 없습니다.'
             })
         
         return JsonResponse({
@@ -15008,7 +15107,7 @@ def customer_records_api(request, followup_id):
             })
         
         # 견적 기록 조회 (본인 기록만 - user 필터 + 부서 기준)
-        from reporting.models import Quote, QuoteItem
+        from reporting.models import Quote, QuoteItem, History
         if followup.department:
             # 같은 부서의 모든 고객
             quote_records = Quote.objects.filter(
@@ -15024,9 +15123,12 @@ def customer_records_api(request, followup_id):
         
         quotes = []
         total_quote_amount = Decimal('0')
+        quote_schedule_ids_from_models = set()
         for quote in quote_records:
             items = []
             quote_total = Decimal('0')
+            if quote.schedule_id:
+                quote_schedule_ids_from_models.add(quote.schedule_id)
             for item in quote.items.all():
                 if item.subtotal:
                     item_total = Decimal(str(item.subtotal))
@@ -15062,6 +15164,75 @@ def customer_records_api(request, followup_id):
                 'items': items,
                 'total_amount': float(quote_total),
                 'notes': quote.notes or '',
+            })
+
+        if followup.department:
+            quote_schedules = Schedule.objects.filter(
+                followup__in=department_followups,
+                user=request.user,
+                activity_type='quote',
+            )
+        else:
+            quote_schedules = Schedule.objects.filter(
+                followup=followup,
+                user=request.user,
+                activity_type='quote',
+            )
+        quote_schedules = quote_schedules.exclude(
+            id__in=quote_schedule_ids_from_models
+        ).select_related('followup').prefetch_related(
+            'delivery_items_set',
+            Prefetch(
+                'histories',
+                queryset=History.objects.filter(
+                    action_type='quote',
+                    parent_history__isnull=True,
+                ).prefetch_related('delivery_items_set').order_by('-created_at'),
+                to_attr='quote_histories_for_records',
+            ),
+        ).order_by('-visit_date', '-visit_time')
+
+        for schedule in quote_schedules:
+            items = []
+            schedule_total = Decimal('0')
+            delivery_items = list(schedule.delivery_items_set.all())
+            if not delivery_items:
+                related_history = (
+                    schedule.quote_histories_for_records[0]
+                    if getattr(schedule, 'quote_histories_for_records', [])
+                    else None
+                )
+                if related_history:
+                    delivery_items = list(related_history.delivery_items_set.all())
+
+            for item in delivery_items:
+                if item.total_price:
+                    item_total = Decimal(str(item.total_price))
+                else:
+                    unit_price = item.unit_price if item.unit_price else Decimal('0')
+                    item_total = Decimal(str(item.quantity)) * Decimal(str(unit_price)) * Decimal('1.1')
+                items.append({
+                    'item_name': item.item_name,
+                    'quantity': item.quantity,
+                    'unit_price': float(item.unit_price) if item.unit_price else 0,
+                    'total_price': float(item_total),
+                })
+                schedule_total += item_total
+
+            if schedule_total <= 0 and schedule.expected_revenue:
+                schedule_total = Decimal(str(schedule.expected_revenue))
+
+            total_quote_amount += schedule_total
+            quotes.append({
+                'id': schedule.id,
+                'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
+                'customer_name': schedule.followup.customer_name if schedule.followup else '-',
+                'status': schedule.get_activity_type_display(),
+                'status_code': schedule.status,
+                'items': items,
+                'total_amount': float(schedule_total),
+                'notes': schedule.notes or '',
+                'source': 'quote_schedule',
             })
         
         # 응답 데이터 구성

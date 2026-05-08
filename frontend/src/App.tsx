@@ -575,8 +575,19 @@ function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
             <strong>{customer.company || customer.customer}</strong>
             <span>{[customer.customer, customer.owner].filter(Boolean).join(' · ')}</span>
             {customer.nextAction ? <small>{customer.nextAction}</small> : null}
+            {customer.upcomingSchedule ? (
+              <small>
+                {formatDateLabel(customer.upcomingSchedule.date)} {customer.upcomingSchedule.time} · {customer.upcomingSchedule.activityLabel}
+              </small>
+            ) : null}
+            {customer.overdueActionCount > 0 ? (
+              <small className="customer-priority-warning">지연 후속 {formatNumber(customer.overdueActionCount)}건</small>
+            ) : null}
           </div>
-          <strong className="customer-score">{Math.round(customer.score)}</strong>
+          <div className="customer-priority-meta">
+            <strong className="customer-score">{Math.round(customer.score)}</strong>
+            <span>활동 {formatNumber(customer.activityCount)}</span>
+          </div>
         </a>
       ))}
     </div>
@@ -595,8 +606,9 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
           <tr>
             <th>고객</th>
             <th>상태</th>
-            <th>다음 액션</th>
-            <th>최근 활동</th>
+            <th>후속</th>
+            <th>예정 일정</th>
+            <th>활동</th>
             <th>담당자</th>
           </tr>
         </thead>
@@ -607,6 +619,8 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
                 <a className="customer-name-link" href={customer.href}>
                   <strong>{customer.company || customer.customer}</strong>
                   <span>{[customer.customer, customer.department].filter(Boolean).join(' · ')}</span>
+                  {customer.contactSummary ? <small className="customer-contact-line">{customer.contactSummary}</small> : null}
+                  {!customer.contactSummary && customer.notes ? <small className="customer-contact-line">{customer.notes}</small> : null}
                 </a>
               </td>
               <td>
@@ -617,14 +631,41 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
                   {customer.nextAction || '다음 액션 없음'}
                 </span>
                 {customer.nextActionDate ? <small>{formatDateLabel(customer.nextActionDate)}</small> : null}
+                {customer.overdueActionCount > 0 ? (
+                  <small className="customer-overdue-text">지연 후속 {formatNumber(customer.overdueActionCount)}건</small>
+                ) : null}
               </td>
               <td>
-                <span>{customer.lastActivityLabel || '활동 없음'}</span>
+                {customer.upcomingSchedule ? (
+                  <a className="customer-schedule-link" href={customer.upcomingSchedule.href}>
+                    <strong>
+                      {formatDateLabel(customer.upcomingSchedule.date)}
+                      {customer.upcomingSchedule.time ? ` ${customer.upcomingSchedule.time}` : ''}
+                    </strong>
+                    <span>
+                      {[customer.upcomingSchedule.activityLabel, customer.upcomingSchedule.location].filter(Boolean).join(' · ')}
+                    </span>
+                  </a>
+                ) : (
+                  <span className="customer-muted-cell">예정 일정 없음</span>
+                )}
+              </td>
+              <td>
+                <div className="customer-count-grid">
+                  <span>활동 <strong>{formatNumber(customer.activityCount)}</strong></span>
+                  <span>일정 <strong>{formatNumber(customer.scheduleCount)}</strong></span>
+                </div>
+                <small>{customer.lastActivityLabel || '최근 활동 없음'}</small>
                 {customer.lastActivityAt ? <small>{formatDateTimeLabel(customer.lastActivityAt)}</small> : null}
               </td>
               <td>
                 <span>{customer.owner}</span>
-                <a className="customer-row-action" href={customer.createScheduleHref}>일정</a>
+                <div className="customer-row-actions">
+                  <a className="customer-row-action" href={customer.createScheduleHref}>일정</a>
+                  {customer.upcomingSchedule ? (
+                    <a className="customer-row-action" href={customer.upcomingSchedule.createHistoryHref}>보고</a>
+                  ) : null}
+                </div>
               </td>
             </tr>
           ))}
@@ -673,8 +714,8 @@ function CustomersPage({
   const metrics = [
     { label: '전체 고객', value: `${formatNumber(data.metrics.totalCustomers)}건`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
     { label: '검색 결과', value: `${formatNumber(data.metrics.filteredCustomers)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
-    { label: '긴급 고객', value: `${formatNumber(data.metrics.urgentCustomers)}건`, detail: '우선 대응', icon: AlertTriangle, tone: 'red' as const },
-    { label: 'VIP/A 고객', value: `${formatNumber(data.metrics.vipCustomers)}건`, detail: '등급 기준', icon: Target, tone: 'amber' as const },
+    { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
+    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueCustomers)}건`, detail: '다음 액션 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
 
   return (

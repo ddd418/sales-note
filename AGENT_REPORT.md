@@ -6680,3 +6680,94 @@ git diff --check
 - 운영 배포 및 smoke: 약 20~40분.
 - 운영 로그인 육안 확인: 약 10~20분.
 - 다음 고객 화면 실제 데이터 연결: 약 2~4시간.
+
+---
+
+## Customers Real Data + Department Quote Loading
+
+**날짜**: 2026-05-08
+**상태**: 완료
+
+### 1. Summary
+
+React 고객 화면을 실제 Django 고객 요약 API 데이터로 보강하고, 같은 부서/연구실에 견적 일정이 여러 건 있을 때 견적 한 건만 불러오던 문제를 수정했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 실제 데이터 연결 및 부서 다중 견적 보정 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `frontend/src/App.tsx` | 고객 목록에 예정 일정, 활동/일정 수, 지연 후속, 보고 링크 표시 |
+| `frontend/src/api.ts` | 고객 API 응답 타입에 활동/일정/예정 일정 필드 추가 |
+| `frontend/src/styles.css` | 고객 테이블과 우선순위 목록 표시 스타일 보강 |
+| `reporting/views.py` | 고객 요약 API enrichment 추가, 견적 품목 API를 같은 부서의 여러 견적 일정까지 조회하도록 수정, 고객 기록 API에 Quote 모델 없는 견적 일정 포함 |
+| `reporting/funnel_views.py` | 파이프라인 금액 산정 시 여러 견적 일정/활동/Quote 모델 금액 합산 |
+| `reporting/templates/reporting/schedule_form.html` | 견적 선택 모달에 고객/회사/부서/일정 정보를 표시 |
+| `reporting/tests.py` | 고객 API, 부서 다중 견적 조회, 견적 일정 기반 고객 기록, 파이프라인 다중 견적 합산 회귀 테스트 추가 |
+
+### 3. CRM Improvements
+
+- `/customers/` React 화면에서 고객별 예정 일정, 최근 활동, 활동 수, 일정 수, 지연 후속 수를 바로 확인할 수 있습니다.
+- 납품 일정 생성 시 같은 부서/연구실의 본인 견적 일정 여러 건을 모두 후보로 불러옵니다.
+- 견적 일정에 `Quote` 모델 레코드가 없어도 고객 기록 API에서 견적 내역과 총액에 포함합니다.
+- 파이프라인의 견적 제출/협상 카드 금액은 여러 견적 일정이 있으면 합산하고, 출처를 `견적 일정 N건` 형태로 표시합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 운영 화면은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+- 기존 인증/권한 정책은 약화하지 않았습니다. 견적 품목 API는 접근 가능한 부서 범위 안에서 본인이 작성한 견적 일정만 불러옵니다.
+- 수주 금액은 기존과 동일하게 실제 납품 매출 기준을 유지합니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 11 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 5 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting --verbosity=1
+→ Ran 166 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 178 tests, OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 `/customers/` 실제 데이터 표시와 견적 선택 모달의 여러 견적 후보는 육안 확인이 필요합니다.
+- 같은 부서의 동료 작성 견적까지 자동으로 끌어오지는 않습니다. 기존 데이터 접근 경계를 유지하기 위해 본인이 작성한 견적 일정만 포함했습니다.
+- 견적 일정에 품목이 없으면 `expected_revenue`가 있는 경우에만 금액으로 표시합니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 로그인 상태에서 `/customers/` 고객 목록, 예정 일정 링크, 보고 링크가 실제 데이터와 맞는지 확인합니다.
+- 납품 일정 생성 화면에서 같은 부서의 견적 후보가 여러 건 표시되는지 확인합니다.
+- 다음 개발은 고객 상세 패널 또는 React 노트 화면 실제 데이터 연결을 진행합니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 20~40분.
+- 운영 로그인 육안 확인: 약 10~20분.
+- 다음 고객 상세/노트 실제 데이터 연결: 약 2~4시간.
