@@ -944,7 +944,10 @@ export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `AI workspace API unavailable: ${response.status}`);
     }
-    return payload;
+    return {
+      ...payload,
+      promptTargets: payload.promptTargets ?? [],
+    };
   } catch (error) {
     return {
       ...emptyAIWorkspaceData,

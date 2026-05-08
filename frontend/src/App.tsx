@@ -1622,7 +1622,7 @@ function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; load
           <AIWorkspacePromptQueue
             copiedPromptId={copiedPromptId}
             onCopyPrompt={handleCopyPrompt}
-            targets={data.promptTargets}
+            targets={data.promptTargets || []}
           />
         </section>
       ) : null}
