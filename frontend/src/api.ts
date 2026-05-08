@@ -371,6 +371,26 @@ export type ScheduleItem = {
   createHistoryHref: string;
 };
 
+export type ScheduleCreatePayload = {
+  activityType: string;
+  expectedRevenue?: string;
+  followupId: number;
+  location?: string;
+  notes?: string;
+  probability?: string;
+  visitDate: string;
+  visitTime: string;
+};
+
+export type ScheduleCreateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  scheduleId?: number;
+  href?: string;
+  schedule?: ScheduleItem;
+};
+
 export type SchedulesData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -424,6 +444,21 @@ export type SchedulesData = {
     schedules: string;
     calendar: string;
     weeklyReports: string;
+  };
+  create: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    activityTypes: Array<{ value: string; label: string }>;
+    customers: Array<{
+      id: number;
+      label: string;
+      customer: string;
+      company: string;
+      department: string;
+      priorityLabel: string;
+      href: string;
+    }>;
   };
   today: ScheduleItem[];
   upcoming: ScheduleItem[];
@@ -749,6 +784,13 @@ const emptySchedulesData: SchedulesData = {
     calendar: '/reporting/schedules/calendar/',
     weeklyReports: '/reporting/weekly-reports/',
   },
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/schedules/create/',
+    activityTypes: [],
+    customers: [],
+  },
   today: [],
   upcoming: [],
   overdue: [],
@@ -1063,12 +1105,45 @@ export async function loadSchedulesData(params: {
     if (!contentType.includes('application/json')) {
       throw new Error(`Schedules API unavailable: ${response.status}`);
     }
-    const payload = (await response.json()) as SchedulesData;
+    const payload = (await response.json()) as Partial<SchedulesData>;
     redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Schedules API unavailable: ${response.status}`);
     }
-    return payload;
+    return {
+      ...emptySchedulesData,
+      ...payload,
+      scope: {
+        ...emptySchedulesData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptySchedulesData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptySchedulesData.options,
+        ...(payload.options ?? {}),
+      },
+      metrics: {
+        ...emptySchedulesData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptySchedulesData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptySchedulesData.create,
+        ...(payload.create ?? {}),
+      },
+      statusCounts: payload.statusCounts ?? emptySchedulesData.statusCounts,
+      activityCounts: payload.activityCounts ?? emptySchedulesData.activityCounts,
+      today: payload.today ?? emptySchedulesData.today,
+      upcoming: payload.upcoming ?? emptySchedulesData.upcoming,
+      overdue: payload.overdue ?? emptySchedulesData.overdue,
+      schedules: payload.schedules ?? emptySchedulesData.schedules,
+    };
   } catch (error) {
     return {
       ...emptySchedulesData,
@@ -1076,6 +1151,31 @@ export async function loadSchedulesData(params: {
       error: error instanceof Error ? error.message : 'Schedules API unavailable',
     };
   }
+}
+
+export async function createSchedule(payload: ScheduleCreatePayload, submitUrl = '/reporting/api/schedules/create/'): Promise<ScheduleCreateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleCreateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule create failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {

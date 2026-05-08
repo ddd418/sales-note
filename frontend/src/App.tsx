@@ -45,6 +45,8 @@ import {
   AIWorkspacePromptTarget,
   NoteCreatePayload,
   createNote as createSalesNote,
+  ScheduleCreatePayload,
+  createSchedule as createCustomerSchedule,
   loadDashboardData,
   loadCustomersData,
   loadNotesData,
@@ -85,10 +87,23 @@ type NoteCreateFormState = {
   nextActionDate: string;
 };
 
+type ScheduleCreateFormState = {
+  activityType: string;
+  expectedRevenue: string;
+  followupId: string;
+  location: string;
+  notes: string;
+  probability: string;
+  visitDate: string;
+  visitTime: string;
+};
+
 const localDateInputValue = (date = new Date()) => {
   const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
   return new Date(localTime).toISOString().slice(0, 10);
 };
+
+const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
 
 const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   actionType: 'customer_meeting',
@@ -99,7 +114,16 @@ const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   nextActionDate: '',
 });
 
-const shouldOpenCreateNote = () => new URLSearchParams(window.location.search).get('create') === '1';
+const makeEmptyScheduleCreateForm = (): ScheduleCreateFormState => ({
+  activityType: 'customer_meeting',
+  expectedRevenue: '',
+  followupId: '',
+  location: '',
+  notes: '',
+  probability: '',
+  visitDate: localDateInputValue(),
+  visitTime: '09:00',
+});
 
 const routeMeta: Record<
   MainView,
@@ -1375,6 +1399,11 @@ function SchedulesTable({ schedules }: { schedules: ScheduleItem[] }) {
 
 function SchedulesPage({
   activityType,
+  createError,
+  createForm,
+  createMessage,
+  createOpen,
+  creating,
   data,
   loading,
   owner,
@@ -1382,12 +1411,20 @@ function SchedulesPage({
   range,
   status,
   onActivityTypeChange,
+  onCreateFormChange,
+  onCreateOpenChange,
+  onCreateSubmit,
   onOwnerChange,
   onQueryChange,
   onRangeChange,
   onStatusChange,
 }: {
   activityType: string;
+  createError: string;
+  createForm: ScheduleCreateFormState;
+  createMessage: string;
+  createOpen: boolean;
+  creating: boolean;
   data: SchedulesData | null;
   loading: boolean;
   owner: string;
@@ -1395,6 +1432,9 @@ function SchedulesPage({
   range: string;
   status: string;
   onActivityTypeChange: (value: string) => void;
+  onCreateFormChange: (field: keyof ScheduleCreateFormState, value: string) => void;
+  onCreateOpenChange: (open: boolean) => void;
+  onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onRangeChange: (value: string) => void;
@@ -1420,6 +1460,10 @@ function SchedulesPage({
     { label: '지연 일정', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
     { label: '완료 일정', value: `${formatNumber(data.metrics.completedSchedules)}건`, detail: '고객 일정 기준', icon: CheckCircle2, tone: 'amber' as const },
   ];
+  const createConfig = data.create;
+  const canCreateSchedules = createConfig.canCreate;
+  const createCustomers = createConfig.customers;
+  const createActivityTypes = createConfig.activityTypes;
 
   return (
     <section className="schedules-page">
@@ -1444,12 +1488,137 @@ function SchedulesPage({
           <a className="route-secondary-action" href={data.links.createPersonalSchedule}>
             개인 일정
           </a>
-          <a className="route-primary-action" href={data.links.createSchedule}>
-            일정 등록
+          <button
+            className={canCreateSchedules ? 'route-primary-action' : 'route-secondary-action'}
+            onClick={() => onCreateOpenChange(!createOpen)}
+            type="button"
+          >
+            {canCreateSchedules ? '일정 등록' : '등록 권한 없음'}
             <Plus size={16} />
-          </a>
+          </button>
         </div>
       </div>
+
+      {createOpen ? (
+        <section className="dashboard-panel notes-create-panel schedules-create-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Quick schedule</span>
+              <h2>고객 일정 빠른 등록</h2>
+            </div>
+            {creating ? <Loader2 className="spin-icon" size={18} /> : <CalendarDays size={18} />}
+          </div>
+          {createMessage ? <div className="notes-action-feedback success">{createMessage}</div> : null}
+          {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
+          {!canCreateSchedules ? (
+            <DashboardEmpty label={createConfig.message || '일정 등록 권한이 없습니다'} />
+          ) : createCustomers.length === 0 ? (
+            <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
+          ) : createActivityTypes.length === 0 ? (
+            <DashboardEmpty label="등록 가능한 활동 유형이 없습니다" />
+          ) : (
+            <form className="notes-create-form" onSubmit={onCreateSubmit}>
+              <div className="notes-create-grid schedules-create-grid">
+                <label>
+                  <span>고객</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('followupId', event.target.value)}
+                    required
+                    value={createForm.followupId}
+                  >
+                    <option value="">고객 선택</option>
+                    {createCustomers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동 유형</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('activityType', event.target.value)}
+                    required
+                    value={createForm.activityType}
+                  >
+                    {createActivityTypes.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>방문 날짜</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('visitDate', event.target.value)}
+                    required
+                    type="date"
+                    value={createForm.visitDate}
+                  />
+                </label>
+                <label>
+                  <span>방문 시간</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('visitTime', event.target.value)}
+                    required
+                    type="time"
+                    value={createForm.visitTime}
+                  />
+                </label>
+                <label>
+                  <span>장소</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('location', event.target.value)}
+                    placeholder="방문 장소"
+                    value={createForm.location}
+                  />
+                </label>
+                <label>
+                  <span>예상 매출</span>
+                  <input
+                    inputMode="numeric"
+                    min="0"
+                    onChange={(event) => onCreateFormChange('expectedRevenue', event.target.value)}
+                    placeholder="원"
+                    type="number"
+                    value={createForm.expectedRevenue}
+                  />
+                </label>
+                <label>
+                  <span>성공 확률</span>
+                  <input
+                    inputMode="numeric"
+                    max="100"
+                    min="0"
+                    onChange={(event) => onCreateFormChange('probability', event.target.value)}
+                    placeholder="0-100"
+                    type="number"
+                    value={createForm.probability}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>메모</span>
+                <textarea
+                  onChange={(event) => onCreateFormChange('notes', event.target.value)}
+                  placeholder="일정 메모, 준비사항, 후속 확인 사항"
+                  rows={3}
+                  value={createForm.notes}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href={data.links.createSchedule}>
+                  상세 등록
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={creating} type="submit">
+                  {creating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      ) : null}
 
       <section className="dashboard-metric-grid" aria-label="일정 핵심 지표">
         {metrics.map((metric) => (
@@ -2596,13 +2765,18 @@ export function App() {
   const [noteReviewingId, setNoteReviewingId] = useState<number | null>(null);
   const [noteReviewError, setNoteReviewError] = useState('');
   const [noteReviewMessage, setNoteReviewMessage] = useState('');
-  const [noteCreateOpen, setNoteCreateOpen] = useState(currentView === 'notes' && shouldOpenCreateNote());
+  const [noteCreateOpen, setNoteCreateOpen] = useState(currentView === 'notes' && shouldOpenCreatePanel());
   const [noteCreateForm, setNoteCreateForm] = useState<NoteCreateFormState>(() => makeEmptyNoteCreateForm());
   const [noteCreating, setNoteCreating] = useState(false);
   const [noteCreateError, setNoteCreateError] = useState('');
   const [noteCreateMessage, setNoteCreateMessage] = useState('');
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
   const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules');
+  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && shouldOpenCreatePanel());
+  const [scheduleCreateForm, setScheduleCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm());
+  const [scheduleCreating, setScheduleCreating] = useState(false);
+  const [scheduleCreateError, setScheduleCreateError] = useState('');
+  const [scheduleCreateMessage, setScheduleCreateMessage] = useState('');
   const [scheduleQuery, setScheduleQuery] = useState('');
   const [scheduleOwner, setScheduleOwner] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
@@ -2738,6 +2912,19 @@ export function App() {
       alive = false;
     };
   }, [currentView, scheduleActivityType, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
+
+  useEffect(() => {
+    if (currentView !== 'schedules' || !schedulesData?.create.canCreate) {
+      return;
+    }
+    const firstCustomerId = schedulesData.create.customers[0]?.id;
+    const firstActivityType = schedulesData.create.activityTypes[0]?.value || 'customer_meeting';
+    setScheduleCreateForm((previous) => ({
+      ...previous,
+      activityType: previous.activityType || firstActivityType,
+      followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
+    }));
+  }, [currentView, schedulesData]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -2881,6 +3068,89 @@ export function App() {
       setNoteCreating(false);
     }
   };
+  const refreshSchedulesData = async () => {
+    const data = await loadSchedulesData({
+      q: scheduleQuery,
+      owner: scheduleOwner,
+      status: scheduleStatus,
+      activityType: scheduleActivityType,
+      range: scheduleRange,
+    });
+    setSchedulesData(data);
+    return data;
+  };
+  const handleScheduleCreateOpenChange = (open: boolean) => {
+    setScheduleCreateOpen(open);
+    setScheduleCreateError('');
+    if (open) {
+      setScheduleCreateMessage('');
+    }
+  };
+  const handleScheduleCreateFormChange = (field: keyof ScheduleCreateFormState, value: string) => {
+    setScheduleCreateForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setScheduleCreateError('');
+  };
+  const resetScheduleCreateForm = (data: SchedulesData | null) => {
+    const nextForm = makeEmptyScheduleCreateForm();
+    nextForm.activityType = data?.create.activityTypes[0]?.value || nextForm.activityType;
+    nextForm.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+    setScheduleCreateForm(nextForm);
+  };
+  const handleCreateScheduleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!schedulesData || scheduleCreating) {
+      return;
+    }
+    if (!schedulesData.create.canCreate) {
+      setScheduleCreateError(schedulesData.create.message || '일정 등록 권한이 없습니다.');
+      return;
+    }
+    const followupId = Number(scheduleCreateForm.followupId);
+    if (!followupId) {
+      setScheduleCreateError('고객을 선택하세요.');
+      return;
+    }
+    if (!scheduleCreateForm.activityType) {
+      setScheduleCreateError('활동 유형을 선택하세요.');
+      return;
+    }
+    if (!scheduleCreateForm.visitDate) {
+      setScheduleCreateError('방문 날짜를 선택하세요.');
+      return;
+    }
+    if (!scheduleCreateForm.visitTime) {
+      setScheduleCreateError('방문 시간을 선택하세요.');
+      return;
+    }
+
+    const payload: ScheduleCreatePayload = {
+      activityType: scheduleCreateForm.activityType,
+      expectedRevenue: scheduleCreateForm.expectedRevenue.trim() || undefined,
+      followupId,
+      location: scheduleCreateForm.location.trim() || undefined,
+      notes: scheduleCreateForm.notes.trim() || undefined,
+      probability: scheduleCreateForm.probability.trim() || undefined,
+      visitDate: scheduleCreateForm.visitDate,
+      visitTime: scheduleCreateForm.visitTime,
+    };
+
+    setScheduleCreating(true);
+    setScheduleCreateError('');
+    setScheduleCreateMessage('');
+    try {
+      await createCustomerSchedule(payload, schedulesData.create.submitUrl);
+      const refreshedData = await refreshSchedulesData();
+      resetScheduleCreateForm(refreshedData);
+      setScheduleCreateMessage('일정을 등록했습니다.');
+    } catch (error) {
+      setScheduleCreateError(error instanceof Error ? error.message : '일정 등록에 실패했습니다.');
+    } finally {
+      setScheduleCreating(false);
+    }
+  };
   const visibleDeals = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     return pipelineData.deals.filter((deal) => {
@@ -2991,6 +3261,11 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <SchedulesPage
           activityType={scheduleActivityType}
+          createError={scheduleCreateError}
+          createForm={scheduleCreateForm}
+          createMessage={scheduleCreateMessage}
+          createOpen={scheduleCreateOpen}
+          creating={scheduleCreating}
           data={schedulesData}
           loading={schedulesLoading}
           owner={scheduleOwner}
@@ -2998,6 +3273,9 @@ export function App() {
           range={scheduleRange}
           status={scheduleStatus}
           onActivityTypeChange={setScheduleActivityType}
+          onCreateFormChange={handleScheduleCreateFormChange}
+          onCreateOpenChange={handleScheduleCreateOpenChange}
+          onCreateSubmit={handleCreateScheduleSubmit}
           onOwnerChange={setScheduleOwner}
           onQueryChange={setScheduleQuery}
           onRangeChange={setScheduleRange}

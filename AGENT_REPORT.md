@@ -5067,6 +5067,9 @@ python manage.py test --verbosity=1
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:5173/schedules/?create=1
+→ 200, React app served
 ```
 
 ---
@@ -7423,3 +7426,68 @@ Invoke-WebRequest http://127.0.0.1:5173/schedules/
 ### 6. Recommended Next Task
 
 - 로컬 개발은 `D:\projects\sales-note`에서만 실행하도록 터미널 작업 디렉터리를 고정하거나, 혼동을 줄이기 위해 `C:\projects\sales-note` 복사본을 사용하지 않는 것이 좋습니다.
+
+---
+
+## React Schedules Quick Create — 일정 빠른 등록 (2026-05-08)
+
+### 1. Summary
+
+React `/schedules/` 화면에서 기본 고객 일정을 바로 등록할 수 있게 빠른 등록 패널과 Django JSON 저장 API를 추가했습니다. 저장 후 현재 필터 기준으로 일정 목록과 지표를 다시 불러옵니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 일정 빠른 등록 계획 추가 |
+| `frontend/src/App.tsx` | `/schedules/` 빠른 등록 패널, 폼 상태, 저장 후 새로고침 흐름 추가 |
+| `frontend/src/api.ts` | 일정 생성 타입/API 함수와 schedules payload fallback 보강 |
+| `frontend/README.md` | 일정 빠른 등록 범위 문서화 |
+| `reporting/views.py` | 일정 생성용 고객/활동유형 payload와 `/api/schedules/create/` 추가 |
+| `reporting/urls.py` | 일정 생성 API URL 등록 |
+| `reporting/tests.py` | 일정 생성 권한, 본인 고객 제한, API payload 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 영업사원/admin은 React `/schedules/`에서 담당 고객을 선택해 바로 일정을 등록할 수 있습니다.
+- manager는 기존 정책대로 직접 생성이 차단됩니다.
+- 빠른 등록 필드는 고객, 활동 유형, 방문 날짜/시간, 장소, 예상 매출, 성공 확률, 메모로 제한했습니다.
+- 납품 품목/선결제/고급 편집이 필요하면 기존 Django `상세 등록` 화면으로 이동합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 일정 목록/캘린더/등록/상세/보고 작성 화면은 유지했습니다.
+- 기존 `/reporting/*` 라우트와 인증 정책은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-gaWF-7Yq.js / assets/index-DTu29yQr.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- React 빠른 등록은 본인 담당 고객 일정만 생성합니다. 기존 Django 상세 등록은 고급 필드와 운영상 필요한 상세 기능을 계속 담당합니다.
+- `/reporting/api/schedules/` GET에서 CSRF 쿠키를 보장해 React POST 저장 흐름을 안정화했습니다.
+- 운영 계정으로 실제 저장까지 하는 육안 확인은 계정 권한이 필요해 자동 스모크에서는 제외했습니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 React 고객 상세/이력 화면을 강화해 Django 고객 상세 화면으로 왕복하는 빈도를 줄이는 작업입니다.

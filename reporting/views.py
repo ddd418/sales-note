@@ -3301,7 +3301,75 @@ def _schedules_combined_items(schedules, personal_schedules, today, limit=80):
     return items[:limit]
 
 
+def _schedules_create_activity_types(request):
+    excluded_types = set()
+    if not getattr(request, 'is_hanagwahak', False):
+        excluded_types.add('service')
+    return [
+        {'value': value, 'label': label}
+        for value, label in Schedule.ACTIVITY_TYPE_CHOICES
+        if value not in excluded_types
+    ]
+
+
+def _schedules_create_targets(user, limit=120):
+    return list(FollowUp.objects.filter(
+        user=user,
+    ).select_related(
+        'company', 'department'
+    ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
+
+
+def _schedules_create_target_payload(followup):
+    customer = followup.customer_name or followup.manager or '고객명 미정'
+    company = followup.company.name if followup.company else ''
+    department = followup.department.name if followup.department else ''
+    label_parts = [part for part in [company, department, customer] if part]
+    return {
+        'id': followup.id,
+        'label': ' · '.join(label_parts) or customer,
+        'customer': customer,
+        'company': company,
+        'department': department,
+        'priorityLabel': followup.get_priority_display(),
+        'href': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _parse_time_or_none(value):
+    from datetime import time
+
+    value = str(value or '').strip()
+    if not value:
+        return None
+    parts = value.split(':')
+    if len(parts) < 2:
+        return None
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+        return time(hour=hour, minute=minute)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_optional_decimal(value):
+    from decimal import Decimal, InvalidOperation
+
+    value = str(value or '').replace(',', '').strip()
+    if not value:
+        return None
+    try:
+        parsed = Decimal(value)
+    except (InvalidOperation, ValueError):
+        return None
+    if parsed < 0:
+        return None
+    return parsed
+
+
 @never_cache
+@ensure_csrf_cookie
 @require_http_methods(["GET"])
 def schedules_summary_api(request):
     """React CRM schedules 화면용 읽기 전용 API."""
@@ -3402,6 +3470,8 @@ def schedules_summary_api(request):
         }
         for user in scope_users.order_by('username')
     ]
+    can_create_schedule = not user_profile.is_manager()
+    create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
 
     scope_label = '전체'
     if selected_user:
@@ -3526,6 +3596,13 @@ def schedules_summary_api(request):
             'calendar': reverse('reporting:schedule_calendar'),
             'weeklyReports': reverse('reporting:weekly_report_list'),
         },
+        'create': {
+            'canCreate': can_create_schedule,
+            'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
+            'submitUrl': reverse('reporting:schedules_create_api'),
+            'activityTypes': _schedules_create_activity_types(request),
+            'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
+        },
         'today': _schedules_combined_items(today_schedules[:20], today_personal_schedules[:20], today, limit=20),
         'upcoming': _schedules_combined_items(upcoming_schedules[:30], upcoming_personal_schedules[:30], today, limit=30),
         'overdue': [
@@ -3534,6 +3611,87 @@ def schedules_summary_api(request):
         ],
         'schedules': _schedules_combined_items(schedules[:80], personal_schedules[:80], today, limit=80),
     })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def schedules_create_api(request):
+    """React schedules 화면용 빠른 고객 일정 등록 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        return JsonResponse({
+            'success': False,
+            'error': 'Manager는 일정을 직접 생성할 수 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    try:
+        followup_id = int(payload.get('followupId') or 0)
+    except (TypeError, ValueError):
+        followup_id = 0
+
+    followup = FollowUp.objects.filter(
+        id=followup_id,
+        user=request.user,
+    ).select_related('company', 'department').first()
+    if not followup:
+        return JsonResponse({'success': False, 'error': '일정을 등록할 담당 고객을 선택하세요.'}, status=403)
+
+    allowed_activity_types = {item['value'] for item in _schedules_create_activity_types(request)}
+    activity_type = str(payload.get('activityType') or '').strip()
+    if activity_type not in allowed_activity_types:
+        return JsonResponse({'success': False, 'error': '활동 유형을 선택하세요.'}, status=400)
+
+    visit_date = _parse_iso_date_or_none(payload.get('visitDate'))
+    if not visit_date:
+        return JsonResponse({'success': False, 'error': '방문 날짜를 선택하세요.'}, status=400)
+
+    visit_time = _parse_time_or_none(payload.get('visitTime'))
+    if not visit_time:
+        return JsonResponse({'success': False, 'error': '방문 시간을 선택하세요.'}, status=400)
+
+    location = str(payload.get('location') or '').strip()[:200]
+    notes = str(payload.get('notes') or '').strip()
+    expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
+    probability_raw = str(payload.get('probability') or '').strip()
+    probability = None
+    if probability_raw:
+        try:
+            probability = int(probability_raw)
+        except (TypeError, ValueError):
+            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+        if probability < 0 or probability > 100:
+            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+
+    schedule = Schedule.objects.create(
+        user=request.user,
+        company=user_profile.company,
+        followup=followup,
+        visit_date=visit_date,
+        visit_time=visit_time,
+        location=location,
+        status='scheduled',
+        activity_type=activity_type,
+        notes=notes,
+        expected_revenue=expected_revenue,
+        probability=probability,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': '일정을 등록했습니다.',
+        'scheduleId': schedule.id,
+        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'schedule': _schedules_schedule_payload(schedule, timezone.localdate()),
+    }, status=201)
 
 
 def _ai_workspace_analysis_summary(analysis):

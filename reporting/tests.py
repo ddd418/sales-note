@@ -1018,6 +1018,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.manager = make_user('schedules_api_manager', role='manager', company=self.company)
         self.other_user = make_user('schedules_api_other', role='salesman', company=self.other_company)
         self.url = reverse('reporting:schedules_summary_api')
+        self.create_url = reverse('reporting:schedules_create_api')
 
     def _create_customer(self, owner, name):
         from reporting.models import Company, Department, FollowUp
@@ -1099,6 +1100,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn(('personal', personal.id), ids)
         self.assertNotIn(('customer', coworker.id), ids)
         self.assertEqual(payload['metrics']['totalSchedules'], 2)
+        self.assertTrue(payload['create']['canCreate'])
+        self.assertEqual(payload['create']['submitUrl'], self.create_url)
+        self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
 
     def test_schedules_summary_api_filters_search_owner_status_activity_and_range(self):
         from datetime import timedelta
@@ -1166,6 +1170,93 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertNotIn(other.id, ids)
         self.assertEqual(payload['metrics']['totalSchedules'], 2)
         self.assertTrue(payload['scope']['canViewAll'])
+        self.assertFalse(payload['create']['canCreate'])
+
+    def test_schedules_create_api_requires_login_json(self):
+        import json
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_schedules_create_api_blocks_manager(self):
+        import json
+
+        followup = self._create_customer(self.user, '매니저차단')
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_schedules_create_api_salesman_creates_own_schedule(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.user, '빠른등록')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'quote',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'location': '고객 회의실',
+                'notes': '견적 일정 등록',
+                'expectedRevenue': '1200000',
+                'probability': '60',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        schedule = Schedule.objects.get(pk=payload['scheduleId'])
+        self.assertEqual(schedule.user, self.user)
+        self.assertEqual(schedule.followup, followup)
+        self.assertEqual(schedule.activity_type, 'quote')
+        self.assertEqual(schedule.location, '고객 회의실')
+        self.assertEqual(int(schedule.expected_revenue), 1200000)
+        self.assertEqual(schedule.probability, 60)
+        self.assertEqual(payload['schedule']['id'], schedule.id)
+
+    def test_schedules_create_api_blocks_other_salesman_customer(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.coworker, '동료고객')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Schedule.objects.filter(followup=followup, user=self.user).exists())
 
 
 class AIWorkspaceSummaryApiTests(TestCase):

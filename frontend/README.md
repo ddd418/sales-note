@@ -25,6 +25,7 @@ http://127.0.0.1:5173/
 - `/customers/` 실제 고객 검색/필터 화면
 - `/notes/` 실제 영업노트 검색/필터 화면
 - `/schedules/` 실제 일정 검색/필터 화면
+- `/schedules/?create=1` 실제 고객 일정 빠른 등록
 - `/ai-workspace/` 실제 AI 업무 상태 화면
 - `/pipeline/` route shell
 - 대시보드 KPI, 오늘 일정, 지연 후속조치, 최근 영업노트, 우선 고객
@@ -35,6 +36,7 @@ http://127.0.0.1:5173/
 - Django customers API 우선 조회
 - Django notes API 우선 조회
 - Django schedules API 우선 조회
+- Django schedules create API 우선 사용
 - Django AI workspace API 우선 조회
 - Django pipeline API 우선 조회
 - pipeline mock data fallback
@@ -43,7 +45,7 @@ http://127.0.0.1:5173/
 ## 비범위
 
 - 인증/세션 연동
-- 영업노트/일정/AI 전체 기능의 React 재구현
+- 영업노트/일정/AI 전체 고급 기능의 React 재구현
 - 기존 Django template 제거
 
 ## API Proxy

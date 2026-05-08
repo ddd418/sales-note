@@ -1434,3 +1434,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedules Quick Create — 일정 빠른 등록
+
+**목표**: React `/schedules/` 화면에서 기본 고객 일정을 바로 등록하게 만들어 Django 일정 생성 폼 왕복을 줄인다.
+
+**작업 범위**:
+
+- `/reporting/api/schedules/`에 React 빠른 등록 폼용 고객/활동유형/저장 URL 정보를 추가한다.
+- `/reporting/api/schedules/create/` POST API를 추가한다.
+- 작성 권한은 기존 정책을 보존해 manager는 차단하고, salesman/admin은 본인 담당 고객 일정만 빠르게 등록하게 제한한다.
+- React `/schedules/`에 빠른 등록 패널을 추가하고 저장 후 일정 목록/지표를 새로고침한다.
+- 납품 품목, 선결제, 첨부, 고급 편집은 기존 Django 일정 폼을 계속 사용한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `FollowUp` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

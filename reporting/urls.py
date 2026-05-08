@@ -175,6 +175,7 @@ urlpatterns = [
     path('api/notes/', views.notes_summary_api, name='notes_summary_api'),
     path('api/notes/create/', views.notes_create_api, name='notes_create_api'),
     path('api/schedules/', views.schedules_summary_api, name='schedules_summary_api'),
+    path('api/schedules/create/', views.schedules_create_api, name='schedules_create_api'),
     path('api/ai-workspace/', views.ai_workspace_summary_api, name='ai_workspace_summary_api'),
     path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
     path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
