@@ -7269,12 +7269,36 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: add React notes quick create"
+→ 947da13
+
+git push origin main
+→ main -> main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React notes quick create 947da13" --ci
+→ Deploy complete, assets/index-B9PQ-tLi.js / assets/index-DTu29yQr.css
+
+railway up --service web --environment production --message "Deploy notes quick create API 947da13" --ci
+→ Deploy complete
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/
+→ 200, assets/index-B9PQ-tLi.js
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/notes/?create=1
+→ 200, assets/index-B9PQ-tLi.js
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/notes/
+→ 401 login_required, 정상
+
+npx --yes --package @playwright/cli playwright-cli delete-data/open/snapshot/close
+→ 미로그인 루트 접속 후 /reporting/login/?next=%2F 이동 확인
 ```
 
 ### 6. Known Limitations
 
 - React 빠른 작성은 기본 필드 중심입니다. 첨부파일, 납품 품목, 상세 일정 연결은 `상세 작성`으로 Django 모달을 사용합니다.
-- 운영 계정으로 실제 저장까지 하는 육안 확인은 배포 후 별도 확인이 필요합니다.
+- 운영 계정으로 실제 저장까지 하는 육안 확인은 계정 권한이 필요해 자동 스모크에서는 제외했습니다.
 
 ### 7. Recommended Next Task
 
