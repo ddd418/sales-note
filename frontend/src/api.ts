@@ -227,8 +227,38 @@ export type CustomersData = {
     customerReport: string;
     createNote: string;
   };
+  create: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    advancedUrl: string;
+    priorities: Array<{ value: string; label: string }>;
+    companies: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; name: string; companyId: number; companyName: string }>;
+  };
   customers: CustomerItem[];
   priorityCustomers: CustomerItem[];
+};
+
+export type CustomerCreatePayload = {
+  address?: string;
+  companyId: number;
+  customerName: string;
+  departmentId: number;
+  email?: string;
+  manager?: string;
+  notes?: string;
+  phoneNumber?: string;
+  priority: string;
+};
+
+export type CustomerCreateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  followup_id?: number;
+  followup_text?: string;
+  href?: string;
 };
 
 export type CustomerDetailData = {
@@ -713,11 +743,20 @@ const emptyCustomersData: CustomersData = {
     vipCustomers: 0,
   },
   links: {
-    createCustomer: '/reporting/followups/create/',
+    createCustomer: '/customers/?create=1',
     customers: '/reporting/followups/',
     companies: '/reporting/companies/',
     customerReport: '/reporting/customer-report/',
     createNote: '/notes/?create=1',
+  },
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/followups/create/',
+    advancedUrl: '/reporting/followups/create/',
+    priorities: [],
+    companies: [],
+    departments: [],
   },
   customers: [],
   priorityCustomers: [],
@@ -1016,7 +1055,36 @@ export async function loadCustomersData(params: {
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Customers API unavailable: ${response.status}`);
     }
-    return payload;
+    return {
+      ...emptyCustomersData,
+      ...payload,
+      scope: {
+        ...emptyCustomersData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyCustomersData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyCustomersData.options,
+        ...(payload.options ?? {}),
+      },
+      metrics: {
+        ...emptyCustomersData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyCustomersData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyCustomersData.create,
+        ...(payload.create ?? {}),
+      },
+      customers: payload.customers ?? emptyCustomersData.customers,
+      priorityCustomers: payload.priorityCustomers ?? emptyCustomersData.priorityCustomers,
+    };
   } catch (error) {
     return {
       ...emptyCustomersData,
@@ -1024,6 +1092,48 @@ export async function loadCustomersData(params: {
       error: error instanceof Error ? error.message : 'Customers API unavailable',
     };
   }
+}
+
+export async function createCustomer(
+  payload: CustomerCreatePayload,
+  submitUrl = '/reporting/api/followups/create/',
+): Promise<CustomerCreateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('customer_name', payload.customerName);
+  body.set('company', String(payload.companyId));
+  body.set('department', String(payload.departmentId));
+  body.set('priority', payload.priority);
+  if (payload.manager) body.set('manager', payload.manager);
+  if (payload.phoneNumber) body.set('phone_number', payload.phoneNumber);
+  if (payload.email) body.set('email', payload.email);
+  if (payload.address) body.set('address', payload.address);
+  if (payload.notes) body.set('notes', payload.notes);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Customer create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CustomerCreateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Customer create failed: ${response.status}`);
+  }
+  return {
+    ...data,
+    href: data.href || (data.followup_id ? `/customers/${data.followup_id}/` : ''),
+  };
 }
 
 export async function loadCustomerDetailData(customerId: number): Promise<CustomerDetailData> {

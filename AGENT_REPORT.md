@@ -7622,3 +7622,67 @@ Invoke-WebRequest http://127.0.0.1:5173/notes/?create=1&customer=1
 ### 7. Recommended Next Task
 
 - 다음 단계는 React에서 Django로 넘어가야 하는 남은 주요 화면을 정리해 프론트 전환 우선순위를 확정하는 작업입니다.
+
+---
+
+## React Customer Quick Create — 고객 빠른 등록 (2026-05-08)
+
+### 1. Summary
+
+React `/customers/` 화면에서 `새 고객 등록`을 누르면 Django 생성 폼으로 이동하지 않고 빠른 등록 패널이 열리도록 전환했습니다. 기존 `/reporting/api/followups/create/` AJAX 저장 API를 재사용하며, 저장 후 고객 목록/지표를 새로고침하고 생성된 React 고객 상세 링크를 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 빠른 등록 전환 계획 추가 |
+| `frontend/src/App.tsx` | 고객 빠른 등록 패널, 폼 상태, 저장/새로고침 처리 추가 |
+| `frontend/src/api.ts` | 고객 생성 타입/API 함수와 Customers API create 계약 추가 |
+| `reporting/views.py` | 고객 목록 API에 등록 옵션/CSRF 쿠키 추가, 생성 응답에 React 상세 링크 추가 |
+| `reporting/tests.py` | 고객 등록 옵션, salesman 생성, manager 차단 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 고객 목록에서 기본 고객 정보를 바로 등록합니다.
+- 업체/부서/우선순위 선택 데이터를 React API로 내려줍니다.
+- 저장 성공 후 생성 고객의 React 상세 화면으로 바로 이동할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 고객 등록/상세/수정/삭제 화면은 유지했습니다.
+- Manager 생성 차단과 업체 접근 권한 검증은 기존 정책을 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 10 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-BO4wjypI.js / assets/index-CQsJED8i.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:5173/customers/?create=1
+→ 200, React app served
+```
+
+### 6. Known Limitations
+
+- React 빠른 등록은 기존 업체/부서 선택 기반입니다. 신규 업체/부서 생성은 아직 기존 Django 관리 화면을 사용합니다.
+- 실제 로그인 계정에서 고객 저장까지 하는 육안 확인은 계정 권한이 필요해 자동 검증에서는 제외했습니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 React 고객 빠른 등록 안에서 신규 업체/부서도 바로 만들 수 있게 연결하는 작업입니다.

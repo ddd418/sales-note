@@ -1508,3 +1508,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Customer Quick Create — 고객 빠른 등록
+
+**목표**: React `/customers/` 목록에서 Django 고객 생성 폼으로 빠지지 않고 기본 고객 정보를 바로 등록한다.
+
+**작업 범위**:
+
+- `/reporting/api/customers/`에 고객 빠른 등록용 업체/부서/우선순위/저장 URL 정보를 추가한다.
+- 기존 `/reporting/api/followups/create/` AJAX 생성 API를 React에서 재사용한다.
+- Manager 생성 차단과 업체 접근 권한 검증은 기존 정책을 유지한다.
+- React 고객 화면에 빠른 등록 패널을 추가하고 저장 후 고객 목록/지표를 새로고침한다.
+- 업체/부서 신규 생성, 고급 필드, 삭제/수정은 기존 Django 화면을 보조 경로로 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Company`, `Department`, `FollowUp` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

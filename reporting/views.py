@@ -2664,6 +2664,7 @@ def _customers_followup_payload(followup, today):
     }
 
 
+@ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
 def customers_summary_api(request):
@@ -2791,6 +2792,41 @@ def customers_summary_api(request):
         schedules__status='scheduled',
         schedules__visit_date__gte=today,
     ).distinct().count()
+    can_create_customer = not user_profile.is_manager()
+    create_company_options = []
+    create_department_options = []
+    if can_create_customer:
+        if user_profile.is_admin():
+            create_users = get_accessible_users(request.user, request)
+            create_companies_qs = Company.objects.filter(
+                Q(created_by__in=create_users) | Q(created_by__isnull=True)
+            )
+        elif user_profile.company:
+            create_users = User.objects.filter(userprofile__company=user_profile.company)
+            create_companies_qs = Company.objects.filter(created_by__in=create_users)
+        else:
+            create_companies_qs = Company.objects.filter(created_by=request.user)
+
+        create_companies_qs = create_companies_qs.distinct().order_by('name')
+        create_departments_qs = Department.objects.filter(
+            company__in=create_companies_qs
+        ).select_related('company').order_by('company__name', 'name')
+        create_company_options = [
+            {
+                'id': company.id,
+                'name': company.name,
+            }
+            for company in create_companies_qs
+        ]
+        create_department_options = [
+            {
+                'id': department.id,
+                'name': department.name,
+                'companyId': department.company_id,
+                'companyName': department.company.name,
+            }
+            for department in create_departments_qs
+        ]
 
     return JsonResponse({
         'success': True,
@@ -2831,11 +2867,23 @@ def customers_summary_api(request):
             'vipCustomers': base_followups.filter(customer_grade__in=['VIP', 'A']).count(),
         },
         'links': {
-            'createCustomer': reverse('reporting:followup_create'),
+            'createCustomer': '/customers/?create=1',
             'customers': reverse('reporting:followup_list'),
             'companies': reverse('reporting:company_list'),
             'customerReport': reverse('reporting:customer_report'),
             'createNote': '/notes/?create=1',
+        },
+        'create': {
+            'canCreate': can_create_customer,
+            'message': '' if can_create_customer else 'Manager는 고객을 생성할 수 없습니다.',
+            'submitUrl': reverse('reporting:followup_create_ajax'),
+            'advancedUrl': reverse('reporting:followup_create'),
+            'priorities': [
+                {'value': value, 'label': label}
+                for value, label in FollowUp.PRIORITY_CHOICES
+            ],
+            'companies': create_company_options,
+            'departments': create_department_options,
         },
         'customers': [
             _customers_followup_payload(followup, today)
@@ -12321,6 +12369,8 @@ def followup_create_ajax(request):
             'success': True,
             'followup_id': followup.id,
             'followup_text': followup_text,
+            'href': f'/customers/{followup.id}/',
+            'django_href': reverse('reporting:followup_detail', args=[followup.id]),
             'message': '팔로우업이 성공적으로 생성되었습니다.'
         })
         

@@ -521,6 +521,11 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn(own.id, ids)
         self.assertNotIn(coworker.id, ids)
         self.assertEqual(payload['metrics']['totalCustomers'], 1)
+        self.assertTrue(payload['create']['canCreate'])
+        self.assertEqual(payload['links']['createCustomer'], '/customers/?create=1')
+        self.assertEqual(payload['create']['submitUrl'], reverse('reporting:followup_create_ajax'))
+        self.assertTrue(any(option['id'] == own.company_id for option in payload['create']['companies']))
+        self.assertTrue(any(option['id'] == own.department_id for option in payload['create']['departments']))
 
     def test_customers_summary_api_filters_search_owner_and_priority(self):
         target = self._create_customer(self.user, 'PCR핵심', priority='urgent')
@@ -558,6 +563,7 @@ class CustomersSummaryApiTests(TestCase):
         priority_ids = {item['id'] for item in payload['priorityCustomers']}
         self.assertIn(own.id, priority_ids)
         self.assertTrue(payload['scope']['canViewAll'])
+        self.assertFalse(payload['create']['canCreate'])
 
     def test_customers_summary_api_includes_activity_and_schedule_snapshot(self):
         from datetime import time, timedelta
@@ -608,6 +614,59 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(customer['upcomingSchedule']['activityLabel'], '견적 제출')
         self.assertEqual(customer['upcomingSchedule']['time'], '10:30')
         self.assertEqual(payload['metrics']['scheduledCustomers'], 1)
+
+    def test_followup_create_ajax_creates_customer_for_salesman(self):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name='빠른등록 회사', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company,
+            name='빠른등록 연구실',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:followup_create_ajax'), {
+            'customer_name': '빠른등록 담당자',
+            'company': str(customer_company.id),
+            'department': str(department.id),
+            'priority': 'urgent',
+            'manager': '빠른 책임',
+            'phone_number': '010-0000-0000',
+            'email': 'quick@example.com',
+            'notes': 'React 빠른 등록',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['href'], f"/customers/{payload['followup_id']}/")
+        followup = FollowUp.objects.get(id=payload['followup_id'])
+        self.assertEqual(followup.customer_name, '빠른등록 담당자')
+        self.assertEqual(followup.user, self.user)
+        self.assertEqual(followup.user_company, self.company)
+        self.assertEqual(followup.priority, 'urgent')
+
+    def test_followup_create_ajax_blocks_manager(self):
+        from reporting.models import Company, Department
+
+        customer_company = Company.objects.create(name='매니저차단 회사', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company,
+            name='매니저차단 연구실',
+            created_by=self.user,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.post(reverse('reporting:followup_create_ajax'), {
+            'customer_name': '매니저 생성 시도',
+            'company': str(customer_company.id),
+            'department': str(department.id),
+            'priority': 'urgent',
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
 
     def test_customer_detail_summary_api_requires_login_json(self):
         target = self._create_customer(self.user, '상세로그인')

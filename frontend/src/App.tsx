@@ -33,6 +33,7 @@ import {
   DashboardHistoryItem,
   DashboardScheduleItem,
   CustomerDetailData,
+  CustomerCreatePayload,
   CustomersData,
   CustomerItem,
   NotesData,
@@ -47,6 +48,7 @@ import {
   NoteCreatePayload,
   createNote as createSalesNote,
   ScheduleCreatePayload,
+  createCustomer as createCustomerRecord,
   createSchedule as createCustomerSchedule,
   loadDashboardData,
   loadCustomerDetailData,
@@ -100,6 +102,18 @@ type ScheduleCreateFormState = {
   visitTime: string;
 };
 
+type CustomerCreateFormState = {
+  address: string;
+  companyId: string;
+  customerName: string;
+  departmentId: string;
+  email: string;
+  manager: string;
+  notes: string;
+  phoneNumber: string;
+  priority: string;
+};
+
 const localDateInputValue = (date = new Date()) => {
   const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
   return new Date(localTime).toISOString().slice(0, 10);
@@ -125,6 +139,18 @@ const makeEmptyScheduleCreateForm = (): ScheduleCreateFormState => ({
   probability: '',
   visitDate: localDateInputValue(),
   visitTime: '09:00',
+});
+
+const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
+  address: '',
+  companyId: '',
+  customerName: '',
+  departmentId: '',
+  email: '',
+  manager: '',
+  notes: '',
+  phoneNumber: '',
+  priority: 'scheduled',
 });
 
 const routeMeta: Record<
@@ -157,7 +183,7 @@ const routeMeta: Record<
     primaryHref: '/customers/',
     primaryLabel: '프론트 고객 보기',
     actions: [
-      { label: '새 고객 등록', href: '/reporting/followups/create/', primary: true },
+      { label: '새 고객 등록', href: '/customers/?create=1', primary: true },
       { label: '고객사 관리', href: '/reporting/companies/' },
       { label: '고객 리포트', href: '/reporting/customer-report/' },
     ],
@@ -924,6 +950,12 @@ function CustomerDetailPage({
 }
 
 function CustomersPage({
+  createDetailHref,
+  createError,
+  createForm,
+  createMessage,
+  createOpen,
+  creating,
   data,
   detailData,
   detailLoading,
@@ -933,11 +965,20 @@ function CustomersPage({
   query,
   selectedCustomerId,
   stage,
+  onCreateFormChange,
+  onCreateOpenChange,
+  onCreateSubmit,
   onOwnerChange,
   onPriorityChange,
   onQueryChange,
   onStageChange,
 }: {
+  createDetailHref: string;
+  createError: string;
+  createForm: CustomerCreateFormState;
+  createMessage: string;
+  createOpen: boolean;
+  creating: boolean;
   data: CustomersData | null;
   detailData: CustomerDetailData | null;
   detailLoading: boolean;
@@ -947,6 +988,9 @@ function CustomersPage({
   query: string;
   selectedCustomerId: number | null;
   stage: string;
+  onCreateFormChange: (field: keyof CustomerCreateFormState, value: string) => void;
+  onCreateOpenChange: (open: boolean) => void;
+  onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onOwnerChange: (value: string) => void;
   onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
@@ -975,6 +1019,13 @@ function CustomersPage({
     { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
     { label: '지연 후속', value: `${formatNumber(data.metrics.overdueCustomers)}건`, detail: '다음 액션 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
+  const createConfig = data.create;
+  const canCreateCustomers = createConfig.canCreate;
+  const createCompanies = createConfig.companies;
+  const createPriorities = createConfig.priorities.length > 0 ? createConfig.priorities : data.options.priorities;
+  const createDepartments = createForm.companyId
+    ? createConfig.departments.filter((department) => String(department.companyId) === createForm.companyId)
+    : createConfig.departments;
 
   return (
     <section className="customers-page">
@@ -995,11 +1046,147 @@ function CustomersPage({
           <h2>{data.scope.label || '고객 관리'}</h2>
           <p>검색, 담당자, 우선순위 기준으로 고객과 후속조치를 확인합니다.</p>
         </div>
-        <a className="route-primary-action" href={data.links.createCustomer}>
-          새 고객 등록
+        <button
+          className={canCreateCustomers ? 'route-primary-action' : 'route-secondary-action'}
+          onClick={() => onCreateOpenChange(!createOpen)}
+          type="button"
+        >
+          {canCreateCustomers ? '새 고객 등록' : '등록 권한 없음'}
           <Plus size={16} />
-        </a>
+        </button>
       </div>
+
+      {createOpen ? (
+        <section className="dashboard-panel notes-create-panel customer-create-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Quick customer</span>
+              <h2>고객 빠른 등록</h2>
+            </div>
+            {creating ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
+          </div>
+          {createMessage ? (
+            <div className="notes-action-feedback success">
+              <span>{createMessage}</span>
+              {createDetailHref ? <a href={createDetailHref}>상세 열기</a> : null}
+            </div>
+          ) : null}
+          {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
+          {!canCreateCustomers ? (
+            <DashboardEmpty label={createConfig.message || '고객 등록 권한이 없습니다'} />
+          ) : createCompanies.length === 0 ? (
+            <DashboardEmpty label="등록 가능한 업체/학교가 없습니다" />
+          ) : createDepartments.length === 0 ? (
+            <DashboardEmpty label="선택 가능한 부서/연구실이 없습니다" />
+          ) : (
+            <form className="notes-create-form" onSubmit={onCreateSubmit}>
+              <div className="notes-create-grid customer-create-grid">
+                <label>
+                  <span>업체/학교</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('companyId', event.target.value)}
+                    required
+                    value={createForm.companyId}
+                  >
+                    <option value="">업체 선택</option>
+                    {createCompanies.map((company) => (
+                      <option key={company.id} value={company.id}>{company.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>부서/연구실</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('departmentId', event.target.value)}
+                    required
+                    value={createForm.departmentId}
+                  >
+                    <option value="">부서 선택</option>
+                    {createDepartments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.companyName} · {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>고객명</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('customerName', event.target.value)}
+                    placeholder="담당자명"
+                    required
+                    value={createForm.customerName}
+                  />
+                </label>
+                <label>
+                  <span>우선순위</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('priority', event.target.value)}
+                    required
+                    value={createForm.priority}
+                  >
+                    {createPriorities.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>책임자</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('manager', event.target.value)}
+                    placeholder="책임자명"
+                    value={createForm.manager}
+                  />
+                </label>
+                <label>
+                  <span>연락처</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('phoneNumber', event.target.value)}
+                    placeholder="010-0000-0000"
+                    value={createForm.phoneNumber}
+                  />
+                </label>
+                <label>
+                  <span>이메일</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('email', event.target.value)}
+                    placeholder="name@example.com"
+                    type="email"
+                    value={createForm.email}
+                  />
+                </label>
+                <label>
+                  <span>상세주소</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('address', event.target.value)}
+                    placeholder="방문 주소"
+                    value={createForm.address}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>상세 내용</span>
+                <textarea
+                  onChange={(event) => onCreateFormChange('notes', event.target.value)}
+                  placeholder="관심 품목, 거래 맥락, 특이사항"
+                  rows={3}
+                  value={createForm.notes}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href={createConfig.advancedUrl}>
+                  상세 등록
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={creating} type="submit">
+                  {creating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      ) : null}
 
       <section className="dashboard-metric-grid customers-metric-grid" aria-label="고객 핵심 지표">
         {metrics.map((metric) => (
@@ -2968,6 +3155,12 @@ export function App() {
   const [customerOwner, setCustomerOwner] = useState('');
   const [customerPriority, setCustomerPriority] = useState('');
   const [customerStage, setCustomerStage] = useState('');
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && shouldOpenCreatePanel());
+  const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
+  const [customerCreating, setCustomerCreating] = useState(false);
+  const [customerCreateError, setCustomerCreateError] = useState('');
+  const [customerCreateMessage, setCustomerCreateMessage] = useState('');
+  const [customerCreatedDetailHref, setCustomerCreatedDetailHref] = useState('');
   const [notesData, setNotesData] = useState<NotesData | null>(null);
   const [notesLoading, setNotesLoading] = useState(currentView === 'notes');
   const [noteQuery, setNoteQuery] = useState('');
@@ -3082,6 +3275,27 @@ export function App() {
       alive = false;
     };
   }, [currentView, customerDetailId]);
+
+  useEffect(() => {
+    if (currentView !== 'customers' || customerDetailId || !customersData?.create.canCreate) {
+      return;
+    }
+    const firstCompanyId = customersData.create.companies[0]?.id;
+    const firstPriority = customersData.create.priorities[0]?.value || 'scheduled';
+    setCustomerCreateForm((previous) => {
+      const companyId = previous.companyId || (firstCompanyId ? String(firstCompanyId) : '');
+      const companyDepartments = customersData.create.departments.filter(
+        (department) => !companyId || String(department.companyId) === companyId,
+      );
+      const previousDepartmentValid = companyDepartments.some((department) => String(department.id) === previous.departmentId);
+      return {
+        ...previous,
+        companyId,
+        departmentId: previousDepartmentValid ? previous.departmentId : (companyDepartments[0]?.id ? String(companyDepartments[0].id) : ''),
+        priority: previous.priority || firstPriority,
+      };
+    });
+  }, [currentView, customerDetailId, customersData]);
 
   useEffect(() => {
     if (currentView !== 'notes') {
@@ -3206,6 +3420,96 @@ export function App() {
       setMoveError(error instanceof Error ? error.message : '단계 변경에 실패했습니다.');
     } finally {
       setMovingDealId(null);
+    }
+  };
+  const refreshCustomersData = async () => {
+    const data = await loadCustomersData({
+      q: customerQuery,
+      owner: customerOwner,
+      priority: customerPriority,
+      stage: customerStage,
+    });
+    setCustomersData(data);
+    return data;
+  };
+  const handleCustomerCreateOpenChange = (open: boolean) => {
+    setCustomerCreateOpen(open);
+    setCustomerCreateError('');
+    if (open) {
+      setCustomerCreateMessage('');
+      setCustomerCreatedDetailHref('');
+    }
+  };
+  const handleCustomerCreateFormChange = (field: keyof CustomerCreateFormState, value: string) => {
+    setCustomerCreateForm((previous) => ({
+      ...previous,
+      [field]: value,
+      ...(field === 'companyId' ? { departmentId: '' } : {}),
+    }));
+    setCustomerCreateError('');
+  };
+  const resetCustomerCreateForm = (data: CustomersData | null) => {
+    const nextForm = makeEmptyCustomerCreateForm();
+    nextForm.priority = data?.create.priorities[0]?.value || nextForm.priority;
+    nextForm.companyId = data?.create.companies[0]?.id ? String(data.create.companies[0].id) : '';
+    const firstDepartment = data?.create.departments.find((department) => String(department.companyId) === nextForm.companyId);
+    nextForm.departmentId = firstDepartment?.id ? String(firstDepartment.id) : '';
+    setCustomerCreateForm(nextForm);
+  };
+  const handleCreateCustomerSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!customersData || customerCreating) {
+      return;
+    }
+    if (!customersData.create.canCreate) {
+      setCustomerCreateError(customersData.create.message || '고객 등록 권한이 없습니다.');
+      return;
+    }
+    const companyId = Number(customerCreateForm.companyId);
+    const departmentId = Number(customerCreateForm.departmentId);
+    if (!companyId) {
+      setCustomerCreateError('업체/학교를 선택하세요.');
+      return;
+    }
+    if (!departmentId) {
+      setCustomerCreateError('부서/연구실을 선택하세요.');
+      return;
+    }
+    if (!customerCreateForm.customerName.trim()) {
+      setCustomerCreateError('고객명을 입력하세요.');
+      return;
+    }
+    if (!customerCreateForm.priority) {
+      setCustomerCreateError('우선순위를 선택하세요.');
+      return;
+    }
+
+    const payload: CustomerCreatePayload = {
+      address: customerCreateForm.address.trim() || undefined,
+      companyId,
+      customerName: customerCreateForm.customerName.trim(),
+      departmentId,
+      email: customerCreateForm.email.trim() || undefined,
+      manager: customerCreateForm.manager.trim() || undefined,
+      notes: customerCreateForm.notes.trim() || undefined,
+      phoneNumber: customerCreateForm.phoneNumber.trim() || undefined,
+      priority: customerCreateForm.priority,
+    };
+
+    setCustomerCreating(true);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const createdCustomer = await createCustomerRecord(payload, customersData.create.submitUrl);
+      const refreshedData = await refreshCustomersData();
+      resetCustomerCreateForm(refreshedData);
+      setCustomerCreateMessage(createdCustomer.message || '고객을 등록했습니다.');
+      setCustomerCreatedDetailHref(createdCustomer.href || '');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '고객 등록에 실패했습니다.');
+    } finally {
+      setCustomerCreating(false);
     }
   };
   const refreshNotesData = async () => {
@@ -3455,6 +3759,12 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <CustomersPage
+          createDetailHref={customerCreatedDetailHref}
+          createError={customerCreateError}
+          createForm={customerCreateForm}
+          createMessage={customerCreateMessage}
+          createOpen={customerCreateOpen}
+          creating={customerCreating}
           data={customersData}
           detailData={customerDetailData}
           detailLoading={customerDetailLoading}
@@ -3464,6 +3774,9 @@ export function App() {
           query={customerQuery}
           selectedCustomerId={customerDetailId}
           stage={customerStage}
+          onCreateFormChange={handleCustomerCreateFormChange}
+          onCreateOpenChange={handleCustomerCreateOpenChange}
+          onCreateSubmit={handleCreateCustomerSubmit}
           onOwnerChange={setCustomerOwner}
           onPriorityChange={setCustomerPriority}
           onQueryChange={setCustomerQuery}
