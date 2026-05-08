@@ -180,6 +180,15 @@ body {
   line-height: 1.2;
 }
 
+.crm-shell-context {
+  color: var(--crm-text-subtle);
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 0.12rem;
+}
+
 .crm-global-search {
   flex: 1 1 340px;
   max-width: 520px;

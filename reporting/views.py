@@ -6440,6 +6440,16 @@ class CustomLoginView(LoginView):
     """커스텀 로그인 뷰 (성공 메시지 추가)"""
     template_name = 'reporting/login.html'
     redirect_authenticated_user = True
+
+    def get_default_redirect_url(self):
+        from urllib.parse import urljoin
+
+        frontend_base_url = getattr(
+            settings,
+            'FRONTEND_PIPELINE_URL',
+            'https://sales-note-frontend-production.up.railway.app/',
+        )
+        return urljoin(f"{frontend_base_url.rstrip('/')}/", 'dashboard/')
     
     def form_valid(self, form):
         return super().form_valid(form)

@@ -7127,3 +7127,67 @@ npx --yes --package @playwright/cli playwright-cli delete-data/open/eval
 ### 7. Recommended Next Task
 
 - 로그인된 운영 계정에서 루트와 주요 프론트 메뉴(`/dashboard/`, `/customers/`, `/notes/`, `/ai-workspace/`)가 정상 데이터로 로딩되는지 한 번 더 육안 확인합니다.
+
+---
+
+## CRM Shell Navigation — 프론트 중심 동선 안정화 (2026-05-08)
+
+### 1. Summary
+
+React 프론트를 메인 CRM Shell로 고정하도록 로그인/루트/상단 링크 동선을 정리했습니다. 로그인 성공 기본 이동지는 프론트 `/dashboard/`가 되었고, Django 화면에는 "Django 작업 화면" 표시와 "프론트 CRM" 복귀 버튼을 추가했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 프론트 중심 동선 안정화 계획 추가 |
+| `frontend/src/App.tsx` | React route 액션과 상단 알림 링크를 프론트 화면 중심으로 정리 |
+| `reporting/static/reporting/css/crm-ui.css` | Django 작업 화면 안내 텍스트 스타일 추가 |
+| `reporting/templates/reporting/base.html` | Django 상단 바에 프론트 CRM 복귀 버튼과 작업 화면 안내 추가 |
+| `reporting/tests.py` | 로그인 기본 redirect와 Django 상단 복귀 링크 테스트 갱신 |
+| `reporting/views.py` | 로그인 성공 기본 redirect를 프론트 대시보드로 변경 |
+| `sales_project/urls.py` | 인증된 Django 루트 접근을 프론트 대시보드로 변경 |
+
+### 3. CRM Improvements
+
+- 로그인 후 기본 진입점이 Django 대시보드가 아니라 React `/dashboard/`로 통일됩니다.
+- Django 템플릿 화면에 들어와도 상단에서 즉시 프론트 CRM으로 돌아갈 수 있습니다.
+- Django 화면은 작성/상세/관리 역할임을 명확히 표시합니다.
+- React 화면의 불필요한 Django 대시보드 이동 링크를 줄였습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 대시보드, 영업노트 작성 모달, 고객/일정/관리 상세 화면은 유지했습니다.
+- 기존 `/reporting/*` 라우트와 인증 정책은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests --verbosity=1
+→ Ran 14 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 영업노트 작성은 아직 Django 대시보드 모달을 사용합니다. 완전한 단일 화면 경험을 만들려면 React 노트 작성 폼 이관이 다음 단계입니다.
+- 일정 캘린더와 일부 관리 화면은 기존 Django 화면을 계속 사용합니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 React에서 영업노트 작성 폼을 직접 제공하고, 저장 API만 Django를 호출하게 만드는 작업입니다.

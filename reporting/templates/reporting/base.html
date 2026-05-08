@@ -1754,6 +1754,7 @@
           {% elif request.resolver_match.url_name|slice:':7' == 'manager' %}관리자
           {% else %}영업관리{% endif %}
         </span>
+        <span class="crm-shell-context">Django 작업 화면 · 저장/상세/관리</span>
       </div>
 
       <form class="crm-global-search" method="get" action="{% url 'reporting:followup_list' %}">
@@ -1764,6 +1765,9 @@
       </form>
 
       <div class="crm-quick-actions">
+        <a href="{{ frontend_dashboard_url }}" class="btn btn-primary btn-sm">
+          <i class="fas fa-arrow-left me-1"></i>프론트 CRM
+        </a>
         <a href="{% url 'reporting:followup_create' %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-user-plus me-1"></i>새 고객
         </a>
@@ -1774,9 +1778,9 @@
           <i class="fas fa-pen me-1"></i>영업노트
         </a>
         <a href="{{ frontend_pipeline_url }}" class="btn btn-outline-primary btn-sm">
-          <i class="fas fa-table-columns me-1"></i>신규 파이프라인
+          <i class="fas fa-table-columns me-1"></i>파이프라인
         </a>
-        <a href="{% url 'reporting:history_list' %}?review_filter=unreviewed" class="crm-icon-btn" aria-label="알림">
+        <a href="{{ frontend_notes_url }}" class="crm-icon-btn" aria-label="영업노트">
           <i class="fas fa-bell"></i>
         </a>
         <a href="{% url 'reporting:profile' %}" class="crm-profile-link" aria-label="프로필">

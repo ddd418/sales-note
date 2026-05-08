@@ -21,12 +21,21 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from django.shortcuts import redirect
+from urllib.parse import urljoin
+
+
+DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app/'
+
+
+def frontend_url(path=''):
+    base_url = getattr(settings, 'FRONTEND_PIPELINE_URL', DEFAULT_FRONTEND_URL)
+    return urljoin(f"{base_url.rstrip('/')}/", path.lstrip('/'))
 
 
 def root_redirect(request):
-    """루트 URL: 인증된 사용자 → 대시보드, 미인증 → 로그인 페이지"""
+    """루트 URL: 인증된 사용자 → 프론트 CRM, 미인증 → 로그인 페이지"""
     if request.user.is_authenticated:
-        return redirect('/reporting/dashboard/')
+        return redirect(frontend_url('dashboard/'))
     return redirect('/reporting/login/')
 
 

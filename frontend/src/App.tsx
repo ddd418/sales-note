@@ -89,11 +89,11 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Dashboard',
     title: '대시보드',
     summary: '영업 현황, 지연 후속, 이번 주 접촉을 한 화면에서 확인합니다.',
-    primaryHref: '/reporting/dashboard/',
-    primaryLabel: '운영 대시보드 열기',
+    primaryHref: '/dashboard/',
+    primaryLabel: '프론트 대시보드 보기',
     actions: [
       { label: '영업노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
-      { label: '미검토 노트', href: '/reporting/histories/?review_filter=unreviewed' },
+      { label: '미검토 노트', href: '/notes/' },
       { label: '고객 리포트', href: '/reporting/customer-report/' },
     ],
   },
@@ -101,8 +101,8 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
     summary: '고객, 업체, 팔로우업, 고객 리포트를 하나의 고객 업무 흐름으로 묶습니다.',
-    primaryHref: '/reporting/followups/',
-    primaryLabel: '고객/팔로우업 열기',
+    primaryHref: '/customers/',
+    primaryLabel: '프론트 고객 보기',
     actions: [
       { label: '새 고객 등록', href: '/reporting/followups/create/', primary: true },
       { label: '고객사 관리', href: '/reporting/companies/' },
@@ -124,11 +124,11 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Notes',
     title: '영업노트',
     summary: '영업 활동 기록, 검토 상태, 고객별 히스토리를 빠르게 확인합니다.',
-    primaryHref: '/reporting/histories/',
-    primaryLabel: '영업노트 목록 열기',
+    primaryHref: '/notes/',
+    primaryLabel: '프론트 영업노트 보기',
     actions: [
       { label: '대시보드 노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
-      { label: '미검토 노트', href: '/reporting/histories/?review_filter=unreviewed' },
+      { label: '미검토 노트', href: '/notes/' },
       { label: '주간보고', href: '/reporting/weekly-reports/' },
     ],
   },
@@ -244,8 +244,8 @@ function AppShell({ activeView, children }: { activeView: MainView; children: Re
         </nav>
         <div className="sidebar-note">
           <span>운영 기준</span>
-          <strong>React Shell + Django API</strong>
-          <p>핵심 메뉴는 프론트에서 시작하고, 저장/상세 작업은 검증된 Django 화면과 연결합니다.</p>
+          <strong>프론트가 메인 화면</strong>
+          <p>조회와 이동은 프론트에서 시작하고, 작성/상세/관리는 필요한 때만 Django 화면을 엽니다.</p>
         </div>
       </aside>
       <main className="workspace">{children}</main>
@@ -281,7 +281,7 @@ function TopBar({
             />
           </label>
         ) : null}
-        <a className="icon-button" aria-label="알림" href="/reporting/dashboard/">
+        <a className="icon-button" aria-label="영업노트" href="/notes/">
           <Bell size={18} />
         </a>
         <a className="primary-button" href="/reporting/dashboard/#dashboardNoteModal">

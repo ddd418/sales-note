@@ -1360,3 +1360,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## CRM Shell Navigation — 프론트 중심 동선 안정화
+
+**목표**: React 프론트와 Django 템플릿을 오가며 사용자가 길을 잃는 문제를 줄이고, 프론트를 주 CRM Shell로 고정한다.
+
+**작업 범위**:
+
+- 로그인 성공 기본 이동지를 Django 대시보드가 아니라 프론트 `/dashboard/`로 변경한다.
+- Django 백엔드 루트(`/`)도 인증된 사용자는 프론트 대시보드로 보낸다.
+- Django 공통 상단 바에 "프론트 CRM" 복귀 버튼과 "Django 작업 화면" 표시를 추가한다.
+- React 상단/route 액션에서 Django 대시보드로 불필요하게 이동시키는 링크를 프론트 화면 중심으로 정리한다.
+- 기존 Django 작성/상세/관리 화면은 유지하고, 저장/작성 작업에 필요한 링크만 Django로 남긴다.
+
+**DB 변경 필요 여부**: 없음. URL/템플릿/프론트 링크 정리만 수행한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

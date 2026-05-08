@@ -49,13 +49,17 @@ class AuthenticationSmoke(TestCase):
         self.assertIn('/login', response.get('Location', ''))
 
     def test_login_success(self):
-        """올바른 자격 증명으로 로그인 가능"""
+        """올바른 자격 증명으로 로그인하면 프론트 CRM 대시보드로 이동"""
         response = self.client.post(
             reverse('reporting:login'),
             {'username': 'testuser', 'password': 'TestPass123!'},
-            follow=True,
         )
-        self.assertTrue(response.context['user'].is_authenticated)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response['Location'],
+            'https://sales-note-frontend-production.up.railway.app/dashboard/',
+        )
+        self.assertEqual(str(self.client.session.get('_auth_user_id')), str(self.user.id))
 
     def test_login_fail_wrong_password(self):
         """잘못된 비밀번호로 로그인 실패"""
@@ -298,7 +302,8 @@ class DashboardSmokeTests(TestCase):
         """백엔드 대시보드에서 React 파이프라인으로 돌아갈 수 있어야 함"""
         self.client.force_login(self.user)
         r = self.client.get(reverse('reporting:dashboard'))
-        self.assertContains(r, '신규 파이프라인')
+        self.assertContains(r, '프론트 CRM')
+        self.assertContains(r, '파이프라인')
         self.assertContains(r, 'https://sales-note-frontend-production.up.railway.app/')
 
     def test_dashboard_unauthenticated_redirects(self):
