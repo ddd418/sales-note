@@ -1410,3 +1410,27 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedules List — 일정 화면 프론트 전환
+
+**목표**: `/schedules/`를 기존 Django 캘린더로 즉시 이동시키지 않고 React 일정 목록 화면으로 열어 프론트 중심 CRM Shell을 강화한다.
+
+**작업 범위**:
+
+- React `SchedulesPage`가 이미 가진 필터/목록/오늘 일정/지연 일정 UI를 실제 `/reporting/api/schedules/` 데이터에 연결한다.
+- 프론트 서버의 `/schedules/` 강제 Django 캘린더 리다이렉트를 제거한다.
+- 기존 Django 일정 캘린더, 일정 등록, 개인 일정 등록, 일정 상세/보고 작성 링크는 React 화면의 보조 작업 링크로 유지한다.
+- `/reporting/*` 경로와 기존 Django 일정 기능은 삭제하지 않는다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `PersonalSchedule`, `History`, `FollowUp` 조회 API만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

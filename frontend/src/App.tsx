@@ -2618,12 +2618,6 @@ export function App() {
   const [moveMessage, setMoveMessage] = useState('');
 
   useEffect(() => {
-    if (currentView === 'schedules') {
-      window.location.replace(scheduleCalendarUrl);
-    }
-  }, [currentView]);
-
-  useEffect(() => {
     if (currentView === 'dashboard') {
       return;
     }
@@ -2725,8 +2719,25 @@ export function App() {
     if (currentView !== 'schedules') {
       return;
     }
-    setSchedulesLoading(false);
-  }, [currentView]);
+    let alive = true;
+    setSchedulesLoading(true);
+    loadSchedulesData({
+      q: scheduleQuery,
+      owner: scheduleOwner,
+      status: scheduleStatus,
+      activityType: scheduleActivityType,
+      range: scheduleRange,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setSchedulesData(data);
+      setSchedulesLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, scheduleActivityType, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -2978,10 +2989,20 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <section className="dashboard-loading">
-          <Loader2 className="spin-icon" size={24} />
-          <span>일정 캘린더로 이동 중입니다</span>
-        </section>
+        <SchedulesPage
+          activityType={scheduleActivityType}
+          data={schedulesData}
+          loading={schedulesLoading}
+          owner={scheduleOwner}
+          query={scheduleQuery}
+          range={scheduleRange}
+          status={scheduleStatus}
+          onActivityTypeChange={setScheduleActivityType}
+          onOwnerChange={setScheduleOwner}
+          onQueryChange={setScheduleQuery}
+          onRangeChange={setScheduleRange}
+          onStatusChange={setScheduleStatus}
+        />
       </AppShell>
     );
   }

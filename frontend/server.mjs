@@ -43,14 +43,6 @@ function sendStatic(response, filePath) {
   createReadStream(filePath).pipe(response);
 }
 
-function redirect(response, location) {
-  response.writeHead(302, {
-    'Cache-Control': 'no-cache',
-    Location: location,
-  });
-  response.end();
-}
-
 function resolveStaticPath(urlPath) {
   const decodedPath = decodeURIComponent(urlPath.split('?')[0]);
   const safePath = normalize(decodedPath).replace(/^(\.\.[/\\])+/, '');
@@ -109,21 +101,8 @@ function shouldProxy(requestUrl) {
   );
 }
 
-function scheduleCalendarRedirect(requestUrl) {
-  const target = new URL(requestUrl, 'http://sales-note.local');
-  if (target.pathname === '/schedules' || target.pathname === '/schedules/') {
-    return `/reporting/schedules/calendar/${target.search}`;
-  }
-  return '';
-}
-
 createServer((request, response) => {
   const requestUrl = request.url || '/';
-  const calendarLocation = scheduleCalendarRedirect(requestUrl);
-  if (calendarLocation) {
-    redirect(response, calendarLocation);
-    return;
-  }
   if (shouldProxy(requestUrl)) {
     proxyToDjango(request, response);
     return;

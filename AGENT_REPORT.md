@@ -5014,6 +5014,15 @@ python manage.py test --verbosity=1
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+Start-Process npm.cmd run dev
+→ Vite dev server running at http://127.0.0.1:5173/
+
+Invoke-WebRequest http://127.0.0.1:5173/schedules/
+→ 200, React Vite app served with no /reporting/schedules/calendar/ redirect
+
+Invoke-WebRequest http://127.0.0.1:5173/reporting/api/schedules/
+→ 401 login_required, 정상
 ```
 
 ---
@@ -7303,3 +7312,114 @@ npx --yes --package @playwright/cli playwright-cli delete-data/open/snapshot/clo
 ### 7. Recommended Next Task
 
 - React 빠른 작성에서 선택 고객의 최근 영업노트 3건과 열린 견적/수주 금액을 함께 보여주면 작성 품질과 후속 액션 일관성이 좋아집니다.
+
+---
+
+## React Schedules List — 일정 화면 프론트 전환 (2026-05-08)
+
+### 1. Summary
+
+React `/schedules/`가 더 이상 Django 일정 캘린더로 즉시 이동하지 않고, 기존 React 일정 목록 화면을 실제 Django 일정 API 데이터로 표시하도록 연결했습니다. Django 일정 캘린더와 등록/상세/보고 작성 화면은 React 화면의 보조 링크로 유지했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 일정 화면 전환 계획 추가 |
+| `frontend/src/App.tsx` | `/schedules/` API 로딩, 필터 상태, `SchedulesPage` 렌더링 연결 |
+| `frontend/server.mjs` | `/schedules/` 강제 Django 캘린더 리다이렉트 제거 |
+| `frontend/README.md` | 일정 화면 범위와 운영 서버 동작 설명 갱신 |
+
+### 3. CRM Improvements
+
+- 일정 메뉴도 React CRM Shell 안에서 검색/필터/요약을 먼저 볼 수 있습니다.
+- 오늘 일정, 지연 일정, 상태별 현황을 React 화면에서 바로 확인합니다.
+- 기존 캘린더와 일정 등록은 필요한 작업 링크로 남겨 업무 동선을 보존했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/schedules/calendar/`, 일정 목록, 일정 등록, 개인 일정, 상세/보고 작성 경로는 유지했습니다.
+- 기존 `/reporting/*` 라우트와 인증 정책은 변경하지 않았습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-D4WfnEie.js / assets/index-DTu29yQr.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- React 일정 화면은 목록/검색/필터 중심입니다. 캘린더 drag/drop, 상세 편집, 보고 작성은 기존 Django 화면으로 이동합니다.
+- 실제 로그인 계정으로 `/schedules/` 화면의 필터와 캘린더 링크는 한 번 더 육안 확인이 필요합니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 일정 등록/수정 중 가장 자주 쓰는 필드를 React 빠른 작성 패널로 옮기고, Django 상세 화면은 고급 편집용으로 남기는 작업입니다.
+
+---
+
+## Local Dev Server Fix — 잘못된 Django 실행 경로 수정 (2026-05-08)
+
+### 1. Summary
+
+`/reporting/login/`에서 `no such table: django_session` 오류가 발생한 원인을 확인했습니다. 8000 포트의 Django 서버가 작업 경로인 `D:\projects\sales-note`가 아니라 `C:\projects\sales-note`에서 실행 중이었고, 해당 SQLite DB는 테이블이 없는 빈 DB였습니다. 잘못 뜬 서버를 종료하고 `D:\projects\sales-note`에서 Django 개발 서버를 다시 시작했습니다.
+
+### 2. Files Changed
+
+- 코드 변경 없음.
+
+### 3. Existing Functionality Preserved
+
+- DB 파일이나 migration은 변경하지 않았습니다.
+- 기존 React 일정 전환 변경은 그대로 유지했습니다.
+
+### 4. Commands Run and Results
+
+```text
+Get-NetTCPConnection -LocalPort 8000
+→ 8000 listener PID 40476 확인
+
+SQLite table check
+→ D:\projects\sales-note\db.sqlite3: django_session exists, 50 tables
+→ C:\projects\sales-note\db.sqlite3: django_session missing, 0 tables
+
+Stop-Process -Id 40476 -Force
+→ 잘못된 C:\projects 서버 종료
+
+Start-Process python manage.py runserver 127.0.0.1:8000 -WorkingDirectory D:\projects\sales-note
+→ Django dev server running on 127.0.0.1:8000
+
+Invoke-WebRequest http://127.0.0.1:8000/reporting/login/
+→ 200, login page OK
+
+Invoke-WebRequest http://127.0.0.1:5173/reporting/api/schedules/
+→ 401 login_required, 정상
+
+Invoke-WebRequest http://127.0.0.1:5173/schedules/
+→ 200, React app served
+```
+
+### 5. Known Limitations
+
+- `C:\projects\sales-note` 복사본은 여전히 빈 SQLite DB를 가지고 있으므로, 그 경로에서 서버를 다시 실행하면 같은 오류가 재발합니다.
+
+### 6. Recommended Next Task
+
+- 로컬 개발은 `D:\projects\sales-note`에서만 실행하도록 터미널 작업 디렉터리를 고정하거나, 혼동을 줄이기 위해 `C:\projects\sales-note` 복사본을 사용하지 않는 것이 좋습니다.
