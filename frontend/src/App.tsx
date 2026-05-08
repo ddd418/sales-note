@@ -47,6 +47,7 @@ import {
   loadAIWorkspaceData,
   loadPipelineData,
   moveDealStage,
+  toggleNoteReviewed,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -849,7 +850,17 @@ function NotesActionCounts({ data }: { data: NotesData }) {
   );
 }
 
-function NotesTable({ notes }: { notes: NoteItem[] }) {
+function NotesTable({
+  canReview,
+  notes,
+  onToggleReview,
+  reviewingNoteId,
+}: {
+  canReview: boolean;
+  notes: NoteItem[];
+  onToggleReview: (note: NoteItem) => void;
+  reviewingNoteId: number | null;
+}) {
   if (notes.length === 0) {
     return <DashboardEmpty label="조건에 맞는 영업노트가 없습니다" />;
   }
@@ -874,6 +885,12 @@ function NotesTable({ notes }: { notes: NoteItem[] }) {
                   <strong>{note.company || note.customer}</strong>
                   <span>{[note.customer, note.department, note.actionLabel].filter(Boolean).join(' · ')}</span>
                   {note.summary ? <small>{note.summary}</small> : null}
+                  {note.fileCount > 0 || note.replyCount > 0 ? (
+                    <div className="note-meta-row">
+                      {note.fileCount > 0 ? <span>첨부 {formatNumber(note.fileCount)}</span> : null}
+                      {note.replyCount > 0 ? <span>댓글 {formatNumber(note.replyCount)}</span> : null}
+                    </div>
+                  ) : null}
                 </a>
               </td>
               <td>
@@ -884,12 +901,26 @@ function NotesTable({ notes }: { notes: NoteItem[] }) {
               </td>
               <td>
                 <NoteStatusBadge note={note} />
+                {note.reviewedAt ? (
+                  <small>{[note.reviewer, formatDateTimeLabel(note.reviewedAt)].filter(Boolean).join(' · ')}</small>
+                ) : null}
               </td>
               <td>
                 <div className="notes-row-actions">
                   <a className="customer-row-action" href={note.href}>상세</a>
                   {note.customerHref ? <a className="customer-row-action" href={note.customerHref}>고객</a> : null}
                   {note.scheduleHref ? <a className="customer-row-action" href={note.scheduleHref}>일정</a> : null}
+                  {canReview && note.canReview && note.reviewToggleHref ? (
+                    <button
+                      className="customer-row-action note-review-action"
+                      disabled={reviewingNoteId === note.id}
+                      onClick={() => onToggleReview(note)}
+                      type="button"
+                    >
+                      {reviewingNoteId === note.id ? <Loader2 className="spin-icon" size={12} /> : <CheckCircle2 size={12} />}
+                      {note.reviewed ? '검토 해제' : '검토 완료'}
+                    </button>
+                  ) : null}
                 </div>
               </td>
               <td>
@@ -911,12 +942,16 @@ function NotesPage({
   nextAction,
   owner,
   query,
+  reviewError,
+  reviewMessage,
+  reviewingNoteId,
   review,
   onActionTypeChange,
   onNextActionChange,
   onOwnerChange,
   onQueryChange,
   onReviewChange,
+  onToggleReview,
 }: {
   actionType: string;
   data: NotesData | null;
@@ -924,12 +959,16 @@ function NotesPage({
   nextAction: string;
   owner: string;
   query: string;
+  reviewError: string;
+  reviewMessage: string;
+  reviewingNoteId: number | null;
   review: string;
   onActionTypeChange: (value: string) => void;
   onNextActionChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onReviewChange: (value: string) => void;
+  onToggleReview: (note: NoteItem) => void;
 }) {
   if (loading && !data) {
     return (
@@ -1034,7 +1073,14 @@ function NotesPage({
             </div>
             {loading ? <Loader2 className="spin-icon" size={18} /> : <MessageSquareText size={18} />}
           </div>
-          <NotesTable notes={data.notes} />
+          {reviewMessage ? <div className="notes-action-feedback success">{reviewMessage}</div> : null}
+          {reviewError ? <div className="notes-action-feedback error">{reviewError}</div> : null}
+          <NotesTable
+            canReview={data.scope.canReview}
+            notes={data.notes}
+            onToggleReview={onToggleReview}
+            reviewingNoteId={reviewingNoteId}
+          />
         </section>
 
         <aside className="dashboard-panel notes-side-panel">
@@ -2320,6 +2366,9 @@ export function App() {
   const [noteActionType, setNoteActionType] = useState('');
   const [noteReview, setNoteReview] = useState('');
   const [noteNextAction, setNoteNextAction] = useState('');
+  const [noteReviewingId, setNoteReviewingId] = useState<number | null>(null);
+  const [noteReviewError, setNoteReviewError] = useState('');
+  const [noteReviewMessage, setNoteReviewMessage] = useState('');
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
   const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules');
   const [scheduleQuery, setScheduleQuery] = useState('');
@@ -2406,6 +2455,8 @@ export function App() {
     }
     let alive = true;
     setNotesLoading(true);
+    setNoteReviewError('');
+    setNoteReviewMessage('');
     loadNotesData({
       q: noteQuery,
       owner: noteOwner,
@@ -2471,6 +2522,33 @@ export function App() {
       setMoveError(error instanceof Error ? error.message : '단계 변경에 실패했습니다.');
     } finally {
       setMovingDealId(null);
+    }
+  };
+  const refreshNotesData = async () => {
+    const data = await loadNotesData({
+      q: noteQuery,
+      owner: noteOwner,
+      actionType: noteActionType,
+      review: noteReview,
+      nextAction: noteNextAction,
+    });
+    setNotesData(data);
+  };
+  const handleToggleNoteReview = async (note: NoteItem) => {
+    if (!note.reviewToggleHref || noteReviewingId) {
+      return;
+    }
+    setNoteReviewingId(note.id);
+    setNoteReviewError('');
+    setNoteReviewMessage('');
+    try {
+      await toggleNoteReviewed(note.reviewToggleHref);
+      await refreshNotesData();
+      setNoteReviewMessage(note.reviewed ? '검토 상태를 해제했습니다.' : '검토 완료로 처리했습니다.');
+    } catch (error) {
+      setNoteReviewError(error instanceof Error ? error.message : '검토 상태 변경에 실패했습니다.');
+    } finally {
+      setNoteReviewingId(null);
     }
   };
   const visibleDeals = useMemo(() => {
@@ -2554,12 +2632,16 @@ export function App() {
           nextAction={noteNextAction}
           owner={noteOwner}
           query={noteQuery}
+          reviewError={noteReviewError}
+          reviewMessage={noteReviewMessage}
+          reviewingNoteId={noteReviewingId}
           review={noteReview}
           onActionTypeChange={setNoteActionType}
           onNextActionChange={setNoteNextAction}
           onOwnerChange={setNoteOwner}
           onQueryChange={setNoteQuery}
           onReviewChange={setNoteReview}
+          onToggleReview={handleToggleNoteReview}
         />
       </AppShell>
     );

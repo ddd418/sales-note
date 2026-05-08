@@ -1221,3 +1221,35 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Notes Page — 미검토/지연 노트 검토 동선 보강
+
+**목표**: React `/notes/` 화면에서 단순 조회를 넘어, 관리자/매니저가 미검토 영업노트를 빠르게 확인하고 검토 완료 처리까지 할 수 있게 한다.
+
+**작업 범위**:
+
+- `/reporting/api/notes/` payload에 검토 가능 여부, 검토자/검토 시각, 검토 토글 URL, 첨부/댓글 수를 추가한다.
+- React 노트 목록에 첨부/댓글 수, 검토 상태 상세, 검토 처리 버튼을 표시한다.
+- 관리자/매니저 권한이 있는 경우에만 React에서 검토 완료/해제 POST를 노출한다.
+- 검토 처리 후 현재 필터 조건으로 노트 데이터를 다시 불러와 미검토/지연 지표를 갱신한다.
+- 기존 Django 영업노트 상세, 작성, 관리자 메모 기능은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History`, `HistoryFile`, `reply_memos`, `reviewed_at`, `reviewer` 조회와 기존 검토 토글 view만 사용한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1~2시간.
+- 전체 테스트와 운영 배포/smoke 포함: 추가 40~80분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting --verbosity=1`
+- `python manage.py test --verbosity=1`
+- `git diff --check`

@@ -1205,6 +1205,62 @@ h2 {
   margin-top: 0;
 }
 
+.notes-row-actions button.customer-row-action {
+  gap: 4px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.notes-row-actions button.customer-row-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.note-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.note-meta-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.notes-action-feedback {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notes-action-feedback.success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.notes-action-feedback.error {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
 .notes-badge-row span.note-unreviewed,
 .note-overdue {
   color: #991b1b;

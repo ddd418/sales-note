@@ -2846,7 +2846,7 @@ def customers_summary_api(request):
     })
 
 
-def _notes_history_payload(history, today):
+def _notes_history_payload(history, today, can_review=False):
     followup = history.followup
     activity_date = history.meeting_date or history.delivery_date
     if not activity_date and history.schedule_id and history.schedule:
@@ -2859,6 +2859,9 @@ def _notes_history_payload(history, today):
     next_action = (history.next_action or history.meeting_next_action or '').strip()
     next_action_date = history.next_action_date
     review_required_types = {'customer_meeting', 'delivery_schedule', 'quote', 'service'}
+    review_required = history.action_type in review_required_types
+    reviewed_at = history.reviewed_at
+    reviewer = history.reviewer
 
     return {
         'id': history.id,
@@ -2878,11 +2881,17 @@ def _notes_history_payload(history, today):
         ).strip()[:180],
         'nextAction': next_action[:160],
         'nextActionDate': _date_or_none(next_action_date),
-        'overdue': bool(next_action_date and next_action_date < today and not history.reviewed_at),
+        'overdue': bool(next_action_date and next_action_date < today and not reviewed_at),
         'activityDate': _date_or_none(activity_date),
         'createdAt': _datetime_or_none(history.created_at),
-        'reviewed': bool(history.reviewed_at),
-        'reviewRequired': history.action_type in review_required_types,
+        'reviewed': bool(reviewed_at),
+        'reviewedAt': _datetime_or_none(reviewed_at),
+        'reviewer': _user_display_name(reviewer) if reviewer else '',
+        'reviewRequired': review_required,
+        'canReview': bool(can_review and review_required),
+        'reviewToggleHref': reverse('reporting:history_toggle_reviewed', args=[history.id]) if can_review and review_required else '',
+        'replyCount': int(getattr(history, 'reply_count', 0) or 0),
+        'fileCount': int(getattr(history, 'file_count', 0) or 0),
         'href': reverse('reporting:history_detail', args=[history.id]),
         'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
         'scheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
@@ -2902,6 +2911,7 @@ def notes_summary_api(request):
 
     user_profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    can_review_notes = user_profile.can_view_all_users()
     today = timezone.localdate()
 
     q = request.GET.get('q', '').strip()
@@ -2915,7 +2925,7 @@ def notes_summary_api(request):
         parent_history__isnull=True,
     )
     notes = base_notes.select_related(
-        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule'
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule', 'reviewer'
     )
 
     if q:
@@ -2967,7 +2977,9 @@ def notes_summary_api(request):
             When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
             default=F('created_at__date'),
             output_field=DateField(),
-        )
+        ),
+        reply_count=Count('reply_memos', distinct=True),
+        file_count=Count('files', distinct=True),
     ).order_by('-sort_date', '-created_at')
 
     owner_options = [
@@ -3015,6 +3027,7 @@ def notes_summary_api(request):
             'label': scope_label,
             'userCount': scope_users.count(),
             'canViewAll': user_profile.can_view_all_users(),
+            'canReview': can_review_notes,
             'selectedUserId': selected_user.id if selected_user else None,
         },
         'filters': {
@@ -3063,7 +3076,7 @@ def notes_summary_api(request):
             'weeklyReports': reverse('reporting:weekly_report_list'),
         },
         'notes': [
-            _notes_history_payload(note, today)
+            _notes_history_payload(note, today, can_review_notes)
             for note in list(notes[:80])
         ],
     })

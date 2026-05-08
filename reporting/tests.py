@@ -778,6 +778,10 @@ class NotesSummaryApiTests(TestCase):
         self.assertIn(own.id, ids)
         self.assertNotIn(coworker.id, ids)
         self.assertEqual(payload['metrics']['totalNotes'], 1)
+        note = payload['notes'][0]
+        self.assertFalse(payload['scope']['canReview'])
+        self.assertFalse(note['canReview'])
+        self.assertEqual(note['reviewToggleHref'], '')
 
     def test_notes_summary_api_filters_search_owner_action_review_and_next_action(self):
         target = self._create_note(
@@ -824,6 +828,64 @@ class NotesSummaryApiTests(TestCase):
         self.assertNotIn(other.id, ids)
         self.assertEqual(payload['metrics']['totalNotes'], 2)
         self.assertTrue(payload['scope']['canViewAll'])
+
+    def test_notes_summary_api_exposes_review_metadata_for_manager(self):
+        from reporting.models import History
+
+        target = self._create_note(
+            self.user,
+            '검토대상',
+            action_type='customer_meeting',
+            content='검토가 필요한 고객 미팅',
+            reviewed=False,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='관리자 확인 메모',
+            created_by=self.manager,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {'owner': str(self.user.id)})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        note = next(item for item in payload['notes'] if item['id'] == target.id)
+        self.assertTrue(payload['scope']['canReview'])
+        self.assertTrue(note['canReview'])
+        self.assertIn(f'/reporting/histories/{target.id}/toggle-reviewed/', note['reviewToggleHref'])
+        self.assertIsNone(note['reviewedAt'])
+        self.assertEqual(note['reviewer'], '')
+        self.assertEqual(note['replyCount'], 1)
+        self.assertEqual(note['fileCount'], 0)
+
+    def test_history_toggle_reviewed_allows_manager_only(self):
+        target = self._create_note(
+            self.user,
+            '토글대상',
+            action_type='quote',
+            content='견적 보고 검토',
+            reviewed=False,
+        )
+        toggle_url = reverse('reporting:history_toggle_reviewed', args=[target.id])
+
+        self.client.force_login(self.user)
+        denied = self.client.post(toggle_url)
+        self.assertEqual(denied.status_code, 403)
+
+        self.client.force_login(self.manager)
+        response = self.client.post(toggle_url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['is_reviewed'])
+        target.refresh_from_db()
+        self.assertIsNotNone(target.reviewed_at)
+        self.assertEqual(target.reviewer, self.manager)
 
 
 class SchedulesSummaryApiTests(TestCase):

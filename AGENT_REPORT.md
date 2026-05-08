@@ -6771,3 +6771,83 @@ git diff --check
 - 운영 배포 및 smoke: 약 20~40분.
 - 운영 로그인 육안 확인: 약 10~20분.
 - 다음 고객 상세/노트 실제 데이터 연결: 약 2~4시간.
+
+---
+
+## Notes Page — 미검토/지연 노트 검토 동선 보강
+
+**날짜**: 2026-05-08
+**상태**: 완료
+
+### 1. Summary
+
+React `/notes/` 화면에서 관리자/매니저가 미검토 영업노트를 확인하고 바로 검토 완료/해제 처리할 수 있도록 보강했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 노트 검토 동선 보강 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `frontend/src/App.tsx` | 노트 목록에 첨부/댓글 수, 검토 메타, 검토 완료/해제 버튼 추가 |
+| `frontend/src/api.ts` | 노트 API 타입 확장 및 검토 토글 POST helper 추가 |
+| `frontend/src/styles.css` | 노트 메타/검토 버튼/처리 결과 메시지 스타일 추가 |
+| `reporting/views.py` | 노트 API payload에 `canReview`, 검토자/검토시각, 토글 URL, 댓글/첨부 수 추가 |
+| `reporting/tests.py` | 노트 검토 메타데이터와 검토 토글 권한 회귀 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 관리자/매니저는 React `/notes/` 목록에서 미검토 노트를 바로 `검토 완료` 처리할 수 있습니다.
+- 이미 검토된 노트는 같은 자리에서 `검토 해제`할 수 있습니다.
+- 검토 처리 후 현재 검색/담당자/유형/검토/다음 액션 필터를 유지한 채 데이터를 다시 불러와 지표가 갱신됩니다.
+- 노트 목록에서 댓글 수와 첨부 수를 바로 확인할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 영업노트 상세/작성/관리자 메모 기능은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `history_toggle_reviewed` view를 재사용했고, 관리자/매니저 권한이 없는 사용자는 검토 POST가 403으로 차단됩니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+python manage.py test reporting --verbosity=1
+→ Ran 168 tests, OK
+
+python manage.py test --verbosity=1
+→ Ran 180 tests, OK
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 `/notes/`의 검토 완료/해제 버튼 동작은 실제 관리자 계정으로 육안 확인이 필요합니다.
+- React 화면은 검토 토글만 처리합니다. 노트 작성, 상세 편집, 관리자 메모 작성은 기존 Django 화면으로 연결합니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 관리자/매니저 계정으로 `/notes/`에서 미검토 필터 → 검토 완료 → 지표 갱신을 확인합니다.
+- 다음 개발은 React AI 업무도구(`/ai-workspace/`)의 실제 데이터 화면을 더 실무형 프롬프트/대상자 중심으로 정리합니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 20~40분.
+- 운영 로그인 육안 확인: 약 10~20분.
+- 다음 AI 업무도구 화면 보강: 약 2~4시간.

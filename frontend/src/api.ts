@@ -9,6 +9,14 @@ type PipelineMoveResponse = {
   error?: string;
 };
 
+type NoteReviewToggleResponse = {
+  success?: boolean;
+  error?: string;
+  is_reviewed?: boolean;
+  reviewed_at?: string | null;
+  reviewer?: string | null;
+};
+
 export type DashboardScheduleItem = {
   id: number;
   type: 'schedule' | 'personal';
@@ -241,7 +249,13 @@ export type NoteItem = {
   activityDate: string | null;
   createdAt: string | null;
   reviewed: boolean;
+  reviewedAt: string | null;
+  reviewer: string;
   reviewRequired: boolean;
+  canReview: boolean;
+  reviewToggleHref: string;
+  replyCount: number;
+  fileCount: number;
   href: string;
   customerHref: string;
   scheduleHref: string;
@@ -257,6 +271,7 @@ export type NotesData = {
     label: string;
     userCount: number;
     canViewAll: boolean;
+    canReview: boolean;
     selectedUserId: number | null;
   };
   filters: {
@@ -603,6 +618,7 @@ const emptyNotesData: NotesData = {
     label: '',
     userCount: 0,
     canViewAll: false,
+    canReview: false,
     selectedUserId: null,
   },
   filters: {
@@ -837,6 +853,26 @@ export async function loadNotesData(params: {
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Notes API unavailable',
     };
+  }
+}
+
+export async function toggleNoteReviewed(reviewToggleHref: string): Promise<void> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(reviewToggleHref, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note review API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as NoteReviewToggleResponse;
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || `Note review failed: ${response.status}`);
   }
 }
 
