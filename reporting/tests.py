@@ -435,7 +435,7 @@ class DashboardSummaryApiTests(TestCase):
         self.assertEqual(payload['overdueActions'][0]['nextAction'], '후속 전화')
         self.assertEqual(payload['recentActivities'][0]['customer'], '요약고객 담당자')
         self.assertTrue(any(item['stage'] == followup.pipeline_stage for item in payload['pipelineSummary']))
-        self.assertIn('/reporting/dashboard/#dashboardNoteModal', payload['links']['createNote'])
+        self.assertEqual(payload['links']['createNote'], '/notes/?create=1')
 
     def test_dashboard_summary_api_manager_sees_same_company_only(self):
         own = self._create_customer(self.user, '회사내고객')
@@ -722,6 +722,7 @@ class NotesSummaryApiTests(TestCase):
         self.other_user = make_user('notes_api_other', role='salesman', company=self.other_company)
         self.other_manager = make_user('notes_api_other_manager', role='manager', company=self.other_company)
         self.url = reverse('reporting:notes_summary_api')
+        self.create_url = reverse('reporting:notes_create_api')
 
     def _create_note(
         self,
@@ -888,6 +889,89 @@ class NotesSummaryApiTests(TestCase):
         self.assertFalse(payload['scope']['canReview'])
         self.assertFalse(note['canReview'])
         self.assertEqual(note['reviewToggleHref'], '')
+
+    def test_notes_summary_api_includes_react_create_options_for_salesman(self):
+        target = self._create_note(self.user, '작성대상')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['links']['createNote'], '/notes/?create=1')
+        self.assertTrue(payload['create']['canCreate'])
+        self.assertEqual(payload['create']['submitUrl'], self.create_url)
+        customer_ids = {item['id'] for item in payload['create']['customers']}
+        self.assertIn(target.followup_id, customer_ids)
+        self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
+        self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
+
+    def test_notes_create_api_requires_login_json(self):
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_notes_create_api_creates_own_customer_note(self):
+        from django.utils import timezone
+        from reporting.models import History
+
+        target = self._create_note(self.user, '빠른작성기준')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'customer_meeting',
+                'content': 'React에서 바로 작성한 영업노트',
+                'nextAction': '다음 주 견적 확인',
+                'nextActionDate': timezone.localdate().isoformat(),
+                'activityDate': timezone.localdate().isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        created = History.objects.get(pk=payload['historyId'])
+        self.assertEqual(created.user, self.user)
+        self.assertEqual(created.followup_id, target.followup_id)
+        self.assertEqual(created.content, 'React에서 바로 작성한 영업노트')
+        self.assertEqual(created.next_action, '다음 주 견적 확인')
+        self.assertEqual(created.meeting_date, timezone.localdate())
+
+    def test_notes_create_api_blocks_manager_and_other_owner_customer(self):
+        target = self._create_note(self.coworker, '동료작성차단')
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'customer_meeting',
+                'content': '매니저 작성 시도',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        other_owner_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'customer_meeting',
+                'content': '동료 고객 작성 시도',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(other_owner_response.status_code, 403)
 
     def test_history_toggle_reviewed_allows_manager_only(self):
         target = self._create_note(

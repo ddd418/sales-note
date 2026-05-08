@@ -1385,3 +1385,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Notes Create — 영업노트 빠른 작성
+
+**목표**: React `/notes/` 화면에서 기본 영업노트를 바로 작성하게 만들어 Django 대시보드 모달 왕복을 줄인다.
+
+**작업 범위**:
+
+- `/reporting/api/notes/`에 React 작성 폼용 고객/활동유형/저장 URL 정보를 추가한다.
+- `/reporting/api/notes/create/` POST API를 추가한다.
+- 작성 권한은 기존 정책을 보존해 manager는 차단하고, salesman/admin은 본인 담당 고객에만 작성 가능하게 제한한다.
+- React `/notes/`에 빠른 작성 패널을 추가하고 저장 후 목록/지표를 새로고침한다.
+- 첨부파일, 납품 품목, 상세 일정 기반 작성은 기존 Django 화면을 계속 사용한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History`, `FollowUp` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

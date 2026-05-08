@@ -306,7 +306,40 @@ export type NotesData = {
     unreviewed: string;
     weeklyReports: string;
   };
+  create: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    actionTypes: Array<{ value: string; label: string }>;
+    customers: Array<{
+      id: number;
+      label: string;
+      customer: string;
+      company: string;
+      department: string;
+      priorityLabel: string;
+      href: string;
+    }>;
+  };
   notes: NoteItem[];
+};
+
+export type NoteCreatePayload = {
+  actionType: string;
+  activityDate?: string;
+  content: string;
+  followupId: number;
+  nextAction?: string;
+  nextActionDate?: string;
+};
+
+export type NoteCreateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  historyId?: number;
+  href?: string;
+  note?: NoteItem;
 };
 
 export type ScheduleItem = {
@@ -557,7 +590,7 @@ const emptyDashboardData: DashboardData = {
   },
   links: {
     operationalDashboard: '/reporting/dashboard/',
-    createNote: '/reporting/dashboard/#dashboardNoteModal',
+    createNote: '/notes/?create=1',
     customers: '/reporting/followups/',
     customerReport: '/reporting/customer-report/',
     notes: '/reporting/histories/',
@@ -617,7 +650,7 @@ const emptyCustomersData: CustomersData = {
     customers: '/reporting/followups/',
     companies: '/reporting/companies/',
     customerReport: '/reporting/customer-report/',
-    createNote: '/reporting/dashboard/#dashboardNoteModal',
+    createNote: '/notes/?create=1',
   },
   customers: [],
   priorityCustomers: [],
@@ -657,10 +690,17 @@ const emptyNotesData: NotesData = {
   },
   actionCounts: [],
   links: {
-    createNote: '/reporting/dashboard/#dashboardNoteModal',
+    createNote: '/notes/?create=1',
     notes: '/reporting/histories/',
     unreviewed: '/reporting/histories/?review_filter=unreviewed',
     weeklyReports: '/reporting/weekly-reports/',
+  },
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/notes/create/',
+    actionTypes: [],
+    customers: [],
   },
   notes: [],
 };
@@ -907,12 +947,41 @@ export async function loadNotesData(params: {
     if (!contentType.includes('application/json')) {
       throw new Error(`Notes API unavailable: ${response.status}`);
     }
-    const payload = (await response.json()) as NotesData;
+    const payload = (await response.json()) as Partial<NotesData>;
     redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Notes API unavailable: ${response.status}`);
     }
-    return payload;
+    return {
+      ...emptyNotesData,
+      ...payload,
+      scope: {
+        ...emptyNotesData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyNotesData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyNotesData.options,
+        ...(payload.options ?? {}),
+      },
+      metrics: {
+        ...emptyNotesData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyNotesData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyNotesData.create,
+        ...(payload.create ?? {}),
+      },
+      actionCounts: payload.actionCounts ?? emptyNotesData.actionCounts,
+      notes: payload.notes ?? emptyNotesData.notes,
+    };
   } catch (error) {
     return {
       ...emptyNotesData,
@@ -920,6 +989,31 @@ export async function loadNotesData(params: {
       error: error instanceof Error ? error.message : 'Notes API unavailable',
     };
   }
+}
+
+export async function createNote(payload: NoteCreatePayload, submitUrl = '/reporting/api/notes/create/'): Promise<NoteCreateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteCreateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note create failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function toggleNoteReviewed(reviewToggleHref: string): Promise<void> {

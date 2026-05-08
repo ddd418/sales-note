@@ -7213,3 +7213,69 @@ npx --yes --package @playwright/cli playwright-cli delete-data/open/eval/close
 ### 7. Recommended Next Task
 
 - 다음 단계는 React에서 영업노트 작성 폼을 직접 제공하고, 저장 API만 Django를 호출하게 만드는 작업입니다.
+
+---
+
+## React Notes Create — 영업노트 빠른 작성 (2026-05-08)
+
+### 1. Summary
+
+React `/notes/` 화면에서 기본 영업노트를 바로 작성할 수 있게 빠른 작성 패널과 Django JSON 저장 API를 추가했습니다. 상단 `새 영업노트`, React 대시보드 빠른 작업, 고객 화면 기본 작성 링크는 `/notes/?create=1`로 통일해 Django 대시보드 모달 왕복을 줄였습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 영업노트 작성 이관 계획 추가 |
+| `frontend/src/App.tsx` | `/notes/` 빠른 작성 패널, 저장 흐름, 작성 링크 정리 |
+| `frontend/src/api.ts` | 노트 작성 타입/API 함수와 구버전 payload fallback 보강 |
+| `frontend/src/styles.css` | 빠른 작성 폼/버튼 반응형 스타일 추가 |
+| `reporting/views.py` | 노트 작성용 고객/활동유형 payload와 `/api/notes/create/` 추가 |
+| `reporting/urls.py` | 노트 작성 API URL 등록 |
+| `reporting/tests.py` | 작성 권한, 본인 고객 제한, API payload 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 영업사원/admin은 React `/notes/`에서 담당 고객을 선택해 바로 영업노트를 저장할 수 있습니다.
+- manager는 기존 정책대로 직접 작성이 차단되고, 회사 manager의 검토 권한 정책은 유지됩니다.
+- 저장 후 영업노트 목록과 지표가 즉시 새로고침됩니다.
+- `/dashboard/`, `/customers/`, 상단 `새 영업노트`에서 Django 모달 대신 React 작성 패널로 이동합니다.
+- `/reporting/api/notes/` GET에서 CSRF 쿠키를 보장해 React POST 저장 안정성을 높였습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 영업노트 목록/상세/대시보드 모달은 유지했습니다.
+- 첨부파일, 납품 품목, 상세 일정 기반 작성은 기존 Django 화면에서 계속 처리합니다.
+- 기존 `/reporting/*` 라우트와 인증 정책은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 20 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-B9PQ-tLi.js / assets/index-DTu29yQr.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- React 빠른 작성은 기본 필드 중심입니다. 첨부파일, 납품 품목, 상세 일정 연결은 `상세 작성`으로 Django 모달을 사용합니다.
+- 운영 계정으로 실제 저장까지 하는 육안 확인은 배포 후 별도 확인이 필요합니다.
+
+### 7. Recommended Next Task
+
+- React 빠른 작성에서 선택 고객의 최근 영업노트 3건과 열린 견적/수주 금액을 함께 보여주면 작성 품질과 후속 액션 일관성이 좋아집니다.

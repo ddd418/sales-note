@@ -318,6 +318,17 @@ h2 {
   box-shadow: var(--shadow-glow);
 }
 
+.route-primary-action:is(button),
+.route-secondary-action:is(button) {
+  cursor: pointer;
+  font: inherit;
+}
+
+.route-primary-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .route-secondary-action {
   display: inline-flex;
   align-items: center;
@@ -1149,6 +1160,67 @@ h2 {
 .notes-page {
   display: grid;
   gap: 16px;
+}
+
+.notes-create-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.notes-create-form {
+  display: grid;
+  gap: 12px;
+}
+
+.notes-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.notes-create-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.notes-create-form label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notes-create-form input,
+.notes-create-form select,
+.notes-create-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+}
+
+.notes-create-form input,
+.notes-create-form select {
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.notes-create-form textarea {
+  resize: vertical;
+  min-height: 78px;
+  padding: 10px;
+  line-height: 1.55;
+}
+
+.notes-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .notes-filter-bar {
@@ -2756,6 +2828,7 @@ tbody tr:hover {
 
   .customers-layout,
   .customers-filter-bar,
+  .notes-create-grid,
   .notes-layout,
   .notes-filter-bar,
   .schedules-layout,

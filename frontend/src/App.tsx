@@ -27,7 +27,7 @@ import {
   Target,
   Users,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -43,6 +43,8 @@ import {
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
+  NoteCreatePayload,
+  createNote as createSalesNote,
   loadDashboardData,
   loadCustomersData,
   loadNotesData,
@@ -74,6 +76,31 @@ type RouteAction = {
   primary?: boolean;
 };
 
+type NoteCreateFormState = {
+  actionType: string;
+  activityDate: string;
+  content: string;
+  followupId: string;
+  nextAction: string;
+  nextActionDate: string;
+};
+
+const localDateInputValue = (date = new Date()) => {
+  const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
+  return new Date(localTime).toISOString().slice(0, 10);
+};
+
+const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
+  actionType: 'customer_meeting',
+  activityDate: localDateInputValue(),
+  content: '',
+  followupId: '',
+  nextAction: '',
+  nextActionDate: '',
+});
+
+const shouldOpenCreateNote = () => new URLSearchParams(window.location.search).get('create') === '1';
+
 const routeMeta: Record<
   MainView,
   {
@@ -92,7 +119,7 @@ const routeMeta: Record<
     primaryHref: '/dashboard/',
     primaryLabel: '프론트 대시보드 보기',
     actions: [
-      { label: '영업노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
+      { label: '영업노트 작성', href: '/notes/?create=1', primary: true },
       { label: '미검토 노트', href: '/notes/' },
       { label: '고객 리포트', href: '/reporting/customer-report/' },
     ],
@@ -127,7 +154,7 @@ const routeMeta: Record<
     primaryHref: '/notes/',
     primaryLabel: '프론트 영업노트 보기',
     actions: [
-      { label: '대시보드 노트 작성', href: '/reporting/dashboard/#dashboardNoteModal', primary: true },
+      { label: '노트 작성', href: '/notes/?create=1', primary: true },
       { label: '미검토 노트', href: '/notes/' },
       { label: '주간보고', href: '/reporting/weekly-reports/' },
     ],
@@ -284,7 +311,7 @@ function TopBar({
         <a className="icon-button" aria-label="영업노트" href="/notes/">
           <Bell size={18} />
         </a>
-        <a className="primary-button" href="/reporting/dashboard/#dashboardNoteModal">
+        <a className="primary-button" href="/notes/?create=1">
           <Plus size={17} />
           새 영업노트
         </a>
@@ -940,6 +967,11 @@ function NotesTable({
 
 function NotesPage({
   actionType,
+  createError,
+  createForm,
+  createMessage,
+  createOpen,
+  creating,
   data,
   loading,
   nextAction,
@@ -950,6 +982,9 @@ function NotesPage({
   reviewingNoteId,
   review,
   onActionTypeChange,
+  onCreateFormChange,
+  onCreateOpenChange,
+  onCreateSubmit,
   onNextActionChange,
   onOwnerChange,
   onQueryChange,
@@ -957,6 +992,11 @@ function NotesPage({
   onToggleReview,
 }: {
   actionType: string;
+  createError: string;
+  createForm: NoteCreateFormState;
+  createMessage: string;
+  createOpen: boolean;
+  creating: boolean;
   data: NotesData | null;
   loading: boolean;
   nextAction: string;
@@ -967,6 +1007,9 @@ function NotesPage({
   reviewingNoteId: number | null;
   review: string;
   onActionTypeChange: (value: string) => void;
+  onCreateFormChange: (field: keyof NoteCreateFormState, value: string) => void;
+  onCreateOpenChange: (open: boolean) => void;
+  onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onNextActionChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
@@ -993,6 +1036,10 @@ function NotesPage({
     { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
     { label: '7일 이내', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '다가오는 액션', icon: Clock, tone: 'green' as const },
   ];
+  const createConfig = data.create;
+  const canCreateNotes = createConfig.canCreate;
+  const createCustomers = createConfig.customers;
+  const createActionTypes = createConfig.actionTypes;
 
   return (
     <section className="notes-page">
@@ -1013,10 +1060,14 @@ function NotesPage({
           <h2>{data.scope.label || '영업노트'}</h2>
           <p>활동 기록, 검토 상태, 다음 액션을 같은 목록에서 확인합니다.</p>
         </div>
-        <a className="route-primary-action" href={data.links.createNote}>
-          노트 작성
+        <button
+          className={canCreateNotes ? 'route-primary-action' : 'route-secondary-action'}
+          onClick={() => onCreateOpenChange(!createOpen)}
+          type="button"
+        >
+          {canCreateNotes ? '노트 작성' : '작성 권한 없음'}
           <Plus size={16} />
-        </a>
+        </button>
       </div>
 
       <section className="dashboard-metric-grid" aria-label="영업노트 핵심 지표">
@@ -1031,6 +1082,104 @@ function NotesPage({
           />
         ))}
       </section>
+
+      {createOpen ? (
+        <section className="dashboard-panel notes-create-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Quick note</span>
+              <h2>영업노트 빠른 작성</h2>
+            </div>
+            {creating ? <Loader2 className="spin-icon" size={18} /> : <MessageSquareText size={18} />}
+          </div>
+          {createMessage ? <div className="notes-action-feedback success">{createMessage}</div> : null}
+          {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
+          {!canCreateNotes ? (
+            <DashboardEmpty label={createConfig.message || '작성 권한이 없습니다'} />
+          ) : createCustomers.length === 0 ? (
+            <DashboardEmpty label="작성 가능한 담당 고객이 없습니다" />
+          ) : createActionTypes.length === 0 ? (
+            <DashboardEmpty label="작성 가능한 활동 유형이 없습니다" />
+          ) : (
+            <form className="notes-create-form" onSubmit={onCreateSubmit}>
+              <div className="notes-create-grid">
+                <label>
+                  <span>고객</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('followupId', event.target.value)}
+                    required
+                    value={createForm.followupId}
+                  >
+                    <option value="">고객 선택</option>
+                    {createCustomers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동 유형</span>
+                  <select
+                    onChange={(event) => onCreateFormChange('actionType', event.target.value)}
+                    required
+                    value={createForm.actionType}
+                  >
+                    {createActionTypes.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동일</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('activityDate', event.target.value)}
+                    type="date"
+                    value={createForm.activityDate}
+                  />
+                </label>
+                <label>
+                  <span>다음 예정일</span>
+                  <input
+                    onChange={(event) => onCreateFormChange('nextActionDate', event.target.value)}
+                    type="date"
+                    value={createForm.nextActionDate}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>활동 내용</span>
+                <textarea
+                  onChange={(event) => onCreateFormChange('content', event.target.value)}
+                  placeholder="방문/통화/견적 진행 내용"
+                  required
+                  rows={4}
+                  value={createForm.content}
+                />
+              </label>
+              <label>
+                <span>다음 액션</span>
+                <textarea
+                  onChange={(event) => onCreateFormChange('nextAction', event.target.value)}
+                  placeholder="후속 연락, 견적 발송, 샘플 준비 등"
+                  rows={2}
+                  value={createForm.nextAction}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href="/reporting/dashboard/#dashboardNoteModal">
+                  상세 작성
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={creating} type="submit">
+                  {creating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      ) : null}
 
       <div className="notes-filter-bar">
         <label className="customers-search">
@@ -2447,6 +2596,11 @@ export function App() {
   const [noteReviewingId, setNoteReviewingId] = useState<number | null>(null);
   const [noteReviewError, setNoteReviewError] = useState('');
   const [noteReviewMessage, setNoteReviewMessage] = useState('');
+  const [noteCreateOpen, setNoteCreateOpen] = useState(currentView === 'notes' && shouldOpenCreateNote());
+  const [noteCreateForm, setNoteCreateForm] = useState<NoteCreateFormState>(() => makeEmptyNoteCreateForm());
+  const [noteCreating, setNoteCreating] = useState(false);
+  const [noteCreateError, setNoteCreateError] = useState('');
+  const [noteCreateMessage, setNoteCreateMessage] = useState('');
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
   const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules');
   const [scheduleQuery, setScheduleQuery] = useState('');
@@ -2535,6 +2689,7 @@ export function App() {
     setNotesLoading(true);
     setNoteReviewError('');
     setNoteReviewMessage('');
+    setNoteCreateError('');
     loadNotesData({
       q: noteQuery,
       owner: noteOwner,
@@ -2552,6 +2707,19 @@ export function App() {
       alive = false;
     };
   }, [currentView, noteActionType, noteNextAction, noteOwner, noteQuery, noteReview]);
+
+  useEffect(() => {
+    if (currentView !== 'notes' || !notesData?.create.canCreate) {
+      return;
+    }
+    const firstCustomerId = notesData.create.customers[0]?.id;
+    const firstActionType = notesData.create.actionTypes[0]?.value || 'customer_meeting';
+    setNoteCreateForm((previous) => ({
+      ...previous,
+      actionType: previous.actionType || firstActionType,
+      followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
+    }));
+  }, [currentView, notesData]);
 
   useEffect(() => {
     if (currentView !== 'schedules') {
@@ -2627,6 +2795,79 @@ export function App() {
       setNoteReviewError(error instanceof Error ? error.message : '검토 상태 변경에 실패했습니다.');
     } finally {
       setNoteReviewingId(null);
+    }
+  };
+  const handleNoteCreateOpenChange = (open: boolean) => {
+    setNoteCreateOpen(open);
+    setNoteCreateError('');
+    if (open) {
+      setNoteCreateMessage('');
+    }
+  };
+  const handleNoteCreateFormChange = (field: keyof NoteCreateFormState, value: string) => {
+    setNoteCreateForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setNoteCreateError('');
+  };
+  const resetNoteCreateForm = (data: NotesData | null) => {
+    const nextForm = makeEmptyNoteCreateForm();
+    nextForm.actionType = data?.create.actionTypes[0]?.value || nextForm.actionType;
+    nextForm.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+    setNoteCreateForm(nextForm);
+  };
+  const handleCreateNoteSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!notesData || noteCreating) {
+      return;
+    }
+    if (!notesData.create.canCreate) {
+      setNoteCreateError(notesData.create.message || '작성 권한이 없습니다.');
+      return;
+    }
+    const followupId = Number(noteCreateForm.followupId);
+    if (!followupId) {
+      setNoteCreateError('고객을 선택하세요.');
+      return;
+    }
+    if (!noteCreateForm.actionType) {
+      setNoteCreateError('활동 유형을 선택하세요.');
+      return;
+    }
+    if (!noteCreateForm.content.trim()) {
+      setNoteCreateError('활동 내용을 입력하세요.');
+      return;
+    }
+
+    const payload: NoteCreatePayload = {
+      actionType: noteCreateForm.actionType,
+      activityDate: noteCreateForm.activityDate || undefined,
+      content: noteCreateForm.content.trim(),
+      followupId,
+      nextAction: noteCreateForm.nextAction.trim() || undefined,
+      nextActionDate: noteCreateForm.nextActionDate || undefined,
+    };
+
+    setNoteCreating(true);
+    setNoteCreateError('');
+    setNoteCreateMessage('');
+    try {
+      await createSalesNote(payload, notesData.create.submitUrl);
+      const refreshedData = await loadNotesData({
+        q: noteQuery,
+        owner: noteOwner,
+        actionType: noteActionType,
+        review: noteReview,
+        nextAction: noteNextAction,
+      });
+      setNotesData(refreshedData);
+      resetNoteCreateForm(refreshedData);
+      setNoteCreateMessage('영업노트를 저장했습니다.');
+    } catch (error) {
+      setNoteCreateError(error instanceof Error ? error.message : '영업노트 저장에 실패했습니다.');
+    } finally {
+      setNoteCreating(false);
     }
   };
   const visibleDeals = useMemo(() => {
@@ -2705,6 +2946,11 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <NotesPage
           actionType={noteActionType}
+          createError={noteCreateError}
+          createForm={noteCreateForm}
+          createMessage={noteCreateMessage}
+          createOpen={noteCreateOpen}
+          creating={noteCreating}
           data={notesData}
           loading={notesLoading}
           nextAction={noteNextAction}
@@ -2715,6 +2961,9 @@ export function App() {
           reviewingNoteId={noteReviewingId}
           review={noteReview}
           onActionTypeChange={setNoteActionType}
+          onCreateFormChange={handleNoteCreateFormChange}
+          onCreateOpenChange={handleNoteCreateOpenChange}
+          onCreateSubmit={handleCreateNoteSubmit}
           onNextActionChange={setNoteNextAction}
           onOwnerChange={setNoteOwner}
           onQueryChange={setNoteQuery}

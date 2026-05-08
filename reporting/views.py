@@ -11,6 +11,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_http_methods
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -2519,7 +2520,7 @@ def dashboard_summary_api(request):
         },
         'links': {
             'operationalDashboard': reverse('reporting:dashboard'),
-            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+            'createNote': '/notes/?create=1',
             'customers': reverse('reporting:followup_list'),
             'customerReport': reverse('reporting:customer_report'),
             'notes': reverse('reporting:history_list'),
@@ -2834,7 +2835,7 @@ def customers_summary_api(request):
             'customers': reverse('reporting:followup_list'),
             'companies': reverse('reporting:company_list'),
             'customerReport': reverse('reporting:customer_report'),
-            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+            'createNote': '/notes/?create=1',
         },
         'customers': [
             _customers_followup_payload(followup, today)
@@ -2904,7 +2905,55 @@ def _can_review_notes(user_profile):
     return bool(user_profile.is_manager() and user_profile.company_id)
 
 
+def _notes_create_action_types(request):
+    excluded_types = {'memo'}
+    if not getattr(request, 'is_hanagwahak', False):
+        excluded_types.add('service')
+    return [
+        {'value': value, 'label': label}
+        for value, label in History.ACTION_CHOICES
+        if value not in excluded_types
+    ]
+
+
+def _notes_create_targets(user, limit=120):
+    return list(FollowUp.objects.filter(
+        user=user,
+    ).select_related(
+        'company', 'department'
+    ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
+
+
+def _notes_create_target_payload(followup):
+    customer = followup.customer_name or followup.manager or '고객명 미정'
+    company = followup.company.name if followup.company else ''
+    department = followup.department.name if followup.department else ''
+    label_parts = [part for part in [company, department, customer] if part]
+    return {
+        'id': followup.id,
+        'label': ' · '.join(label_parts) or customer,
+        'customer': customer,
+        'company': company,
+        'department': department,
+        'priorityLabel': followup.get_priority_display(),
+        'href': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _parse_iso_date_or_none(value):
+    from datetime import date
+
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 @never_cache
+@ensure_csrf_cookie
 @require_http_methods(["GET"])
 def notes_summary_api(request):
     """React CRM notes 화면용 읽기 전용 API."""
@@ -2995,6 +3044,8 @@ def notes_summary_api(request):
         }
         for user in scope_users.order_by('username')
     ]
+    can_create_note = not user_profile.is_manager()
+    create_targets = _notes_create_targets(request.user) if can_create_note else []
 
     scope_label = '전체'
     if selected_user:
@@ -3076,16 +3127,102 @@ def notes_summary_api(request):
             for value, label in History.ACTION_CHOICES
         ],
         'links': {
-            'createNote': f"{reverse('reporting:dashboard')}#dashboardNoteModal",
+            'createNote': '/notes/?create=1',
             'notes': reverse('reporting:history_list'),
             'unreviewed': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
             'weeklyReports': reverse('reporting:weekly_report_list'),
+        },
+        'create': {
+            'canCreate': can_create_note,
+            'message': '' if can_create_note else 'Manager는 영업노트를 직접 작성할 수 없습니다.',
+            'submitUrl': reverse('reporting:notes_create_api'),
+            'actionTypes': _notes_create_action_types(request),
+            'customers': [_notes_create_target_payload(followup) for followup in create_targets],
         },
         'notes': [
             _notes_history_payload(note, today, can_review_notes)
             for note in list(notes[:80])
         ],
     })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def notes_create_api(request):
+    """React notes 화면용 빠른 영업노트 작성 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        return JsonResponse({
+            'success': False,
+            'error': 'Manager는 영업노트를 직접 작성할 수 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    try:
+        followup_id = int(payload.get('followupId') or 0)
+    except (TypeError, ValueError):
+        followup_id = 0
+
+    followup = FollowUp.objects.filter(
+        id=followup_id,
+        user=request.user,
+    ).select_related('company', 'department').first()
+    if not followup:
+        return JsonResponse({'success': False, 'error': '작성 가능한 고객을 선택하세요.'}, status=403)
+
+    allowed_action_types = {item['value'] for item in _notes_create_action_types(request)}
+    action_type = str(payload.get('actionType') or '').strip()
+    if action_type not in allowed_action_types:
+        return JsonResponse({'success': False, 'error': '활동 유형을 선택하세요.'}, status=400)
+
+    content = str(payload.get('content') or '').strip()
+    if not content:
+        return JsonResponse({'success': False, 'error': '활동 내용을 입력하세요.'}, status=400)
+
+    next_action = str(payload.get('nextAction') or '').strip()
+    next_action_date = _parse_iso_date_or_none(payload.get('nextActionDate'))
+    activity_date = _parse_iso_date_or_none(payload.get('activityDate'))
+
+    history_kwargs = {
+        'user': request.user,
+        'company': user_profile.company,
+        'followup': followup,
+        'action_type': action_type,
+        'content': content,
+        'next_action': next_action,
+        'next_action_date': next_action_date,
+        'created_by': request.user,
+    }
+    if action_type == 'customer_meeting' and activity_date:
+        history_kwargs['meeting_date'] = activity_date
+    elif action_type == 'delivery_schedule' and activity_date:
+        history_kwargs['delivery_date'] = activity_date
+        history_kwargs['delivery_amount'] = 0
+
+    history = History.objects.create(**history_kwargs)
+
+    try:
+        if history.action_type == 'customer_meeting' and history.followup:
+            from .funnel_views import _try_advance_pipeline
+            _try_advance_pipeline(history.followup, 'contact')
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'message': '영업노트를 저장했습니다.',
+        'historyId': history.id,
+        'href': reverse('reporting:history_detail', args=[history.id]),
+        'note': _notes_history_payload(history, timezone.localdate(), False),
+    }, status=201)
 
 
 def _schedules_schedule_payload(schedule, today):
