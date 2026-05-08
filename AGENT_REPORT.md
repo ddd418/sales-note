@@ -7181,12 +7181,34 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "fix: make frontend the primary CRM shell"
+→ 1aa43e0
+
+git push
+→ main -> main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy frontend shell navigation 1aa43e0" --ci
+→ Deploy complete, deployment 65de05d4-ecc7-4669-a81a-2a7215d2a293 SUCCESS
+
+railway up --service web --environment production --message "Deploy backend shell navigation 1aa43e0" --ci
+→ Deploy complete, deployment 2bdcdf27-2e54-4bf6-8594-228f6b01bf0d SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/
+→ 200, assets/index-D4s7e3NB.js
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/login/
+→ 200, login-page-ok
+
+npx --yes --package @playwright/cli playwright-cli delete-data/open/eval/close
+→ 미로그인 루트 접속 후 /reporting/login/?next=%2F 이동 확인
 ```
 
 ### 6. Known Limitations
 
 - 영업노트 작성은 아직 Django 대시보드 모달을 사용합니다. 완전한 단일 화면 경험을 만들려면 React 노트 작성 폼 이관이 다음 단계입니다.
 - 일정 캘린더와 일부 관리 화면은 기존 Django 화면을 계속 사용합니다.
+- 로그인된 실제 운영 계정에서 로그인 성공 후 프론트 `/dashboard/` 진입은 육안 확인이 필요합니다.
 
 ### 7. Recommended Next Task
 
