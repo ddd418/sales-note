@@ -1459,3 +1459,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Customer Detail — 고객 상세/이력 프론트 전환
+
+**목표**: 고객 목록에서 Django 상세 화면으로 바로 넘어가지 않고 React 안에서 고객별 최근 영업노트, 예정 일정, 지연 후속을 확인하게 만든다.
+
+**작업 범위**:
+
+- `/reporting/api/customers/<id>/` 고객 상세 요약 API를 추가한다.
+- API는 기존 권한 규칙을 유지해 로그인/회사/담당자 범위 밖 고객 데이터 노출을 막는다.
+- React `/customers/<id>/` route를 추가하고 고객 요약, 최근 노트, 예정 일정, 지연 후속, Django 상세 링크를 표시한다.
+- 고객 목록/우선 고객 링크를 React 상세 route로 변경한다.
+- 일정 빠른 등록 저장 후 Django 일정 상세로 들어갈 수 있는 링크를 성공 메시지에 표시한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp`, `History`, `Schedule` 조회만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

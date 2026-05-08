@@ -1313,12 +1313,21 @@ h2 {
 .notes-action-feedback {
   display: flex;
   align-items: center;
+  gap: 10px;
+  justify-content: space-between;
   min-height: 34px;
   margin-bottom: 10px;
   padding: 0 10px;
   border-radius: 9px;
   font-size: 12px;
   font-weight: 800;
+}
+
+.notes-action-feedback a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
 }
 
 .notes-action-feedback.success {
@@ -1508,6 +1517,56 @@ h2 {
 }
 
 .schedules-side-heading {
+  margin-top: 16px;
+}
+
+.customer-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+
+.customer-detail-main,
+.customer-detail-side {
+  min-width: 0;
+}
+
+.customer-detail-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.customer-detail-summary dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.customer-detail-summary dl > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.customer-detail-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-detail-summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.customer-detail-section-heading {
   margin-top: 16px;
 }
 
@@ -2831,6 +2890,7 @@ tbody tr:hover {
   .notes-create-grid,
   .notes-layout,
   .notes-filter-bar,
+  .customer-detail-layout,
   .schedules-layout,
   .schedules-filter-bar,
   .ai-layout,

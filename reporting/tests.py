@@ -609,6 +609,59 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(customer['upcomingSchedule']['time'], '10:30')
         self.assertEqual(payload['metrics']['scheduledCustomers'], 1)
 
+    def test_customer_detail_summary_api_requires_login_json(self):
+        target = self._create_customer(self.user, '상세로그인')
+        url = reverse('reporting:customer_detail_summary_api', args=[target.id])
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_customer_detail_summary_api_returns_notes_and_schedules(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import History, Schedule
+
+        target = self._create_customer(self.user, '상세고객', priority='urgent')
+        upcoming = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(11, 0),
+            activity_type='quote',
+            status='scheduled',
+            location='상세 회의실',
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            action_type='quote',
+            content='상세 견적 메모',
+            next_action='상세 후속',
+            next_action_date=timezone.localdate() + timedelta(days=1),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['customer']['id'], target.id)
+        self.assertGreaterEqual(payload['metrics']['recentNotes'], 2)
+        self.assertEqual(payload['upcomingSchedules'][0]['id'], upcoming.id)
+        self.assertTrue(payload['links']['djangoDetail'].endswith(f'/followups/{target.id}/'))
+
+    def test_customer_detail_summary_api_blocks_other_company_customer(self):
+        target = self._create_customer(self.other_user, '타사상세')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 403)
+
 
 class QuoteItemsApiTests(TestCase):
     """부서 기준 견적 품목 불러오기 API 검증"""

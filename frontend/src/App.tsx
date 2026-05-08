@@ -32,6 +32,7 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
+  CustomerDetailData,
   CustomersData,
   CustomerItem,
   NotesData,
@@ -48,6 +49,7 @@ import {
   ScheduleCreatePayload,
   createSchedule as createCustomerSchedule,
   loadDashboardData,
+  loadCustomerDetailData,
   loadCustomersData,
   loadNotesData,
   loadSchedulesData,
@@ -217,6 +219,19 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   return 'pipeline';
+}
+
+function getCustomerDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/customers\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getCreateCustomerParam(): string {
+  return new URLSearchParams(window.location.search).get('customer') || '';
 }
 
 const savedViews: Array<{ id: SavedView; label: string }> = [
@@ -625,7 +640,7 @@ function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
   return (
     <div className="customers-priority-list">
       {customers.map((customer) => (
-        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={customer.href} key={customer.id}>
+        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={`/customers/${customer.id}/`} key={customer.id}>
           <div>
             <strong>{customer.company || customer.customer}</strong>
             <span>{[customer.customer, customer.owner].filter(Boolean).join(' · ')}</span>
@@ -671,7 +686,7 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
           {customers.map((customer) => (
             <tr key={customer.id}>
               <td>
-                <a className="customer-name-link" href={customer.href}>
+                <a className="customer-name-link" href={`/customers/${customer.id}/`}>
                   <strong>{customer.company || customer.customer}</strong>
                   <span>{[customer.customer, customer.department].filter(Boolean).join(' · ')}</span>
                   {customer.contactSummary ? <small className="customer-contact-line">{customer.contactSummary}</small> : null}
@@ -730,12 +745,189 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
   );
 }
 
+function CustomerDetailNoteList({
+  emptyLabel,
+  notes,
+  urgent,
+}: {
+  emptyLabel: string;
+  notes: NoteItem[];
+  urgent?: boolean;
+}) {
+  if (notes.length === 0) {
+    return <DashboardEmpty label={emptyLabel} />;
+  }
+
+  return (
+    <div className="dashboard-list customer-detail-note-list">
+      {notes.map((note) => (
+        <a className={`dashboard-list-row ${urgent || note.overdue ? 'urgent' : ''}`} href={note.href} key={note.id}>
+          <div className="dashboard-row-icon">
+            {urgent || note.overdue ? <AlertTriangle size={17} /> : <FileText size={17} />}
+          </div>
+          <div className="dashboard-row-main">
+            <strong>{note.actionLabel}</strong>
+            <span>{[note.owner, note.serviceStatusLabel].filter(Boolean).join(' · ')}</span>
+            <small>{note.nextAction || note.summary || '내용 없음'}</small>
+          </div>
+          <time>{note.nextActionDate ? formatDateLabel(note.nextActionDate) : formatDateTimeLabel(note.createdAt)}</time>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function CustomerDetailPage({
+  data,
+  loading,
+}: {
+  data: CustomerDetailData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>고객 상세 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data || !data.customer) {
+    return (
+      <section className="customers-page">
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>고객 상세를 불러오지 못했습니다</strong>
+            <span>{data?.error || '고객 상세 API에 연결되지 않았습니다.'}</span>
+          </div>
+          <a href="/customers/">목록</a>
+        </div>
+      </section>
+    );
+  }
+
+  const customer = data.customer;
+  const metrics = [
+    { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
+    { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
+    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '확인 필요', icon: AlertTriangle, tone: 'red' as const },
+    { label: '14일 내 후속', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '예정 액션', icon: Clock, tone: 'teal' as const },
+  ];
+
+  return (
+    <section className="customers-page customer-detail-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>고객 상세 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Customer detail</span>
+          <h2>{customer.company || customer.customer}</h2>
+          <p>{[customer.customer, customer.department, customer.owner].filter(Boolean).join(' · ')}</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href="/customers/">목록</a>
+          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          <a className="route-primary-action" href={data.links.createSchedule}>
+            일정 등록
+            <Plus size={16} />
+          </a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="고객 상세 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customer-detail-layout">
+        <section className="dashboard-panel customer-detail-main">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Recent notes</span>
+              <h2>최근 영업노트</h2>
+            </div>
+            <FileText size={18} />
+          </div>
+          <CustomerDetailNoteList emptyLabel="최근 영업노트가 없습니다" notes={data.recentNotes} />
+        </section>
+
+        <aside className="dashboard-panel customer-detail-side">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Customer</span>
+              <h2>고객 요약</h2>
+            </div>
+            <Users size={18} />
+          </div>
+          <div className="customer-detail-summary">
+            <CustomerStatusBadge customer={customer} />
+            <dl>
+              <div>
+                <dt>연락처</dt>
+                <dd>{customer.contactSummary || '연락처 없음'}</dd>
+              </div>
+              <div>
+                <dt>다음 액션</dt>
+                <dd className={customer.overdue ? 'customer-overdue-text' : ''}>{customer.nextAction || '다음 액션 없음'}</dd>
+              </div>
+              <div>
+                <dt>최근 활동</dt>
+                <dd>{customer.lastActivityLabel || '최근 활동 없음'}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="dashboard-panel-heading customer-detail-section-heading">
+            <div>
+              <span className="eyebrow">Upcoming</span>
+              <h2>예정 일정</h2>
+            </div>
+            <CalendarDays size={18} />
+          </div>
+          <SchedulesCompactList emptyLabel="예정 일정이 없습니다" items={data.upcomingSchedules} />
+
+          <div className="dashboard-panel-heading customer-detail-section-heading">
+            <div>
+              <span className="eyebrow">Overdue</span>
+              <h2>지연 후속</h2>
+            </div>
+            <AlertTriangle size={18} />
+          </div>
+          <CustomerDetailNoteList emptyLabel="지연 후속이 없습니다" notes={data.overdueActions} urgent />
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function CustomersPage({
   data,
+  detailData,
+  detailLoading,
   loading,
   owner,
   priority,
   query,
+  selectedCustomerId,
   stage,
   onOwnerChange,
   onPriorityChange,
@@ -743,16 +935,23 @@ function CustomersPage({
   onStageChange,
 }: {
   data: CustomersData | null;
+  detailData: CustomerDetailData | null;
+  detailLoading: boolean;
   loading: boolean;
   owner: string;
   priority: string;
   query: string;
+  selectedCustomerId: number | null;
   stage: string;
   onOwnerChange: (value: string) => void;
   onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onStageChange: (value: string) => void;
 }) {
+  if (selectedCustomerId) {
+    return <CustomerDetailPage data={detailData} loading={detailLoading} />;
+  }
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -1401,6 +1600,7 @@ function SchedulesPage({
   activityType,
   createError,
   createForm,
+  createdDetailHref,
   createMessage,
   createOpen,
   creating,
@@ -1422,6 +1622,7 @@ function SchedulesPage({
   activityType: string;
   createError: string;
   createForm: ScheduleCreateFormState;
+  createdDetailHref: string;
   createMessage: string;
   createOpen: boolean;
   creating: boolean;
@@ -1508,7 +1709,12 @@ function SchedulesPage({
             </div>
             {creating ? <Loader2 className="spin-icon" size={18} /> : <CalendarDays size={18} />}
           </div>
-          {createMessage ? <div className="notes-action-feedback success">{createMessage}</div> : null}
+          {createMessage ? (
+            <div className="notes-action-feedback success">
+              <span>{createMessage}</span>
+              {createdDetailHref ? <a href={createdDetailHref}>상세 열기</a> : null}
+            </div>
+          ) : null}
           {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
           {!canCreateSchedules ? (
             <DashboardEmpty label={createConfig.message || '일정 등록 권한이 없습니다'} />
@@ -2745,12 +2951,15 @@ function DetailPanel({
 
 export function App() {
   const currentView = getCurrentView();
+  const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
+  const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId));
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerOwner, setCustomerOwner] = useState('');
   const [customerPriority, setCustomerPriority] = useState('');
@@ -2777,6 +2986,7 @@ export function App() {
   const [scheduleCreating, setScheduleCreating] = useState(false);
   const [scheduleCreateError, setScheduleCreateError] = useState('');
   const [scheduleCreateMessage, setScheduleCreateMessage] = useState('');
+  const [scheduleCreatedDetailHref, setScheduleCreatedDetailHref] = useState('');
   const [scheduleQuery, setScheduleQuery] = useState('');
   const [scheduleOwner, setScheduleOwner] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
@@ -2827,7 +3037,7 @@ export function App() {
   }, [currentView]);
 
   useEffect(() => {
-    if (currentView !== 'customers') {
+    if (currentView !== 'customers' || customerDetailId) {
       return;
     }
     let alive = true;
@@ -2847,7 +3057,27 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, customerOwner, customerPriority, customerQuery, customerStage]);
+  }, [currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
+
+  useEffect(() => {
+    if (currentView !== 'customers' || !customerDetailId) {
+      setCustomerDetailData(null);
+      setCustomerDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setCustomerDetailLoading(true);
+    loadCustomerDetailData(customerDetailId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setCustomerDetailData(data);
+      setCustomerDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, customerDetailId]);
 
   useEffect(() => {
     if (currentView !== 'notes') {
@@ -2917,7 +3147,9 @@ export function App() {
     if (currentView !== 'schedules' || !schedulesData?.create.canCreate) {
       return;
     }
-    const firstCustomerId = schedulesData.create.customers[0]?.id;
+    const requestedCustomerId = getCreateCustomerParam();
+    const requestedCustomer = schedulesData.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
+    const firstCustomerId = requestedCustomer?.id ?? schedulesData.create.customers[0]?.id;
     const firstActivityType = schedulesData.create.activityTypes[0]?.value || 'customer_meeting';
     setScheduleCreateForm((previous) => ({
       ...previous,
@@ -3084,6 +3316,7 @@ export function App() {
     setScheduleCreateError('');
     if (open) {
       setScheduleCreateMessage('');
+      setScheduleCreatedDetailHref('');
     }
   };
   const handleScheduleCreateFormChange = (field: keyof ScheduleCreateFormState, value: string) => {
@@ -3140,11 +3373,13 @@ export function App() {
     setScheduleCreating(true);
     setScheduleCreateError('');
     setScheduleCreateMessage('');
+    setScheduleCreatedDetailHref('');
     try {
-      await createCustomerSchedule(payload, schedulesData.create.submitUrl);
+      const createdSchedule = await createCustomerSchedule(payload, schedulesData.create.submitUrl);
       const refreshedData = await refreshSchedulesData();
       resetScheduleCreateForm(refreshedData);
       setScheduleCreateMessage('일정을 등록했습니다.');
+      setScheduleCreatedDetailHref(createdSchedule.href || '');
     } catch (error) {
       setScheduleCreateError(error instanceof Error ? error.message : '일정 등록에 실패했습니다.');
     } finally {
@@ -3207,10 +3442,13 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <CustomersPage
           data={customersData}
+          detailData={customerDetailData}
+          detailLoading={customerDetailLoading}
           loading={customersLoading}
           owner={customerOwner}
           priority={customerPriority}
           query={customerQuery}
+          selectedCustomerId={customerDetailId}
           stage={customerStage}
           onOwnerChange={setCustomerOwner}
           onPriorityChange={setCustomerPriority}
@@ -3263,6 +3501,7 @@ export function App() {
           activityType={scheduleActivityType}
           createError={scheduleCreateError}
           createForm={scheduleCreateForm}
+          createdDetailHref={scheduleCreatedDetailHref}
           createMessage={scheduleCreateMessage}
           createOpen={scheduleCreateOpen}
           creating={scheduleCreating}

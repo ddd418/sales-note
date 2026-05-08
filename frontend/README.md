@@ -23,6 +23,7 @@ http://127.0.0.1:5173/
 - 프론트 CRM Shell 및 좌측 핵심 내비게이션
 - `/dashboard/` 실제 데이터 대시보드
 - `/customers/` 실제 고객 검색/필터 화면
+- `/customers/<id>/` 실제 고객 상세/최근 영업노트/예정 일정 화면
 - `/notes/` 실제 영업노트 검색/필터 화면
 - `/schedules/` 실제 일정 검색/필터 화면
 - `/schedules/?create=1` 실제 고객 일정 빠른 등록
@@ -34,6 +35,7 @@ http://127.0.0.1:5173/
 - 모바일 대응 기본 레이아웃
 - Django dashboard API 우선 조회
 - Django customers API 우선 조회
+- Django customer detail API 우선 조회
 - Django notes API 우선 조회
 - Django schedules API 우선 조회
 - Django schedules create API 우선 사용

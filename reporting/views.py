@@ -2848,6 +2848,150 @@ def customers_summary_api(request):
     })
 
 
+@never_cache
+@require_http_methods(["GET"])
+def customer_detail_summary_api(request, followup_id):
+    """React CRM customer detail 화면용 읽기 전용 API."""
+    from datetime import timedelta
+    from django.db.models import Case, IntegerField, Value, When
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없습니다.',
+        }, status=403)
+
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+
+    priority_order = Case(
+        When(priority='urgent', then=Value(0)),
+        When(priority='followup', then=Value(1)),
+        When(priority='scheduled', then=Value(2)),
+        When(priority='long_term', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+    recent_histories_qs = History.objects.filter(
+        user__in=scope_users,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').order_by('-created_at')
+    upcoming_schedules_qs = Schedule.objects.filter(
+        user__in=scope_users,
+        status='scheduled',
+        visit_date__gte=today,
+    ).order_by('visit_date', 'visit_time')
+    detail_followup = _customers_enriched_queryset(
+        FollowUp.objects.filter(pk=followup.pk),
+        today,
+        priority_order,
+        recent_histories_qs,
+        upcoming_schedules_qs,
+    ).first()
+    if detail_followup is None:
+        return JsonResponse({
+            'success': False,
+            'error': '고객을 찾을 수 없습니다.',
+        }, status=404)
+
+    notes_qs = History.objects.filter(
+        followup=followup,
+        user__in=scope_users,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule', 'reviewer'
+    ).annotate(
+        reply_count=Count('reply_memos', distinct=True),
+        file_count=Count('files', distinct=True),
+    ).order_by('-created_at')
+
+    overdue_actions_qs = notes_qs.filter(
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+    ).order_by('next_action_date', '-created_at')
+    upcoming_actions_qs = notes_qs.filter(
+        next_action_date__gte=today,
+        next_action_date__lte=today + timedelta(days=14),
+        next_action_date__isnull=False,
+    ).order_by('next_action_date', '-created_at')
+    upcoming_schedules = Schedule.objects.filter(
+        followup=followup,
+        user__in=scope_users,
+        status='scheduled',
+        visit_date__gte=today,
+    ).select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('visit_date', 'visit_time')
+    recent_schedules = Schedule.objects.filter(
+        followup=followup,
+        user__in=scope_users,
+    ).select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('-visit_date', '-visit_time')
+    can_review_notes = _can_review_notes(user_profile)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _user_display_name(selected_user) if selected_user else (
+                _user_display_name(request.user) if not user_profile.can_view_all_users()
+                else f'{user_profile.company.name} 팀' if user_profile.company else '전체'
+            ),
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'customer': _customers_followup_payload(detail_followup, today),
+        'metrics': {
+            'recentNotes': notes_qs.count(),
+            'upcomingSchedules': upcoming_schedules.count(),
+            'overdueActions': overdue_actions_qs.count(),
+            'upcomingActions': upcoming_actions_qs.count(),
+        },
+        'links': {
+            'customers': '/customers/',
+            'djangoDetail': reverse('reporting:followup_detail', args=[followup.id]),
+            'createSchedule': f'/schedules/?create=1&customer={followup.id}',
+            'createNote': f'/notes/?create=1&customer={followup.id}',
+        },
+        'recentNotes': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in list(notes_qs[:12])
+        ],
+        'overdueActions': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in list(overdue_actions_qs[:8])
+        ],
+        'upcomingActions': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in list(upcoming_actions_qs[:8])
+        ],
+        'upcomingSchedules': [
+            _schedules_schedule_payload(schedule, today)
+            for schedule in list(upcoming_schedules[:8])
+        ],
+        'recentSchedules': [
+            _schedules_schedule_payload(schedule, today)
+            for schedule in list(recent_schedules[:8])
+        ],
+    })
+
+
 def _notes_history_payload(history, today, can_review=False):
     followup = history.followup
     activity_date = history.meeting_date or history.delivery_date

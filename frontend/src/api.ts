@@ -231,6 +231,38 @@ export type CustomersData = {
   priorityCustomers: CustomerItem[];
 };
 
+export type CustomerDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    selectedUserId: number | null;
+  };
+  customer: CustomerItem | null;
+  metrics: {
+    recentNotes: number;
+    upcomingSchedules: number;
+    overdueActions: number;
+    upcomingActions: number;
+  };
+  links: {
+    customers: string;
+    djangoDetail: string;
+    createSchedule: string;
+    createNote: string;
+  };
+  recentNotes: NoteItem[];
+  overdueActions: NoteItem[];
+  upcomingActions: NoteItem[];
+  upcomingSchedules: ScheduleItem[];
+  recentSchedules: ScheduleItem[];
+};
+
 export type NoteItem = {
   id: number;
   customer: string;
@@ -691,6 +723,36 @@ const emptyCustomersData: CustomersData = {
   priorityCustomers: [],
 };
 
+const emptyCustomerDetailData: CustomerDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    userCount: 0,
+    canViewAll: false,
+    selectedUserId: null,
+  },
+  customer: null,
+  metrics: {
+    recentNotes: 0,
+    upcomingSchedules: 0,
+    overdueActions: 0,
+    upcomingActions: 0,
+  },
+  links: {
+    customers: '/customers/',
+    djangoDetail: '',
+    createSchedule: '/schedules/?create=1',
+    createNote: '/notes/?create=1',
+  },
+  recentNotes: [],
+  overdueActions: [],
+  upcomingActions: [],
+  upcomingSchedules: [],
+  recentSchedules: [],
+};
+
 const emptyNotesData: NotesData = {
   success: false,
   source: 'unavailable',
@@ -960,6 +1022,55 @@ export async function loadCustomersData(params: {
       ...emptyCustomersData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Customers API unavailable',
+    };
+  }
+}
+
+export async function loadCustomerDetailData(customerId: number): Promise<CustomerDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/customers/${customerId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Customer detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<CustomerDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Customer detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyCustomerDetailData,
+      ...payload,
+      scope: {
+        ...emptyCustomerDetailData.scope,
+        ...(payload.scope ?? {}),
+      },
+      metrics: {
+        ...emptyCustomerDetailData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyCustomerDetailData.links,
+        ...(payload.links ?? {}),
+      },
+      recentNotes: payload.recentNotes ?? emptyCustomerDetailData.recentNotes,
+      overdueActions: payload.overdueActions ?? emptyCustomerDetailData.overdueActions,
+      upcomingActions: payload.upcomingActions ?? emptyCustomerDetailData.upcomingActions,
+      upcomingSchedules: payload.upcomingSchedules ?? emptyCustomerDetailData.upcomingSchedules,
+      recentSchedules: payload.recentSchedules ?? emptyCustomerDetailData.recentSchedules,
+      customer: payload.customer ?? emptyCustomerDetailData.customer,
+    };
+  } catch (error) {
+    return {
+      ...emptyCustomerDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Customer detail API unavailable',
     };
   }
 }

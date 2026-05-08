@@ -7491,3 +7491,73 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 다음 단계는 React 고객 상세/이력 화면을 강화해 Django 고객 상세 화면으로 왕복하는 빈도를 줄이는 작업입니다.
+
+---
+
+## React Customer Detail — 고객 상세/이력 프론트 전환 (2026-05-08)
+
+### 1. Summary
+
+React `/customers/<id>/` 고객 상세 화면과 Django 고객 상세 요약 API를 추가했습니다. 고객 목록/우선 고객에서 Django 상세로 바로 넘어가지 않고 React 안에서 고객 요약, 최근 영업노트, 예정 일정, 지연 후속을 확인할 수 있습니다. 일정 빠른 등록 저장 후에는 성공 메시지에 Django 일정 상세 링크도 표시합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 고객 상세/이력 전환 계획 추가 |
+| `frontend/src/App.tsx` | `/customers/<id>/` 상세 화면, 고객 목록 링크 전환, 일정 저장 후 상세 링크 추가 |
+| `frontend/src/api.ts` | 고객 상세 타입/API 함수 추가 |
+| `frontend/src/styles.css` | 고객 상세 레이아웃과 저장 성공 링크 스타일 추가 |
+| `frontend/README.md` | 고객 상세 route 문서화 |
+| `reporting/views.py` | `/api/customers/<id>/` 고객 상세 요약 API 추가 |
+| `reporting/urls.py` | 고객 상세 API URL 등록 |
+| `reporting/tests.py` | 고객 상세 API 로그인/권한/데이터 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 고객 목록에서 React 상세 화면으로 이동해 최근 노트와 예정 일정을 바로 확인합니다.
+- Django 고객 상세는 React 상세 화면의 `Django 상세` 버튼으로 명확히 분리했습니다.
+- 고객 상세에서 일정 등록으로 이동하면 `/schedules/?create=1&customer=<id>`로 이동해 고객 선택을 미리 채웁니다.
+- 일정 빠른 등록 저장 후 `상세 열기` 링크로 방금 생성한 Django 일정 상세를 바로 열 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 고객 상세, 일정 상세, 영업노트 상세 화면은 유지했습니다.
+- 기존 `/reporting/*` 라우트와 인증/권한 정책은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-IDc1l15X.js / assets/index-CQsJED8i.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:5173/customers/1/
+→ 200, React app served
+
+Invoke-WebRequest http://127.0.0.1:5173/reporting/api/customers/1/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- React 고객 상세는 요약/최근 활동 중심입니다. 고객 정보 수정, 삭제, 첨부/고급 관리 작업은 기존 Django 화면에서 계속 처리합니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 React 고객 상세에서 영업노트 빠른 작성 고객 선택도 자동 채우도록 `/notes/?create=1&customer=<id>` 흐름을 보강하는 작업입니다.
