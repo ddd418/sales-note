@@ -5,11 +5,13 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
   Clock,
   Columns3,
+  Copy,
   FileText,
   Filter,
   LayoutDashboard,
@@ -40,6 +42,7 @@ import {
   AIWorkspaceDepartment,
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
+  AIWorkspacePromptTarget,
   loadDashboardData,
   loadCustomersData,
   loadNotesData,
@@ -1473,7 +1476,65 @@ function AIWorkspaceFollowupTargets({ targets }: { targets: AIWorkspaceFollowupT
   );
 }
 
+function AIWorkspacePromptQueue({
+  copiedPromptId,
+  onCopyPrompt,
+  targets,
+}: {
+  copiedPromptId: string;
+  onCopyPrompt: (target: AIWorkspacePromptTarget) => void;
+  targets: AIWorkspacePromptTarget[];
+}) {
+  if (targets.length === 0) {
+    return <DashboardEmpty label="AI 작업 프롬프트 대상이 없습니다" />;
+  }
+
+  return (
+    <div className="ai-prompt-grid">
+      {targets.map((target) => (
+        <article className={`ai-prompt-card ${target.type}`} key={target.id}>
+          <div className="ai-prompt-card-head">
+            <div>
+              <span>{target.typeLabel}</span>
+              <strong>{target.title}</strong>
+              {target.subtitle ? <small>{target.subtitle}</small> : null}
+            </div>
+            <em>{target.priority}</em>
+          </div>
+          {target.context.length > 0 ? (
+            <div className="ai-prompt-context">
+              {target.context.slice(0, 4).map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          ) : null}
+          <pre>{target.prompt}</pre>
+          <div className="ai-prompt-actions">
+            <button onClick={() => onCopyPrompt(target)} type="button">
+              {copiedPromptId === target.id ? <Check size={14} /> : <Copy size={14} />}
+              {copiedPromptId === target.id ? '복사됨' : '복사'}
+            </button>
+            <a href={target.href}>열기</a>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; loading: boolean }) {
+  const [copiedPromptId, setCopiedPromptId] = useState('');
+
+  const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
+    try {
+      await navigator.clipboard.writeText(target.prompt);
+      setCopiedPromptId(target.id);
+      window.setTimeout(() => setCopiedPromptId(''), 1600);
+    } catch {
+      setCopiedPromptId('');
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -1548,6 +1609,23 @@ function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; load
           />
         ))}
       </section>
+
+      {data.permission.canUseAi ? (
+        <section className="dashboard-panel ai-prompt-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Prompt queue</span>
+              <h2>AI 작업 큐</h2>
+            </div>
+            <Copy size={18} />
+          </div>
+          <AIWorkspacePromptQueue
+            copiedPromptId={copiedPromptId}
+            onCopyPrompt={handleCopyPrompt}
+            targets={data.promptTargets}
+          />
+        </section>
+      ) : null}
 
       <div className="ai-layout">
         <section className="dashboard-panel ai-main-panel">

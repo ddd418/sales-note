@@ -462,6 +462,18 @@ export type AIWorkspaceAnalysis = {
   href: string;
 };
 
+export type AIWorkspacePromptTarget = {
+  id: string;
+  type: 'department' | 'followup' | 'painpoint';
+  typeLabel: string;
+  title: string;
+  subtitle: string;
+  priority: string;
+  context: string[];
+  prompt: string;
+  href: string;
+};
+
 export type AIWorkspaceData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -506,6 +518,7 @@ export type AIWorkspaceData = {
   painpoints: AIWorkspacePainpoint[];
   followupTargets: AIWorkspaceFollowupTarget[];
   recentFollowupAnalyses: AIWorkspaceAnalysis[];
+  promptTargets: AIWorkspacePromptTarget[];
   recommendedGoals: Array<{
     title: string;
     description: string;
@@ -744,6 +757,7 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
   painpoints: [],
   followupTargets: [],
   recentFollowupAnalyses: [],
+  promptTargets: [],
   recommendedGoals: [],
 };
 

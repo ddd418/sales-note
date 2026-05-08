@@ -3410,6 +3410,85 @@ def _ai_workspace_analysis_summary(analysis):
     return ''
 
 
+def _ai_prompt_context(*items):
+    return [str(item).strip() for item in items if item not in (None, '') and str(item).strip()]
+
+
+def _ai_workspace_department_prompt(department, analysis, customer_names, painpoint_count, unverified_count):
+    company_name = department.company.name if department.company else ''
+    summary = _ai_workspace_analysis_summary(analysis) if analysis else ''
+    context = _ai_prompt_context(
+        f"업체/학교: {company_name}" if company_name else '',
+        f"부서/연구실: {department.name}",
+        f"고객: {', '.join(customer_names[:4])}" if customer_names else '',
+        f"미팅 {analysis.meeting_count}건 / 견적 {analysis.quote_count}건 / 납품 {analysis.delivery_count}건" if analysis else '아직 부서 분석이 없습니다.',
+        f"PainPoint {painpoint_count}건 / 미검증 {unverified_count}건" if analysis else '',
+        f"요약: {summary}" if summary else '',
+    )
+    prompt = "\n".join([
+        "역할: B2B 영업 매니저 보조",
+        f"대상: {company_name} {department.name}".strip(),
+        "현재 데이터:",
+        *[f"- {item}" for item in context],
+        "요청:",
+        "1. 이번 주 우선 연락 목적 3개를 정리하세요.",
+        "2. 견적/납품/미팅 중 확인해야 할 리스크를 분리하세요.",
+        "3. 담당자가 바로 보낼 수 있는 후속 질문 5개를 작성하세요.",
+    ])
+    return context, prompt
+
+
+def _ai_workspace_followup_prompt(followup, analysis):
+    summary = _ai_workspace_analysis_summary(analysis) if analysis else ''
+    company_name = followup.company.name if followup.company else ''
+    department_name = followup.department.name if followup.department else ''
+    customer_name = followup.customer_name or followup.manager or '고객명 미정'
+    context = _ai_prompt_context(
+        f"업체/학교: {company_name}" if company_name else '',
+        f"부서/연구실: {department_name}" if department_name else '',
+        f"고객: {customer_name}",
+        f"우선순위: {followup.get_priority_display()}",
+        f"고객 등급: {followup.customer_grade}" if followup.customer_grade else '',
+        f"AI 점수: {float(followup.get_combined_score()):.0f}",
+        f"분석 요약: {summary}" if summary else '아직 고객 분석이 없습니다.',
+    )
+    prompt = "\n".join([
+        "역할: 영업 담당자의 고객 후속 액션 코치",
+        f"대상 고객: {customer_name}",
+        "현재 데이터:",
+        *[f"- {item}" for item in context],
+        "요청:",
+        "1. 다음 연락에서 확인할 의사결정자/예산/일정 질문을 작성하세요.",
+        "2. 고객 반응별 후속 시나리오를 긍정/보류/거절로 나누세요.",
+        "3. 1분 안에 읽을 수 있는 담당자 메모를 작성하세요.",
+    ])
+    return context, prompt
+
+
+def _ai_workspace_painpoint_prompt(card):
+    department = card.analysis.department
+    company_name = department.company.name if department.company else ''
+    context = _ai_prompt_context(
+        f"업체/학교: {company_name}" if company_name else '',
+        f"부서/연구실: {department.name}",
+        f"카테고리: {card.get_category_display()}",
+        f"가설: {card.hypothesis}",
+        f"신뢰도: {card.get_confidence_display()} / {card.confidence_score}",
+        f"검증 질문: {card.verification_question}",
+    )
+    prompt = "\n".join([
+        "역할: PainPoint 검증 질문 설계자",
+        f"대상: {company_name} {department.name}".strip(),
+        "현재 데이터:",
+        *[f"- {item}" for item in context],
+        "요청:",
+        "1. 고객에게 부담 없이 물어볼 검증 질문 5개를 작성하세요.",
+        "2. 답변이 Yes일 때 제안할 제품/서비스 방향을 정리하세요.",
+        "3. 답변이 No일 때 다음 탐색 질문을 작성하세요.",
+    ])
+    return context, prompt
+
+
 @never_cache
 @require_http_methods(["GET"])
 def ai_workspace_summary_api(request):
@@ -3478,6 +3557,7 @@ def ai_workspace_summary_api(request):
             'painpoints': [],
             'followupTargets': [],
             'recentFollowupAnalyses': [],
+            'promptTargets': [],
             'recommendedGoals': [],
         })
 
@@ -3541,12 +3621,13 @@ def ai_workspace_summary_api(request):
         })
 
     painpoint_payload = []
-    for card in PainPointCard.objects.filter(
+    painpoint_cards = list(PainPointCard.objects.filter(
         analysis__user=request.user,
         verification_status='unverified',
     ).select_related('analysis', 'analysis__department', 'analysis__department__company').order_by(
         '-confidence_score', '-created_at'
-    )[:8]:
+    )[:8])
+    for card in painpoint_cards:
         department = card.analysis.department
         painpoint_payload.append({
             'id': card.id,
@@ -3623,6 +3704,71 @@ def ai_workspace_summary_api(request):
     if latest_analysis:
         recommended_goals = suggest_goals_from_department_analysis(latest_analysis)[:6]
 
+    prompt_targets = []
+    for card in painpoint_cards[:3]:
+        department = card.analysis.department
+        context, prompt = _ai_workspace_painpoint_prompt(card)
+        prompt_targets.append({
+            'id': f'painpoint-{card.id}',
+            'type': 'painpoint',
+            'typeLabel': 'PainPoint 검증',
+            'title': card.hypothesis[:80],
+            'subtitle': ' · '.join(_ai_prompt_context(
+                department.company.name if department.company else '',
+                department.name,
+                card.get_category_display(),
+            )),
+            'priority': f'{card.get_confidence_display()} {card.confidence_score}',
+            'context': context[:6],
+            'prompt': prompt,
+            'href': reverse('ai_chat:department_analysis', args=[department.id]),
+        })
+    for followup in list(FollowUp.objects.filter(
+        user=request.user,
+    ).select_related('company', 'department').order_by('-ai_score', '-updated_at')[:3]):
+        analysis = followup_analysis_map.get(followup.id)
+        context, prompt = _ai_workspace_followup_prompt(followup, analysis)
+        prompt_targets.append({
+            'id': f'followup-{followup.id}',
+            'type': 'followup',
+            'typeLabel': '고객 후속',
+            'title': followup.customer_name or followup.manager or '고객명 미정',
+            'subtitle': ' · '.join(_ai_prompt_context(
+                followup.company.name if followup.company else '',
+                followup.department.name if followup.department else '',
+                followup.get_priority_display(),
+            )),
+            'priority': f'점수 {float(followup.get_combined_score()):.0f}',
+            'context': context[:6],
+            'prompt': prompt,
+            'href': reverse('ai_chat:followup_analysis', args=[followup.id]),
+        })
+    for department in departments[:3]:
+        analysis = analysis_map.get(department.id)
+        customer_names = customer_names_by_department.get(department.id, [])
+        context, prompt = _ai_workspace_department_prompt(
+            department,
+            analysis,
+            customer_names,
+            painpoint_counts.get(analysis.id, 0) if analysis else 0,
+            unverified_counts.get(analysis.id, 0) if analysis else 0,
+        )
+        prompt_targets.append({
+            'id': f'department-{department.id}',
+            'type': 'department',
+            'typeLabel': '부서 전략',
+            'title': ' · '.join(_ai_prompt_context(
+                department.company.name if department.company else '',
+                department.name,
+            )),
+            'subtitle': f"고객 {followup_counts_by_department.get(department.id, 0)}명",
+            'priority': '분석 완료' if analysis else '분석 필요',
+            'context': context[:6],
+            'prompt': prompt,
+            'href': reverse('ai_chat:department_analysis', args=[department.id]),
+        })
+    prompt_targets = prompt_targets[:8]
+
     month_start = today.replace(day=1)
 
     return JsonResponse({
@@ -3658,6 +3804,7 @@ def ai_workspace_summary_api(request):
         'painpoints': painpoint_payload,
         'followupTargets': followup_targets,
         'recentFollowupAnalyses': recent_followup_analyses,
+        'promptTargets': prompt_targets,
         'recommendedGoals': [
             {
                 'title': goal.get('title', ''),

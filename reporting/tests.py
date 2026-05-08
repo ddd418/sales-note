@@ -1160,6 +1160,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertFalse(payload['permission']['canUseAi'])
         self.assertEqual(payload['departments'], [])
+        self.assertEqual(payload['promptTargets'], [])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
 
     def test_ai_workspace_summary_api_lists_own_ai_operational_data(self):
@@ -1186,6 +1187,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['metrics']['unverifiedPainpoints'], 1)
         self.assertEqual(payload['departments'][0]['id'], department.id)
         self.assertEqual(payload['followupTargets'][0]['id'], followup.id)
+        self.assertTrue(payload['promptTargets'])
+        prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
+        self.assertIn('PCR핵심', prompt_text)
+        self.assertIn('후속', prompt_text)
         self.assertIn('/ai/department/', payload['departments'][0]['href'])
         self.assertIn('week_start=', payload['links']['weeklyAiDraft'])
         self.assertTrue(payload['recommendedGoals'])

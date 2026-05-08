@@ -1454,6 +1454,7 @@ h2 {
 .ai-main-panel,
 .ai-side-panel,
 .ai-followup-panel,
+.ai-prompt-panel,
 .ai-goal-panel {
   min-width: 0;
 }
@@ -1637,6 +1638,125 @@ h2 {
   font-size: 11px;
   font-weight: 800;
   text-decoration: none;
+}
+
+.ai-prompt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-prompt-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.ai-prompt-card.painpoint {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.ai-prompt-card.followup {
+  border-color: #fde68a;
+  background: #fffdf4;
+}
+
+.ai-prompt-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-prompt-card-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ai-prompt-card-head span,
+.ai-prompt-card-head small,
+.ai-prompt-context span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-prompt-card-head strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-prompt-card-head em {
+  flex: 0 0 auto;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ai-prompt-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-prompt-context span {
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-prompt-card pre {
+  max-height: 160px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+}
+
+.ai-prompt-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ai-prompt-actions button,
+.ai-prompt-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.ai-prompt-actions button {
+  cursor: pointer;
 }
 
 .ai-goal-grid {
@@ -2642,6 +2762,7 @@ tbody tr:hover {
   .schedules-filter-bar,
   .ai-layout,
   .ai-followup-grid,
+  .ai-prompt-grid,
   .ai-goal-grid {
     grid-template-columns: 1fr;
   }

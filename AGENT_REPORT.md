@@ -4958,6 +4958,9 @@ python manage.py test --verbosity=1
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+python manage.py test reporting --verbosity=1
+→ Timed out after 5 minutes before a final result was returned
 ```
 
 ### 7. Known Limitations
@@ -6917,3 +6920,74 @@ git diff --check
 
 - 권한 보정 배포 및 smoke: 약 30~60분.
 - 다음 AI 업무도구 화면 보강 1차: 약 2~4시간.
+
+---
+
+## AI Workspace — 실제 대상 기반 프롬프트 큐 추가 (2026-05-08)
+
+### 1. Summary
+
+React `/ai-workspace/`에 실제 부서, 고객, 미검증 PainPoint 데이터를 바탕으로 한 AI 작업 큐를 추가했습니다. 각 카드에서 외부 AI에 바로 붙여 넣을 수 있는 업무 프롬프트를 복사하고, 관련 Django AI 분석 화면으로 이동할 수 있습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | AI workspace 프롬프트 큐 작업 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `frontend/src/App.tsx` | AI 작업 큐 패널, 프롬프트 카드, 복사 버튼 추가 |
+| `frontend/src/api.ts` | `AIWorkspacePromptTarget` 타입과 `promptTargets` payload 추가 |
+| `frontend/src/styles.css` | AI 프롬프트 큐/카드/복사 액션 스타일 추가 |
+| `reporting/views.py` | 부서/고객/PainPoint 기반 `promptTargets` 생성 |
+| `reporting/tests.py` | AI workspace API의 프롬프트 payload 회귀 테스트 추가 |
+
+### 3. CRM Improvements
+
+- AI workspace가 현황판에서 실제 작업 대상 큐로 확장되었습니다.
+- 미검증 PainPoint, 고득점 고객, 부서 분석 대상을 실제 데이터 문맥과 함께 프롬프트로 제공합니다.
+- 프롬프트에는 업체/부서/고객/우선순위/분석 요약/검증 질문이 포함됩니다.
+- AI 권한이 없는 사용자는 기존처럼 빈 데이터와 권한 상태만 받습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `ai_chat` 부서 분석, 고객 분석, 주간보고 AI 초안 링크는 유지했습니다.
+- 기존 `reporting` app과 `/reporting/*` 라우트는 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 3 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 현재는 프롬프트 복사와 기존 AI 화면 이동까지 처리합니다. 화면 안에서 직접 LLM 호출은 하지 않습니다.
+- 브라우저 클립보드 정책상 비보안 로컬 환경에서는 복사 버튼이 동작하지 않을 수 있지만, 운영 HTTPS에서는 동작합니다.
+- reporting 전체 테스트는 5분 제한에 걸려 완료 결과를 받지 못했습니다. AI workspace 대상 테스트와 Django check/build는 통과했습니다.
+
+### 7. Recommended Next Task
+
+- `/ai-workspace/`에서 복사한 프롬프트를 실제 계정 데이터로 확인합니다.
+- 다음 개발은 프롬프트 대상에 "최근 영업노트 3건"과 "열린 견적/수주 금액"을 같이 붙이는 보강이 적절합니다.
+
+**예상 소요**:
+
+- 운영 배포 및 smoke: 약 30~60분.
+- 다음 AI 프롬프트 문맥 확장: 약 1.5~3시간.

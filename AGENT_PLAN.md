@@ -1282,3 +1282,33 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## AI Workspace — 실제 대상 기반 프롬프트 큐 추가
+
+**목표**: React `/ai-workspace/`가 단순 현황판이 아니라, 실제 부서/고객/PainPoint 데이터를 골라 외부 AI 작업에 바로 사용할 수 있는 프롬프트 큐를 제공하게 한다.
+
+**작업 범위**:
+
+- `/reporting/api/ai-workspace/`에 `promptTargets` payload를 추가한다.
+- 부서 분석, 고객 분석, 미검증 PainPoint를 실제 데이터 기반 프롬프트 후보로 생성한다.
+- React `/ai-workspace/`에 프롬프트 큐 패널과 복사 버튼을 추가한다.
+- AI 권한이 없는 사용자는 기존처럼 빈 상태와 권한 안내만 받게 유지한다.
+- 기존 `ai_chat` 분석 화면, 주간보고 AI 초안 API, 고객/노트 링크는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp`, `AIDepartmentAnalysis`, `AIFollowUpAnalysis`, `PainPointCard` 조회 결과만 사용한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 1.5~3시간.
+- 전체 빌드/check와 운영 배포 포함: 추가 40~80분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
