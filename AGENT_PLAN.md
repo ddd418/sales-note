@@ -1253,3 +1253,32 @@ python pre_deployment_check.py
 - `python manage.py test reporting --verbosity=1`
 - `python manage.py test --verbosity=1`
 - `git diff --check`
+
+---
+
+## Notes Review Permission — 회사별 매니저 기준 보정
+
+**목표**: React `/notes/` 검토 완료/해제 권한을 최고권한자/admin이 아니라 각 소속 회사의 `manager` 계정 기준으로 제한한다.
+
+**작업 범위**:
+
+- `/reporting/api/notes/`의 `scope.canReview`, 노트별 `canReview`, `reviewToggleHref`를 `UserProfile.is_manager()` 기준으로 보정한다.
+- `history_toggle_reviewed` POST도 `manager` 역할만 허용하고, 기존 같은 회사 접근 검사를 유지한다.
+- React 문구 중 노트 검토 저장 뷰의 "관리자 검토" 표현을 "매니저 검토"로 수정한다.
+- admin, salesman, 타회사 manager 차단 테스트를 추가한다.
+
+**DB 변경 필요 여부**: 없음. 권한 조건과 테스트만 수정한다.
+
+**예상 소요**:
+
+- 구현 및 회귀 테스트: 약 30~60분.
+- 배포와 운영 smoke 포함: 추가 30~60분.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

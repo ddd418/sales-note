@@ -169,7 +169,7 @@ const savedViews: Array<{ id: SavedView; label: string }> = [
   { id: 'priority', label: '내 담당 우선' },
   { id: 'thisWeek', label: '이번 주 마감' },
   { id: 'quoteDelay', label: '견적 제출 후 지연' },
-  { id: 'managerReview', label: '관리자 검토' },
+  { id: 'managerReview', label: '매니저 검토' },
 ];
 
 const formatWon = (value: number) =>
@@ -1695,7 +1695,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     metricCards.push({
       label: '미검토 노트',
       value: `${formatNumber(data.metrics.pendingReviews)}건`,
-      detail: '관리자 검토 대기',
+      detail: '매니저 검토 대기',
       icon: CheckCircle2,
       tone: 'blue' as const,
       href: data.links.pendingReviews,

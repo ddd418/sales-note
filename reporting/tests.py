@@ -713,7 +713,9 @@ class NotesSummaryApiTests(TestCase):
         self.user = make_user('notes_api_me', role='salesman', company=self.company)
         self.coworker = make_user('notes_api_coworker', role='salesman', company=self.company)
         self.manager = make_user('notes_api_manager', role='manager', company=self.company)
+        self.admin = make_user('notes_api_admin', role='admin', company=self.company)
         self.other_user = make_user('notes_api_other', role='salesman', company=self.other_company)
+        self.other_manager = make_user('notes_api_other_manager', role='manager', company=self.other_company)
         self.url = reverse('reporting:notes_summary_api')
 
     def _create_note(
@@ -863,6 +865,25 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(note['replyCount'], 1)
         self.assertEqual(note['fileCount'], 0)
 
+    def test_notes_summary_api_does_not_expose_review_action_for_admin(self):
+        target = self._create_note(
+            self.user,
+            '어드민검토제외',
+            action_type='customer_meeting',
+            content='회사 매니저만 검토 처리 가능',
+            reviewed=False,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        note = next(item for item in payload['notes'] if item['id'] == target.id)
+        self.assertFalse(payload['scope']['canReview'])
+        self.assertFalse(note['canReview'])
+        self.assertEqual(note['reviewToggleHref'], '')
+
     def test_history_toggle_reviewed_allows_manager_only(self):
         target = self._create_note(
             self.user,
@@ -876,6 +897,14 @@ class NotesSummaryApiTests(TestCase):
         self.client.force_login(self.user)
         denied = self.client.post(toggle_url)
         self.assertEqual(denied.status_code, 403)
+
+        self.client.force_login(self.admin)
+        admin_denied = self.client.post(toggle_url)
+        self.assertEqual(admin_denied.status_code, 403)
+
+        self.client.force_login(self.other_manager)
+        other_manager_denied = self.client.post(toggle_url)
+        self.assertEqual(other_manager_denied.status_code, 403)
 
         self.client.force_login(self.manager)
         response = self.client.post(toggle_url)

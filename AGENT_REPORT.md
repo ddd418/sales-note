@@ -6851,3 +6851,69 @@ python manage.py test --verbosity=1
 - 운영 배포 및 smoke: 약 20~40분.
 - 운영 로그인 육안 확인: 약 10~20분.
 - 다음 AI 업무도구 화면 보강: 약 2~4시간.
+
+---
+
+## Notes Review Permission — 회사별 매니저 기준 보정 (2026-05-08)
+
+### 1. Summary
+
+영업노트 검토 완료/해제 권한을 `admin/manager`가 아니라 각 소속 회사의 `manager` 계정 기준으로 보정했습니다. 이전 보고의 "관리자 계정 확인" 표현도 실제 운영 기준과 맞지 않아, React 화면 문구를 "매니저 검토"로 수정했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 회사별 매니저 기준 검토 권한 보정 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `frontend/src/App.tsx` | "관리자 검토" 문구를 "매니저 검토"로 변경 |
+| `reporting/views.py` | 노트 검토 API/POST 권한을 소속 회사 `manager` 역할로 제한 |
+| `reporting/tests.py` | admin, salesman, 타회사 manager 차단 및 같은 회사 manager 허용 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 같은 회사의 매니저 계정만 React `/notes/`에서 검토 완료/해제 버튼을 받을 수 있습니다.
+- 최고권한자/admin 계정은 조회는 기존 정책대로 가능하지만, 노트 검토 처리 버튼과 POST 권한은 받지 않습니다.
+- 타회사 manager가 URL을 직접 POST해도 403으로 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 라우트는 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+- Salesman 본인 노트 조회, manager 동일 회사 노트 조회, 기존 Django 영업노트 상세/작성 흐름은 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 운영 로그인 세션에서 같은 회사 manager 계정으로 `/notes/` 검토 토글을 육안 확인해야 합니다.
+- React 화면은 검토 토글만 처리합니다. 매니저 메모 작성은 기존 Django 상세 화면을 계속 사용합니다.
+
+### 7. Recommended Next Task
+
+- 이 권한 보정을 배포한 뒤, React AI 업무도구(`/ai-workspace/`)를 고객/부서/영업노트 맥락 기반 프롬프트 화면으로 보강합니다.
+
+**예상 소요**:
+
+- 권한 보정 배포 및 smoke: 약 30~60분.
+- 다음 AI 업무도구 화면 보강 1차: 약 2~4시간.

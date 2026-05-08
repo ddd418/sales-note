@@ -2898,6 +2898,11 @@ def _notes_history_payload(history, today, can_review=False):
     }
 
 
+def _can_review_notes(user_profile):
+    """영업노트 검토는 각 소속 회사의 manager 계정만 처리한다."""
+    return bool(user_profile.is_manager() and user_profile.company_id)
+
+
 @never_cache
 @require_http_methods(["GET"])
 def notes_summary_api(request):
@@ -2911,7 +2916,7 @@ def notes_summary_api(request):
 
     user_profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
-    can_review_notes = user_profile.can_view_all_users()
+    can_review_notes = _can_review_notes(user_profile)
     today = timezone.localdate()
 
     q = request.GET.get('q', '').strip()
@@ -5386,10 +5391,10 @@ def history_delete_view(request, pk):
 @login_required
 @require_POST
 def history_toggle_reviewed(request, pk):
-    """보고서 관리자 검토 완료 토글 (관리자/매니저만)"""
+    """보고서 매니저 검토 완료 토글 (소속 회사 manager만)."""
     history = get_object_or_404(History, pk=pk)
     user_profile = get_user_profile(request.user)
-    if not user_profile.can_view_all_users():
+    if not _can_review_notes(user_profile):
         return JsonResponse({'success': False, 'error': '검토 권한이 없습니다.'}, status=403)
     if not can_access_user_data(request.user, history.user):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
