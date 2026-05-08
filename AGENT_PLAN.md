@@ -1484,3 +1484,27 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Notes Customer Prefill — 고객 상세 노트 작성 연결
+
+**목표**: React 고객 상세에서 영업노트 작성으로 바로 이동하고, `/notes/?create=1&customer=<id>` 진입 시 해당 고객을 빠른 작성 폼에 자동 선택한다.
+
+**작업 범위**:
+
+- React 고객 상세 상단 작업에 `노트 작성` 링크를 추가한다.
+- React 노트 빠른 작성 폼이 `customer` query parameter를 읽어 허용된 고객이면 우선 선택한다.
+- 저장 후 폼 초기화에서도 고객 상세에서 넘어온 고객 선택을 유지한다.
+- 기존 Django 영업노트 상세/작성 기능과 `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History`, `FollowUp` 모델과 노트 생성 API만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

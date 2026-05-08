@@ -838,6 +838,10 @@ function CustomerDetailPage({
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/customers/">목록</a>
           <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          <a className="route-secondary-action" href={data.links.createNote}>
+            노트 작성
+            <FileText size={16} />
+          </a>
           <a className="route-primary-action" href={data.links.createSchedule}>
             일정 등록
             <Plus size={16} />
@@ -3110,12 +3114,16 @@ export function App() {
     if (currentView !== 'notes' || !notesData?.create.canCreate) {
       return;
     }
-    const firstCustomerId = notesData.create.customers[0]?.id;
+    const requestedCustomerId = getCreateCustomerParam();
+    const requestedCustomer = notesData.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
+    const fallbackCustomerId = notesData.create.customers[0]?.id;
     const firstActionType = notesData.create.actionTypes[0]?.value || 'customer_meeting';
     setNoteCreateForm((previous) => ({
       ...previous,
       actionType: previous.actionType || firstActionType,
-      followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
+      followupId: requestedCustomer
+        ? String(requestedCustomer.id)
+        : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : ''),
     }));
   }, [currentView, notesData]);
 
@@ -3244,7 +3252,13 @@ export function App() {
   const resetNoteCreateForm = (data: NotesData | null) => {
     const nextForm = makeEmptyNoteCreateForm();
     nextForm.actionType = data?.create.actionTypes[0]?.value || nextForm.actionType;
-    nextForm.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+    const requestedCustomerId = getCreateCustomerParam();
+    const requestedCustomer = data?.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
+    nextForm.followupId = requestedCustomer?.id
+      ? String(requestedCustomer.id)
+      : data?.create.customers[0]?.id
+        ? String(data.create.customers[0].id)
+        : '';
     setNoteCreateForm(nextForm);
   };
   const handleCreateNoteSubmit = async (event: FormEvent<HTMLFormElement>) => {

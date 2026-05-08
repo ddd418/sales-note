@@ -653,6 +653,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertGreaterEqual(payload['metrics']['recentNotes'], 2)
         self.assertEqual(payload['upcomingSchedules'][0]['id'], upcoming.id)
         self.assertTrue(payload['links']['djangoDetail'].endswith(f'/followups/{target.id}/'))
+        self.assertEqual(payload['links']['createNote'], f'/notes/?create=1&customer={target.id}')
 
     def test_customer_detail_summary_api_blocks_other_company_customer(self):
         target = self._create_customer(self.other_user, '타사상세')

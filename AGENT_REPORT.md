@@ -7561,3 +7561,64 @@ Invoke-WebRequest http://127.0.0.1:5173/reporting/api/customers/1/
 ### 7. Recommended Next Task
 
 - 다음 단계는 React 고객 상세에서 영업노트 빠른 작성 고객 선택도 자동 채우도록 `/notes/?create=1&customer=<id>` 흐름을 보강하는 작업입니다.
+
+---
+
+## React Notes Customer Prefill — 고객 상세 노트 작성 연결 (2026-05-08)
+
+### 1. Summary
+
+React 고객 상세 화면에서 바로 영업노트 작성으로 이동할 수 있게 `노트 작성` 버튼을 추가했습니다. `/notes/?create=1&customer=<id>`로 들어오면 React 노트 빠른 작성 폼이 해당 고객을 자동 선택하고, 저장 후에도 같은 고객 선택을 유지합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 상세 노트 작성 연결 계획 추가 |
+| `frontend/src/App.tsx` | 고객 상세 `노트 작성` 버튼 추가, 노트 빠른 작성 고객 prefill 처리 |
+| `reporting/tests.py` | 고객 상세 API의 `createNote` 고객 파라미터 링크 검증 추가 |
+
+### 3. CRM Improvements
+
+- 고객 상세에서 노트 작성으로 바로 이동합니다.
+- 고객 상세에서 넘어온 고객이 노트 빠른 작성 폼에 자동 선택됩니다.
+- 노트 저장 후에도 고객 선택이 유지되어 같은 고객의 추가 기록 작성이 쉽습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 영업노트 상세/작성 화면과 `/reporting/*` 경로는 유지했습니다.
+- 기존 노트 작성 권한 정책과 저장 API는 변경하지 않았습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-BysWWAPf.js / assets/index-CQsJED8i.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:5173/notes/?create=1&customer=1
+→ 200, React app served
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 고객 상세의 `노트 작성` 버튼을 누른 뒤 저장까지 하는 육안 확인은 계정 권한이 필요해 자동 검증에서는 제외했습니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 React에서 Django로 넘어가야 하는 남은 주요 화면을 정리해 프론트 전환 우선순위를 확정하는 작업입니다.
