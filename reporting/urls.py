@@ -173,6 +173,7 @@ urlpatterns = [
     path('api/users/', views.api_users_list, name='api_users_list'),
     path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
     path('api/customers/<int:followup_id>/', views.customer_detail_summary_api, name='customer_detail_summary_api'),
+    path('api/customers/<int:followup_id>/update/', views.customer_update_api, name='customer_update_api'),
     path('api/notes/', views.notes_summary_api, name='notes_summary_api'),
     path('api/notes/create/', views.notes_create_api, name='notes_create_api'),
     path('api/schedules/', views.schedules_summary_api, name='schedules_summary_api'),

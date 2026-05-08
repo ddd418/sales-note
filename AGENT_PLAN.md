@@ -1558,3 +1558,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Customer Detail Edit — 고객 상세 수정 전환
+
+**목표**: React `/customers/<id>/` 상세 화면에서 Django 고객 수정 화면으로 이동하지 않고 고객 기본정보를 바로 수정한다.
+
+**작업 범위**:
+
+- `/reporting/api/customers/<id>/` 상세 API에 수정 가능 여부, 저장 URL, 업체/부서/상태/우선순위/파이프라인 옵션을 추가한다.
+- `/reporting/api/customers/<id>/update/` POST API를 추가해 고객명, 업체, 부서, 책임자, 연락처, 이메일, 주소, 메모, 상태, 우선순위, 파이프라인 단계를 저장한다.
+- 기존 권한 정책을 유지해 manager는 수정 불가, salesman은 본인 고객만 수정 가능, admin은 수정 가능하게 한다.
+- React 고객 상세에 수정 패널을 추가하고 저장 후 상세 데이터를 다시 불러온다.
+- 기존 Django `/reporting/followups/<id>/edit/` 화면은 보조 경로로 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp`, `Company`, `Department` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

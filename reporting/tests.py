@@ -776,7 +776,97 @@ class CustomersSummaryApiTests(TestCase):
         self.assertGreaterEqual(payload['metrics']['recentNotes'], 2)
         self.assertEqual(payload['upcomingSchedules'][0]['id'], upcoming.id)
         self.assertTrue(payload['links']['djangoDetail'].endswith(f'/followups/{target.id}/'))
+        self.assertTrue(payload['links']['djangoEdit'].endswith(f'/followups/{target.id}/edit/'))
         self.assertEqual(payload['links']['createNote'], f'/notes/?create=1&customer={target.id}')
+        self.assertTrue(payload['edit']['canEdit'])
+        self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:customer_update_api', args=[target.id]))
+        self.assertTrue(any(option['id'] == target.company_id for option in payload['edit']['companies']))
+        self.assertTrue(any(option['id'] == target.department_id for option in payload['edit']['departments']))
+
+    def test_customer_update_api_updates_customer_for_owner(self):
+        from reporting.models import Company, Department, FollowUp
+
+        target = self._create_customer(self.user, '수정대상', priority='scheduled', stage='potential')
+        next_company = Company.objects.create(name='수정가능 회사', created_by=self.user)
+        next_department = Department.objects.create(
+            company=next_company,
+            name='수정가능 연구실',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:customer_update_api', args=[target.id]), {
+            'customer_name': '수정완료 담당자',
+            'company': str(next_company.id),
+            'department': str(next_department.id),
+            'priority': 'urgent',
+            'status': 'paused',
+            'pipeline_stage': 'quote',
+            'manager': '수정 책임',
+            'phone_number': '010-1111-2222',
+            'email': 'edited@example.com',
+            'address': '수정 주소',
+            'notes': 'React 상세 수정',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['href'], f'/customers/{target.id}/')
+        updated = FollowUp.objects.get(id=target.id)
+        self.assertEqual(updated.customer_name, '수정완료 담당자')
+        self.assertEqual(updated.company, next_company)
+        self.assertEqual(updated.department, next_department)
+        self.assertEqual(updated.priority, 'urgent')
+        self.assertEqual(updated.status, 'paused')
+        self.assertEqual(updated.pipeline_stage, 'quote')
+        self.assertTrue(updated.pipeline_manually_set)
+        self.assertEqual(updated.email, 'edited@example.com')
+
+    def test_customer_update_api_blocks_manager_and_coworker(self):
+        target = self._create_customer(self.user, '수정권한차단')
+        payload = {
+            'customer_name': '권한없는수정',
+            'company': str(target.company_id),
+            'department': str(target.department_id),
+            'priority': target.priority,
+            'status': target.status,
+            'pipeline_stage': target.pipeline_stage,
+        }
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reverse('reporting:customer_update_api', args=[target.id]), payload)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertFalse(manager_response.json()['success'])
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(reverse('reporting:customer_update_api', args=[target.id]), payload)
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertFalse(coworker_response.json()['success'])
+
+    def test_customer_update_api_blocks_other_company_selection(self):
+        from reporting.models import Company, Department
+
+        target = self._create_customer(self.user, '타사업체수정차단')
+        other_company = Company.objects.create(name='타사업체수정 회사', created_by=self.other_user)
+        other_department = Department.objects.create(
+            company=other_company,
+            name='타사업체수정 연구실',
+            created_by=self.other_user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:customer_update_api', args=[target.id]), {
+            'customer_name': '타사변경시도',
+            'company': str(other_company.id),
+            'department': str(other_department.id),
+            'priority': target.priority,
+            'status': target.status,
+            'pipeline_stage': target.pipeline_stage,
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
 
     def test_customer_detail_summary_api_blocks_other_company_customer(self):
         target = self._create_customer(self.other_user, '타사상세')

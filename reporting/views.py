@@ -2627,7 +2627,9 @@ def _customers_followup_payload(followup, today):
         'id': followup.id,
         'customer': followup.customer_name or followup.manager or '고객명 미정',
         'company': followup.company.name if followup.company else '',
+        'companyId': followup.company_id,
         'department': followup.department.name if followup.department else '',
+        'departmentId': followup.department_id,
         'manager': followup.manager or '',
         'owner': _user_display_name(followup.user),
         'ownerId': followup.user_id,
@@ -2641,8 +2643,10 @@ def _customers_followup_payload(followup, today):
         'score': float(followup.get_combined_score()),
         'phone': phone,
         'email': email,
+        'address': followup.address or '',
         'contactSummary': ' · '.join([item for item in [phone, email] if item]),
         'notes': (followup.notes or '').strip()[:140],
+        'notesFull': followup.notes or '',
         'lastActivityAt': _datetime_or_none(latest_history.created_at) if latest_history else None,
         'lastActivityLabel': latest_history.get_action_type_display() if latest_history else '',
         'lastActivitySummary': (
@@ -2661,6 +2665,58 @@ def _customers_followup_payload(followup, today):
         'href': reverse('reporting:followup_detail', args=[followup.id]),
         'companyHref': reverse('reporting:company_detail', args=[followup.company_id]) if followup.company_id else '',
         'createScheduleHref': f"{reverse('reporting:schedule_create')}?followup={followup.id}",
+    }
+
+
+def _customers_edit_config(request, user_profile, followup, can_edit):
+    """React 고객 상세 수정 폼에 필요한 선택지와 권한 정보를 구성한다."""
+    if user_profile.is_admin():
+        companies_qs = Company.objects.all()
+    elif user_profile.company:
+        company_users = User.objects.filter(userprofile__company=user_profile.company)
+        companies_qs = Company.objects.filter(
+            Q(created_by__in=company_users) | Q(id=followup.company_id)
+        )
+    else:
+        companies_qs = Company.objects.filter(
+            Q(created_by=request.user) | Q(id=followup.company_id)
+        )
+
+    companies_qs = companies_qs.distinct().order_by('name')
+    departments_qs = Department.objects.filter(
+        Q(company__in=companies_qs) | Q(id=followup.department_id)
+    ).select_related('company').distinct().order_by('company__name', 'name')
+
+    return {
+        'canEdit': bool(can_edit),
+        'message': '' if can_edit else '수정 권한이 없습니다.',
+        'submitUrl': reverse('reporting:customer_update_api', args=[followup.id]),
+        'djangoUrl': reverse('reporting:followup_edit', args=[followup.id]),
+        'priorities': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.PRIORITY_CHOICES
+        ],
+        'statuses': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.STATUS_CHOICES
+        ],
+        'stages': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.PIPELINE_STAGE_CHOICES
+        ],
+        'companies': [
+            {'id': company.id, 'name': company.name}
+            for company in companies_qs
+        ],
+        'departments': [
+            {
+                'id': department.id,
+                'name': department.name,
+                'companyId': department.company_id,
+                'companyName': department.company.name,
+            }
+            for department in departments_qs
+        ],
     }
 
 
@@ -2898,6 +2954,7 @@ def customers_summary_api(request):
     })
 
 
+@ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
 def customer_detail_summary_api(request, followup_id):
@@ -2992,6 +3049,7 @@ def customer_detail_summary_api(request, followup_id):
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('-visit_date', '-visit_time')
     can_review_notes = _can_review_notes(user_profile)
+    can_edit_customer = can_modify_user_data(request.user, followup.user)
 
     return JsonResponse({
         'success': True,
@@ -3016,9 +3074,11 @@ def customer_detail_summary_api(request, followup_id):
         'links': {
             'customers': '/customers/',
             'djangoDetail': reverse('reporting:followup_detail', args=[followup.id]),
+            'djangoEdit': reverse('reporting:followup_edit', args=[followup.id]),
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
         },
+        'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [
             _notes_history_payload(note, today, can_review_notes)
             for note in list(notes_qs[:12])
@@ -3039,6 +3099,107 @@ def customer_detail_summary_api(request, followup_id):
             _schedules_schedule_payload(schedule, today)
             for schedule in list(recent_schedules[:8])
         ],
+    })
+
+
+@never_cache
+@require_POST
+def customer_update_api(request, followup_id):
+    """React 고객 상세 화면용 고객 기본정보 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없습니다.',
+        }, status=403)
+    if not can_modify_user_data(request.user, followup.user):
+        return JsonResponse({
+            'success': False,
+            'error': '수정 권한이 없습니다.',
+        }, status=403)
+
+    customer_name = request.POST.get('customer_name', '').strip()
+    company_id = request.POST.get('company', '').strip()
+    department_id = request.POST.get('department', '').strip()
+    priority = request.POST.get('priority', '').strip()
+    status = request.POST.get('status', '').strip()
+    pipeline_stage = request.POST.get('pipeline_stage', '').strip()
+
+    if not customer_name:
+        return JsonResponse({'success': False, 'error': '고객명을 입력해주세요.'}, status=400)
+    if not company_id:
+        return JsonResponse({'success': False, 'error': '업체/학교를 선택해주세요.'}, status=400)
+    if not department_id:
+        return JsonResponse({'success': False, 'error': '부서/연구실을 선택해주세요.'}, status=400)
+    if priority not in {value for value, _label in FollowUp.PRIORITY_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 우선순위를 선택해주세요.'}, status=400)
+    if status not in {value for value, _label in FollowUp.STATUS_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 상태를 선택해주세요.'}, status=400)
+    if pipeline_stage not in {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 파이프라인 단계를 선택해주세요.'}, status=400)
+
+    try:
+        company = Company.objects.get(id=company_id)
+        department = Department.objects.get(id=department_id, company=company)
+    except (Company.DoesNotExist, Department.DoesNotExist):
+        return JsonResponse({
+            'success': False,
+            'error': '선택한 업체 또는 부서가 존재하지 않습니다.',
+        }, status=400)
+
+    user_profile = get_user_profile(request.user)
+    edit_config = _customers_edit_config(request, user_profile, followup, True)
+    allowed_company_ids = {company_option['id'] for company_option in edit_config['companies']}
+    allowed_department_ids = {department_option['id'] for department_option in edit_config['departments']}
+    if company.id not in allowed_company_ids or department.id not in allowed_department_ids:
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없는 업체 또는 부서입니다.',
+        }, status=403)
+
+    pipeline_changed = followup.pipeline_stage != pipeline_stage
+    followup.customer_name = customer_name
+    followup.company = company
+    followup.department = department
+    followup.manager = request.POST.get('manager', '').strip()
+    followup.phone_number = request.POST.get('phone_number', '').strip()
+    followup.email = request.POST.get('email', '').strip()
+    followup.address = request.POST.get('address', '').strip()
+    followup.notes = request.POST.get('notes', '').strip()
+    followup.priority = priority
+    followup.status = status
+    followup.pipeline_stage = pipeline_stage
+    if pipeline_changed:
+        followup.pipeline_manually_set = True
+    followup.save(update_fields=[
+        'customer_name',
+        'company',
+        'department',
+        'manager',
+        'phone_number',
+        'email',
+        'address',
+        'notes',
+        'priority',
+        'status',
+        'pipeline_stage',
+        'pipeline_manually_set',
+        'updated_at',
+    ])
+
+    return JsonResponse({
+        'success': True,
+        'followup_id': followup.id,
+        'href': f'/customers/{followup.id}/',
+        'django_href': reverse('reporting:followup_detail', args=[followup.id]),
+        'message': '고객 정보가 수정되었습니다.',
     })
 
 

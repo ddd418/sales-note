@@ -7806,3 +7806,66 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 실제 계정으로 `/customers/?create=1`에서 패널 열림, 업체/부서 인라인 생성, 고객 저장 후 목록 반영을 확인합니다.
+
+---
+
+## React Customer Detail Edit — 고객 상세 수정 전환 (2026-05-08)
+
+### 1. Summary
+
+React `/customers/<id>/` 고객 상세 화면에서 고객 기본정보를 바로 수정할 수 있게 했습니다. 기존 Django 수정 화면은 보조 링크로 유지하고, React 저장은 새 JSON API를 통해 처리합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 상세 수정 전환 계획 추가 |
+| `frontend/src/App.tsx` | 고객 상세 수정 패널, 저장 처리, 상세 재조회 추가 |
+| `frontend/src/api.ts` | 고객 수정 타입과 `updateCustomer` API 함수 추가 |
+| `frontend/src/styles.css` | 수정 패널 상태 표시 스타일 보강 |
+| `reporting/views.py` | 고객 상세 수정 옵션과 고객 업데이트 API 추가 |
+| `reporting/urls.py` | `/reporting/api/customers/<id>/update/` 라우트 추가 |
+| `reporting/tests.py` | 수정 성공, manager/coworker 차단, 타사 업체 차단 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 고객 상세에서 고객명, 업체, 부서, 책임자, 연락처, 이메일, 주소, 상세 내용, 상태, 우선순위, 파이프라인 단계를 수정할 수 있습니다.
+- 저장 후 React 상세 데이터를 다시 불러와 변경된 값이 바로 반영됩니다.
+- 파이프라인 단계를 수동 변경하면 기존 자동 동기화 보호 플래그를 유지합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 고객 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- Manager는 계속 읽기 전용이며 고객 수정이 차단됩니다.
+- Salesman은 본인 고객만 수정 가능하고, 타사 업체/부서 선택은 차단됩니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-bdBLCFoN.js / assets/index-DlWngxDV.css
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/customers/<id>/`의 수정 버튼 클릭, 저장, 목록/상세 반영까지 이어지는 육안 확인은 아직 운영 배포 후 확인이 필요합니다.
+
+### 7. Recommended Next Task
+
+- 고객 삭제 또는 고객 상세 내 업체/부서 신규 생성까지 React로 옮길지 범위를 정하고, 우선 삭제는 위험도가 높으므로 고객 상세의 보조 관리 기능부터 단계적으로 전환합니다.

@@ -142,7 +142,9 @@ export type CustomerItem = {
   id: number;
   customer: string;
   company: string;
+  companyId: number | null;
   department: string;
+  departmentId: number | null;
   manager: string;
   owner: string;
   ownerId: number;
@@ -156,8 +158,10 @@ export type CustomerItem = {
   score: number;
   phone: string;
   email: string;
+  address: string;
   contactSummary: string;
   notes: string;
+  notesFull: string;
   lastActivityAt: string | null;
   lastActivityLabel: string;
   lastActivitySummary: string;
@@ -263,6 +267,28 @@ export type CustomerCreateResponse = {
   href?: string;
 };
 
+export type CustomerEditPayload = {
+  address?: string;
+  companyId: number;
+  customerName: string;
+  departmentId: number;
+  email?: string;
+  manager?: string;
+  notes?: string;
+  phoneNumber?: string;
+  pipelineStage: string;
+  priority: string;
+  status: string;
+};
+
+export type CustomerEditResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  followup_id?: number;
+  href?: string;
+};
+
 export type CompanyCreateResponse = {
   success: boolean;
   error?: string;
@@ -307,8 +333,20 @@ export type CustomerDetailData = {
   links: {
     customers: string;
     djangoDetail: string;
+    djangoEdit: string;
     createSchedule: string;
     createNote: string;
+  };
+  edit: {
+    canEdit: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+    priorities: Array<{ value: string; label: string }>;
+    statuses: Array<{ value: string; label: string }>;
+    stages: Array<{ value: string; label: string }>;
+    companies: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; name: string; companyId: number; companyName: string }>;
   };
   recentNotes: NoteItem[];
   overdueActions: NoteItem[];
@@ -808,8 +846,20 @@ const emptyCustomerDetailData: CustomerDetailData = {
   links: {
     customers: '/customers/',
     djangoDetail: '',
+    djangoEdit: '',
     createSchedule: '/schedules/?create=1',
     createNote: '/notes/?create=1',
+  },
+  edit: {
+    canEdit: false,
+    message: '',
+    submitUrl: '',
+    djangoUrl: '',
+    priorities: [],
+    statuses: [],
+    stages: [],
+    companies: [],
+    departments: [],
   },
   recentNotes: [],
   overdueActions: [],
@@ -1162,6 +1212,47 @@ export async function createCustomer(
   };
 }
 
+export async function updateCustomer(
+  payload: CustomerEditPayload,
+  submitUrl: string,
+): Promise<CustomerEditResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('customer_name', payload.customerName);
+  body.set('company', String(payload.companyId));
+  body.set('department', String(payload.departmentId));
+  body.set('priority', payload.priority);
+  body.set('status', payload.status);
+  body.set('pipeline_stage', payload.pipelineStage);
+  if (payload.manager) body.set('manager', payload.manager);
+  if (payload.phoneNumber) body.set('phone_number', payload.phoneNumber);
+  if (payload.email) body.set('email', payload.email);
+  if (payload.address) body.set('address', payload.address);
+  if (payload.notes) body.set('notes', payload.notes);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Customer update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CustomerEditResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Customer update failed: ${response.status}`);
+  }
+  return data;
+}
+
 export async function createCompany(name: string, submitUrl = '/reporting/api/companies/create/'): Promise<CompanyCreateResponse> {
   const csrfToken = getCookie('csrftoken');
   const body = new URLSearchParams();
@@ -1255,6 +1346,10 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       links: {
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
+      },
+      edit: {
+        ...emptyCustomerDetailData.edit,
+        ...(payload.edit ?? {}),
       },
       recentNotes: payload.recentNotes ?? emptyCustomerDetailData.recentNotes,
       overdueActions: payload.overdueActions ?? emptyCustomerDetailData.overdueActions,

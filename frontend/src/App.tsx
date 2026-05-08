@@ -33,6 +33,7 @@ import {
   DashboardHistoryItem,
   DashboardScheduleItem,
   CustomerDetailData,
+  CustomerEditPayload,
   CustomerCreatePayload,
   CustomersData,
   CustomerItem,
@@ -61,6 +62,7 @@ import {
   loadPipelineData,
   moveDealStage,
   toggleNoteReviewed,
+  updateCustomer as updateCustomerRecord,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -116,6 +118,20 @@ type CustomerCreateFormState = {
   priority: string;
 };
 
+type CustomerEditFormState = {
+  address: string;
+  companyId: string;
+  customerName: string;
+  departmentId: string;
+  email: string;
+  manager: string;
+  notes: string;
+  phoneNumber: string;
+  pipelineStage: string;
+  priority: string;
+  status: string;
+};
+
 const localDateInputValue = (date = new Date()) => {
   const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
   return new Date(localTime).toISOString().slice(0, 10);
@@ -153,6 +169,20 @@ const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   notes: '',
   phoneNumber: '',
   priority: 'scheduled',
+});
+
+const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormState => ({
+  address: customer?.address || '',
+  companyId: customer?.companyId ? String(customer.companyId) : '',
+  customerName: customer?.customer || '',
+  departmentId: customer?.departmentId ? String(customer.departmentId) : '',
+  email: customer?.email || '',
+  manager: customer?.manager || '',
+  notes: customer?.notesFull || customer?.notes || '',
+  phoneNumber: customer?.phone || '',
+  pipelineStage: customer?.pipelineStage || 'potential',
+  priority: customer?.priority || 'scheduled',
+  status: customer?.status || 'active',
 });
 
 const routeMeta: Record<
@@ -808,10 +838,102 @@ function CustomerDetailNoteList({
 function CustomerDetailPage({
   data,
   loading,
+  onRefresh,
 }: {
   data: CustomerDetailData | null;
   loading: boolean;
+  onRefresh: () => Promise<CustomerDetailData | null>;
 }) {
+  const customer = data?.customer ?? null;
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<CustomerEditFormState>(() => makeCustomerEditForm(customer));
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+
+  useEffect(() => {
+    setEditForm(makeCustomerEditForm(customer));
+    setEditError('');
+    setEditMessage('');
+    setEditOpen(false);
+  }, [customer?.id]);
+
+  const editConfig = data?.edit;
+  const editCompanies = editConfig?.companies ?? [];
+  const editDepartments = editForm.companyId
+    ? (editConfig?.departments ?? []).filter((department) => String(department.companyId) === editForm.companyId)
+    : editConfig?.departments ?? [];
+
+  const handleEditFieldChange = (field: keyof CustomerEditFormState, value: string) => {
+    setEditForm((previous) => {
+      const next = {
+        ...previous,
+        [field]: value,
+      };
+      if (field === 'companyId') {
+        const firstDepartment = (editConfig?.departments ?? []).find(
+          (department) => String(department.companyId) === value,
+        );
+        next.departmentId = firstDepartment ? String(firstDepartment.id) : '';
+      }
+      return next;
+    });
+    setEditError('');
+    setEditMessage('');
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!customer || !editConfig || editSaving) {
+      return;
+    }
+    if (!editConfig.canEdit) {
+      setEditError(editConfig.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const companyId = Number(editForm.companyId);
+    const departmentId = Number(editForm.departmentId);
+    if (!companyId) {
+      setEditError('업체/학교를 선택하세요.');
+      return;
+    }
+    if (!departmentId) {
+      setEditError('부서/연구실을 선택하세요.');
+      return;
+    }
+    if (!editForm.customerName.trim()) {
+      setEditError('고객명을 입력하세요.');
+      return;
+    }
+    const payload: CustomerEditPayload = {
+      address: editForm.address.trim() || undefined,
+      companyId,
+      customerName: editForm.customerName.trim(),
+      departmentId,
+      email: editForm.email.trim() || undefined,
+      manager: editForm.manager.trim() || undefined,
+      notes: editForm.notes.trim() || undefined,
+      phoneNumber: editForm.phoneNumber.trim() || undefined,
+      pipelineStage: editForm.pipelineStage,
+      priority: editForm.priority,
+      status: editForm.status,
+    };
+
+    setEditSaving(true);
+    setEditError('');
+    setEditMessage('');
+    try {
+      const updated = await updateCustomerRecord(payload, editConfig.submitUrl);
+      await onRefresh();
+      setEditMessage(updated.message || '고객 정보를 수정했습니다.');
+      setEditOpen(false);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '고객 정보 수정에 실패했습니다.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -836,7 +958,7 @@ function CustomerDetailPage({
     );
   }
 
-  const customer = data.customer;
+  const customerDetail = data.customer;
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -860,12 +982,17 @@ function CustomerDetailPage({
       <div className="dashboard-summary-band">
         <div>
           <span className="eyebrow">Customer detail</span>
-          <h2>{customer.company || customer.customer}</h2>
-          <p>{[customer.customer, customer.department, customer.owner].filter(Boolean).join(' · ')}</p>
+          <h2>{customerDetail.company || customerDetail.customer}</h2>
+          <p>{[customerDetail.customer, customerDetail.department, customerDetail.owner].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/customers/">목록</a>
           <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          {data.edit.canEdit ? (
+            <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
+              수정
+            </button>
+          ) : null}
           <a className="route-secondary-action" href={data.links.createNote}>
             노트 작성
             <FileText size={16} />
@@ -890,6 +1017,143 @@ function CustomerDetailPage({
         ))}
       </section>
 
+      {editOpen || editMessage || editError ? (
+        <section className="dashboard-panel notes-create-panel customer-edit-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Edit customer</span>
+              <h2>고객 정보 수정</h2>
+            </div>
+            <Users size={18} />
+          </div>
+          {editError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{editError}</span></div> : null}
+          {editMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{editMessage}</span></div> : null}
+          {editOpen ? (
+            <form className="notes-create-form customer-edit-form" onSubmit={handleEditSubmit}>
+              <div className="notes-create-grid">
+                <label>
+                  <span>업체/학교</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('companyId', event.target.value)}
+                    required
+                    value={editForm.companyId}
+                  >
+                    <option value="">업체 선택</option>
+                    {editCompanies.map((company) => (
+                      <option key={company.id} value={company.id}>{company.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>부서/연구실</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('departmentId', event.target.value)}
+                    required
+                    value={editForm.departmentId}
+                  >
+                    <option value="">부서 선택</option>
+                    {editDepartments.map((department) => (
+                      <option key={department.id} value={department.id}>{department.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>고객명</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('customerName', event.target.value)}
+                    required
+                    value={editForm.customerName}
+                  />
+                </label>
+                <label>
+                  <span>책임자</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('manager', event.target.value)}
+                    value={editForm.manager}
+                  />
+                </label>
+                <label>
+                  <span>우선순위</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('priority', event.target.value)}
+                    required
+                    value={editForm.priority}
+                  >
+                    {data.edit.priorities.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>상태</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('status', event.target.value)}
+                    required
+                    value={editForm.status}
+                  >
+                    {data.edit.statuses.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>파이프라인</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('pipelineStage', event.target.value)}
+                    required
+                    value={editForm.pipelineStage}
+                  >
+                    {data.edit.stages.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>연락처</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('phoneNumber', event.target.value)}
+                    value={editForm.phoneNumber}
+                  />
+                </label>
+                <label>
+                  <span>이메일</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('email', event.target.value)}
+                    type="email"
+                    value={editForm.email}
+                  />
+                </label>
+                <label>
+                  <span>상세주소</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('address', event.target.value)}
+                    value={editForm.address}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>상세 내용</span>
+                <textarea
+                  onChange={(event) => handleEditFieldChange('notes', event.target.value)}
+                  rows={3}
+                  value={editForm.notes}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
+                  Django 수정
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={editSaving} type="submit">
+                  {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
+
       <div className="customer-detail-layout">
         <section className="dashboard-panel customer-detail-main">
           <div className="dashboard-panel-heading">
@@ -911,19 +1175,19 @@ function CustomerDetailPage({
             <Users size={18} />
           </div>
           <div className="customer-detail-summary">
-            <CustomerStatusBadge customer={customer} />
+            <CustomerStatusBadge customer={customerDetail} />
             <dl>
               <div>
                 <dt>연락처</dt>
-                <dd>{customer.contactSummary || '연락처 없음'}</dd>
+                <dd>{customerDetail.contactSummary || '연락처 없음'}</dd>
               </div>
               <div>
                 <dt>다음 액션</dt>
-                <dd className={customer.overdue ? 'customer-overdue-text' : ''}>{customer.nextAction || '다음 액션 없음'}</dd>
+                <dd className={customerDetail.overdue ? 'customer-overdue-text' : ''}>{customerDetail.nextAction || '다음 액션 없음'}</dd>
               </div>
               <div>
                 <dt>최근 활동</dt>
-                <dd>{customer.lastActivityLabel || '최근 활동 없음'}</dd>
+                <dd>{customerDetail.lastActivityLabel || '최근 활동 없음'}</dd>
               </div>
             </dl>
           </div>
@@ -978,6 +1242,7 @@ function CustomersPage({
   onCreateSubmit,
   onDepartmentCreateNameChange,
   onDepartmentCreateSubmit,
+  onDetailRefresh,
   onOwnerChange,
   onPriorityChange,
   onQueryChange,
@@ -1009,13 +1274,14 @@ function CustomersPage({
   onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDepartmentCreateNameChange: (value: string) => void;
   onDepartmentCreateSubmit: () => void;
+  onDetailRefresh: () => Promise<CustomerDetailData | null>;
   onOwnerChange: (value: string) => void;
   onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onStageChange: (value: string) => void;
 }) {
   if (selectedCustomerId) {
-    return <CustomerDetailPage data={detailData} loading={detailLoading} />;
+    return <CustomerDetailPage data={detailData} loading={detailLoading} onRefresh={onDetailRefresh} />;
   }
 
   if (loading && !data) {
@@ -3492,6 +3758,14 @@ export function App() {
     setCustomersData(data);
     return data;
   };
+  const refreshCustomerDetailData = async () => {
+    if (!customerDetailId) {
+      return null;
+    }
+    const data = await loadCustomerDetailData(customerDetailId);
+    setCustomerDetailData(data);
+    return data;
+  };
   const handleCustomerCreateOpenChange = (open: boolean) => {
     setCustomerCreateOpen(open);
     setCustomerCreateError('');
@@ -3921,6 +4195,7 @@ export function App() {
           onCreateSubmit={handleCreateCustomerSubmit}
           onDepartmentCreateNameChange={handleCustomerDepartmentCreateNameChange}
           onDepartmentCreateSubmit={handleCreateCustomerDepartment}
+          onDetailRefresh={refreshCustomerDetailData}
           onOwnerChange={setCustomerOwner}
           onPriorityChange={setCustomerPriority}
           onQueryChange={setCustomerQuery}
