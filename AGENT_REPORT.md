@@ -7959,3 +7959,62 @@ Invoke-WebRequest http://127.0.0.1:5173/notes/
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 일정 상세/수정의 React 전환 또는 영업노트 첨부파일 업로드/삭제를 React 상세 화면에 확장하는 작업입니다.
+
+---
+
+## Production Sales Note Detail Deployment — 영업노트 상세 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 영업노트 상세/수정 변경분을 GitHub `main`에 푸시하고 Railway production의 `web`, `sales-note-frontend` 서비스를 재배포했습니다. 운영 `/notes/<id>/`가 새 React 번들을 내려주도록 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React `/notes/731/` 같은 영업노트 상세 URL이 새 상세 화면 코드를 포함한 번들을 사용합니다.
+- 운영 Django API에 `/reporting/api/notes/<id>/`, `/reporting/api/notes/<id>/update/`가 배포됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 내리지 않았습니다.
+- 기존 `/reporting/*` Django 경로와 인증 보호는 유지했습니다.
+- `/reporting/api/notes/<id>/`는 미로그인 상태에서 계속 `401`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React sales note detail edit"
+→ 464ff69 feat: add React sales note detail edit
+
+git push origin main
+→ main updated from 375012a to 464ff69
+
+railway up --service web --environment production --message "Deploy React sales note detail API 464ff69" --ci
+→ Deploy complete, deployment id 7c0076c1-fbdb-4520-864e-534206d739f2
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React sales note detail 464ff69" --ci
+→ Deploy complete, deployment id ce9714f3-7c0f-4d47-aa28-4dac746e6a41
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/notes/731/
+→ 200, assets/index-BZQVHQlm.js / assets/index-B3aL91g4.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BZQVHQlm.js
+→ Note detail=True, /reporting/api/notes/=True, 영업노트 수정=True
+
+Invoke-RestMethod https://sales-note-frontend-production.up.railway.app/reporting/api/notes/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/notes/731/` 상세 화면의 데이터 표시와 저장까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- Django `web` 도메인을 완전히 내리면 React의 API와 로그인도 같이 중단되므로 서비스 중지 방식은 적용하지 않았습니다.
+
+### 7. Recommended Next Task
+
+- 실제 계정으로 `/notes/731/`에 접속해 상세 화면 표시, 수정 저장, manager 검토 토글, Django 상세 보조 링크 동작을 확인합니다.
