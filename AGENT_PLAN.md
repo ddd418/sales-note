@@ -1312,3 +1312,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## AI Workspace — 프롬프트 문맥 확장
+
+**목표**: `/ai-workspace/`의 AI 작업 큐 프롬프트가 실제 최근 활동과 금액 맥락을 더 잘 반영하도록 보강한다.
+
+**작업 범위**:
+
+- 부서/고객/PainPoint 프롬프트에 최근 영업노트 최대 3건을 추가한다.
+- 열린 견적 건수/금액과 수주 금액 요약을 프롬프트에 추가한다.
+- 열린 견적은 기존 `Quote`와 견적 일정의 `expected_revenue`를 사용하되, 동일 `Quote`가 있는 일정 금액은 중복 집계하지 않는다.
+- 수주 금액은 `OpportunityTracking.current_stage='won'`의 실제 매출을 우선 사용하고, 없으면 전환 견적/납품 기록을 fallback으로 사용한다.
+- React 화면 구조와 기존 AI 분석/주간보고 링크는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History`, `Quote`, `Schedule`, `OpportunityTracking` 조회만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

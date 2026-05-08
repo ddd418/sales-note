@@ -20,6 +20,7 @@ import os
 import mimetypes
 import logging
 import json
+import re
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -3414,15 +3415,146 @@ def _ai_prompt_context(*items):
     return [str(item).strip() for item in items if item not in (None, '') and str(item).strip()]
 
 
-def _ai_workspace_department_prompt(department, analysis, customer_names, painpoint_count, unverified_count):
+def _ai_workspace_prompt_excerpt(value, limit=120):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', '[이메일 제거]', text)
+    text = re.sub(r'\b01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'\b0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + '...'
+
+
+def _ai_workspace_money(value):
+    return f"{_money_int(value):,}원"
+
+
+def _ai_workspace_followup_ids(followup_ids):
+    if not followup_ids:
+        return []
+    return [followup_id for followup_id in dict.fromkeys(followup_ids) if followup_id]
+
+
+def _ai_workspace_recent_note_context(user, followup_ids, limit=3):
+    followup_ids = _ai_workspace_followup_ids(followup_ids)
+    if not user or not followup_ids:
+        return []
+
+    histories = list(History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).exclude(action_type='memo').select_related(
+        'followup',
+    ).order_by('-created_at')[:limit])
+
+    context = []
+    for index, history in enumerate(histories, start=1):
+        note_date = history.meeting_date or history.delivery_date
+        date_label = note_date.isoformat() if note_date else timezone.localtime(history.created_at).date().isoformat()
+        customer = ''
+        if history.followup:
+            customer = history.followup.customer_name or history.followup.manager or ''
+
+        body_parts = [
+            history.content,
+            history.meeting_situation,
+            history.meeting_researcher_quote,
+            history.meeting_confirmed_facts,
+            history.meeting_obstacles,
+            history.meeting_next_action,
+        ]
+        body = _ai_workspace_prompt_excerpt(' / '.join(part for part in body_parts if part), 150)
+        next_action = _ai_workspace_prompt_excerpt(history.next_action, 80)
+        if next_action:
+            body = f"{body} / 다음: {next_action}" if body else f"다음: {next_action}"
+        if not body:
+            body = '내용 없음'
+
+        context.append(
+            f"최근 영업노트 {index}: {date_label} {history.get_action_type_display()}"
+            f"{f' / {customer}' if customer else ''} - {body}"
+        )
+    return context
+
+
+def _ai_workspace_sales_amount_context(user, followup_ids):
+    from decimal import Decimal
+
+    followup_ids = _ai_workspace_followup_ids(followup_ids)
+    if not user or not followup_ids:
+        return ''
+
+    quote_qs = Quote.objects.filter(user=user, followup_id__in=followup_ids)
+    open_quote_qs = quote_qs.filter(converted_to_delivery=False).exclude(
+        stage__in=['rejected', 'expired', 'converted']
+    )
+    open_quote_amount = open_quote_qs.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
+    open_quote_count = open_quote_qs.count()
+
+    quote_schedule_qs = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        activity_type='quote',
+        expected_revenue__gt=0,
+    ).exclude(status='cancelled').filter(quotes__isnull=True).distinct()
+    open_quote_amount += quote_schedule_qs.aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
+    open_quote_count += quote_schedule_qs.count()
+
+    won_opportunity_qs = OpportunityTracking.objects.filter(
+        followup_id__in=followup_ids,
+        current_stage='won',
+    )
+    won_count = won_opportunity_qs.count()
+    won_amount = won_opportunity_qs.aggregate(total=Sum('actual_revenue'))['total'] or Decimal('0')
+    if won_amount <= 0:
+        won_amount = won_opportunity_qs.aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
+
+    if won_amount <= 0:
+        converted_quote_qs = quote_qs.filter(Q(converted_to_delivery=True) | Q(stage='converted'))
+        won_count = converted_quote_qs.count()
+        won_amount = converted_quote_qs.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
+
+    if won_amount <= 0:
+        delivery_history_qs = History.objects.filter(
+            user=user,
+            followup_id__in=followup_ids,
+            action_type='delivery_schedule',
+            delivery_amount__isnull=False,
+        )
+        won_count = delivery_history_qs.count()
+        won_amount = delivery_history_qs.aggregate(total=Sum('delivery_amount'))['total'] or Decimal('0')
+
+    return (
+        f"영업 금액: 열린 견적 {open_quote_count}건 / {_ai_workspace_money(open_quote_amount)}, "
+        f"수주 금액 {won_count}건 / {_ai_workspace_money(won_amount)}"
+    )
+
+
+def _ai_workspace_department_prompt(
+    department,
+    analysis,
+    customer_names,
+    painpoint_count,
+    unverified_count,
+    user=None,
+    followup_ids=None,
+):
     company_name = department.company.name if department.company else ''
     summary = _ai_workspace_analysis_summary(analysis) if analysis else ''
+    amount_context = _ai_workspace_sales_amount_context(user, followup_ids)
+    recent_note_context = _ai_workspace_recent_note_context(user, followup_ids)
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department.name}",
         f"고객: {', '.join(customer_names[:4])}" if customer_names else '',
         f"미팅 {analysis.meeting_count}건 / 견적 {analysis.quote_count}건 / 납품 {analysis.delivery_count}건" if analysis else '아직 부서 분석이 없습니다.',
         f"PainPoint {painpoint_count}건 / 미검증 {unverified_count}건" if analysis else '',
+        amount_context,
+        *recent_note_context,
         f"요약: {summary}" if summary else '',
     )
     prompt = "\n".join([
@@ -3438,11 +3570,13 @@ def _ai_workspace_department_prompt(department, analysis, customer_names, painpo
     return context, prompt
 
 
-def _ai_workspace_followup_prompt(followup, analysis):
+def _ai_workspace_followup_prompt(followup, analysis, user=None):
     summary = _ai_workspace_analysis_summary(analysis) if analysis else ''
     company_name = followup.company.name if followup.company else ''
     department_name = followup.department.name if followup.department else ''
     customer_name = followup.customer_name or followup.manager or '고객명 미정'
+    amount_context = _ai_workspace_sales_amount_context(user or followup.user, [followup.id])
+    recent_note_context = _ai_workspace_recent_note_context(user or followup.user, [followup.id])
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department_name}" if department_name else '',
@@ -3450,6 +3584,8 @@ def _ai_workspace_followup_prompt(followup, analysis):
         f"우선순위: {followup.get_priority_display()}",
         f"고객 등급: {followup.customer_grade}" if followup.customer_grade else '',
         f"AI 점수: {float(followup.get_combined_score()):.0f}",
+        amount_context,
+        *recent_note_context,
         f"분석 요약: {summary}" if summary else '아직 고객 분석이 없습니다.',
     )
     prompt = "\n".join([
@@ -3465,9 +3601,17 @@ def _ai_workspace_followup_prompt(followup, analysis):
     return context, prompt
 
 
-def _ai_workspace_painpoint_prompt(card):
+def _ai_workspace_painpoint_prompt(card, user=None, followup_ids=None):
     department = card.analysis.department
     company_name = department.company.name if department.company else ''
+    prompt_user = user or card.analysis.user
+    if followup_ids is None:
+        followup_ids = FollowUp.objects.filter(
+            user=prompt_user,
+            department=department,
+        ).values_list('id', flat=True)
+    amount_context = _ai_workspace_sales_amount_context(prompt_user, followup_ids)
+    recent_note_context = _ai_workspace_recent_note_context(prompt_user, followup_ids)
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department.name}",
@@ -3475,6 +3619,8 @@ def _ai_workspace_painpoint_prompt(card):
         f"가설: {card.hypothesis}",
         f"신뢰도: {card.get_confidence_display()} / {card.confidence_score}",
         f"검증 질문: {card.verification_question}",
+        amount_context,
+        *recent_note_context,
     )
     prompt = "\n".join([
         "역할: PainPoint 검증 질문 설계자",
@@ -3564,12 +3710,14 @@ def ai_workspace_summary_api(request):
     followup_rows = list(FollowUp.objects.filter(
         user=request.user,
         department__isnull=False,
-    ).values('department_id', 'customer_name').order_by('department_id', 'customer_name'))
+    ).values('id', 'department_id', 'customer_name').order_by('department_id', 'customer_name'))
     customer_names_by_department = {}
     followup_counts_by_department = {}
+    followup_ids_by_department = {}
     for row in followup_rows:
         department_id = row['department_id']
         followup_counts_by_department[department_id] = followup_counts_by_department.get(department_id, 0) + 1
+        followup_ids_by_department.setdefault(department_id, []).append(row['id'])
         if row['customer_name']:
             customer_names_by_department.setdefault(department_id, []).append(row['customer_name'])
 
@@ -3707,7 +3855,11 @@ def ai_workspace_summary_api(request):
     prompt_targets = []
     for card in painpoint_cards[:3]:
         department = card.analysis.department
-        context, prompt = _ai_workspace_painpoint_prompt(card)
+        context, prompt = _ai_workspace_painpoint_prompt(
+            card,
+            request.user,
+            followup_ids_by_department.get(department.id, []),
+        )
         prompt_targets.append({
             'id': f'painpoint-{card.id}',
             'type': 'painpoint',
@@ -3727,7 +3879,7 @@ def ai_workspace_summary_api(request):
         user=request.user,
     ).select_related('company', 'department').order_by('-ai_score', '-updated_at')[:3]):
         analysis = followup_analysis_map.get(followup.id)
-        context, prompt = _ai_workspace_followup_prompt(followup, analysis)
+        context, prompt = _ai_workspace_followup_prompt(followup, analysis, request.user)
         prompt_targets.append({
             'id': f'followup-{followup.id}',
             'type': 'followup',
@@ -3752,6 +3904,8 @@ def ai_workspace_summary_api(request):
             customer_names,
             painpoint_counts.get(analysis.id, 0) if analysis else 0,
             unverified_counts.get(analysis.id, 0) if analysis else 0,
+            request.user,
+            followup_ids_by_department.get(department.id, []),
         )
         prompt_targets.append({
             'id': f'department-{department.id}',

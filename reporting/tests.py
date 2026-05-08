@@ -1195,6 +1195,90 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('week_start=', payload['links']['weeklyAiDraft'])
         self.assertTrue(payload['recommendedGoals'])
 
+    def test_ai_workspace_prompts_include_recent_notes_and_sales_amounts(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from django.utils import timezone
+        from reporting.models import History, OpportunityTracking, Quote, Schedule
+
+        followup, _department = self._create_customer(self.user, '문맥고객')
+        now = timezone.now()
+
+        recent_1 = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='최근 상담 1: 의사결정 일정 확인',
+        )
+        recent_2 = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='quote',
+            content='최근 상담 2: 추가 견적 요청',
+        )
+        recent_3 = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='최근 상담 3: 예산 범위 확인',
+        )
+        old_note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='오래된 상담: 프롬프트 제외 대상',
+        )
+        History.objects.filter(pk=recent_1.pk).update(created_at=now)
+        History.objects.filter(pk=recent_2.pk).update(created_at=now - timedelta(days=1))
+        History.objects.filter(pk=recent_3.pk).update(created_at=now - timedelta(days=2))
+        History.objects.filter(pk=old_note.pk).update(created_at=now - timedelta(days=10))
+
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1000000'),
+        )
+        Quote.objects.create(
+            quote_number='AI-Q-001',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=timezone.localdate() + timedelta(days=14),
+            stage='sent',
+            subtotal=Decimal('1000000'),
+            probability=70,
+        )
+        OpportunityTracking.objects.create(
+            followup=followup,
+            title='문맥 수주',
+            current_stage='won',
+            expected_revenue=Decimal('2500000'),
+            actual_revenue=Decimal('2300000'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
+        self.assertIn('최근 영업노트 1', prompt_text)
+        self.assertIn('최근 상담 1', prompt_text)
+        self.assertIn('최근 상담 2', prompt_text)
+        self.assertIn('최근 상담 3', prompt_text)
+        self.assertNotIn('오래된 상담', prompt_text)
+        self.assertIn('열린 견적 1건 / 1,100,000원', prompt_text)
+        self.assertIn('수주 금액 1건 / 2,300,000원', prompt_text)
+
 
 class PipelineApiTests(TestCase):
     """React 파일럿용 파이프라인 읽기 API 검증"""

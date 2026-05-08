@@ -6992,3 +6992,67 @@ git diff --check
 
 - 운영 배포 및 smoke: 약 30~60분.
 - 다음 AI 프롬프트 문맥 확장: 약 1.5~3시간.
+
+---
+
+## AI Workspace — 프롬프트 문맥 확장 (2026-05-08)
+
+### 1. Summary
+
+`/ai-workspace/`의 AI 작업 큐 프롬프트에 최근 영업노트 3건과 열린 견적/수주 금액 요약을 추가했습니다. 부서 전략, 고객 후속, PainPoint 검증 프롬프트 모두 실제 활동 이력과 금액 맥락을 함께 복사할 수 있습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 프롬프트 문맥 확장 계획과 DB 변경 없음 명시 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `reporting/views.py` | 최근 영업노트, 열린 견적 금액, 수주 금액 프롬프트 컨텍스트 생성 |
+| `reporting/tests.py` | 최근 노트 3건 제한과 금액 문맥 포함 회귀 테스트 추가 |
+
+### 3. CRM Improvements
+
+- AI 프롬프트가 고객/부서명뿐 아니라 최근 실제 영업 활동을 반영합니다.
+- 열린 견적은 `Quote` 금액과 Quote가 없는 견적 일정의 예상 매출을 함께 고려하되 중복 집계하지 않습니다.
+- 수주 금액은 수주 단계 영업기회의 실제 매출을 우선 사용하고, 전환 견적/납품 기록을 fallback으로 사용합니다.
+- 영업노트 본문에서 이메일/연락처는 프롬프트용으로 간단히 마스킹합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `reporting` app과 `/reporting/*` 라우트는 유지했습니다.
+- React `/ai-workspace/` 응답 스키마는 변경하지 않았고 기존 `promptTargets` 문자열만 보강했습니다.
+- DB 모델과 migration 변경은 없습니다.
+- 기존 AI 분석 화면, 주간보고 AI 초안, 고객/노트 링크는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 금액은 현재 시스템에 기록된 `Quote`, 견적 일정, 영업기회, 납품 기록 기준입니다. 누락된 견적/수주 데이터는 프롬프트에 반영되지 않습니다.
+- 프롬프트 안에서 직접 LLM 호출은 하지 않고 기존처럼 복사용 텍스트를 제공합니다.
+- 전체 `python manage.py test reporting --verbosity=1`는 이번 변경 범위에서는 재실행하지 않았습니다.
+
+### 7. Recommended Next Task
+
+- 운영 AI 권한 계정으로 `/ai-workspace/`에서 실제 고객 프롬프트를 복사해 최근 노트/금액 문맥이 현업 표현에 맞는지 확인합니다.
+- 다음 개발은 프롬프트 큐 카드에서 "최근 노트/금액 포함" 배지를 노출하거나, 프롬프트 종류별 필터를 추가하는 작업이 적절합니다.
