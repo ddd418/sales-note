@@ -1533,3 +1533,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Customer Inline Company/Department Create — 고객 등록 업체/부서 연결
+
+**목표**: React 고객 빠른 등록 화면에서 기존 업체/부서가 없을 때 Django 관리 화면으로 이동하지 않고 바로 업체와 부서를 추가한다.
+
+**작업 범위**:
+
+- 기존 `/reporting/api/companies/create/`, `/reporting/api/departments/create/` API를 React에서 호출한다.
+- 회사/부서 생성 API도 Manager 생성 차단과 업체 접근 권한을 보강한다.
+- React 고객 빠른 등록 패널에 새 업체/학교, 새 부서/연구실 입력과 추가 버튼을 배치한다.
+- 업체/부서 추가 후 고객 등록 폼 선택값을 방금 만든 항목으로 자동 갱신한다.
+- 기존 Django 업체/부서 관리 화면은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Company`, `Department` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

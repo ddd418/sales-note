@@ -46,6 +46,8 @@ import {
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
   NoteCreatePayload,
+  createCompany as createCompanyRecord,
+  createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
@@ -950,13 +952,17 @@ function CustomerDetailPage({
 }
 
 function CustomersPage({
+  companyCreateName,
+  companyCreating,
   createDetailHref,
+  createDepartmentName,
   createError,
   createForm,
   createMessage,
   createOpen,
   creating,
   data,
+  departmentCreating,
   detailData,
   detailLoading,
   loading,
@@ -965,21 +971,29 @@ function CustomersPage({
   query,
   selectedCustomerId,
   stage,
+  onCompanyCreateNameChange,
+  onCompanyCreateSubmit,
   onCreateFormChange,
   onCreateOpenChange,
   onCreateSubmit,
+  onDepartmentCreateNameChange,
+  onDepartmentCreateSubmit,
   onOwnerChange,
   onPriorityChange,
   onQueryChange,
   onStageChange,
 }: {
+  companyCreateName: string;
+  companyCreating: boolean;
   createDetailHref: string;
+  createDepartmentName: string;
   createError: string;
   createForm: CustomerCreateFormState;
   createMessage: string;
   createOpen: boolean;
   creating: boolean;
   data: CustomersData | null;
+  departmentCreating: boolean;
   detailData: CustomerDetailData | null;
   detailLoading: boolean;
   loading: boolean;
@@ -988,9 +1002,13 @@ function CustomersPage({
   query: string;
   selectedCustomerId: number | null;
   stage: string;
+  onCompanyCreateNameChange: (value: string) => void;
+  onCompanyCreateSubmit: () => void;
   onCreateFormChange: (field: keyof CustomerCreateFormState, value: string) => void;
   onCreateOpenChange: (open: boolean) => void;
   onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onDepartmentCreateNameChange: (value: string) => void;
+  onDepartmentCreateSubmit: () => void;
   onOwnerChange: (value: string) => void;
   onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
@@ -1026,6 +1044,7 @@ function CustomersPage({
   const createDepartments = createForm.companyId
     ? createConfig.departments.filter((department) => String(department.companyId) === createForm.companyId)
     : createConfig.departments;
+  const departmentCreateDisabled = !createForm.companyId || departmentCreating;
 
   return (
     <section className="customers-page">
@@ -1074,12 +1093,49 @@ function CustomersPage({
           {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
           {!canCreateCustomers ? (
             <DashboardEmpty label={createConfig.message || '고객 등록 권한이 없습니다'} />
-          ) : createCompanies.length === 0 ? (
-            <DashboardEmpty label="등록 가능한 업체/학교가 없습니다" />
-          ) : createDepartments.length === 0 ? (
-            <DashboardEmpty label="선택 가능한 부서/연구실이 없습니다" />
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
+              <div className="customer-inline-create-grid">
+                <label>
+                  <span>새 업체/학교</span>
+                  <div className="customer-inline-create-row">
+                    <input
+                      onChange={(event) => onCompanyCreateNameChange(event.target.value)}
+                      placeholder="업체/학교명"
+                      value={companyCreateName}
+                    />
+                    <button
+                      className="route-secondary-action"
+                      disabled={companyCreating || !companyCreateName.trim()}
+                      onClick={onCompanyCreateSubmit}
+                      type="button"
+                    >
+                      {companyCreating ? <Loader2 className="spin-icon" size={14} /> : <Plus size={14} />}
+                      추가
+                    </button>
+                  </div>
+                </label>
+                <label>
+                  <span>새 부서/연구실</span>
+                  <div className="customer-inline-create-row">
+                    <input
+                      disabled={!createForm.companyId}
+                      onChange={(event) => onDepartmentCreateNameChange(event.target.value)}
+                      placeholder={createForm.companyId ? '부서/연구실명' : '업체를 먼저 선택'}
+                      value={createDepartmentName}
+                    />
+                    <button
+                      className="route-secondary-action"
+                      disabled={departmentCreateDisabled || !createDepartmentName.trim()}
+                      onClick={onDepartmentCreateSubmit}
+                      type="button"
+                    >
+                      {departmentCreating ? <Loader2 className="spin-icon" size={14} /> : <Plus size={14} />}
+                      추가
+                    </button>
+                  </div>
+                </label>
+              </div>
               <div className="notes-create-grid customer-create-grid">
                 <label>
                   <span>업체/학교</span>
@@ -3161,6 +3217,10 @@ export function App() {
   const [customerCreateError, setCustomerCreateError] = useState('');
   const [customerCreateMessage, setCustomerCreateMessage] = useState('');
   const [customerCreatedDetailHref, setCustomerCreatedDetailHref] = useState('');
+  const [customerCompanyCreateName, setCustomerCompanyCreateName] = useState('');
+  const [customerDepartmentCreateName, setCustomerDepartmentCreateName] = useState('');
+  const [customerCompanyCreating, setCustomerCompanyCreating] = useState(false);
+  const [customerDepartmentCreating, setCustomerDepartmentCreating] = useState(false);
   const [notesData, setNotesData] = useState<NotesData | null>(null);
   const [notesLoading, setNotesLoading] = useState(currentView === 'notes');
   const [noteQuery, setNoteQuery] = useState('');
@@ -3447,6 +3507,82 @@ export function App() {
       ...(field === 'companyId' ? { departmentId: '' } : {}),
     }));
     setCustomerCreateError('');
+  };
+  const handleCustomerCompanyCreateNameChange = (value: string) => {
+    setCustomerCompanyCreateName(value);
+    setCustomerCreateError('');
+  };
+  const handleCustomerDepartmentCreateNameChange = (value: string) => {
+    setCustomerDepartmentCreateName(value);
+    setCustomerCreateError('');
+  };
+  const handleCreateCustomerCompany = async () => {
+    const name = customerCompanyCreateName.trim();
+    if (!customersData || customerCompanyCreating || !name) {
+      return;
+    }
+    if (!customersData.create.canCreate) {
+      setCustomerCreateError(customersData.create.message || '업체 등록 권한이 없습니다.');
+      return;
+    }
+    setCustomerCompanyCreating(true);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const createdCompany = await createCompanyRecord(name, customersData.create.companySubmitUrl);
+      await refreshCustomersData();
+      if (createdCompany.company) {
+        setCustomerCreateForm((previous) => ({
+          ...previous,
+          companyId: String(createdCompany.company!.id),
+          departmentId: '',
+        }));
+      }
+      setCustomerCompanyCreateName('');
+      setCustomerDepartmentCreateName('');
+      setCustomerCreateMessage(createdCompany.message || '업체/학교를 추가했습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 추가에 실패했습니다.');
+    } finally {
+      setCustomerCompanyCreating(false);
+    }
+  };
+  const handleCreateCustomerDepartment = async () => {
+    const name = customerDepartmentCreateName.trim();
+    const companyId = Number(customerCreateForm.companyId);
+    if (!customersData || customerDepartmentCreating || !name) {
+      return;
+    }
+    if (!customersData.create.canCreate) {
+      setCustomerCreateError(customersData.create.message || '부서 등록 권한이 없습니다.');
+      return;
+    }
+    if (!companyId) {
+      setCustomerCreateError('업체/학교를 먼저 선택하세요.');
+      return;
+    }
+    setCustomerDepartmentCreating(true);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const createdDepartment = await createDepartmentRecord(companyId, name, customersData.create.departmentSubmitUrl);
+      await refreshCustomersData();
+      if (createdDepartment.department) {
+        setCustomerCreateForm((previous) => ({
+          ...previous,
+          companyId: String(createdDepartment.department!.company_id),
+          departmentId: String(createdDepartment.department!.id),
+        }));
+      }
+      setCustomerDepartmentCreateName('');
+      setCustomerCreateMessage(createdDepartment.message || '부서/연구실을 추가했습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 추가에 실패했습니다.');
+    } finally {
+      setCustomerDepartmentCreating(false);
+    }
   };
   const resetCustomerCreateForm = (data: CustomersData | null) => {
     const nextForm = makeEmptyCustomerCreateForm();
@@ -3759,13 +3895,17 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <CustomersPage
+          companyCreateName={customerCompanyCreateName}
+          companyCreating={customerCompanyCreating}
           createDetailHref={customerCreatedDetailHref}
+          createDepartmentName={customerDepartmentCreateName}
           createError={customerCreateError}
           createForm={customerCreateForm}
           createMessage={customerCreateMessage}
           createOpen={customerCreateOpen}
           creating={customerCreating}
           data={customersData}
+          departmentCreating={customerDepartmentCreating}
           detailData={customerDetailData}
           detailLoading={customerDetailLoading}
           loading={customersLoading}
@@ -3774,9 +3914,13 @@ export function App() {
           query={customerQuery}
           selectedCustomerId={customerDetailId}
           stage={customerStage}
+          onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
+          onCompanyCreateSubmit={handleCreateCustomerCompany}
           onCreateFormChange={handleCustomerCreateFormChange}
           onCreateOpenChange={handleCustomerCreateOpenChange}
           onCreateSubmit={handleCreateCustomerSubmit}
+          onDepartmentCreateNameChange={handleCustomerDepartmentCreateNameChange}
+          onDepartmentCreateSubmit={handleCreateCustomerDepartment}
           onOwnerChange={setCustomerOwner}
           onPriorityChange={setCustomerPriority}
           onQueryChange={setCustomerQuery}

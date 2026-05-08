@@ -7686,3 +7686,68 @@ Invoke-WebRequest http://127.0.0.1:5173/customers/?create=1
 ### 7. Recommended Next Task
 
 - 다음 단계는 React 고객 빠른 등록 안에서 신규 업체/부서도 바로 만들 수 있게 연결하는 작업입니다.
+
+---
+
+## React Customer Inline Company/Department Create — 고객 등록 업체/부서 연결 (2026-05-08)
+
+### 1. Summary
+
+React 고객 빠른 등록 패널 안에서 새 업체/학교와 새 부서/연구실을 바로 추가할 수 있게 연결했습니다. 추가 후 고객 등록 폼의 업체/부서 선택값이 방금 만든 항목으로 갱신됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 업체/부서 인라인 생성 계획 추가 |
+| `frontend/src/App.tsx` | 고객 등록 패널에 업체/부서 인라인 추가 입력과 핸들러 추가 |
+| `frontend/src/api.ts` | 업체/부서 생성 API 함수와 응답 타입 추가 |
+| `frontend/src/styles.css` | 인라인 생성 입력/버튼 레이아웃 추가 |
+| `reporting/views.py` | 고객 API에 업체/부서 저장 URL 추가, 생성 API 권한 보강 |
+| `reporting/tests.py` | 업체/부서 생성 성공, manager 차단, 타사 업체 차단 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 고객 등록 중 업체/부서가 없으면 화면을 벗어나지 않고 바로 추가합니다.
+- 새 업체 추가 후 해당 업체가 고객 등록 폼에 자동 선택됩니다.
+- 새 부서 추가 후 해당 부서가 고객 등록 폼에 자동 선택됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 업체/부서 관리 화면은 유지했습니다.
+- 기존 고객 생성 API와 고객 등록 권한 정책은 유지했습니다.
+- Manager의 업체/부서/고객 생성은 차단했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 13 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-DNHJ131t.js / assets/index-8NY33DrA.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+Invoke-WebRequest http://127.0.0.1:5173/customers/?create=1
+→ 200, React app served
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 업체 생성, 부서 생성, 고객 저장까지 이어지는 육안 확인은 계정 권한이 필요해 자동 검증에서는 제외했습니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 고객 상세의 수정/삭제 같은 관리 작업 중 React로 옮길 수 있는 범위를 정리하고, 우선 고객 정보 수정부터 전환하는 작업입니다.

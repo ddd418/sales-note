@@ -231,6 +231,8 @@ export type CustomersData = {
     canCreate: boolean;
     message: string;
     submitUrl: string;
+    companySubmitUrl: string;
+    departmentSubmitUrl: string;
     advancedUrl: string;
     priorities: Array<{ value: string; label: string }>;
     companies: Array<{ id: number; name: string }>;
@@ -259,6 +261,28 @@ export type CustomerCreateResponse = {
   followup_id?: number;
   followup_text?: string;
   href?: string;
+};
+
+export type CompanyCreateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  company?: {
+    id: number;
+    name: string;
+  };
+};
+
+export type DepartmentCreateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  department?: {
+    id: number;
+    name: string;
+    company_id: number;
+    company_name: string;
+  };
 };
 
 export type CustomerDetailData = {
@@ -753,6 +777,8 @@ const emptyCustomersData: CustomersData = {
     canCreate: false,
     message: '',
     submitUrl: '/reporting/api/followups/create/',
+    companySubmitUrl: '/reporting/api/companies/create/',
+    departmentSubmitUrl: '/reporting/api/departments/create/',
     advancedUrl: '/reporting/followups/create/',
     priorities: [],
     companies: [],
@@ -1134,6 +1160,67 @@ export async function createCustomer(
     ...data,
     href: data.href || (data.followup_id ? `/customers/${data.followup_id}/` : ''),
   };
+}
+
+export async function createCompany(name: string, submitUrl = '/reporting/api/companies/create/'): Promise<CompanyCreateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('name', name);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Company create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CompanyCreateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false || !data.company) {
+    throw new Error(data.error || data.message || `Company create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function createDepartment(
+  companyId: number,
+  name: string,
+  submitUrl = '/reporting/api/departments/create/',
+): Promise<DepartmentCreateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('company_id', String(companyId));
+  body.set('name', name);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Department create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as DepartmentCreateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false || !data.department) {
+    throw new Error(data.error || data.message || `Department create failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadCustomerDetailData(customerId: number): Promise<CustomerDetailData> {

@@ -524,6 +524,8 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['links']['createCustomer'], '/customers/?create=1')
         self.assertEqual(payload['create']['submitUrl'], reverse('reporting:followup_create_ajax'))
+        self.assertEqual(payload['create']['companySubmitUrl'], reverse('reporting:company_create_api'))
+        self.assertEqual(payload['create']['departmentSubmitUrl'], reverse('reporting:department_create_api'))
         self.assertTrue(any(option['id'] == own.company_id for option in payload['create']['companies']))
         self.assertTrue(any(option['id'] == own.department_id for option in payload['create']['departments']))
 
@@ -667,6 +669,68 @@ class CustomersSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.json()['success'])
+
+    def test_company_and_department_create_apis_create_records_for_salesman(self):
+        from reporting.models import Company, Department
+
+        self.client.force_login(self.user)
+
+        company_response = self.client.post(reverse('reporting:company_create_api'), {
+            'name': 'React인라인 회사',
+        })
+
+        self.assertEqual(company_response.status_code, 200)
+        company_payload = company_response.json()
+        self.assertTrue(company_payload['success'])
+        company = Company.objects.get(id=company_payload['company']['id'])
+        self.assertEqual(company.name, 'React인라인 회사')
+        self.assertEqual(company.created_by, self.user)
+
+        department_response = self.client.post(reverse('reporting:department_create_api'), {
+            'company_id': str(company.id),
+            'name': 'React인라인 연구실',
+        })
+
+        self.assertEqual(department_response.status_code, 200)
+        department_payload = department_response.json()
+        self.assertTrue(department_payload['success'])
+        department = Department.objects.get(id=department_payload['department']['id'])
+        self.assertEqual(department.company, company)
+        self.assertEqual(department.name, 'React인라인 연구실')
+        self.assertEqual(department.created_by, self.user)
+
+    def test_company_and_department_create_apis_block_manager(self):
+        from reporting.models import Company
+
+        customer_company = Company.objects.create(name='매니저업체차단 회사', created_by=self.user)
+        self.client.force_login(self.manager)
+
+        company_response = self.client.post(reverse('reporting:company_create_api'), {
+            'name': '매니저 신규 업체',
+        })
+        department_response = self.client.post(reverse('reporting:department_create_api'), {
+            'company_id': str(customer_company.id),
+            'name': '매니저 신규 부서',
+        })
+
+        self.assertEqual(company_response.status_code, 403)
+        self.assertFalse(company_response.json()['success'])
+        self.assertEqual(department_response.status_code, 403)
+        self.assertFalse(department_response.json()['success'])
+
+    def test_department_create_api_blocks_other_company(self):
+        from reporting.models import Company
+
+        other_company = Company.objects.create(name='타사부서차단 회사', created_by=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:department_create_api'), {
+            'company_id': str(other_company.id),
+            'name': '타사 신규 부서',
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], '접근 권한이 없는 업체입니다.')
 
     def test_customer_detail_summary_api_requires_login_json(self):
         target = self._create_customer(self.user, '상세로그인')

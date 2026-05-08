@@ -1173,6 +1173,24 @@ h2 {
   gap: 12px;
 }
 
+.customer-inline-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.customer-inline-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+.customer-inline-create-row .route-secondary-action {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .notes-create-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2887,6 +2905,7 @@ tbody tr:hover {
 
   .customers-layout,
   .customers-filter-bar,
+  .customer-inline-create-grid,
   .notes-create-grid,
   .notes-layout,
   .notes-filter-bar,

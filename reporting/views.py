@@ -2877,6 +2877,8 @@ def customers_summary_api(request):
             'canCreate': can_create_customer,
             'message': '' if can_create_customer else 'Manager는 고객을 생성할 수 없습니다.',
             'submitUrl': reverse('reporting:followup_create_ajax'),
+            'companySubmitUrl': reverse('reporting:company_create_api'),
+            'departmentSubmitUrl': reverse('reporting:department_create_api'),
             'advancedUrl': reverse('reporting:followup_create'),
             'priorities': [
                 {'value': value, 'label': label}
@@ -8977,6 +8979,13 @@ def schedule_activity_type(request):
 def company_create_api(request):
     """새 업체/학교 생성 API"""
     try:
+        user_profile = get_user_profile(request.user)
+        if user_profile.is_manager():
+            return JsonResponse({
+                'success': False,
+                'error': '권한이 없습니다. Manager는 데이터를 생성할 수 없습니다.',
+            }, status=403)
+
         name = request.POST.get('name', '').strip()
         
         if not name:
@@ -9008,6 +9017,13 @@ def company_create_api(request):
 @require_POST
 def department_create_api(request):
     """새 부서/연구실 생성 API"""
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        return JsonResponse({
+            'success': False,
+            'error': '권한이 없습니다. Manager는 데이터를 생성할 수 없습니다.',
+        }, status=403)
+
     name = request.POST.get('name', '').strip()
     company_id = request.POST.get('company_id')
     
@@ -9019,6 +9035,14 @@ def department_create_api(request):
     
     try:
         company = Company.objects.get(id=company_id)
+        is_admin = getattr(request, 'is_admin', False) or user_profile.is_admin()
+        if not is_admin:
+            if user_profile.company:
+                same_company_users = User.objects.filter(userprofile__company=user_profile.company)
+                if company.created_by not in same_company_users:
+                    return JsonResponse({'error': '접근 권한이 없는 업체입니다.'}, status=403)
+            else:
+                return JsonResponse({'error': '회사 정보가 없어 부서를 생성할 수 없습니다.'}, status=403)
         
         # 중복 체크
         if Department.objects.filter(company=company, name=name).exists():
