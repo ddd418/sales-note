@@ -7751,3 +7751,58 @@ Invoke-WebRequest http://127.0.0.1:5173/customers/?create=1
 ### 7. Recommended Next Task
 
 - 다음 단계는 고객 상세의 수정/삭제 같은 관리 작업 중 React로 옮길 수 있는 범위를 정리하고, 우선 고객 정보 수정부터 전환하는 작업입니다.
+
+---
+
+## Production Customer Quick Create Deployment Refresh — 고객 등록 운영 번들 갱신 (2026-05-08)
+
+### 1. Summary
+
+운영 `/customers/?create=1`가 예전 React 번들(`assets/index-B9PQ-tLi.js`)을 내려주고 있어 고객 빠른 등록 화면이 열리지 않는 문제를 확인했습니다. 백엔드와 프론트엔드를 최신 고객 빠른 등록 커밋 기준으로 재배포했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 갱신 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React 고객 목록이 최신 빠른 등록 번들(`assets/index-DNHJ131t.js`)을 사용합니다.
+- 고객 등록 API와 업체/부서 인라인 생성 API가 최신 백엔드 배포에 포함됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/*` Django 라우트와 인증 정책은 변경하지 않았습니다.
+- 미로그인 고객 API 요청은 계속 `401 login_required`로 보호됩니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+railway up --service web --environment production --message "Deploy customer quick create API 8e96f5c" --ci
+→ Deploy complete, deployment id 3e73484d-ade6-46a8-af9c-c0d0ad699622
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React customer quick create 8e96f5c" --ci
+→ Deploy complete, deployment id c47ff060-463c-4b21-bddb-761c0c4d4962
+
+railway status
+→ sales-note-frontend Online, web Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/?create=1
+→ 200, assets/index-DNHJ131t.js / assets/index-8NY33DrA.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DNHJ131t.js
+→ 고객 빠른 등록=True, 새 고객 등록=True, create=1=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 새 고객 등록 패널 열림과 저장까지 이어지는 육안 확인은 사용자 계정 권한이 필요해 자동 검증에서는 제외했습니다.
+
+### 7. Recommended Next Task
+
+- 실제 계정으로 `/customers/?create=1`에서 패널 열림, 업체/부서 인라인 생성, 고객 저장 후 목록 반영을 확인합니다.
