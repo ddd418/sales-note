@@ -7056,3 +7056,59 @@ git diff --check
 
 - 운영 AI 권한 계정으로 `/ai-workspace/`에서 실제 고객 프롬프트를 복사해 최근 노트/금액 문맥이 현업 표현에 맞는지 확인합니다.
 - 다음 개발은 프롬프트 큐 카드에서 "최근 노트/금액 포함" 배지를 노출하거나, 프롬프트 종류별 필터를 추가하는 작업이 적절합니다.
+
+---
+
+## Frontend Auth Redirect — 미로그인 루트 진입 차단 (2026-05-08)
+
+### 1. Summary
+
+프론트 운영 루트(`/`)에 미로그인 상태로 접속했을 때 파이프라인 mock/fallback 화면이 보이지 않도록, 프론트 API 공통 인증 감지 처리를 추가했습니다. Django 로그인 페이지로 리다이렉트된 응답이나 JSON `login_required` 401을 받으면 현재 프론트 경로를 `next`로 담아 `/reporting/login/`으로 이동합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 미로그인 프론트 진입 차단 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 결과 기록 |
+| `frontend/src/api.ts` | 로그인 필요 응답 감지 helper와 API별 리다이렉트 처리 추가 |
+
+### 3. CRM Improvements
+
+- 미로그인 사용자가 `https://sales-note-frontend-production.up.railway.app/`에 들어가도 내부 CRM fallback 화면을 보지 않고 로그인 화면으로 이동합니다.
+- 루트 파이프라인뿐 아니라 `/dashboard/`, `/customers/`, `/notes/`, `/ai-workspace/` API 호출에도 동일한 인증 처리를 적용했습니다.
+- 로그인 후 돌아올 수 있도록 현재 프론트 경로를 `next` 파라미터로 전달합니다.
+
+### 4. Existing Functionality Preserved
+
+- Django 인증/권한 정책과 `/reporting/*` 라우트는 변경하지 않았습니다.
+- DB 모델과 migration 변경은 없습니다.
+- 로그인된 사용자의 기존 프론트 API 데이터 로딩 흐름은 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+cd frontend && npm run build
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 리다이렉트는 정적 HTML 응답 이전의 서버 차단이 아니라 React 앱이 첫 API 응답을 확인한 뒤 수행합니다. 운영에서는 거의 즉시 로그인 화면으로 전환됩니다.
+- 운영 배포 후 실제 비로그인 브라우저 세션에서 루트 URL smoke 확인이 필요합니다.
+
+### 7. Recommended Next Task
+
+- Railway 배포 완료 후 시크릿/시크릿 모드에서 운영 루트 URL이 `/reporting/login/?next=%2F`로 이동하는지 확인합니다.

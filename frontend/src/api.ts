@@ -769,6 +769,52 @@ function getCookie(name: string): string {
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : '';
 }
 
+class LoginRequiredRedirectError extends Error {
+  constructor() {
+    super('login_required');
+    this.name = 'LoginRequiredRedirectError';
+  }
+}
+
+function getFrontendNextPath(): string {
+  const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return path || '/';
+}
+
+function responseUrlPathname(response: Response): string {
+  try {
+    return new URL(response.url).pathname;
+  } catch {
+    return '';
+  }
+}
+
+function redirectToLogin(): never {
+  const currentPath = window.location.pathname;
+  if (!currentPath.startsWith('/reporting/login')) {
+    window.location.replace(`/reporting/login/?next=${encodeURIComponent(getFrontendNextPath())}`);
+  }
+  throw new LoginRequiredRedirectError();
+}
+
+function getPayloadError(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') {
+    return '';
+  }
+  const error = 'error' in payload ? payload.error : '';
+  return typeof error === 'string' ? error : '';
+}
+
+function redirectIfLoginRequired(response: Response, payload?: unknown): void {
+  const finalPath = responseUrlPathname(response);
+  const redirectedToLogin = response.redirected && finalPath.startsWith('/reporting/login');
+  const jsonLoginRequired = response.status === 401 && getPayloadError(payload) === 'login_required';
+
+  if (redirectedToLogin || jsonLoginRequired) {
+    redirectToLogin();
+  }
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
   try {
     const response = await fetch('/reporting/api/dashboard/', {
@@ -777,11 +823,13 @@ export async function loadDashboardData(): Promise<DashboardData> {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error(`Dashboard API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as DashboardData;
+    redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Dashboard API unavailable: ${response.status}`);
     }
@@ -814,11 +862,13 @@ export async function loadCustomersData(params: {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error(`Customers API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as CustomersData;
+    redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Customers API unavailable: ${response.status}`);
     }
@@ -852,11 +902,13 @@ export async function loadNotesData(params: {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error(`Notes API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as NotesData;
+    redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Notes API unavailable: ${response.status}`);
     }
@@ -880,11 +932,13 @@ export async function toggleNoteReviewed(reviewToggleHref: string): Promise<void
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
   });
+  redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     throw new Error(`Note review API unavailable: ${response.status}`);
   }
   const payload = (await response.json()) as NoteReviewToggleResponse;
+  redirectIfLoginRequired(response, payload);
   if (!response.ok || payload.success === false) {
     throw new Error(payload.error || `Note review failed: ${response.status}`);
   }
@@ -910,11 +964,13 @@ export async function loadSchedulesData(params: {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error(`Schedules API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as SchedulesData;
+    redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Schedules API unavailable: ${response.status}`);
     }
@@ -936,11 +992,13 @@ export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error(`AI workspace API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as AIWorkspaceData;
+    redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `AI workspace API unavailable: ${response.status}`);
     }
@@ -965,11 +1023,13 @@ export async function loadPipelineData(): Promise<PipelineData> {
         Accept: 'application/json',
       },
     });
+    redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) {
       throw new Error(`Pipeline API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as PipelineApiResponse;
+    redirectIfLoginRequired(response, payload);
     if (payload.success === false || !Array.isArray(payload.deals)) {
       throw new Error('Pipeline API returned invalid payload');
     }
@@ -994,11 +1054,13 @@ export async function moveDealStage(dealId: number, stage: PipelineStage): Promi
     },
     body: JSON.stringify({ followup_id: dealId, stage }),
   });
+  redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     throw new Error(`Pipeline move API unavailable: ${response.status}`);
   }
   const payload = (await response.json()) as PipelineMoveResponse;
+  redirectIfLoginRequired(response, payload);
   if (!response.ok || payload.success === false) {
     throw new Error(payload.error || `Pipeline move failed: ${response.status}`);
   }

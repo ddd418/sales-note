@@ -1337,3 +1337,26 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## Frontend Auth Redirect — 미로그인 루트 진입 차단
+
+**목표**: `https://sales-note-frontend-production.up.railway.app/`에 미로그인 상태로 접속하면 React mock/fallback 화면을 보여주지 않고 Django 로그인 화면으로 이동시킨다.
+
+**작업 범위**:
+
+- 프론트 API 호출이 Django 로그인 페이지로 리다이렉트된 HTML 응답을 받으면 `/reporting/login/`으로 이동한다.
+- JSON API가 `401 {"error": "login_required"}`를 반환해도 동일하게 로그인 화면으로 이동한다.
+- 루트 파이프라인뿐 아니라 dashboard/customers/notes/schedules/AI workspace API에도 같은 인증 처리 helper를 적용한다.
+- 백엔드 인증/권한 정책은 변경하지 않는다.
+
+**DB 변경 필요 여부**: 없음. 프론트 인증 응답 처리만 변경한다.
+
+**검증 계획**:
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
