@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — 긴급: Django 일정 캘린더 운영 진입점 복구
 
-**상태**: 구현/검증 완료, Railway 배포 진행 예정
+**상태**: 구현/검증/배포 완료
 
 ### 요약
 
@@ -57,8 +57,26 @@ git diff --check
 
 ### Railway 배포 및 운영 스모크
 
-- 배포 전. 커밋/푸시 후 `web` 서비스를 확인 예정입니다.
+- Commit: `c0dc305 fix: restore Django schedule calendar entry`
+- `web` deployment: `49085d5c-cd11-4dca-b9a3-35011ad7626d`
+- 상태: `SUCCESS`, `web` 온라인
 - `sales-note-frontend` 변경 없음.
+
+운영 스모크:
+
+```
+https://web-production-5096.up.railway.app/reporting/schedules/calendar/
+→ 302 /reporting/login/?next=/reporting/schedules/calendar/
+
+https://web-production-5096.up.railway.app/reporting/schedules/
+→ 302 /reporting/login/?next=/reporting/schedules/
+
+https://web-production-5096.up.railway.app/reporting/login/
+→ 200, csrfmiddlewaretoken 렌더링 확인
+
+https://sales-note-frontend-production.up.railway.app/reporting/schedules/calendar/
+→ 302 /reporting/login/?next=/reporting/schedules/calendar/
+```
 
 ### 알려진 제한
 
