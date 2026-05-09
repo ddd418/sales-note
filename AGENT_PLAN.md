@@ -1932,3 +1932,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `cd frontend && npm run build` (현재 작업 트리에 React runtime 변경도 포함되어 있어 함께 확인)
 - Railway 배포가 필요한 runtime 변경이 포함된 경우 `web`, `sales-note-frontend` 배포 후 운영 smoke check
+
+---
+
+## Urgent Weekly Report Quote/Delivery Amount Loading — 주간보고 견적/납품 금액 포함
+
+**목표**: 운영 주간보고 작성 화면(`/reporting/weekly-reports/create/`)에서 `일정 불러오기`로 견적 제출 및 납품 기록을 가져올 때 금액도 카드와 삽입 텍스트에 함께 포함한다.
+
+**작업 범위**:
+
+- 기존 `weekly_report_load_schedules` JSON API에 견적/납품 일정 금액 필드를 추가한다.
+- 견적 금액은 연결 `Quote.total_amount`를 우선 사용하고, 견적 일정에 Quote가 없으면 `DeliveryItem` 합계 또는 `Schedule.expected_revenue`를 fallback으로 사용한다.
+- 납품 금액은 연결 `DeliveryItem.total_price` 합계를 우선 사용하고, 없으면 연결 `History.delivery_amount`, 없으면 `Schedule.expected_revenue`를 fallback으로 사용한다.
+- 기존 인증 조건(`@login_required`)과 본인 일정만 조회하는 데이터 범위를 유지한다.
+- 기존 Django 템플릿 화면에서 API로 받은 금액을 카드에 표시하고, 선택 삽입 시 `견적 금액`/`납품 금액` 줄을 포함한다.
+- 페이지 최초 진입 시에도 최신 API 기반 카드가 렌더링되도록 초기 로드에서 `loadSchedules()`를 실행한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Quote`, `DeliveryItem`, `History`, `Schedule.expected_revenue`만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 서비스 배포 및 운영 `/reporting/weekly-reports/create/` 수동검수 절차 제공

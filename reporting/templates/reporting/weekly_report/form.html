@@ -261,6 +261,14 @@ function loadSchedules() {
 }
 
 function buildScheduleCard(s, category) {
+  const amount = s.amount || '';
+  const amountLabel = s.amount_label || s.amountLabel || '금액';
+  const amountHtml = amount
+    ? `<div class="ms-2 mt-1 p-1 rounded" style="background:#fffbeb;font-size:.72em;border-left:2px solid #f59e0b;">
+        <i class="fas fa-won-sign me-1 text-warning" style="font-size:.9em;"></i>
+        ${escHtml(amountLabel)} · ${escHtml(amount)}
+      </div>`
+    : '';
   const histHtml = s.histories && s.histories.length > 0
     ? s.histories.map(h => {
         let txt = h.snippet ? `<span class="text-body">${escHtml(h.snippet.slice(0, 80))}</span>` : '';
@@ -280,6 +288,8 @@ function buildScheduleCard(s, category) {
     : '';
 
   const idSafe = `sch-${s.id}`;
+  const historyData = escAttr(JSON.stringify((s.histories||[]).map(h=>({type:h.type,snippet:h.snippet,next_action:h.next_action,next_action_date:h.next_action_date,amount:h.amount}))));
+  const quoteData = escAttr(JSON.stringify((s.quotes||[]).map(q=>({number:q.number,stage:q.stage,amount:q.amount}))));
   const dataAttrs = `
     data-category="${category}"
     data-date="${s.date}"
@@ -289,8 +299,10 @@ function buildScheduleCard(s, category) {
     data-department="${escAttr(s.department)}"
     data-activity-type="${escAttr(s.activity_type_display)}"
     data-notes="${escAttr(s.notes)}"
-    data-histories='${JSON.stringify((s.histories||[]).map(h=>({type:h.type,snippet:h.snippet,next_action:h.next_action,next_action_date:h.next_action_date})))}'
-    data-quotes='${JSON.stringify((s.quotes||[]).map(q=>({number:q.number,stage:q.stage,amount:q.amount})))}'
+    data-amount="${escAttr(amount)}"
+    data-amount-label="${escAttr(amountLabel)}"
+    data-histories='${historyData}'
+    data-quotes='${quoteData}'
   `.trim();
 
   return `<div class="schedule-item border-bottom py-2 px-3" data-category="${category}">
@@ -303,7 +315,7 @@ function buildScheduleCard(s, category) {
         </div>
         <div class="small mt-1">${escHtml(s.customer)}${s.company ? ' <span class="text-muted">· ' + escHtml(s.company) + '</span>' : ''}</div>
         ${s.notes ? `<div class="text-muted small mt-1 text-truncate">${escHtml(s.notes)}</div>` : ''}
-        ${histHtml}${quoteHtml}
+        ${amountHtml}${histHtml}${quoteHtml}
       </label>
     </div>
   </div>`;
@@ -324,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cb.addEventListener('change', onCheckChange);
   });
   updateInsertBtns();
+  loadSchedules();
 });
 
 function onCheckChange() {
@@ -353,6 +366,8 @@ function buildInsertText(cb) {
   const dept = cb.dataset.department || '';
   const actType = cb.dataset.activityType || '';
   const notes = cb.dataset.notes || '';
+  const amount = cb.dataset.amount || '';
+  const amountLabel = cb.dataset.amountLabel || '금액';
 
   let historyLines = [];
   try { historyLines = JSON.parse(cb.dataset.histories || '[]'); } catch(e) {}
@@ -364,6 +379,7 @@ function buildInsertText(cb) {
   if (company) line += ` (${company}${dept ? ' · ' + dept : ''})`;
   line += ` — ${actType}`;
   if (notes) line += `\n  메모: ${notes}`;
+  if (amount) line += `\n  └ ${amountLabel}: ${amount}`;
 
   historyLines.forEach(h => {
     if (h.snippet) line += `\n  └ ${h.type}: ${h.snippet}`;

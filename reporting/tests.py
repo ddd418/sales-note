@@ -3220,6 +3220,13 @@ class WeeklyReportTests(TestCase):
         r = self.client.get(reverse('reporting:weekly_report_list'))
         self.assertEqual(r.status_code, 200)
 
+    def test_weekly_report_create_page_renders_schedule_loader(self):
+        """주간보고 작성 화면은 일정 자동 로드 스크립트를 렌더링"""
+        self.client.force_login(self.salesman)
+        r = self.client.get(reverse('reporting:weekly_report_create'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'loadSchedules();')
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Manager 역할 권한 검증 테스트
@@ -3950,6 +3957,121 @@ class WeeklyReportLoadSchedulesExtendedTests(TestCase):
                 s.get('user_id'), other_user.pk,
                 '다른 사용자의 일정이 포함되면 안 됩니다',
             )
+
+    def test_quote_schedule_returns_quote_total_amount(self):
+        """견적 제출 일정은 연결된 Quote 총액을 함께 반환"""
+        from decimal import Decimal
+        from reporting.models import Quote, Schedule
+        import datetime
+
+        quote_schedule = Schedule.objects.create(
+            user=self.salesman, followup=self.followup,
+            visit_date=datetime.date(2026, 4, 22),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote', status='completed',
+            vat_mode='none',
+        )
+        Quote.objects.create(
+            quote_number='WR-QUOTE-001',
+            schedule=quote_schedule,
+            followup=self.followup,
+            user=self.salesman,
+            valid_until=datetime.date(2026, 5, 22),
+            subtotal=Decimal('250000'),
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+        self.assertEqual(r.status_code, 200)
+        quote_items = r.json().get('categorized', {}).get('quote_delivery', [])
+        payload = next(item for item in quote_items if item['id'] == quote_schedule.pk)
+        self.assertEqual(payload['quotes'][0]['amount'], '250,000원')
+
+    def test_quote_schedule_without_quote_uses_expected_revenue_amount(self):
+        """Quote 객체가 없는 견적 일정도 예상 매출액을 금액으로 반환"""
+        from decimal import Decimal
+        from reporting.models import Schedule
+        import datetime
+
+        quote_schedule = Schedule.objects.create(
+            user=self.salesman, followup=self.followup,
+            visit_date=datetime.date(2026, 4, 23),
+            visit_time=datetime.time(11, 0),
+            activity_type='quote', status='scheduled',
+            expected_revenue=Decimal('320000'),
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+        self.assertEqual(r.status_code, 200)
+        quote_items = r.json().get('categorized', {}).get('quote_delivery', [])
+        payload = next(item for item in quote_items if item['id'] == quote_schedule.pk)
+        self.assertEqual(payload['amount'], '320,000원')
+        self.assertEqual(payload['amount_label'], '견적 금액')
+
+    def test_delivery_schedule_returns_delivery_item_amount(self):
+        """납품 일정은 DeliveryItem 합계 금액을 함께 반환"""
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Schedule
+        import datetime
+
+        delivery_schedule = Schedule.objects.create(
+            user=self.salesman, followup=self.followup,
+            visit_date=datetime.date(2026, 4, 24),
+            visit_time=datetime.time(14, 0),
+            activity_type='delivery', status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='WR 납품 품목',
+            quantity=2,
+            unit_price=Decimal('50000'),
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+        self.assertEqual(r.status_code, 200)
+        delivery_items = r.json().get('categorized', {}).get('quote_delivery', [])
+        payload = next(item for item in delivery_items if item['id'] == delivery_schedule.pk)
+        self.assertEqual(payload['amount'], '110,000원')
+        self.assertEqual(payload['amount_label'], '납품 금액')
+
+    def test_delivery_schedule_falls_back_to_history_amount(self):
+        """DeliveryItem이 없으면 연결된 History 납품 금액을 반환"""
+        from decimal import Decimal
+        from reporting.models import History, Schedule
+        import datetime
+
+        delivery_schedule = Schedule.objects.create(
+            user=self.salesman, followup=self.followup,
+            visit_date=datetime.date(2026, 4, 25),
+            visit_time=datetime.time(15, 0),
+            activity_type='delivery', status='completed',
+        )
+        History.objects.create(
+            user=self.salesman,
+            followup=self.followup,
+            schedule=delivery_schedule,
+            action_type='delivery_schedule',
+            content='납품 완료',
+            delivery_amount=Decimal('88000'),
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+        self.assertEqual(r.status_code, 200)
+        delivery_items = r.json().get('categorized', {}).get('quote_delivery', [])
+        payload = next(item for item in delivery_items if item['id'] == delivery_schedule.pk)
+        self.assertEqual(payload['amount'], '88,000원')
+        self.assertEqual(payload['amount_label'], '납품 금액')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

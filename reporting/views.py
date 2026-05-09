@@ -18383,6 +18383,7 @@ def weekly_report_delete(request, pk):
 def weekly_report_load_schedules(request):
     """AJAX: 선택 기간 일정 반환 (주간보고 폼에서 참고용) — 카테고리 분류 + 연결 History 포함"""
     import datetime
+    from decimal import Decimal, InvalidOperation
     week_start_str = request.GET.get('week_start')
     week_end_str = request.GET.get('week_end')
     try:
@@ -18419,6 +18420,12 @@ def weekly_report_load_schedules(request):
             queryset=Quote.objects.order_by('-created_at'),
             to_attr='linked_quotes',
         ),
+        # 견적/납품 일정에 연결된 품목 금액
+        Prefetch(
+            'delivery_items_set',
+            queryset=DeliveryItem.objects.order_by('id'),
+            to_attr='linked_delivery_items',
+        ),
     ).order_by('visit_date')
 
     # 카테고리별 목록
@@ -18439,8 +18446,68 @@ def weekly_report_load_schedules(request):
             parts.append(f"다음 액션: {h.next_action}{nd}")
         return ' / '.join(parts)[:200] if parts else ''
 
+    def _decimal_or_zero(value):
+        if value in (None, ''):
+            return Decimal('0')
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return Decimal('0')
+
+    def _amount_label(value):
+        amount = _decimal_or_zero(value)
+        if amount <= 0:
+            return ''
+        return f'{int(amount):,}원'
+
+    def _delivery_items_total(schedule):
+        return sum(
+            (_decimal_or_zero(item.total_price) for item in (getattr(schedule, 'linked_delivery_items', []) or [])),
+            Decimal('0'),
+        )
+
+    def _history_delivery_amount(schedule):
+        histories = getattr(schedule, 'linked_histories', []) or []
+        for history in histories:
+            if history.action_type == 'delivery_schedule' and history.delivery_amount is not None:
+                return _decimal_or_zero(history.delivery_amount)
+        for history in histories:
+            if history.delivery_amount is not None:
+                return _decimal_or_zero(history.delivery_amount)
+        return Decimal('0')
+
+    def _schedule_amount_value(schedule):
+        item_total = _delivery_items_total(schedule)
+        if item_total > 0:
+            return item_total
+        if schedule.activity_type == 'delivery':
+            history_amount = _history_delivery_amount(schedule)
+            if history_amount > 0:
+                return history_amount
+        return _decimal_or_zero(schedule.expected_revenue)
+
     for s in schedules:
         fu = s.followup
+        quotes = [
+            {
+                'number': q.quote_number,
+                'stage': q.get_stage_display(),
+                'amount': _amount_label(q.total_amount),
+                'probability': q.probability,
+            }
+            for q in (s.linked_quotes or [])
+        ]
+        schedule_amount = _amount_label(_schedule_amount_value(s))
+        quote_has_amount = any(q['amount'] for q in quotes)
+        amount = ''
+        amount_label = ''
+        if s.activity_type == 'delivery' and schedule_amount:
+            amount = schedule_amount
+            amount_label = '납품 금액'
+        elif s.activity_type == 'quote' and schedule_amount and not quote_has_amount:
+            amount = schedule_amount
+            amount_label = '견적 금액'
+
         base = {
             'id': s.pk,
             'date': s.visit_date.strftime('%m/%d'),
@@ -18453,6 +18520,8 @@ def weekly_report_load_schedules(request):
             'activity_type_display': s.get_activity_type_display(),
             'notes': s.notes or '',
             'status': s.status,
+            'amount': amount,
+            'amount_label': amount_label,
             # 연결된 히스토리 (직접 FK)
             'histories': [
                 {
@@ -18461,19 +18530,12 @@ def weekly_report_load_schedules(request):
                     'snippet': _history_snippet(h),
                     'next_action': h.next_action or '',
                     'next_action_date': h.next_action_date.strftime('%m/%d') if h.next_action_date else '',
+                    'amount': _amount_label(h.delivery_amount) if h.delivery_amount is not None else '',
                 }
                 for h in (s.linked_histories or [])
             ],
             # 연결된 견적
-            'quotes': [
-                {
-                    'number': q.quote_number,
-                    'stage': q.get_stage_display(),
-                    'amount': f'{int(q.total_amount):,}원' if q.total_amount else '',
-                    'probability': q.probability,
-                }
-                for q in (s.linked_quotes or [])
-            ],
+            'quotes': quotes,
         }
 
         if s.activity_type in QUOTE_DELIVERY_TYPES:
@@ -18486,13 +18548,25 @@ def weekly_report_load_schedules(request):
     flat_data = []
     for s_obj in list(schedules):
         fu = s_obj.followup
+        flat_amount = ''
+        flat_amount_label = ''
+        flat_schedule_amount = _amount_label(_schedule_amount_value(s_obj))
+        if s_obj.activity_type == 'delivery' and flat_schedule_amount:
+            flat_amount = flat_schedule_amount
+            flat_amount_label = '납품 금액'
+        elif s_obj.activity_type == 'quote' and flat_schedule_amount:
+            flat_amount = flat_schedule_amount
+            flat_amount_label = '견적 금액'
         flat_data.append({
+            'id': s_obj.pk,
             'date': s_obj.visit_date.strftime('%m/%d'),
             'customer': fu.customer_name or '-',
             'company': str(fu.company) if fu.company else '',
             'department': str(fu.department) if fu.department else '',
             'activity_type': s_obj.get_activity_type_display(),
             'notes': s_obj.notes or '',
+            'amount': flat_amount,
+            'amount_label': flat_amount_label,
         })
 
     return JsonResponse({
