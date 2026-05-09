@@ -8611,3 +8611,58 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 일정 납품 품목의 제품 마스터 선택 또는 선결제 세부 흐름처럼 아직 Django 폼에 남아 있는 고급 입력을 React로 옮기는 작업이 적절합니다.
+
+---
+
+## Production Schedule Delivery Items Deployment Attempt — 일정 납품 품목 배포 시도 (2026-05-09)
+
+### 1. Summary
+
+React 일정 납품 품목 편집 변경분은 GitHub `main`에 푸시했습니다. Railway CLI 인증 세션이 만료되어 production `web`, `sales-note-frontend` 배포는 실행되지 않았습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | Railway 배포 실패 원인과 후속 조치 기록 추가 |
+
+### 3. CRM Improvements
+
+- 코드 변경은 `main`에 반영되어 배포 가능한 상태입니다.
+- 운영 반영은 Railway 재로그인 후 같은 커밋 `ef5a213`을 배포하면 됩니다.
+
+### 4. Existing Functionality Preserved
+
+- Railway 배포 명령은 인증 단계에서 중단되어 기존 운영 `web`, `sales-note-frontend` 서비스에는 변경이 적용되지 않았습니다.
+- Django `web` 서비스는 React API/login/proxy backend이므로 내리거나 삭제하지 않았습니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React schedule delivery item editing"
+→ ef5a213 feat: add React schedule delivery item editing
+
+git push origin main
+→ main updated from 2af1bcd to ef5a213
+
+railway redeploy --service web --from-source --yes --json
+→ 실패: invalid_grant / Unauthorized. railway login 필요
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React schedule delivery items ef5a213" --ci
+→ 실패: Unauthorized. railway login 필요
+
+git ls-remote origin refs/heads/main
+→ ef5a213c6019ea156f11b139c169cd456a709a45
+
+RAILWAY_TOKEN presence check
+→ RAILWAY_TOKEN=missing
+```
+
+### 6. Known Limitations
+
+- 운영 사이트는 아직 이 변경분을 서빙하지 않습니다. Railway CLI 재인증 후 `web` source redeploy와 `sales-note-frontend` upload 배포가 필요합니다.
+- 운영 번들 검증과 `/reporting/api/schedules/<id>/` 401 보호 확인은 배포 후 다시 수행해야 합니다.
+
+### 7. Recommended Next Task
+
+- Railway에서 재로그인 또는 `RAILWAY_TOKEN` 설정 후 `web`과 `sales-note-frontend`를 커밋 `ef5a213` 기준으로 배포하고 운영 번들을 확인합니다.
