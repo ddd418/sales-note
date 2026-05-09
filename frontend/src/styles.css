@@ -1701,6 +1701,145 @@ h2 {
   font-size: 13px;
 }
 
+.schedule-prepayment-editor,
+.schedule-prepayment-body {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-prepayment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-prepayment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.schedule-prepayment-row.selected {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.schedule-prepayment-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.schedule-prepayment-check input {
+  width: auto;
+  min-height: auto;
+  margin-top: 3px;
+}
+
+.schedule-prepayment-check span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.schedule-prepayment-check strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.schedule-prepayment-check small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.schedule-prepayment-amount {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.schedule-prepayment-amount input {
+  min-height: 36px;
+}
+
+.schedule-prepayment-amount input:disabled {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.schedule-prepayment-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.schedule-prepayment-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.schedule-prepayment-totals span {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.schedule-prepayment-totals strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-prepayment-usage-list {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule-prepayment-usage-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.schedule-prepayment-usage-list span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.schedule-prepayment-usage-list strong {
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .schedule-delivery-list {
   display: grid;
   gap: 8px;
@@ -3540,6 +3679,11 @@ tbody tr:hover {
   }
 
   .schedule-delivery-edit-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-prepayment-row,
+  .schedule-prepayment-totals {
     grid-template-columns: 1fr;
   }
 

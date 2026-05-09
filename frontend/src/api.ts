@@ -705,13 +705,73 @@ type ProductsApiResponse = {
   message?: string;
 };
 
+export type SchedulePrepaymentUsage = {
+  id: number;
+  prepaymentId: number;
+  paymentDate: string | null;
+  payerName: string;
+  customerName: string;
+  productName: string;
+  quantity: number;
+  amount: number;
+  remainingBalance: number;
+  usedAt: string | null;
+  memo: string;
+};
+
+export type PrepaymentOption = {
+  id: number;
+  paymentDate: string | null;
+  payerName: string;
+  customerName: string;
+  amount: number;
+  balance: number;
+  availableBalance: number;
+  selectedAmount: number;
+  status: string;
+  statusLabel: string;
+};
+
+type PrepaymentApiItem = {
+  id: number;
+  payment_date?: string | null;
+  paymentDate?: string | null;
+  payer_name?: string;
+  payerName?: string;
+  customer_name?: string;
+  customerName?: string;
+  amount?: number | string;
+  balance?: number | string;
+  available_balance?: number | string;
+  availableBalance?: number | string;
+  selected_amount?: number | string;
+  selectedAmount?: number | string;
+  status?: string;
+  status_label?: string;
+  statusLabel?: string;
+};
+
+type PrepaymentsApiResponse = {
+  prepayments?: PrepaymentApiItem[];
+  success?: boolean;
+  error?: string;
+  message?: string;
+};
+
+export type SchedulePrepaymentSelectionPayload = {
+  id: number;
+  amount: string | number;
+};
+
 export type ScheduleDetailItem = ScheduleItem & {
   canEdit: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   vatMode: string;
   usePrepayment: boolean;
+  prepaymentId: number | null;
   prepaymentAmount: number;
+  prepaymentUsages: SchedulePrepaymentUsage[];
   fileCount: number;
   emailThreadCount: number;
   files: ScheduleFileItem[];
@@ -745,8 +805,10 @@ export type ScheduleEditPayload = {
   location?: string;
   notes?: string;
   probability?: string;
+  prepayments?: SchedulePrepaymentSelectionPayload[];
   purchaseConfirmed?: boolean;
   status: string;
+  usePrepayment?: boolean;
   visitDate: string;
   visitTime: string;
 };
@@ -852,6 +914,7 @@ export type ScheduleDetailData = {
     createNote: string;
     uploadFiles: string;
     updateDeliveryItems: string;
+    prepayments: string;
   };
   edit: {
     canEdit: boolean;
@@ -1340,6 +1403,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     createNote: '',
     uploadFiles: '',
     updateDeliveryItems: '',
+    prepayments: '',
   },
   edit: {
     canEdit: false,
@@ -2175,6 +2239,50 @@ export async function loadProducts(search = ''): Promise<ProductOption[]> {
       standardPrice: Number.isFinite(standardPrice) ? standardPrice : 0,
       currentPrice: Number.isFinite(currentPrice) ? currentPrice : 0,
       isPromo: Boolean(product.is_promo ?? product.isPromo),
+    };
+  });
+}
+
+export async function loadPrepayments(customerId: number, scheduleId?: number): Promise<PrepaymentOption[]> {
+  const params = new URLSearchParams();
+  params.set('customer_id', String(customerId));
+  if (scheduleId) {
+    params.set('schedule_id', String(scheduleId));
+  }
+
+  const response = await fetch(`/reporting/api/prepayments/?${params.toString()}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayments API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentsApiResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayments API unavailable: ${response.status}`);
+  }
+
+  return (data.prepayments ?? []).map((prepayment) => {
+    const amount = Number(prepayment.amount ?? 0);
+    const balance = Number(prepayment.balance ?? 0);
+    const selectedAmount = Number(prepayment.selected_amount ?? prepayment.selectedAmount ?? 0);
+    const availableBalance = Number(prepayment.available_balance ?? prepayment.availableBalance ?? balance + selectedAmount);
+    return {
+      id: prepayment.id,
+      paymentDate: prepayment.payment_date ?? prepayment.paymentDate ?? null,
+      payerName: prepayment.payer_name ?? prepayment.payerName ?? '미지정',
+      customerName: prepayment.customer_name ?? prepayment.customerName ?? '',
+      amount: Number.isFinite(amount) ? amount : 0,
+      balance: Number.isFinite(balance) ? balance : 0,
+      availableBalance: Number.isFinite(availableBalance) ? availableBalance : 0,
+      selectedAmount: Number.isFinite(selectedAmount) ? selectedAmount : 0,
+      status: prepayment.status ?? '',
+      statusLabel: prepayment.status_label ?? prepayment.statusLabel ?? '',
     };
   });
 }

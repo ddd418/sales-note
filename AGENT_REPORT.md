@@ -8879,3 +8879,68 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 다음 단계는 일정 선결제 세부 입력 또는 견적/문서 생성처럼 아직 Django 화면에 남아 있는 일정 부가 기능을 React로 옮기는 작업이 적절합니다.
+
+---
+
+## React Schedule Prepayment Editing — 일정 선결제 입력 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/schedules/<id>/` 일정 상세 수정 패널에서 납품 일정의 선결제 선택과 차감 금액을 저장할 수 있게 연결했습니다. 기존 Django 일정 수정 폼의 선결제 복원 후 재차감 정책을 React 저장 API에도 적용했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 일정 선결제 입력 전환 계획과 시간 단위 진행 루트 추가 |
+| `frontend/src/App.tsx` | 일정 수정 패널에 선결제 사용 체크, 선결제 목록, 차감 금액 입력, 합계 표시 추가 |
+| `frontend/src/api.ts` | 선결제 목록 client/type, 일정 상세 선결제 사용 내역 type, 저장 payload 추가 |
+| `frontend/src/styles.css` | 선결제 선택/합계/사용 내역 UI 스타일과 모바일 레이아웃 추가 |
+| `reporting/views.py` | 선결제 옵션 payload, 기존 사용분 복원, 잔액 검증 후 재차감, 상세 API 사용 내역 추가 |
+| `reporting/tests.py` | 선결제 목록, 적용/복원, 잔액 초과 차단 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 납품 일정 수정 시 Django 화면으로 이동하지 않고 React에서 선결제를 선택하고 금액을 차감할 수 있습니다.
+- 기존 선택된 선결제가 소진 상태여도 현재 일정 사용분은 목록에 포함해 유지/수정할 수 있습니다.
+- 저장 API는 기존 사용분을 먼저 복원한 뒤 새 선택 금액을 검증하고 다시 차감합니다.
+- 차감 합계와 납품 합계 대비 실결제 금액을 React 수정 패널에서 바로 확인할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django 선결제 목록/상세/일정 수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- 기존 `Schedule`, `Prepayment`, `PrepaymentUsage`, `DeliveryItem` 모델만 사용했고 DB migration은 없습니다.
+- Manager는 일정 수정이 계속 차단되고, salesman은 본인 일정만 수정 가능합니다.
+- 타사/접근 불가 고객 또는 선결제는 API에서 차단됩니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 22 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-Dh6TMGfl.js / assets/index-DejZtU4J.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/schedules/<id>/` 수정 패널을 열고 선결제 선택, 금액 입력, 저장 후 잔액/상세 반영까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- 선결제 신규 등록/수정/취소는 이번 범위가 아니며 기존 Django 선결제 관리 화면을 사용합니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 견적/문서 생성 또는 선결제 관리 목록처럼 아직 Django 화면에 남아 있는 일정/거래 부가 기능을 React로 옮기는 작업이 적절합니다.

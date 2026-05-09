@@ -4542,6 +4542,214 @@ def _schedules_delivery_item_payload(item):
     }
 
 
+def _schedules_prepayment_usage_payload(usage):
+    prepayment = usage.prepayment
+    customer = prepayment.customer if prepayment and prepayment.customer_id else None
+    return {
+        'id': usage.id,
+        'prepaymentId': usage.prepayment_id,
+        'paymentDate': _date_or_none(prepayment.payment_date) if prepayment else None,
+        'payerName': prepayment.payer_name or '미지정' if prepayment else '미지정',
+        'customerName': customer.customer_name or str(customer) if customer else '',
+        'productName': usage.product_name or '',
+        'quantity': usage.quantity or 1,
+        'amount': _money_int(usage.amount),
+        'remainingBalance': _money_int(usage.remaining_balance),
+        'usedAt': _datetime_or_none(usage.used_at),
+        'memo': usage.memo or '',
+    }
+
+
+def _schedules_allowed_prepayments_queryset(actor, followup):
+    if followup.department_id:
+        same_department_followups = FollowUp.objects.filter(department=followup.department)
+    else:
+        same_department_followups = FollowUp.objects.filter(id=followup.id)
+
+    return Prepayment.objects.filter(
+        customer_id__in=same_department_followups.values_list('id', flat=True),
+        customer__user__in=get_same_company_users(actor),
+    ).select_related('customer')
+
+
+def _schedules_prepayment_option_payload(prepayment, selected_amount=0):
+    selected_amount = selected_amount or 0
+    available_balance = (prepayment.balance or 0) + selected_amount
+    customer = prepayment.customer
+    payment_date = _date_or_none(prepayment.payment_date)
+    payer_name = prepayment.payer_name or '미지정'
+    customer_name = customer.customer_name or str(customer)
+    return {
+        'id': prepayment.id,
+        'payment_date': payment_date,
+        'paymentDate': payment_date,
+        'payer_name': payer_name,
+        'payerName': payer_name,
+        'customer_name': customer_name,
+        'customerName': customer_name,
+        'amount': _money_int(prepayment.amount),
+        'balance': _money_int(prepayment.balance),
+        'available_balance': _money_int(available_balance),
+        'availableBalance': _money_int(available_balance),
+        'selected_amount': _money_int(selected_amount),
+        'selectedAmount': _money_int(selected_amount),
+        'status': prepayment.status,
+        'status_label': prepayment.get_status_display(),
+        'statusLabel': prepayment.get_status_display(),
+    }
+
+
+def _schedules_prepayment_options(actor, followup, schedule=None):
+    usage_totals = {}
+    if schedule:
+        usage_totals = {
+            row['prepayment_id']: row['total'] or 0
+            for row in PrepaymentUsage.objects.filter(schedule=schedule)
+            .values('prepayment_id')
+            .annotate(total=Sum('amount'))
+        }
+
+    used_prepayment_ids = set(usage_totals.keys())
+    prepayments = _schedules_allowed_prepayments_queryset(actor, followup).filter(
+        Q(status='active', balance__gt=0) | Q(id__in=used_prepayment_ids)
+    ).order_by('payment_date', 'id')
+
+    return [
+        _schedules_prepayment_option_payload(prepayment, usage_totals.get(prepayment.id, 0))
+        for prepayment in prepayments
+    ]
+
+
+def _schedules_restore_prepayments(schedule):
+    from decimal import Decimal
+
+    usages = list(
+        PrepaymentUsage.objects.filter(schedule=schedule)
+        .select_related('prepayment')
+        .order_by('id')
+    )
+    if not usages and not schedule.use_prepayment and not schedule.prepayment_id and not schedule.prepayment_amount:
+        return Decimal('0')
+
+    restored_total = Decimal('0')
+    for usage in usages:
+        prepayment = usage.prepayment
+        amount = usage.amount or Decimal('0')
+        prepayment.balance = (prepayment.balance or Decimal('0')) + amount
+        if prepayment.status == 'depleted' and prepayment.balance > 0:
+            prepayment.status = 'active'
+        prepayment.save(update_fields=['balance', 'status'])
+        restored_total += amount
+
+    if usages:
+        PrepaymentUsage.objects.filter(id__in=[usage.id for usage in usages]).delete()
+
+    schedule.use_prepayment = False
+    schedule.prepayment = None
+    schedule.prepayment_amount = Decimal('0')
+    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'updated_at'])
+    return restored_total
+
+
+def _schedules_parse_prepayment_inputs(raw_items):
+    if not isinstance(raw_items, list):
+        raise ValueError('선결제 선택 목록을 확인하세요.')
+    if len(raw_items) > 20:
+        raise ValueError('선결제는 최대 20건까지 선택할 수 있습니다.')
+
+    parsed = []
+    seen_ids = set()
+    for index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f'{index}번째 선결제 형식이 올바르지 않습니다.')
+        prepayment_id = raw_item.get('id') or raw_item.get('prepaymentId') or raw_item.get('prepayment_id')
+        try:
+            prepayment_id = int(prepayment_id)
+        except (TypeError, ValueError):
+            raise ValueError(f'{index}번째 선결제를 선택하세요.')
+        if prepayment_id in seen_ids:
+            raise ValueError('같은 선결제를 중복 선택할 수 없습니다.')
+        seen_ids.add(prepayment_id)
+
+        amount = _parse_optional_decimal(raw_item.get('amount'))
+        if amount is None or amount <= 0:
+            raise ValueError(f'{index}번째 선결제 차감 금액을 입력하세요.')
+        parsed.append((prepayment_id, amount))
+
+    if not parsed:
+        raise ValueError('사용할 선결제를 하나 이상 선택하세요.')
+    return parsed
+
+
+def _schedules_apply_prepayments(schedule, actor, raw_items):
+    from decimal import Decimal
+
+    if schedule.activity_type != 'delivery':
+        raise ValueError('납품 일정에서만 선결제를 사용할 수 있습니다.')
+
+    selected_items = _schedules_parse_prepayment_inputs(raw_items)
+    selected_ids = [prepayment_id for prepayment_id, _amount in selected_items]
+    existing_usage_totals = {
+        row['prepayment_id']: row['total'] or Decimal('0')
+        for row in PrepaymentUsage.objects.filter(schedule=schedule)
+        .values('prepayment_id')
+        .annotate(total=Sum('amount'))
+    }
+    existing_ids = set(existing_usage_totals.keys())
+
+    accessible_prepayments = {
+        prepayment.id: prepayment
+        for prepayment in _schedules_allowed_prepayments_queryset(actor, schedule.followup)
+        .select_for_update()
+        .filter(Q(status='active', balance__gt=0) | Q(id__in=existing_ids), id__in=selected_ids)
+    }
+    for prepayment_id, amount in selected_items:
+        prepayment = accessible_prepayments.get(prepayment_id)
+        if not prepayment:
+            raise ValueError('선택한 선결제를 찾을 수 없습니다.')
+        available_balance = (prepayment.balance or Decimal('0')) + existing_usage_totals.get(prepayment_id, Decimal('0'))
+        if amount > available_balance:
+            payer_name = prepayment.payer_name or '미지정'
+            raise ValueError(f'{payer_name} 선결제 잔액이 부족합니다.')
+
+    _schedules_restore_prepayments(schedule)
+
+    first_item = schedule.delivery_items_set.order_by('id').first()
+    product_name = first_item.item_name if first_item else schedule.get_activity_type_display()
+    quantity = first_item.quantity if first_item else 1
+    total_used = Decimal('0')
+    first_prepayment = None
+
+    for prepayment_id, amount in selected_items:
+        prepayment = Prepayment.objects.select_for_update().get(id=prepayment_id)
+        if prepayment.balance < amount:
+            payer_name = prepayment.payer_name or '미지정'
+            raise ValueError(f'{payer_name} 선결제 잔액이 부족합니다.')
+
+        prepayment.balance -= amount
+        prepayment.status = 'depleted' if prepayment.balance <= 0 else 'active'
+        prepayment.save(update_fields=['balance', 'status'])
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=schedule,
+            schedule_item=first_item,
+            product_name=product_name,
+            quantity=quantity,
+            amount=amount,
+            remaining_balance=prepayment.balance,
+            memo=f'React 일정 수정에서 차감: {schedule.visit_date}',
+        )
+        total_used += amount
+        if first_prepayment is None:
+            first_prepayment = prepayment
+
+    schedule.use_prepayment = total_used > 0
+    schedule.prepayment = first_prepayment
+    schedule.prepayment_amount = total_used
+    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'updated_at'])
+    return total_used
+
+
 def _schedules_parse_delivery_item_inputs(raw_items, request=None):
     from decimal import Decimal, InvalidOperation
 
@@ -4718,6 +4926,10 @@ def _schedules_detail_payload(request, schedule, user_profile):
         _schedules_delivery_item_payload(item)
         for item in schedule.delivery_items_set.all().order_by('id')
     ]
+    prepayment_usages = [
+        _schedules_prepayment_usage_payload(usage)
+        for usage in schedule.prepayment_usages.all().order_by('id')
+    ]
     email_thread_count = EmailLog.objects.filter(
         schedule=schedule,
         gmail_thread_id__isnull=False,
@@ -4729,7 +4941,9 @@ def _schedules_detail_payload(request, schedule, user_profile):
         'updatedAt': _datetime_or_none(schedule.updated_at),
         'vatMode': schedule.vat_mode,
         'usePrepayment': bool(schedule.use_prepayment),
+        'prepaymentId': schedule.prepayment_id,
         'prepaymentAmount': _money_int(schedule.prepayment_amount),
+        'prepaymentUsages': prepayment_usages,
         'fileCount': len(files),
         'emailThreadCount': email_thread_count,
         'files': files,
@@ -4759,6 +4973,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
+            'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
         'relatedNotes': related_notes,
@@ -4775,7 +4990,14 @@ def _schedules_get_detail_schedule(schedule_id):
             'followup__company',
             'followup__department',
             'opportunity',
-        ).prefetch_related('files', 'delivery_items_set'),
+        ).prefetch_related(
+            'files',
+            'delivery_items_set',
+            Prefetch(
+                'prepayment_usages',
+                queryset=PrepaymentUsage.objects.select_related('prepayment', 'prepayment__customer').order_by('id'),
+            ),
+        ),
         pk=schedule_id,
     )
 
@@ -4866,6 +5088,9 @@ def schedules_update_api(request, schedule_id):
     expected_close_date = _parse_iso_date_or_none(payload.get('expectedCloseDate'))
     purchase_confirmed_raw = payload.get('purchaseConfirmed')
     purchase_confirmed = purchase_confirmed_raw in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
+    prepayment_requested = any(key in payload for key in ['usePrepayment', 'use_prepayment', 'prepayments'])
+    use_prepayment_raw = payload.get('usePrepayment', payload.get('use_prepayment'))
+    use_prepayment = use_prepayment_raw in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
 
     schedule.followup = followup
     schedule.company = get_user_profile(schedule.user).company
@@ -4881,22 +5106,31 @@ def schedules_update_api(request, schedule_id):
     schedule.probability = probability
     schedule.expected_close_date = expected_close_date
     schedule.purchase_confirmed = purchase_confirmed
-    schedule.save(update_fields=[
-        'followup',
-        'company',
-        'opportunity',
-        'visit_date',
-        'visit_time',
-        'activity_type',
-        'status',
-        'location',
-        'notes',
-        'expected_revenue',
-        'probability',
-        'expected_close_date',
-        'purchase_confirmed',
-        'updated_at',
-    ])
+    try:
+        with transaction.atomic():
+            schedule.save(update_fields=[
+                'followup',
+                'company',
+                'opportunity',
+                'visit_date',
+                'visit_time',
+                'activity_type',
+                'status',
+                'location',
+                'notes',
+                'expected_revenue',
+                'probability',
+                'expected_close_date',
+                'purchase_confirmed',
+                'updated_at',
+            ])
+            if prepayment_requested:
+                if use_prepayment:
+                    _schedules_apply_prepayments(schedule, request.user, payload.get('prepayments'))
+                else:
+                    _schedules_restore_prepayments(schedule)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     refreshed = _schedules_get_detail_schedule(schedule.id)
     return JsonResponse({
@@ -15175,38 +15409,29 @@ def prepayment_list_excel(request):
 @login_required
 def prepayment_api_list(request):
     """고객별 선결제 목록 API (AJAX용)"""
-    from reporting.models import Prepayment
-    from django.http import JsonResponse
-    
     customer_id = request.GET.get('customer_id')
     if not customer_id:
         return JsonResponse({'prepayments': []})
     
     try:
-        # 해당 고객의 부서 기준으로 같은 부서 내 모든 고객의 선결제를 불러옴
-        followup = FollowUp.objects.select_related('department').get(id=customer_id)
-        department = followup.department
-        
-        # 같은 부서의 모든 고객 ID 조회
-        same_dept_followup_ids = FollowUp.objects.filter(
-            department=department
-        ).values_list('id', flat=True)
-        
-        prepayments = Prepayment.objects.filter(
-            customer_id__in=same_dept_followup_ids,
-            status='active',
-            balance__gt=0
-        ).select_related('customer').order_by('payment_date')
-        
-        prepayments_data = [{
-            'id': p.id,
-            'payment_date': p.payment_date.strftime('%Y-%m-%d'),
-            'payer_name': p.payer_name or '미지정',
-            'customer_name': p.customer.customer_name or str(p.customer),
-            'amount': float(p.amount),
-            'balance': float(p.balance),
-        } for p in prepayments]
-        
+        followup = FollowUp.objects.select_related('department', 'user').get(id=customer_id)
+        if not can_access_followup(request.user, followup):
+            return JsonResponse({'prepayments': [], 'error': '접근 권한이 없습니다.'}, status=403)
+
+        schedule = None
+        schedule_id = request.GET.get('schedule_id')
+        if schedule_id:
+            try:
+                schedule_id = int(schedule_id)
+            except (TypeError, ValueError):
+                return JsonResponse({'prepayments': [], 'error': '일정 정보를 확인하세요.'}, status=400)
+            schedule = Schedule.objects.filter(id=schedule_id).select_related('followup', 'user').first()
+            if not schedule or not can_access_user_data(request.user, schedule.user):
+                return JsonResponse({'prepayments': [], 'error': '접근 권한이 없습니다.'}, status=403)
+            if schedule.followup_id != followup.id:
+                schedule = None
+
+        prepayments_data = _schedules_prepayment_options(request.user, followup, schedule)
         return JsonResponse({'prepayments': prepayments_data})
     except Exception as e:
         return JsonResponse({'prepayments': [], 'error': str(e)})

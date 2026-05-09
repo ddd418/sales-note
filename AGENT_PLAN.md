@@ -589,6 +589,41 @@ python pre_deployment_check.py
 
 ---
 
+## React Schedule Prepayment Editing — 일정 선결제 입력 전환
+
+**목표**: React `/schedules/<id>/` 일정 상세 수정 패널에서 납품 일정의 선결제 선택과 차감 금액을 저장하게 만들어 Django 일정 수정 폼 왕복을 줄인다.
+
+**시간 단위 진행 루트**:
+
+- 0~1시간: 기존 `Schedule`, `Prepayment`, `PrepaymentUsage` 모델과 Django 일정 생성/수정 폼의 선결제 복원/차감 흐름을 확인한다.
+- 1~2시간: 작업 범위, DB 변경 여부, 검증 계획을 `AGENT_PLAN.md`에 기록한다.
+- 2~4시간: 일정 상세/수정 API에 선결제 사용 여부, 선택 목록, 잔액 검증, 기존 사용분 복원 후 재차감 로직을 추가한다.
+- 4~6시간: React 일정 상세 수정 패널에 선결제 사용 체크, 선택 가능한 선결제 목록, 차감 금액 입력, 합계 표시를 연결한다.
+- 6~7시간: Django API 테스트, React build, Django check, migration check, diff check를 실행한다.
+- 7~8시간: `AGENT_REPORT.md`를 갱신하고 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 운영 배포 및 번들/API 보호 상태를 확인한다.
+
+**작업 범위**:
+
+- `/reporting/api/prepayments/` 응답에 React 편집에 필요한 기존 선택 금액과 사용 가능 잔액을 추가한다.
+- `/reporting/api/schedules/<id>/` 상세 API에 선결제 사용 내역과 선결제 목록 URL을 제공한다.
+- `/reporting/api/schedules/<id>/update/`가 `usePrepayment`, `prepayments` payload를 받아 기존 사용분을 복원한 뒤 선택 금액을 재차감한다.
+- 선결제는 기존 정책대로 납품 일정에서만 사용하고, 같은 부서 고객의 활성 선결제 및 현재 일정에서 이미 사용 중인 선결제만 선택 가능하게 한다.
+- React 수정 패널은 선결제 사용 체크박스, 선택 목록, 금액 입력, 납품 합계 대비 차감/실결제 금액을 표시한다.
+- 기존 Django 선결제 목록/상세/일정 수정 화면과 `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `Prepayment`, `PrepaymentUsage`, `DeliveryItem` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
 ## Frontend Pilot — 파이프라인 읽기 API 연결
 
 **목표**: React 파일럿이 mock data만 사용하는 상태에서 벗어나, 기존 Django 권한 정책을 타는 읽기 전용 파이프라인 API를 우선 조회하도록 연결한다.

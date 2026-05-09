@@ -1860,6 +1860,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
+        self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
 
@@ -1971,6 +1972,186 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(schedule.purchase_confirmed)
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['message'], '일정을 수정했습니다.')
+
+    def test_prepayment_api_list_includes_same_department_and_existing_usage(self):
+        from django.utils import timezone
+        from reporting.models import FollowUp, Prepayment, PrepaymentUsage
+
+        schedule = self._create_schedule(self.user, '선결제조회', activity_type='delivery')
+        same_department_customer = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='같은부서 고객',
+            manager='같은부서 담당',
+            company=schedule.followup.company,
+            department=schedule.followup.department,
+        )
+        other_department_customer = self._create_customer(self.user, '다른부서')
+        active_prepayment = Prepayment.objects.create(
+            customer=same_department_customer,
+            company=same_department_customer.company,
+            amount=100000,
+            balance=80000,
+            payment_date=timezone.localdate(),
+            payer_name='같은부서입금',
+            created_by=self.user,
+        )
+        selected_depleted_prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=40000,
+            balance=0,
+            payment_date=timezone.localdate(),
+            payer_name='기존차감',
+            status='depleted',
+            created_by=self.user,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=selected_depleted_prepayment,
+            schedule=schedule,
+            product_name='기존 납품',
+            quantity=1,
+            amount=40000,
+            remaining_balance=0,
+        )
+        Prepayment.objects.create(
+            customer=other_department_customer,
+            company=other_department_customer.company,
+            amount=50000,
+            balance=50000,
+            payment_date=timezone.localdate(),
+            payer_name='다른부서입금',
+            created_by=self.user,
+        )
+        schedule.use_prepayment = True
+        schedule.prepayment = selected_depleted_prepayment
+        schedule.prepayment_amount = 40000
+        schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:prepayment_api_list'), {
+            'customer_id': schedule.followup_id,
+            'schedule_id': schedule.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        prepayments = response.json()['prepayments']
+        ids = {item['id'] for item in prepayments}
+        self.assertIn(active_prepayment.id, ids)
+        self.assertIn(selected_depleted_prepayment.id, ids)
+        selected_payload = next(item for item in prepayments if item['id'] == selected_depleted_prepayment.id)
+        self.assertEqual(selected_payload['balance'], 0)
+        self.assertEqual(selected_payload['selectedAmount'], 40000)
+        self.assertEqual(selected_payload['availableBalance'], 40000)
+
+    def test_schedules_update_api_applies_and_restores_prepayments(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import Prepayment, PrepaymentUsage
+
+        schedule = self._create_schedule(self.user, '선결제수정', activity_type='delivery')
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=100000,
+            balance=100000,
+            payment_date=timezone.localdate(),
+            payer_name='선결제고객',
+            created_by=self.user,
+        )
+        update_url = reverse('reporting:schedules_update_api', args=[schedule.id])
+        self.client.force_login(self.user)
+
+        apply_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'delivery',
+                'status': 'scheduled',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'usePrepayment': True,
+                'prepayments': [
+                    {'id': prepayment.id, 'amount': '60000'},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(apply_response.status_code, 200)
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 40000)
+        self.assertTrue(schedule.use_prepayment)
+        self.assertEqual(schedule.prepayment, prepayment)
+        self.assertEqual(int(schedule.prepayment_amount), 60000)
+        usage = PrepaymentUsage.objects.get(schedule=schedule)
+        self.assertEqual(int(usage.amount), 60000)
+        self.assertEqual(apply_response.json()['schedule']['prepaymentUsages'][0]['amount'], 60000)
+
+        restore_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'delivery',
+                'status': 'scheduled',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'usePrepayment': False,
+                'prepayments': [],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(restore_response.status_code, 200)
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 100000)
+        self.assertFalse(schedule.use_prepayment)
+        self.assertIsNone(schedule.prepayment)
+        self.assertEqual(int(schedule.prepayment_amount), 0)
+        self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
+
+    def test_schedules_update_api_blocks_over_balance_prepayment(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import Prepayment, PrepaymentUsage
+
+        schedule = self._create_schedule(self.user, '선결제잔액차단', activity_type='delivery')
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=1000,
+            balance=1000,
+            payment_date=timezone.localdate(),
+            payer_name='잔액부족',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'delivery',
+                'status': 'scheduled',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'usePrepayment': True,
+                'prepayments': [
+                    {'id': prepayment.id, 'amount': '2000'},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('잔액이 부족', response.json()['error'])
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 1000)
+        self.assertFalse(schedule.use_prepayment)
+        self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
 
     def test_schedules_update_api_blocks_manager_and_other_company_customer(self):
         import json
