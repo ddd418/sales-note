@@ -8351,3 +8351,66 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 댓글/매니저 메모 작성·삭제 흐름을 React `/notes/<id>/` 상세로 옮기는 작업이 적절합니다.
+
+---
+
+## Production Note Attachments Deployment — 영업노트 첨부파일 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 영업노트 상세 첨부파일 업로드/삭제 변경분을 GitHub `main`에 푸시하고 Railway production의 `web`, `sales-note-frontend` 서비스를 배포했습니다. 운영 `/notes/<id>/`가 새 번들을 내려주고, Django 노트 상세 API는 미로그인 상태에서 계속 보호되는 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React `/notes/<id>/` 상세 화면에 첨부파일 업로드/삭제 UI가 포함됐습니다.
+- 운영 Django API에 `/reporting/api/notes/<id>/files/upload/`가 배포됐습니다.
+- Manager/타 영업사원은 영업노트 첨부파일 조작이 계속 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 `/reporting/histories/<id>/` 상세/수정 화면과 파일 다운로드/삭제 경로는 유지했습니다.
+- `/reporting/api/notes/<id>/`는 미로그인 상태에서 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React note file management"
+→ 2e9dd33 feat: add React note file management
+
+git push origin main
+→ main updated from 0abc42b to 2e9dd33
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS, deployment id 45940929-da7e-4e11-8ff4-d6f7e01c111f
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React note files 2e9dd33" --ci
+→ Deploy complete, deployment id efdd4d88-3ec8-4b90-b258-d1e2586d214d
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/notes/731/
+→ 200, assets/index-DrrJKru7.js / assets/index-D32UHNZf.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DrrJKru7.js
+→ 첨부파일 업로드=True, 파일 삭제 확인=True, 영업노트 첨부파일 선택=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/notes/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/notes/731/`에서 파일 업로드, 다운로드, 삭제까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- 기존 정책대로 파일은 최대 5개, 파일당 10MB 제한을 유지합니다.
+
+### 7. Recommended Next Task
+
+- 댓글/매니저 메모 작성·삭제 흐름을 React `/notes/<id>/` 상세로 옮깁니다.
