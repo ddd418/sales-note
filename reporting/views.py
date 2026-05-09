@@ -3375,11 +3375,46 @@ def _file_size_label(size):
     return f'{size / (1024 * 1024):.1f} MB'
 
 
+def _notes_can_add_reply(user, history):
+    if history.parent_history_id or history.action_type == 'memo':
+        return False
+
+    user_profile = get_user_profile(user)
+    if user_profile.is_manager():
+        return bool(user == history.user or can_access_user_data(user, history.user))
+
+    return user == history.user
+
+
+def _notes_can_delete_reply(user, reply):
+    if reply.action_type != 'memo' or not reply.parent_history_id:
+        return False
+    if reply.created_by_id:
+        return reply.created_by_id == user.id
+    return reply.user_id == user.id
+
+
+def _notes_reply_payload(request, reply):
+    can_delete = _notes_can_delete_reply(request.user, reply)
+    is_manager_memo = bool(reply.created_by_id and reply.created_by_id != reply.user_id)
+    return {
+        'id': reply.id,
+        'content': (reply.content or '').strip(),
+        'author': _user_display_name(reply.created_by or reply.user),
+        'authorRole': '매니저 메모' if is_manager_memo else '댓글',
+        'createdAt': _datetime_or_none(reply.created_at),
+        'djangoHref': reverse('reporting:history_detail', args=[reply.id]),
+        'deleteHref': reverse('reporting:delete_manager_memo_api', args=[reply.id]) if can_delete else '',
+        'canDelete': can_delete,
+    }
+
+
 def _notes_detail_payload(request, history, user_profile):
     today = timezone.localdate()
     can_review = _can_review_notes(user_profile)
     can_edit = can_modify_user_data(request.user, history.user)
     detail_can_edit = bool(can_edit and history.parent_history_id is None and history.action_type != 'memo')
+    can_add_reply = _notes_can_add_reply(request.user, history)
     history.reply_count = history.reply_memos.count()
     history.file_count = history.files.count()
     note_payload = _notes_history_payload(history, today, can_review)
@@ -3399,13 +3434,7 @@ def _notes_detail_payload(request, history, user_profile):
         for file in history.files.all().order_by('-uploaded_at')
     ]
     replies = [
-        {
-            'id': reply.id,
-            'content': (reply.content or '').strip(),
-            'author': _user_display_name(reply.created_by or reply.user),
-            'createdAt': _datetime_or_none(reply.created_at),
-            'djangoHref': reverse('reporting:history_detail', args=[reply.id]),
-        }
+        _notes_reply_payload(request, reply)
         for reply in history.reply_memos.select_related('created_by', 'user').order_by('created_at')
     ]
 
@@ -3476,6 +3505,11 @@ def _notes_detail_payload(request, history, user_profile):
             'uploadFiles': reverse('reporting:note_file_upload', args=[history.id]) if detail_can_edit else '',
         },
         'edit': _notes_edit_config(request, history, can_edit),
+        'comments': {
+            'canCreate': can_add_reply,
+            'message': '' if can_add_reply else '댓글 작성 권한이 없습니다.',
+            'submitUrl': reverse('reporting:add_manager_memo_to_history_api', args=[history.id]) if can_add_reply else '',
+        },
         'relatedNotes': related_notes,
     }
 
@@ -12366,6 +12400,11 @@ def add_manager_memo_to_history_api(request, history_id):
         
         # 부모 히스토리 조회
         parent_history = get_object_or_404(History, pk=history_id)
+        if parent_history.action_type == 'memo' or parent_history.parent_history_id:
+            return JsonResponse({
+                'success': False,
+                'error': '댓글에는 다시 댓글을 추가할 수 없습니다.'
+            }, status=400)
         
         # 권한 확인 - 매니저이거나 해당 히스토리의 담당자인 경우 허용
         if not (user_profile.is_manager() or request.user == parent_history.user):

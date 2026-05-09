@@ -45,6 +45,7 @@ import {
   NoteEditPayload,
   NoteFileItem,
   NoteItem,
+  NoteReplyItem,
   SchedulesData,
   ScheduleDetailData,
   ScheduleDetailItem,
@@ -57,6 +58,7 @@ import {
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
   NoteCreatePayload,
+  addNoteReply,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
@@ -64,6 +66,7 @@ import {
   createCustomer as createCustomerRecord,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
+  deleteNoteReply,
   deleteScheduleFile,
   loadDashboardData,
   loadCustomerDetailData,
@@ -1806,6 +1809,11 @@ function NoteDetailPage({
   const [noteFileDeletingId, setNoteFileDeletingId] = useState<number | null>(null);
   const [noteFileError, setNoteFileError] = useState('');
   const [noteFileMessage, setNoteFileMessage] = useState('');
+  const [replyText, setReplyText] = useState('');
+  const [replySaving, setReplySaving] = useState(false);
+  const [replyDeletingId, setReplyDeletingId] = useState<number | null>(null);
+  const [replyError, setReplyError] = useState('');
+  const [replyMessage, setReplyMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeNoteEditForm(currentNote));
@@ -1816,6 +1824,11 @@ function NoteDetailPage({
     setNoteFileMessage('');
     setNoteFileUploading(false);
     setNoteFileDeletingId(null);
+    setReplyText('');
+    setReplyError('');
+    setReplyMessage('');
+    setReplySaving(false);
+    setReplyDeletingId(null);
     if (noteFileInputRef.current) {
       noteFileInputRef.current.value = '';
     }
@@ -1978,6 +1991,62 @@ function NoteDetailPage({
       setNoteFileError(error instanceof Error ? error.message : '첨부파일 삭제에 실패했습니다.');
     } finally {
       setNoteFileDeletingId(null);
+    }
+  };
+
+  const handleReplySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const memo = replyText.trim();
+    if (!memo) {
+      setReplyError('댓글 내용을 입력하세요.');
+      setReplyMessage('');
+      return;
+    }
+    if (!data?.comments.canCreate || !data.comments.submitUrl || replySaving) {
+      setReplyError(data?.comments.message || '댓글 작성 권한이 없습니다.');
+      setReplyMessage('');
+      return;
+    }
+
+    setReplySaving(true);
+    setReplyError('');
+    setReplyMessage('');
+    try {
+      const result = await addNoteReply(data.comments.submitUrl, memo);
+      await onRefresh();
+      setReplyText('');
+      setReplyMessage(result.message || '댓글을 추가했습니다.');
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : '댓글 작성에 실패했습니다.');
+    } finally {
+      setReplySaving(false);
+    }
+  };
+
+  const handleReplyDelete = async (reply: NoteReplyItem) => {
+    if (replyDeletingId !== null) {
+      return;
+    }
+    if (!reply.canDelete || !reply.deleteHref) {
+      setReplyError('댓글 삭제 권한이 없습니다.');
+      setReplyMessage('');
+      return;
+    }
+    if (!window.confirm('이 댓글을 삭제할까요?')) {
+      return;
+    }
+
+    setReplyDeletingId(reply.id);
+    setReplyError('');
+    setReplyMessage('');
+    try {
+      const result = await deleteNoteReply(reply.deleteHref);
+      await onRefresh();
+      setReplyMessage(result.message || '댓글을 삭제했습니다.');
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : '댓글 삭제에 실패했습니다.');
+    } finally {
+      setReplyDeletingId(null);
     }
   };
 
@@ -2346,16 +2415,50 @@ function NoteDetailPage({
             </div>
           )}
           <h3 className="customer-detail-section-heading">댓글</h3>
+          {data.comments.canCreate ? (
+            <form className="note-reply-compose" onSubmit={handleReplySubmit}>
+              <textarea
+                aria-label="댓글 내용"
+                onChange={(event) => {
+                  setReplyText(event.target.value);
+                  setReplyError('');
+                  setReplyMessage('');
+                }}
+                rows={3}
+                value={replyText}
+              />
+              <button className="customer-row-action note-reply-submit-button" disabled={replySaving} type="submit">
+                {replySaving ? <Loader2 className="spin-icon" size={14} /> : <MessageSquareText size={14} />}
+                <span>추가</span>
+              </button>
+            </form>
+          ) : null}
+          {replyError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{replyError}</span></div> : null}
+          {replyMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{replyMessage}</span></div> : null}
           {note.replies.length === 0 ? (
             <DashboardEmpty label="댓글이 없습니다" />
           ) : (
             <div className="note-reply-list">
               {note.replies.map((reply) => (
-                <a href={reply.djangoHref} key={reply.id}>
-                  <strong>{reply.author}</strong>
-                  <span>{reply.createdAt ? formatDateTimeLabel(reply.createdAt) : ''}</span>
-                  <p>{reply.content}</p>
-                </a>
+                <div className="note-reply-row" key={reply.id}>
+                  <a className="note-reply-content" href={reply.djangoHref}>
+                    <strong>{reply.author}</strong>
+                    <span>{[reply.authorRole, reply.createdAt ? formatDateTimeLabel(reply.createdAt) : ''].filter(Boolean).join(' · ')}</span>
+                    <p>{reply.content}</p>
+                  </a>
+                  {reply.canDelete && reply.deleteHref ? (
+                    <button
+                      aria-label={`${reply.author} 댓글 삭제`}
+                      className="customer-row-action note-reply-delete-button"
+                      disabled={replyDeletingId === reply.id}
+                      onClick={() => handleReplyDelete(reply)}
+                      type="button"
+                    >
+                      {replyDeletingId === reply.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                      <span>삭제</span>
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}

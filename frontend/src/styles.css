@@ -1529,6 +1529,42 @@ h2 {
   font-size: 12px;
 }
 
+.note-reply-compose {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.note-reply-compose textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+
+.note-reply-submit-button,
+.note-reply-delete-button {
+  gap: 5px;
+  margin-top: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.note-reply-submit-button {
+  justify-self: end;
+}
+
+.note-reply-delete-button {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.note-reply-submit-button:disabled,
+.note-reply-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .schedule-file-heading {
   display: flex;
   align-items: center;
@@ -1609,6 +1645,25 @@ h2 {
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.note-reply-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.note-reply-row .note-reply-content {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .note-detail-actions {
@@ -3290,7 +3345,8 @@ tbody tr:hover {
   }
 
   .schedule-file-heading,
-  .schedule-file-row {
+  .schedule-file-row,
+  .note-reply-row {
     align-items: stretch;
     grid-template-columns: 1fr;
   }
@@ -3300,7 +3356,9 @@ tbody tr:hover {
   }
 
   .schedule-file-upload-button,
-  .schedule-file-delete-button {
+  .schedule-file-delete-button,
+  .note-reply-submit-button,
+  .note-reply-delete-button {
     justify-content: center;
     width: 100%;
   }

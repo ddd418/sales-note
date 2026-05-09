@@ -1682,3 +1682,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Note Replies — 영업노트 댓글/매니저 메모 전환
+
+**목표**: React `/notes/<id>/` 상세 화면에서 댓글과 매니저 메모를 작성·삭제하게 만들어 Django 영업노트 상세 화면 왕복을 줄인다.
+
+**작업 범위**:
+
+- 영업노트 상세 API에 댓글 작성 URL, 댓글별 삭제 URL, 삭제 가능 여부를 제공한다.
+- 기존 `/reporting/api/histories/<id>/add-manager-memo/`, `/reporting/api/histories/<id>/delete-manager-memo/` API를 React에서 호출한다.
+- 기존 권한 정책을 유지해 manager는 같은 회사 노트에 매니저 메모를 작성할 수 있고, 실무자는 본인 노트에 댓글을 작성할 수 있게 한다.
+- 댓글 삭제는 기존 정책대로 작성자 본인만 가능하게 유지한다.
+- 기존 Django `/reporting/histories/<id>/` 상세와 `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History.parent_history` 댓글 구조를 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

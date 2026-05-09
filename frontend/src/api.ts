@@ -404,8 +404,11 @@ export type NoteReplyItem = {
   id: number;
   content: string;
   author: string;
+  authorRole?: string;
   createdAt: string | null;
   djangoHref: string;
+  deleteHref?: string;
+  canDelete?: boolean;
 };
 
 export type NoteDetailItem = NoteItem & {
@@ -470,6 +473,11 @@ export type NoteDetailData = {
       href: string;
       djangoHref?: string;
     }>;
+  };
+  comments: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
   };
   relatedNotes: NoteItem[];
 };
@@ -583,6 +591,13 @@ export type NoteFileActionResponse = {
   error?: string;
   message?: string;
   files?: NoteFileItem[];
+};
+
+export type NoteReplyActionResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  memo?: NoteReplyItem;
 };
 
 export type ScheduleItem = {
@@ -1181,6 +1196,11 @@ const emptyNoteDetailData: NoteDetailData = {
     serviceStatuses: [],
     customers: [],
   },
+  comments: {
+    canCreate: false,
+    message: '',
+    submitUrl: '',
+  },
   relatedNotes: [],
 };
 
@@ -1772,6 +1792,10 @@ export async function loadNoteDetailData(noteId: number): Promise<NoteDetailData
         ...emptyNoteDetailData.edit,
         ...(payload.edit ?? {}),
       },
+      comments: {
+        ...emptyNoteDetailData.comments,
+        ...(payload.comments ?? {}),
+      },
       note: payload.note ?? emptyNoteDetailData.note,
       relatedNotes: payload.relatedNotes ?? emptyNoteDetailData.relatedNotes,
     };
@@ -1880,6 +1904,56 @@ export async function deleteNoteFile(deleteUrl: string): Promise<NoteFileActionR
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Note file delete failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function addNoteReply(submitUrl: string, memo: string): Promise<NoteReplyActionResponse> {
+  const formData = new FormData();
+  formData.append('memo', memo);
+
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note reply API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteReplyActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note reply failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteNoteReply(deleteUrl: string): Promise<NoteReplyActionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note reply delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteReplyActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note reply delete failed: ${response.status}`);
   }
   return data;
 }

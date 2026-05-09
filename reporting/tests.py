@@ -1245,7 +1245,7 @@ class NotesSummaryApiTests(TestCase):
     def test_notes_detail_api_returns_detail_and_edit_config(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.utils import timezone
-        from reporting.models import HistoryFile
+        from reporting.models import History, HistoryFile
 
         target = self._create_note(
             self.user,
@@ -1265,6 +1265,23 @@ class NotesSummaryApiTests(TestCase):
             uploaded_by=self.user,
         )
         self.addCleanup(history_file.file.delete, False)
+        owner_reply = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='실무자 댓글',
+        )
+        manager_reply = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='관리자 확인 메모',
+            created_by=self.manager,
+        )
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:notes_detail_api', args=[target.id]))
@@ -1283,6 +1300,15 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:note_file_upload', args=[target.id]))
         self.assertEqual(payload['note']['files'][0]['id'], history_file.id)
         self.assertEqual(payload['note']['files'][0]['deleteHref'], reverse('reporting:file_delete', args=[history_file.id]))
+        self.assertTrue(payload['comments']['canCreate'])
+        self.assertEqual(payload['comments']['submitUrl'], reverse('reporting:add_manager_memo_to_history_api', args=[target.id]))
+        owner_reply_payload = next(reply for reply in payload['note']['replies'] if reply['id'] == owner_reply.id)
+        manager_reply_payload = next(reply for reply in payload['note']['replies'] if reply['id'] == manager_reply.id)
+        self.assertEqual(owner_reply_payload['authorRole'], '댓글')
+        self.assertTrue(owner_reply_payload['canDelete'])
+        self.assertEqual(owner_reply_payload['deleteHref'], reverse('reporting:delete_manager_memo_api', args=[owner_reply.id]))
+        self.assertEqual(manager_reply_payload['authorRole'], '매니저 메모')
+        self.assertFalse(manager_reply_payload['canDelete'])
         customer_ids = {item['id'] for item in payload['edit']['customers']}
         self.assertIn(target.followup_id, customer_ids)
 
@@ -1428,6 +1454,78 @@ class NotesSummaryApiTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['success'])
         self.assertFalse(HistoryFile.objects.filter(pk=history_file.id).exists())
+
+    def test_note_reply_create_api_allows_owner_and_same_company_manager(self):
+        from reporting.models import History
+
+        target = self._create_note(self.user, '댓글작성', action_type='quote', content='견적 댓글')
+        reply_url = reverse('reporting:add_manager_memo_to_history_api', args=[target.id])
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(reply_url, {'memo': '동료 댓글 시도'})
+        self.assertEqual(coworker_response.status_code, 403)
+
+        self.client.force_login(self.other_manager)
+        other_manager_response = self.client.post(reply_url, {'memo': '타사 매니저 댓글 시도'})
+        self.assertEqual(other_manager_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        owner_response = self.client.post(reply_url, {'memo': '실무자 댓글'})
+        self.assertEqual(owner_response.status_code, 200)
+        owner_reply = History.objects.get(parent_history=target, content='실무자 댓글')
+        self.assertEqual(owner_reply.user, self.user)
+        self.assertIsNone(owner_reply.created_by)
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reply_url, {'memo': '관리자 메모'})
+        self.assertEqual(manager_response.status_code, 200)
+        manager_reply = History.objects.get(parent_history=target, content='관리자 메모')
+        self.assertEqual(manager_reply.user, self.user)
+        self.assertEqual(manager_reply.created_by, self.manager)
+
+    def test_note_reply_delete_api_allows_author_only(self):
+        from reporting.models import History
+
+        target = self._create_note(self.user, '댓글삭제', action_type='quote', content='삭제 댓글')
+        owner_reply = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='실무자 삭제 댓글',
+        )
+        manager_reply = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='매니저 삭제 메모',
+            created_by=self.manager,
+        )
+
+        owner_delete_url = reverse('reporting:delete_manager_memo_api', args=[owner_reply.id])
+        manager_delete_url = reverse('reporting:delete_manager_memo_api', args=[manager_reply.id])
+
+        self.client.force_login(self.manager)
+        manager_denied = self.client.delete(owner_delete_url)
+        self.assertEqual(manager_denied.status_code, 403)
+        self.assertTrue(History.objects.filter(pk=owner_reply.id).exists())
+
+        self.client.force_login(self.user)
+        owner_denied = self.client.delete(manager_delete_url)
+        self.assertEqual(owner_denied.status_code, 403)
+        self.assertTrue(History.objects.filter(pk=manager_reply.id).exists())
+
+        owner_response = self.client.delete(owner_delete_url)
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertFalse(History.objects.filter(pk=owner_reply.id).exists())
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.delete(manager_delete_url)
+        self.assertEqual(manager_response.status_code, 200)
+        self.assertFalse(History.objects.filter(pk=manager_reply.id).exists())
 
     def test_history_toggle_reviewed_allows_manager_only(self):
         target = self._create_note(

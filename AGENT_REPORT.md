@@ -8414,3 +8414,68 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 댓글/매니저 메모 작성·삭제 흐름을 React `/notes/<id>/` 상세로 옮깁니다.
+
+---
+
+## React Note Replies — 영업노트 댓글/매니저 메모 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/notes/<id>/` 상세 화면에서 댓글과 매니저 메모를 작성·삭제할 수 있게 연결했습니다. 기존 Django 댓글 API를 재사용하고, 상세 API가 댓글 작성 URL과 댓글별 삭제 가능 여부를 내려주도록 보강했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 영업노트 댓글/매니저 메모 전환 계획 추가 |
+| `frontend/src/App.tsx` | 댓글 작성 폼, 삭제 버튼, 진행/성공/오류 상태 추가 |
+| `frontend/src/api.ts` | 댓글 작성/삭제 타입과 `addNoteReply`, `deleteNoteReply` API 함수 추가 |
+| `frontend/src/styles.css` | 댓글 작성 폼과 댓글 행/삭제 버튼 스타일 추가 |
+| `reporting/views.py` | 노트 상세 API에 댓글 작성 config, 댓글별 `deleteHref`, `canDelete`, 역할 표시 추가 |
+| `reporting/tests.py` | 댓글 작성/삭제 권한과 상세 payload 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 영업노트 상세에서 Django 화면으로 이동하지 않고 댓글을 바로 추가할 수 있습니다.
+- Manager는 같은 회사 영업노트에 매니저 메모를 남길 수 있고, 실무자는 본인 노트에 댓글을 남길 수 있습니다.
+- 댓글 목록에 `댓글`/`매니저 메모` 구분을 표시합니다.
+- 댓글 삭제는 기존 정책대로 작성자 본인에게만 노출되고 API에서도 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/api/histories/<id>/add-manager-memo/`, `/reporting/api/histories/<id>/delete-manager-memo/` API를 유지했습니다.
+- 기존 Django `/reporting/histories/<id>/` 상세 화면과 `/reporting/*` 경로는 유지했습니다.
+- Manager/타사 사용자/동료 영업사원의 권한 차단 흐름은 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-C3bZV9lB.js / assets/index-Ddxdl7EV.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/notes/<id>/` 댓글 작성, 매니저 메모 작성, 삭제까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- 댓글 편집은 이번 범위에 포함하지 않았습니다. 기존 흐름처럼 삭제 후 재작성하는 방식입니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 후속조치/완료 처리 또는 일정 납품 품목 편집처럼 아직 Django 보조 화면에 남아 있는 고위험 부가 기능을 하나씩 React로 옮기는 작업이 적절합니다.
