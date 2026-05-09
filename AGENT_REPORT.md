@@ -9527,3 +9527,184 @@ curl.exe -s -i https://web-production-5096.up.railway.app/reporting/api/customer
 ### 7. Recommended Next Task
 
 - 수동검수 결과를 받은 뒤 React 통합 프론트 전환 로드맵의 다음 화면 작업으로 진행합니다.
+
+---
+
+## Urgent Weekly Report Quote/Delivery Amount Loading — 주간보고 견적/납품 금액 포함 (2026-05-10)
+
+### 1. Summary
+
+주간보고 작성 화면의 `일정 불러오기`에서 견적 제출 및 납품 일정 금액이 함께 표시되고, 선택 후 `견적/납품에 삽입`할 때도 금액 줄이 포함되도록 수정했습니다. 견적은 `Quote.total_amount`를 우선 사용하고, Quote가 없는 견적 일정은 `DeliveryItem` 합계 또는 `Schedule.expected_revenue`를 fallback으로 사용합니다. 납품은 `DeliveryItem.total_price` 합계를 우선 사용하고, 없으면 연결 `History.delivery_amount`, 없으면 `Schedule.expected_revenue`를 fallback으로 사용합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 긴급 주간보고 금액 포함 작업 계획 추가 |
+| `reporting/views.py` | `weekly_report_load_schedules` 응답에 `amount`, `amount_label`, 히스토리/견적 금액 payload 추가 |
+| `reporting/templates/reporting/weekly_report/form.html` | 일정 카드에 금액 표시, 선택 삽입 텍스트에 금액 줄 포함, 최초 진입 시 API 기반 자동 로드 |
+| `reporting/tests.py` | 견적 금액, 견적 fallback 금액, 납품 DeliveryItem 금액, 납품 History fallback 금액, 작성 화면 렌더링 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 주간보고 작성자가 견적/납품 기록을 불러올 때 금액을 별도로 찾아 입력하지 않아도 됩니다.
+- 납품 기록은 품목 기반 금액과 기존 히스토리 금액을 모두 반영합니다.
+- 견적 제출 기록은 실제 Quote 금액이 있으면 해당 금액을, 없는 경우 일정의 예상 매출액을 사용합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/weekly-reports/create/` URL과 주간보고 저장 방식은 유지했습니다.
+- 기존 `categorized.activity`, `categorized.quote_delivery`, `schedules` 응답 구조는 유지하고 필드만 추가했습니다.
+- 인증은 기존 `@login_required`와 본인 일정 조회 범위를 유지했습니다.
+- DB migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+→ Ran 13 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: `d006234 fix: include weekly report quote delivery amounts`
+- GitHub push: `main` updated from `b0c485b` to `d006234`
+- Railway `web`: `77680da9-7b6a-4619-ada2-c289527534af` SUCCESS, commit `d006234`
+- Railway status: `web` Online, `sales-note-frontend` Online
+- `sales-note-frontend` bundle was not rebuilt because this task changed Django API/template only.
+
+### 7. Production Smoke Check
+
+```text
+curl -i https://sales-note-frontend-production.up.railway.app/reporting/weekly-reports/create/
+→ 302 /reporting/login/?next=/reporting/weekly-reports/create/
+
+curl -i "https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/schedules/?week_start=2026-04-21&week_end=2026-04-27"
+→ 302 /reporting/login/?next=/reporting/api/weekly-reports/schedules/%3Fweek_start%3D2026-04-21%26week_end%3D2026-04-27
+
+curl -i "https://web-production-5096.up.railway.app/reporting/api/weekly-reports/schedules/?week_start=2026-04-21&week_end=2026-04-27"
+→ 302 /reporting/login/?next=/reporting/api/weekly-reports/schedules/%3Fweek_start%3D2026-04-21%26week_end%3D2026-04-27
+```
+
+### 8. Known Limitations
+
+- 운영에서 실제 금액이 카드와 Quill 입력 텍스트에 들어가는지는 로그인 세션이 필요해 사용자 수동검수가 필요합니다.
+- 명시적으로 저장된 0원 납품 금액은 표시합니다. 금액 소스가 아예 없는 일정은 기존처럼 금액 줄을 표시하지 않습니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/reporting/weekly-reports/create/`
+2. 로그인 후 주 시작일/종료일을 견적 제출 또는 납품 일정이 있는 주로 선택합니다.
+3. `일정 불러오기`를 클릭합니다.
+4. 오른쪽 `견적/납품` 섹션에서 견적 제출 카드에 `견적 금액` 또는 견적번호 옆 금액이 보이는지 확인합니다.
+5. 납품 일정 카드에 `납품 금액`이 보이는지 확인합니다.
+6. 해당 견적/납품 카드를 체크하고 `견적/납품에 삽입`을 클릭합니다.
+7. 왼쪽 `견적/납품 내용` 에디터에 선택한 일정과 함께 `견적 금액: ...원` 또는 `납품 금액: ...원` 줄이 들어가는지 확인합니다.
+8. 저장 후 주간보고 상세에서 금액이 포함된 내용이 그대로 표시되는지 확인합니다.
+
+### 10. Recommended Next Task
+
+- 수동검수 결과를 받은 뒤 중단했던 React 통합 프론트 전환 작업으로 복귀합니다.
+
+---
+
+## Urgent Weekly Report Rich Text HTML Normalization — 주간보고 HTML 이중 escape 방지 (2026-05-10)
+
+### 1. Summary
+
+주간보고 작성/수정 저장 시 Quill HTML이 `<p>&lt;p&gt;...` 형태로 이중 escape되어 저장/표시되는 문제를 방지했습니다. 저장 시 서버에서 escaped rich text를 정상 HTML로 정규화하고, 이미 깨진 저장값도 상세 렌더링과 수정 화면 초기 로드에서 보정합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | HTML 이중 escape 긴급 수정 계획 추가 |
+| `reporting/utils_html.py` | escaped rich text 정규화, bleach fallback plain text 변환 보강 |
+| `reporting/templates/reporting/weekly_report/form.html` | 수정 화면 Quill 초기 로드 시 escaped HTML 정규화 |
+| `reporting/tests.py` | 이중 escape 저장/렌더링 회귀 테스트 및 0원 납품 금액 테스트 추가 |
+| `reporting/views.py` | 0원 납품 금액을 명시 금액으로 보존하도록 주간보고 일정 금액 helper 보강 |
+
+### 3. CRM Improvements
+
+- 주간보고 상세에서 `<p>&lt;p&gt;...` 같은 HTML 태그 문자열이 노출되지 않습니다.
+- 기존에 이미 깨진 주간보고도 상세 보기와 수정 화면에서 정상 문단으로 보정됩니다.
+- 견적/납품 금액 긴급 수정에서 명시적인 `0원` 납품도 누락하지 않게 보강했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Quill 기반 주간보고 작성/수정 UX는 유지했습니다.
+- 기존 HTML 정화 정책과 허용 태그 목록은 유지했습니다.
+- 신규 DB 필드와 migration은 없습니다.
+- 기존 로그인 보호와 `/reporting/*` 경로는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile reporting\utils_html.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+→ Ran 15 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: `aa73921 fix: normalize weekly report rich text html`
+- GitHub push: `main` updated from `d006234` to `aa73921`
+- Railway `web`: `56b8c632-14aa-4989-aeca-f422e06e7a43` SUCCESS, commit `aa73921`
+- Railway status: `web` Online, `sales-note-frontend` Online
+- `sales-note-frontend` bundle was not rebuilt because this task changed Django API/template only.
+
+### 7. Production Smoke Check
+
+```text
+curl -i https://sales-note-frontend-production.up.railway.app/reporting/weekly-reports/create/
+→ 302 /reporting/login/?next=/reporting/weekly-reports/create/
+
+curl -i "https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/schedules/?week_start=2026-04-21&week_end=2026-04-27"
+→ 302 /reporting/login/?next=/reporting/api/weekly-reports/schedules/%3Fweek_start%3D2026-04-21%26week_end%3D2026-04-27
+```
+
+### 8. Known Limitations
+
+- 운영에서 실제 저장 결과 확인은 로그인 세션이 필요해 사용자 수동검수가 필요합니다.
+- 이미 깨진 과거 주간보고는 상세/수정 화면에서는 보정되어 보이며, 수정 후 저장하면 저장값도 정상화됩니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/reporting/weekly-reports/create/`
+2. 로그인 후 주간보고를 새로 작성합니다.
+3. `영업 활동 내용`, `견적/납품 내용`, `다음 주 계획 / 기타`에 여러 줄을 입력합니다.
+4. 저장 후 상세 화면에서 `<p>`, `&lt;p&gt;`, `&amp;gt;` 같은 HTML 문자열이 보이지 않고 일반 문장/문단으로 보이는지 확인합니다.
+5. 방금 저장한 보고서에서 `수정`을 누릅니다.
+6. Quill 에디터 안에도 `<p>...</p>` 문자열이 아니라 실제 문단 내용만 보이는지 확인합니다.
+7. 다시 저장 후 상세 화면이 계속 정상 문단으로 보이는지 확인합니다.
+8. 견적/납품 일정 불러오기 테스트도 함께 진행해 금액 표시와 삽입이 유지되는지 확인합니다.
+
+### 10. Recommended Next Task
+
+- 수동검수 결과를 받은 뒤 React 통합 프론트 전환 작업으로 복귀합니다.
