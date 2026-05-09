@@ -8087,3 +8087,69 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 운영 배포 후 `/schedules/<id>/`에서 상세 표시, 수정 저장, manager 수정 차단, 보고 작성 링크, Django 상세 보조 링크를 수동 검수합니다.
+
+---
+
+## Production Schedule Detail Deployment — 일정 상세 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 일정 상세/수정 변경분을 GitHub `main`에 푸시하고 Railway production의 `web`, `sales-note-frontend` 서비스를 배포했습니다. 운영 `/schedules/<id>/`가 새 React 번들을 내려주고, 일정 상세 API가 로그인 보호 상태로 응답하는 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React `/schedules/731/` 같은 고객 일정 상세 URL이 새 상세/수정 화면 코드를 포함한 번들을 사용합니다.
+- 운영 Django API에 `/reporting/api/schedules/<id>/`, `/reporting/api/schedules/<id>/update/`가 배포됐습니다.
+- 대시보드/고객/노트에서 고객 일정 링크가 React 상세로 이어지는 배포본이 적용됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 `/reporting/schedules/<id>/` Django 상세/수정 화면과 인증 보호는 유지했습니다.
+- `/reporting/api/schedules/<id>/`는 미로그인 상태에서 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React schedule detail edit"
+→ f170018 feat: add React schedule detail edit
+
+git push origin main
+→ main updated from 7e59e63 to f170018
+
+railway up --service web --environment production --message "Deploy React schedule detail API f170018" --ci
+→ Direct upload attempt failed twice with Railway code snapshot errors, but GitHub source deployment succeeded.
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS, deployment id ebe628fa-9ab7-4c68-9d22-fd1bb82b6e56
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React schedule detail f170018" --ci
+→ Deploy complete, deployment id c514a3a0-0869-4afe-a6a5-e457d297a563
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/731/
+→ 200, assets/index-DWiacmrm.js / assets/index-u1L9qtgk.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DWiacmrm.js
+→ Schedule detail=True, /reporting/api/schedules/=True, 일정 수정=True
+
+Invoke-RestMethod https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/schedules/731/` 상세 화면의 데이터 표시와 저장까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- Railway `web`에 직접 업로드한 2회 시도는 snapshot 생성 실패로 남아 있지만, 최종 source redeploy `ebe628fa-9ab7-4c68-9d22-fd1bb82b6e56`는 성공했고 `railway status`도 Online입니다.
+
+### 7. Recommended Next Task
+
+- 실제 계정으로 `/schedules/731/`에 접속해 상세 화면 표시, 수정 저장, manager 수정 차단, 보고 작성 링크, Django 상세 보조 링크 동작을 확인합니다.
