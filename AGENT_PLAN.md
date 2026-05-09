@@ -9,6 +9,32 @@
 
 ---
 
+## Current urgent task — 고객 AI 분석 견적/납품 컨텍스트 누락 수정
+
+**목표**: React 고객 상세(`/customers/<id>/`)에서 실행하는 부서 AI 분석이 실제 CRM의 견적/납품 기록을 빠짐없이 입력 컨텍스트로 사용하게 한다.
+
+### 확인된 문제
+
+- 기존 부서 AI 분석 수집 로직은 `Quote` 모델과 `History(action_type='delivery_schedule')` 위주로 견적/납품을 읽는다.
+- 운영 데이터에는 견적/납품이 `Schedule(activity_type='quote'/'delivery')`와 `DeliveryItem(schedule=...)` 조합으로 저장되는 경우가 있다.
+- 이 경우 고객 상세 AI 분석 프롬프트에 견적/납품 금액과 품목이 누락되어 GPT가 이미 나간 견적을 모르는 문제가 발생한다.
+
+### 구현 계획
+
+- `ai_chat.services.gather_quote_delivery_data()`를 확장해 다음 소스를 함께 수집한다.
+  - `Quote` + `QuoteItem`
+  - 견적 일정(`Schedule.activity_type='quote'`) + 일정 품목(`DeliveryItem.schedule`)
+  - 견적 히스토리(`History.action_type='quote'`) + 히스토리 품목(`DeliveryItem.history`)
+  - 납품 히스토리(`History.action_type='delivery_schedule'`) + 히스토리/일정 품목
+  - 납품 일정(`Schedule.activity_type='delivery'`) + 일정 품목
+- 이미 히스토리와 연결된 납품 일정은 중복 집계하지 않는다.
+- 개별 고객 AI 분석(`gather_followup_data`)도 같은 수집 경로를 사용하게 맞춘다.
+- DB 모델 변경 및 마이그레이션은 하지 않는다.
+- 테스트는 일정 기반 견적/납품 품목이 AI 프롬프트에 포함되는지 검증한다.
+- React 통합 완료 전까지 Django 기존 메뉴/페이지는 계속 접근 가능하게 유지한다. Django 사이드바의 고객/일정/영업노트/AI/파이프라인 메뉴는 Django URL을 가리키고, React CRM은 별도 진입 링크로 유지한다.
+
+---
+
 ## Phase 0 — 보안 정리 및 잘못된 앱 제거 ✅ 완료
 
 ### 완료 내용

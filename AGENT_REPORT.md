@@ -1,5 +1,74 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — 긴급: 고객 AI 분석 견적/납품 컨텍스트 보강 및 Django 메뉴 재개방
+
+**상태**: 구현/검증 완료, Railway 배포 대기
+
+### 요약
+
+React 고객 상세(`/customers/<id>/`)에서 실행하는 부서 AI 분석이 `Quote` 모델만이 아니라 일정 기반 견적/납품 품목까지 GPT 입력에 포함하도록 수정했습니다.
+전환 기간 운영 편의를 위해 Django 공통 사이드바의 주요 CRM 메뉴도 다시 Django 기존 페이지로 연결했습니다. React CRM은 상단 `프론트 CRM` 링크로 계속 접근 가능합니다.
+
+### 변경된 파일
+
+- `ai_chat/services.py`
+  - 부서 AI/개별 고객 AI 견적·납품 수집 로직 확장
+  - `Schedule(activity_type='quote'/'delivery')` + `DeliveryItem(schedule=...)` 포함
+  - `History(action_type='quote'/'delivery_schedule')` + 히스토리/일정 품목 포함
+  - 납품 일정과 동기화 히스토리 중복 집계 방지
+  - GPT 프롬프트에 출처(`견적 일정`, `납품 일정`, `견적 활동`, `납품 활동`)와 금액/품목/메모 포함
+- `ai_chat/tests.py`
+  - 일정 기반 견적/납품 품목이 AI 수집 데이터와 프롬프트에 들어가는 회귀 테스트 추가
+  - Django AI 메뉴 링크 기대값 갱신
+- `reporting/templates/reporting/base.html`
+  - Django 사이드바 메뉴를 Django URL로 복구: 대시보드, 고객, AI, 일정, 영업노트, 파이프라인
+  - React CRM 진입 링크는 상단 빠른 액션으로 유지
+- `AGENT_PLAN.md`
+  - 긴급 작업 계획 및 전환 기간 Django 페이지 개방 원칙 기록
+
+### CRM 개선
+
+- 고객 상세 AI 재분석 시 실제 견적 제출/납품 기록과 금액, 품목이 GPT 입력에 들어갑니다.
+- 견적/납품이 `Schedule` 품목 기반으로만 저장된 운영 데이터도 분석 근거에 포함됩니다.
+- React 통합 완료 전까지 기존 Django 업무 화면을 계속 사용할 수 있습니다.
+
+### 기존 기능 보존
+
+- 인증/AI 권한/본인 담당 부서 조건은 기존 정책 그대로 유지했습니다.
+- DB 모델 변경 없음, 마이그레이션 없음.
+- React 고객 상세 실행 버튼은 기존 `/ai/department/<id>/run/` 경로를 그대로 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```
+python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests --verbosity=2
+→ OK (2 tests)
+
+python manage.py test ai_chat.tests reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ OK (34 tests)
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 이미 저장된 기존 AI 분석 결과는 자동으로 다시 작성되지 않습니다. 배포 후 고객 상세에서 `AI 분석 실행`을 다시 눌러야 새 견적/납품 컨텍스트로 재분석됩니다.
+- 이번 변경은 Django backend/web 서비스 변경입니다. React 번들 변경은 없습니다.
+
+### 다음 권장 작업
+
+- 배포 후 `/customers/454/`에서 AI 분석을 재실행하고, 결과 요약/견적 전환/다음 액션에 견적·납품 기록이 반영되는지 수동검수합니다.
+- 수동검수 통과 후 React 통합 프론트 작업을 이어갑니다. 단, 통합 완료 전까지 Django 원본 페이지 링크는 유지합니다.
+
+---
+
 ## Phase 0 — 보안 정리 및 잘못된 앱 제거
 
 **날짜**: 2026-04-25  

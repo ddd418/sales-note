@@ -153,6 +153,157 @@ class AIDepartmentPromptLogicTests(TestCase):
         self.assertIn('[금액 제거]', prompt)
 
 
+class AIDepartmentQuoteDeliveryCollectionTests(TestCase):
+    def test_department_analysis_collects_schedule_quote_and_delivery_items(self):
+        from datetime import time
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, History, Schedule
+        from .services import gather_quote_delivery_data
+
+        user = make_ai_user('ai_qd_schedule_user', can_use_ai=True)
+        _company, department = make_department_with_followup(user)
+        followup = FollowUp.objects.get(user=user, department=department)
+
+        quote_schedule = Schedule.objects.create(
+            user=user,
+            followup=followup,
+            visit_date=date(2026, 5, 11),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='completed',
+            notes='견적서 전달 완료',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='견적용 피펫',
+            quantity=2,
+            unit_price=Decimal('100000'),
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=user,
+            followup=followup,
+            visit_date=date(2026, 5, 12),
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='납품 완료',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='납품용 팁',
+            quantity=3,
+            unit_price=Decimal('50000'),
+        )
+        History.objects.create(
+            user=user,
+            followup=followup,
+            schedule=delivery_schedule,
+            action_type='delivery_schedule',
+            content='납품 히스토리 동기화',
+        )
+
+        data = gather_quote_delivery_data(department, user)
+
+        self.assertEqual(data['summary']['total_quotes'], 1)
+        self.assertEqual(data['summary']['total_deliveries'], 1)
+        self.assertEqual(data['quotes'][0]['source'], '견적 일정')
+        self.assertEqual(data['quotes'][0]['total_amount'], 220000)
+        self.assertEqual(data['quotes'][0]['items'][0]['product'], '견적용 피펫')
+        self.assertEqual(data['deliveries'][0]['source'], '납품 활동')
+        self.assertEqual(data['deliveries'][0]['amount'], 165000)
+        self.assertEqual(data['deliveries'][0]['items'][0]['product'], '납품용 팁')
+        self.assertEqual(data['summary']['product_stats']['견적용 피펫']['quote_amount'], 220000)
+        self.assertEqual(data['summary']['product_stats']['납품용 팁']['delivery_amount'], 165000)
+
+    def test_department_analysis_prompt_includes_schedule_quote_and_delivery_context(self):
+        from datetime import time
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Schedule
+        from .services import analyze_department
+
+        user = make_ai_user('ai_qd_prompt_user', can_use_ai=True)
+        _company, department = make_department_with_followup(user)
+        followup = FollowUp.objects.get(user=user, department=department)
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+
+        quote_schedule = Schedule.objects.create(
+            user=user,
+            followup=followup,
+            visit_date=date(2026, 5, 13),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='completed',
+            notes='고객에게 견적 제출함',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='AI 견적 품목',
+            quantity=1,
+            unit_price=Decimal('300000'),
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=user,
+            followup=followup,
+            visit_date=date(2026, 5, 14),
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='일부 납품 완료',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='AI 납품 품목',
+            quantity=2,
+            unit_price=Decimal('40000'),
+        )
+
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class Usage:
+                    total_tokens = 11
+
+                class Message:
+                    content = json.dumps({
+                        'department_summary': '견적과 납품을 반영했습니다.',
+                        'painpoint_cards': [],
+                    })
+
+                class Choice:
+                    message = Message()
+
+                class Response:
+                    choices = [Choice()]
+                    usage = Usage()
+
+                return Response()
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+
+        with patch('ai_chat.services.get_openai_client', return_value=FakeClient()):
+            result, qd_data, _token_usage = analyze_department(analysis, department, user)
+
+        prompt = captured['messages'][1]['content']
+        self.assertIn('견적 데이터 (1건)', prompt)
+        self.assertIn('AI 견적 품목', prompt)
+        self.assertIn('330,000원', prompt)
+        self.assertIn('견적 일정', prompt)
+        self.assertIn('납품 데이터 (1건)', prompt)
+        self.assertIn('AI 납품 품목', prompt)
+        self.assertIn('88,000원', prompt)
+        self.assertIn('납품 일정', prompt)
+        self.assertEqual(qd_data['summary']['total_quotes'], 1)
+        self.assertEqual(qd_data['summary']['total_deliveries'], 1)
+        self.assertEqual(result['department_summary'], '견적과 납품을 반영했습니다.')
+
+
 class AIDepartmentPromptHubViewTests(TestCase):
     def setUp(self):
         self.client = Client()
@@ -189,7 +340,7 @@ class AIDepartmentPromptHubViewTests(TestCase):
 
         self.assertRegex(
             html,
-            r'href="https://sales-note-frontend-production\.up\.railway\.app/ai-workspace/" class="nav-link\s+active"',
+            r'href="/ai/" class="nav-link\s+active"',
         )
         self.assertNotRegex(
             html,

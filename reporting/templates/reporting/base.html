@@ -1579,7 +1579,7 @@
         <!-- 대시보드 메뉴 - 로그인한 사용자만 -->
         {% if user.is_authenticated %}
         <li class="nav-item">
-          <a href="{{ frontend_dashboard_url }}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+          <a href="{% url 'reporting:dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
             <i class="fas fa-home"></i>
             <span>대시보드</span>
           </a>
@@ -1617,7 +1617,7 @@
         <!-- Admin, Salesman & Manager 공통 메뉴 -->
         {% if user.is_authenticated and user.userprofile and user.userprofile.role in 'admin,salesman,manager' %}
         <li class="nav-item">
-          <a href="{{ frontend_customers_url }}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'followup' or request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}">
+          <a href="{% url 'reporting:followup_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'followup' or request.resolver_match.url_name|slice:':8' == 'customer' %}active{% endif %}">
             <i class="fas fa-user-check"></i>
             <span>고객</span>
           </a>
@@ -1639,26 +1639,26 @@
         {% endif %}
         {% if user.userprofile.can_use_ai %}
         <li class="nav-item">
-          <a href="{{ frontend_ai_url }}" class="nav-link {% if request.resolver_match.app_name == 'ai_chat' %}active{% endif %}">
+          <a href="{% url 'ai_chat:department_list' %}" class="nav-link {% if request.resolver_match.app_name == 'ai_chat' %}active{% endif %}">
             <i class="fas fa-brain" style="background: linear-gradient(135deg, #8b5cf6, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
             <span>AI</span>
           </a>
         </li>
         {% endif %}
         <li class="nav-item">
-          <a href="{{ frontend_schedules_url }}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'schedule' %}active{% endif %}">
+          <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'schedule' %}active{% endif %}">
             <i class="fas fa-list"></i>
             <span>일정</span>
           </a>
         </li>
         <li class="nav-item">
-          <a href="{{ frontend_notes_url }}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}">
+          <a href="{% url 'reporting:history_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':7' == 'history' %}active{% endif %}">
             <i class="fas fa-history"></i>
             <span>영업노트</span>
           </a>
         </li>
         <li class="nav-item">
-          <a href="{{ frontend_pipeline_url }}" class="nav-link">
+          <a href="{% url 'reporting:funnel_pipeline' %}" class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'funnel' %}active{% endif %}">
             <i class="fas fa-table-columns"></i>
             <span>파이프라인</span>
           </a>

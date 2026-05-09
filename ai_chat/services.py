@@ -7,7 +7,7 @@ import os
 import logging
 import re
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from openai import OpenAI
 
@@ -68,68 +68,303 @@ def gather_meeting_data(department, user, months=6):
     return meeting_list
 
 
-def gather_quote_delivery_data(department, user):
-    """부서의 견적/납품 데이터 수집 및 패턴 분석"""
-    from reporting.models import Quote, QuoteItem, History, FollowUp, DeliveryItem
+def _money_to_int(value):
+    if value is None:
+        return 0
+    try:
+        return int(Decimal(str(value)))
+    except (InvalidOperation, TypeError, ValueError):
+        return 0
 
-    followups = FollowUp.objects.filter(user=user, department=department)
-    followup_ids = list(followups.values_list('id', flat=True))
 
-    # 견적 데이터
-    quotes = Quote.objects.filter(
-        followup_id__in=followup_ids
-    ).select_related('followup').prefetch_related('items__product').order_by('-quote_date')
+def _delivery_item_total_value(item):
+    if item.total_price is not None:
+        return Decimal(str(item.total_price))
+    if item.unit_price is not None and item.quantity:
+        return Decimal(str(item.unit_price)) * Decimal(str(item.quantity)) * Decimal('1.1')
+    return None
+
+
+def _delivery_item_name(item):
+    product = getattr(item, 'product', None)
+    if product and getattr(product, 'product_code', None):
+        return product.product_code
+    return getattr(item, 'item_name', '') or '미정'
+
+
+def _delivery_items_payload(items, amount_key='total_price'):
+    payload = []
+    total = Decimal('0')
+    has_amount = False
+    for item in items:
+        item_total = _delivery_item_total_value(item)
+        if item_total is not None:
+            total += item_total
+            has_amount = True
+        payload.append({
+            'product': _delivery_item_name(item),
+            'quantity': item.quantity or 0,
+            'unit_price': _money_to_int(item.unit_price),
+            amount_key: _money_to_int(item_total),
+        })
+    return payload, total, has_amount
+
+
+def _quote_items_payload(items):
+    payload = []
+    for item in items:
+        product = getattr(item, 'product', None)
+        payload.append({
+            'product': product.product_code if product else '미정',
+            'quantity': item.quantity,
+            'unit_price': _money_to_int(item.unit_price),
+            'subtotal': _money_to_int(item.subtotal),
+        })
+    return payload
+
+
+def _quote_delivery_items_text(items):
+    labels = []
+    for item in items:
+        amount = item.get('subtotal')
+        if amount is None:
+            amount = item.get('total_price')
+        amount_label = f", {int(amount):,}원" if amount else ''
+        labels.append(f"{item.get('product') or '미정'}({item.get('quantity') or 0}개{amount_label})")
+    return ', '.join(labels)
+
+
+def _empty_quote_delivery_data():
+    return {
+        'quotes': [],
+        'deliveries': [],
+        'summary': {
+            'total_quotes': 0,
+            'converted_quotes': 0,
+            'conversion_rate': 0,
+            'total_deliveries': 0,
+            'total_quote_amount': 0,
+            'total_delivery_amount': 0,
+            'avg_delivery_interval_days': None,
+            'product_stats': {},
+        }
+    }
+
+
+def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
+    """견적/납품 관련 모델과 일정 품목 데이터를 하나의 AI 입력으로 통합한다."""
+    from reporting.models import Quote, History, Schedule
+
+    followup_ids = [followup_id for followup_id in dict.fromkeys(followup_ids or []) if followup_id]
+    if not followup_ids:
+        return _empty_quote_delivery_data()
 
     quote_list = []
+    delivery_list = []
+
+    quotes = Quote.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).select_related(
+        'followup',
+        'schedule',
+    ).prefetch_related(
+        'items__product',
+        'schedule__delivery_items_set__product',
+    ).order_by('-quote_date', '-created_at')
+
+    quote_schedule_ids = set()
     for q in quotes:
-        items = []
-        for item in q.items.all():
-            items.append({
-                'product': item.product.product_code if item.product else '미정',
-                'quantity': item.quantity,
-                'unit_price': int(item.unit_price) if item.unit_price else 0,
-                'subtotal': int(item.subtotal) if item.subtotal else 0,
-            })
+        if q.schedule_id:
+            quote_schedule_ids.add(q.schedule_id)
+
+        items = _quote_items_payload(q.items.all())
+        schedule_items = []
+        schedule_total = Decimal('0')
+        schedule_has_amount = False
+        if q.schedule_id and q.schedule:
+            schedule_items, schedule_total, schedule_has_amount = _delivery_items_payload(
+                q.schedule.delivery_items_set.all(),
+                amount_key='subtotal',
+            )
+        if not items and schedule_items:
+            items = schedule_items
+
+        total_amount = _money_to_int(q.total_amount)
+        if total_amount == 0 and schedule_has_amount:
+            total_amount = _money_to_int(schedule_total)
+
         quote_list.append({
             'quote_number': q.quote_number,
             'date': q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '',
             'customer': q.followup.customer_name if q.followup else '미정',
             'stage': q.get_stage_display(),
-            'total_amount': int(q.total_amount) if q.total_amount else 0,
+            'total_amount': total_amount,
             'converted_to_delivery': q.converted_to_delivery,
             'items': items,
+            'source': '견적서',
+            'schedule_id': q.schedule_id,
+            'notes': q.notes or q.customer_feedback or '',
         })
 
-    # 납품 데이터
-    deliveries = History.objects.filter(
+    quote_histories = History.objects.filter(
+        user=user,
         followup_id__in=followup_ids,
-        action_type='delivery_schedule',
+        action_type='quote',
+        parent_history__isnull=True,
+    ).select_related(
+        'followup',
+        'schedule',
+    ).prefetch_related(
+        'delivery_items_set__product',
+        'schedule__delivery_items_set__product',
     ).order_by('-created_at')
 
-    delivery_list = []
-    for d in deliveries:
-        d_items = DeliveryItem.objects.filter(history=d).select_related('product')
-        items = []
-        for di in d_items:
-            items.append({
-                'product': di.product.product_code if di.product else di.item_name,
-                'quantity': di.quantity,
-                'unit_price': int(di.unit_price) if di.unit_price else 0,
-                'total_price': int(di.total_price) if di.total_price else 0,
-            })
-        delivery_list.append({
-            'date': d.delivery_date.strftime('%Y-%m-%d') if d.delivery_date else d.created_at.strftime('%Y-%m-%d'),
-            'customer': d.followup.customer_name if d.followup else '미정',
-            'amount': int(d.delivery_amount) if d.delivery_amount else 0,
+    quote_history_schedule_ids = set()
+    for history in quote_histories:
+        if history.schedule_id:
+            quote_history_schedule_ids.add(history.schedule_id)
+
+        items, item_total, has_item_amount = _delivery_items_payload(
+            history.delivery_items_set.all(),
+            amount_key='subtotal',
+        )
+        if not items and history.schedule_id and history.schedule:
+            items, item_total, has_item_amount = _delivery_items_payload(
+                history.schedule.delivery_items_set.all(),
+                amount_key='subtotal',
+            )
+
+        quote_date = history.meeting_date or history.created_at.date()
+        quote_list.append({
+            'quote_number': f"활동-{history.pk}",
+            'date': quote_date.strftime('%Y-%m-%d') if quote_date else '',
+            'customer': history.followup.customer_name if history.followup else '미정',
+            'stage': history.get_action_type_display(),
+            'total_amount': _money_to_int(item_total) if has_item_amount else 0,
+            'converted_to_delivery': False,
             'items': items,
+            'source': '견적 활동',
+            'schedule_id': history.schedule_id,
+            'notes': history.content or '',
         })
 
-    # 패턴 계산
+    excluded_quote_schedule_ids = quote_schedule_ids | quote_history_schedule_ids
+    quote_schedules = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        activity_type='quote',
+    ).exclude(
+        status='cancelled',
+    ).exclude(
+        id__in=excluded_quote_schedule_ids,
+    ).select_related(
+        'followup',
+    ).prefetch_related(
+        'delivery_items_set__product',
+    ).order_by('-visit_date', '-visit_time')
+
+    for schedule in quote_schedules:
+        items, item_total, has_item_amount = _delivery_items_payload(
+            schedule.delivery_items_set.all(),
+            amount_key='subtotal',
+        )
+        total_amount = item_total if has_item_amount else schedule.expected_revenue
+        quote_list.append({
+            'quote_number': f"견적일정-{schedule.pk}",
+            'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
+            'customer': schedule.followup.customer_name if schedule.followup else '미정',
+            'stage': schedule.get_status_display(),
+            'total_amount': _money_to_int(total_amount),
+            'converted_to_delivery': bool(schedule.purchase_confirmed),
+            'items': items,
+            'source': '견적 일정',
+            'schedule_id': schedule.pk,
+            'notes': schedule.notes or '',
+        })
+
+    delivery_histories = History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        action_type='delivery_schedule',
+        parent_history__isnull=True,
+    ).select_related(
+        'followup',
+        'schedule',
+    ).prefetch_related(
+        'delivery_items_set__product',
+        'schedule__delivery_items_set__product',
+    ).order_by('-created_at')
+
+    delivery_history_schedule_ids = set()
+    for history in delivery_histories:
+        if history.schedule_id:
+            delivery_history_schedule_ids.add(history.schedule_id)
+
+        items, item_total, has_item_amount = _delivery_items_payload(
+            history.delivery_items_set.all(),
+            amount_key='total_price',
+        )
+        if not items and history.schedule_id and history.schedule:
+            items, item_total, has_item_amount = _delivery_items_payload(
+                history.schedule.delivery_items_set.all(),
+                amount_key='total_price',
+            )
+
+        amount = history.delivery_amount
+        if amount is None and has_item_amount:
+            amount = item_total
+        if amount is None and history.schedule_id and history.schedule:
+            amount = history.schedule.expected_revenue
+
+        delivery_date = history.delivery_date or history.created_at.date()
+        delivery_list.append({
+            'date': delivery_date.strftime('%Y-%m-%d') if delivery_date else '',
+            'customer': history.followup.customer_name if history.followup else '미정',
+            'amount': _money_to_int(amount),
+            'items': items,
+            'source': '납품 활동',
+            'schedule_id': history.schedule_id,
+            'notes': history.content or '',
+        })
+
+    delivery_schedules = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        activity_type='delivery',
+    ).exclude(
+        status='cancelled',
+    ).exclude(
+        id__in=delivery_history_schedule_ids,
+    ).select_related(
+        'followup',
+    ).prefetch_related(
+        'delivery_items_set__product',
+    ).order_by('-visit_date', '-visit_time')
+
+    for schedule in delivery_schedules:
+        items, item_total, has_item_amount = _delivery_items_payload(
+            schedule.delivery_items_set.all(),
+            amount_key='total_price',
+        )
+        amount = item_total if has_item_amount else schedule.expected_revenue
+        delivery_list.append({
+            'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
+            'customer': schedule.followup.customer_name if schedule.followup else '미정',
+            'amount': _money_to_int(amount),
+            'items': items,
+            'source': '납품 일정',
+            'schedule_id': schedule.pk,
+            'notes': schedule.notes or '',
+        })
+
+    quote_list.sort(key=lambda item: item.get('date') or '', reverse=True)
+    delivery_list.sort(key=lambda item: item.get('date') or '', reverse=True)
+
     total_quotes = len(quote_list)
     converted_quotes = sum(1 for q in quote_list if q['converted_to_delivery'])
     conversion_rate = round(converted_quotes / total_quotes * 100, 1) if total_quotes > 0 else 0
 
-    # 납품 주기 계산
     delivery_dates = sorted([d['date'] for d in delivery_list if d['date']])
     avg_delivery_interval_days = None
     if len(delivery_dates) >= 2:
@@ -140,7 +375,6 @@ def gather_quote_delivery_data(department, user):
         if intervals:
             avg_delivery_interval_days = round(sum(intervals) / len(intervals))
 
-    # 제품별 집계
     product_stats = {}
     for q in quote_list:
         for item in q['items']:
@@ -148,14 +382,14 @@ def gather_quote_delivery_data(department, user):
             if name not in product_stats:
                 product_stats[name] = {'quoted': 0, 'delivered': 0, 'quote_amount': 0, 'delivery_amount': 0}
             product_stats[name]['quoted'] += 1
-            product_stats[name]['quote_amount'] += item['subtotal']
+            product_stats[name]['quote_amount'] += item.get('subtotal', 0) or 0
     for d in delivery_list:
         for item in d['items']:
             name = item['product']
             if name not in product_stats:
                 product_stats[name] = {'quoted': 0, 'delivered': 0, 'quote_amount': 0, 'delivery_amount': 0}
             product_stats[name]['delivered'] += 1
-            product_stats[name]['delivery_amount'] += item['total_price']
+            product_stats[name]['delivery_amount'] += item.get('total_price', 0) or 0
 
     return {
         'quotes': quote_list,
@@ -165,10 +399,21 @@ def gather_quote_delivery_data(department, user):
             'converted_quotes': converted_quotes,
             'conversion_rate': conversion_rate,
             'total_deliveries': len(delivery_list),
+            'total_quote_amount': sum(q.get('total_amount') or 0 for q in quote_list),
+            'total_delivery_amount': sum(d.get('amount') or 0 for d in delivery_list),
             'avg_delivery_interval_days': avg_delivery_interval_days,
             'product_stats': product_stats,
         }
     }
+
+
+def gather_quote_delivery_data(department, user):
+    """부서의 견적/납품 데이터 수집 및 패턴 분석"""
+    from reporting.models import FollowUp
+
+    followups = FollowUp.objects.filter(user=user, department=department)
+    followup_ids = list(followups.values_list('id', flat=True))
+    return _gather_quote_delivery_data_for_followup_ids(followup_ids, user)
 
 
 def gather_prepayment_data(followups):
@@ -662,11 +907,13 @@ def analyze_department(analysis, department, user):
     prompt_parts.append(f"\n━━━ 견적 데이터 ({len(qd_data['quotes'])}건) ━━━")
     if qd_data['quotes']:
         for q in qd_data['quotes']:
-            items_str = ', '.join([f"{it['product']}({it['quantity']}개)" for it in q['items']])
+            items_str = _quote_delivery_items_text(q['items'])
             converted = '✅납품전환' if q['converted_to_delivery'] else '❌미전환'
+            source = f" | {q['source']}" if q.get('source') else ''
+            notes = f" | 메모: {str(q.get('notes') or '')[:120]}" if q.get('notes') else ''
             prompt_parts.append(
                 f"- {q['date']} | {q['quote_number']} | {q['customer']} | "
-                f"{q['stage']} | {q['total_amount']:,}원 | {converted} | 품목: {items_str}"
+                f"{q['stage']} | {q['total_amount']:,}원 | {converted}{source}{notes} | 품목: {items_str}"
             )
     else:
         prompt_parts.append("(견적 데이터 없음)")
@@ -675,9 +922,11 @@ def analyze_department(analysis, department, user):
     prompt_parts.append(f"\n━━━ 납품 데이터 ({len(qd_data['deliveries'])}건) ━━━")
     if qd_data['deliveries']:
         for d in qd_data['deliveries']:
-            items_str = ', '.join([f"{it['product']}({it['quantity']}개)" for it in d['items']])
+            items_str = _quote_delivery_items_text(d['items'])
+            source = f" | {d['source']}" if d.get('source') else ''
+            notes = f" | 메모: {str(d.get('notes') or '')[:120]}" if d.get('notes') else ''
             prompt_parts.append(
-                f"- {d['date']} | {d['customer']} | {d['amount']:,}원 | 품목: {items_str}"
+                f"- {d['date']} | {d['customer']} | {d['amount']:,}원{source}{notes} | 품목: {items_str}"
             )
     else:
         prompt_parts.append("(납품 데이터 없음)")
@@ -887,7 +1136,7 @@ deal_probability 기준
 
 def gather_followup_data(followup, user):
     """특정 고객(FollowUp)의 전체 히스토리 수집"""
-    from reporting.models import History, Schedule, Quote, DeliveryItem
+    from reporting.models import History, Schedule
 
     # 미팅 기록 (전체)
     histories = History.objects.filter(
@@ -932,44 +1181,30 @@ def gather_followup_data(followup, user):
     # 지연 > 예정 > 날짜미정 순으로 정렬
     pending_actions.sort(key=lambda x: (x['due_date'] is None, not x['is_overdue'], x['due_date'] or ''))
 
-    # 견적 기록
-    quotes = Quote.objects.filter(
-        followup=followup
-    ).prefetch_related('items__product').order_by('-quote_date')
-
-    quote_list = []
-    for q in quotes:
-        items_str = ', '.join([
-            f"{it.product.product_code if it.product else '미정'}({it.quantity}개, {int(it.subtotal or 0):,}원)"
-            for it in q.items.all()
-        ])
-        quote_list.append({
-            'date': q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '',
-            'number': q.quote_number,
-            'stage': q.get_stage_display(),
-            'total': int(q.total_amount or 0),
-            'converted': q.converted_to_delivery,
-            'items': items_str,
-        })
-
-    # 납품 기록
-    deliveries = History.objects.filter(
-        followup=followup,
-        action_type='delivery_schedule',
-    ).order_by('-created_at')
-
-    delivery_list = []
-    for d in deliveries:
-        d_items = DeliveryItem.objects.filter(history=d).select_related('product')
-        items_str = ', '.join([
-            f"{di.product.product_code if di.product else di.item_name}({di.quantity}개)"
-            for di in d_items
-        ])
-        delivery_list.append({
-            'date': d.delivery_date.strftime('%Y-%m-%d') if d.delivery_date else d.created_at.strftime('%Y-%m-%d'),
-            'amount': int(d.delivery_amount or 0),
-            'items': items_str,
-        })
+    qd_data = _gather_quote_delivery_data_for_followup_ids([followup.id], user)
+    quote_list = [
+        {
+            'date': q.get('date') or '',
+            'number': q.get('quote_number') or '',
+            'stage': q.get('stage') or '',
+            'total': int(q.get('total_amount') or 0),
+            'converted': bool(q.get('converted_to_delivery')),
+            'items': _quote_delivery_items_text(q.get('items') or []),
+            'source': q.get('source') or '',
+            'notes': q.get('notes') or '',
+        }
+        for q in qd_data['quotes']
+    ]
+    delivery_list = [
+        {
+            'date': d.get('date') or '',
+            'amount': int(d.get('amount') or 0),
+            'items': _quote_delivery_items_text(d.get('items') or []),
+            'source': d.get('source') or '',
+            'notes': d.get('notes') or '',
+        }
+        for d in qd_data['deliveries']
+    ]
 
     # 예정 일정
     upcoming = Schedule.objects.filter(
@@ -1070,7 +1305,9 @@ def analyze_followup(analysis, followup, user):
     if data['quotes']:
         for q in data['quotes']:
             converted = '✅납품전환' if q['converted'] else '❌미전환'
-            parts.append(f"- {q['date']} | {q['number']} | {q['stage']} | {q['total']:,}원 | {converted}")
+            source = f" | {q['source']}" if q.get('source') else ''
+            notes = f" | 메모: {str(q.get('notes') or '')[:120]}" if q.get('notes') else ''
+            parts.append(f"- {q['date']} | {q['number']} | {q['stage']} | {q['total']:,}원 | {converted}{source}{notes}")
             if q['items']:
                 parts.append(f"  품목: {q['items']}")
     else:
@@ -1079,7 +1316,9 @@ def analyze_followup(analysis, followup, user):
     parts.append(f"\n━━━ 납품 기록 ({len(data['deliveries'])}건) ━━━")
     if data['deliveries']:
         for d in data['deliveries']:
-            parts.append(f"- {d['date']} | {d['amount']:,}원 | {d['items']}")
+            source = f" | {d['source']}" if d.get('source') else ''
+            notes = f" | 메모: {str(d.get('notes') or '')[:120]}" if d.get('notes') else ''
+            parts.append(f"- {d['date']} | {d['amount']:,}원{source}{notes} | {d['items']}")
     else:
         parts.append("(납품 기록 없음)")
 
