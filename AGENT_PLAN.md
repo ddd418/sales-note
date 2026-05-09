@@ -624,6 +624,40 @@ python pre_deployment_check.py
 
 ---
 
+## React Customer Department AI Analysis — 고객 상세 부서 AI 분석 연결
+
+**목표**: React `/customers/<id>/` 고객 상세 화면에서 해당 고객의 부서 AI 분석 상태를 확인하고, 권한이 있는 사용자는 고객 화면에서 바로 분석을 실행하거나 결과 화면으로 이동할 수 있게 한다.
+
+**시간 단위 진행 루트**:
+
+- 0~1시간: 기존 고객 상세 API/UI와 `ai_chat` 부서 분석 조회/실행 URL을 확인한다.
+- 1~2시간: 작업 범위, DB 변경 여부, 검증 계획을 `AGENT_PLAN.md`에 기록한다.
+- 2~4시간: 고객 상세 API에 부서 AI 분석 가능 여부, 분석 요약, 실행 URL, 결과 URL을 추가한다.
+- 4~6시간: React 고객 상세 사이드 영역에 부서 AI 분석 카드, 실행 버튼, 결과 이동 링크, 실행 상태 메시지를 추가한다.
+- 6~7시간: 고객 상세 API 테스트, React build, Django check, migration check, diff check를 실행한다.
+- 7~8시간: `AGENT_REPORT.md`를 갱신하고 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 운영 배포 및 번들/API 보호 상태를 확인한다.
+
+**작업 범위**:
+
+- 기존 `ai_chat:department_analysis`, `ai_chat:run_analysis`, `ai_chat:department_list` URL을 재사용한다.
+- 고객 상세 API가 고객의 `department` 기준으로 AI 분석 상태와 링크를 내려준다.
+- 기존 AI 권한 정책을 유지해 `can_use_ai` 권한이 없거나 해당 부서에 본인 담당 고객이 없는 사용자는 실행 버튼을 비활성화한다.
+- React 고객 상세에 부서명, 분석 여부, 최근 요약, 미팅/견적/납품/PainPoint 카운트, 분석 실행/결과 보기 액션을 표시한다.
+- 기존 Django AI 분석 화면, 고객 상세 화면, `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `FollowUp`, `Department`, `AIDepartmentAnalysis`, `PainPointCard` 모델만 조회/사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
 ## Frontend Pilot — 파이프라인 읽기 API 연결
 
 **목표**: React 파일럿이 mock data만 사용하는 상태에서 벗어나, 기존 Django 권한 정책을 타는 읽기 전용 파이프라인 API를 우선 조회하도록 연결한다.

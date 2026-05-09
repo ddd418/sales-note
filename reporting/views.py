@@ -3107,6 +3107,7 @@ def customer_detail_summary_api(request, followup_id):
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
         },
+        'aiDepartment': _customers_department_ai_payload(request, followup, user_profile),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [
             _notes_history_payload(note, today, can_review_notes)
@@ -4141,6 +4142,83 @@ def _parse_optional_decimal(value):
     if parsed < 0:
         return None
     return parsed
+
+
+def _customers_department_ai_payload(request, followup, user_profile):
+    department = followup.department
+    can_use_ai = bool(getattr(user_profile, 'can_use_ai', False))
+    if not department:
+        return {
+            'departmentId': None,
+            'departmentName': '',
+            'companyName': followup.company.name if followup.company else '',
+            'canUseAi': can_use_ai,
+            'canAnalyze': False,
+            'hasAnalysis': False,
+            'message': '부서가 지정되지 않았습니다.',
+            'summary': '',
+            'updatedAt': None,
+            'meetingCount': 0,
+            'quoteCount': 0,
+            'deliveryCount': 0,
+            'painpointCount': 0,
+            'unverifiedPainpointCount': 0,
+            'href': '',
+            'hubHref': reverse('ai_chat:department_list') if can_use_ai else '',
+            'runHref': '',
+        }
+
+    has_own_department_followup = FollowUp.objects.filter(
+        user=request.user,
+        department=department,
+    ).exists()
+    can_analyze = can_use_ai and has_own_department_followup
+
+    analysis = None
+    painpoint_count = 0
+    unverified_painpoint_count = 0
+    if can_analyze:
+        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
+
+        analysis = AIDepartmentAnalysis.objects.filter(
+            user=request.user,
+            department=department,
+        ).first()
+        if analysis:
+            painpoint_count = PainPointCard.objects.filter(analysis=analysis).count()
+            unverified_painpoint_count = PainPointCard.objects.filter(
+                analysis=analysis,
+                verification_status='unverified',
+            ).count()
+
+    if not can_use_ai:
+        message = 'AI 기능 사용 권한이 없습니다.'
+    elif not has_own_department_followup:
+        message = '본인 담당 고객이 있는 부서만 AI 분석할 수 있습니다.'
+    elif analysis:
+        message = ''
+    else:
+        message = '아직 부서 AI 분석이 없습니다.'
+
+    return {
+        'departmentId': department.id,
+        'departmentName': department.name,
+        'companyName': department.company.name if department.company else (followup.company.name if followup.company else ''),
+        'canUseAi': can_use_ai,
+        'canAnalyze': can_analyze,
+        'hasAnalysis': analysis is not None,
+        'message': message,
+        'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+        'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
+        'meetingCount': analysis.meeting_count if analysis else 0,
+        'quoteCount': analysis.quote_count if analysis else 0,
+        'deliveryCount': analysis.delivery_count if analysis else 0,
+        'painpointCount': painpoint_count,
+        'unverifiedPainpointCount': unverified_painpoint_count,
+        'href': reverse('ai_chat:department_analysis', args=[department.id]) if can_analyze else '',
+        'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}" if can_use_ai else '',
+        'runHref': reverse('ai_chat:run_analysis', args=[department.id]) if can_analyze else '',
+    }
 
 
 @never_cache

@@ -85,6 +85,7 @@ import {
   loadAIWorkspaceData,
   loadPipelineData,
   moveDealStage,
+  runAiDepartmentAnalysis,
   toggleNoteReviewed,
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
@@ -994,12 +995,18 @@ function CustomerDetailPage({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiMessage, setAiMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeCustomerEditForm(customer));
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
+    setAiRunning(false);
+    setAiError('');
+    setAiMessage('');
   }, [customer?.id]);
 
   const editConfig = data?.edit;
@@ -1078,6 +1085,29 @@ function CustomerDetailPage({
     }
   };
 
+  const handleAiDepartmentRun = async () => {
+    const aiDepartment = data?.aiDepartment;
+    if (!aiDepartment?.canAnalyze || !aiDepartment.runHref || aiRunning) {
+      setAiError(aiDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
+      setAiMessage('');
+      return;
+    }
+
+    setAiRunning(true);
+    setAiError('');
+    setAiMessage('');
+    try {
+      const result = await runAiDepartmentAnalysis(aiDepartment.runHref);
+      await onRefresh();
+      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
+      setAiMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
+    } finally {
+      setAiRunning(false);
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -1103,6 +1133,7 @@ function CustomerDetailPage({
   }
 
   const customerDetail = data.customer;
+  const aiDepartment = data.aiDepartment;
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -1334,6 +1365,51 @@ function CustomerDetailPage({
                 <dd>{customerDetail.lastActivityLabel || '최근 활동 없음'}</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="customer-ai-card">
+            <div className="customer-ai-card-heading">
+              <div>
+                <span className="eyebrow">Department AI</span>
+                <h3>{aiDepartment.departmentName || '부서 AI 분석'}</h3>
+              </div>
+              <Sparkles size={18} />
+            </div>
+            {aiDepartment.hasAnalysis ? (
+              <p>{aiDepartment.summary || '분석 요약 없음'}</p>
+            ) : (
+              <p>{aiDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
+            )}
+            <div className="customer-ai-metrics">
+              <span>미팅 <strong>{formatNumber(aiDepartment.meetingCount)}</strong></span>
+              <span>견적 <strong>{formatNumber(aiDepartment.quoteCount)}</strong></span>
+              <span>납품 <strong>{formatNumber(aiDepartment.deliveryCount)}</strong></span>
+              <span>PainPoint <strong>{formatNumber(aiDepartment.painpointCount)}</strong></span>
+            </div>
+            {aiError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiError}</span></div> : null}
+            {aiMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiMessage}</span></div> : null}
+            <div className="customer-ai-actions">
+              {aiDepartment.href ? (
+                <a className="route-secondary-action" href={aiDepartment.href}>
+                  분석 보기
+                  <MoveUpRight size={15} />
+                </a>
+              ) : aiDepartment.hubHref ? (
+                <a className="route-secondary-action" href={aiDepartment.hubHref}>
+                  AI 허브
+                  <MoveUpRight size={15} />
+                </a>
+              ) : null}
+              <button
+                className="route-primary-action customer-ai-run-button"
+                disabled={!aiDepartment.canAnalyze || !aiDepartment.runHref || aiRunning}
+                onClick={handleAiDepartmentRun}
+                type="button"
+              >
+                {aiRunning ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
+                AI 분석 실행
+              </button>
+            </div>
           </div>
 
           <div className="dashboard-panel-heading customer-detail-section-heading">

@@ -8944,3 +8944,68 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 견적/문서 생성 또는 선결제 관리 목록처럼 아직 Django 화면에 남아 있는 일정/거래 부가 기능을 React로 옮기는 작업이 적절합니다.
+
+---
+
+## React Customer Department AI Analysis — 고객 상세 부서 AI 분석 연결 (2026-05-09)
+
+### 1. Summary
+
+React `/customers/<id>/` 고객 상세 화면에서 해당 고객의 부서 AI 분석 상태를 확인하고, 권한이 있는 사용자는 고객 화면에서 바로 분석을 실행할 수 있게 연결했습니다. 기존 `ai_chat` 부서 분석 조회/실행 URL을 재사용했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 상세 부서 AI 분석 연결 계획과 시간 단위 진행 루트 추가 |
+| `frontend/src/App.tsx` | 고객 상세 사이드 영역에 부서 AI 분석 카드, 실행 버튼, 결과 보기 링크 추가 |
+| `frontend/src/api.ts` | 고객 상세 `aiDepartment` type과 부서 AI 분석 실행 client 추가 |
+| `frontend/src/styles.css` | 고객 상세 부서 AI 분석 카드/지표/액션 스타일 추가 |
+| `reporting/views.py` | 고객 상세 API에 부서 AI 분석 가능 여부, 요약, 카운트, 결과/실행 URL 추가 |
+| `reporting/tests.py` | 고객 상세 API의 부서 AI 분석 링크/권한 payload 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 고객 상세에서 해당 고객의 부서 AI 분석 여부와 최근 요약을 바로 확인할 수 있습니다.
+- AI 권한이 있고 해당 부서에 본인 담당 고객이 있는 사용자는 고객 화면에서 부서 AI 분석을 실행할 수 있습니다.
+- 분석 완료 후 미팅/견적/납품/PainPoint 카운트와 결과 화면 링크가 고객 상세에 표시됩니다.
+- AI 권한이 없거나 본인 담당 부서가 아닌 경우 실행 버튼은 비활성화됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `ai_chat:department_analysis`, `ai_chat:run_analysis`, `ai_chat:department_list` 경로를 유지했습니다.
+- 기존 AI 권한 정책인 `can_use_ai`와 본인 담당 부서 조건을 유지했습니다.
+- 기존 React 고객 상세 수정/노트/일정 기능과 `/reporting/*` 경로는 유지했습니다.
+- DB migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 18 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-BWDtIOid.js / assets/index-BtW6mZC7.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/customers/454/`의 부서 AI 분석 실행 버튼을 눌러 OpenAI 분석까지 완료되는 육안 확인은 운영 배포 후 필요합니다.
+- 다른 영업담당자만 보유한 부서 고객은 기존 AI 정책대로 현재 사용자에게 분석 실행 버튼이 비활성화됩니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 AI 분석 결과를 React 화면 안에서 직접 확인하거나 PainPoint 검증까지 React로 옮기는 작업이 적절합니다.

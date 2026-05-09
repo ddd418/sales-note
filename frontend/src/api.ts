@@ -339,6 +339,7 @@ export type CustomerDetailData = {
     createSchedule: string;
     createNote: string;
   };
+  aiDepartment: CustomerAiDepartment;
   edit: {
     canEdit: boolean;
     message: string;
@@ -355,6 +356,36 @@ export type CustomerDetailData = {
   upcomingActions: NoteItem[];
   upcomingSchedules: ScheduleItem[];
   recentSchedules: ScheduleItem[];
+};
+
+export type CustomerAiDepartment = {
+  departmentId: number | null;
+  departmentName: string;
+  companyName: string;
+  canUseAi: boolean;
+  canAnalyze: boolean;
+  hasAnalysis: boolean;
+  message: string;
+  summary: string;
+  updatedAt: string | null;
+  meetingCount: number;
+  quoteCount: number;
+  deliveryCount: number;
+  painpointCount: number;
+  unverifiedPainpointCount: number;
+  href: string;
+  hubHref: string;
+  runHref: string;
+};
+
+export type AiDepartmentRunResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  redirect_url?: string;
+  redirectUrl?: string;
+  cards_created?: number;
+  cardsCreated?: number;
 };
 
 export type NoteItem = {
@@ -1217,6 +1248,25 @@ const emptyCustomerDetailData: CustomerDetailData = {
     createSchedule: '/schedules/?create=1',
     createNote: '/notes/?create=1',
   },
+  aiDepartment: {
+    departmentId: null,
+    departmentName: '',
+    companyName: '',
+    canUseAi: false,
+    canAnalyze: false,
+    hasAnalysis: false,
+    message: '',
+    summary: '',
+    updatedAt: null,
+    meetingCount: 0,
+    quoteCount: 0,
+    deliveryCount: 0,
+    painpointCount: 0,
+    unverifiedPainpointCount: 0,
+    href: '',
+    hubHref: '',
+    runHref: '',
+  },
   edit: {
     canEdit: false,
     message: '',
@@ -1791,6 +1841,10 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
       },
+      aiDepartment: {
+        ...emptyCustomerDetailData.aiDepartment,
+        ...(payload.aiDepartment ?? {}),
+      },
       edit: {
         ...emptyCustomerDetailData.edit,
         ...(payload.edit ?? {}),
@@ -1809,6 +1863,29 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       error: error instanceof Error ? error.message : 'Customer detail API unavailable',
     };
   }
+}
+
+export async function runAiDepartmentAnalysis(runHref: string): Promise<AiDepartmentRunResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(runHref, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI department analysis API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AiDepartmentRunResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI department analysis failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadNotesData(params: {

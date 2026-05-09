@@ -783,6 +783,69 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(any(option['id'] == target.company_id for option in payload['edit']['companies']))
         self.assertTrue(any(option['id'] == target.department_id for option in payload['edit']['departments']))
 
+    def test_customer_detail_summary_api_includes_department_ai_action(self):
+        from datetime import date
+        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
+
+        target = self._create_customer(self.user, 'AI고객', priority='urgent')
+        profile = self.user.userprofile
+        profile.can_use_ai = True
+        profile.save(update_fields=['can_use_ai'])
+        analysis = AIDepartmentAnalysis.objects.create(
+            user=self.user,
+            department=target.department,
+            analysis_data={'department_summary': 'PCR 부서는 구매 프로세스 확인이 필요합니다.'},
+            quote_delivery_data={'summary': {'total_quotes': 2, 'total_deliveries': 1}},
+            meeting_count=3,
+            quote_count=2,
+            delivery_count=1,
+            analysis_period_start=date(2026, 4, 1),
+            analysis_period_end=date(2026, 5, 1),
+        )
+        PainPointCard.objects.create(
+            analysis=analysis,
+            category='purchase_process',
+            hypothesis='구매 결재 단계가 길어 견적 후속이 지연됩니다.',
+            confidence='high',
+            confidence_score=90,
+            evidence=[{'type': 'fact', 'text': '견적 후 응답 지연', 'source_section': 'quote'}],
+            attribution='lab',
+            verification_question='결재 승인자가 누구인지 확인했나요?',
+            action_if_yes='승인자에게 직접 후속합니다.',
+            action_if_no='담당 연구원에게 결재 라인을 확인합니다.',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        ai_department = response.json()['aiDepartment']
+        self.assertEqual(ai_department['departmentId'], target.department_id)
+        self.assertTrue(ai_department['canUseAi'])
+        self.assertTrue(ai_department['canAnalyze'])
+        self.assertTrue(ai_department['hasAnalysis'])
+        self.assertIn('구매 프로세스', ai_department['summary'])
+        self.assertEqual(ai_department['meetingCount'], 3)
+        self.assertEqual(ai_department['painpointCount'], 1)
+        self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
+        self.assertEqual(ai_department['href'], reverse('ai_chat:department_analysis', args=[target.department_id]))
+        self.assertEqual(ai_department['runHref'], reverse('ai_chat:run_analysis', args=[target.department_id]))
+
+    def test_customer_detail_summary_api_hides_ai_run_without_permission(self):
+        target = self._create_customer(self.user, 'AI권한없음', priority='urgent')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        ai_department = response.json()['aiDepartment']
+        self.assertFalse(ai_department['canUseAi'])
+        self.assertFalse(ai_department['canAnalyze'])
+        self.assertFalse(ai_department['hasAnalysis'])
+        self.assertEqual(ai_department['runHref'], '')
+        self.assertEqual(ai_department['href'], '')
+        self.assertIn('AI 기능 사용 권한', ai_department['message'])
+
     def test_customer_update_api_updates_customer_for_owner(self):
         from reporting.models import Company, Department, FollowUp
 
