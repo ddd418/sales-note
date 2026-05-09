@@ -376,6 +376,90 @@ export type CustomerAiDepartment = {
   href: string;
   hubHref: string;
   runHref: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  tokenUsage: number;
+  meetingInsights: CustomerAiMeetingInsight[];
+  quoteDelivery: CustomerAiQuoteDelivery;
+  quoteInsights: CustomerAiQuoteInsights;
+  nextActions: CustomerAiNextAction[];
+  missingInfo: CustomerAiMissingInfo;
+  painpoints: CustomerAiPainpoint[];
+};
+
+export type CustomerAiMeetingInsight = {
+  theme: string;
+  details: string;
+  frequency: string;
+};
+
+export type CustomerAiQuoteDelivery = {
+  totalQuotes: number;
+  convertedQuotes: number;
+  conversionRate: number;
+  totalDeliveries: number;
+  avgDeliveryIntervalDays: number;
+  productStats: CustomerAiProductStat[];
+};
+
+export type CustomerAiProductStat = {
+  name: string;
+  quoted: number;
+  quoteAmount: number;
+  delivered: number;
+  deliveryAmount: number;
+};
+
+export type CustomerAiQuoteInsights = {
+  conversionAnalysis: string;
+  deliveryCycle: string;
+  productTrends: string;
+  stalledQuotes: Array<{
+    quoteInfo: string;
+    possibleReason: string;
+    suggestion: string;
+  }>;
+};
+
+export type CustomerAiNextAction = {
+  action: string;
+  priority: string;
+  reason: string;
+};
+
+export type CustomerAiMissingInfo = {
+  items: string[];
+  questions: string[];
+};
+
+export type CustomerAiPainpointEvidence = {
+  type: string;
+  typeLabel: string;
+  text: string;
+  sourceSection: string;
+};
+
+export type CustomerAiPainpoint = {
+  id: number;
+  category: string;
+  categoryLabel: string;
+  hypothesis: string;
+  confidence: string;
+  confidenceLabel: string;
+  confidenceScore: number;
+  evidence: CustomerAiPainpointEvidence[];
+  attribution: string;
+  attributionLabel: string;
+  verificationQuestion: string;
+  actionIfYes: string;
+  actionIfNo: string;
+  caution: string;
+  verificationStatus: string;
+  verificationStatusLabel: string;
+  verificationNote: string;
+  verifiedAt: string | null;
+  canVerify: boolean;
+  verifyHref: string;
 };
 
 export type AiDepartmentRunResponse = {
@@ -386,6 +470,14 @@ export type AiDepartmentRunResponse = {
   redirectUrl?: string;
   cards_created?: number;
   cardsCreated?: number;
+};
+
+export type AiPainpointVerifyResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  card_id?: number;
+  status?: string;
 };
 
 export type NoteItem = {
@@ -1266,6 +1358,30 @@ const emptyCustomerDetailData: CustomerDetailData = {
     href: '',
     hubHref: '',
     runHref: '',
+    periodStart: null,
+    periodEnd: null,
+    tokenUsage: 0,
+    meetingInsights: [],
+    quoteDelivery: {
+      totalQuotes: 0,
+      convertedQuotes: 0,
+      conversionRate: 0,
+      totalDeliveries: 0,
+      avgDeliveryIntervalDays: 0,
+      productStats: [],
+    },
+    quoteInsights: {
+      conversionAnalysis: '',
+      deliveryCycle: '',
+      productTrends: '',
+      stalledQuotes: [],
+    },
+    nextActions: [],
+    missingInfo: {
+      items: [],
+      questions: [],
+    },
+    painpoints: [],
   },
   edit: {
     canEdit: false,
@@ -1844,6 +1960,23 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       aiDepartment: {
         ...emptyCustomerDetailData.aiDepartment,
         ...(payload.aiDepartment ?? {}),
+        quoteDelivery: {
+          ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
+          ...(payload.aiDepartment?.quoteDelivery ?? {}),
+          productStats: payload.aiDepartment?.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
+        },
+        quoteInsights: {
+          ...emptyCustomerDetailData.aiDepartment.quoteInsights,
+          ...(payload.aiDepartment?.quoteInsights ?? {}),
+          stalledQuotes: payload.aiDepartment?.quoteInsights?.stalledQuotes ?? emptyCustomerDetailData.aiDepartment.quoteInsights.stalledQuotes,
+        },
+        missingInfo: {
+          ...emptyCustomerDetailData.aiDepartment.missingInfo,
+          ...(payload.aiDepartment?.missingInfo ?? {}),
+        },
+        meetingInsights: payload.aiDepartment?.meetingInsights ?? emptyCustomerDetailData.aiDepartment.meetingInsights,
+        nextActions: payload.aiDepartment?.nextActions ?? emptyCustomerDetailData.aiDepartment.nextActions,
+        painpoints: payload.aiDepartment?.painpoints ?? emptyCustomerDetailData.aiDepartment.painpoints,
       },
       edit: {
         ...emptyCustomerDetailData.edit,
@@ -1884,6 +2017,41 @@ export async function runAiDepartmentAnalysis(runHref: string): Promise<AiDepart
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department analysis failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function verifyAiPainpoint(
+  verifyHref: string,
+  status: 'confirmed' | 'denied',
+  note = '',
+): Promise<AiPainpointVerifyResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('status', status);
+  if (note.trim()) {
+    body.set('note', note.trim());
+  }
+
+  const response = await fetch(verifyHref, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI PainPoint verification API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AiPainpointVerifyResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI PainPoint verification failed: ${response.status}`);
   }
   return data;
 }

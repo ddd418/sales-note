@@ -9030,3 +9030,133 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 AI 분석 결과를 React 화면 안에서 직접 확인하거나 PainPoint 검증까지 React로 옮기는 작업이 적절합니다.
+
+---
+
+## React Customer AI Result Verification — 고객 상세 AI 결과/검증 전환 (2026-05-10)
+
+### 1. Summary
+
+React `/customers/<id>/` 고객 상세의 부서 AI 카드에서 분석 결과를 바로 펼쳐보고 PainPoint 검증까지 처리할 수 있게 연결했습니다. 기존 Django `ai_chat`의 부서 분석/검증 정책과 URL은 유지하고, 고객 상세 API의 `aiDepartment` payload만 확장했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객 상세 AI 결과/검증 전환 계획 추가 |
+| `reporting/views.py` | 고객 상세 API에 분석 기간, 미팅/견적/납품 인사이트, 추천 액션, 확인 필요 사항, PainPoint 카드/검증 URL payload 추가 |
+| `reporting/tests.py` | 고객 상세 AI payload 확장 필드와 검증 URL 테스트 보강 |
+| `frontend/src/api.ts` | 고객 AI 분석 결과/PainPoint 타입, payload 병합 기본값, `verifyAiPainpoint()` client 추가 |
+| `frontend/src/App.tsx` | 고객 상세 부서 AI 결과 패널, PainPoint 검증 메모/확인/부정 처리 UI 추가 |
+| `frontend/src/styles.css` | 고객 상세 AI 결과/검증 패널 반응형 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 고객 상세에서 Django AI 상세 화면으로 이동하지 않아도 분석 요약, 미팅 인사이트, 견적/납품 분석, 추천 액션을 확인할 수 있습니다.
+- 미검증 PainPoint 카드에 검증 메모를 입력하고 `확인` 또는 `부정` 상태로 저장할 수 있습니다.
+- 검증 후 고객 상세 데이터를 새로 불러와 미검증 카운트와 카드 상태가 즉시 반영됩니다.
+- 분석 실행 직후 React 결과 패널이 열려 다음 확인 작업으로 자연스럽게 이어집니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/ai/department/<id>/`, `/ai/card/<id>/verify/`, `/ai/` Django AI 화면은 유지했습니다.
+- 기존 `AIDepartmentAnalysis`, `PainPointCard` 모델만 사용했고 DB migration은 없습니다.
+- AI 권한은 기존 `can_use_ai`와 본인 담당 부서 조건을 유지했습니다.
+- 고객 상세/수정, 영업노트, 일정, `/reporting/*` 경로는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 18 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-zyiEigxz.js / assets/index-CZEfolrn.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/customers/454/` 접속 후 분석 결과 펼치기, PainPoint 검증 저장, 카운트 갱신까지의 브라우저 수동 검수는 아직 필요합니다.
+- 운영 배포는 아직 수행하지 않았습니다.
+- React 고객 상세는 기존 Django AI 상세의 삭제/재분석 전체 관리 기능 중 삭제 기능은 제공하지 않습니다. 삭제는 기존 Django AI 상세에서 계속 처리합니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 운영 `web`과 `sales-note-frontend`에 배포하고, 이후 AI workspace의 PainPoint 목록도 React 고객 상세 결과 링크로 연결하면 좋습니다.
+
+---
+
+## Project Direction Documentation — React 단일 CRM 프론트 목표 문서화 (2026-05-10)
+
+### 1. Summary
+
+프로젝트 최종 목표를 "React 단일 CRM 프론트 + Django backend/API"로 문서화했습니다. 앞으로 Django template 화면은 레거시 전환 화면으로 보고, React 대체와 운영 수동검수 후 최종 삭제하는 방향을 기준으로 작업합니다.
+
+또한 이후 런타임 작업은 커밋/푸시 후 Railway에 배포하고, 사용자에게 운영 서버 수동테스트 프로세스를 제공한 뒤 다음 작업을 진행하는 규칙을 문서화했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENTS.md` | React-only CRM frontend 목표, Django backend-only 역할, Railway 배포/수동검수 workflow 추가 |
+| `.github/copilot-instructions.md` | 같은 최종 방향과 deliverable 기준 추가 |
+| `PROJECT_BRIEF.md` | 목표 아키텍처, React route 중심 운영, 배포/수동테스트 workflow 추가 |
+| `SALES_CRM_SPEC.md` | React migration requirements, React CRM UI 방향, 품질 기준 보강 |
+| `QA_CHECKLIST.md` | React migration, React build, Railway deployment, manual server test 체크 추가 |
+| `AGENT_PLAN.md` | 이번 문서화 작업 계획 추가 |
+| `AGENT_REPORT.md` | 작업 결과 기록 |
+
+### 3. CRM Improvements
+
+- 향후 기능 개발의 판단 기준이 Django 화면 개선이 아니라 React CRM 전환으로 명확해졌습니다.
+- Django template 삭제는 기능 동등성, 권한 검증, Railway 배포, 수동검수 후 진행하도록 기준을 세웠습니다.
+- 작업 종료 기준에 운영 서버 수동테스트 프로세스 제공이 포함됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- 문서 변경만 수행했으며 Django/React runtime 동작은 문서 작업으로 변경하지 않았습니다.
+- 기존 `/reporting/*` 보존 원칙은 유지하되, 장기적으로 backend/API/legacy compatibility 역할로 정리했습니다.
+- 공개 사이트 확장 금지 원칙은 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 18 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-zyiEigxz.js / assets/index-CZEfolrn.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 현재 문서화는 방향과 운영 규칙을 정리한 것이며, Django template 삭제 자체는 수행하지 않았습니다.
+- 직전 React 고객 AI 결과/검증 runtime 변경도 같은 작업 트리에 포함되어 있어 이번 배포 대상에 함께 포함됩니다.
+
+### 7. Recommended Next Task
+
+- 이번 변경을 커밋/푸시하고 Railway `web`, `sales-note-frontend`에 배포한 뒤 `/customers/454/` 기준으로 고객 상세 AI 결과/검증 수동테스트를 진행합니다.

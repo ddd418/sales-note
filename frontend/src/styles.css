@@ -2275,13 +2275,287 @@ h2 {
 
 .customer-ai-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
 }
 
 .customer-ai-run-button:disabled {
   cursor: not-allowed;
   opacity: 0.68;
+}
+
+.customer-ai-result {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(59, 130, 246, 0.24);
+}
+
+.customer-ai-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-ai-result-meta span,
+.customer-ai-check-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-ai-section {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-ai-section h4,
+.customer-ai-painpoint h5 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.customer-ai-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customer-ai-section-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.customer-ai-insight-list,
+.customer-ai-text-list,
+.customer-ai-product-list,
+.customer-ai-stalled-list,
+.customer-ai-action-list,
+.customer-ai-painpoint-list {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-ai-insight-list article,
+.customer-ai-text-list div,
+.customer-ai-product-list div,
+.customer-ai-stalled-list div,
+.customer-ai-action-list > div,
+.customer-ai-painpoint {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.customer-ai-insight-list strong,
+.customer-ai-text-list strong,
+.customer-ai-product-list strong,
+.customer-ai-stalled-list strong,
+.customer-ai-action-list strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.customer-ai-insight-list p,
+.customer-ai-text-list p,
+.customer-ai-painpoint p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.customer-ai-insight-list small,
+.customer-ai-product-list small,
+.customer-ai-stalled-list small,
+.customer-ai-action-list small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.customer-ai-product-list span,
+.customer-ai-stalled-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.customer-ai-quote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.customer-ai-quote-grid span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 8px;
+  background: #f0fdfa;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-ai-priority {
+  align-self: start;
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.customer-ai-priority.high {
+  background: var(--danger-bg);
+  color: var(--red);
+}
+
+.customer-ai-priority.medium {
+  background: var(--warning-bg);
+  color: var(--amber);
+}
+
+.customer-ai-priority.low {
+  background: var(--info-bg);
+  color: var(--teal);
+}
+
+.customer-ai-check-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-ai-painpoint.confirmed {
+  border-color: rgba(22, 163, 74, 0.36);
+  background: #f0fdf4;
+}
+
+.customer-ai-painpoint.denied {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: #fef2f2;
+}
+
+.customer-ai-painpoint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customer-ai-painpoint-head span,
+.customer-ai-painpoint-head strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.customer-ai-evidence-list,
+.customer-ai-question,
+.customer-ai-response-detail,
+.customer-ai-status {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.customer-ai-evidence-list p {
+  display: grid;
+  gap: 2px;
+}
+
+.customer-ai-evidence-list strong,
+.customer-ai-question strong,
+.customer-ai-response-detail strong,
+.customer-ai-status strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.customer-ai-evidence-list small,
+.customer-ai-status small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.customer-ai-question span,
+.customer-ai-status span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.customer-ai-response-detail summary {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.customer-ai-response-detail p {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.customer-ai-verify-box {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-ai-verify-box textarea {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.customer-ai-verify-box > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.customer-ai-confirm-button {
+  border-color: rgba(22, 163, 74, 0.36);
+  color: var(--green);
+}
+
+.customer-ai-deny-button {
+  border-color: rgba(220, 38, 38, 0.3);
+  color: var(--red);
 }
 
 .customer-detail-section-heading {

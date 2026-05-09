@@ -36,6 +36,8 @@ import {
   DashboardHistoryItem,
   DashboardScheduleItem,
   CustomerDetailData,
+  CustomerAiDepartment,
+  CustomerAiPainpoint,
   CustomerEditPayload,
   CustomerCreatePayload,
   CustomersData,
@@ -93,6 +95,7 @@ import {
   updateScheduleDeliveryItems,
   uploadNoteFiles,
   uploadScheduleFiles,
+  verifyAiPainpoint,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -980,6 +983,217 @@ function CustomerDetailNoteList({
   );
 }
 
+function CustomerAiResultPanel({
+  aiDepartment,
+  verificationNotes,
+  verifyingId,
+  onNoteChange,
+  onVerify,
+}: {
+  aiDepartment: CustomerAiDepartment;
+  verificationNotes: Record<number, string>;
+  verifyingId: number | null;
+  onNoteChange: (cardId: number, value: string) => void;
+  onVerify: (card: CustomerAiPainpoint, status: 'confirmed' | 'denied') => void;
+}) {
+  const quoteDelivery = aiDepartment.quoteDelivery;
+  const quoteInsights = aiDepartment.quoteInsights;
+  const missingInfo = aiDepartment.missingInfo;
+  const periodLabel = [aiDepartment.periodStart, aiDepartment.periodEnd]
+    .filter(Boolean)
+    .map((value) => formatDateLabel(value))
+    .join(' - ');
+  const quoteInsightItems = [
+    { label: '전환율 분석', value: quoteInsights.conversionAnalysis },
+    { label: '납품 주기', value: quoteInsights.deliveryCycle },
+    { label: '제품 트렌드', value: quoteInsights.productTrends },
+  ].filter((item) => item.value);
+  const hasQuoteMetrics = quoteDelivery.totalQuotes > 0 || quoteDelivery.totalDeliveries > 0;
+
+  return (
+    <div className="customer-ai-result">
+      <div className="customer-ai-result-meta">
+        {periodLabel ? <span>{periodLabel}</span> : null}
+        {aiDepartment.updatedAt ? <span>{formatDateTimeLabel(aiDepartment.updatedAt)}</span> : null}
+        {aiDepartment.tokenUsage > 0 ? <span>토큰 {formatNumber(aiDepartment.tokenUsage)}</span> : null}
+      </div>
+
+      {aiDepartment.meetingInsights.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>미팅 인사이트</h4>
+          <div className="customer-ai-insight-list">
+            {aiDepartment.meetingInsights.map((insight) => (
+              <article key={`${insight.theme}-${insight.frequency}`}>
+                <strong>{insight.theme}</strong>
+                {insight.details ? <p>{insight.details}</p> : null}
+                {insight.frequency ? <small>{insight.frequency}</small> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {hasQuoteMetrics || quoteInsightItems.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>견적/납품 분석</h4>
+          {hasQuoteMetrics ? (
+            <div className="customer-ai-quote-grid">
+              <span>견적 <strong>{formatNumber(quoteDelivery.totalQuotes)}</strong></span>
+              <span>전환 <strong>{formatNumber(quoteDelivery.convertedQuotes)}</strong></span>
+              <span>전환율 <strong>{quoteDelivery.conversionRate}%</strong></span>
+              <span>납품 <strong>{formatNumber(quoteDelivery.totalDeliveries)}</strong></span>
+            </div>
+          ) : null}
+          {quoteInsightItems.length > 0 ? (
+            <div className="customer-ai-text-list">
+              {quoteInsightItems.map((item) => (
+                <div key={item.label}>
+                  <strong>{item.label}</strong>
+                  <p>{item.value}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {quoteDelivery.productStats.length > 0 ? (
+            <div className="customer-ai-product-list">
+              {quoteDelivery.productStats.slice(0, 4).map((product) => (
+                <div key={product.name}>
+                  <strong>{product.name}</strong>
+                  <span>견적 {formatNumber(product.quoted)}회 · 납품 {formatNumber(product.delivered)}회</span>
+                  <small>{formatWon(product.quoteAmount)} / {formatWon(product.deliveryAmount)}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {quoteInsights.stalledQuotes.length > 0 ? (
+            <div className="customer-ai-stalled-list">
+              {quoteInsights.stalledQuotes.map((quote) => (
+                <div key={`${quote.quoteInfo}-${quote.suggestion}`}>
+                  <strong>{quote.quoteInfo}</strong>
+                  {quote.possibleReason ? <span>원인: {quote.possibleReason}</span> : null}
+                  {quote.suggestion ? <small>{quote.suggestion}</small> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {aiDepartment.nextActions.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>추천 액션</h4>
+          <div className="customer-ai-action-list">
+            {aiDepartment.nextActions.map((action) => (
+              <div key={`${action.action}-${action.reason}`}>
+                <span className={`customer-ai-priority ${action.priority || 'low'}`}>{action.priority || 'low'}</span>
+                <div>
+                  <strong>{action.action}</strong>
+                  {action.reason ? <small>{action.reason}</small> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {missingInfo.items.length > 0 || missingInfo.questions.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>확인 필요</h4>
+          <div className="customer-ai-check-list">
+            {missingInfo.items.map((item) => (
+              <span key={`item-${item}`}>{item}</span>
+            ))}
+            {missingInfo.questions.map((question) => (
+              <span key={`question-${question}`}>{question}</span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="customer-ai-section">
+        <div className="customer-ai-section-heading">
+          <h4>PainPoint 검증</h4>
+          <span>미검증 {formatNumber(aiDepartment.unverifiedPainpointCount)}건</span>
+        </div>
+        {aiDepartment.painpoints.length === 0 ? (
+          <DashboardEmpty label="PainPoint 카드가 없습니다" />
+        ) : (
+          <div className="customer-ai-painpoint-list">
+            {aiDepartment.painpoints.map((card) => (
+              <article className={`customer-ai-painpoint ${card.verificationStatus}`} key={card.id}>
+                <div className="customer-ai-painpoint-head">
+                  <span>{card.categoryLabel}</span>
+                  <strong>{card.confidenceLabel} {card.confidenceScore}</strong>
+                </div>
+                <h5>{card.hypothesis}</h5>
+                {card.evidence.length > 0 ? (
+                  <div className="customer-ai-evidence-list">
+                    {card.evidence.map((evidence) => (
+                      <p key={`${card.id}-${evidence.text}-${evidence.sourceSection}`}>
+                        <strong>{evidence.typeLabel}</strong>
+                        {evidence.text}
+                        {evidence.sourceSection ? <small>{evidence.sourceSection}</small> : null}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {card.verificationQuestion ? (
+                  <div className="customer-ai-question">
+                    <strong>검증 질문</strong>
+                    <span>{card.verificationQuestion}</span>
+                  </div>
+                ) : null}
+                <details className="customer-ai-response-detail">
+                  <summary>대응 패키지</summary>
+                  {card.actionIfYes ? <p><strong>맞으면</strong>{card.actionIfYes}</p> : null}
+                  {card.actionIfNo ? <p><strong>아니면</strong>{card.actionIfNo}</p> : null}
+                  {card.caution ? <p><strong>주의</strong>{card.caution}</p> : null}
+                </details>
+                {card.canVerify ? (
+                  <div className="customer-ai-verify-box">
+                    <textarea
+                      onChange={(event) => onNoteChange(card.id, event.target.value)}
+                      placeholder="검증 메모"
+                      rows={2}
+                      value={verificationNotes[card.id] || ''}
+                    />
+                    <div>
+                      <button
+                        className="route-secondary-action customer-ai-confirm-button"
+                        disabled={Boolean(verifyingId)}
+                        onClick={() => onVerify(card, 'confirmed')}
+                        type="button"
+                      >
+                        {verifyingId === card.id ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
+                        확인
+                      </button>
+                      <button
+                        className="route-secondary-action customer-ai-deny-button"
+                        disabled={Boolean(verifyingId)}
+                        onClick={() => onVerify(card, 'denied')}
+                        type="button"
+                      >
+                        {verifyingId === card.id ? <Loader2 className="spin-icon" size={14} /> : <X size={14} />}
+                        부정
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`customer-ai-status ${card.verificationStatus}`}>
+                    <strong>{card.verificationStatusLabel}</strong>
+                    {card.verificationNote ? <span>{card.verificationNote}</span> : null}
+                    {card.verifiedAt ? <small>{formatDateTimeLabel(card.verifiedAt)}</small> : null}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function CustomerDetailPage({
   data,
   loading,
@@ -998,6 +1212,9 @@ function CustomerDetailPage({
   const [aiRunning, setAiRunning] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiMessage, setAiMessage] = useState('');
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
+  const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
 
   useEffect(() => {
     setEditForm(makeCustomerEditForm(customer));
@@ -1007,7 +1224,16 @@ function CustomerDetailPage({
     setAiRunning(false);
     setAiError('');
     setAiMessage('');
+    setAiResultOpen(false);
+    setAiVerificationNotes({});
+    setAiVerifyingId(null);
   }, [customer?.id]);
+
+  useEffect(() => {
+    if (data?.aiDepartment?.hasAnalysis) {
+      setAiResultOpen(true);
+    }
+  }, [customer?.id, data?.aiDepartment?.hasAnalysis]);
 
   const editConfig = data?.edit;
   const editCompanies = editConfig?.companies ?? [];
@@ -1101,10 +1327,43 @@ function CustomerDetailPage({
       await onRefresh();
       const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
       setAiMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+      setAiResultOpen(true);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
     } finally {
       setAiRunning(false);
+    }
+  };
+
+  const handleAiVerificationNoteChange = (cardId: number, value: string) => {
+    setAiVerificationNotes((previous) => ({
+      ...previous,
+      [cardId]: value,
+    }));
+  };
+
+  const handleAiPainpointVerify = async (card: CustomerAiPainpoint, status: 'confirmed' | 'denied') => {
+    if (!card.canVerify || !card.verifyHref || aiVerifyingId) {
+      return;
+    }
+
+    setAiVerifyingId(card.id);
+    setAiError('');
+    setAiMessage('');
+    try {
+      await verifyAiPainpoint(card.verifyHref, status, aiVerificationNotes[card.id] || '');
+      await onRefresh();
+      setAiMessage(status === 'confirmed' ? 'PainPoint를 확인 처리했습니다.' : 'PainPoint를 부정 처리했습니다.');
+      setAiVerificationNotes((previous) => {
+        const next = { ...previous };
+        delete next[card.id];
+        return next;
+      });
+      setAiResultOpen(true);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
+    } finally {
+      setAiVerifyingId(null);
     }
   };
 
@@ -1389,9 +1648,14 @@ function CustomerDetailPage({
             {aiError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiError}</span></div> : null}
             {aiMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiMessage}</span></div> : null}
             <div className="customer-ai-actions">
+              {aiDepartment.hasAnalysis ? (
+                <button className="route-secondary-action" onClick={() => setAiResultOpen((open) => !open)} type="button">
+                  {aiResultOpen ? '결과 닫기' : '결과 보기'}
+                </button>
+              ) : null}
               {aiDepartment.href ? (
                 <a className="route-secondary-action" href={aiDepartment.href}>
-                  분석 보기
+                  Django 보기
                   <MoveUpRight size={15} />
                 </a>
               ) : aiDepartment.hubHref ? (
@@ -1410,6 +1674,15 @@ function CustomerDetailPage({
                 AI 분석 실행
               </button>
             </div>
+            {aiDepartment.hasAnalysis && aiResultOpen ? (
+              <CustomerAiResultPanel
+                aiDepartment={aiDepartment}
+                verificationNotes={aiVerificationNotes}
+                verifyingId={aiVerifyingId}
+                onNoteChange={handleAiVerificationNoteChange}
+                onVerify={handleAiPainpointVerify}
+              />
+            ) : null}
           </div>
 
           <div className="dashboard-panel-heading customer-detail-section-heading">

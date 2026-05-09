@@ -794,15 +794,55 @@ class CustomersSummaryApiTests(TestCase):
         analysis = AIDepartmentAnalysis.objects.create(
             user=self.user,
             department=target.department,
-            analysis_data={'department_summary': 'PCR 부서는 구매 프로세스 확인이 필요합니다.'},
-            quote_delivery_data={'summary': {'total_quotes': 2, 'total_deliveries': 1}},
+            analysis_data={
+                'department_summary': 'PCR 부서는 구매 프로세스 확인이 필요합니다.',
+                'meeting_insights': [{
+                    'theme': '구매 승인 지연',
+                    'details': '견적 이후 결재권자 확인이 반복적으로 늦어집니다.',
+                    'frequency': '최근 2회',
+                }],
+                'quote_delivery_insights': {
+                    'conversion_analysis': '견적 대비 납품 전환율이 낮습니다.',
+                    'delivery_cycle': '정기 납품 주기는 아직 확인이 필요합니다.',
+                    'product_trends': 'PCR 소모품 문의가 반복됩니다.',
+                    'stalled_quotes': [{
+                        'quote_info': 'Q-001',
+                        'possible_reason': '결재 승인자 미확인',
+                        'suggestion': '승인자를 직접 확인합니다.',
+                    }],
+                },
+                'next_actions': [{
+                    'action': '결재 승인자 확인',
+                    'priority': 'high',
+                    'reason': '견적 후속 지연 해소',
+                }],
+                'missing_info': {
+                    'items': ['구매 승인자'],
+                    'questions': ['결재 최종 승인자는 누구인가요?'],
+                },
+            },
+            quote_delivery_data={'summary': {
+                'total_quotes': 2,
+                'converted_quotes': 1,
+                'conversion_rate': 50,
+                'total_deliveries': 1,
+                'avg_delivery_interval_days': 21,
+                'product_stats': {
+                    'PCR Mix': {
+                        'quoted': 2,
+                        'quote_amount': 300000,
+                        'delivered': 1,
+                        'delivery_amount': 150000,
+                    },
+                },
+            }},
             meeting_count=3,
             quote_count=2,
             delivery_count=1,
             analysis_period_start=date(2026, 4, 1),
             analysis_period_end=date(2026, 5, 1),
         )
-        PainPointCard.objects.create(
+        card = PainPointCard.objects.create(
             analysis=analysis,
             category='purchase_process',
             hypothesis='구매 결재 단계가 길어 견적 후속이 지연됩니다.',
@@ -830,6 +870,21 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
         self.assertEqual(ai_department['href'], reverse('ai_chat:department_analysis', args=[target.department_id]))
         self.assertEqual(ai_department['runHref'], reverse('ai_chat:run_analysis', args=[target.department_id]))
+        self.assertEqual(ai_department['periodStart'], '2026-04-01')
+        self.assertEqual(ai_department['periodEnd'], '2026-05-01')
+        self.assertEqual(ai_department['meetingInsights'][0]['theme'], '구매 승인 지연')
+        self.assertEqual(ai_department['quoteDelivery']['totalQuotes'], 2)
+        self.assertEqual(ai_department['quoteDelivery']['convertedQuotes'], 1)
+        self.assertEqual(ai_department['quoteDelivery']['conversionRate'], 50)
+        self.assertEqual(ai_department['quoteDelivery']['productStats'][0]['name'], 'PCR Mix')
+        self.assertIn('납품 전환율', ai_department['quoteInsights']['conversionAnalysis'])
+        self.assertEqual(ai_department['quoteInsights']['stalledQuotes'][0]['quoteInfo'], 'Q-001')
+        self.assertEqual(ai_department['nextActions'][0]['action'], '결재 승인자 확인')
+        self.assertEqual(ai_department['missingInfo']['questions'][0], '결재 최종 승인자는 누구인가요?')
+        self.assertEqual(ai_department['painpoints'][0]['id'], card.id)
+        self.assertEqual(ai_department['painpoints'][0]['categoryLabel'], '결재/구매 프로세스')
+        self.assertEqual(ai_department['painpoints'][0]['verifyHref'], reverse('ai_chat:verify_card', args=[card.id]))
+        self.assertTrue(ai_department['painpoints'][0]['canVerify'])
 
     def test_customer_detail_summary_api_hides_ai_run_without_permission(self):
         target = self._create_customer(self.user, 'AI권한없음', priority='urgent')

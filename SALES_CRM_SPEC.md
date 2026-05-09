@@ -6,6 +6,17 @@ This document defines the target direction for the existing Django Sales Note / 
 
 The goal is to improve the internal CRM/reporting workflow, not to build a public website.
 
+The product direction is to consolidate all user-facing CRM screens into React and keep Django as the backend/API layer. Existing Django template screens are legacy transition surfaces, not the target UI.
+
+## Target Architecture
+
+- React provides the complete authenticated CRM frontend.
+- Django provides authentication, authorization, models, services, file handling, admin/backend operations, and JSON APIs.
+- Django templates remain only until the equivalent React workflow is implemented, deployed, and manually verified.
+- React screens should use a purpose-built CRM design language. Do not copy the old Django template layout or styling as the final design.
+- `/reporting/*` routes remain stable while they are needed for login, APIs, legacy workflows, and compatibility redirects.
+- Template deletion should happen only in a cleanup phase with an explicit map of React replacements and test coverage.
+
 ## Core user journeys
 
 ### 1. Sales rep writes a sales note
@@ -25,6 +36,7 @@ Important UX:
 - Minimal required fields
 - Clear validation
 - Recent customers or quick search if feasible
+- Complete the workflow in React without jumping to Django templates when the React replacement exists.
 
 ### 2. Sales manager reviews activity
 
@@ -41,6 +53,7 @@ Important UX:
 - Filterable lists
 - Status badges
 - Activity timeline
+- React-first manager workspace with Django APIs behind it.
 
 ### 3. User checks a customer/account
 
@@ -57,6 +70,7 @@ Important UX:
 - Activity timeline
 - Quick add note button
 - Related opportunities if existing
+- AI, schedules, notes, and follow-up context available inside the React customer detail flow.
 
 ### 4. User follows up
 
@@ -72,6 +86,18 @@ Important UX:
 - Due date badges
 - Overdue highlighting
 - Clear next action text
+- Follow-up actions should be executable from React where possible.
+
+## React Migration Requirements
+
+For each Django template workflow being migrated:
+
+- Identify the existing template URL, permissions, forms, POST behavior, files, and related APIs.
+- Implement or extend Django JSON APIs without weakening authentication, authorization, CSRF/session behavior, or data scoping.
+- Build the React page using the new CRM UI direction, not the old Django visual style.
+- Preserve existing Django URLs as fallback or redirects until production manual testing passes.
+- Add focused tests for API permissions, payload shape, and write behavior.
+- Update `AGENT_PLAN.md` before implementation and `AGENT_REPORT.md` after validation/deployment.
 
 ## Recommended navigation
 
@@ -215,7 +241,7 @@ to anonymous users.
 
 ## UI style
 
-Use clean internal business-system UI.
+Use a clean internal CRM product UI built in React.
 
 Preferred:
 - Clear tables
@@ -225,6 +251,8 @@ Preferred:
 - Timeline
 - Quick action buttons
 - Sticky action areas where useful
+- Dense but readable operational layouts
+- Distinct React CRM navigation and interaction patterns
 
 Avoid:
 - Public marketing sections
@@ -232,6 +260,8 @@ Avoid:
 - Product category cards
 - Brand showcase
 - SEO-focused public copy
+- Copying Django template design as the final React UI
+- Spending effort polishing legacy Django screens unless required for compatibility before migration
 
 ## Quality standards
 
@@ -243,3 +273,7 @@ Avoid:
 - List pages handle empty states
 - Mobile layout remains usable
 - Django checks pass
+- React build passes
+- Migrated workflows are deployed to Railway before user manual testing
+- Manual server test steps are provided after deployment
+- The next feature task starts only after user test confirmation or explicit instruction

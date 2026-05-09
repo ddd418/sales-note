@@ -13,6 +13,13 @@ Current deployed behavior:
 
 A Django-based internal sales management system.
 
+The target architecture is:
+
+- React is the single user-facing CRM frontend.
+- Django is the backend for authentication, permissions, database access, business rules, files, and JSON APIs.
+- Existing Django template pages are legacy transition screens and should be replaced by React pages over time.
+- The final cleanup phase should remove Django frontend templates only after the React replacements are deployed and manually verified.
+
 ## This project is not
 
 - Public marketing website
@@ -38,6 +45,9 @@ A Django-based internal sales management system.
 - 영업 단계 / 상태 가시화
 - 검색 / 필터 / 정렬 개선
 - 모바일에서도 빠르게 영업보고 작성 가능하게 개선
+- Django/React로 분리된 화면을 React CRM으로 통일
+- Django를 백엔드/API 서버 역할로 축소
+- Django 템플릿 프론트엔드는 React 대체 후 최종 삭제
 
 ## Current known system
 
@@ -47,6 +57,12 @@ Core app:
 Important routes:
 - /reporting/login/
 - /reporting/*
+- React CRM routes such as /dashboard/, /customers/, /notes/, /schedules/, /ai-workspace/
+
+Long-term route behavior:
+- User-facing CRM work should happen in React routes.
+- `/reporting/*` should remain for login, backend APIs, legacy fallback pages, and admin/compatibility paths until each area is migrated.
+- Migrated Django template pages should redirect to React or be removed only after successful production testing.
 
 Recently added but may be out of scope:
 - public_site app
@@ -95,6 +111,14 @@ Previous public-site phases are not the main project goal.
 
 Correct phase direction:
 
+### React CRM Migration
+
+Primary direction:
+- Build a distinct React CRM interface, not a copy of the Django template design.
+- Move customer, note, schedule, prepayment, document, email, AI, weekly report, and admin workflows into React in controlled phases.
+- Keep Django views as JSON APIs or compatibility views during transition.
+- Record feature parity and deletion readiness before removing templates.
+
 ### Phase 4
 
 Existing sales system audit and stabilization.
@@ -137,3 +161,13 @@ Focus:
 - Public inquiry pages
 - Public homepage sections
 - SEO landing pages
+
+## Deployment and manual testing workflow
+
+For every completed runtime task:
+
+- Commit and push the task changes.
+- Deploy the affected Railway services (`web` and/or `sales-note-frontend`).
+- Verify the production bundle/API route at a smoke-test level.
+- Provide the user with a concrete server-side manual test process.
+- Wait for the user's test result or explicit instruction before starting the next feature task.

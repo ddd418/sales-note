@@ -1828,3 +1828,52 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Customer AI Result Verification — 고객 상세 AI 결과/검증 전환
+
+**목표**: React `/customers/<id>/` 고객 상세 화면에서 부서 AI 분석 실행 후 결과 요약, 추천 액션, PainPoint 카드 검증까지 이어서 처리하게 만든다.
+
+**작업 범위**:
+
+- 기존 `AIDepartmentAnalysis`, `PainPointCard` 모델만 사용하고 신규 DB 필드는 추가하지 않는다.
+- 고객 상세 API의 `aiDepartment` payload에 분석 기간, 미팅/견적/납품 인사이트, 추천 액션, 확인 필요 사항, PainPoint 카드 목록을 추가한다.
+- PainPoint 검증 저장은 기존 `ai_chat:verify_card` POST API를 React에서 호출하도록 연결한다.
+- 검증 권한은 기존 `can_use_ai` + 본인 담당 부서 분석 소유자 정책을 유지한다.
+- React 고객 상세의 부서 AI 카드에서 결과를 펼쳐보고 미검증 PainPoint를 확인/부정 처리할 수 있게 한다.
+- 기존 Django `/ai/department/<id>/`, `/ai/card/<id>/verify/`, `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 AI 분석/카드 모델과 검증 상태 필드를 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Project Direction Documentation — React 단일 CRM 프론트 목표 문서화
+
+**목표**: 프로젝트의 최종 방향을 "React 단일 CRM 프론트 + Django 백엔드/API"로 명확히 문서화하고, 작업마다 Railway 배포 후 사용자 수동검수를 받는 운영 방식을 표준화한다.
+
+**작업 범위**:
+
+- `AGENTS.md`, `.github/copilot-instructions.md`에 최종 아키텍처와 작업 후 Railway 배포/수동검수 규칙을 추가한다.
+- `PROJECT_BRIEF.md`에 React CRM 통일, Django backend-only, Django 템플릿 최종 삭제 방향을 추가한다.
+- `SALES_CRM_SPEC.md`에 React 마이그레이션 요구사항과 UI 방향을 명시한다.
+- `QA_CHECKLIST.md`에 React migration, React build, Railway deployment, manual server test 항목을 추가한다.
+- `AGENT_REPORT.md`에 문서 업데이트와 배포 상태를 기록한다.
+
+**DB 변경 필요 여부**: 없음. 문서 변경만 수행한다.
+
+**검증 계획**:
+
+- `git diff --check`
+- `python manage.py check`
+- `cd frontend && npm run build` (현재 작업 트리에 React runtime 변경도 포함되어 있어 함께 확인)
+- Railway 배포가 필요한 runtime 변경이 포함된 경우 `web`, `sales-note-frontend` 배포 후 운영 smoke check

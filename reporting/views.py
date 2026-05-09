@@ -4144,6 +4144,203 @@ def _parse_optional_decimal(value):
     return parsed
 
 
+def _ai_json_dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _ai_json_list(value):
+    return value if isinstance(value, list) else []
+
+
+def _ai_payload_text(value, limit=500):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = re.sub(r'\s+', ' ', text)
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + '...'
+
+
+def _ai_payload_number(value, default=0):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed.is_integer():
+        return int(parsed)
+    return round(parsed, 2)
+
+
+def _customers_empty_ai_result_payload():
+    return {
+        'periodStart': None,
+        'periodEnd': None,
+        'tokenUsage': 0,
+        'meetingInsights': [],
+        'quoteDelivery': {
+            'totalQuotes': 0,
+            'convertedQuotes': 0,
+            'conversionRate': 0,
+            'totalDeliveries': 0,
+            'avgDeliveryIntervalDays': 0,
+            'productStats': [],
+        },
+        'quoteInsights': {
+            'conversionAnalysis': '',
+            'deliveryCycle': '',
+            'productTrends': '',
+            'stalledQuotes': [],
+        },
+        'nextActions': [],
+        'missingInfo': {
+            'items': [],
+            'questions': [],
+        },
+        'painpoints': [],
+    }
+
+
+def _customers_ai_product_stats_payload(product_stats):
+    rows = []
+    if not isinstance(product_stats, dict):
+        return rows
+
+    for name, stats in product_stats.items():
+        if not isinstance(stats, dict):
+            continue
+        rows.append({
+            'name': _ai_payload_text(name, 120),
+            'quoted': int(_ai_payload_number(stats.get('quoted'), 0)),
+            'quoteAmount': int(_ai_payload_number(stats.get('quote_amount'), 0)),
+            'delivered': int(_ai_payload_number(stats.get('delivered'), 0)),
+            'deliveryAmount': int(_ai_payload_number(stats.get('delivery_amount'), 0)),
+        })
+    return rows[:8]
+
+
+def _customers_ai_quote_delivery_payload(analysis):
+    raw = _ai_json_dict(analysis.quote_delivery_data)
+    quote_data = _ai_json_dict(raw.get('summary')) or raw
+
+    return {
+        'totalQuotes': int(_ai_payload_number(quote_data.get('total_quotes'), 0)),
+        'convertedQuotes': int(_ai_payload_number(quote_data.get('converted_quotes'), 0)),
+        'conversionRate': _ai_payload_number(quote_data.get('conversion_rate'), 0),
+        'totalDeliveries': int(_ai_payload_number(quote_data.get('total_deliveries'), 0)),
+        'avgDeliveryIntervalDays': _ai_payload_number(quote_data.get('avg_delivery_interval_days'), 0),
+        'productStats': _customers_ai_product_stats_payload(quote_data.get('product_stats')),
+    }
+
+
+def _customers_ai_painpoint_payload(card, can_verify):
+    evidence_items = []
+    for evidence in _ai_json_list(card.evidence)[:4]:
+        if not isinstance(evidence, dict):
+            continue
+        evidence_type = evidence.get('type') or 'guess'
+        evidence_items.append({
+            'type': evidence_type,
+            'typeLabel': {
+                'quote': '인용',
+                'fact': '사실',
+                'guess': '추측',
+            }.get(evidence_type, evidence_type),
+            'text': _ai_payload_text(evidence.get('text'), 220),
+            'sourceSection': _ai_payload_text(evidence.get('source_section'), 100),
+        })
+
+    return {
+        'id': card.id,
+        'category': card.category,
+        'categoryLabel': card.get_category_display(),
+        'hypothesis': _ai_payload_text(card.hypothesis, 260),
+        'confidence': card.confidence,
+        'confidenceLabel': card.get_confidence_display(),
+        'confidenceScore': card.confidence_score,
+        'evidence': evidence_items,
+        'attribution': card.attribution,
+        'attributionLabel': card.get_attribution_display(),
+        'verificationQuestion': _ai_payload_text(card.verification_question, 260),
+        'actionIfYes': _ai_payload_text(card.action_if_yes, 320),
+        'actionIfNo': _ai_payload_text(card.action_if_no, 320),
+        'caution': _ai_payload_text(card.caution, 240),
+        'verificationStatus': card.verification_status,
+        'verificationStatusLabel': card.get_verification_status_display(),
+        'verificationNote': _ai_payload_text(card.verification_note, 260),
+        'verifiedAt': _datetime_or_none(card.verified_at),
+        'canVerify': can_verify and card.verification_status == 'unverified',
+        'verifyHref': reverse('ai_chat:verify_card', args=[card.id]) if can_verify else '',
+    }
+
+
+def _customers_ai_result_payload(analysis, can_verify):
+    data = _ai_json_dict(analysis.analysis_data)
+    quote_insights = _ai_json_dict(data.get('quote_delivery_insights'))
+    missing_info = _ai_json_dict(data.get('missing_info'))
+
+    meeting_insights = []
+    for item in _ai_json_list(data.get('meeting_insights'))[:5]:
+        if not isinstance(item, dict):
+            continue
+        meeting_insights.append({
+            'theme': _ai_payload_text(item.get('theme'), 160),
+            'details': _ai_payload_text(item.get('details'), 360),
+            'frequency': _ai_payload_text(item.get('frequency'), 80),
+        })
+
+    stalled_quotes = []
+    for item in _ai_json_list(quote_insights.get('stalled_quotes'))[:4]:
+        if not isinstance(item, dict):
+            continue
+        stalled_quotes.append({
+            'quoteInfo': _ai_payload_text(item.get('quote_info'), 180),
+            'possibleReason': _ai_payload_text(item.get('possible_reason'), 220),
+            'suggestion': _ai_payload_text(item.get('suggestion'), 220),
+        })
+
+    next_actions = []
+    for item in _ai_json_list(data.get('next_actions'))[:6]:
+        if not isinstance(item, dict):
+            continue
+        next_actions.append({
+            'action': _ai_payload_text(item.get('action'), 220),
+            'priority': _ai_payload_text(item.get('priority'), 40),
+            'reason': _ai_payload_text(item.get('reason'), 260),
+        })
+
+    painpoints = [
+        _customers_ai_painpoint_payload(card, can_verify)
+        for card in analysis.painpoint_cards.order_by('-confidence_score', '-created_at')[:12]
+    ]
+
+    return {
+        'periodStart': _date_or_none(analysis.analysis_period_start),
+        'periodEnd': _date_or_none(analysis.analysis_period_end),
+        'tokenUsage': analysis.token_usage,
+        'meetingInsights': meeting_insights,
+        'quoteDelivery': _customers_ai_quote_delivery_payload(analysis),
+        'quoteInsights': {
+            'conversionAnalysis': _ai_payload_text(quote_insights.get('conversion_analysis'), 420),
+            'deliveryCycle': _ai_payload_text(quote_insights.get('delivery_cycle'), 420),
+            'productTrends': _ai_payload_text(quote_insights.get('product_trends'), 420),
+            'stalledQuotes': stalled_quotes,
+        },
+        'nextActions': next_actions,
+        'missingInfo': {
+            'items': [
+                _ai_payload_text(item, 160)
+                for item in _ai_json_list(missing_info.get('items'))[:6]
+            ],
+            'questions': [
+                _ai_payload_text(item, 180)
+                for item in _ai_json_list(missing_info.get('questions'))[:6]
+            ],
+        },
+        'painpoints': painpoints,
+    }
+
+
 def _customers_department_ai_payload(request, followup, user_profile):
     department = followup.department
     can_use_ai = bool(getattr(user_profile, 'can_use_ai', False))
@@ -4166,6 +4363,7 @@ def _customers_department_ai_payload(request, followup, user_profile):
             'href': '',
             'hubHref': reverse('ai_chat:department_list') if can_use_ai else '',
             'runHref': '',
+            **_customers_empty_ai_result_payload(),
         }
 
     has_own_department_followup = FollowUp.objects.filter(
@@ -4200,6 +4398,12 @@ def _customers_department_ai_payload(request, followup, user_profile):
     else:
         message = '아직 부서 AI 분석이 없습니다.'
 
+    result_payload = (
+        _customers_ai_result_payload(analysis, can_analyze)
+        if analysis
+        else _customers_empty_ai_result_payload()
+    )
+
     return {
         'departmentId': department.id,
         'departmentName': department.name,
@@ -4218,6 +4422,7 @@ def _customers_department_ai_payload(request, followup, user_profile):
         'href': reverse('ai_chat:department_analysis', args=[department.id]) if can_analyze else '',
         'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}" if can_use_ai else '',
         'runHref': reverse('ai_chat:run_analysis', args=[department.id]) if can_analyze else '',
+        **result_payload,
     }
 
 

@@ -7,6 +7,17 @@
 - [ ] Existing `/reporting/*` functionality is preserved.
 - [ ] Anonymous users cannot access internal CRM data.
 - [ ] Root URL behavior is appropriate for an internal system.
+- [ ] If this is a frontend workflow, the target direction is React CRM, not Django template UI.
+- [ ] Existing Django template behavior remains available until the React replacement is deployed and manually verified.
+
+## React migration check
+
+- [ ] Existing Django template URL and behavior were inspected before migration.
+- [ ] React page does not copy the old Django template design as the final UI.
+- [ ] Django provides JSON APIs or compatibility routes for the React workflow.
+- [ ] Authentication, permissions, data scoping, and CSRF/session behavior are preserved.
+- [ ] Migrated workflow has a fallback, redirect, or documented transition path.
+- [ ] Template deletion is deferred until feature parity and production manual testing are complete.
 
 ## Django checks
 
@@ -15,6 +26,13 @@
 - [ ] No unintended model changes.
 - [ ] If model changes are intended, migrations are created and documented.
 - [ ] No secrets are committed.
+
+## React checks
+
+- [ ] `npm run build` passes for frontend runtime changes.
+- [ ] `node --check server.mjs` passes when the frontend server is relevant.
+- [ ] New or changed React API clients handle login-required and error responses.
+- [ ] UI works on desktop and mobile widths where practical.
 
 ## Authentication / authorization
 
@@ -69,6 +87,17 @@ Check important URLs such as:
 - [ ] sales note create URL
 - [ ] customer/account list URL if present
 - [ ] follow-up URL if present
+- [ ] affected React production URL after Railway deployment
+- [ ] affected `/reporting/api/*` production URL returns expected login protection or payload
+
+## Railway deployment
+
+- [ ] Changes are committed and pushed.
+- [ ] Affected Railway service(s) are deployed (`web`, `sales-note-frontend`, or both).
+- [ ] Production deployment status is checked.
+- [ ] Production bundle/API smoke check is done.
+- [ ] User receives a concrete manual test process for the deployed server.
+- [ ] Next implementation task waits for user confirmation or explicit instruction.
 
 ## Report
 
@@ -78,3 +107,5 @@ Check important URLs such as:
 - [ ] Commands run are listed.
 - [ ] Known limitations are listed.
 - [ ] Recommended next phase is listed.
+- [ ] Production deployment status is listed when applicable.
+- [ ] Manual server test process is listed.
