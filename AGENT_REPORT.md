@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — 긴급: 고객 AI 분석 견적/납품 컨텍스트 보강 및 Django 메뉴 재개방
 
-**상태**: 구현/검증 완료, Railway 배포 대기
+**상태**: 구현/검증/배포 완료
 
 ### 요약
 
@@ -55,6 +55,29 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK
+```
+
+### Railway 배포 및 운영 스모크
+
+- Commit: `dbf4f33 fix: include quote delivery data in AI analysis`
+- `web` deployment: `1dcdd01e-1495-4f9f-80d6-c430da5bd876`
+- 상태: `SUCCESS`, `web` 온라인
+- `sales-note-frontend` 변경 없음
+
+운영 스모크:
+
+```
+https://sales-note-frontend-production.up.railway.app/reporting/api/customers/454/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/api/customers/454/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/ai/
+→ 302 /reporting/login/?next=/ai/
+
+https://web-production-5096.up.railway.app/reporting/login/
+→ 200, 로그인 페이지 OK
 ```
 
 ### 알려진 제한
