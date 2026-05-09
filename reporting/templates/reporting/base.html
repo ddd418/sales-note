@@ -1646,9 +1646,9 @@
         </li>
         {% endif %}
         <li class="nav-item">
-          <a href="{% url 'reporting:schedule_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'schedule' %}active{% endif %}">
-            <i class="fas fa-list"></i>
-            <span>일정</span>
+          <a href="{% url 'reporting:schedule_calendar' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'schedule' %}active{% endif %}">
+            <i class="fas fa-calendar-alt"></i>
+            <span>일정 캘린더</span>
           </a>
         </li>
         <li class="nav-item">
@@ -1770,6 +1770,9 @@
         </a>
         <a href="{% url 'reporting:followup_create' %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-user-plus me-1"></i>새 고객
+        </a>
+        <a href="{% url 'reporting:schedule_calendar' %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-calendar-alt me-1"></i>일정 캘린더
         </a>
         <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-calendar-plus me-1"></i>새 일정

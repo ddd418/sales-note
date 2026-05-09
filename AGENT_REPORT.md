@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — 긴급: Django 일정 캘린더 운영 진입점 복구
+
+**상태**: 구현/검증 완료, Railway 배포 진행 예정
+
+### 요약
+
+React 통합 완료 전까지 기존 Django 일정 캘린더를 계속 주 운영 화면으로 사용할 수 있도록 Django 공통 메뉴의 일정 진입점을 `/reporting/schedules/calendar/`로 복구했습니다.
+일정 목록은 그대로 보존하고, 목록 화면에서도 캘린더로 바로 돌아갈 수 있게 했습니다.
+
+### 변경된 파일
+
+- `reporting/templates/reporting/base.html`
+  - Django 사이드바 `일정` 메뉴를 `일정 캘린더`로 변경
+  - 링크를 `/reporting/schedules/calendar/`로 변경
+  - 상단 빠른 작업에 `일정 캘린더` 버튼 추가
+- `reporting/templates/reporting/schedule_list.html`
+  - 일정 목록 헤더에 `캘린더 보기`, `새 일정` 버튼 추가
+- `reporting/tests.py`
+  - 인증된 사용자의 일정 캘린더 접근 테스트 추가
+  - Django 사이드바 일정 메뉴가 캘린더를 가리키는 회귀 테스트 추가
+- `AGENT_PLAN.md`
+  - 전환 기간 Django 일정 캘린더 운영 진입점 복구 계획 기록
+
+### CRM 개선
+
+- 가장 많이 쓰이는 Django 일정 캘린더가 사이드바에서 바로 열립니다.
+- React 통합 전환 기간 동안 Django 일정 목록과 캘린더를 모두 사용할 수 있습니다.
+- 기존 일정 생성/수정/상세/목록 URL은 유지했습니다.
+
+### 기존 기능 보존
+
+- 인증/권한 정책 변경 없음.
+- DB 모델 변경 없음, 마이그레이션 없음.
+- React 번들 변경 없음.
+- `/reporting/schedules/` 일정 목록 URL은 계속 접근 가능합니다.
+
+### 실행한 명령어 및 결과
+
+```
+python manage.py test reporting.tests.AuthenticationSmoke.test_schedule_calendar_authenticated reporting.tests.DashboardSmokeTests.test_django_sidebar_schedule_points_to_calendar reporting.tests.AnonymousAccessTests.test_schedule_calendar_blocked --verbosity=2
+→ OK (3 tests)
+
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests reporting.tests.AnonymousAccessTests --verbosity=1
+→ OK (33 tests)
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK
+```
+
+### Railway 배포 및 운영 스모크
+
+- 배포 전. 커밋/푸시 후 `web` 서비스를 확인 예정입니다.
+- `sales-note-frontend` 변경 없음.
+
+### 알려진 제한
+
+- 이번 작업은 Django 운영 메뉴 복구입니다. React 일정 화면 자체는 변경하지 않았습니다.
+- Django 일정 목록을 주 진입점으로 쓰던 사용자는 사이드바 대신 목록 화면의 직접 URL(`/reporting/schedules/`) 또는 목록 내 버튼을 사용하면 됩니다.
+
+### 다음 권장 작업
+
+- 운영 배포 후 Django 로그인 상태에서 사이드바 `일정 캘린더`, 상단 `일정 캘린더`, 일정 목록의 `캘린더 보기` 버튼을 수동 검수합니다.
+- 수동검수 통과 후 React 통합 프론트 작업을 이어갑니다.
+
+---
+
 ## 2026-05-10 — 긴급: 고객 AI 분석 견적/납품 컨텍스트 보강 및 Django 메뉴 재개방
 
 **상태**: 구현/검증/배포 완료

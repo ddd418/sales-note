@@ -87,6 +87,13 @@ class AuthenticationSmoke(TestCase):
         response = self.client.get(reverse('reporting:schedule_list'))
         self.assertEqual(response.status_code, 200)
 
+    def test_schedule_calendar_authenticated(self):
+        """인증 후 일정 캘린더 200 응답"""
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:schedule_calendar'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '일정 캘린더')
+
     def test_history_list_authenticated(self):
         """인증 후 영업 활동 목록 200 응답"""
         self.client.force_login(self.user)
@@ -305,6 +312,13 @@ class DashboardSmokeTests(TestCase):
         self.assertContains(r, '프론트 CRM')
         self.assertContains(r, '파이프라인')
         self.assertContains(r, 'https://sales-note-frontend-production.up.railway.app/')
+
+    def test_django_sidebar_schedule_points_to_calendar(self):
+        """전환 기간 Django 사이드바 일정 메뉴는 캘린더를 우선 열어야 함"""
+        self.client.force_login(self.user)
+        r = self.client.get(reverse('reporting:dashboard'))
+        self.assertContains(r, 'href="/reporting/schedules/calendar/"')
+        self.assertContains(r, '일정 캘린더')
 
     def test_dashboard_unauthenticated_redirects(self):
         """미인증 대시보드 접근 → 로그인 리다이렉트"""

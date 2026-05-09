@@ -267,6 +267,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
           </span>
           {% endif %}
         </h1>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+          <a href="{% url 'reporting:schedule_calendar' %}" class="btn btn-primary">
+            <i class="fas fa-calendar-alt me-1"></i>캘린더 보기
+          </a>
+          <a href="{% url 'reporting:schedule_create' %}" class="btn btn-outline-primary">
+            <i class="fas fa-calendar-plus me-1"></i>새 일정
+          </a>
+        </div>
       </div>
       
       <!-- 데이터 필터 섹션 -->
