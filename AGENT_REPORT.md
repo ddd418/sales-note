@@ -8806,3 +8806,76 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 일정 선결제 세부 입력 또는 견적/납품 고급 입력처럼 아직 Django 폼에 남아 있는 일정 부가 기능을 React로 옮기는 작업이 적절합니다.
+
+---
+
+## Production Schedule Delivery Product Selection Deployment — 납품 품목 제품 선택 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 납품 품목 제품 마스터 선택 변경분을 GitHub `main`에 푸시하고 production `web`, `sales-note-frontend` 서비스에 반영했습니다. 운영 `/schedules/<id>/`가 새 번들을 내려주며, 제품 검색 UI와 `/reporting/api/products/` 호출 코드가 포함된 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React 일정 상세의 납품 품목 편집 패널에서 제품 마스터 검색/선택이 가능해졌습니다.
+- 선택 제품은 저장 API에서 `DeliveryItem.product`로 연결되고 품번/단위/현재 단가가 반영됩니다.
+- 제품 조회/저장은 기존 회사/담당자 접근 권한을 기준으로 제한됩니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 Django 제품 관리 화면, 일정 상세/수정 화면, `/reporting/*` 경로는 유지했습니다.
+- 수기 납품 품목 입력 방식도 계속 사용 가능합니다.
+- 미로그인 상태에서 일정 상세 API는 `401 login_required`, 제품 API는 로그인 페이지 redirect로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React delivery product selection"
+→ e6ca971 feat: add React delivery product selection
+
+git push origin main
+→ main updated from 9552745 to e6ca971
+
+railway status
+→ web Online, sales-note-frontend Online
+
+railway deployment list --service web --json
+→ latest web deployment 824aea49-f1b4-4247-84e8-bbeb14bca72a, SUCCESS, commit e6ca971
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React delivery product selection e6ca971" --ci
+→ Deploy complete, deployment id 584c23a9-50af-4802-b681-f804983ea4af
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/731/
+→ 200, assets/index-5rWArWxv.js / assets/index-DDeLHwwx.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-5rWArWxv.js
+→ schedule-delivery-product-field=True, /reporting/api/products/=True, productId=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DDeLHwwx.css
+→ schedule-delivery-product-field=True, schedule-delivery-product-results=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/delivery-items/update/
+→ 405 MethodNotAllowed, 라우트 존재 확인
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/
+→ 401 login_required, 정상
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/products/ -MaximumRedirection 0
+→ 302 /reporting/login/?next=/reporting/api/products/, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 제품 검색어 입력, 제품 선택, 저장 후 상세 화면 반영까지의 육안 확인은 사용자 계정으로 필요합니다.
+- 제품 마스터 신규 등록/수정은 이번 범위가 아니며 기존 Django 제품 관리 화면을 사용합니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 일정 선결제 세부 입력 또는 견적/문서 생성처럼 아직 Django 화면에 남아 있는 일정 부가 기능을 React로 옮기는 작업이 적절합니다.
