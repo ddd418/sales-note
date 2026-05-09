@@ -9305,3 +9305,74 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 운영 수동검수 후 중단했던 React 선결제 목록 전환 작업으로 복귀합니다.
+
+---
+
+## Production AI PainPoint Verification Memory Deployment — AI 검증 메모리 운영 배포 (2026-05-10)
+
+### 1. Summary
+
+AI PainPoint 검증 메모리 반영 변경을 GitHub `main`에 푸시하고 Railway production `web` 서비스에 배포했습니다. 운영 API는 비로그인 상태에서 `401 login_required`를 반환해 기존 인증 보호가 유지됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 수동테스트 절차 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 부서 AI 재분석에서 기존 확인/부정 PainPoint와 검증 메모가 GPT 프롬프트 컨텍스트에 포함됩니다.
+- 확인/부정 처리된 PainPoint 카드는 재분석 중 삭제되지 않고 보존됩니다.
+- GPT가 동일한 가설/검증 질문을 다시 반환해도 저장 단계에서 중복 생성을 차단합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 React 고객 상세, Django AI 상세, PainPoint 검증 API는 유지했습니다.
+- DB migration은 없습니다.
+- 비로그인 API 접근 차단은 유지됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: remember AI painpoint verification"
+→ 8c870ee feat: remember AI painpoint verification
+
+git push origin main
+→ main updated from ecf7216 to 8c870ee
+
+railway redeploy --service web --from-source --yes --json
+→ {"success": true}
+
+railway deployment list --service web --json
+→ latest web deployment eb626429-4dc8-4cb0-b2ee-e3e3b5fb1236 SUCCESS, commit 8c870ee
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/454/
+→ 401 login_required, 정상
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/customers/454/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 이번 배포 이전 재분석으로 이미 삭제된 검증 메모는 복구할 수 없습니다.
+- 의미는 같지만 문장이 크게 다른 가설은 GPT가 새 카드로 만들 수 있습니다. 현재 저장 중복 차단은 카테고리, 가설, 검증 질문의 정규화 비교를 기준으로 합니다.
+
+### 7. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/customers/454/`
+2. AI 권한이 있는 본인 담당 고객 계정으로 로그인합니다.
+3. 고객 상세의 `Department AI` 카드에서 기존 미검증 PainPoint 하나를 선택합니다.
+4. 검증 메모에 구체적인 내용을 입력하고 `확인` 또는 `부정`으로 저장합니다.
+5. 같은 카드가 검증 상태와 메모를 표시하는지 확인합니다.
+6. 같은 고객/부서에서 `AI 분석 실행`을 다시 누릅니다.
+7. 재분석 후 기존 검증 완료/부정 카드와 메모가 사라지지 않는지 확인합니다.
+8. 새로 생성된 미검증 카드에 방금 검증한 것과 같은 질문/가설이 반복되지 않는지 확인합니다.
+
+### 8. Recommended Next Task
+
+- 수동검수 결과를 받은 뒤 중단했던 React 선결제 목록 전환 작업으로 복귀합니다.
