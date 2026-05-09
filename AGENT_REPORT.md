@@ -8219,3 +8219,69 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 다음 단계는 영업노트 상세의 첨부파일 업로드/삭제도 React `/notes/<id>/`에서 처리하게 옮기는 작업이 적절합니다.
+
+---
+
+## Production Schedule Attachments Deployment — 일정 첨부파일 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 일정 상세 첨부파일 업로드/삭제 변경분을 GitHub `main`에 푸시하고 Railway production의 `web`, `sales-note-frontend` 서비스를 배포했습니다. 운영 `/schedules/<id>/`가 새 번들을 내려주고, Django 일정 상세 API는 미로그인 상태에서 계속 보호되는 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React `/schedules/<id>/` 상세 화면에 첨부파일 업로드/삭제 UI가 포함됐습니다.
+- 운영 Django 파일 API에 owner-only 업로드/삭제 권한 보강이 적용됐습니다.
+- Manager/타 영업사원은 일정 첨부파일 조작이 계속 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 `/reporting/schedules/<id>/files/upload/`, 다운로드, 삭제 경로는 유지했습니다.
+- `/reporting/api/schedules/<id>/`는 미로그인 상태에서 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React schedule file management"
+→ aaea8f2 feat: add React schedule file management
+
+git push origin main
+→ main updated from 0ee470d to aaea8f2
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS, deployment id 856eeabf-bc30-43df-89f6-ecec4f0cb716
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React schedule files aaea8f2" --ci
+→ Deploy complete, deployment id 9a03c5b1-5cb0-4bac-8128-7827dadcc6b2
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/731/
+→ 200, assets/index-BlgHjOVF.js / assets/index-D32UHNZf.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BlgHjOVF.js
+→ 첨부파일 업로드=True, 파일 삭제 확인=True, 일정 첨부파일 선택=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-D32UHNZf.css
+→ schedule-file-delete-button=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/schedules/731/`에서 파일 업로드, 다운로드, 삭제까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- 업로드 가능한 파일 형식/크기/개수는 기존 Django 정책을 그대로 따릅니다.
+
+### 7. Recommended Next Task
+
+- 영업노트 상세 `/notes/<id>/`의 첨부파일 업로드/삭제도 React 화면으로 옮깁니다.
