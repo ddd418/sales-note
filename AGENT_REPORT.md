@@ -8672,3 +8672,72 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - Railway에서 재로그인 또는 `RAILWAY_TOKEN` 설정 후 `web`과 `sales-note-frontend`를 커밋 `ef5a213` 기준으로 배포하고 운영 번들을 확인합니다.
+
+---
+
+## Production Schedule Delivery Items Deployment — 일정 납품 품목 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+Railway 재링크 후 React 일정 납품 품목 편집 변경분을 production `web`, `sales-note-frontend` 서비스에 배포했습니다. 운영 `/schedules/<id>/`가 새 번들을 내려주고, 새 납품 품목 저장 API 라우트와 기존 로그인 보호가 적용된 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React 일정 상세 화면에 납품 품목 편집 패널이 포함됐습니다.
+- 운영 Django API에 `/reporting/api/schedules/<id>/delivery-items/update/`가 배포됐습니다.
+- 본인 일정만 납품 품목을 수정할 수 있는 owner-only 정책이 운영에 적용됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 Django `/reporting/schedules/<id>/update-delivery-items/`, 일정 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- `/reporting/api/schedules/<id>/`는 미로그인 상태에서 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+railway status
+→ sales-note-frontend Online, web Online
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React schedule delivery items 40966e2" --ci
+→ Deploy complete, deployment id cfd9a79a-c909-4ccc-a9ce-291e68bf59a0
+
+railway deployment list --service web --json
+→ latest web deployment 5bdb4d37-4e30-41f1-af6a-430485044dad, SUCCESS, commit 40966e2
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/731/
+→ 200, assets/index-ChGmKnB1.js / assets/index-D0d8bvfh.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-ChGmKnB1.js
+→ schedule-delivery-edit-form=True, updateDeliveryItems=True, 납품 품목 저장 문구=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-D0d8bvfh.css
+→ schedule-delivery-edit-form=True, schedule-delivery-remove-button=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/delivery-items/update/
+→ 405 MethodNotAllowed, 라우트 존재 확인
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/schedules/731/`에서 납품 품목 추가, 수정, 삭제까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- 제품 마스터 검색/선택 연동은 아직 Django 폼에 남아 있습니다. 현재 React 편집은 직접 입력 방식입니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 제품 마스터 선택/검색 또는 선결제 세부 입력처럼 납품 일정의 고급 입력을 React 일정 상세로 이어서 옮기는 작업이 적절합니다.
