@@ -1640,7 +1640,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertFalse(Schedule.objects.filter(followup=followup, user=self.user).exists())
 
     def test_schedules_detail_api_returns_detail_and_edit_config(self):
-        from reporting.models import DeliveryItem, History
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import DeliveryItem, History, ScheduleFile
 
         schedule = self._create_schedule(self.user, '상세일정', activity_type='delivery')
         History.objects.create(
@@ -1658,6 +1659,14 @@ class SchedulesSummaryApiTests(TestCase):
             unit='EA',
             unit_price=100000,
         )
+        schedule_file = ScheduleFile.objects.create(
+            schedule=schedule,
+            file=SimpleUploadedFile('schedule-note.txt', b'schedule file note', content_type='text/plain'),
+            original_filename='schedule-note.txt',
+            file_size=18,
+            uploaded_by=self.user,
+        )
+        self.addCleanup(schedule_file.file.delete, False)
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
@@ -1672,6 +1681,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:schedules_update_api', args=[schedule.id]))
         self.assertEqual(payload['relatedNotes'][0]['id'], schedule.histories.first().id)
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
+        self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
+        self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
+        self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
 
     def test_schedules_detail_api_manager_read_only_and_other_company_blocked(self):
         schedule = self._create_schedule(self.user, '읽기전용')
@@ -1765,6 +1777,72 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(other_company_response.status_code, 403)
         schedule.refresh_from_db()
         self.assertNotEqual(schedule.followup, other_followup)
+
+    def test_schedule_file_upload_api_allows_owner_only(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import ScheduleFile
+
+        schedule = self._create_schedule(self.user, '파일업로드')
+        upload_url = reverse('reporting:schedule_file_upload', args=[schedule.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('manager.txt', b'manager memo', content_type='text/plain'),
+        })
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('coworker.txt', b'coworker memo', content_type='text/plain'),
+        })
+        self.assertEqual(coworker_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('owner.txt', b'owner memo', content_type='text/plain'),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        schedule_file = ScheduleFile.objects.get(schedule=schedule)
+        self.addCleanup(schedule_file.file.delete, False)
+        self.assertEqual(schedule_file.original_filename, 'owner.txt')
+        self.assertEqual(payload['files'][0]['id'], schedule_file.id)
+        self.assertEqual(payload['files'][0]['downloadHref'], reverse('reporting:schedule_file_download', args=[schedule_file.id]))
+        self.assertEqual(payload['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
+
+    def test_schedule_file_delete_api_allows_owner_only(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import ScheduleFile
+
+        schedule = self._create_schedule(self.user, '파일삭제')
+        schedule_file = ScheduleFile.objects.create(
+            schedule=schedule,
+            file=SimpleUploadedFile('delete-me.txt', b'delete memo', content_type='text/plain'),
+            original_filename='delete-me.txt',
+            file_size=11,
+            uploaded_by=self.user,
+        )
+        delete_url = reverse('reporting:schedule_file_delete', args=[schedule_file.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(delete_url)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertTrue(ScheduleFile.objects.filter(pk=schedule_file.id).exists())
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(delete_url)
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertTrue(ScheduleFile.objects.filter(pk=schedule_file.id).exists())
+
+        self.client.force_login(self.user)
+        response = self.client.post(delete_url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertFalse(ScheduleFile.objects.filter(pk=schedule_file.id).exists())
 
 
 class AIWorkspaceSummaryApiTests(TestCase):

@@ -613,7 +613,10 @@ export type ScheduleFileItem = {
   filename: string;
   size: string;
   downloadHref: string;
+  deleteHref?: string;
+  canDelete?: boolean;
   uploadedAt: string | null;
+  uploadedBy?: string;
 };
 
 export type ScheduleDeliveryItem = {
@@ -772,6 +775,7 @@ export type ScheduleDetailData = {
     customer: string;
     djangoCustomer: string;
     createNote: string;
+    uploadFiles: string;
   };
   edit: {
     canEdit: boolean;
@@ -799,6 +803,13 @@ export type ScheduleEditResponse = ScheduleDetailData & {
   success: boolean;
   error?: string;
   message?: string;
+};
+
+export type ScheduleFileActionResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  files?: ScheduleFileItem[];
 };
 
 export type AIWorkspaceDepartment = {
@@ -1239,6 +1250,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     customer: '',
     djangoCustomer: '',
     createNote: '',
+    uploadFiles: '',
   },
   edit: {
     canEdit: false,
@@ -1997,6 +2009,56 @@ export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: st
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function uploadScheduleFiles(uploadUrl: string, files: File[]): Promise<ScheduleFileActionResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule file upload API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleFileActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule file upload failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteScheduleFile(deleteUrl: string): Promise<ScheduleFileActionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule file delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleFileActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule file delete failed: ${response.status}`);
   }
   return data;
 }

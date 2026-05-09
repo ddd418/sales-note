@@ -116,6 +116,36 @@ def history_files_api(request, history_id):
         }, status=500)
 
 
+def _can_manage_schedule_files(user, schedule):
+    """React 일정 수정 권한과 동일하게 일정 첨부파일 조작 권한을 제한."""
+    from .views import get_user_profile
+
+    user_profile = get_user_profile(user)
+    return bool(schedule.user_id == user.id and not user_profile.is_manager())
+
+
+def _schedule_file_payload(file_obj, can_delete=False):
+    download_url = reverse('reporting:schedule_file_download', args=[file_obj.id])
+    delete_url = reverse('reporting:schedule_file_delete', args=[file_obj.id]) if can_delete else ''
+    uploaded_at = file_obj.uploaded_at.isoformat() if file_obj.uploaded_at else None
+
+    return {
+        'id': file_obj.id,
+        'filename': file_obj.original_filename,
+        'size': file_obj.get_file_size_display(),
+        'uploadedAt': uploaded_at,
+        'uploaded_at': file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M') if file_obj.uploaded_at else '',
+        'uploadedBy': file_obj.uploaded_by.username,
+        'uploaded_by': file_obj.uploaded_by.username,
+        'downloadHref': download_url,
+        'download_url': download_url,
+        'deleteHref': delete_url,
+        'delete_url': delete_url,
+        'canDelete': bool(can_delete),
+        'can_delete': bool(can_delete),
+    }
+
+
 # 일정 파일 관련 뷰들
 @login_required
 def schedule_file_upload(request, schedule_id):
@@ -128,8 +158,7 @@ def schedule_file_upload(request, schedule_id):
         schedule = get_object_or_404(Schedule, id=schedule_id)
         
         # 권한 체크
-        from .views import can_modify_user_data
-        if not can_modify_user_data(request.user, schedule.user):
+        if not _can_manage_schedule_files(request.user, schedule):
             return JsonResponse({
                 'success': False,
                 'error': '이 일정을 수정할 권한이 없습니다.'
@@ -212,11 +241,7 @@ def schedule_file_upload(request, schedule_id):
                 file_size=file.size,
                 uploaded_by=request.user
             )
-            uploaded_files.append({
-                'id': schedule_file.id,
-                'filename': schedule_file.original_filename,
-                'size': schedule_file.get_file_size_display()
-            })
+            uploaded_files.append(_schedule_file_payload(schedule_file, can_delete=True))
         
         return JsonResponse({
             'success': True,
@@ -265,8 +290,7 @@ def schedule_file_delete(request, file_id):
         filename = file_obj.original_filename
         
         # 권한 체크
-        from .views import can_modify_user_data
-        if not can_modify_user_data(request.user, file_obj.schedule.user):
+        if not _can_manage_schedule_files(request.user, file_obj.schedule):
             return JsonResponse({
                 'success': False,
                 'error': '이 파일을 삭제할 권한이 없습니다.'
@@ -297,24 +321,18 @@ def schedule_files_api(request, schedule_id):
         schedule = get_object_or_404(Schedule, id=schedule_id)
         
         # 권한 체크
-        from .views import can_access_user_data, can_modify_user_data
+        from .views import can_access_user_data
         if not can_access_user_data(request.user, schedule.user):
             return JsonResponse({
                 'success': False,
                 'error': '이 일정에 접근할 권한이 없습니다.'
             }, status=403)
         
-        files_data = []
-        for file_obj in schedule.files.all():
-            files_data.append({
-                'id': file_obj.id,
-                'filename': file_obj.original_filename,
-                'size': file_obj.get_file_size_display(),
-                'uploaded_at': file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M'),
-                'uploaded_by': file_obj.uploaded_by.username,
-                'download_url': reverse('reporting:schedule_file_download', args=[file_obj.id]),
-                'can_delete': can_modify_user_data(request.user, schedule.user)
-            })
+        can_delete = _can_manage_schedule_files(request.user, schedule)
+        files_data = [
+            _schedule_file_payload(file_obj, can_delete=can_delete)
+            for file_obj in schedule.files.all()
+        ]
         
         return JsonResponse({
             'success': True,

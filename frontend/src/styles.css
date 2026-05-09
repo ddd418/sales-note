@@ -1529,6 +1529,79 @@ h2 {
   font-size: 12px;
 }
 
+.schedule-file-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.schedule-file-heading .customer-detail-section-heading {
+  margin-bottom: 0;
+}
+
+.schedule-file-input {
+  display: none;
+}
+
+.schedule-file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.schedule-file-download {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.schedule-file-download:hover {
+  color: var(--primary-strong);
+}
+
+.schedule-file-download strong {
+  overflow-wrap: anywhere;
+}
+
+.schedule-file-download span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.schedule-file-upload-button,
+.schedule-file-delete-button {
+  gap: 5px;
+  margin-top: 0;
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  font: inherit;
+}
+
+.schedule-file-delete-button {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.schedule-file-upload-button:disabled,
+.schedule-file-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .note-reply-list p {
   margin: 0;
   color: var(--text);
@@ -3213,6 +3286,22 @@ tbody tr:hover {
   }
 
   .route-primary-action {
+    width: 100%;
+  }
+
+  .schedule-file-heading,
+  .schedule-file-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-file-heading {
+    display: grid;
+  }
+
+  .schedule-file-upload-button,
+  .schedule-file-delete-button {
+    justify-content: center;
     width: 100%;
   }
 

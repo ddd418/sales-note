@@ -4490,6 +4490,8 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'filename': file.original_filename,
             'size': _file_size_label(file.file_size),
             'downloadHref': reverse('reporting:schedule_file_download', args=[file.id]),
+            'deleteHref': reverse('reporting:schedule_file_delete', args=[file.id]) if can_edit else '',
+            'canDelete': can_edit,
             'uploadedAt': _datetime_or_none(file.uploaded_at),
         }
         for file in schedule.files.all().order_by('-uploaded_at')
@@ -4557,6 +4559,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'customer': f'/customers/{followup.id}/',
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
             'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+            'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
         'relatedNotes': related_notes,

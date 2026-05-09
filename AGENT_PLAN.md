@@ -1633,3 +1633,27 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedule Attachments — 일정 상세 첨부파일 전환
+
+**목표**: React `/schedules/<id>/` 상세 화면에서 일정 첨부파일을 업로드하고 삭제하게 만들어 Django 상세 화면 왕복을 줄인다.
+
+**작업 범위**:
+
+- 일정 상세 API에 첨부파일 업로드 URL과 파일별 삭제 URL을 제공한다.
+- 기존 일정 파일 업로드/삭제 뷰의 권한을 React 일정 수정 정책과 맞춰 manager는 조작 불가, 담당자는 본인 일정만 조작 가능하게 보강한다.
+- React 일정 상세의 첨부파일 섹션에 다중 파일 업로드, 삭제 버튼, 진행/성공/오류 상태를 추가한다.
+- 기존 Django `/reporting/schedules/<id>/files/upload/`, 다운로드, 삭제 URL과 `/reporting/*` 상세 기능은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `ScheduleFile` 모델과 파일 저장 정책만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

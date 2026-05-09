@@ -8153,3 +8153,69 @@ Invoke-RestMethod https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 실제 계정으로 `/schedules/731/`에 접속해 상세 화면 표시, 수정 저장, manager 수정 차단, 보고 작성 링크, Django 상세 보조 링크 동작을 확인합니다.
+
+---
+
+## React Schedule Attachments — 일정 상세 첨부파일 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/schedules/<id>/` 상세 화면에서 일정 첨부파일을 업로드/삭제할 수 있게 연결했습니다. 기존 Django 다운로드/업로드/삭제 URL은 유지하면서 React 상세 API가 업로드 URL과 파일별 삭제 URL을 내려주도록 보강했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 일정 상세 첨부파일 전환 계획 추가 |
+| `frontend/src/App.tsx` | 일정 상세 첨부파일 업로드 버튼, 파일 선택, 삭제 버튼, 진행/성공/오류 상태 추가 |
+| `frontend/src/api.ts` | 일정 파일 업로드/삭제 타입과 `uploadScheduleFiles`, `deleteScheduleFile` API 함수 추가 |
+| `frontend/src/styles.css` | 일정 첨부파일 업로드/삭제 UI와 모바일 레이아웃 스타일 추가 |
+| `reporting/views.py` | 일정 상세 API에 `uploadFiles`, 파일별 `deleteHref`, `canDelete` 추가 |
+| `reporting/file_views.py` | 일정 파일 업로드/삭제 권한을 React 일정 수정 정책과 맞추고 camelCase 응답 보강 |
+| `reporting/tests.py` | 일정 파일 업로드/삭제 owner-only 권한과 상세 payload 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 일정 상세에서 Django 화면으로 이동하지 않고 첨부파일을 바로 추가/삭제할 수 있습니다.
+- 파일 목록은 다운로드 링크와 삭제 버튼을 분리해 실수 클릭 가능성을 줄였습니다.
+- 업로드/삭제 중 상태, 성공 메시지, 오류 메시지를 React 화면 안에서 표시합니다.
+- Manager와 다른 영업사원은 파일 업로드/삭제 버튼이 보이지 않고 API에서도 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/schedules/<id>/files/upload/`, `/reporting/schedule-files/<id>/download/`, `/reporting/schedule-files/<id>/delete/` 경로는 유지했습니다.
+- 파일 확장자, 크기, 최대 5개 제한 등 기존 업로드 검증은 유지했습니다.
+- 일정 조회 권한과 다운로드 권한은 기존 `can_access_user_data` 흐름을 유지했습니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 14 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-BlgHjOVF.js / assets/index-D32UHNZf.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/schedules/<id>/` 파일 업로드, 다운로드, 삭제까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- React 화면은 기존 정책대로 일정당 파일 5개 제한을 유지합니다. 제한 확대나 드래그 앤 드롭 업로드는 이번 범위에 포함하지 않았습니다.
+
+### 7. Recommended Next Task
+
+- 다음 단계는 영업노트 상세의 첨부파일 업로드/삭제도 React `/notes/<id>/`에서 처리하게 옮기는 작업이 적절합니다.

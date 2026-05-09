@@ -25,9 +25,11 @@ import {
   Search,
   Sparkles,
   Target,
+  Trash2,
+  Upload,
   Users,
 } from 'lucide-react';
-import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -45,6 +47,7 @@ import {
   SchedulesData,
   ScheduleDetailData,
   ScheduleDetailItem,
+  ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
   AIWorkspaceData,
@@ -59,6 +62,7 @@ import {
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createSchedule as createCustomerSchedule,
+  deleteScheduleFile,
   loadDashboardData,
   loadCustomerDetailData,
   loadCustomersData,
@@ -73,6 +77,7 @@ import {
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updateSchedule as updateCustomerSchedule,
+  uploadScheduleFiles,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -2669,12 +2674,24 @@ function ScheduleDetailPage({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [fileUploading, setFileUploading] = useState(false);
+  const [fileDeletingId, setFileDeletingId] = useState<number | null>(null);
+  const [fileError, setFileError] = useState('');
+  const [fileMessage, setFileMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
+    setFileError('');
+    setFileMessage('');
+    setFileUploading(false);
+    setFileDeletingId(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [currentSchedule?.id]);
 
   const handleEditFieldChange = (field: keyof ScheduleEditFormState, value: string | boolean) => {
@@ -2743,6 +2760,77 @@ function ScheduleDetailPage({
       setEditError(error instanceof Error ? error.message : '일정 수정에 실패했습니다.');
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  const handleScheduleFileUploadClick = () => {
+    if (!currentSchedule?.canEdit || !data?.links.uploadFiles) {
+      setFileError('첨부파일 업로드 권한이 없습니다.');
+      setFileMessage('');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleScheduleFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    if (!currentSchedule?.canEdit || !data?.links.uploadFiles) {
+      setFileError('첨부파일 업로드 권한이 없습니다.');
+      setFileMessage('');
+      event.target.value = '';
+      return;
+    }
+
+    if (currentSchedule.files.length + selectedFiles.length > 5) {
+      setFileError(`첨부파일은 최대 5개까지 등록할 수 있습니다. 현재 ${currentSchedule.files.length}개가 등록되어 있습니다.`);
+      setFileMessage('');
+      event.target.value = '';
+      return;
+    }
+
+    setFileUploading(true);
+    setFileError('');
+    setFileMessage('');
+    try {
+      const result = await uploadScheduleFiles(data.links.uploadFiles, selectedFiles);
+      await onRefresh();
+      setFileMessage(result.message || `${selectedFiles.length}개 파일을 업로드했습니다.`);
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : '첨부파일 업로드에 실패했습니다.');
+    } finally {
+      setFileUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleScheduleFileDelete = async (file: ScheduleFileItem) => {
+    if (fileDeletingId !== null) {
+      return;
+    }
+    if (!currentSchedule?.canEdit || !file.canDelete || !file.deleteHref) {
+      setFileError('첨부파일 삭제 권한이 없습니다.');
+      setFileMessage('');
+      return;
+    }
+    if (!window.confirm(`"${file.filename}" 파일을 삭제할까요?`)) {
+      return;
+    }
+
+    setFileDeletingId(file.id);
+    setFileError('');
+    setFileMessage('');
+    try {
+      const result = await deleteScheduleFile(file.deleteHref);
+      await onRefresh();
+      setFileMessage(result.message || '첨부파일을 삭제했습니다.');
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : '첨부파일 삭제에 실패했습니다.');
+    } finally {
+      setFileDeletingId(null);
     }
   };
 
@@ -3044,16 +3132,55 @@ function ScheduleDetailPage({
               ))}
             </div>
           )}
-          <h3 className="customer-detail-section-heading">첨부파일</h3>
+          <div className="schedule-file-heading">
+            <h3 className="customer-detail-section-heading">첨부파일</h3>
+            {schedule.canEdit && data.links.uploadFiles ? (
+              <>
+                <input
+                  aria-label="일정 첨부파일 선택"
+                  className="schedule-file-input"
+                  multiple
+                  onChange={handleScheduleFilesSelected}
+                  ref={fileInputRef}
+                  type="file"
+                />
+                <button
+                  className="customer-row-action schedule-file-upload-button"
+                  disabled={fileUploading}
+                  onClick={handleScheduleFileUploadClick}
+                  type="button"
+                >
+                  {fileUploading ? <Loader2 className="spin-icon" size={14} /> : <Upload size={14} />}
+                  <span>{fileUploading ? '업로드 중' : '업로드'}</span>
+                </button>
+              </>
+            ) : null}
+          </div>
+          {fileError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{fileError}</span></div> : null}
+          {fileMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{fileMessage}</span></div> : null}
           {schedule.files.length === 0 ? (
             <DashboardEmpty label="첨부파일이 없습니다" />
           ) : (
-            <div className="note-file-list">
+            <div className="schedule-file-list">
               {schedule.files.map((file) => (
-                <a href={file.downloadHref} key={file.id}>
-                  <strong>{file.filename}</strong>
-                  <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
-                </a>
+                <div className="schedule-file-row" key={file.id}>
+                  <a className="schedule-file-download" href={file.downloadHref}>
+                    <strong>{file.filename}</strong>
+                    <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
+                  </a>
+                  {file.canDelete && file.deleteHref ? (
+                    <button
+                      aria-label={`${file.filename} 삭제`}
+                      className="customer-row-action schedule-file-delete-button"
+                      disabled={fileDeletingId === file.id}
+                      onClick={() => handleScheduleFileDelete(file)}
+                      type="button"
+                    >
+                      {fileDeletingId === file.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                      <span>삭제</span>
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}
