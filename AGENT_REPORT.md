@@ -9447,3 +9447,83 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 운영 배포 및 수동검수 완료 후 React 통합 프론트 전환 작업으로 복귀합니다.
+
+---
+
+## Production AI Verification-Based Insights Deployment — 검증 기반 인사이트 운영 배포 (2026-05-10)
+
+### 1. Summary
+
+AI 검증 메모 분석 반영 강화 변경을 GitHub `main`에 푸시하고 Railway production `web`, `sales-note-frontend` 서비스에 배포했습니다. 운영 프론트 번들에 `verificationInsights`와 `customer-ai-verification-list`가 포함되어 있고, 비로그인 API 접근은 `401 login_required`로 차단됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 ID, smoke check, 수동테스트 절차 기록 추가 |
+
+### 3. Deployment Status
+
+- Feature commit: `47679b7 feat: apply AI verification memory to insights`
+- `web`: `e1d4ddae-9b49-48af-b315-13eee223a6ab` SUCCESS
+- `sales-note-frontend`: `7ab298a7-a778-438b-af34-752e6836816d` SUCCESS
+- Railway status: `web` Online, `sales-note-frontend` Online
+- 운영 번들: `index-BTctbCPt.js`, `index-D14Oetqu.css`
+
+### 4. Commands Run and Results
+
+```text
+git commit -m "feat: apply AI verification memory to insights"
+→ 47679b7 feat: apply AI verification memory to insights
+
+git push origin main
+→ main updated from 59e8ba4 to 47679b7
+
+railway redeploy --service web --from-source --yes --json
+→ {"success":true}
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI verification insight UI 47679b7" --ci
+→ Deploy complete
+
+railway deployment list --service web --json
+→ e1d4ddae-9b49-48af-b315-13eee223a6ab SUCCESS
+
+railway deployment list --service sales-note-frontend --json
+→ 7ab298a7-a778-438b-af34-752e6836816d SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/454/
+→ 200, index-BTctbCPt.js / index-D14Oetqu.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BTctbCPt.js
+→ 200, verificationInsights=True, customer-ai-verification-list=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-D14Oetqu.css
+→ 200, customer-ai-verification-list=True
+
+curl.exe -s -i https://sales-note-frontend-production.up.railway.app/reporting/api/customers/454/
+→ 401 login_required
+
+curl.exe -s -i https://web-production-5096.up.railway.app/reporting/api/customers/454/
+→ 401 login_required
+```
+
+### 5. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/customers/454/`
+2. AI 권한이 있고 해당 고객/부서를 담당하는 계정으로 로그인합니다.
+3. 기존 미검증 PainPoint 하나에 구체적인 검증 메모를 입력하고 `확인` 또는 `부정`으로 저장합니다.
+   - 예: `김박사가 최종 승인자이며 6월 예산 소진 뒤 구매 가능, 필요 서류는 견적서와 사양서`
+4. 같은 고객 상세에서 `AI 분석 실행`을 다시 누릅니다.
+5. 재분석 후 기존 검증 완료/부정 카드와 메모가 사라지지 않는지 확인합니다.
+6. AI 결과 영역에 `검증 기반 인사이트` 섹션이 표시되는지 확인합니다.
+7. `검증 기반 인사이트`, `추천 액션`, `확인 필요` 질문에 방금 남긴 검증 메모가 반영되는지 확인합니다.
+8. 이미 물어본 검증 질문이 그대로 반복되지 않고, 일정/예산/필요 서류/대체 원인 같은 다음 단계 질문으로 바뀌는지 확인합니다.
+
+### 6. Known Limitations
+
+- GPT가 본문 요약에서 검증 메모를 약하게 반영하더라도 서버 fallback이 별도 인사이트와 다음 액션/질문을 보정합니다.
+- 운영 수동검수는 로그인 세션이 필요해 사용자가 직접 진행해야 합니다.
+
+### 7. Recommended Next Task
+
+- 수동검수 결과를 받은 뒤 React 통합 프론트 전환 로드맵의 다음 화면 작업으로 진행합니다.
