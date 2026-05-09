@@ -8656,11 +8656,17 @@ git ls-remote origin refs/heads/main
 
 RAILWAY_TOKEN presence check
 → RAILWAY_TOKEN=missing
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/731/
+→ 200, 기존 assets/index-C3bZV9lB.js / assets/index-Ddxdl7EV.css 서빙 중
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/731/
+→ 401 login_required, 정상
 ```
 
 ### 6. Known Limitations
 
-- 운영 사이트는 아직 이 변경분을 서빙하지 않습니다. Railway CLI 재인증 후 `web` source redeploy와 `sales-note-frontend` upload 배포가 필요합니다.
+- 운영 사이트는 확인 시점에 아직 이 변경분을 서빙하지 않고 이전 번들을 유지했습니다. Railway CLI 재인증 후 `web` source redeploy와 `sales-note-frontend` upload 배포가 필요합니다.
 - 운영 번들 검증과 `/reporting/api/schedules/<id>/` 401 보호 확인은 배포 후 다시 수행해야 합니다.
 
 ### 7. Recommended Next Task
