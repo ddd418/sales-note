@@ -3,6 +3,7 @@ AI 부서 분석 - Views
 부서 목록, 분석 실행, 결과 조회, PainPoint 검증
 """
 import logging
+import re
 from collections import defaultdict
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
@@ -188,7 +189,7 @@ def department_analysis(request, department_id):
 @require_POST
 def run_analysis(request, department_id):
     """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
-    from .services import analyze_department, gather_meeting_data
+    from .services import analyze_department, collect_painpoint_verification_memory, gather_meeting_data
 
     department = get_object_or_404(Department, id=department_id)
 
@@ -214,6 +215,11 @@ def run_analysis(request, department_id):
         if not analysis_result:
             return JsonResponse({'error': 'AI 분석 결과를 파싱하지 못했습니다.'}, status=500)
 
+        verification_memory = analysis_result.get('verification_memory')
+        if not isinstance(verification_memory, list):
+            verification_memory = collect_painpoint_verification_memory(analysis)
+        analysis_result['verification_memory'] = verification_memory
+
         # 분석 기간 계산
         period_end = timezone.now().date()
         period_start = period_end - timedelta(days=180)
@@ -229,15 +235,22 @@ def run_analysis(request, department_id):
         analysis.token_usage = token_usage
         analysis.save()
 
-        # 기존 PainPoint 카드 삭제 후 새로 생성
-        analysis.painpoint_cards.all().delete()
+        # 검증 완료/부정 카드는 메모리로 보존하고, 미검증 카드만 새 분석 결과로 교체한다.
+        preserved_cards = analysis.painpoint_cards.exclude(verification_status='unverified').count()
+        analysis.painpoint_cards.filter(verification_status='unverified').delete()
+        created_cards = []
         if 'painpoint_cards' in analysis_result:
-            _save_painpoint_cards(analysis_result['painpoint_cards'], analysis)
+            created_cards = _save_painpoint_cards(
+                analysis_result['painpoint_cards'],
+                analysis,
+                verification_memory=verification_memory,
+            )
 
         return JsonResponse({
             'success': True,
             'redirect_url': f'/ai/department/{department.id}/',
-            'cards_created': len(analysis_result.get('painpoint_cards', [])),
+            'cards_created': len(created_cards),
+            'cards_preserved': preserved_cards,
         })
 
     except Exception as e:
@@ -314,7 +327,70 @@ def start_analysis(request, followup_id):
 # 유틸: PainPoint 카드 저장
 # ================================================
 
-def _save_painpoint_cards(cards_data, analysis):
+def _normalize_painpoint_memory_text(value):
+    return re.sub(r'\s+', ' ', str(value or '')).strip().lower()
+
+
+def _painpoint_memory_key(category, hypothesis, verification_question):
+    return '|'.join([
+        _normalize_painpoint_memory_text(category),
+        _normalize_painpoint_memory_text(hypothesis)[:180],
+        _normalize_painpoint_memory_text(verification_question)[:140],
+    ])
+
+
+def _painpoint_card_matches_memory(card_data, verification_memory):
+    """이미 검증/부정된 가설과 같은 카드를 재생성하지 않도록 거른다."""
+    if not verification_memory:
+        return False
+
+    category = card_data.get('category', '')
+    hypothesis = card_data.get('hypothesis', '')
+    question = card_data.get('verification_question', '')
+    candidate_key = _painpoint_memory_key(category, hypothesis, question)
+    candidate_hypothesis = _normalize_painpoint_memory_text(hypothesis)
+    candidate_question = _normalize_painpoint_memory_text(question)
+
+    for item in verification_memory:
+        if not isinstance(item, dict):
+            continue
+        memory_status = item.get('verification_status') or item.get('verificationStatus') or ''
+        if memory_status not in ('confirmed', 'denied'):
+            continue
+
+        memory_category = item.get('category', '')
+        memory_hypothesis = item.get('hypothesis', '')
+        memory_question = item.get('verification_question') or item.get('verificationQuestion') or ''
+        memory_key = _painpoint_memory_key(memory_category, memory_hypothesis, memory_question)
+        if candidate_key == memory_key:
+            return True
+
+        normalized_memory_hypothesis = _normalize_painpoint_memory_text(memory_hypothesis)
+        normalized_memory_question = _normalize_painpoint_memory_text(memory_question)
+        same_category = _normalize_painpoint_memory_text(category) == _normalize_painpoint_memory_text(memory_category)
+        same_hypothesis = (
+            candidate_hypothesis
+            and normalized_memory_hypothesis
+            and (
+                candidate_hypothesis in normalized_memory_hypothesis
+                or normalized_memory_hypothesis in candidate_hypothesis
+            )
+        )
+        same_question = (
+            candidate_question
+            and normalized_memory_question
+            and (
+                candidate_question in normalized_memory_question
+                or normalized_memory_question in candidate_question
+            )
+        )
+        if same_category and (same_hypothesis or same_question):
+            return True
+
+    return False
+
+
+def _save_painpoint_cards(cards_data, analysis, verification_memory=None):
     """JSON에서 PainPoint 카드 파싱 후 DB 저장"""
     valid_categories = dict(PainPointCard.CATEGORY_CHOICES).keys()
     valid_confidences = dict(PainPointCard.CONFIDENCE_CHOICES).keys()
@@ -323,6 +399,10 @@ def _save_painpoint_cards(cards_data, analysis):
     created_cards = []
     for card_data in cards_data:
         try:
+            if _painpoint_card_matches_memory(card_data, verification_memory or []):
+                logger.info("검증 메모리와 중복되는 PainPoint 카드 저장 생략: %s", card_data.get('hypothesis', '')[:80])
+                continue
+
             category = card_data.get('category', '')
             if category not in valid_categories:
                 logger.warning(f"잘못된 카테고리: {category}")

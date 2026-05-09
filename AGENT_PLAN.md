@@ -1857,6 +1857,32 @@ python pre_deployment_check.py
 
 ---
 
+## AI PainPoint Verification Memory — 재분석 검증 메모리 반영
+
+**목표**: 부서 AI 재분석 시 기존 PainPoint 검증 상태와 검증 메모를 GPT 입력 컨텍스트에 포함해 이미 확인/부정한 내용을 다시 묻지 않게 한다.
+
+**작업 범위**:
+
+- 기존 `PainPointCard.verification_status`, `verification_note`, `verified_at` 필드를 메모리 소스로 사용한다.
+- 기존 `AIDepartmentAnalysis.analysis_data` JSON에 검증 메모리 사본을 저장해 재분석 후에도 다음 분석에서 사용할 수 있게 한다.
+- 부서 분석 프롬프트에 `기존 PainPoint 검증 메모리` 섹션을 추가한다.
+- 재분석 시 미검증 카드만 교체하고, 확인됨/부정됨 카드는 기존 검증 결과와 메모를 보존한다.
+- GPT가 같은 가설/질문을 다시 반환해도 기존 검증 메모리와 중복되는 카드는 저장하지 않는다.
+- 신규 DB 필드나 migration은 추가하지 않는다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드와 JSON payload만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/api/customers/454/` login 보호 smoke check
+
+---
+
 ## Project Direction Documentation — React 단일 CRM 프론트 목표 문서화
 
 **목표**: 프로젝트의 최종 방향을 "React 단일 CRM 프론트 + Django 백엔드/API"로 명확히 문서화하고, 작업마다 Railway 배포 후 사용자 수동검수를 받는 운영 방식을 표준화한다.

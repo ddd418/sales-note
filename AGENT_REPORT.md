@@ -9241,3 +9241,67 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 8. Recommended Next Task
 
 - 사용자의 운영 수동검수 결과를 받은 뒤 다음 React 전환 작업을 진행합니다.
+
+---
+
+## AI PainPoint Verification Memory — 재분석 검증 메모리 반영 (2026-05-10)
+
+### 1. Summary
+
+부서 AI 재분석 시 기존 PainPoint 검증 상태와 검증 메모를 GPT 입력 프롬프트에 포함하도록 수정했습니다. 재분석 저장 시에는 미검증 카드만 교체하고, 사용자가 이미 `확인` 또는 `부정` 처리한 카드는 검증 메모와 함께 보존합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | AI PainPoint 검증 메모리 반영 계획 추가 |
+| `ai_chat/services.py` | 기존 검증 카드/저장 메모리 수집, 프롬프트 섹션 생성, 분석 결과 JSON에 `verification_memory` 저장 추가 |
+| `ai_chat/views.py` | 재분석 시 검증 완료/부정 카드 보존, 미검증 카드만 교체, 검증 메모리 중복 카드 저장 차단 |
+| `ai_chat/tests.py` | 프롬프트 메모리 포함, 검증 카드 보존/중복 차단 테스트 추가 |
+
+### 3. CRM Improvements
+
+- 이미 검증한 PainPoint와 검증 메모가 다음 부서 AI 분석의 입력 컨텍스트로 들어갑니다.
+- `확인됨` PainPoint는 확인된 사실로, `부정됨` PainPoint는 다시 묻지 말아야 할 가설로 GPT에 전달됩니다.
+- 재분석이 기존 검증 메모를 덮어쓰지 않아 고객 상세에서 검증 이력이 계속 남습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `AIDepartmentAnalysis`, `PainPointCard` 모델만 사용했고 DB migration은 없습니다.
+- AI 권한과 본인 담당 부서 조건은 기존 정책을 유지했습니다.
+- 기존 Django `/ai/department/<id>/run/`, `/ai/card/<id>/verify/`, React 고객 상세 검증 흐름은 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test ai_chat.tests --verbosity=1
+→ Ran 14 tests, OK
+
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 18 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 기존에 이미 삭제된 과거 PainPoint 검증 메모는 복구할 수 없습니다. 이번 배포 이후 저장되는 검증 결과부터 장기 메모리로 유지됩니다.
+- GPT가 완전히 다른 표현으로 같은 의미의 가설을 만들 수는 있어, 저장 단계에서 카테고리/가설/검증 질문이 같은 중복을 우선 차단합니다.
+- 운영 배포와 수동 검수는 다음 배포 기록 섹션에 별도로 기록합니다.
+
+### 7. Recommended Next Task
+
+- 운영 수동검수 후 중단했던 React 선결제 목록 전환 작업으로 복귀합니다.

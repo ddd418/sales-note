@@ -1,9 +1,12 @@
 from datetime import date
+import json
 import sys
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from reporting.models import Company, Department, FollowUp, UserProfile
 
@@ -265,3 +268,164 @@ class AIDepartmentPromptHubViewTests(TestCase):
         response = self.client.get('/ai/prompt-builder/')
 
         self.assertEqual(response.status_code, 404)
+
+
+class AIDepartmentAnalysisMemoryTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def _create_verified_card(self, analysis, status='confirmed', note='검증 메모'):
+        return PainPointCard.objects.create(
+            analysis=analysis,
+            category='purchase_process',
+            hypothesis='결재 승인자가 불명확해서 구매가 지연됩니다.',
+            confidence='high',
+            confidence_score=88,
+            evidence=[],
+            attribution='lab',
+            verification_question='결재 승인자는 누구인가요?',
+            action_if_yes='승인자 기준으로 제안서를 보냅니다.',
+            action_if_no='구매 루트를 다시 확인합니다.',
+            verification_status=status,
+            verification_note=note,
+            verified_at=timezone.now(),
+        )
+
+    def test_analyze_department_includes_verification_memory_in_prompt(self):
+        from .services import analyze_department
+
+        user = make_ai_user('ai_memory_prompt_user', can_use_ai=True)
+        _, department = make_department_with_followup(user)
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        self._create_verified_card(
+            analysis,
+            status='confirmed',
+            note='김박사가 최종 승인자라고 5월 미팅에서 확인함',
+        )
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class Usage:
+                    total_tokens = 37
+
+                class Message:
+                    content = json.dumps({
+                        'department_summary': '검증 메모리를 반영했습니다.',
+                        'painpoint_cards': [],
+                    })
+
+                class Choice:
+                    message = Message()
+
+                class Response:
+                    choices = [Choice()]
+                    usage = Usage()
+
+                return Response()
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+
+        with patch('ai_chat.services.get_openai_client', return_value=FakeClient()):
+            result, _qd_data, token_usage = analyze_department(analysis, department, user)
+
+        prompt = captured['messages'][1]['content']
+        self.assertIn('기존 PainPoint 검증 메모리', prompt)
+        self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', prompt)
+        self.assertIn('같은 PainPoint 검증 질문을 반복하지 말라', prompt)
+        self.assertEqual(token_usage, 37)
+        self.assertEqual(result['verification_memory'][0]['verification_status'], 'confirmed')
+
+    def test_run_analysis_preserves_verified_cards_and_skips_memory_duplicates(self):
+        user = make_ai_user('ai_memory_run_user', can_use_ai=True)
+        _, department = make_department_with_followup(user)
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        verified = self._create_verified_card(
+            analysis,
+            status='denied',
+            note='구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음',
+        )
+        stale_unverified = PainPointCard.objects.create(
+            analysis=analysis,
+            category='delivery',
+            hypothesis='납기 일정이 불명확합니다.',
+            confidence='med',
+            confidence_score=55,
+            evidence=[],
+            attribution='lab',
+            verification_question='납기 기준일은 언제인가요?',
+            action_if_yes='납기 일정을 맞춥니다.',
+            action_if_no='다른 장애물을 확인합니다.',
+        )
+        analysis_result = {
+            'department_summary': '재분석 결과',
+            'painpoint_cards': [
+                {
+                    'category': verified.category,
+                    'hypothesis': verified.hypothesis,
+                    'confidence': 'high',
+                    'confidence_score': 90,
+                    'evidence': [],
+                    'attribution': verified.attribution,
+                    'verification_question': verified.verification_question,
+                    'action_if_yes': '중복 카드',
+                    'action_if_no': '중복 카드',
+                    'caution': '',
+                },
+                {
+                    'category': 'budget',
+                    'hypothesis': '예산 집행 시점 확인이 필요합니다.',
+                    'confidence': 'med',
+                    'confidence_score': 62,
+                    'evidence': [],
+                    'attribution': 'lab',
+                    'verification_question': '이번 분기 예산 집행 가능 시점은 언제인가요?',
+                    'action_if_yes': '분기 예산 일정에 맞춰 견적을 보냅니다.',
+                    'action_if_no': '다음 예산 주기를 확인합니다.',
+                    'caution': '',
+                },
+            ],
+        }
+        qd_data = {
+            'summary': {
+                'total_quotes': 0,
+                'total_deliveries': 0,
+            },
+        }
+        self.client.force_login(user)
+
+        with patch('ai_chat.services.analyze_department', return_value=(analysis_result, qd_data, 41)), \
+                patch('ai_chat.services.gather_meeting_data', return_value=[]):
+            response = self.client.post(reverse('ai_chat:run_analysis', args=[department.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['cards_created'], 1)
+        self.assertEqual(payload['cards_preserved'], 1)
+        self.assertTrue(PainPointCard.objects.filter(id=verified.id).exists())
+        self.assertFalse(PainPointCard.objects.filter(id=stale_unverified.id).exists())
+        self.assertEqual(
+            PainPointCard.objects.filter(
+                analysis=analysis,
+                category='purchase_process',
+                verification_status='unverified',
+            ).count(),
+            0,
+        )
+        self.assertTrue(PainPointCard.objects.filter(
+            analysis=analysis,
+            category='budget',
+            hypothesis='예산 집행 시점 확인이 필요합니다.',
+        ).exists())
+        analysis.refresh_from_db()
+        memory_notes = [
+            item['verification_note']
+            for item in analysis.analysis_data.get('verification_memory', [])
+        ]
+        self.assertIn('구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음', memory_notes)
