@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React 선결제 현황 목록 전환
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 예정
+**상태**: 구현/검증/배포 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -69,7 +69,32 @@ git diff --check
 
 ### Railway 배포 및 운영 스모크
 
-- 배포 예정.
+- Commit: `a2df659 feat: add React prepayment list`
+- `web` deployment: `5663d875-ea81-4d4f-9409-f2ce69dd6e6a`
+- `sales-note-frontend` deployment: `f63e24f3-352d-41ed-96a3-6e807535c926`
+- 상태: 두 서비스 모두 Online / SUCCESS
+
+운영 스모크:
+
+```text
+https://sales-note-frontend-production.up.railway.app/prepayments/
+→ 200, assets/index-C-kJugeW.js / assets/index-Bj05GhEi.css
+
+https://sales-note-frontend-production.up.railway.app/assets/index-C-kJugeW.js
+→ 200, prepayments-page=True, 선결제=True
+
+https://sales-note-frontend-production.up.railway.app/assets/index-Bj05GhEi.css
+→ 200, prepayments-page=True, prepayment-status=True
+
+https://sales-note-frontend-production.up.railway.app/reporting/api/prepayments/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/api/prepayments/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/prepayment/
+→ 302 /reporting/login/?next=/reporting/prepayment/
+```
 
 ### 알려진 제한
 

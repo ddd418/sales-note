@@ -12,11 +12,11 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 - Do not copy the old Django visual design into React. Build a distinct internal CRM interface.
 - Remove Django frontend templates only after React feature parity, Railway deployment, and manual production testing are complete.
 
-## Current Task In Progress
+## Latest Deployed Task
 
 React 선결제 현황 목록 전환.
 
-Implemented locally:
+Implemented:
 
 - React `/prepayments/` route and sidebar entry.
 - `/reporting/api/prepayments/` list mode when `customer_id` is absent.
@@ -25,7 +25,7 @@ Implemented locally:
 - Search, status, data range, employee filter controls.
 - Links back to Django prepayment detail/create/excel/customer-specific screens.
 
-Local validation completed:
+Validation:
 
 ```powershell
 python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
@@ -47,7 +47,16 @@ Results:
 
 Deployment status:
 
-- Pending commit, push, Railway deploy, production smoke check.
+- Commit: `a2df659 feat: add React prepayment list`
+- `web`: `5663d875-ea81-4d4f-9409-f2ce69dd6e6a` SUCCESS
+- `sales-note-frontend`: `f63e24f3-352d-41ed-96a3-6e807535c926` SUCCESS
+- Production `/prepayments/` serves bundle `index-C-kJugeW.js` / `index-Bj05GhEi.css`.
+- Anonymous `/reporting/api/prepayments/` returns `401 login_required` on both frontend proxy and backend.
+- Anonymous `/reporting/prepayment/` redirects to `/reporting/login/?next=/reporting/prepayment/`.
+
+Manual test status:
+
+- Pending user confirmation.
 
 ## Operating Rule From User
 
@@ -341,10 +350,10 @@ railway deployment list --service sales-note-frontend --environment production -
 - Backend/Django changes usually deploy through Railway service `web`.
 - React bundle/server changes deploy through Railway service `sales-note-frontend`.
 - Docs-only commits can still trigger Railway deploys. If pushed, wait for the final deployment to become `SUCCESS`.
-- The latest pushed commit at handoff is:
+- The latest runtime commit documented at handoff is:
 
 ```text
-3031ffd docs: record schedule calendar deployment
+a2df659 feat: add React prepayment list
 ```
 
 ## Known Caveats
