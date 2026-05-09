@@ -816,6 +816,16 @@ class CustomersSummaryApiTests(TestCase):
                     'priority': 'high',
                     'reason': '견적 후속 지연 해소',
                 }],
+                'verification_insights': [{
+                    'status': 'confirmed',
+                    'status_label': '확인됨',
+                    'hypothesis': '구매 결재 단계가 길어 견적 후속이 지연됩니다.',
+                    'insight': '김박사가 최종 승인자로 확인되어 승인자 기준 후속이 필요합니다.',
+                    'impact': '6월 예산 소진 뒤 구매 가능하다는 검증 메모를 다음 액션에 반영해야 합니다.',
+                    'previous_question': '결재 승인자가 누구인지 확인했나요?',
+                    'next_verification': '6월 예산 집행일과 필요 서류를 확인합니다.',
+                    'verified_at': '2026-05-10T09:00:00+09:00',
+                }],
                 'missing_info': {
                     'items': ['구매 승인자'],
                     'questions': ['결재 최종 승인자는 누구인가요?'],
@@ -848,7 +858,7 @@ class CustomersSummaryApiTests(TestCase):
             hypothesis='구매 결재 단계가 길어 견적 후속이 지연됩니다.',
             confidence='high',
             confidence_score=90,
-            evidence=[{'type': 'fact', 'text': '견적 후 응답 지연', 'source_section': 'quote'}],
+            evidence=[{'type': 'verification', 'text': '김박사 승인자 확인', 'source_section': '검증 메모'}],
             attribution='lab',
             verification_question='결재 승인자가 누구인지 확인했나요?',
             action_if_yes='승인자에게 직접 후속합니다.',
@@ -880,9 +890,13 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn('납품 전환율', ai_department['quoteInsights']['conversionAnalysis'])
         self.assertEqual(ai_department['quoteInsights']['stalledQuotes'][0]['quoteInfo'], 'Q-001')
         self.assertEqual(ai_department['nextActions'][0]['action'], '결재 승인자 확인')
+        self.assertEqual(ai_department['verificationInsights'][0]['statusLabel'], '확인됨')
+        self.assertIn('김박사', ai_department['verificationInsights'][0]['insight'])
+        self.assertEqual(ai_department['verificationInsights'][0]['nextVerification'], '6월 예산 집행일과 필요 서류를 확인합니다.')
         self.assertEqual(ai_department['missingInfo']['questions'][0], '결재 최종 승인자는 누구인가요?')
         self.assertEqual(ai_department['painpoints'][0]['id'], card.id)
         self.assertEqual(ai_department['painpoints'][0]['categoryLabel'], '결재/구매 프로세스')
+        self.assertEqual(ai_department['painpoints'][0]['evidence'][0]['typeLabel'], '검증')
         self.assertEqual(ai_department['painpoints'][0]['verifyHref'], reverse('ai_chat:verify_card', args=[card.id]))
         self.assertTrue(ai_department['painpoints'][0]['canVerify'])
 

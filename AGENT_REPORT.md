@@ -9376,3 +9376,74 @@ Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/custo
 ### 8. Recommended Next Task
 
 - 수동검수 결과를 받은 뒤 중단했던 React 선결제 목록 전환 작업으로 복귀합니다.
+
+---
+
+## AI Verification-Based Insights Implementation — 검증 메모 분석 반영 강화 (2026-05-10)
+
+### 1. Summary
+
+PainPoint 검증 메모를 단순 저장/중복 방지용이 아니라 부서 AI 분석의 핵심 근거로 승격했습니다. 재분석 시 GPT 프롬프트는 검증 메모를 미팅 기록과 동급으로 반영하도록 요구하고, GPT가 누락해도 서버가 검증 기반 인사이트, 다음 액션, 추가 확인 질문을 보정해 저장합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `ai_chat/services.py` | 검증 메모 프롬프트 강화, `verification_insights` 결과 계약 추가, fallback 인사이트/다음 액션/질문 보정 추가 |
+| `ai_chat/views.py` | 분석 저장 직전 검증 메모 보정 적용 |
+| `reporting/views.py` | 고객 상세 AI payload에 `verificationInsights` 추가, 검증 evidence label 추가 |
+| `frontend/src/api.ts` | `verificationInsights` 타입/기본값/merge 처리 추가 |
+| `frontend/src/App.tsx` | 고객 상세 AI 결과에 `검증 기반 인사이트` 섹션 추가 |
+| `frontend/src/styles.css` | 검증 인사이트 UI 스타일 추가 |
+| `ai_chat/tests.py` | 프롬프트/저장 결과가 검증 메모 기반 액션과 질문을 포함하는지 검증 |
+| `reporting/tests.py` | 고객 상세 API가 검증 인사이트와 검증 evidence label을 반환하는지 검증 |
+| `AGENT_PLAN.md` | 작업 계획과 검증 계획 기록 |
+
+### 3. CRM Improvements
+
+- 사용자가 검증한 내용이 다음 AI 요약, PainPoint, 추천 액션, 확인 필요 질문에 반영됩니다.
+- 확인된 가설은 후속 일정/예산/필요 자료 확인으로 이어지고, 부정된 가설은 대체 원인 확인으로 이어집니다.
+- React 고객 상세에서 검증 메모가 어떤 다음 검증/액션으로 이어졌는지 바로 확인할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 신규 DB 필드와 migration은 없습니다.
+- 기존 AI 권한, 본인 담당 부서 조건, `/reporting/*`, `/ai/*` 경로는 유지했습니다.
+- 미검증 PainPoint 교체, 검증 완료/부정 카드 보존 정책은 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 18 tests, OK
+
+python manage.py test ai_chat.tests --verbosity=1
+→ Ran 14 tests, OK
+
+cd frontend && npm run build
+→ OK, bundle index-BTctbCPt.js / index-D14Oetqu.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- GPT 응답 자체가 요약 본문에 검증 메모를 충분히 녹이지 못하는 경우에도 서버는 별도 `verification_insights`, `next_actions`, `missing_info.questions`를 보정합니다.
+- 이전 배포 전에 이미 삭제된 검증 메모는 복구할 수 없습니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 및 수동검수 완료 후 React 통합 프론트 전환 작업으로 복귀합니다.

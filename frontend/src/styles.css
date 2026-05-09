@@ -2343,6 +2343,7 @@ h2 {
 .customer-ai-product-list,
 .customer-ai-stalled-list,
 .customer-ai-action-list,
+.customer-ai-verification-list,
 .customer-ai-painpoint-list {
   display: grid;
   gap: 8px;
@@ -2353,6 +2354,7 @@ h2 {
 .customer-ai-product-list div,
 .customer-ai-stalled-list div,
 .customer-ai-action-list > div,
+.customer-ai-verification-list article,
 .customer-ai-painpoint {
   display: grid;
   gap: 5px;
@@ -2366,13 +2368,15 @@ h2 {
 .customer-ai-text-list strong,
 .customer-ai-product-list strong,
 .customer-ai-stalled-list strong,
-.customer-ai-action-list strong {
+.customer-ai-action-list strong,
+.customer-ai-verification-list strong {
   color: var(--text);
   font-size: 13px;
 }
 
 .customer-ai-insight-list p,
 .customer-ai-text-list p,
+.customer-ai-verification-list p,
 .customer-ai-painpoint p {
   margin: 0;
   color: var(--muted);
@@ -2384,7 +2388,8 @@ h2 {
 .customer-ai-insight-list small,
 .customer-ai-product-list small,
 .customer-ai-stalled-list small,
-.customer-ai-action-list small {
+.customer-ai-action-list small,
+.customer-ai-verification-list small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
@@ -2442,6 +2447,29 @@ h2 {
 .customer-ai-priority.low {
   background: var(--info-bg);
   color: var(--teal);
+}
+
+.customer-ai-verification-list article.confirmed {
+  border-color: rgba(22, 163, 74, 0.36);
+  background: #f0fdf4;
+}
+
+.customer-ai-verification-list article.denied {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: #fef2f2;
+}
+
+.customer-ai-verification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customer-ai-verification-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .customer-ai-check-list {

@@ -383,6 +383,7 @@ export type CustomerAiDepartment = {
   quoteDelivery: CustomerAiQuoteDelivery;
   quoteInsights: CustomerAiQuoteInsights;
   nextActions: CustomerAiNextAction[];
+  verificationInsights: CustomerAiVerificationInsight[];
   missingInfo: CustomerAiMissingInfo;
   painpoints: CustomerAiPainpoint[];
 };
@@ -425,6 +426,17 @@ export type CustomerAiNextAction = {
   action: string;
   priority: string;
   reason: string;
+};
+
+export type CustomerAiVerificationInsight = {
+  status: string;
+  statusLabel: string;
+  hypothesis: string;
+  insight: string;
+  impact: string;
+  previousQuestion: string;
+  nextVerification: string;
+  verifiedAt: string | null;
 };
 
 export type CustomerAiMissingInfo = {
@@ -1377,6 +1389,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
       stalledQuotes: [],
     },
     nextActions: [],
+    verificationInsights: [],
     missingInfo: {
       items: [],
       questions: [],
@@ -1976,6 +1989,7 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
         },
         meetingInsights: payload.aiDepartment?.meetingInsights ?? emptyCustomerDetailData.aiDepartment.meetingInsights,
         nextActions: payload.aiDepartment?.nextActions ?? emptyCustomerDetailData.aiDepartment.nextActions,
+        verificationInsights: payload.aiDepartment?.verificationInsights ?? emptyCustomerDetailData.aiDepartment.verificationInsights,
         painpoints: payload.aiDepartment?.painpoints ?? emptyCustomerDetailData.aiDepartment.painpoints,
       },
       edit: {

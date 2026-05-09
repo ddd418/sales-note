@@ -338,9 +338,22 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         prompt = captured['messages'][1]['content']
         self.assertIn('기존 PainPoint 검증 메모리', prompt)
         self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', prompt)
+        self.assertIn('미팅 기록과 동급의 분석 근거', prompt)
+        self.assertIn('요약, 미팅 인사이트, PainPoint, 다음 액션, missing_info', prompt)
+        self.assertIn('승인 일정/예산/필요 서류', prompt)
         self.assertIn('같은 PainPoint 검증 질문을 반복하지 말라', prompt)
         self.assertEqual(token_usage, 37)
         self.assertEqual(result['verification_memory'][0]['verification_status'], 'confirmed')
+        self.assertEqual(result['verification_insights'][0]['status'], 'confirmed')
+        self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', result['verification_insights'][0]['impact'])
+        self.assertTrue(any(
+            '김박사가 최종 승인자라고 5월 미팅에서 확인함' in action['reason']
+            for action in result['next_actions']
+        ))
+        self.assertTrue(any(
+            '의사결정 일정' in question
+            for question in result['missing_info']['questions']
+        ))
 
     def test_run_analysis_preserves_verified_cards_and_skips_memory_duplicates(self):
         user = make_ai_user('ai_memory_run_user', can_use_ai=True)
@@ -429,3 +442,11 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
             for item in analysis.analysis_data.get('verification_memory', [])
         ]
         self.assertIn('구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음', memory_notes)
+        self.assertIn(
+            '구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음',
+            analysis.analysis_data['verification_insights'][0]['impact'],
+        )
+        self.assertTrue(any(
+            '검증 메모리 반영' in action['reason']
+            for action in analysis.analysis_data['next_actions']
+        ))

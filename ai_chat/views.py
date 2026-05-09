@@ -189,7 +189,12 @@ def department_analysis(request, department_id):
 @require_POST
 def run_analysis(request, department_id):
     """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
-    from .services import analyze_department, collect_painpoint_verification_memory, gather_meeting_data
+    from .services import (
+        analyze_department,
+        apply_verification_memory_to_analysis_result,
+        collect_painpoint_verification_memory,
+        gather_meeting_data,
+    )
 
     department = get_object_or_404(Department, id=department_id)
 
@@ -218,7 +223,10 @@ def run_analysis(request, department_id):
         verification_memory = analysis_result.get('verification_memory')
         if not isinstance(verification_memory, list):
             verification_memory = collect_painpoint_verification_memory(analysis)
-        analysis_result['verification_memory'] = verification_memory
+        analysis_result = apply_verification_memory_to_analysis_result(
+            analysis_result,
+            verification_memory,
+        )
 
         # 분석 기간 계산
         period_end = timezone.now().date()

@@ -1079,6 +1079,29 @@ function CustomerAiResultPanel({
         </section>
       ) : null}
 
+      {aiDepartment.verificationInsights.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>검증 기반 인사이트</h4>
+          <div className="customer-ai-verification-list">
+            {aiDepartment.verificationInsights.map((insight) => (
+              <article
+                className={insight.status || 'memory'}
+                key={`${insight.hypothesis}-${insight.previousQuestion}-${insight.nextVerification}`}
+              >
+                <div className="customer-ai-verification-head">
+                  <span>{insight.statusLabel || insight.status || '검증 메모리'}</span>
+                  {insight.verifiedAt ? <small>{formatDateTimeLabel(insight.verifiedAt)}</small> : null}
+                </div>
+                <strong>{insight.insight || insight.hypothesis}</strong>
+                {insight.impact ? <p>{insight.impact}</p> : null}
+                {insight.previousQuestion ? <small>기존 질문: {insight.previousQuestion}</small> : null}
+                {insight.nextVerification ? <small>다음 검증: {insight.nextVerification}</small> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {aiDepartment.nextActions.length > 0 ? (
         <section className="customer-ai-section">
           <h4>추천 액션</h4>

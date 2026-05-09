@@ -4193,6 +4193,7 @@ def _customers_empty_ai_result_payload():
             'stalledQuotes': [],
         },
         'nextActions': [],
+        'verificationInsights': [],
         'missingInfo': {
             'items': [],
             'questions': [],
@@ -4244,6 +4245,7 @@ def _customers_ai_painpoint_payload(card, can_verify):
             'typeLabel': {
                 'quote': '인용',
                 'fact': '사실',
+                'verification': '검증',
                 'guess': '추측',
             }.get(evidence_type, evidence_type),
             'text': _ai_payload_text(evidence.get('text'), 220),
@@ -4278,6 +4280,9 @@ def _customers_ai_result_payload(analysis, can_verify):
     data = _ai_json_dict(analysis.analysis_data)
     quote_insights = _ai_json_dict(data.get('quote_delivery_insights'))
     missing_info = _ai_json_dict(data.get('missing_info'))
+    raw_verification_insights = data.get('verification_insights')
+    if not raw_verification_insights:
+        raw_verification_insights = data.get('verification_memory')
 
     meeting_insights = []
     for item in _ai_json_list(data.get('meeting_insights'))[:5]:
@@ -4309,6 +4314,30 @@ def _customers_ai_result_payload(analysis, can_verify):
             'reason': _ai_payload_text(item.get('reason'), 260),
         })
 
+    verification_insights = []
+    for item in _ai_json_list(raw_verification_insights)[:8]:
+        if not isinstance(item, dict):
+            continue
+        verification_insights.append({
+            'status': _ai_payload_text(
+                item.get('status') or item.get('verification_status'),
+                40,
+            ),
+            'statusLabel': _ai_payload_text(
+                item.get('status_label') or item.get('verification_status_label'),
+                80,
+            ),
+            'hypothesis': _ai_payload_text(item.get('hypothesis'), 260),
+            'insight': _ai_payload_text(item.get('insight'), 360),
+            'impact': _ai_payload_text(item.get('impact') or item.get('verification_note'), 360),
+            'previousQuestion': _ai_payload_text(
+                item.get('previous_question') or item.get('verification_question'),
+                240,
+            ),
+            'nextVerification': _ai_payload_text(item.get('next_verification'), 260),
+            'verifiedAt': _ai_payload_text(item.get('verified_at'), 80) or None,
+        })
+
     painpoints = [
         _customers_ai_painpoint_payload(card, can_verify)
         for card in analysis.painpoint_cards.order_by('-confidence_score', '-created_at')[:12]
@@ -4327,6 +4356,7 @@ def _customers_ai_result_payload(analysis, can_verify):
             'stalledQuotes': stalled_quotes,
         },
         'nextActions': next_actions,
+        'verificationInsights': verification_insights,
         'missingInfo': {
             'items': [
                 _ai_payload_text(item, 160)

@@ -1883,6 +1883,35 @@ python pre_deployment_check.py
 
 ---
 
+## AI Verification-Based Insights — 검증 메모 분석 반영 강화
+
+**목표**: 사용자가 PainPoint 검증 때 남긴 메모를 단순 저장/중복 방지용이 아니라 GPT의 요약, PainPoint, 다음 액션, 추가 검증 질문에 반영되는 분석 근거로 승격한다.
+
+**작업 범위**:
+
+- 기존 `PainPointCard.verification_status`, `verification_note`, `verified_at`와 `AIDepartmentAnalysis.analysis_data` JSON만 사용한다.
+- 부서 AI 프롬프트에서 검증 메모리를 미팅 기록과 동급의 분석 근거로 명시한다.
+- GPT 응답 계약에 `verification_insights`를 추가하고, GPT가 누락해도 서버에서 검증 메모 기반 fallback 인사이트/다음 액션/추가 질문을 저장한다.
+- 고객 상세 API의 `aiDepartment` payload에 `verificationInsights`를 추가한다.
+- React 고객 상세 AI 결과에 `검증 기반 인사이트` 섹션을 추가해 검증 메모가 다음 검증/액션으로 이어지는지 확인할 수 있게 한다.
+- 기존 Django `/ai/*`, React 고객 상세, `/reporting/*` 인증/권한 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델 필드와 JSON payload만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `python manage.py test ai_chat.tests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke check
+
+---
+
 ## Project Direction Documentation — React 단일 CRM 프론트 목표 문서화
 
 **목표**: 프로젝트의 최종 방향을 "React 단일 CRM 프론트 + Django 백엔드/API"로 명확히 문서화하고, 작업마다 Railway 배포 후 사용자 수동검수를 받는 운영 방식을 표준화한다.
