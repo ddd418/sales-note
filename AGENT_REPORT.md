@@ -1,5 +1,66 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — 인수인계 문서 정리
+
+**상태**: 문서 작성 완료, 커밋/배포 예정
+
+### 요약
+
+다음 작업자가 React 통합 프론트 작업과 최근 긴급 수정 흐름을 바로 이어받을 수 있도록 루트 `HANDOFF.md` 인수인계서를 작성했습니다.
+
+### 변경된 파일
+
+- `HANDOFF.md`
+  - 장기 목표와 전환 원칙
+  - Railway 운영 서비스/배포 현황
+  - 최근 긴급 수정 목록
+  - Django 페이지 유지 정책
+  - 다음 권장 작업
+  - 검증/배포 체크리스트
+  - 알려진 제한과 사용자 수동검수 상태
+- `AGENT_REPORT.md`
+  - 인수인계 문서 작성 기록 추가
+
+### CRM 개선
+
+- 직접 기능 변경은 없습니다.
+- 다음 작업자가 운영 중인 Django 페이지와 React 통합 목표를 혼동하지 않도록 현재 상태를 명확히 보존했습니다.
+
+### 기존 기능 보존
+
+- 런타임 코드 변경 없음.
+- 인증/권한/DB 모델 변경 없음.
+
+### 실행한 명령어 및 결과
+
+```
+git status --short
+→ clean 상태에서 시작
+
+git log --oneline -12
+→ 최근 커밋 확인
+
+railway status
+→ web, sales-note-frontend, Postgres Online
+
+railway deployment list --service web --environment production --limit 5 --json
+→ 최신 web deployment SUCCESS 확인
+```
+
+### Railway 배포 및 운영 스모크
+
+- 문서 커밋 후 자동 배포 상태를 확인 예정입니다.
+
+### 알려진 제한
+
+- 문서 작업이므로 별도 Django/React 런타임 테스트는 하지 않습니다.
+
+### 다음 권장 작업
+
+- 다음 작업자는 `HANDOFF.md`를 먼저 읽고 React 통합 프론트 작업을 이어갑니다.
+
+---
+
 ## 2026-05-10 — 긴급: Django 일정 캘린더 운영 진입점 복구
 
 **상태**: 구현/검증/배포 완료
