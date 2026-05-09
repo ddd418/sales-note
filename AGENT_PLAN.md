@@ -1608,3 +1608,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedule Detail Edit — 일정 상세/수정 전환
+
+**목표**: React `/schedules/<id>/`에서 고객 일정 상세를 확인하고, 권한이 있는 사용자는 Django 수정 화면으로 이동하지 않고 주요 일정 정보를 바로 수정한다.
+
+**작업 범위**:
+
+- `/reporting/api/schedules/<id>/` 상세 API를 추가해 기존 `Schedule` 기반 일정 상세, 연결 고객/영업노트/납품 항목, 수정 옵션을 제공한다.
+- `/reporting/api/schedules/<id>/update/` POST API를 추가해 고객 연결, 일정일/시간, 활동 유형, 상태, 장소, 메모, 예상 매출, 확률, 예상 종료일을 저장한다.
+- 기존 권한 정책을 유지해 manager는 상세 조회만 가능하고 수정은 차단하며, salesman은 본인 일정만 수정 가능하게 한다.
+- React `/schedules/<id>/` route를 추가하고 일정 목록의 고객 일정 링크가 React 상세로 이어지게 한다.
+- 기존 Django `/reporting/schedules/<id>/` 상세/수정 화면은 보조 경로로 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Schedule`, `FollowUp`, `History`, `DeliveryItem` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

@@ -43,6 +43,9 @@ import {
   NoteEditPayload,
   NoteItem,
   SchedulesData,
+  ScheduleDetailData,
+  ScheduleDetailItem,
+  ScheduleEditPayload,
   ScheduleItem,
   AIWorkspaceData,
   AIWorkspaceDepartment,
@@ -61,6 +64,7 @@ import {
   loadCustomersData,
   loadNoteDetailData,
   loadNotesData,
+  loadScheduleDetailData,
   loadSchedulesData,
   loadAIWorkspaceData,
   loadPipelineData,
@@ -68,6 +72,7 @@ import {
   toggleNoteReviewed,
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
+  updateSchedule as updateCustomerSchedule,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -120,6 +125,12 @@ type ScheduleCreateFormState = {
   probability: string;
   visitDate: string;
   visitTime: string;
+};
+
+type ScheduleEditFormState = ScheduleCreateFormState & {
+  expectedCloseDate: string;
+  purchaseConfirmed: boolean;
+  status: string;
 };
 
 type CustomerCreateFormState = {
@@ -190,6 +201,20 @@ const makeEmptyScheduleCreateForm = (): ScheduleCreateFormState => ({
   probability: '',
   visitDate: localDateInputValue(),
   visitTime: '09:00',
+});
+
+const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEditFormState => ({
+  activityType: schedule?.activityType || 'customer_meeting',
+  expectedCloseDate: schedule?.expectedCloseDate || '',
+  expectedRevenue: schedule?.expectedRevenue ? String(schedule.expectedRevenue) : '',
+  followupId: schedule?.followupId ? String(schedule.followupId) : '',
+  location: schedule?.location || '',
+  notes: schedule?.notesFull || schedule?.notes || '',
+  probability: schedule?.probability ? String(schedule.probability) : '',
+  purchaseConfirmed: Boolean(schedule?.purchaseConfirmed),
+  status: schedule?.status || 'scheduled',
+  visitDate: schedule?.date || '',
+  visitTime: schedule?.time || '09:00',
 });
 
 const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
@@ -323,6 +348,15 @@ function getCustomerDetailId(): number | null {
 
 function getNoteDetailId(): number | null {
   const match = window.location.pathname.match(/^\/notes\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getScheduleDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/schedules\/(\d+)\/?$/);
   if (!match) {
     return null;
   }
@@ -2620,6 +2654,426 @@ function SchedulesTable({ schedules }: { schedules: ScheduleItem[] }) {
   );
 }
 
+function ScheduleDetailPage({
+  data,
+  loading,
+  onRefresh,
+}: {
+  data: ScheduleDetailData | null;
+  loading: boolean;
+  onRefresh: () => Promise<ScheduleDetailData | null>;
+}) {
+  const currentSchedule = data?.schedule ?? null;
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<ScheduleEditFormState>(() => makeScheduleEditForm(currentSchedule));
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+
+  useEffect(() => {
+    setEditForm(makeScheduleEditForm(currentSchedule));
+    setEditError('');
+    setEditMessage('');
+    setEditOpen(false);
+  }, [currentSchedule?.id]);
+
+  const handleEditFieldChange = (field: keyof ScheduleEditFormState, value: string | boolean) => {
+    setEditForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setEditError('');
+    setEditMessage('');
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentSchedule || !data?.edit || editSaving) {
+      return;
+    }
+    if (!data.edit.canEdit) {
+      setEditError(data.edit.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const followupId = Number(editForm.followupId);
+    if (!followupId) {
+      setEditError('고객을 선택하세요.');
+      return;
+    }
+    if (!editForm.activityType) {
+      setEditError('활동 유형을 선택하세요.');
+      return;
+    }
+    if (!editForm.status) {
+      setEditError('일정 상태를 선택하세요.');
+      return;
+    }
+    if (!editForm.visitDate) {
+      setEditError('방문 날짜를 선택하세요.');
+      return;
+    }
+    if (!editForm.visitTime) {
+      setEditError('방문 시간을 선택하세요.');
+      return;
+    }
+
+    const payload: ScheduleEditPayload = {
+      activityType: editForm.activityType,
+      expectedCloseDate: editForm.expectedCloseDate || undefined,
+      expectedRevenue: editForm.expectedRevenue.trim() || undefined,
+      followupId,
+      location: editForm.location.trim() || undefined,
+      notes: editForm.notes.trim() || undefined,
+      probability: editForm.probability.trim() || undefined,
+      purchaseConfirmed: editForm.purchaseConfirmed,
+      status: editForm.status,
+      visitDate: editForm.visitDate,
+      visitTime: editForm.visitTime,
+    };
+
+    setEditSaving(true);
+    setEditError('');
+    setEditMessage('');
+    try {
+      const updated = await updateCustomerSchedule(payload, data.edit.submitUrl);
+      await onRefresh();
+      setEditMessage(updated.message || '일정을 수정했습니다.');
+      setEditOpen(false);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '일정 수정에 실패했습니다.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>일정 상세 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data || !data.schedule) {
+    return (
+      <section className="schedules-page">
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>일정 상세를 불러오지 못했습니다</strong>
+            <span>{data?.error || '일정 상세 API에 연결되지 않았습니다.'}</span>
+          </div>
+          <a href="/schedules/">목록</a>
+        </div>
+      </section>
+    );
+  }
+
+  const schedule = data.schedule;
+  const deliveryItems = data.deliveryItems;
+  const metrics = [
+    { label: '일정 상태', value: schedule.statusLabel, detail: schedule.activityLabel, icon: CalendarDays, tone: schedule.overdue ? 'red' as const : 'blue' as const },
+    { label: '방문 일시', value: schedule.date ? formatDateLabel(schedule.date) : '날짜 없음', detail: schedule.time || '시간 없음', icon: Clock, tone: 'green' as const },
+    { label: '예상 매출', value: schedule.expectedRevenue > 0 ? formatWon(schedule.expectedRevenue) : '없음', detail: schedule.probability ? `${schedule.probability}%` : '확률 미입력', icon: CircleDollarSign, tone: 'amber' as const },
+    { label: '보고/파일', value: `${formatNumber(schedule.historyCount)} / ${formatNumber(schedule.fileCount)}`, detail: '보고 / 첨부', icon: MessageSquareText, tone: 'teal' as const },
+  ];
+
+  return (
+    <section className="schedules-page schedule-detail-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>일정 상세 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Schedule detail</span>
+          <h2>{schedule.company || schedule.customer || schedule.activityLabel}</h2>
+          <p>{[schedule.customer, schedule.department, schedule.activityLabel, schedule.owner].filter(Boolean).join(' · ')}</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href="/schedules/">목록</a>
+          {data.links.customer ? <a className="route-secondary-action" href={data.links.customer}>고객</a> : null}
+          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          {data.links.createNote ? <a className="route-secondary-action" href={data.links.createNote}>보고 작성</a> : null}
+          {data.edit.canEdit ? (
+            <button className="route-primary-action" onClick={() => setEditOpen((open) => !open)} type="button">
+              수정
+              <Check size={16} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="일정 상세 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      {editOpen || editMessage || editError ? (
+        <section className="dashboard-panel notes-create-panel schedule-edit-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Edit schedule</span>
+              <h2>일정 수정</h2>
+            </div>
+            {editSaving ? <Loader2 className="spin-icon" size={18} /> : <CalendarDays size={18} />}
+          </div>
+          {editError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{editError}</span></div> : null}
+          {editMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{editMessage}</span></div> : null}
+          {editOpen ? (
+            <form className="notes-create-form schedule-edit-form" onSubmit={handleEditSubmit}>
+              <div className="notes-create-grid schedules-create-grid">
+                <label>
+                  <span>고객</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('followupId', event.target.value)}
+                    required
+                    value={editForm.followupId}
+                  >
+                    <option value="">고객 선택</option>
+                    {data.edit.customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>{customer.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동 유형</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('activityType', event.target.value)}
+                    required
+                    value={editForm.activityType}
+                  >
+                    {data.edit.activityTypes.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>상태</span>
+                  <select
+                    onChange={(event) => handleEditFieldChange('status', event.target.value)}
+                    required
+                    value={editForm.status}
+                  >
+                    {data.edit.statuses.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>방문 날짜</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('visitDate', event.target.value)}
+                    required
+                    type="date"
+                    value={editForm.visitDate}
+                  />
+                </label>
+                <label>
+                  <span>방문 시간</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('visitTime', event.target.value)}
+                    required
+                    type="time"
+                    value={editForm.visitTime}
+                  />
+                </label>
+                <label>
+                  <span>장소</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('location', event.target.value)}
+                    value={editForm.location}
+                  />
+                </label>
+                <label>
+                  <span>예상 매출</span>
+                  <input
+                    inputMode="numeric"
+                    min="0"
+                    onChange={(event) => handleEditFieldChange('expectedRevenue', event.target.value)}
+                    type="number"
+                    value={editForm.expectedRevenue}
+                  />
+                </label>
+                <label>
+                  <span>성공 확률</span>
+                  <input
+                    inputMode="numeric"
+                    max="100"
+                    min="0"
+                    onChange={(event) => handleEditFieldChange('probability', event.target.value)}
+                    type="number"
+                    value={editForm.probability}
+                  />
+                </label>
+                <label>
+                  <span>예상 종료일</span>
+                  <input
+                    onChange={(event) => handleEditFieldChange('expectedCloseDate', event.target.value)}
+                    type="date"
+                    value={editForm.expectedCloseDate}
+                  />
+                </label>
+              </div>
+              <label className="schedule-edit-inline-check">
+                <input
+                  checked={editForm.purchaseConfirmed}
+                  onChange={(event) => handleEditFieldChange('purchaseConfirmed', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>구매 확정</span>
+              </label>
+              <label>
+                <span>메모</span>
+                <textarea
+                  onChange={(event) => handleEditFieldChange('notes', event.target.value)}
+                  rows={4}
+                  value={editForm.notes}
+                />
+              </label>
+              <div className="notes-create-actions">
+                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
+                  Django 수정
+                  <MoveUpRight size={15} />
+                </a>
+                <button className="route-primary-action" disabled={editSaving} type="submit">
+                  {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
+
+      <div className="note-detail-layout schedule-detail-layout">
+        <section className="dashboard-panel note-detail-main schedule-detail-main">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Schedule</span>
+              <h2>일정 내용</h2>
+            </div>
+            <ScheduleStatusBadge schedule={schedule} />
+          </div>
+          <div className="note-detail-content schedule-detail-content">
+            {schedule.notesFull || schedule.notes ? <p>{schedule.notesFull || schedule.notes}</p> : <DashboardEmpty label="일정 메모가 없습니다" />}
+          </div>
+          <div className="note-detail-field-grid">
+            <div className="note-detail-field">
+              <span>장소</span>
+              <p>{schedule.location || '장소 없음'}</p>
+            </div>
+            <div className="note-detail-field">
+              <span>예상 종료일</span>
+              <p>{schedule.expectedCloseDate ? formatDateLabel(schedule.expectedCloseDate) : '없음'}</p>
+            </div>
+            <div className="note-detail-field">
+              <span>구매 확정</span>
+              <p>{schedule.purchaseConfirmed ? '확정' : '미확정'}</p>
+            </div>
+            <div className="note-detail-field">
+              <span>이메일 스레드</span>
+              <p>{formatNumber(schedule.emailThreadCount)}건</p>
+            </div>
+          </div>
+        </section>
+
+        <aside className="dashboard-panel note-detail-side schedule-detail-side">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Follow-up</span>
+              <h2>연결 정보</h2>
+            </div>
+            <PanelRight size={18} />
+          </div>
+          <div className="customer-detail-summary">
+            <dl>
+              <div>
+                <dt>고객</dt>
+                <dd>{[schedule.company, schedule.department, schedule.customer].filter(Boolean).join(' · ') || '고객 없음'}</dd>
+              </div>
+              <div>
+                <dt>담당자</dt>
+                <dd>{schedule.owner}</dd>
+              </div>
+              <div>
+                <dt>일정일</dt>
+                <dd className={schedule.overdue ? 'customer-overdue-text' : ''}>
+                  {[schedule.date ? formatDateLabel(schedule.date) : '', schedule.time].filter(Boolean).join(' ') || '일정 없음'}
+                </dd>
+              </div>
+              <div>
+                <dt>선결제</dt>
+                <dd>{schedule.usePrepayment ? formatWon(schedule.prepaymentAmount) : '미사용'}</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="customers-side-actions note-detail-actions">
+            {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
+            {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
+            {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
+            <a href={data.links.calendar}>일정 캘린더</a>
+          </div>
+          <h3 className="customer-detail-section-heading">납품 품목</h3>
+          {deliveryItems.length === 0 ? (
+            <DashboardEmpty label="등록된 납품 품목이 없습니다" />
+          ) : (
+            <div className="schedule-delivery-list">
+              {deliveryItems.map((item) => (
+                <div key={item.id}>
+                  <strong>{item.itemName}</strong>
+                  <span>{[`${formatNumber(item.quantity)}${item.unit}`, item.totalPrice ? formatWon(item.totalPrice) : '', item.taxInvoiceIssued ? '세금계산서 발행' : '미발행'].filter(Boolean).join(' · ')}</span>
+                  {item.notes ? <p>{item.notes}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+          <h3 className="customer-detail-section-heading">첨부파일</h3>
+          {schedule.files.length === 0 ? (
+            <DashboardEmpty label="첨부파일이 없습니다" />
+          ) : (
+            <div className="note-file-list">
+              {schedule.files.map((file) => (
+                <a href={file.downloadHref} key={file.id}>
+                  <strong>{file.filename}</strong>
+                  <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+
+      <section className="dashboard-panel note-related-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Related notes</span>
+            <h2>이 일정의 보고 기록</h2>
+          </div>
+          <MessageSquareText size={18} />
+        </div>
+        <CustomerDetailNoteList emptyLabel="이 일정에 연결된 영업노트가 없습니다" notes={data.relatedNotes} />
+      </section>
+    </section>
+  );
+}
+
 function SchedulesPage({
   activityType,
   createError,
@@ -3977,6 +4431,7 @@ export function App() {
   const currentView = getCurrentView();
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
+  const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -4017,13 +4472,15 @@ export function App() {
   const [noteCreateError, setNoteCreateError] = useState('');
   const [noteCreateMessage, setNoteCreateMessage] = useState('');
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
-  const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules');
-  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && shouldOpenCreatePanel());
+  const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules' && !scheduleDetailId);
+  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && !scheduleDetailId && shouldOpenCreatePanel());
   const [scheduleCreateForm, setScheduleCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm());
   const [scheduleCreating, setScheduleCreating] = useState(false);
   const [scheduleCreateError, setScheduleCreateError] = useState('');
   const [scheduleCreateMessage, setScheduleCreateMessage] = useState('');
   const [scheduleCreatedDetailHref, setScheduleCreatedDetailHref] = useState('');
+  const [scheduleDetailData, setScheduleDetailData] = useState<ScheduleDetailData | null>(null);
+  const [scheduleDetailLoading, setScheduleDetailLoading] = useState(Boolean(scheduleDetailId));
   const [scheduleQuery, setScheduleQuery] = useState('');
   const [scheduleOwner, setScheduleOwner] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
@@ -4202,7 +4659,7 @@ export function App() {
   }, [currentView, noteDetailId, notesData]);
 
   useEffect(() => {
-    if (currentView !== 'schedules') {
+    if (currentView !== 'schedules' || scheduleDetailId) {
       return;
     }
     let alive = true;
@@ -4223,10 +4680,10 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, scheduleActivityType, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
+  }, [currentView, scheduleActivityType, scheduleDetailId, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
 
   useEffect(() => {
-    if (currentView !== 'schedules' || !schedulesData?.create.canCreate) {
+    if (currentView !== 'schedules' || scheduleDetailId || !schedulesData?.create.canCreate) {
       return;
     }
     const requestedCustomerId = getCreateCustomerParam();
@@ -4238,7 +4695,27 @@ export function App() {
       activityType: previous.activityType || firstActivityType,
       followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
     }));
-  }, [currentView, schedulesData]);
+  }, [currentView, scheduleDetailId, schedulesData]);
+
+  useEffect(() => {
+    if (currentView !== 'schedules' || !scheduleDetailId) {
+      setScheduleDetailData(null);
+      setScheduleDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setScheduleDetailLoading(true);
+    loadScheduleDetailData(scheduleDetailId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setScheduleDetailData(data);
+      setScheduleDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, scheduleDetailId]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -4581,6 +5058,14 @@ export function App() {
     setSchedulesData(data);
     return data;
   };
+  const refreshScheduleDetailData = async () => {
+    if (!scheduleDetailId) {
+      return null;
+    }
+    const data = await loadScheduleDetailData(scheduleDetailId);
+    setScheduleDetailData(data);
+    return data;
+  };
   const handleScheduleCreateOpenChange = (open: boolean) => {
     setScheduleCreateOpen(open);
     setScheduleCreateError('');
@@ -4795,6 +5280,19 @@ export function App() {
   }
 
   if (currentView === 'schedules') {
+    if (scheduleDetailId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <ScheduleDetailPage
+            data={scheduleDetailData}
+            loading={scheduleDetailLoading}
+            onRefresh={refreshScheduleDetailData}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

@@ -8018,3 +8018,72 @@ Invoke-RestMethod https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 실제 계정으로 `/notes/731/`에 접속해 상세 화면 표시, 수정 저장, manager 검토 토글, Django 상세 보조 링크 동작을 확인합니다.
+
+---
+
+## React Schedule Detail Edit — 일정 상세/수정 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/schedules/<id>/` 고객 일정 상세 화면과 수정 패널을 추가했습니다. 기존 Django 일정 상세/수정 화면은 보조 링크로 유지하고, React 저장은 새 JSON API로 처리합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 일정 상세/수정 전환 계획 추가 |
+| `frontend/src/App.tsx` | `/schedules/<id>/` 상세 route, 수정 패널, 연결 노트/납품 품목/첨부 표시 추가 |
+| `frontend/src/api.ts` | 일정 상세/수정 타입과 `loadScheduleDetailData`, `updateSchedule` API 함수 추가 |
+| `frontend/src/styles.css` | 일정 상세/수정 화면과 납품 품목 목록 스타일 추가 |
+| `reporting/views.py` | 일정 상세 API, 수정 API, React 상세 링크 payload 추가 |
+| `reporting/urls.py` | `/reporting/api/schedules/<id>/`, `/reporting/api/schedules/<id>/update/` 라우트 추가 |
+| `reporting/tests.py` | 일정 상세 조회, 수정 성공, manager/타사 고객 차단, React 상세 링크 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 일정 목록, 대시보드 일정, 고객 상세 일정, 노트 연결 일정 링크가 React `/schedules/<id>/`로 이어집니다.
+- 상세 화면에서 일정 메모, 고객/담당자, 상태, 방문 일시, 예상 매출, 확률, 납품 품목, 첨부파일, 연결 영업노트를 확인할 수 있습니다.
+- 권한이 있는 사용자는 React에서 고객 연결, 활동 유형, 상태, 방문일/시간, 장소, 메모, 예상 매출, 확률, 예상 종료일, 구매 확정을 수정할 수 있습니다.
+- Manager는 상세 조회만 가능하고 수정 버튼/저장 API는 계속 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/schedules/<id>/` 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- 미로그인 API 요청은 JSON `401 login_required`로 보호됩니다.
+- Salesman은 본인 일정만 수정 가능하고, 타사 업체/고객 연결은 차단됩니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 12 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-DWiacmrm.js / assets/index-u1L9qtgk.css
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 47 tests, OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/schedules/<id>/` 진입, 수정 저장, 연결 노트/납품 품목 표시까지 이어지는 육안 확인은 운영 배포 후 확인이 필요합니다.
+- React 수정 패널은 핵심 일정 필드 중심입니다. 기존 Django 화면의 복수 선결제 차감, 납품 품목 편집 같은 고위험 부가 기능은 보조 Django 수정 링크로 유지했습니다.
+
+### 7. Recommended Next Task
+
+- 운영 배포 후 `/schedules/<id>/`에서 상세 표시, 수정 저장, manager 수정 차단, 보고 작성 링크, Django 상세 보조 링크를 수동 검수합니다.

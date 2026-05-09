@@ -2227,8 +2227,10 @@ def _dashboard_schedule_payload(schedule):
         'status': schedule.status,
         'statusLabel': schedule.get_status_display(),
         'notes': (schedule.notes or '').strip()[:120],
-        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'customerHref': f'/customers/{followup.id}/',
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
 
@@ -2248,7 +2250,9 @@ def _dashboard_personal_schedule_payload(schedule):
         'statusLabel': '개인 일정',
         'notes': (schedule.content or '').strip()[:120],
         'href': reverse('reporting:personal_schedule_detail', args=[schedule.id]),
+        'djangoHref': reverse('reporting:personal_schedule_detail', args=[schedule.id]),
         'customerHref': '',
+        'djangoCustomerHref': '',
     }
 
 
@@ -2580,7 +2584,8 @@ def _customers_schedule_payload(schedule):
         'statusLabel': schedule.get_status_display(),
         'location': schedule.location or '',
         'notes': (schedule.notes or '').strip()[:100],
-        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
         'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
     }
 
@@ -3253,7 +3258,8 @@ def _notes_history_payload(history, today, can_review=False):
         'djangoHref': reverse('reporting:history_detail', args=[history.id]),
         'customerHref': f'/customers/{followup.id}/' if followup else '',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
-        'scheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
+        'scheduleHref': f'/schedules/{history.schedule_id}/' if history.schedule_id else '',
+        'djangoScheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
     }
 
 
@@ -3461,7 +3467,8 @@ def _notes_detail_payload(request, history, user_profile):
             'djangoEdit': reverse('reporting:history_edit', args=[history.id]),
             'customer': f'/customers/{followup.id}/' if followup else '',
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
-            'schedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+            'schedule': f'/schedules/{schedule.id}/' if schedule else '',
+            'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
             'createNote': f'/notes/?create=1&customer={followup.id}' if followup else '/notes/?create=1',
         },
         'edit': _notes_edit_config(request, history, can_edit),
@@ -3918,6 +3925,7 @@ def _schedules_schedule_payload(schedule, today):
     return {
         'id': schedule.id,
         'type': 'customer',
+        'followupId': followup.id,
         'customer': followup.customer_name or followup.manager or '고객명 미정',
         'title': followup.customer_name or followup.manager or '고객 일정',
         'company': followup.company.name if followup.company else '',
@@ -3932,15 +3940,19 @@ def _schedules_schedule_payload(schedule, today):
         'statusLabel': schedule.get_status_display(),
         'location': schedule.location or '',
         'notes': (schedule.notes or '').strip()[:180],
+        'notesFull': schedule.notes or '',
         'priority': followup.priority,
         'priorityLabel': followup.get_priority_display(),
         'expectedRevenue': _money_int(schedule.expected_revenue),
         'probability': schedule.probability or 0,
         'expectedCloseDate': _date_or_none(schedule.expected_close_date),
+        'purchaseConfirmed': bool(schedule.purchase_confirmed),
         'overdue': bool(schedule.status == 'scheduled' and schedule.visit_date < today),
         'historyCount': history_count if history_count is not None else schedule.histories.count(),
-        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'customerHref': f'/customers/{followup.id}/',
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
         'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
     }
 
@@ -3963,15 +3975,20 @@ def _schedules_personal_payload(personal_schedule, today):
         'statusLabel': '개인 일정',
         'location': '',
         'notes': (personal_schedule.content or '').strip()[:180],
+        'notesFull': personal_schedule.content or '',
         'priority': '',
         'priorityLabel': '',
         'expectedRevenue': 0,
         'probability': 0,
         'expectedCloseDate': None,
+        'purchaseConfirmed': False,
         'overdue': False,
         'historyCount': getattr(personal_schedule, 'history_count', 0),
+        'followupId': None,
         'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'customerHref': '',
+        'djangoCustomerHref': '',
         'createHistoryHref': '',
     }
 
@@ -4007,6 +4024,14 @@ def _schedules_create_targets(user, limit=120):
     ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
 
 
+def _schedules_edit_targets(user, limit=160):
+    return list(FollowUp.objects.filter(
+        user__in=get_same_company_users(user),
+    ).select_related(
+        'company', 'department'
+    ).order_by('-updated_at', 'company__name', 'customer_name')[:limit])
+
+
 def _schedules_create_target_payload(followup):
     customer = followup.customer_name or followup.manager or '고객명 미정'
     company = followup.company.name if followup.company else ''
@@ -4019,7 +4044,8 @@ def _schedules_create_target_payload(followup):
         'company': company,
         'department': department,
         'priorityLabel': followup.get_priority_display(),
-        'href': reverse('reporting:followup_detail', args=[followup.id]),
+        'href': f'/customers/{followup.id}/',
+        'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
 
@@ -4376,9 +4402,305 @@ def schedules_create_api(request):
         'success': True,
         'message': '일정을 등록했습니다.',
         'scheduleId': schedule.id,
-        'href': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
         'schedule': _schedules_schedule_payload(schedule, timezone.localdate()),
     }, status=201)
+
+
+def _schedules_can_edit(user, schedule):
+    user_profile = get_user_profile(user)
+    return bool(schedule.user_id == user.id and not user_profile.is_manager())
+
+
+def _schedules_status_choices_for_activity(activity_type, current_status=''):
+    choices = list(Schedule.STATUS_CHOICES)
+    if activity_type == 'quote':
+        choices = [
+            ('scheduled', '예정됨'),
+            ('cancelled', '취소됨'),
+        ]
+        valid_statuses = {value for value, _label in choices}
+        if current_status and current_status not in valid_statuses:
+            labels = dict(Schedule.STATUS_CHOICES)
+            choices = [(current_status, labels.get(current_status, current_status)), *choices]
+    return choices
+
+
+def _schedules_activity_types_for_edit(request, schedule):
+    activity_types = _schedules_create_activity_types(request)
+    activity_values = {item['value'] for item in activity_types}
+    if schedule.activity_type not in activity_values:
+        activity_labels = dict(Schedule.ACTIVITY_TYPE_CHOICES)
+        activity_types = [
+            {
+                'value': schedule.activity_type,
+                'label': activity_labels.get(schedule.activity_type, schedule.activity_type),
+            },
+            *activity_types,
+        ]
+    return activity_types
+
+
+def _schedules_edit_config(request, schedule, can_edit):
+    allowed_customers = _schedules_edit_targets(schedule.user) if can_edit else []
+    if schedule.followup_id and can_edit:
+        allowed_customer_ids = {followup.id for followup in allowed_customers}
+        if schedule.followup_id not in allowed_customer_ids:
+            allowed_customers = [schedule.followup, *allowed_customers]
+
+    return {
+        'canEdit': bool(can_edit),
+        'message': '' if can_edit else '수정 권한이 없습니다.',
+        'submitUrl': reverse('reporting:schedules_update_api', args=[schedule.id]) if can_edit else '',
+        'djangoUrl': reverse('reporting:schedule_edit', args=[schedule.id]) if can_edit else '',
+        'activityTypes': _schedules_activity_types_for_edit(request, schedule),
+        'statuses': [
+            {'value': value, 'label': label}
+            for value, label in _schedules_status_choices_for_activity(schedule.activity_type, schedule.status)
+        ],
+        'customers': [_schedules_create_target_payload(followup) for followup in allowed_customers],
+    }
+
+
+def _schedules_delivery_item_payload(item):
+    return {
+        'id': item.id,
+        'itemName': item.item_name,
+        'quantity': item.quantity,
+        'unit': item.unit or '',
+        'unitPrice': _money_int(item.unit_price),
+        'totalPrice': _money_int(item.total_price),
+        'taxInvoiceIssued': bool(item.tax_invoice_issued),
+        'notes': item.notes or '',
+    }
+
+
+def _schedules_detail_payload(request, schedule, user_profile):
+    today = timezone.localdate()
+    can_review = _can_review_notes(user_profile)
+    can_edit = _schedules_can_edit(request.user, schedule)
+    schedule.history_count = schedule.histories.filter(parent_history__isnull=True).count()
+    schedule_payload = _schedules_schedule_payload(schedule, today)
+    followup = schedule.followup
+
+    files = [
+        {
+            'id': file.id,
+            'filename': file.original_filename,
+            'size': _file_size_label(file.file_size),
+            'downloadHref': reverse('reporting:schedule_file_download', args=[file.id]),
+            'uploadedAt': _datetime_or_none(file.uploaded_at),
+        }
+        for file in schedule.files.all().order_by('-uploaded_at')
+    ]
+    related_notes_qs = History.objects.filter(
+        schedule=schedule,
+        parent_history__isnull=True,
+    ).select_related(
+        'user',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'schedule',
+        'personal_schedule',
+        'reviewer',
+    ).annotate(
+        reply_count=Count('reply_memos', distinct=True),
+        file_count=Count('files', distinct=True),
+    ).order_by('-created_at')[:10]
+    related_notes = [
+        _notes_history_payload(history, today, can_review)
+        for history in related_notes_qs
+        if can_access_user_data(request.user, history.user)
+    ]
+    delivery_items = [
+        _schedules_delivery_item_payload(item)
+        for item in schedule.delivery_items_set.all().order_by('id')
+    ]
+    email_thread_count = EmailLog.objects.filter(
+        schedule=schedule,
+        gmail_thread_id__isnull=False,
+    ).exclude(gmail_thread_id='').values('gmail_thread_id').distinct().count()
+
+    detail = {
+        **schedule_payload,
+        'createdAt': _datetime_or_none(schedule.created_at),
+        'updatedAt': _datetime_or_none(schedule.updated_at),
+        'vatMode': schedule.vat_mode,
+        'usePrepayment': bool(schedule.use_prepayment),
+        'prepaymentAmount': _money_int(schedule.prepayment_amount),
+        'fileCount': len(files),
+        'emailThreadCount': email_thread_count,
+        'files': files,
+        'canEdit': can_edit,
+    }
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _user_display_name(schedule.user),
+            'userCount': 1,
+            'canViewAll': user_profile.can_view_all_users(),
+            'canReview': can_review,
+            'selectedUserId': schedule.user_id,
+        },
+        'schedule': detail,
+        'links': {
+            'schedules': '/schedules/',
+            'djangoSchedules': reverse('reporting:schedule_list'),
+            'calendar': reverse('reporting:schedule_calendar'),
+            'djangoDetail': reverse('reporting:schedule_detail', args=[schedule.id]),
+            'djangoEdit': reverse('reporting:schedule_edit', args=[schedule.id]),
+            'customer': f'/customers/{followup.id}/',
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+            'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+        },
+        'edit': _schedules_edit_config(request, schedule, can_edit),
+        'relatedNotes': related_notes,
+        'deliveryItems': delivery_items,
+    }
+
+
+def _schedules_get_detail_schedule(schedule_id):
+    return get_object_or_404(
+        Schedule.objects.select_related(
+            'user',
+            'company',
+            'followup',
+            'followup__company',
+            'followup__department',
+            'opportunity',
+        ).prefetch_related('files', 'delivery_items_set'),
+        pk=schedule_id,
+    )
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def schedules_detail_api(request, schedule_id):
+    """React CRM schedules 상세 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    schedule = _schedules_get_detail_schedule(schedule_id)
+    if not can_access_user_data(request.user, schedule.user):
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없습니다.',
+        }, status=403)
+
+    user_profile = get_user_profile(request.user)
+    return JsonResponse(_schedules_detail_payload(request, schedule, user_profile))
+
+
+@never_cache
+@require_http_methods(["POST"])
+def schedules_update_api(request, schedule_id):
+    """React schedules 상세 화면용 고객 일정 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    schedule = _schedules_get_detail_schedule(schedule_id)
+    if not _schedules_can_edit(request.user, schedule):
+        return JsonResponse({
+            'success': False,
+            'error': '본인의 일정만 수정할 수 있습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    try:
+        followup_id = int(payload.get('followupId') or 0)
+    except (TypeError, ValueError):
+        followup_id = 0
+
+    followup = FollowUp.objects.filter(
+        id=followup_id,
+        user__in=get_same_company_users(schedule.user),
+    ).select_related('company', 'department').first()
+    if not followup:
+        return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+
+    allowed_activity_types = {item['value'] for item in _schedules_activity_types_for_edit(request, schedule)}
+    activity_type = str(payload.get('activityType') or '').strip()
+    if activity_type not in allowed_activity_types:
+        return JsonResponse({'success': False, 'error': '활동 유형을 선택하세요.'}, status=400)
+
+    valid_statuses = {
+        value for value, _label in _schedules_status_choices_for_activity(activity_type, schedule.status)
+    }
+    status = str(payload.get('status') or '').strip()
+    if status not in valid_statuses:
+        return JsonResponse({'success': False, 'error': '일정 상태를 선택하세요.'}, status=400)
+
+    visit_date = _parse_iso_date_or_none(payload.get('visitDate'))
+    if not visit_date:
+        return JsonResponse({'success': False, 'error': '방문 날짜를 선택하세요.'}, status=400)
+
+    visit_time = _parse_time_or_none(payload.get('visitTime'))
+    if not visit_time:
+        return JsonResponse({'success': False, 'error': '방문 시간을 선택하세요.'}, status=400)
+
+    probability = None
+    probability_raw = str(payload.get('probability') or '').strip()
+    if probability_raw:
+        try:
+            probability = int(probability_raw)
+        except (TypeError, ValueError):
+            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+        if probability < 0 or probability > 100:
+            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+
+    expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
+    expected_close_date = _parse_iso_date_or_none(payload.get('expectedCloseDate'))
+    purchase_confirmed_raw = payload.get('purchaseConfirmed')
+    purchase_confirmed = purchase_confirmed_raw in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
+
+    schedule.followup = followup
+    schedule.company = get_user_profile(schedule.user).company
+    if schedule.opportunity_id and schedule.opportunity.followup_id != followup.id:
+        schedule.opportunity = None
+    schedule.visit_date = visit_date
+    schedule.visit_time = visit_time
+    schedule.activity_type = activity_type
+    schedule.status = status
+    schedule.location = str(payload.get('location') or '').strip()[:200]
+    schedule.notes = str(payload.get('notes') or '').strip()
+    schedule.expected_revenue = expected_revenue
+    schedule.probability = probability
+    schedule.expected_close_date = expected_close_date
+    schedule.purchase_confirmed = purchase_confirmed
+    schedule.save(update_fields=[
+        'followup',
+        'company',
+        'opportunity',
+        'visit_date',
+        'visit_time',
+        'activity_type',
+        'status',
+        'location',
+        'notes',
+        'expected_revenue',
+        'probability',
+        'expected_close_date',
+        'purchase_confirmed',
+        'updated_at',
+    ])
+
+    refreshed = _schedules_get_detail_schedule(schedule.id)
+    return JsonResponse({
+        **_schedules_detail_payload(request, refreshed, get_user_profile(request.user)),
+        'message': '일정을 수정했습니다.',
+    })
 
 
 def _ai_workspace_analysis_summary(analysis):

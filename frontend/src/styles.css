@@ -1542,6 +1542,65 @@ h2 {
   margin-top: 12px;
 }
 
+.schedule-detail-page {
+  display: grid;
+  gap: 16px;
+}
+
+.schedule-edit-inline-check {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.schedule-edit-inline-check input {
+  width: auto;
+  min-height: auto;
+}
+
+.schedule-edit-inline-check span {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-delivery-list {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-delivery-list > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.schedule-delivery-list strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-delivery-list span,
+.schedule-delivery-list p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .schedules-page {
   display: grid;
   gap: 16px;

@@ -32,7 +32,9 @@ export type DashboardScheduleItem = {
   statusLabel: string;
   notes: string;
   href: string;
+  djangoHref?: string;
   customerHref: string;
+  djangoCustomerHref?: string;
 };
 
 export type DashboardHistoryItem = {
@@ -575,6 +577,7 @@ export type NoteEditResponse = NoteDetailData & {
 export type ScheduleItem = {
   id: number;
   type: 'customer' | 'personal';
+  followupId: number | null;
   customer: string;
   title: string;
   company: string;
@@ -589,16 +592,51 @@ export type ScheduleItem = {
   statusLabel: string;
   location: string;
   notes: string;
+  notesFull?: string;
   priority: string;
   priorityLabel: string;
   expectedRevenue: number;
   probability: number;
   expectedCloseDate: string | null;
+  purchaseConfirmed?: boolean;
   overdue: boolean;
   historyCount: number;
   href: string;
+  djangoHref?: string;
   customerHref: string;
+  djangoCustomerHref?: string;
   createHistoryHref: string;
+};
+
+export type ScheduleFileItem = {
+  id: number;
+  filename: string;
+  size: string;
+  downloadHref: string;
+  uploadedAt: string | null;
+};
+
+export type ScheduleDeliveryItem = {
+  id: number;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  totalPrice: number;
+  taxInvoiceIssued: boolean;
+  notes: string;
+};
+
+export type ScheduleDetailItem = ScheduleItem & {
+  canEdit: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  vatMode: string;
+  usePrepayment: boolean;
+  prepaymentAmount: number;
+  fileCount: number;
+  emailThreadCount: number;
+  files: ScheduleFileItem[];
 };
 
 export type ScheduleCreatePayload = {
@@ -619,6 +657,20 @@ export type ScheduleCreateResponse = {
   scheduleId?: number;
   href?: string;
   schedule?: ScheduleItem;
+};
+
+export type ScheduleEditPayload = {
+  activityType: string;
+  expectedCloseDate?: string;
+  expectedRevenue?: string;
+  followupId: number;
+  location?: string;
+  notes?: string;
+  probability?: string;
+  purchaseConfirmed?: boolean;
+  status: string;
+  visitDate: string;
+  visitTime: string;
 };
 
 export type SchedulesData = {
@@ -688,12 +740,65 @@ export type SchedulesData = {
       department: string;
       priorityLabel: string;
       href: string;
+      djangoHref?: string;
     }>;
   };
   today: ScheduleItem[];
   upcoming: ScheduleItem[];
   overdue: ScheduleItem[];
   schedules: ScheduleItem[];
+};
+
+export type ScheduleDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    canReview: boolean;
+    selectedUserId: number | null;
+  };
+  schedule: ScheduleDetailItem | null;
+  links: {
+    schedules: string;
+    djangoSchedules: string;
+    calendar: string;
+    djangoDetail: string;
+    djangoEdit: string;
+    customer: string;
+    djangoCustomer: string;
+    createNote: string;
+  };
+  edit: {
+    canEdit: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+    activityTypes: Array<{ value: string; label: string }>;
+    statuses: Array<{ value: string; label: string }>;
+    customers: Array<{
+      id: number;
+      label: string;
+      customer: string;
+      company: string;
+      department: string;
+      priorityLabel: string;
+      href: string;
+      djangoHref?: string;
+    }>;
+  };
+  relatedNotes: NoteItem[];
+  deliveryItems: ScheduleDeliveryItem[];
+};
+
+export type ScheduleEditResponse = ScheduleDetailData & {
+  success: boolean;
+  error?: string;
+  message?: string;
 };
 
 export type AIWorkspaceDepartment = {
@@ -1111,6 +1216,41 @@ const emptySchedulesData: SchedulesData = {
   upcoming: [],
   overdue: [],
   schedules: [],
+};
+
+const emptyScheduleDetailData: ScheduleDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    userCount: 0,
+    canViewAll: false,
+    canReview: false,
+    selectedUserId: null,
+  },
+  schedule: null,
+  links: {
+    schedules: '/schedules/',
+    djangoSchedules: '/reporting/schedules/',
+    calendar: '/reporting/schedules/calendar/',
+    djangoDetail: '',
+    djangoEdit: '',
+    customer: '',
+    djangoCustomer: '',
+    createNote: '',
+  },
+  edit: {
+    canEdit: false,
+    message: '',
+    submitUrl: '',
+    djangoUrl: '',
+    activityTypes: [],
+    statuses: [],
+    customers: [],
+  },
+  relatedNotes: [],
+  deliveryItems: [],
 };
 
 const emptyAIWorkspaceData: AIWorkspaceData = {
@@ -1786,6 +1926,77 @@ export async function createSchedule(payload: ScheduleCreatePayload, submitUrl =
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function loadScheduleDetailData(scheduleId: number): Promise<ScheduleDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/schedules/${scheduleId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Schedule detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ScheduleDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Schedule detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyScheduleDetailData,
+      ...payload,
+      scope: {
+        ...emptyScheduleDetailData.scope,
+        ...(payload.scope ?? {}),
+      },
+      links: {
+        ...emptyScheduleDetailData.links,
+        ...(payload.links ?? {}),
+      },
+      edit: {
+        ...emptyScheduleDetailData.edit,
+        ...(payload.edit ?? {}),
+      },
+      schedule: payload.schedule ?? emptyScheduleDetailData.schedule,
+      relatedNotes: payload.relatedNotes ?? emptyScheduleDetailData.relatedNotes,
+      deliveryItems: payload.deliveryItems ?? emptyScheduleDetailData.deliveryItems,
+    };
+  } catch (error) {
+    return {
+      ...emptyScheduleDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Schedule detail API unavailable',
+    };
+  }
+}
+
+export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: string): Promise<ScheduleEditResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleEditResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule update failed: ${response.status}`);
   }
   return data;
 }

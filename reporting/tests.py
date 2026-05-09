@@ -1480,6 +1480,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['create']['submitUrl'], self.create_url)
         self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
+        own_item = next(item for item in payload['schedules'] if item['type'] == 'customer' and item['id'] == own.id)
+        self.assertEqual(own_item['href'], f'/schedules/{own.id}/')
+        self.assertEqual(own_item['djangoHref'], reverse('reporting:schedule_detail', args=[own.id]))
 
     def test_schedules_summary_api_filters_search_owner_status_activity_and_range(self):
         from datetime import timedelta
@@ -1613,6 +1616,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(schedule.expected_revenue), 1200000)
         self.assertEqual(schedule.probability, 60)
         self.assertEqual(payload['schedule']['id'], schedule.id)
+        self.assertEqual(payload['href'], f'/schedules/{schedule.id}/')
 
     def test_schedules_create_api_blocks_other_salesman_customer(self):
         import json
@@ -1634,6 +1638,133 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Schedule.objects.filter(followup=followup, user=self.user).exists())
+
+    def test_schedules_detail_api_returns_detail_and_edit_config(self):
+        from reporting.models import DeliveryItem, History
+
+        schedule = self._create_schedule(self.user, '상세일정', activity_type='delivery')
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            schedule=schedule,
+            action_type='delivery_schedule',
+            content='납품 보고',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='PCR Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['schedule']['id'], schedule.id)
+        self.assertEqual(payload['schedule']['href'], f'/schedules/{schedule.id}/')
+        self.assertEqual(payload['schedule']['customerHref'], f'/customers/{schedule.followup_id}/')
+        self.assertTrue(payload['edit']['canEdit'])
+        self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:schedules_update_api', args=[schedule.id]))
+        self.assertEqual(payload['relatedNotes'][0]['id'], schedule.histories.first().id)
+        self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
+
+    def test_schedules_detail_api_manager_read_only_and_other_company_blocked(self):
+        schedule = self._create_schedule(self.user, '읽기전용')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['edit']['canEdit'])
+
+        self.client.force_login(self.other_user)
+        denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
+        self.assertEqual(denied.status_code, 403)
+
+    def test_schedules_update_api_updates_owned_schedule(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '수정전')
+        target_followup = self._create_customer(self.coworker, '수정후')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': target_followup.id,
+                'activityType': 'delivery',
+                'status': 'completed',
+                'visitDate': '2026-05-11',
+                'visitTime': '15:45',
+                'location': '수정 회의실',
+                'notes': '일정 수정 메모',
+                'expectedRevenue': '2500000',
+                'probability': '80',
+                'expectedCloseDate': '2026-06-01',
+                'purchaseConfirmed': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.followup, target_followup)
+        self.assertEqual(schedule.activity_type, 'delivery')
+        self.assertEqual(schedule.status, 'completed')
+        self.assertEqual(schedule.visit_date.isoformat(), '2026-05-11')
+        self.assertEqual(schedule.visit_time.strftime('%H:%M'), '15:45')
+        self.assertEqual(schedule.location, '수정 회의실')
+        self.assertEqual(schedule.notes, '일정 수정 메모')
+        self.assertEqual(int(schedule.expected_revenue), 2500000)
+        self.assertEqual(schedule.probability, 80)
+        self.assertEqual(schedule.expected_close_date.isoformat(), '2026-06-01')
+        self.assertTrue(schedule.purchase_confirmed)
+        self.assertEqual(payload['schedule']['id'], schedule.id)
+        self.assertEqual(payload['message'], '일정을 수정했습니다.')
+
+    def test_schedules_update_api_blocks_manager_and_other_company_customer(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '수정차단')
+        other_followup = self._create_customer(self.other_user, '타사고객')
+        update_url = reverse('reporting:schedules_update_api', args=[schedule.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'customer_meeting',
+                'status': 'scheduled',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        other_company_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'followupId': other_followup.id,
+                'activityType': 'customer_meeting',
+                'status': 'scheduled',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(other_company_response.status_code, 403)
+        schedule.refresh_from_db()
+        self.assertNotEqual(schedule.followup, other_followup)
 
 
 class AIWorkspaceSummaryApiTests(TestCase):
