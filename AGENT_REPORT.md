@@ -8999,6 +8999,27 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+railway deployment list --service web --json
+→ web deployment 05bdca63-6d37-4a43-9609-5c28e98e162a SUCCESS, commit 37b4c5d
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy customer department AI action 37b4c5d" --ci
+→ Deploy complete, deployment id da0a55b7-29d2-4845-91b7-3f8b07794711
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/454/
+→ 200, assets/index-BWDtIOid.js / assets/index-BtW6mZC7.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BWDtIOid.js
+→ customer-ai-card=True, AI 분석 실행=True, aiDepartment=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BtW6mZC7.css
+→ customer-ai-card=True, customer-ai-metrics=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/454/
+→ 401 login_required, 정상
 ```
 
 ### 6. Known Limitations
