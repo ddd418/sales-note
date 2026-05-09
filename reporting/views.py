@@ -355,6 +355,29 @@ def get_accessible_users(request_user, request=None):
         # 회사 정보가 없는 경우 자기 자신만 접근 가능
         return User.objects.filter(id=request_user.id)
 
+
+def get_accessible_products(request):
+    """현재 사용자가 조회/선택할 수 있는 활성 제품 목록."""
+    from reporting.models import Product
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_admin():
+        return Product.objects.filter(is_active=True)
+
+    if user_profile.company:
+        accessible_users = get_accessible_users(request.user, request)
+        return Product.objects.filter(
+            is_active=True,
+        ).filter(
+            Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
+        )
+
+    return Product.objects.filter(
+        is_active=True,
+    ).filter(
+        Q(created_by=request.user) | Q(created_by__isnull=True)
+    )
+
 # 팔로우업 폼 클래스
 class FollowUpForm(forms.ModelForm):
     # 자동완성을 위한 hidden 필드들
@@ -4503,8 +4526,12 @@ def _schedules_edit_config(request, schedule, can_edit):
 
 
 def _schedules_delivery_item_payload(item):
+    product = item.product if item.product_id else None
     return {
         'id': item.id,
+        'productId': item.product_id,
+        'productCode': product.product_code if product else '',
+        'productDescription': (product.description or '') if product else '',
         'itemName': item.item_name,
         'quantity': item.quantity,
         'unit': item.unit or '',
@@ -4515,7 +4542,7 @@ def _schedules_delivery_item_payload(item):
     }
 
 
-def _schedules_parse_delivery_item_inputs(raw_items):
+def _schedules_parse_delivery_item_inputs(raw_items, request=None):
     from decimal import Decimal, InvalidOperation
 
     if not isinstance(raw_items, list):
@@ -4524,11 +4551,15 @@ def _schedules_parse_delivery_item_inputs(raw_items):
         raise ValueError('납품 품목은 최대 50개까지 저장할 수 있습니다.')
 
     cleaned = []
+    product_cache = {}
     for index, raw_item in enumerate(raw_items, start=1):
         if not isinstance(raw_item, dict):
             raise ValueError(f'{index}번째 납품 품목 형식이 올바르지 않습니다.')
 
         item_name = str(raw_item.get('itemName') or raw_item.get('item_name') or raw_item.get('name') or '').strip()
+        product_id_raw = raw_item.get('productId')
+        if product_id_raw is None:
+            product_id_raw = raw_item.get('product_id')
         quantity_raw = raw_item.get('quantity')
         unit_price_raw = raw_item.get('unitPrice')
         if unit_price_raw is None:
@@ -4536,10 +4567,27 @@ def _schedules_parse_delivery_item_inputs(raw_items):
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         notes = str(raw_item.get('notes') or '').strip()
 
+        product_id_text = '' if product_id_raw is None else str(product_id_raw).strip()
         quantity_text = '' if quantity_raw is None else str(quantity_raw).replace(',', '').strip()
         unit_price_text = '' if unit_price_raw is None else str(unit_price_raw).replace(',', '').strip()
-        if not item_name and not quantity_text and not unit_price_text and not notes:
+        if not product_id_text and not item_name and not quantity_text and not unit_price_text and not notes:
             continue
+
+        product = None
+        if product_id_text:
+            if request is None:
+                raise ValueError(f'{index}번째 제품 선택을 확인하세요.')
+            try:
+                product_id = int(product_id_text)
+            except (TypeError, ValueError):
+                raise ValueError(f'{index}번째 제품 선택이 올바르지 않습니다.')
+            if product_id not in product_cache:
+                product_cache[product_id] = get_accessible_products(request).filter(id=product_id).first()
+            product = product_cache[product_id]
+            if not product:
+                raise ValueError(f'{index}번째 선택한 제품을 찾을 수 없습니다.')
+            item_name = item_name or product.product_code
+            unit = (product.unit or unit)[:50] or 'EA'
 
         if not item_name:
             raise ValueError(f'{index}번째 품목명을 입력하세요.')
@@ -4563,14 +4611,17 @@ def _schedules_parse_delivery_item_inputs(raw_items):
                 raise ValueError(f'{index}번째 단가는 0 이상이어야 합니다.')
 
         tax_invoice_issued = raw_item.get('taxInvoiceIssued') in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
-        cleaned.append({
+        item_data = {
             'item_name': item_name,
             'quantity': quantity,
             'unit': unit,
             'unit_price': unit_price,
             'tax_invoice_issued': tax_invoice_issued,
             'notes': notes,
-        })
+        }
+        if product:
+            item_data['product'] = product
+        cleaned.append(item_data)
 
     if not cleaned:
         raise ValueError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.')
@@ -4875,7 +4926,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
         return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
 
     try:
-        delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'))
+        delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -15605,29 +15656,8 @@ def product_delete(request, product_id):
 @login_required
 def product_api_list(request):
     """제품 목록 API (AJAX용) - 견적/납품 작성 시 제품 선택"""
-    from reporting.models import Product
-    
-    user_profile = get_user_profile(request.user)
     search = request.GET.get('search', '')
-    
-    # 회사별 필터링
-    if user_profile.is_admin():
-        products = Product.objects.filter(is_active=True)
-    elif user_profile.company:
-        # 같은 회사의 사용자가 생성한 제품만
-        accessible_users = get_accessible_users(request.user, request)
-        products = Product.objects.filter(
-            is_active=True
-        ).filter(
-            Q(created_by__in=accessible_users) | Q(created_by__isnull=True)
-        )
-    else:
-        # 본인이 생성한 제품 + 생성자가 없는 제품
-        products = Product.objects.filter(
-            is_active=True
-        ).filter(
-            Q(created_by=request.user) | Q(created_by__isnull=True)
-        )
+    products = get_accessible_products(request)
     
     if search:
         products = products.filter(
@@ -15644,6 +15674,8 @@ def product_api_list(request):
         'product_code': p.product_code,
         'name': p.product_code,
         'description': p.description,  # description 필드 추가
+        'unit': p.unit or 'EA',
+        'specification': p.specification or '',
         'standard_price': float(p.standard_price),
         'current_price': float(p.get_current_price()),
         'is_promo': p.is_promo,

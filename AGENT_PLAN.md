@@ -1733,3 +1733,29 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedule Delivery Product Selection — 납품 품목 제품 마스터 선택 전환
+
+**목표**: React `/schedules/<id>/` 납품 품목 편집 패널에서 기존 제품 마스터를 검색·선택해 품번, 단위, 현재 단가를 자동 반영하게 만든다.
+
+**작업 범위**:
+
+- 기존 `/reporting/api/products/` 응답에 React 납품 품목 편집에 필요한 단위와 규격 정보를 포함한다.
+- 제품 목록 조회와 저장 권한은 기존 회사/부서/담당자 접근 범위를 유지한다.
+- `/reporting/api/schedules/<id>/delivery-items/update/` 저장 payload에 `productId`를 허용하고 접근 가능한 제품만 연결한다.
+- 제품을 선택한 납품 품목은 기존 `DeliveryItem.product` 관계를 저장하고, 모델의 기존 저장 정책대로 품번/단위/현재 단가를 반영한다.
+- React 납품 품목 편집 행에 제품 검색/선택 UI를 추가하고, 수기 품목 입력 흐름은 유지한다.
+- 기존 Django `/reporting/schedules/<id>/update-delivery-items/`, 제품 관리 화면, `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `Product`와 `DeliveryItem.product` 필드를 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

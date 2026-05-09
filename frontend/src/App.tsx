@@ -28,6 +28,7 @@ import {
   Trash2,
   Upload,
   Users,
+  X,
 } from 'lucide-react';
 import { type ChangeEvent, type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -46,6 +47,7 @@ import {
   NoteFileItem,
   NoteItem,
   NoteReplyItem,
+  ProductOption,
   SchedulesData,
   ScheduleDetailData,
   ScheduleDetailItem,
@@ -75,6 +77,7 @@ import {
   loadCustomersData,
   loadNoteDetailData,
   loadNotesData,
+  loadProducts,
   loadScheduleDetailData,
   loadSchedulesData,
   loadAIWorkspaceData,
@@ -150,6 +153,8 @@ type ScheduleEditFormState = ScheduleCreateFormState & {
 type ScheduleDeliveryEditRow = {
   rowId: string;
   id?: number;
+  productId: string;
+  productQuery: string;
   itemName: string;
   quantity: string;
   unit: string;
@@ -158,7 +163,7 @@ type ScheduleDeliveryEditRow = {
   notes: string;
 };
 
-type ScheduleDeliveryEditField = 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
+type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
 
 type CustomerCreateFormState = {
   address: string;
@@ -247,6 +252,8 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
 const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): ScheduleDeliveryEditRow => ({
   rowId: item ? `delivery-${item.id}` : `delivery-new-${Date.now()}-${index}`,
   id: item?.id,
+  productId: item?.productId ? String(item.productId) : '',
+  productQuery: item?.productCode || '',
   itemName: item?.itemName || '',
   quantity: item ? String(item.quantity) : '1',
   unit: item?.unit || 'EA',
@@ -2945,6 +2952,10 @@ function ScheduleDetailPage({
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productError, setProductError] = useState('');
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -2960,6 +2971,7 @@ function ScheduleDetailPage({
     setDeliverySaving(false);
     setDeliveryError('');
     setDeliveryMessage('');
+    setProductError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -3105,16 +3117,51 @@ function ScheduleDetailPage({
     }
   };
 
+  const ensureProductsLoaded = async () => {
+    if (productsLoaded || productsLoading) {
+      return;
+    }
+    setProductsLoading(true);
+    setProductError('');
+    try {
+      const products = await loadProducts();
+      setProductOptions(products);
+      setProductsLoaded(true);
+    } catch (error) {
+      setProductError(error instanceof Error ? error.message : '제품 목록을 불러오지 못했습니다.');
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  const getDeliveryProductMatches = (query: string) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return [];
+    }
+    return productOptions.filter((product) => (
+      product.productCode.toLowerCase().includes(normalizedQuery) ||
+      product.name.toLowerCase().includes(normalizedQuery) ||
+      product.description.toLowerCase().includes(normalizedQuery) ||
+      product.specification.toLowerCase().includes(normalizedQuery)
+    )).slice(0, 6);
+  };
+
   const handleDeliveryEditToggle = () => {
     if (!currentSchedule?.canEdit || !data?.links.updateDeliveryItems) {
       setDeliveryError('납품 품목 수정 권한이 없습니다.');
       setDeliveryMessage('');
       return;
     }
+    const willOpen = !deliveryEditOpen;
     setDeliveryRows(makeScheduleDeliveryEditRows(data.deliveryItems));
     setDeliveryError('');
     setDeliveryMessage('');
+    setProductError('');
     setDeliveryEditOpen((open) => !open);
+    if (willOpen) {
+      void ensureProductsLoaded();
+    }
   };
 
   const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
@@ -3123,6 +3170,41 @@ function ScheduleDetailPage({
     )));
     setDeliveryError('');
     setDeliveryMessage('');
+  };
+
+  const handleDeliveryProductQueryChange = (rowId: string, value: string) => {
+    setDeliveryRows((rows) => rows.map((row) => (
+      row.rowId === rowId ? { ...row, productId: '', productQuery: value } : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
+    setProductError('');
+  };
+
+  const handleDeliveryProductSelect = (rowId: string, product: ProductOption) => {
+    const unitPrice = product.currentPrice || product.standardPrice || '';
+    setDeliveryRows((rows) => rows.map((row) => (
+      row.rowId === rowId ? {
+        ...row,
+        productId: String(product.id),
+        productQuery: product.productCode,
+        itemName: product.productCode,
+        unit: product.unit || 'EA',
+        unitPrice: unitPrice === '' ? '' : String(unitPrice),
+      } : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
+    setProductError('');
+  };
+
+  const handleDeliveryProductClear = (rowId: string) => {
+    setDeliveryRows((rows) => rows.map((row) => (
+      row.rowId === rowId ? { ...row, productId: '', productQuery: '' } : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
+    setProductError('');
   };
 
   const handleDeliveryAddRow = () => {
@@ -3152,7 +3234,7 @@ function ScheduleDetailPage({
     }
 
     const rowsWithInput = deliveryRows.filter((row) => (
-      row.itemName.trim() || row.quantity.trim() || row.unitPrice.trim() || row.notes.trim()
+      row.productId || row.itemName.trim() || row.quantity.trim() || row.unitPrice.trim() || row.notes.trim()
     ));
     if (!rowsWithInput.length) {
       setDeliveryError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.');
@@ -3182,6 +3264,7 @@ function ScheduleDetailPage({
       }
       payloadItems.push({
         id: row.id,
+        productId: row.productId ? Number(row.productId) : null,
         itemName,
         quantity,
         unit: row.unit.trim() || 'EA',
@@ -3509,72 +3592,120 @@ function ScheduleDetailPage({
           {deliveryMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{deliveryMessage}</span></div> : null}
           {deliveryEditOpen ? (
             <form className="schedule-delivery-edit-form" onSubmit={handleDeliverySubmit}>
+              {productError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{productError}</span></div> : null}
               <div className="schedule-delivery-edit-list">
-                {deliveryRows.map((row, index) => (
-                  <div className="schedule-delivery-edit-row" key={row.rowId}>
-                    <label className="schedule-delivery-name-field">
-                      <span>품목명</span>
-                      <input
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'itemName', event.target.value)}
-                        required
-                        value={row.itemName}
-                      />
-                    </label>
-                    <label>
-                      <span>수량</span>
-                      <input
-                        inputMode="numeric"
-                        min="1"
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'quantity', event.target.value)}
-                        required
-                        type="number"
-                        value={row.quantity}
-                      />
-                    </label>
-                    <label>
-                      <span>단위</span>
-                      <input
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unit', event.target.value)}
-                        value={row.unit}
-                      />
-                    </label>
-                    <label>
-                      <span>단가</span>
-                      <input
-                        inputMode="numeric"
-                        min="0"
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unitPrice', event.target.value)}
-                        type="number"
-                        value={row.unitPrice}
-                      />
-                    </label>
-                    <label className="schedule-edit-inline-check schedule-delivery-tax-check">
-                      <input
-                        checked={row.taxInvoiceIssued}
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'taxInvoiceIssued', event.target.checked)}
-                        type="checkbox"
-                      />
-                      <span>세금계산서</span>
-                    </label>
-                    <label className="schedule-delivery-notes-field">
-                      <span>비고</span>
-                      <input
-                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
-                        value={row.notes}
-                      />
-                    </label>
-                    <button
-                      aria-label={`${index + 1}번째 납품 품목 삭제`}
-                      className="customer-row-action schedule-delivery-remove-button"
-                      disabled={deliveryRows.length <= 1 || deliverySaving}
-                      onClick={() => handleDeliveryRemoveRow(row.rowId)}
-                      type="button"
-                    >
-                      <Trash2 size={14} />
-                      <span>삭제</span>
-                    </button>
-                  </div>
-                ))}
+                {deliveryRows.map((row, index) => {
+                  const productMatches = getDeliveryProductMatches(row.productQuery);
+                  return (
+                    <div className="schedule-delivery-edit-row" key={row.rowId}>
+                      <label className="schedule-delivery-product-field">
+                        <span>제품 검색</span>
+                        <div className="schedule-delivery-product-control">
+                          <Search size={14} />
+                          <input
+                            onChange={(event) => handleDeliveryProductQueryChange(row.rowId, event.target.value)}
+                            onFocus={() => void ensureProductsLoaded()}
+                            placeholder="품번/설명 검색"
+                            value={row.productQuery}
+                          />
+                          {row.productId ? (
+                            <button
+                              aria-label={`${index + 1}번째 납품 품목 제품 선택 해제`}
+                              className="schedule-delivery-product-clear"
+                              disabled={deliverySaving}
+                              onClick={() => handleDeliveryProductClear(row.rowId)}
+                              type="button"
+                            >
+                              <X size={13} />
+                            </button>
+                          ) : null}
+                        </div>
+                        {row.productId ? <small>제품 마스터 연결됨</small> : null}
+                        {row.productQuery.trim() && !row.productId ? (
+                          <div className="schedule-delivery-product-results">
+                            {productsLoading ? (
+                              <span><Loader2 className="spin-icon" size={13} /> 제품 검색 중</span>
+                            ) : productMatches.length > 0 ? (
+                              productMatches.map((product) => (
+                                <button
+                                  key={product.id}
+                                  onClick={() => handleDeliveryProductSelect(row.rowId, product)}
+                                  type="button"
+                                >
+                                  <strong>{product.productCode}</strong>
+                                  <span>{[product.description, product.specification, product.unit, formatWon(product.currentPrice)].filter(Boolean).join(' · ')}</span>
+                                </button>
+                              ))
+                            ) : productsLoaded ? (
+                              <span>검색 결과 없음</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </label>
+                      <label className="schedule-delivery-name-field">
+                        <span>품목명</span>
+                        <input
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'itemName', event.target.value)}
+                          required
+                          value={row.itemName}
+                        />
+                      </label>
+                      <label>
+                        <span>수량</span>
+                        <input
+                          inputMode="numeric"
+                          min="1"
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'quantity', event.target.value)}
+                          required
+                          type="number"
+                          value={row.quantity}
+                        />
+                      </label>
+                      <label>
+                        <span>단위</span>
+                        <input
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unit', event.target.value)}
+                          value={row.unit}
+                        />
+                      </label>
+                      <label>
+                        <span>단가</span>
+                        <input
+                          inputMode="numeric"
+                          min="0"
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unitPrice', event.target.value)}
+                          type="number"
+                          value={row.unitPrice}
+                        />
+                      </label>
+                      <label className="schedule-edit-inline-check schedule-delivery-tax-check">
+                        <input
+                          checked={row.taxInvoiceIssued}
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'taxInvoiceIssued', event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>세금계산서</span>
+                      </label>
+                      <label className="schedule-delivery-notes-field">
+                        <span>비고</span>
+                        <input
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                          value={row.notes}
+                        />
+                      </label>
+                      <button
+                        aria-label={`${index + 1}번째 납품 품목 삭제`}
+                        className="customer-row-action schedule-delivery-remove-button"
+                        disabled={deliveryRows.length <= 1 || deliverySaving}
+                        onClick={() => handleDeliveryRemoveRow(row.rowId)}
+                        type="button"
+                      >
+                        <Trash2 size={14} />
+                        <span>삭제</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
               <div className="notes-create-actions schedule-delivery-edit-actions">
                 <button className="route-secondary-action" disabled={deliverySaving} onClick={handleDeliveryAddRow} type="button">

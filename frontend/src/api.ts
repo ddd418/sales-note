@@ -647,6 +647,9 @@ export type ScheduleFileItem = {
 
 export type ScheduleDeliveryItem = {
   id: number;
+  productId?: number | null;
+  productCode?: string;
+  productDescription?: string;
   itemName: string;
   quantity: number;
   unit: string;
@@ -658,12 +661,48 @@ export type ScheduleDeliveryItem = {
 
 export type ScheduleDeliveryItemPayload = {
   id?: number;
+  productId?: number | null;
   itemName: string;
   quantity: string | number;
   unit: string;
   unitPrice?: string | number | null;
   taxInvoiceIssued: boolean;
   notes?: string;
+};
+
+export type ProductOption = {
+  id: number;
+  productCode: string;
+  name: string;
+  description: string;
+  unit: string;
+  specification: string;
+  standardPrice: number;
+  currentPrice: number;
+  isPromo: boolean;
+};
+
+type ProductApiItem = {
+  id: number;
+  product_code?: string;
+  productCode?: string;
+  name?: string;
+  description?: string | null;
+  unit?: string | null;
+  specification?: string | null;
+  standard_price?: number | string;
+  standardPrice?: number | string;
+  current_price?: number | string;
+  currentPrice?: number | string;
+  is_promo?: boolean;
+  isPromo?: boolean;
+};
+
+type ProductsApiResponse = {
+  products?: ProductApiItem[];
+  success?: boolean;
+  error?: string;
+  message?: string;
 };
 
 export type ScheduleDetailItem = ScheduleItem & {
@@ -2094,6 +2133,50 @@ export async function createSchedule(payload: ScheduleCreatePayload, submitUrl =
     throw new Error(data.error || data.message || `Schedule create failed: ${response.status}`);
   }
   return data;
+}
+
+export async function loadProducts(search = ''): Promise<ProductOption[]> {
+  const params = new URLSearchParams();
+  const query = search.trim();
+  if (query) {
+    params.set('search', query);
+  }
+
+  const queryString = params.toString();
+  const response = await fetch(`/reporting/api/products/${queryString ? `?${queryString}` : ''}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Products API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ProductsApiResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Products API unavailable: ${response.status}`);
+  }
+
+  return (data.products ?? []).map((product) => {
+    const productCode = product.product_code ?? product.productCode ?? product.name ?? '';
+    const standardPrice = Number(product.standard_price ?? product.standardPrice ?? 0);
+    const currentPrice = Number(product.current_price ?? product.currentPrice ?? standardPrice);
+
+    return {
+      id: product.id,
+      productCode,
+      name: product.name ?? productCode,
+      description: product.description ?? '',
+      unit: product.unit || 'EA',
+      specification: product.specification ?? '',
+      standardPrice: Number.isFinite(standardPrice) ? standardPrice : 0,
+      currentPrice: Number.isFinite(currentPrice) ? currentPrice : 0,
+      isPromo: Boolean(product.is_promo ?? product.isPromo),
+    };
+  });
 }
 
 export async function loadScheduleDetailData(scheduleId: number): Promise<ScheduleDetailData> {

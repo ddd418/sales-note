@@ -1877,6 +1877,58 @@ class SchedulesSummaryApiTests(TestCase):
         denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
         self.assertEqual(denied.status_code, 403)
 
+    def test_product_api_list_returns_accessible_product_master_data(self):
+        from reporting.models import Product
+
+        global_product = Product.objects.create(
+            product_code='MASTER-GLOBAL-PCR',
+            unit='BOX',
+            specification='96 reactions',
+            standard_price=1000,
+            created_by=None,
+        )
+        own_product = Product.objects.create(
+            product_code='MASTER-OWN-PCR',
+            unit='EA',
+            standard_price=2000,
+            created_by=self.user,
+        )
+        coworker_product = Product.objects.create(
+            product_code='MASTER-COWORKER-PCR',
+            unit='SET',
+            standard_price=3000,
+            created_by=self.coworker,
+        )
+        other_product = Product.objects.create(
+            product_code='MASTER-OTHER-PCR',
+            unit='EA',
+            standard_price=4000,
+            created_by=self.other_user,
+        )
+        inactive_product = Product.objects.create(
+            product_code='MASTER-INACTIVE-PCR',
+            unit='EA',
+            standard_price=5000,
+            is_active=False,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:product_api_list'), {'search': 'MASTER-'})
+
+        self.assertEqual(response.status_code, 200)
+        products = response.json()['products']
+        product_codes = {product['product_code'] for product in products}
+        self.assertIn(global_product.product_code, product_codes)
+        self.assertIn(own_product.product_code, product_codes)
+        self.assertIn(coworker_product.product_code, product_codes)
+        self.assertNotIn(other_product.product_code, product_codes)
+        self.assertNotIn(inactive_product.product_code, product_codes)
+        global_payload = next(product for product in products if product['product_code'] == global_product.product_code)
+        self.assertEqual(global_payload['unit'], 'BOX')
+        self.assertEqual(global_payload['specification'], '96 reactions')
+        self.assertEqual(global_payload['current_price'], 1000.0)
+
     def test_schedules_update_api_updates_owned_schedule(self):
         import json
 
@@ -2023,6 +2075,86 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(history.delivery_amount), 220000)
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 220000)
+
+    def test_schedule_delivery_items_update_api_accepts_product_master_selection(self):
+        import json
+        from reporting.models import DeliveryItem, Product
+
+        schedule = self._create_schedule(self.user, '제품선택납품', activity_type='delivery')
+        product = Product.objects.create(
+            product_code='MASTER-DELIVERY-PCR',
+            unit='BOX',
+            specification='100 tests',
+            standard_price=12345,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'productId': product.id,
+                        'itemName': '',
+                        'quantity': 2,
+                        'unit': '',
+                        'unitPrice': '',
+                        'taxInvoiceIssued': True,
+                        'notes': '제품 마스터 선택',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = DeliveryItem.objects.get(schedule=schedule)
+        self.assertEqual(item.product, product)
+        self.assertEqual(item.item_name, product.product_code)
+        self.assertEqual(item.unit, 'BOX')
+        self.assertEqual(int(item.unit_price), 12345)
+        self.assertEqual(int(item.total_price), 27159)
+        payload_item = response.json()['deliveryItems'][0]
+        self.assertEqual(payload_item['productId'], product.id)
+        self.assertEqual(payload_item['productCode'], product.product_code)
+        self.assertEqual(payload_item['productDescription'], '')
+        self.assertEqual(payload_item['unit'], 'BOX')
+        self.assertEqual(payload_item['unitPrice'], 12345)
+        self.assertEqual(payload_item['totalPrice'], 27159)
+
+    def test_schedule_delivery_items_update_api_blocks_inaccessible_product(self):
+        import json
+        from reporting.models import DeliveryItem, Product
+
+        schedule = self._create_schedule(self.user, '타사제품차단', activity_type='delivery')
+        other_product = Product.objects.create(
+            product_code='MASTER-OTHER-PRIVATE',
+            unit='EA',
+            standard_price=5000,
+            created_by=self.other_user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'productId': other_product.id,
+                        'itemName': '허용되지 않은 제품',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '5000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('선택한 제품을 찾을 수 없습니다', response.json()['error'])
+        self.assertFalse(DeliveryItem.objects.filter(schedule=schedule).exists())
 
     def test_schedule_delivery_items_update_api_blocks_manager_and_coworker(self):
         import json

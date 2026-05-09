@@ -8741,3 +8741,68 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 다음 단계는 제품 마스터 선택/검색 또는 선결제 세부 입력처럼 납품 일정의 고급 입력을 React 일정 상세로 이어서 옮기는 작업이 적절합니다.
+
+---
+
+## React Schedule Delivery Product Selection — 납품 품목 제품 마스터 선택 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/schedules/<id>/` 일정 상세의 납품 품목 편집 패널에 제품 마스터 검색/선택을 추가했습니다. 선택한 제품은 기존 `DeliveryItem.product`로 저장되고, 제품 품번/단위/현재 단가가 납품 품목에 자동 반영됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 제품 마스터 선택 전환 계획과 검증 범위 추가 |
+| `frontend/src/App.tsx` | 납품 품목 편집 행에 제품 검색/선택 UI, 자동 입력, `productId` 저장 payload 추가 |
+| `frontend/src/api.ts` | 제품 목록 API client/type 추가, 납품 품목 type에 제품 연결 필드 추가 |
+| `frontend/src/styles.css` | 제품 검색 입력, 선택 결과, 해제 버튼 스타일 추가 |
+| `reporting/views.py` | 접근 가능한 제품 queryset helper, 제품 API 응답 보강, 납품 품목 저장 API의 `productId` 검증/저장 추가 |
+| `reporting/tests.py` | 제품 목록 권한/응답, 제품 선택 저장, 타사 제품 차단 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 납품 품목을 직접 입력하면서도 기존 제품 마스터를 검색해 선택할 수 있습니다.
+- 제품 선택 시 품번, 단위, 현재 단가가 자동으로 채워져 입력 누락과 가격 오타를 줄입니다.
+- 저장 시 선택 제품은 `DeliveryItem.product` 관계로 남아 이후 견적/납품 데이터 추적에 활용할 수 있습니다.
+- 타사 또는 접근 불가 제품 ID를 직접 보내도 API에서 저장을 차단합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 수기 품목명/수량/단위/단가 입력 흐름은 유지했습니다.
+- 기존 Django `/reporting/api/products/`, `/reporting/schedules/<id>/update-delivery-items/`, 일정 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- 기존 `Product`, `DeliveryItem.product` 필드를 사용해 DB migration은 없습니다.
+- Manager/동료/타사 권한 차단과 미로그인 API 보호는 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-5rWArWxv.js / assets/index-DDeLHwwx.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션에서 `/schedules/<id>/` 편집 패널을 열고 제품 검색, 선택, 저장까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- 제품 마스터 자체 생성/수정 화면은 이번 범위가 아니며 기존 Django 제품 관리 화면을 그대로 사용합니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 일정 선결제 세부 입력 또는 견적/납품 고급 입력처럼 아직 Django 폼에 남아 있는 일정 부가 기능을 React로 옮기는 작업이 적절합니다.
