@@ -81,6 +81,7 @@ urlpatterns = [
     path('api/histories/<int:history_id>/add-manager-memo/', views.add_manager_memo_to_history_api, name='add_manager_memo_to_history_api'),
     path('api/histories/<int:history_id>/delete-manager-memo/', views.delete_manager_memo_api, name='delete_manager_memo_api'),
     path('api/histories/<int:history_id>/files/', views.history_files_api, name='history_files_api'),
+    path('api/notes/<int:history_id>/files/upload/', views.note_file_upload, name='note_file_upload'),
     
     # 파일 관리 URL들
     path('files/<int:file_id>/download/', views.file_download_view, name='file_download'),

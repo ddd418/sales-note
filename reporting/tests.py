@@ -1243,7 +1243,9 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(other_owner_response.status_code, 403)
 
     def test_notes_detail_api_returns_detail_and_edit_config(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
         from django.utils import timezone
+        from reporting.models import HistoryFile
 
         target = self._create_note(
             self.user,
@@ -1255,6 +1257,14 @@ class NotesSummaryApiTests(TestCase):
         target.meeting_situation = '예산 검토 중'
         target.meeting_next_action = '견적서 발송'
         target.save()
+        history_file = HistoryFile.objects.create(
+            history=target,
+            file=SimpleUploadedFile('note-detail.txt', b'note detail memo', content_type='text/plain'),
+            original_filename='note-detail.txt',
+            file_size=16,
+            uploaded_by=self.user,
+        )
+        self.addCleanup(history_file.file.delete, False)
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:notes_detail_api', args=[target.id]))
@@ -1270,6 +1280,9 @@ class NotesSummaryApiTests(TestCase):
         self.assertIn(f'/reporting/histories/{target.id}/', payload['links']['djangoDetail'])
         self.assertTrue(payload['edit']['canEdit'])
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:notes_update_api', args=[target.id]))
+        self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:note_file_upload', args=[target.id]))
+        self.assertEqual(payload['note']['files'][0]['id'], history_file.id)
+        self.assertEqual(payload['note']['files'][0]['deleteHref'], reverse('reporting:file_delete', args=[history_file.id]))
         customer_ids = {item['id'] for item in payload['edit']['customers']}
         self.assertIn(target.followup_id, customer_ids)
 
@@ -1349,6 +1362,72 @@ class NotesSummaryApiTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(other_company_response.status_code, 403)
+
+    def test_note_file_upload_api_allows_owner_only(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import HistoryFile
+
+        target = self._create_note(self.user, '파일업로드', action_type='quote', content='견적 파일')
+        upload_url = reverse('reporting:note_file_upload', args=[target.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('manager.txt', b'manager memo', content_type='text/plain'),
+        })
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('coworker.txt', b'coworker memo', content_type='text/plain'),
+        })
+        self.assertEqual(coworker_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        response = self.client.post(upload_url, {
+            'files': SimpleUploadedFile('owner.txt', b'owner memo', content_type='text/plain'),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        history_file = HistoryFile.objects.get(history=target)
+        self.addCleanup(history_file.file.delete, False)
+        self.assertEqual(history_file.original_filename, 'owner.txt')
+        self.assertEqual(payload['files'][0]['id'], history_file.id)
+        self.assertEqual(payload['files'][0]['downloadHref'], reverse('reporting:file_download', args=[history_file.id]))
+        self.assertEqual(payload['files'][0]['deleteHref'], reverse('reporting:file_delete', args=[history_file.id]))
+
+    def test_note_file_delete_api_allows_owner_only(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import HistoryFile
+
+        target = self._create_note(self.user, '파일삭제', action_type='quote', content='삭제 파일')
+        history_file = HistoryFile.objects.create(
+            history=target,
+            file=SimpleUploadedFile('delete-me.txt', b'delete memo', content_type='text/plain'),
+            original_filename='delete-me.txt',
+            file_size=11,
+            uploaded_by=self.user,
+        )
+        delete_url = reverse('reporting:file_delete', args=[history_file.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(delete_url)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertTrue(HistoryFile.objects.filter(pk=history_file.id).exists())
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(delete_url)
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertTrue(HistoryFile.objects.filter(pk=history_file.id).exists())
+
+        self.client.force_login(self.user)
+        response = self.client.post(delete_url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertFalse(HistoryFile.objects.filter(pk=history_file.id).exists())
 
     def test_history_toggle_reviewed_allows_manager_only(self):
         target = self._create_note(

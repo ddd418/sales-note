@@ -9,6 +9,40 @@ from .models import HistoryFile, History
 import os
 import mimetypes
 
+
+def _can_manage_history_files(user, history):
+    """React 영업노트 수정 권한과 동일하게 첨부파일 조작 권한을 제한."""
+    from .views import can_modify_user_data
+
+    return bool(
+        can_modify_user_data(user, history.user) and
+        history.parent_history_id is None and
+        history.action_type != 'memo'
+    )
+
+
+def _history_file_payload(file_obj, can_delete=False):
+    download_url = reverse('reporting:file_download', args=[file_obj.id])
+    delete_url = reverse('reporting:file_delete', args=[file_obj.id]) if can_delete else ''
+    uploaded_at = file_obj.uploaded_at.isoformat() if file_obj.uploaded_at else None
+
+    return {
+        'id': file_obj.id,
+        'filename': file_obj.original_filename,
+        'size': file_obj.get_file_size_display(),
+        'uploadedAt': uploaded_at,
+        'uploaded_at': file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M') if file_obj.uploaded_at else '',
+        'uploadedBy': file_obj.uploaded_by.username,
+        'uploaded_by': file_obj.uploaded_by.username,
+        'downloadHref': download_url,
+        'download_url': download_url,
+        'deleteHref': delete_url,
+        'delete_url': delete_url,
+        'canDelete': bool(can_delete),
+        'can_delete': bool(can_delete),
+    }
+
+
 @login_required
 def file_download_view(request, file_id):
     """히스토리 첨부파일 다운로드"""
@@ -85,24 +119,18 @@ def history_files_api(request, history_id):
         history = get_object_or_404(History, id=history_id)
         
         # 권한 체크
-        from .views import can_access_user_data, can_modify_user_data
+        from .views import can_access_user_data
         if not can_access_user_data(request.user, history.user):
             return JsonResponse({
                 'success': False,
                 'error': '이 히스토리에 접근할 권한이 없습니다.'
             }, status=403)
         
-        files_data = []
-        for file_obj in history.files.all():
-            files_data.append({
-                'id': file_obj.id,
-                'filename': file_obj.original_filename,
-                'size': file_obj.get_file_size_display(),
-                'uploaded_at': file_obj.uploaded_at.strftime('%Y-%m-%d %H:%M'),
-                'uploaded_by': file_obj.uploaded_by.username,
-                'download_url': reverse('reporting:file_download', args=[file_obj.id]),
-                'can_delete': can_modify_user_data(request.user, history.user)
-            })
+        can_delete = _can_manage_history_files(request.user, history)
+        files_data = [
+            _history_file_payload(file_obj, can_delete=can_delete)
+            for file_obj in history.files.all()
+        ]
         
         return JsonResponse({
             'success': True,
@@ -113,6 +141,63 @@ def history_files_api(request, history_id):
         return JsonResponse({
             'success': False,
             'error': f'파일 목록을 불러올 수 없습니다: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_POST
+def note_file_upload(request, history_id):
+    """React 영업노트 상세 화면용 첨부파일 업로드."""
+    try:
+        history = get_object_or_404(History, id=history_id)
+
+        if not _can_manage_history_files(request.user, history):
+            return JsonResponse({
+                'success': False,
+                'error': '이 영업노트에 파일을 업로드할 권한이 없습니다.'
+            }, status=403)
+
+        files = request.FILES.getlist('files')
+        if not files:
+            return JsonResponse({'success': False, 'error': '업로드할 파일을 선택해주세요.'}, status=400)
+
+        existing_files_count = history.files.count()
+        if existing_files_count + len(files) > 5:
+            return JsonResponse({
+                'success': False,
+                'error': f'최대 5개까지 파일을 업로드할 수 있습니다. (현재: {existing_files_count}개)'
+            }, status=400)
+
+        from .views import validate_file_upload
+        for file in files:
+            is_valid, message = validate_file_upload(file)
+            if not is_valid:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'파일 "{file.name}": {message}'
+                }, status=400)
+
+        uploaded_files = []
+        for file in files:
+            history_file = HistoryFile.objects.create(
+                history=history,
+                file=file,
+                original_filename=file.name,
+                file_size=file.size,
+                uploaded_by=request.user,
+            )
+            uploaded_files.append(_history_file_payload(history_file, can_delete=True))
+
+        return JsonResponse({
+            'success': True,
+            'message': f'{len(uploaded_files)}개 파일이 업로드되었습니다.',
+            'files': uploaded_files,
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'파일 업로드 중 오류가 발생했습니다: {str(e)}'
         }, status=500)
 
 

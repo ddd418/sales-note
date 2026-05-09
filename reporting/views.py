@@ -3379,6 +3379,7 @@ def _notes_detail_payload(request, history, user_profile):
     today = timezone.localdate()
     can_review = _can_review_notes(user_profile)
     can_edit = can_modify_user_data(request.user, history.user)
+    detail_can_edit = bool(can_edit and history.parent_history_id is None and history.action_type != 'memo')
     history.reply_count = history.reply_memos.count()
     history.file_count = history.files.count()
     note_payload = _notes_history_payload(history, today, can_review)
@@ -3391,6 +3392,8 @@ def _notes_detail_payload(request, history, user_profile):
             'filename': file.original_filename,
             'size': _file_size_label(file.file_size),
             'downloadHref': reverse('reporting:file_download', args=[file.id]),
+            'deleteHref': reverse('reporting:file_delete', args=[file.id]) if detail_can_edit else '',
+            'canDelete': detail_can_edit,
             'uploadedAt': _datetime_or_none(file.uploaded_at),
         }
         for file in history.files.all().order_by('-uploaded_at')
@@ -3425,7 +3428,7 @@ def _notes_detail_payload(request, history, user_profile):
         'taxInvoiceIssued': bool(history.tax_invoice_issued),
         'files': files,
         'replies': replies,
-        'canEdit': bool(can_edit and history.parent_history_id is None and history.action_type != 'memo'),
+        'canEdit': detail_can_edit,
     }
 
     related_notes = []
@@ -3470,6 +3473,7 @@ def _notes_detail_payload(request, history, user_profile):
             'schedule': f'/schedules/{schedule.id}/' if schedule else '',
             'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
             'createNote': f'/notes/?create=1&customer={followup.id}' if followup else '/notes/?create=1',
+            'uploadFiles': reverse('reporting:note_file_upload', args=[history.id]) if detail_can_edit else '',
         },
         'edit': _notes_edit_config(request, history, can_edit),
         'relatedNotes': related_notes,
@@ -11416,9 +11420,9 @@ def followup_basic_excel_download(request):
 
 # 파일 관리 뷰들을 별도 모듈에서 import
 from .file_views import (
-    file_download_view, file_delete_view, history_files_api,
+    file_download_view, file_delete_view, history_files_api, note_file_upload,
     schedule_file_upload, schedule_file_download, schedule_file_delete, schedule_files_api
-) 
+)
 
 # ============ 고객 리포트 관련 뷰들 ============
 

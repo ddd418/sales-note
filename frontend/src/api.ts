@@ -394,7 +394,10 @@ export type NoteFileItem = {
   filename: string;
   size: string;
   downloadHref: string;
+  deleteHref?: string;
+  canDelete?: boolean;
   uploadedAt: string | null;
+  uploadedBy?: string;
 };
 
 export type NoteReplyItem = {
@@ -448,6 +451,7 @@ export type NoteDetailData = {
     djangoCustomer: string;
     schedule: string;
     createNote: string;
+    uploadFiles: string;
   };
   edit: {
     canEdit: boolean;
@@ -572,6 +576,13 @@ export type NoteEditResponse = NoteDetailData & {
   success: boolean;
   error?: string;
   message?: string;
+};
+
+export type NoteFileActionResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  files?: NoteFileItem[];
 };
 
 export type ScheduleItem = {
@@ -1159,6 +1170,7 @@ const emptyNoteDetailData: NoteDetailData = {
     djangoCustomer: '',
     schedule: '',
     createNote: '/notes/?create=1',
+    uploadFiles: '',
   },
   edit: {
     canEdit: false,
@@ -1818,6 +1830,56 @@ export async function updateNote(payload: NoteEditPayload, submitUrl: string): P
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Note update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function uploadNoteFiles(uploadUrl: string, files: File[]): Promise<NoteFileActionResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note file upload API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteFileActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note file upload failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteNoteFile(deleteUrl: string): Promise<NoteFileActionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note file delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteFileActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note file delete failed: ${response.status}`);
   }
   return data;
 }

@@ -8285,3 +8285,69 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 영업노트 상세 `/notes/<id>/`의 첨부파일 업로드/삭제도 React 화면으로 옮깁니다.
+
+---
+
+## React Note Attachments — 영업노트 상세 첨부파일 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/notes/<id>/` 상세 화면에서 영업노트 첨부파일을 업로드/삭제할 수 있게 연결했습니다. 기존 Django 파일 다운로드/삭제 URL은 유지하고, React 전용 업로드 API를 추가했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 영업노트 상세 첨부파일 전환 계획 추가 |
+| `frontend/src/App.tsx` | 영업노트 상세 첨부파일 업로드 버튼, 파일 선택, 삭제 버튼, 진행/성공/오류 상태 추가 |
+| `frontend/src/api.ts` | 노트 파일 업로드/삭제 타입과 `uploadNoteFiles`, `deleteNoteFile` API 함수 추가 |
+| `reporting/file_views.py` | `note_file_upload` API, 히스토리 파일 payload, owner-only 파일 조작 권한 helper 추가 |
+| `reporting/views.py` | 노트 상세 API에 `uploadFiles`, 파일별 `deleteHref`, `canDelete` 추가 |
+| `reporting/urls.py` | `/reporting/api/notes/<id>/files/upload/` 라우트 추가 |
+| `reporting/tests.py` | 노트 파일 업로드/삭제 권한과 상세 payload 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 영업노트 상세에서 Django 수정 화면으로 이동하지 않고 첨부파일을 바로 추가/삭제할 수 있습니다.
+- 파일 목록은 다운로드 링크와 삭제 버튼을 분리했습니다.
+- 업로드/삭제 중 상태, 성공 메시지, 오류 메시지를 React 화면 안에서 표시합니다.
+- Manager와 다른 영업사원은 파일 업로드/삭제 버튼이 보이지 않고 API에서도 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/histories/<id>/` 상세/수정 화면과 `/reporting/files/<id>/download/`, `/reporting/files/<id>/delete/` 경로는 유지했습니다.
+- 기존 파일 검증 정책인 10MB 제한, 허용 확장자, 최대 5개 제한을 유지했습니다.
+- 미로그인 API 요청은 계속 `401 login_required`로 보호됩니다.
+- DB 모델과 migration 변경은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 17 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-DrrJKru7.js / assets/index-D32UHNZf.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/notes/<id>/` 파일 업로드, 다운로드, 삭제까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- Drag-and-drop 업로드나 업로드 전 미리보기는 이번 범위에 포함하지 않았습니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 댓글/매니저 메모 작성·삭제 흐름을 React `/notes/<id>/` 상세로 옮기는 작업이 적절합니다.

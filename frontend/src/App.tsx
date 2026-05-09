@@ -43,6 +43,7 @@ import {
   NoteDetailData,
   NoteDetailItem,
   NoteEditPayload,
+  NoteFileItem,
   NoteItem,
   SchedulesData,
   ScheduleDetailData,
@@ -62,6 +63,7 @@ import {
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createSchedule as createCustomerSchedule,
+  deleteNoteFile,
   deleteScheduleFile,
   loadDashboardData,
   loadCustomerDetailData,
@@ -77,6 +79,7 @@ import {
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updateSchedule as updateCustomerSchedule,
+  uploadNoteFiles,
   uploadScheduleFiles,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
@@ -1798,12 +1801,24 @@ function NoteDetailPage({
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
   const [reviewing, setReviewing] = useState(false);
+  const noteFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [noteFileUploading, setNoteFileUploading] = useState(false);
+  const [noteFileDeletingId, setNoteFileDeletingId] = useState<number | null>(null);
+  const [noteFileError, setNoteFileError] = useState('');
+  const [noteFileMessage, setNoteFileMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeNoteEditForm(currentNote));
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
+    setNoteFileError('');
+    setNoteFileMessage('');
+    setNoteFileUploading(false);
+    setNoteFileDeletingId(null);
+    if (noteFileInputRef.current) {
+      noteFileInputRef.current.value = '';
+    }
   }, [currentNote?.id]);
 
   const editConfig = data?.edit;
@@ -1892,6 +1907,77 @@ function NoteDetailPage({
       setEditError(error instanceof Error ? error.message : '검토 상태 변경에 실패했습니다.');
     } finally {
       setReviewing(false);
+    }
+  };
+
+  const handleNoteFileUploadClick = () => {
+    if (!currentNote?.canEdit || !data?.links.uploadFiles) {
+      setNoteFileError('첨부파일 업로드 권한이 없습니다.');
+      setNoteFileMessage('');
+      return;
+    }
+    noteFileInputRef.current?.click();
+  };
+
+  const handleNoteFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    if (!currentNote?.canEdit || !data?.links.uploadFiles) {
+      setNoteFileError('첨부파일 업로드 권한이 없습니다.');
+      setNoteFileMessage('');
+      event.target.value = '';
+      return;
+    }
+
+    if (currentNote.files.length + selectedFiles.length > 5) {
+      setNoteFileError(`첨부파일은 최대 5개까지 등록할 수 있습니다. 현재 ${currentNote.files.length}개가 등록되어 있습니다.`);
+      setNoteFileMessage('');
+      event.target.value = '';
+      return;
+    }
+
+    setNoteFileUploading(true);
+    setNoteFileError('');
+    setNoteFileMessage('');
+    try {
+      const result = await uploadNoteFiles(data.links.uploadFiles, selectedFiles);
+      await onRefresh();
+      setNoteFileMessage(result.message || `${selectedFiles.length}개 파일을 업로드했습니다.`);
+    } catch (error) {
+      setNoteFileError(error instanceof Error ? error.message : '첨부파일 업로드에 실패했습니다.');
+    } finally {
+      setNoteFileUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleNoteFileDelete = async (file: NoteFileItem) => {
+    if (noteFileDeletingId !== null) {
+      return;
+    }
+    if (!currentNote?.canEdit || !file.canDelete || !file.deleteHref) {
+      setNoteFileError('첨부파일 삭제 권한이 없습니다.');
+      setNoteFileMessage('');
+      return;
+    }
+    if (!window.confirm(`"${file.filename}" 파일을 삭제할까요?`)) {
+      return;
+    }
+
+    setNoteFileDeletingId(file.id);
+    setNoteFileError('');
+    setNoteFileMessage('');
+    try {
+      const result = await deleteNoteFile(file.deleteHref);
+      await onRefresh();
+      setNoteFileMessage(result.message || '첨부파일을 삭제했습니다.');
+    } catch (error) {
+      setNoteFileError(error instanceof Error ? error.message : '첨부파일 삭제에 실패했습니다.');
+    } finally {
+      setNoteFileDeletingId(null);
     }
   };
 
@@ -2207,16 +2293,55 @@ function NoteDetailPage({
             {data.links.schedule ? <a href={data.links.schedule}>연결 일정</a> : null}
             <a href={data.links.createNote}>새 노트 작성</a>
           </div>
-          <h3 className="customer-detail-section-heading">첨부파일</h3>
+          <div className="schedule-file-heading">
+            <h3 className="customer-detail-section-heading">첨부파일</h3>
+            {note.canEdit && data.links.uploadFiles ? (
+              <>
+                <input
+                  aria-label="영업노트 첨부파일 선택"
+                  className="schedule-file-input"
+                  multiple
+                  onChange={handleNoteFilesSelected}
+                  ref={noteFileInputRef}
+                  type="file"
+                />
+                <button
+                  className="customer-row-action schedule-file-upload-button"
+                  disabled={noteFileUploading}
+                  onClick={handleNoteFileUploadClick}
+                  type="button"
+                >
+                  {noteFileUploading ? <Loader2 className="spin-icon" size={14} /> : <Upload size={14} />}
+                  <span>{noteFileUploading ? '업로드 중' : '업로드'}</span>
+                </button>
+              </>
+            ) : null}
+          </div>
+          {noteFileError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{noteFileError}</span></div> : null}
+          {noteFileMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{noteFileMessage}</span></div> : null}
           {note.files.length === 0 ? (
             <DashboardEmpty label="첨부파일이 없습니다" />
           ) : (
-            <div className="note-file-list">
+            <div className="schedule-file-list">
               {note.files.map((file) => (
-                <a href={file.downloadHref} key={file.id}>
-                  <strong>{file.filename}</strong>
-                  <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
-                </a>
+                <div className="schedule-file-row" key={file.id}>
+                  <a className="schedule-file-download" href={file.downloadHref}>
+                    <strong>{file.filename}</strong>
+                    <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
+                  </a>
+                  {file.canDelete && file.deleteHref ? (
+                    <button
+                      aria-label={`${file.filename} 삭제`}
+                      className="customer-row-action schedule-file-delete-button"
+                      disabled={noteFileDeletingId === file.id}
+                      onClick={() => handleNoteFileDelete(file)}
+                      type="button"
+                    >
+                      {noteFileDeletingId === file.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                      <span>삭제</span>
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}

@@ -1657,3 +1657,28 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Note Attachments — 영업노트 상세 첨부파일 전환
+
+**목표**: React `/notes/<id>/` 상세 화면에서 영업노트 첨부파일을 업로드하고 삭제하게 만들어 Django 영업노트 수정 화면 왕복을 줄인다.
+
+**작업 범위**:
+
+- 영업노트 상세 API에 첨부파일 업로드 URL과 파일별 삭제 URL을 제공한다.
+- `/reporting/api/notes/<id>/files/upload/` POST API를 추가해 기존 `HistoryFile` 모델로 다중 파일 업로드를 처리한다.
+- 기존 파일 다운로드/삭제 URL은 유지하고 React 파일 목록에서 다운로드 링크와 삭제 버튼을 분리한다.
+- 권한은 기존 영업노트 수정 정책을 유지해 manager는 파일 조작 불가, salesman은 본인 노트만 조작 가능하게 한다.
+- 기존 Django `/reporting/histories/<id>/` 상세/수정과 `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `HistoryFile` 모델과 파일 검증 정책만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
