@@ -893,6 +893,86 @@ type PrepaymentsApiResponse = {
   message?: string;
 };
 
+export type PrepaymentListItem = {
+  id: number;
+  customerId: number | null;
+  customerName: string;
+  companyId: number | null;
+  companyName: string;
+  departmentId: number | null;
+  departmentName: string;
+  payerName: string;
+  paymentDate: string | null;
+  paymentMethod: string;
+  paymentMethodLabel: string;
+  amount: number;
+  balance: number;
+  usedAmount: number;
+  usageCount: number;
+  status: string;
+  statusLabel: string;
+  ownerId: number;
+  ownerName: string;
+  memo: string;
+  createdAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string;
+  canManage: boolean;
+  href: string;
+  editHref: string;
+  deleteHref: string;
+  transferHref: string;
+  customerHref: string;
+  djangoCustomerHref: string;
+  djangoCustomerPrepaymentHref: string;
+};
+
+export type PrepaymentsData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    dataFilter: string;
+    filterUserId: number | null;
+    isViewingOthers: boolean;
+    canViewTeam: boolean;
+  };
+  filters: {
+    search: string;
+    status: string;
+    dataFilter: string;
+    filterUser: string;
+    limit: number;
+  };
+  options: {
+    statuses: Array<{ value: string; label: string }>;
+    owners: Array<{ id: number; name: string }>;
+    dataFilters: Array<{ value: string; label: string }>;
+  };
+  metrics: {
+    totalAmount: number;
+    totalBalance: number;
+    totalUsed: number;
+    totalCount: number;
+    filteredPrepayments: number;
+    activeCount: number;
+    depletedCount: number;
+    cancelledCount: number;
+    returnedCount: number;
+    truncated: boolean;
+  };
+  links: {
+    djangoList: string;
+    create: string;
+    excel: string;
+    customers: string;
+  };
+  prepayments: PrepaymentListItem[];
+};
+
 export type SchedulePrepaymentSelectionPayload = {
   id: number;
   amount: string | number;
@@ -1595,6 +1675,54 @@ const emptyScheduleDetailData: ScheduleDetailData = {
   },
   relatedNotes: [],
   deliveryItems: [],
+};
+
+const emptyPrepaymentsData: PrepaymentsData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    dataFilter: 'me',
+    filterUserId: null,
+    isViewingOthers: false,
+    canViewTeam: false,
+  },
+  filters: {
+    search: '',
+    status: '',
+    dataFilter: 'me',
+    filterUser: '',
+    limit: 80,
+  },
+  options: {
+    statuses: [],
+    owners: [],
+    dataFilters: [
+      { value: 'me', label: '나' },
+      { value: 'all', label: '전체' },
+      { value: 'user', label: '직원 선택' },
+    ],
+  },
+  metrics: {
+    totalAmount: 0,
+    totalBalance: 0,
+    totalUsed: 0,
+    totalCount: 0,
+    filteredPrepayments: 0,
+    activeCount: 0,
+    depletedCount: 0,
+    cancelledCount: 0,
+    returnedCount: 0,
+    truncated: false,
+  },
+  links: {
+    djangoList: '/reporting/prepayment/',
+    create: '/reporting/prepayment/create/',
+    excel: '/reporting/prepayment/excel/',
+    customers: '/customers/',
+  },
+  prepayments: [],
 };
 
 const emptyAIWorkspaceData: AIWorkspaceData = {
@@ -2544,6 +2672,80 @@ export async function loadPrepayments(customerId: number, scheduleId?: number): 
       statusLabel: prepayment.status_label ?? prepayment.statusLabel ?? '',
     };
   });
+}
+
+export async function loadPrepaymentsData(params: {
+  search?: string;
+  status?: string;
+  dataFilter?: string;
+  filterUser?: string;
+} = {}): Promise<PrepaymentsData> {
+  const query = new URLSearchParams();
+  if (params.search) {
+    query.set('search', params.search);
+  }
+  if (params.status) {
+    query.set('status', params.status);
+  }
+  if (params.dataFilter) {
+    query.set('data_filter', params.dataFilter);
+  }
+  if (params.filterUser) {
+    query.set('filter_user', params.filterUser);
+  }
+
+  try {
+    const response = await fetch(`/reporting/api/prepayments/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Prepayments API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<PrepaymentsData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Prepayments API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyPrepaymentsData,
+      ...payload,
+      scope: {
+        ...emptyPrepaymentsData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyPrepaymentsData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyPrepaymentsData.options,
+        ...(payload.options ?? {}),
+        statuses: payload.options?.statuses ?? emptyPrepaymentsData.options.statuses,
+        owners: payload.options?.owners ?? emptyPrepaymentsData.options.owners,
+        dataFilters: payload.options?.dataFilters ?? emptyPrepaymentsData.options.dataFilters,
+      },
+      metrics: {
+        ...emptyPrepaymentsData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyPrepaymentsData.links,
+        ...(payload.links ?? {}),
+      },
+      prepayments: payload.prepayments ?? emptyPrepaymentsData.prepayments,
+    };
+  } catch (error) {
+    return {
+      ...emptyPrepaymentsData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Prepayments API unavailable',
+    };
+  }
 }
 
 export async function loadScheduleDetailData(scheduleId: number): Promise<ScheduleDetailData> {

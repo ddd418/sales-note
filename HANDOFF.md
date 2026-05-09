@@ -12,6 +12,43 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 - Do not copy the old Django visual design into React. Build a distinct internal CRM interface.
 - Remove Django frontend templates only after React feature parity, Railway deployment, and manual production testing are complete.
 
+## Current Task In Progress
+
+React 선결제 현황 목록 전환.
+
+Implemented locally:
+
+- React `/prepayments/` route and sidebar entry.
+- `/reporting/api/prepayments/` list mode when `customer_id` is absent.
+- Existing schedule edit prepayment option mode is preserved when `customer_id` is present.
+- React summary cards for total amount, balance, used amount, active/depleted counts.
+- Search, status, data range, employee filter controls.
+- Links back to Django prepayment detail/create/excel/customer-specific screens.
+
+Local validation completed:
+
+```powershell
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
+python -m py_compile reporting\views.py reporting\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 4 targeted tests OK.
+- React build OK, bundle `index-C-kJugeW.js` / `index-Bj05GhEi.css`.
+- Django check OK.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment status:
+
+- Pending commit, push, Railway deploy, production smoke check.
+
 ## Operating Rule From User
 
 For each meaningful task:
@@ -215,20 +252,11 @@ React pages should continue to expose Django fallback/original links until featu
 
 ## Recommended Next Work
 
-Continue React unified frontend migration. The most natural next slice is:
+After the React prepayment list is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
 
-1. Move the AI analysis result screen and PainPoint verification flow into React.
-2. Preserve Django AI pages as fallback during the transition.
-3. Ensure React result/verification UI uses:
-   - quote/delivery context
-   - verification memory
-   - PainPoint verification notes
-   - next-action insights
-4. Add or extend Django JSON APIs instead of scraping templates.
-5. Keep permissions identical to existing Django AI policy:
-   - login required
-   - AI permission required
-   - own assigned department/customer constraints preserved
+1. Move 선결제 상세/등록/수정 into React while preserving Django `/reporting/prepayment/*`.
+2. Move 견적/문서 생성 workflows into React.
+3. Continue AI React migration only after confirming the latest customer AI manual tests remain good.
 
 Alternative high-value slice:
 
@@ -259,6 +287,8 @@ Likely implementation files:
 - `frontend/src/api.ts`
 - `frontend/src/styles.css`
 - `frontend/README.md`
+- `reporting/templates/reporting/prepayment/list.html`
+- `reporting/templates/reporting/prepayment/detail.html`
 
 ## Validation Baseline
 
@@ -336,4 +366,3 @@ Confirmed by user:
 Needs awareness:
 
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.
-

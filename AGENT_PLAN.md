@@ -9,6 +9,43 @@
 
 ---
 
+## Current task — React 선결제 목록 전환
+
+**목표**: 기존 Django 선결제 관리 화면을 유지하면서 React CRM에 `/prepayments/` 읽기 전용 선결제 현황 화면을 추가한다.
+
+### 확인된 상태
+
+- Django 선결제 원본 화면은 `/reporting/prepayment/` 이하에서 동작한다.
+- 일정 상세 React 편집 패널은 이미 `/reporting/api/prepayments/?customer_id=...&schedule_id=...`를 사용해 고객/일정별 선결제 선택 목록을 불러온다.
+- React CRM 좌측 내비게이션에는 아직 선결제 현황 진입점이 없다.
+
+### 구현 계획
+
+- 기존 `/reporting/api/prepayments/` API를 확장한다.
+  - `customer_id`가 있으면 기존 일정 편집용 응답을 그대로 유지한다.
+  - `customer_id`가 없으면 React 선결제 목록용 요약/필터/목록 payload를 반환한다.
+- 목록 API는 기존 Django 선결제 목록의 데이터 범위 규칙을 보존한다.
+  - 기본값은 본인 등록 선결제.
+  - `data_filter=all` 또는 `data_filter=user`는 기존 Django 화면과 같은 회사 사용자 기준으로 처리한다.
+- React `/prepayments/` 화면을 추가한다.
+  - 총 선결제 금액, 잔액, 사용 금액, 활성 건수 요약
+  - 검색, 상태, 데이터 범위 필터
+  - 선결제 행별 고객/부서/업체/입금자/금액/잔액/상태/담당자/원본 상세 링크
+  - Django 선결제 등록/목록/엑셀 링크 유지
+- 신규 DB 필드와 migration은 추가하지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.PrepaymentsSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+
+---
+
 ## Current urgent task — Django 일정 캘린더 운영 진입점 복구
 
 **목표**: React 통합 완료 전까지 기존 Django 일정 캘린더(`/reporting/schedules/calendar/`)를 운영자가 계속 가장 쉽게 사용할 수 있게 한다.

@@ -1,5 +1,98 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React 선결제 현황 목록 전환
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 예정
+
+### 요약
+
+React CRM에 `/prepayments/` 선결제 현황 화면을 추가했습니다. 기존 Django `/reporting/prepayment/*` 관리 화면은 유지하고, React에서는 선결제 금액/잔액/사용액 요약, 검색, 상태 필터, 데이터 범위 필터, 원본 상세/수정 링크를 제공합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+  - `/reporting/api/prepayments/` API 확장
+  - `customer_id`가 있으면 기존 일정 편집용 선결제 선택 응답 유지
+  - `customer_id`가 없으면 React 선결제 목록용 요약/필터/목록 payload 반환
+- `reporting/tests.py`
+  - React 선결제 목록 API 로그인 보호, 본인 범위, 팀 범위 검색/상태 필터 테스트 추가
+  - 기존 일정 상세 선결제 선택 API 회귀 테스트 유지
+- `frontend/src/api.ts`
+  - `PrepaymentsData`, `PrepaymentListItem`, `loadPrepaymentsData()` 추가
+- `frontend/src/App.tsx`
+  - 좌측 내비게이션에 `선결제` 추가
+  - `/prepayments/` React 화면, 요약 카드, 필터, 목록 테이블 추가
+- `frontend/src/styles.css`
+  - 선결제 목록/상태 배지/필터 반응형 스타일 추가
+- `frontend/README.md`
+  - React 파일럿 범위에 `/prepayments/` 추가
+- `AGENT_PLAN.md`
+  - 이번 작업 계획 기록
+
+### CRM 개선
+
+- 선결제 잔액과 사용액을 React CRM 안에서 바로 확인할 수 있습니다.
+- 기존 Django 선결제 상세/등록/엑셀 기능으로 바로 이동할 수 있어 전환 기간 운영 흐름을 유지합니다.
+- 일정 상세의 선결제 선택 API는 기존 방식 그대로 보존했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/prepayment/`, 상세, 등록, 수정, 삭제, 이관, 엑셀 URL 유지.
+- `/reporting/api/prepayments/?customer_id=...&schedule_id=...` 기존 일정 편집 응답 유지.
+- 인증 보호 유지. 비로그인 API 접근은 `401 login_required`.
+- DB 모델 변경 없음, migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
+→ Ran 4 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npm run build
+→ OK, assets/index-C-kJugeW.js / assets/index-Bj05GhEi.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### Railway 배포 및 운영 스모크
+
+- 배포 예정.
+
+### 알려진 제한
+
+- 이번 작업은 React 선결제 읽기 목록 전환입니다. 선결제 신규 등록/수정/삭제/이관은 기존 Django 화면을 사용합니다.
+- React 화면은 최근 최대 80건을 기본 표시하며, 결과가 많으면 검색/필터로 좁히도록 안내합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/prepayments/`
+2. 로그인 후 좌측 메뉴에 `선결제`가 보이는지 확인합니다.
+3. 선결제 요약 카드의 총액, 잔액, 사용액, 사용 가능 건수가 실제 Django 선결제 관리 화면과 맞는지 확인합니다.
+4. 검색창에 고객명, 업체명, 부서명, 입금자명을 입력해 목록이 필터링되는지 확인합니다.
+5. 상태 필터에서 `활성`, `소진`, `취소`를 선택해 결과가 바뀌는지 확인합니다.
+6. 데이터 범위 `전체`, `직원 선택`을 바꿔 기존 Django 화면과 같은 범위로 조회되는지 확인합니다.
+7. 행의 `상세`, `수정`, `고객별` 링크가 기존 Django 선결제 화면으로 정상 이동하는지 확인합니다.
+8. `/schedules/<id>/` 납품 일정 상세 수정 패널에서 기존 선결제 선택/차감 기능이 계속 동작하는지 확인합니다.
+
+### 다음 권장 작업
+
+- 운영 수동검수 완료 후 선결제 상세/등록 편집을 React로 옮길지, 또는 견적/문서 생성 흐름을 React로 옮길지 선택합니다.
+
+---
+
 ## 2026-05-10 — 인수인계 문서 정리
 
 **상태**: 문서 작성 완료, 커밋/배포 예정

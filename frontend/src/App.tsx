@@ -49,6 +49,7 @@ import {
   NoteFileItem,
   NoteItem,
   NoteReplyItem,
+  PrepaymentsData,
   PrepaymentOption,
   ProductOption,
   SchedulesData,
@@ -81,6 +82,7 @@ import {
   loadNoteDetailData,
   loadNotesData,
   loadPrepayments,
+  loadPrepaymentsData,
   loadProducts,
   loadScheduleDetailData,
   loadSchedulesData,
@@ -105,13 +107,14 @@ const navItems = [
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/' },
+  { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
 const scheduleCalendarUrl = '/reporting/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -385,6 +388,18 @@ const routeMeta: Record<
       { label: '이번 주 보고', href: '/reporting/weekly-reports/' },
     ],
   },
+  prepayments: {
+    eyebrow: 'Sales CRM / Prepayments',
+    title: '선결제',
+    summary: '고객별 선결제 입금, 잔액, 사용 현황을 React CRM에서 빠르게 확인합니다.',
+    primaryHref: '/prepayments/',
+    primaryLabel: '프론트 선결제 보기',
+    actions: [
+      { label: '선결제 등록', href: '/reporting/prepayment/create/', primary: true },
+      { label: 'Django 선결제 관리', href: '/reporting/prepayment/' },
+      { label: '엑셀 다운로드', href: '/reporting/prepayment/excel/' },
+    ],
+  },
   ai: {
     eyebrow: 'Sales CRM / AI',
     title: 'AI 업무도구',
@@ -405,6 +420,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
+  if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   return 'pipeline';
 }
@@ -4702,6 +4718,215 @@ function SchedulesPage({
   );
 }
 
+function PrepaymentStatusBadge({ status, label }: { status: string; label: string }) {
+  return <span className={`prepayment-status ${status || 'unknown'}`}>{label || status || '상태 없음'}</span>;
+}
+
+function PrepaymentsTable({ data }: { data: PrepaymentsData }) {
+  if (data.prepayments.length === 0) {
+    return <DashboardEmpty label="표시할 선결제가 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap prepayments-table-wrap">
+      <table className="customers-table prepayments-table">
+        <thead>
+          <tr>
+            <th>고객</th>
+            <th>입금 정보</th>
+            <th>금액</th>
+            <th>잔액</th>
+            <th>상태</th>
+            <th>담당</th>
+            <th>작업</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.prepayments.map((prepayment) => (
+            <tr key={prepayment.id}>
+              <td>
+                <a className="customer-name-link" href={prepayment.customerHref || prepayment.djangoCustomerHref}>
+                  <strong>{prepayment.companyName || prepayment.customerName || '고객 미지정'}</strong>
+                  <span>{[prepayment.departmentName, prepayment.customerName].filter(Boolean).join(' · ')}</span>
+                </a>
+                {prepayment.memo ? <small className="customer-muted-cell">{prepayment.memo}</small> : null}
+              </td>
+              <td>
+                <div className="prepayment-info-cell">
+                  <strong>{prepayment.paymentDate ? formatDateLabel(prepayment.paymentDate) : '입금일 없음'}</strong>
+                  <span>{[prepayment.payerName || '입금자 미지정', prepayment.paymentMethodLabel].filter(Boolean).join(' · ')}</span>
+                  {prepayment.usageCount > 0 ? <small>사용 {formatNumber(prepayment.usageCount)}건</small> : null}
+                </div>
+              </td>
+              <td>
+                <strong>{formatWon(prepayment.amount)}</strong>
+                <small className="customer-muted-cell">사용 {formatWon(prepayment.usedAmount)}</small>
+              </td>
+              <td>
+                <strong className={prepayment.balance > 0 ? 'prepayment-balance-active' : 'customer-muted-cell'}>
+                  {formatWon(prepayment.balance)}
+                </strong>
+              </td>
+              <td>
+                <PrepaymentStatusBadge label={prepayment.statusLabel} status={prepayment.status} />
+              </td>
+              <td>
+                <span className="customer-muted-cell">{prepayment.ownerName}</span>
+              </td>
+              <td>
+                <div className="customer-row-actions">
+                  <a className="customer-row-action" href={prepayment.href}>상세</a>
+                  {prepayment.editHref ? <a className="customer-row-action" href={prepayment.editHref}>수정</a> : null}
+                  {prepayment.djangoCustomerPrepaymentHref ? (
+                    <a className="customer-row-action" href={prepayment.djangoCustomerPrepaymentHref}>고객별</a>
+                  ) : null}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PrepaymentsPage({
+  data,
+  dataFilter,
+  filterUser,
+  loading,
+  query,
+  status,
+  onDataFilterChange,
+  onFilterUserChange,
+  onQueryChange,
+  onStatusChange,
+}: {
+  data: PrepaymentsData | null;
+  dataFilter: string;
+  filterUser: string;
+  loading: boolean;
+  query: string;
+  status: string;
+  onDataFilterChange: (value: string) => void;
+  onFilterUserChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>선결제 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '총 선결제', value: formatWon(data.metrics.totalAmount), detail: `${formatNumber(data.metrics.filteredPrepayments)}건`, icon: CircleDollarSign, tone: 'blue' as const },
+    { label: '남은 잔액', value: formatWon(data.metrics.totalBalance), detail: '사용 가능 잔액', icon: CheckCircle2, tone: 'green' as const },
+    { label: '사용 금액', value: formatWon(data.metrics.totalUsed), detail: '차감 누적', icon: Activity, tone: 'amber' as const },
+    { label: '사용 가능', value: `${formatNumber(data.metrics.activeCount)}건`, detail: `소진 ${formatNumber(data.metrics.depletedCount)}건`, icon: CircleDollarSign, tone: 'teal' as const },
+  ];
+  const showOwnerSelect = dataFilter === 'user';
+
+  return (
+    <section className="prepayments-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>선결제 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Prepayments</span>
+          <h2>{data.scope.label || '선결제 현황'}</h2>
+          <p>입금액, 사용액, 잔액을 고객 단위로 확인하고 원본 Django 관리 화면으로 이어갑니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          {data.links.create ? (
+            <a className="route-primary-action" href={data.links.create}>
+              선결제 등록
+              <Plus size={16} />
+            </a>
+          ) : null}
+          <a className="route-secondary-action" href={data.links.djangoList}>Django 관리</a>
+          <a className="route-secondary-action" href={data.links.excel}>엑셀</a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="선결제 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar prepayments-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고객, 업체, 부서, 입금자 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
+          <option value="">상태 전체</option>
+          {data.options.statuses.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onDataFilterChange(event.target.value)} value={dataFilter}>
+          {data.options.dataFilters.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select disabled={!showOwnerSelect} onChange={(event) => onFilterUserChange(event.target.value)} value={filterUser}>
+          <option value="">직원 선택</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {data.metrics.truncated ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>결과가 많아 최근 {formatNumber(data.metrics.returnedCount)}건만 표시합니다. 검색이나 상태 필터를 좁혀 확인하세요.</span>
+        </div>
+      ) : null}
+
+      <section className="dashboard-panel prepayments-main-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Prepayment list</span>
+            <h2>선결제 목록</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <CircleDollarSign size={18} />}
+        </div>
+        <PrepaymentsTable data={data} />
+      </section>
+    </section>
+  );
+}
+
 function AIWorkspaceDepartmentList({ departments }: { departments: AIWorkspaceDepartment[] }) {
   if (departments.length === 0) {
     return <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />;
@@ -5788,6 +6013,12 @@ export function App() {
   const [scheduleStatus, setScheduleStatus] = useState('');
   const [scheduleActivityType, setScheduleActivityType] = useState('');
   const [scheduleRange, setScheduleRange] = useState('');
+  const [prepaymentsData, setPrepaymentsData] = useState<PrepaymentsData | null>(null);
+  const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments');
+  const [prepaymentQuery, setPrepaymentQuery] = useState('');
+  const [prepaymentStatus, setPrepaymentStatus] = useState('');
+  const [prepaymentDataFilter, setPrepaymentDataFilter] = useState('me');
+  const [prepaymentFilterUser, setPrepaymentFilterUser] = useState('');
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
   const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
@@ -6018,6 +6249,29 @@ export function App() {
       alive = false;
     };
   }, [currentView, scheduleDetailId]);
+
+  useEffect(() => {
+    if (currentView !== 'prepayments') {
+      return;
+    }
+    let alive = true;
+    setPrepaymentsLoading(true);
+    loadPrepaymentsData({
+      search: prepaymentQuery,
+      status: prepaymentStatus,
+      dataFilter: prepaymentDataFilter,
+      filterUser: prepaymentFilterUser,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setPrepaymentsData(data);
+      setPrepaymentsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, prepaymentDataFilter, prepaymentFilterUser, prepaymentQuery, prepaymentStatus]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -6483,6 +6737,19 @@ export function App() {
     });
   }, [pipelineData.deals, searchQuery, selectedView]);
   const visibleSelectedDeal = visibleDeals.find((deal) => deal.id === selectedDealId) ?? visibleDeals[0];
+  const handlePrepaymentDataFilterChange = (value: string) => {
+    setPrepaymentDataFilter(value);
+    if (value !== 'user') {
+      setPrepaymentFilterUser('');
+      return;
+    }
+    if (!prepaymentFilterUser) {
+      const firstOwner = prepaymentsData?.options.owners[0]?.id;
+      if (firstOwner) {
+        setPrepaymentFilterUser(String(firstOwner));
+      }
+    }
+  };
 
   if (currentView === 'dashboard') {
     return (
@@ -6620,6 +6887,26 @@ export function App() {
           onQueryChange={setScheduleQuery}
           onRangeChange={setScheduleRange}
           onStatusChange={setScheduleStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'prepayments') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <PrepaymentsPage
+          data={prepaymentsData}
+          dataFilter={prepaymentDataFilter}
+          filterUser={prepaymentFilterUser}
+          loading={prepaymentsLoading}
+          query={prepaymentQuery}
+          status={prepaymentStatus}
+          onDataFilterChange={handlePrepaymentDataFilterChange}
+          onFilterUserChange={setPrepaymentFilterUser}
+          onQueryChange={setPrepaymentQuery}
+          onStatusChange={setPrepaymentStatus}
         />
       </AppShell>
     );

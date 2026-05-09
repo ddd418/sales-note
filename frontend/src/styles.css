@@ -899,6 +899,11 @@ h2 {
   gap: 16px;
 }
 
+.prepayments-page {
+  display: grid;
+  gap: 16px;
+}
+
 .customers-metric-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -944,6 +949,16 @@ h2 {
   padding: 0 10px;
 }
 
+.prepayments-filter-bar {
+  grid-template-columns: minmax(260px, 1fr) 170px 150px 180px;
+}
+
+.prepayments-filter-bar select:disabled {
+  color: var(--muted-soft);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .customers-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
@@ -973,6 +988,61 @@ h2 {
 
 .customers-table tbody tr {
   cursor: default;
+}
+
+.prepayments-main-panel {
+  min-width: 0;
+}
+
+.prepayments-table {
+  min-width: 1120px;
+}
+
+.prepayments-table td {
+  vertical-align: top;
+}
+
+.prepayment-info-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.prepayment-info-cell span,
+.prepayment-info-cell small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prepayment-balance-active {
+  color: var(--green);
+}
+
+.prepayment-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.prepayment-status.active {
+  background: var(--success-bg);
+  color: #166534;
+}
+
+.prepayment-status.depleted {
+  background: var(--panel-soft);
+  color: #475569;
+}
+
+.prepayment-status.cancelled {
+  background: var(--danger-bg);
+  color: #991b1b;
 }
 
 .customer-name-link {
@@ -3917,6 +3987,7 @@ tbody tr:hover {
   .customer-detail-layout,
   .schedules-layout,
   .schedules-filter-bar,
+  .prepayments-filter-bar,
   .ai-layout,
   .ai-followup-grid,
   .ai-prompt-grid,

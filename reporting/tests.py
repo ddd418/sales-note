@@ -1706,6 +1706,121 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(target.reviewer, self.manager)
 
 
+class PrepaymentsSummaryApiTests(TestCase):
+    """React 선결제 현황 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='선결제API회사')
+        self.other_company = UserCompany.objects.create(name='선결제API타사회사')
+        self.user = make_user('prepayment_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('prepayment_api_coworker', role='salesman', company=self.company)
+        self.other_user = make_user('prepayment_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:prepayment_api_list')
+
+    def _create_customer(self, owner, name):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        return FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} 책임자',
+            company=customer_company,
+            department=department,
+        )
+
+    def _create_prepayment(self, owner, name, amount=100000, balance=70000, status='active', payer='입금자'):
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        customer = self._create_customer(owner, name)
+        return Prepayment.objects.create(
+            customer=customer,
+            company=customer.company,
+            amount=amount,
+            balance=balance,
+            payment_date=timezone.localdate(),
+            payer_name=payer,
+            status=status,
+            created_by=owner,
+        )
+
+    def test_prepayment_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_prepayment_summary_api_defaults_to_current_user(self):
+        own = self._create_prepayment(self.user, '내선결제', amount=100000, balance=70000, payer='내입금자')
+        coworker = self._create_prepayment(self.coworker, '동료선결제', amount=200000, balance=200000, payer='동료입금자')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['scope']['dataFilter'], 'me')
+        self.assertFalse(payload['scope']['isViewingOthers'])
+        ids = {item['id'] for item in payload['prepayments']}
+        self.assertIn(own.id, ids)
+        self.assertNotIn(coworker.id, ids)
+        self.assertEqual(payload['metrics']['totalAmount'], 100000)
+        self.assertEqual(payload['metrics']['totalBalance'], 70000)
+        self.assertEqual(payload['metrics']['totalUsed'], 30000)
+        self.assertEqual(payload['links']['create'], reverse('reporting:prepayment_create'))
+        own_payload = payload['prepayments'][0]
+        self.assertEqual(own_payload['payerName'], '내입금자')
+        self.assertEqual(own_payload['customerHref'], f'/customers/{own.customer_id}/')
+        self.assertTrue(own_payload['canManage'])
+
+    def test_prepayment_summary_api_filters_team_scope_search_and_status(self):
+        own = self._create_prepayment(self.user, '내활성', amount=100000, balance=90000, status='active', payer='내입금')
+        coworker = self._create_prepayment(
+            self.coworker,
+            '동료소진',
+            amount=150000,
+            balance=0,
+            status='depleted',
+            payer='동료입금자',
+        )
+        other = self._create_prepayment(
+            self.other_user,
+            '타사소진',
+            amount=999000,
+            balance=0,
+            status='depleted',
+            payer='동료입금자',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {
+            'data_filter': 'all',
+            'status': 'depleted',
+            'search': '동료입금자',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['prepayments']}
+        self.assertNotIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertTrue(payload['scope']['isViewingOthers'])
+        self.assertEqual(payload['filters']['status'], 'depleted')
+        self.assertEqual(payload['metrics']['depletedCount'], 1)
+        self.assertEqual(payload['metrics']['totalAmount'], 150000)
+        self.assertEqual(payload['links']['create'], '')
+
+
 class SchedulesSummaryApiTests(TestCase):
     """React 일정 화면 읽기 API 검증"""
 

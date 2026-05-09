@@ -27,6 +27,7 @@ http://127.0.0.1:5173/
 - `/notes/` 실제 영업노트 검색/필터 화면
 - `/schedules/` 실제 일정 검색/필터 화면
 - `/schedules/?create=1` 실제 고객 일정 빠른 등록
+- `/prepayments/` 실제 선결제 현황/잔액/검색/필터 화면
 - `/ai-workspace/` 실제 AI 업무 상태 화면
 - `/pipeline/` route shell
 - 대시보드 KPI, 오늘 일정, 지연 후속조치, 최근 영업노트, 우선 고객

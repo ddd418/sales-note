@@ -15719,12 +15719,244 @@ def prepayment_list_excel(request):
     return response
 
 
-@login_required
+def _prepayment_list_scope(request, user_profile):
+    data_filter = request.GET.get('data_filter', 'me')
+    filter_user_id = request.GET.get('filter_user') or request.GET.get('owner') or ''
+    company_users = User.objects.none()
+
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True,
+        ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
+
+    selected_filter_user = None
+    is_viewing_others = False
+
+    if data_filter == 'all' and user_profile and user_profile.company:
+        users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            userprofile__role='salesman',
+            is_active=True,
+        )
+        is_viewing_others = True
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        try:
+            selected_filter_user = User.objects.get(
+                id=filter_user_id,
+                userprofile__company=user_profile.company,
+                is_active=True,
+            )
+            users = User.objects.filter(id=selected_filter_user.id)
+            is_viewing_others = selected_filter_user.id != request.user.id
+        except (User.DoesNotExist, ValueError):
+            data_filter = 'me'
+            filter_user_id = ''
+            users = User.objects.filter(id=request.user.id)
+    else:
+        data_filter = 'me'
+        filter_user_id = ''
+        users = User.objects.filter(id=request.user.id)
+
+    if selected_filter_user:
+        label = _user_display_name(selected_filter_user)
+    elif data_filter == 'all' and user_profile and user_profile.company:
+        label = f'{user_profile.company.name} 영업팀'
+    else:
+        label = _user_display_name(request.user)
+
+    return {
+        'users': users,
+        'data_filter': data_filter,
+        'filter_user_id': str(filter_user_id or ''),
+        'company_users': company_users,
+        'selected_filter_user': selected_filter_user,
+        'is_viewing_others': is_viewing_others,
+        'label': label,
+    }
+
+
+def _prepayment_item_payload(prepayment, actor):
+    customer = prepayment.customer
+    company = prepayment.company or (customer.company if customer else None)
+    department = customer.department if customer and customer.department_id else None
+    owner = prepayment.created_by
+    amount = _money_int(prepayment.amount)
+    balance = _money_int(prepayment.balance)
+    used_amount = max(amount - balance, 0)
+    owner_id_matches = prepayment.created_by_id == actor.id
+    can_manage = owner_id_matches
+    usage_count = getattr(prepayment, 'usage_count', None)
+    if usage_count is None:
+        usage_count = prepayment.usages.count()
+
+    return {
+        'id': prepayment.id,
+        'customerId': customer.id if customer else None,
+        'customerName': customer.customer_name if customer else '',
+        'companyId': company.id if company else None,
+        'companyName': company.name if company else '',
+        'departmentId': department.id if department else None,
+        'departmentName': department.name if department else '',
+        'payerName': prepayment.payer_name or '',
+        'paymentDate': _date_or_none(prepayment.payment_date),
+        'paymentMethod': prepayment.payment_method,
+        'paymentMethodLabel': prepayment.get_payment_method_display(),
+        'amount': amount,
+        'balance': balance,
+        'usedAmount': used_amount,
+        'usageCount': usage_count,
+        'status': prepayment.status,
+        'statusLabel': prepayment.get_status_display(),
+        'ownerId': prepayment.created_by_id,
+        'ownerName': _user_display_name(owner),
+        'memo': (prepayment.memo or '')[:220],
+        'createdAt': _datetime_or_none(prepayment.created_at),
+        'cancelledAt': _datetime_or_none(prepayment.cancelled_at),
+        'cancelReason': (prepayment.cancel_reason or '')[:220],
+        'canManage': can_manage,
+        'href': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+        'editHref': reverse('reporting:prepayment_edit', args=[prepayment.id]) if owner_id_matches else '',
+        'deleteHref': reverse('reporting:prepayment_delete', args=[prepayment.id]) if owner_id_matches else '',
+        'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if owner_id_matches else '',
+        'customerHref': f'/customers/{customer.id}/' if customer else '',
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[customer.id]) if customer else '',
+        'djangoCustomerPrepaymentHref': reverse('reporting:prepayment_customer', args=[customer.id]) if customer else '',
+    }
+
+
+def _prepayment_summary_payload(request):
+    user_profile = get_user_profile(request.user)
+    scope = _prepayment_list_scope(request, user_profile)
+    search_query = (request.GET.get('search') or request.GET.get('q') or '').strip()
+    status_filter = request.GET.get('status', '').strip()
+    valid_statuses = {value for value, _label in Prepayment.STATUS_CHOICES}
+
+    base_queryset = Prepayment.objects.select_related(
+        'customer',
+        'customer__company',
+        'customer__department',
+        'company',
+        'created_by',
+    ).filter(created_by__in=scope['users'])
+    prepayments = base_queryset
+
+    if search_query:
+        prepayments = prepayments.filter(
+            Q(customer__customer_name__icontains=search_query) |
+            Q(customer__company__name__icontains=search_query) |
+            Q(customer__department__name__icontains=search_query) |
+            Q(company__name__icontains=search_query) |
+            Q(payer_name__icontains=search_query) |
+            Q(memo__icontains=search_query)
+        )
+
+    if status_filter in valid_statuses:
+        prepayments = prepayments.filter(status=status_filter)
+    else:
+        status_filter = ''
+
+    stats = prepayments.aggregate(
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance'),
+        active_count=Count('id', filter=Q(status='active')),
+        depleted_count=Count('id', filter=Q(status='depleted')),
+        cancelled_count=Count('id', filter=Q(status='cancelled')),
+        total_count=Count('id'),
+    )
+    total_amount = _money_int(stats['total_amount'])
+    total_balance = _money_int(stats['total_balance'])
+
+    try:
+        limit = int(request.GET.get('limit', 80))
+    except (TypeError, ValueError):
+        limit = 80
+    limit = min(max(limit, 1), 200)
+
+    ordered_prepayments = prepayments.annotate(
+        usage_count=Count('usages', distinct=True),
+    ).order_by('-payment_date', '-created_at')
+    rows = list(ordered_prepayments[:limit])
+    filtered_count = stats['total_count'] or 0
+
+    query_string = request.GET.urlencode()
+    django_list = reverse('reporting:prepayment_list')
+    excel_href = reverse('reporting:prepayment_list_excel')
+    if query_string:
+        django_list = f'{django_list}?{query_string}'
+        excel_href = f'{excel_href}?{query_string}'
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope['label'],
+            'dataFilter': scope['data_filter'],
+            'filterUserId': int(scope['filter_user_id']) if scope['filter_user_id'] else None,
+            'isViewingOthers': scope['is_viewing_others'],
+            'canViewTeam': bool(user_profile and user_profile.company),
+        },
+        'filters': {
+            'search': search_query,
+            'status': status_filter,
+            'dataFilter': scope['data_filter'],
+            'filterUser': scope['filter_user_id'],
+            'limit': limit,
+        },
+        'options': {
+            'statuses': [
+                {'value': value, 'label': label}
+                for value, label in Prepayment.STATUS_CHOICES
+            ],
+            'owners': [
+                {'id': user.id, 'name': _user_display_name(user)}
+                for user in scope['company_users']
+            ],
+            'dataFilters': [
+                {'value': 'me', 'label': '나'},
+                {'value': 'all', 'label': '전체'},
+                {'value': 'user', 'label': '직원 선택'},
+            ],
+        },
+        'metrics': {
+            'totalAmount': total_amount,
+            'totalBalance': total_balance,
+            'totalUsed': max(total_amount - total_balance, 0),
+            'totalCount': filtered_count,
+            'filteredPrepayments': filtered_count,
+            'activeCount': stats['active_count'] or 0,
+            'depletedCount': stats['depleted_count'] or 0,
+            'cancelledCount': stats['cancelled_count'] or 0,
+            'returnedCount': len(rows),
+            'truncated': filtered_count > len(rows),
+        },
+        'links': {
+            'djangoList': django_list,
+            'create': reverse('reporting:prepayment_create') if not scope['is_viewing_others'] else '',
+            'excel': excel_href,
+            'customers': '/customers/',
+        },
+        'prepayments': [
+            _prepayment_item_payload(prepayment, request.user)
+            for prepayment in rows
+        ],
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
 def prepayment_api_list(request):
-    """고객별 선결제 목록 API (AJAX용)"""
+    """선결제 API: 고객/일정 선택 목록 또는 React 선결제 현황 목록."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
     customer_id = request.GET.get('customer_id')
     if not customer_id:
-        return JsonResponse({'prepayments': []})
+        return JsonResponse(_prepayment_summary_payload(request))
     
     try:
         followup = FollowUp.objects.select_related('department', 'user').get(id=customer_id)
