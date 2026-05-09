@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
+from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote
@@ -4514,6 +4515,114 @@ def _schedules_delivery_item_payload(item):
     }
 
 
+def _schedules_parse_delivery_item_inputs(raw_items):
+    from decimal import Decimal, InvalidOperation
+
+    if not isinstance(raw_items, list):
+        raise ValueError('납품 품목 목록을 확인하세요.')
+    if len(raw_items) > 50:
+        raise ValueError('납품 품목은 최대 50개까지 저장할 수 있습니다.')
+
+    cleaned = []
+    for index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f'{index}번째 납품 품목 형식이 올바르지 않습니다.')
+
+        item_name = str(raw_item.get('itemName') or raw_item.get('item_name') or raw_item.get('name') or '').strip()
+        quantity_raw = raw_item.get('quantity')
+        unit_price_raw = raw_item.get('unitPrice')
+        if unit_price_raw is None:
+            unit_price_raw = raw_item.get('unit_price')
+        unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
+        notes = str(raw_item.get('notes') or '').strip()
+
+        quantity_text = '' if quantity_raw is None else str(quantity_raw).replace(',', '').strip()
+        unit_price_text = '' if unit_price_raw is None else str(unit_price_raw).replace(',', '').strip()
+        if not item_name and not quantity_text and not unit_price_text and not notes:
+            continue
+
+        if not item_name:
+            raise ValueError(f'{index}번째 품목명을 입력하세요.')
+        if len(item_name) > 200:
+            raise ValueError(f'{index}번째 품목명은 200자 이하로 입력하세요.')
+
+        try:
+            quantity = int(quantity_text)
+        except (TypeError, ValueError):
+            raise ValueError(f'{index}번째 수량은 1 이상의 숫자로 입력하세요.')
+        if quantity <= 0:
+            raise ValueError(f'{index}번째 수량은 1 이상이어야 합니다.')
+
+        unit_price = None
+        if unit_price_text:
+            try:
+                unit_price = Decimal(unit_price_text)
+            except (InvalidOperation, ValueError):
+                raise ValueError(f'{index}번째 단가는 0 이상의 숫자로 입력하세요.')
+            if unit_price < 0:
+                raise ValueError(f'{index}번째 단가는 0 이상이어야 합니다.')
+
+        tax_invoice_issued = raw_item.get('taxInvoiceIssued') in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
+        cleaned.append({
+            'item_name': item_name,
+            'quantity': quantity,
+            'unit': unit,
+            'unit_price': unit_price,
+            'tax_invoice_issued': tax_invoice_issued,
+            'notes': notes,
+        })
+
+    if not cleaned:
+        raise ValueError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.')
+    return cleaned
+
+
+def _schedules_delivery_items_summary(schedule):
+    from decimal import Decimal
+
+    delivery_lines = []
+    total_amount = Decimal('0')
+    for item in schedule.delivery_items_set.all().order_by('id'):
+        item_total = item.total_price
+        if item_total is None and item.unit_price is not None:
+            item_total = item.unit_price * item.quantity * Decimal('1.1')
+        if item_total is not None:
+            total_amount += item_total
+
+        quantity_label = f"{item.quantity}{item.unit or 'EA'}"
+        if item_total is not None:
+            delivery_lines.append(f"{item.item_name}: {quantity_label} ({int(item_total):,}원)")
+        else:
+            delivery_lines.append(f"{item.item_name}: {quantity_label}")
+
+    return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
+
+
+def _schedules_sync_delivery_histories(schedule, actor, created_count):
+    delivery_text, total_delivery_amount = _schedules_delivery_items_summary(schedule)
+    related_histories = schedule.histories.filter(action_type='delivery_schedule')
+    delivery_amount = total_delivery_amount if total_delivery_amount > 0 else None
+
+    if related_histories.exists():
+        for history in related_histories:
+            history.delivery_items = delivery_text
+            history.delivery_amount = delivery_amount
+            history.save(update_fields=['delivery_items', 'delivery_amount'])
+        return
+
+    History.objects.create(
+        schedule=schedule,
+        user=schedule.user or actor,
+        company=schedule.company,
+        followup=schedule.followup,
+        action_type='delivery_schedule',
+        delivery_items=delivery_text,
+        delivery_amount=delivery_amount,
+        content=f'납품 품목 {created_count}개 추가',
+        created_by=actor,
+    )
+
+
 def _schedules_detail_payload(request, schedule, user_profile):
     today = timezone.localdate()
     can_review = _can_review_notes(user_profile)
@@ -4598,6 +4707,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
             'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
+            'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
         'relatedNotes': related_notes,
@@ -4741,6 +4851,49 @@ def schedules_update_api(request, schedule_id):
     return JsonResponse({
         **_schedules_detail_payload(request, refreshed, get_user_profile(request.user)),
         'message': '일정을 수정했습니다.',
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def schedules_delivery_items_update_api(request, schedule_id):
+    """React schedules 상세 화면용 납품 품목 저장 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    schedule = _schedules_get_detail_schedule(schedule_id)
+    if not _schedules_can_edit(request.user, schedule):
+        return JsonResponse({
+            'success': False,
+            'error': '본인의 일정 납품 품목만 수정할 수 있습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    try:
+        delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    try:
+        with transaction.atomic():
+            schedule.delivery_items_set.all().delete()
+            for item_data in delivery_items:
+                DeliveryItem.objects.create(schedule=schedule, **item_data)
+            schedule.save(update_fields=['updated_at'])
+            _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
+    except Exception as exc:
+        logger.error('React 일정 납품 품목 저장 중 오류: %s', exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': '납품 품목 저장 중 오류가 발생했습니다.'}, status=500)
+
+    refreshed = _schedules_get_detail_schedule(schedule.id)
+    return JsonResponse({
+        **_schedules_detail_payload(request, refreshed, get_user_profile(request.user)),
+        'message': '납품 품목을 저장했습니다.',
     })
 
 

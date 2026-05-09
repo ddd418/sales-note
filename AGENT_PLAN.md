@@ -1707,3 +1707,29 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+---
+
+## React Schedule Delivery Items — 일정 납품 품목 편집 전환
+
+**목표**: React `/schedules/<id>/` 상세 화면에서 납품 품목을 추가/수정/삭제하게 만들어 Django 일정 상세 모달 왕복을 줄인다.
+
+**작업 범위**:
+
+- `/reporting/api/schedules/<id>/delivery-items/update/` POST API를 추가해 기존 `DeliveryItem` 모델을 저장한다.
+- 기존 권한 정책을 유지해 manager는 편집 불가, salesman은 본인 일정만 편집 가능하게 한다.
+- 납품 품목 저장 후 연결된 납품 History의 `delivery_items`/`delivery_amount` 요약도 기존 Django 흐름처럼 동기화한다.
+- React 일정 상세 API에 납품 품목 저장 URL을 내려준다.
+- React `/schedules/<id>/` 납품 품목 섹션에 편집 패널, 품목 추가, 행 삭제, 세금계산서 체크, 저장 상태를 추가한다.
+- 기존 Django `/reporting/schedules/<id>/update-delivery-items/`, 상세/수정 화면과 `/reporting/*` 경로는 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `DeliveryItem`, `Schedule`, `History` 모델만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

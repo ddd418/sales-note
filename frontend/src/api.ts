@@ -656,6 +656,16 @@ export type ScheduleDeliveryItem = {
   notes: string;
 };
 
+export type ScheduleDeliveryItemPayload = {
+  id?: number;
+  itemName: string;
+  quantity: string | number;
+  unit: string;
+  unitPrice?: string | number | null;
+  taxInvoiceIssued: boolean;
+  notes?: string;
+};
+
 export type ScheduleDetailItem = ScheduleItem & {
   canEdit: boolean;
   createdAt: string | null;
@@ -802,6 +812,7 @@ export type ScheduleDetailData = {
     djangoCustomer: string;
     createNote: string;
     uploadFiles: string;
+    updateDeliveryItems: string;
   };
   edit: {
     canEdit: boolean;
@@ -826,6 +837,12 @@ export type ScheduleDetailData = {
 };
 
 export type ScheduleEditResponse = ScheduleDetailData & {
+  success: boolean;
+  error?: string;
+  message?: string;
+};
+
+export type ScheduleDeliveryItemsUpdateResponse = ScheduleDetailData & {
   success: boolean;
   error?: string;
   message?: string;
@@ -1283,6 +1300,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     djangoCustomer: '',
     createNote: '',
     uploadFiles: '',
+    updateDeliveryItems: '',
   },
   edit: {
     canEdit: false,
@@ -2145,6 +2163,34 @@ export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: st
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateScheduleDeliveryItems(
+  submitUrl: string,
+  items: ScheduleDeliveryItemPayload[],
+): Promise<ScheduleDeliveryItemsUpdateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ items }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule delivery items API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleDeliveryItemsUpdateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule delivery items update failed: ${response.status}`);
   }
   return data;
 }

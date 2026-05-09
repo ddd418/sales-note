@@ -1859,6 +1859,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['relatedNotes'][0]['id'], schedule.histories.first().id)
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
+        self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
 
@@ -1870,6 +1871,7 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()['edit']['canEdit'])
+        self.assertEqual(response.json()['links']['updateDeliveryItems'], '')
 
         self.client.force_login(self.other_user)
         denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
@@ -1954,6 +1956,107 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(other_company_response.status_code, 403)
         schedule.refresh_from_db()
         self.assertNotEqual(schedule.followup, other_followup)
+
+    def test_schedule_delivery_items_update_api_updates_owned_items_and_history(self):
+        import json
+        from reporting.models import DeliveryItem, History
+
+        schedule = self._create_schedule(self.user, '납품품목', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Old Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+        )
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            schedule=schedule,
+            action_type='delivery_schedule',
+            delivery_items='old',
+            delivery_amount=1000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'itemName': 'PCR Kit',
+                        'quantity': 2,
+                        'unit': 'EA',
+                        'unitPrice': '100000',
+                        'taxInvoiceIssued': True,
+                        'notes': '1차 납품',
+                    },
+                    {
+                        'itemName': 'Buffer',
+                        'quantity': 3,
+                        'unit': 'BOX',
+                        'unitPrice': '',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['message'], '납품 품목을 저장했습니다.')
+        items = list(DeliveryItem.objects.filter(schedule=schedule).order_by('id'))
+        self.assertEqual([item.item_name for item in items], ['PCR Kit', 'Buffer'])
+        self.assertEqual(items[0].quantity, 2)
+        self.assertEqual(items[0].unit, 'EA')
+        self.assertEqual(int(items[0].unit_price), 100000)
+        self.assertEqual(int(items[0].total_price), 220000)
+        self.assertTrue(items[0].tax_invoice_issued)
+        self.assertEqual(items[0].notes, '1차 납품')
+        self.assertIsNone(items[1].unit_price)
+        history.refresh_from_db()
+        self.assertIn('PCR Kit', history.delivery_items)
+        self.assertIn('Buffer', history.delivery_items)
+        self.assertEqual(int(history.delivery_amount), 220000)
+        self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
+        self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 220000)
+
+    def test_schedule_delivery_items_update_api_blocks_manager_and_coworker(self):
+        import json
+        from reporting.models import DeliveryItem
+
+        schedule = self._create_schedule(self.user, '납품차단', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Protected Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=5000,
+        )
+        update_url = reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id])
+        payload = {
+            'items': [
+                {
+                    'itemName': 'Changed Kit',
+                    'quantity': 2,
+                    'unit': 'EA',
+                    'unitPrice': '10000',
+                },
+            ],
+        }
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(update_url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(update_url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(coworker_response.status_code, 403)
+
+        self.assertEqual(DeliveryItem.objects.get(schedule=schedule).item_name, 'Protected Kit')
 
     def test_schedule_file_upload_api_allows_owner_only(self):
         from django.core.files.uploadedfile import SimpleUploadedFile

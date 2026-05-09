@@ -8545,3 +8545,69 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 7. Recommended Next Task
 
 - 후속조치 완료 처리나 일정 납품 품목 편집처럼 아직 Django 보조 화면에 남아 있는 세부 기능을 우선순위대로 React로 이전합니다.
+
+---
+
+## React Schedule Delivery Items — 일정 납품 품목 편집 전환 (2026-05-09)
+
+### 1. Summary
+
+React `/schedules/<id>/` 상세 화면에서 납품 품목을 추가/수정/삭제할 수 있게 연결했습니다. 기존 Django 납품 품목 수정 경로는 유지하고, React 전용 저장 API를 추가했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 일정 납품 품목 편집 전환 계획 추가 |
+| `frontend/src/App.tsx` | 납품 품목 편집 패널, 행 추가/삭제, 세금계산서 체크, 저장 상태 추가 |
+| `frontend/src/api.ts` | 납품 품목 저장 타입과 `updateScheduleDeliveryItems` API 함수 추가 |
+| `frontend/src/styles.css` | 납품 품목 편집 폼과 모바일 레이아웃 스타일 추가 |
+| `reporting/views.py` | React 전용 납품 품목 저장 API, payload 검증, History 요약 동기화 추가 |
+| `reporting/urls.py` | `/reporting/api/schedules/<id>/delivery-items/update/` 라우트 추가 |
+| `reporting/tests.py` | 납품 품목 저장 owner-only 권한과 상세 payload 테스트 추가 |
+| `AGENT_REPORT.md` | 작업 결과와 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 일정 상세에서 Django 상세 모달로 이동하지 않고 납품 품목을 바로 편집할 수 있습니다.
+- 품목명, 수량, 단위, 단가, 세금계산서 발행 여부, 비고를 React에서 저장합니다.
+- 저장 후 연결된 납품 History의 `delivery_items`와 `delivery_amount` 요약도 동기화됩니다.
+- Manager와 동료 영업사원은 편집 버튼이 보이지 않고 API에서도 차단됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/reporting/schedules/<id>/update-delivery-items/`, 일정 상세/수정 화면과 `/reporting/*` 경로는 유지했습니다.
+- 기존 `DeliveryItem`, `Schedule`, `History` 모델을 그대로 사용했고 DB migration은 없습니다.
+- 일정 조회/수정 권한 정책은 기존 React 일정 상세 수정 정책과 동일하게 유지했습니다.
+- 미로그인 API 요청은 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-ChGmKnB1.js / assets/index-D0d8bvfh.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 `/schedules/<id>/` 납품 품목 추가, 수정, 삭제까지 이어지는 육안 확인은 운영 배포 후 필요합니다.
+- 제품 마스터 검색/선택 연동은 이번 범위에 포함하지 않았습니다. 현재 React 편집은 직접 입력 방식입니다.
+
+### 7. Recommended Next Task
+
+- 수동 검수 후 다음 단계는 일정 납품 품목의 제품 마스터 선택 또는 선결제 세부 흐름처럼 아직 Django 폼에 남아 있는 고급 입력을 React로 옮기는 작업이 적절합니다.

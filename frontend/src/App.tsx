@@ -49,6 +49,8 @@ import {
   SchedulesData,
   ScheduleDetailData,
   ScheduleDetailItem,
+  ScheduleDeliveryItem,
+  ScheduleDeliveryItemPayload,
   ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
@@ -82,6 +84,7 @@ import {
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updateSchedule as updateCustomerSchedule,
+  updateScheduleDeliveryItems,
   uploadNoteFiles,
   uploadScheduleFiles,
 } from './api';
@@ -143,6 +146,19 @@ type ScheduleEditFormState = ScheduleCreateFormState & {
   purchaseConfirmed: boolean;
   status: string;
 };
+
+type ScheduleDeliveryEditRow = {
+  rowId: string;
+  id?: number;
+  itemName: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  taxInvoiceIssued: boolean;
+  notes: string;
+};
+
+type ScheduleDeliveryEditField = 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
 
 type CustomerCreateFormState = {
   address: string;
@@ -227,6 +243,23 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
   visitDate: schedule?.date || '',
   visitTime: schedule?.time || '09:00',
 });
+
+const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): ScheduleDeliveryEditRow => ({
+  rowId: item ? `delivery-${item.id}` : `delivery-new-${Date.now()}-${index}`,
+  id: item?.id,
+  itemName: item?.itemName || '',
+  quantity: item ? String(item.quantity) : '1',
+  unit: item?.unit || 'EA',
+  unitPrice: item && item.unitPrice !== undefined && item.unitPrice !== null ? String(item.unitPrice) : '',
+  taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
+  notes: item?.notes || '',
+});
+
+const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): ScheduleDeliveryEditRow[] => (
+  items.length > 0
+    ? items.map((item, index) => makeScheduleDeliveryEditRow(item, index))
+    : [makeScheduleDeliveryEditRow(undefined, 0)]
+);
 
 const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   address: '',
@@ -2907,6 +2940,11 @@ function ScheduleDetailPage({
   const [fileDeletingId, setFileDeletingId] = useState<number | null>(null);
   const [fileError, setFileError] = useState('');
   const [fileMessage, setFileMessage] = useState('');
+  const [deliveryEditOpen, setDeliveryEditOpen] = useState(false);
+  const [deliveryRows, setDeliveryRows] = useState<ScheduleDeliveryEditRow[]>(() => makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryError, setDeliveryError] = useState('');
+  const [deliveryMessage, setDeliveryMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -2917,6 +2955,11 @@ function ScheduleDetailPage({
     setFileMessage('');
     setFileUploading(false);
     setFileDeletingId(null);
+    setDeliveryEditOpen(false);
+    setDeliveryRows(makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
+    setDeliverySaving(false);
+    setDeliveryError('');
+    setDeliveryMessage('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -3059,6 +3102,108 @@ function ScheduleDetailPage({
       setFileError(error instanceof Error ? error.message : '첨부파일 삭제에 실패했습니다.');
     } finally {
       setFileDeletingId(null);
+    }
+  };
+
+  const handleDeliveryEditToggle = () => {
+    if (!currentSchedule?.canEdit || !data?.links.updateDeliveryItems) {
+      setDeliveryError('납품 품목 수정 권한이 없습니다.');
+      setDeliveryMessage('');
+      return;
+    }
+    setDeliveryRows(makeScheduleDeliveryEditRows(data.deliveryItems));
+    setDeliveryError('');
+    setDeliveryMessage('');
+    setDeliveryEditOpen((open) => !open);
+  };
+
+  const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
+    setDeliveryRows((rows) => rows.map((row) => (
+      row.rowId === rowId ? { ...row, [field]: value } : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
+  };
+
+  const handleDeliveryAddRow = () => {
+    setDeliveryRows((rows) => [...rows, makeScheduleDeliveryEditRow(undefined, rows.length)]);
+    setDeliveryError('');
+    setDeliveryMessage('');
+  };
+
+  const handleDeliveryRemoveRow = (rowId: string) => {
+    setDeliveryRows((rows) => {
+      const nextRows = rows.filter((row) => row.rowId !== rowId);
+      return nextRows.length > 0 ? nextRows : [makeScheduleDeliveryEditRow(undefined, 0)];
+    });
+    setDeliveryError('');
+    setDeliveryMessage('');
+  };
+
+  const handleDeliverySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentSchedule || deliverySaving) {
+      return;
+    }
+    if (!currentSchedule.canEdit || !data?.links.updateDeliveryItems) {
+      setDeliveryError('납품 품목 수정 권한이 없습니다.');
+      setDeliveryMessage('');
+      return;
+    }
+
+    const rowsWithInput = deliveryRows.filter((row) => (
+      row.itemName.trim() || row.quantity.trim() || row.unitPrice.trim() || row.notes.trim()
+    ));
+    if (!rowsWithInput.length) {
+      setDeliveryError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.');
+      return;
+    }
+
+    const payloadItems: ScheduleDeliveryItemPayload[] = [];
+    for (const [index, row] of rowsWithInput.entries()) {
+      const itemName = row.itemName.trim();
+      if (!itemName) {
+        setDeliveryError(`${index + 1}번째 품목명을 입력하세요.`);
+        return;
+      }
+      const quantity = Number(row.quantity);
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        setDeliveryError(`${index + 1}번째 수량은 1 이상의 숫자로 입력하세요.`);
+        return;
+      }
+      const unitPrice = row.unitPrice.trim();
+      if (unitPrice && Number.isNaN(Number(unitPrice))) {
+        setDeliveryError(`${index + 1}번째 단가는 숫자로 입력하세요.`);
+        return;
+      }
+      if (unitPrice && Number(unitPrice) < 0) {
+        setDeliveryError(`${index + 1}번째 단가는 0 이상이어야 합니다.`);
+        return;
+      }
+      payloadItems.push({
+        id: row.id,
+        itemName,
+        quantity,
+        unit: row.unit.trim() || 'EA',
+        unitPrice: unitPrice || null,
+        taxInvoiceIssued: row.taxInvoiceIssued,
+        notes: row.notes.trim(),
+      });
+    }
+
+    setDeliverySaving(true);
+    setDeliveryError('');
+    setDeliveryMessage('');
+    try {
+      const updated = await updateScheduleDeliveryItems(data.links.updateDeliveryItems, payloadItems);
+      const refreshed = await onRefresh();
+      setDeliveryRows(makeScheduleDeliveryEditRows(refreshed?.deliveryItems ?? updated.deliveryItems ?? []));
+      setDeliveryMessage(updated.message || '납품 품목을 저장했습니다.');
+      setDeliveryEditOpen(false);
+    } catch (error) {
+      setDeliveryError(error instanceof Error ? error.message : '납품 품목 저장에 실패했습니다.');
+    } finally {
+      setDeliverySaving(false);
     }
   };
 
@@ -3346,8 +3491,103 @@ function ScheduleDetailPage({
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
-          <h3 className="customer-detail-section-heading">납품 품목</h3>
-          {deliveryItems.length === 0 ? (
+          <div className="schedule-file-heading schedule-delivery-heading">
+            <h3 className="customer-detail-section-heading">납품 품목</h3>
+            {schedule.canEdit && data.links.updateDeliveryItems ? (
+              <button
+                className="customer-row-action schedule-delivery-edit-toggle"
+                disabled={deliverySaving}
+                onClick={handleDeliveryEditToggle}
+                type="button"
+              >
+                {deliveryEditOpen ? <ChevronDown size={14} /> : <ListChecks size={14} />}
+                <span>{deliveryEditOpen ? '닫기' : '편집'}</span>
+              </button>
+            ) : null}
+          </div>
+          {deliveryError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{deliveryError}</span></div> : null}
+          {deliveryMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{deliveryMessage}</span></div> : null}
+          {deliveryEditOpen ? (
+            <form className="schedule-delivery-edit-form" onSubmit={handleDeliverySubmit}>
+              <div className="schedule-delivery-edit-list">
+                {deliveryRows.map((row, index) => (
+                  <div className="schedule-delivery-edit-row" key={row.rowId}>
+                    <label className="schedule-delivery-name-field">
+                      <span>품목명</span>
+                      <input
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'itemName', event.target.value)}
+                        required
+                        value={row.itemName}
+                      />
+                    </label>
+                    <label>
+                      <span>수량</span>
+                      <input
+                        inputMode="numeric"
+                        min="1"
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'quantity', event.target.value)}
+                        required
+                        type="number"
+                        value={row.quantity}
+                      />
+                    </label>
+                    <label>
+                      <span>단위</span>
+                      <input
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unit', event.target.value)}
+                        value={row.unit}
+                      />
+                    </label>
+                    <label>
+                      <span>단가</span>
+                      <input
+                        inputMode="numeric"
+                        min="0"
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unitPrice', event.target.value)}
+                        type="number"
+                        value={row.unitPrice}
+                      />
+                    </label>
+                    <label className="schedule-edit-inline-check schedule-delivery-tax-check">
+                      <input
+                        checked={row.taxInvoiceIssued}
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'taxInvoiceIssued', event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>세금계산서</span>
+                    </label>
+                    <label className="schedule-delivery-notes-field">
+                      <span>비고</span>
+                      <input
+                        onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                        value={row.notes}
+                      />
+                    </label>
+                    <button
+                      aria-label={`${index + 1}번째 납품 품목 삭제`}
+                      className="customer-row-action schedule-delivery-remove-button"
+                      disabled={deliveryRows.length <= 1 || deliverySaving}
+                      onClick={() => handleDeliveryRemoveRow(row.rowId)}
+                      type="button"
+                    >
+                      <Trash2 size={14} />
+                      <span>삭제</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="notes-create-actions schedule-delivery-edit-actions">
+                <button className="route-secondary-action" disabled={deliverySaving} onClick={handleDeliveryAddRow} type="button">
+                  <Plus size={15} />
+                  품목 추가
+                </button>
+                <button className="route-primary-action" disabled={deliverySaving} type="submit">
+                  {deliverySaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          ) : deliveryItems.length === 0 ? (
             <DashboardEmpty label="등록된 납품 품목이 없습니다" />
           ) : (
             <div className="schedule-delivery-list">

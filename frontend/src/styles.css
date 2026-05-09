@@ -1729,6 +1729,81 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.schedule-delivery-edit-toggle,
+.schedule-delivery-remove-button {
+  gap: 5px;
+  margin-top: 0;
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  font: inherit;
+}
+
+.schedule-delivery-edit-toggle:disabled,
+.schedule-delivery-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.schedule-delivery-edit-form {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-delivery-edit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-delivery-edit-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.schedule-delivery-edit-row label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.schedule-delivery-edit-row input {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+}
+
+.schedule-delivery-tax-check {
+  width: 100%;
+}
+
+.schedule-delivery-tax-check input {
+  width: auto;
+  min-height: auto;
+  padding: 0;
+}
+
+.schedule-delivery-remove-button {
+  justify-content: center;
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.schedule-delivery-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
 .schedules-page {
   display: grid;
   gap: 16px;
@@ -3357,10 +3432,16 @@ tbody tr:hover {
 
   .schedule-file-upload-button,
   .schedule-file-delete-button,
+  .schedule-delivery-edit-toggle,
+  .schedule-delivery-remove-button,
   .note-reply-submit-button,
   .note-reply-delete-button {
     justify-content: center;
     width: 100%;
+  }
+
+  .schedule-delivery-edit-actions {
+    grid-template-columns: 1fr;
   }
 
   .pipeline-board {
