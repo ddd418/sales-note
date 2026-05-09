@@ -3226,6 +3226,48 @@ class WeeklyReportTests(TestCase):
         r = self.client.get(reverse('reporting:weekly_report_create'))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'loadSchedules();')
+        self.assertContains(r, 'normalizeEditorHtmlInput')
+
+    def test_weekly_report_create_normalizes_double_escaped_html(self):
+        """Quill HTML이 이중 escape되어 들어와도 정상 HTML로 저장/렌더링"""
+        import datetime
+        from reporting.models import WeeklyReport
+
+        self.client.force_login(self.salesman)
+        activity = (
+            '<p>&lt;p&gt;04/28(화): 홍철화 (연세대학교 의과대학 · 김민환 교수님 연구실)&lt;/p&gt;'
+            '&lt;p&gt;&amp;gt; 수리 피펫 가져다드리고 데모피펫 회수&lt;/p&gt;</p>'
+        )
+        quote_delivery = (
+            '<p>&lt;p&gt;- 04/28(화): 홍철화 - 피펫 견적 제출&lt;/p&gt;'
+            '&lt;p&gt;- 04/29(수): 이진영 - 피펫에이드 보상판매&lt;/p&gt;</p>'
+        )
+        other = '<p>&lt;p&gt;국민대학교 방문&lt;/p&gt;</p>'
+
+        r = self.client.post(reverse('reporting:weekly_report_create'), {
+            'week_start': '2026-04-20',
+            'week_end': '2026-04-24',
+            'title': 'HTML 정규화 테스트',
+            'activity_notes': activity,
+            'quote_delivery_notes': quote_delivery,
+            'other_notes': other,
+        })
+        self.assertEqual(r.status_code, 302)
+
+        report = WeeklyReport.objects.get(
+            user=self.salesman,
+            week_start=datetime.date(2026, 4, 20),
+        )
+        self.assertIn('<p>04/28(화): 홍철화', report.activity_notes)
+        self.assertNotIn('&lt;p&gt;', report.activity_notes)
+        self.assertNotIn('&amp;lt;p&amp;gt;', report.activity_notes)
+        self.assertIn('<p>국민대학교 방문</p>', report.other_notes)
+
+        detail = self.client.get(reverse('reporting:weekly_report_detail', args=[report.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, '수리 피펫 가져다드리고 데모피펫 회수')
+        self.assertContains(detail, '국민대학교 방문')
+        self.assertNotContains(detail, '&lt;p&gt;04/28')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4071,6 +4113,37 @@ class WeeklyReportLoadSchedulesExtendedTests(TestCase):
         delivery_items = r.json().get('categorized', {}).get('quote_delivery', [])
         payload = next(item for item in delivery_items if item['id'] == delivery_schedule.pk)
         self.assertEqual(payload['amount'], '88,000원')
+        self.assertEqual(payload['amount_label'], '납품 금액')
+
+    def test_delivery_schedule_preserves_explicit_zero_history_amount(self):
+        """명시적으로 저장된 0원 납품 금액도 응답에 포함"""
+        from decimal import Decimal
+        from reporting.models import History, Schedule
+        import datetime
+
+        delivery_schedule = Schedule.objects.create(
+            user=self.salesman, followup=self.followup,
+            visit_date=datetime.date(2026, 4, 26),
+            visit_time=datetime.time(16, 0),
+            activity_type='delivery', status='completed',
+        )
+        History.objects.create(
+            user=self.salesman,
+            followup=self.followup,
+            schedule=delivery_schedule,
+            action_type='delivery_schedule',
+            content='무상 납품',
+            delivery_amount=Decimal('0'),
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+        self.assertEqual(r.status_code, 200)
+        delivery_items = r.json().get('categorized', {}).get('quote_delivery', [])
+        payload = next(item for item in delivery_items if item['id'] == delivery_schedule.pk)
+        self.assertEqual(payload['amount'], '0원')
         self.assertEqual(payload['amount_label'], '납품 금액')
 
 

@@ -71,6 +71,16 @@ ALLOWED_CSS_PROPERTIES = [
 
 _css_sanitizer = CSSSanitizer(allowed_css_properties=ALLOWED_CSS_PROPERTIES) if _BLEACH_AVAILABLE else None
 
+_RICH_TEXT_TAG_RE = re.compile(
+    r'</?\s*(p|div|br|h2|h3|h4|ul|ol|li|blockquote|pre|hr|strong|b|em|i|u|s|span|a|table|thead|tbody|tr|th|td)\b',
+    re.IGNORECASE,
+)
+_ESCAPED_RICH_TEXT_TAG_RE = re.compile(
+    r'&lt;/?\s*(p|div|br|h2|h3|h4|ul|ol|li|blockquote|pre|hr|strong|b|em|i|u|s|span|a|table|thead|tbody|tr|th|td)\b',
+    re.IGNORECASE,
+)
+_OUTER_PARAGRAPH_RE = re.compile(r'^\s*<p(?:\s[^>]*)?>(?P<body>.*)</p>\s*$', re.IGNORECASE | re.DOTALL)
+
 
 def _safe_link_callback(attrs, new=False):
     """a 태그 href에서 javascript: URL 차단, target 설정."""
@@ -84,6 +94,67 @@ def _safe_link_callback(attrs, new=False):
     return attrs
 
 
+def normalize_report_html_input(text: str) -> str:
+    """
+    Quill HTML이 한 번 문자열로 escape되어 들어온 값을 정상 HTML로 복구합니다.
+
+    대표 증상:
+    - <p>&lt;p&gt;내용&lt;/p&gt;</p>
+    - &lt;p&gt;내용&lt;/p&gt;
+
+    사용자가 실제로 작성한 일반 텍스트는 건드리지 않고, rich-text 태그가
+    entity 형태로 들어온 경우만 제한적으로 unescape합니다.
+    """
+    if not text:
+        return ''
+
+    normalized = str(text).strip()
+
+    outer = _OUTER_PARAGRAPH_RE.match(normalized)
+    if outer and _ESCAPED_RICH_TEXT_TAG_RE.search(outer.group('body')):
+        normalized = outer.group('body').strip()
+
+    for _ in range(3):
+        if not _ESCAPED_RICH_TEXT_TAG_RE.search(normalized):
+            break
+        unescaped = _html_module.unescape(normalized).strip()
+        if unescaped == normalized:
+            break
+        if _RICH_TEXT_TAG_RE.search(unescaped):
+            normalized = unescaped
+        else:
+            break
+
+    return normalized
+
+
+def _html_to_plain_paragraphs(value: str) -> str:
+    """bleach가 없는 환경에서 HTML 태그 문자열 노출을 피하기 위한 fallback."""
+    if not value:
+        return ''
+
+    text = normalize_report_html_input(value)
+    text = re.sub(r'<\s*br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</\s*(p|div|li|h2|h3|h4|blockquote)\s*>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<\s*(p|div|li|h2|h3|h4|blockquote)(?:\s[^>]*)?>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = _html_module.unescape(text)
+    lines = [line.strip() for line in text.splitlines()]
+    paragraphs = []
+    current = []
+    for line in lines:
+        if line:
+            current.append(line)
+        elif current:
+            paragraphs.append('<br>'.join(_html_module.escape(part) for part in current))
+            current = []
+    if current:
+        paragraphs.append('<br>'.join(_html_module.escape(part) for part in current))
+    if not paragraphs:
+        return ''
+    return ''.join(f'<p>{paragraph}</p>' for paragraph in paragraphs)
+
+
 def sanitize_html(html: str) -> str:
     """
     사용자 입력 HTML을 정화하여 안전한 HTML 문자열을 반환합니다.
@@ -95,9 +166,10 @@ def sanitize_html(html: str) -> str:
     if not html:
         return ''
 
+    html = normalize_report_html_input(html)
+
     if not _BLEACH_AVAILABLE:
-        # fallback: 태그를 모두 이스케이프하여 안전하게 표시
-        return '<p>' + _html_module.escape(html).replace('\n', '<br>') + '</p>'
+        return _html_to_plain_paragraphs(html)
 
     cleaned = bleach.clean(
         html,
@@ -127,7 +199,7 @@ def is_html_content(text: str) -> bool:
     """
     if not text:
         return False
-    stripped = text.strip()
+    stripped = normalize_report_html_input(text)
     return bool(re.match(r'^\s*<[a-zA-Z]', stripped))
 
 
@@ -141,6 +213,7 @@ def render_report_field(text: str) -> str:
     """
     if not text:
         return ''
+    text = normalize_report_html_input(text)
     if is_html_content(text):
         return sanitize_html(text)
     # 레거시 플레인 텍스트: 개행 보존, HTML 이스케이프

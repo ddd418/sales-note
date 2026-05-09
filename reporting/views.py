@@ -18454,37 +18454,42 @@ def weekly_report_load_schedules(request):
         except (InvalidOperation, TypeError, ValueError):
             return Decimal('0')
 
-    def _amount_label(value):
+    def _amount_label(value, show_zero=False):
         amount = _decimal_or_zero(value)
-        if amount <= 0:
+        if amount < 0:
+            return ''
+        if amount == 0 and not show_zero:
             return ''
         return f'{int(amount):,}원'
 
     def _delivery_items_total(schedule):
+        items = getattr(schedule, 'linked_delivery_items', []) or []
         return sum(
-            (_decimal_or_zero(item.total_price) for item in (getattr(schedule, 'linked_delivery_items', []) or [])),
+            (_decimal_or_zero(item.total_price) for item in items),
             Decimal('0'),
-        )
+        ), bool(items)
 
     def _history_delivery_amount(schedule):
         histories = getattr(schedule, 'linked_histories', []) or []
         for history in histories:
             if history.action_type == 'delivery_schedule' and history.delivery_amount is not None:
-                return _decimal_or_zero(history.delivery_amount)
+                return _decimal_or_zero(history.delivery_amount), True
         for history in histories:
             if history.delivery_amount is not None:
-                return _decimal_or_zero(history.delivery_amount)
-        return Decimal('0')
+                return _decimal_or_zero(history.delivery_amount), True
+        return Decimal('0'), False
 
     def _schedule_amount_value(schedule):
-        item_total = _delivery_items_total(schedule)
-        if item_total > 0:
-            return item_total
+        item_total, has_items = _delivery_items_total(schedule)
+        if has_items:
+            return item_total, True
         if schedule.activity_type == 'delivery':
-            history_amount = _history_delivery_amount(schedule)
-            if history_amount > 0:
-                return history_amount
-        return _decimal_or_zero(schedule.expected_revenue)
+            history_amount, has_history_amount = _history_delivery_amount(schedule)
+            if has_history_amount:
+                return history_amount, True
+        if schedule.expected_revenue is not None:
+            return _decimal_or_zero(schedule.expected_revenue), True
+        return Decimal('0'), False
 
     for s in schedules:
         fu = s.followup
@@ -18497,7 +18502,8 @@ def weekly_report_load_schedules(request):
             }
             for q in (s.linked_quotes or [])
         ]
-        schedule_amount = _amount_label(_schedule_amount_value(s))
+        schedule_amount_value, has_schedule_amount = _schedule_amount_value(s)
+        schedule_amount = _amount_label(schedule_amount_value, show_zero=has_schedule_amount)
         quote_has_amount = any(q['amount'] for q in quotes)
         amount = ''
         amount_label = ''
@@ -18530,7 +18536,7 @@ def weekly_report_load_schedules(request):
                     'snippet': _history_snippet(h),
                     'next_action': h.next_action or '',
                     'next_action_date': h.next_action_date.strftime('%m/%d') if h.next_action_date else '',
-                    'amount': _amount_label(h.delivery_amount) if h.delivery_amount is not None else '',
+                    'amount': _amount_label(h.delivery_amount, show_zero=True) if h.delivery_amount is not None else '',
                 }
                 for h in (s.linked_histories or [])
             ],
@@ -18550,7 +18556,8 @@ def weekly_report_load_schedules(request):
         fu = s_obj.followup
         flat_amount = ''
         flat_amount_label = ''
-        flat_schedule_amount = _amount_label(_schedule_amount_value(s_obj))
+        flat_schedule_amount_value, has_flat_schedule_amount = _schedule_amount_value(s_obj)
+        flat_schedule_amount = _amount_label(flat_schedule_amount_value, show_zero=has_flat_schedule_amount)
         if s_obj.activity_type == 'delivery' and flat_schedule_amount:
             flat_amount = flat_schedule_amount
             flat_amount_label = '납품 금액'

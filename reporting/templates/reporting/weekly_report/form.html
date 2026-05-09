@@ -528,11 +528,36 @@ function generateAiDraft() {
   window.quillQuoteDelivery  = makeQuill('quoteDeliveryNotesEditor');
   window.quillOther          = makeQuill('otherNotesEditor');
 
+  function decodeHtmlEntities(str) {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = str;
+    return textarea.value;
+  }
+
+  function normalizeEditorHtmlInput(value) {
+    let normalized = (value || '').trim();
+    const escapedTagPattern = /&lt;\/?\s*(p|div|br|h2|h3|h4|ul|ol|li|blockquote|pre|hr|strong|b|em|i|u|s|span|a|table|thead|tbody|tr|th|td)\b/i;
+    const htmlTagPattern = /<\/?\s*(p|div|br|h2|h3|h4|ul|ol|li|blockquote|pre|hr|strong|b|em|i|u|s|span|a|table|thead|tbody|tr|th|td)\b/i;
+    const outerParagraph = normalized.match(/^\s*<p(?:\s[^>]*)?>([\s\S]*)<\/p>\s*$/i);
+
+    if (outerParagraph && escapedTagPattern.test(outerParagraph[1])) {
+      normalized = outerParagraph[1].trim();
+    }
+
+    for (let i = 0; i < 3 && escapedTagPattern.test(normalized); i += 1) {
+      const decoded = decodeHtmlEntities(normalized).trim();
+      if (!decoded || decoded === normalized) break;
+      if (htmlTagPattern.test(decoded)) normalized = decoded;
+      else break;
+    }
+    return normalized;
+  }
+
   // ─── 수정 모드: 기존 내용 불러오기 ──────────────────────────────────────
   function initEditorContent(quill, hiddenInputId) {
     const input = document.getElementById(hiddenInputId);
     if (!input) return;
-    const val = input.value.trim();
+    const val = normalizeEditorHtmlInput(input.value);
     if (!val) return;
     // HTML 콘텐츠 감지 (bleach 정화된 HTML 또는 레거시 플레인텍스트)
     if (val.startsWith('<')) {

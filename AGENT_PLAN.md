@@ -1957,3 +1957,26 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 서비스 배포 및 운영 `/reporting/weekly-reports/create/` 수동검수 절차 제공
+
+---
+
+## Urgent Weekly Report Rich Text HTML Normalization — 주간보고 HTML 이중 escape 방지
+
+**목표**: 주간보고 작성/수정 저장 시 Quill HTML이 `<p>&lt;p&gt;...` 형태로 이중 escape되어 저장/표시되는 문제를 막는다.
+
+**작업 범위**:
+
+- 주간보고 HTML 정화 유틸에 escaped rich text 입력을 정상 HTML로 되돌리는 정규화 단계를 추가한다.
+- `<p>&lt;p&gt;...&lt;/p&gt;</p>`처럼 이미 깨진 저장값도 상세 렌더링 시 정상 문단으로 보정한다.
+- `bleach` fallback 환경에서도 HTML 태그 문자열이 그대로 보이지 않도록 plain text 문단으로 변환한다.
+- 주간보고 생성 POST 회귀 테스트로 저장값과 상세 렌더링에 `&lt;p&gt;`가 남지 않는지 검증한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `WeeklyReport` 텍스트 필드와 HTML 정화 유틸만 수정한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 서비스 배포 및 운영 `/reporting/weekly-reports/create/` 수동검수 절차 제공
