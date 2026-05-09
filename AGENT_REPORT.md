@@ -8479,3 +8479,69 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 수동 검수 후 다음 단계는 후속조치/완료 처리 또는 일정 납품 품목 편집처럼 아직 Django 보조 화면에 남아 있는 고위험 부가 기능을 하나씩 React로 옮기는 작업이 적절합니다.
+
+---
+
+## Production Note Replies Deployment — 영업노트 댓글 운영 배포 (2026-05-09)
+
+### 1. Summary
+
+React 영업노트 상세 댓글/매니저 메모 작성·삭제 변경분을 GitHub `main`에 푸시하고 Railway production의 `web`, `sales-note-frontend` 서비스를 배포했습니다. 운영 `/notes/<id>/`가 새 번들을 내려주고, Django 노트 상세 API는 미로그인 상태에서 계속 보호되는 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 검증 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React `/notes/<id>/` 상세 화면에 댓글 작성 폼과 삭제 버튼이 포함됐습니다.
+- 운영 Django 노트 상세 API가 댓글 작성 URL과 댓글별 삭제 가능 여부를 제공합니다.
+- Manager/실무자 댓글 작성 권한과 작성자 본인 삭제 정책이 운영에 적용됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- Django `web` 서비스는 React의 API/login/proxy backend이므로 유지했습니다.
+- 기존 `/reporting/api/histories/<id>/add-manager-memo/`, `/reporting/api/histories/<id>/delete-manager-memo/` 경로는 유지했습니다.
+- `/reporting/api/notes/<id>/`는 미로그인 상태에서 계속 `401 login_required`로 보호됩니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add React note replies"
+→ d8205f6 feat: add React note replies
+
+git push origin main
+→ main updated from cb1817d to d8205f6
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS, deployment id 9f488b45-89bb-4251-80a7-ec729ee1a4a3
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React note replies d8205f6" --ci
+→ Deploy complete, deployment id 89b063ee-5d5b-4a09-bfd9-4b019a2ab64f
+
+railway status
+→ web Online, sales-note-frontend Online
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/notes/731/
+→ 200, assets/index-C3bZV9lB.js / assets/index-Ddxdl7EV.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-C3bZV9lB.js
+→ 댓글 입력 검증=True, 댓글 삭제 확인=True, 댓글 추가 성공 문구=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-Ddxdl7EV.css
+→ note-reply-compose=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/notes/731/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션으로 `/notes/731/`에서 실무자 댓글 작성/삭제, manager 매니저 메모 작성/삭제까지 이어지는 육안 확인은 사용자 계정에서 확인해야 합니다.
+- 댓글 편집은 포함하지 않았습니다. 현재는 작성자 본인 삭제 후 재작성 흐름입니다.
+
+### 7. Recommended Next Task
+
+- 후속조치 완료 처리나 일정 납품 품목 편집처럼 아직 Django 보조 화면에 남아 있는 세부 기능을 우선순위대로 React로 이전합니다.
