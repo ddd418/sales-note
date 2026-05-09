@@ -9160,3 +9160,84 @@ git diff --check
 ### 7. Recommended Next Task
 
 - 이번 변경을 커밋/푸시하고 Railway `web`, `sales-note-frontend`에 배포한 뒤 `/customers/454/` 기준으로 고객 상세 AI 결과/검증 수동테스트를 진행합니다.
+
+---
+
+## Production Customer AI Result Verification Deployment — 고객 상세 AI 결과/검증 운영 배포 (2026-05-10)
+
+### 1. Summary
+
+React 고객 상세 AI 결과/검증 변경과 React 단일 CRM 프론트 목표 문서화를 GitHub `main`에 푸시하고 Railway production `web`, `sales-note-frontend` 서비스에 배포했습니다. 운영 `/customers/454/`가 새 React 번들을 서빙하고, 고객 상세 API가 비로그인 상태에서 `401 login_required`로 보호되는 것을 확인했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_REPORT.md` | 운영 배포 및 수동테스트 절차 기록 추가 |
+
+### 3. CRM Improvements
+
+- 운영 React 고객 상세에서 AI 분석 결과 패널과 PainPoint 검증 UI가 포함된 새 번들이 배포됐습니다.
+- Django 고객 상세 API에 AI 결과/PainPoint payload가 배포됐습니다.
+- 프로젝트 문서에 React 단일 CRM 프론트와 Django backend/API 전환 목표가 반영됐습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 Django `/ai/department/<id>/`, `/ai/card/<id>/verify/`, `/reporting/*` 경로는 유지했습니다.
+- 기존 로그인 보호는 유지되어 비로그인 고객 상세 API 접근은 `401 login_required`를 반환합니다.
+- DB migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+git commit -m "feat: add customer AI result verification"
+→ 089d71f feat: add customer AI result verification
+
+git push origin main
+→ main updated from 59c0999 to 089d71f
+
+railway status
+→ web Online, sales-note-frontend Online
+
+railway redeploy --service web --from-source --yes --json
+→ {"success": true}
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy customer AI result verification 089d71f" --ci
+→ Deploy complete, deployment id 6d1cb36c-e22c-4650-ba7f-4e76344f32f8
+
+railway deployment list --service web --json
+→ latest web deployment 4a4d01e5-f1c4-4d03-8bf9-325f211b8d14, SUCCESS, commit 089d71f
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/454/
+→ 200, assets/index-zyiEigxz.js / assets/index-CZEfolrn.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-zyiEigxz.js
+→ customer-ai-result=True, AI PainPoint verification=True, PainPoint=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-CZEfolrn.css
+→ customer-ai-result=True, customer-ai-painpoint=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/454/
+→ 401 login_required, 정상
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 계정에서 AI 결과 패널 펼치기, PainPoint 검증 저장, 카운트 갱신까지의 수동검수는 사용자 계정에서 필요합니다.
+- Django AI 상세의 삭제 기능은 React 고객 상세에 추가하지 않았습니다. 삭제는 기존 Django AI 상세에서 계속 처리합니다.
+
+### 7. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/customers/454/`
+2. AI 권한이 있는 본인 담당 고객 계정으로 로그인합니다.
+3. 고객 상세 오른쪽 `Department AI` 카드에서 분석 요약과 지표가 보이는지 확인합니다.
+4. `결과 보기` 버튼을 눌러 미팅 인사이트, 견적/납품 분석, 추천 액션, 확인 필요 사항, PainPoint 검증 섹션이 펼쳐지는지 확인합니다.
+5. 미검증 PainPoint 카드에 검증 메모를 입력하고 `확인`을 누릅니다.
+6. 저장 후 성공 메시지, 미검증 카운트 감소, 카드 상태 변경이 반영되는지 확인합니다.
+7. 다른 미검증 카드가 있으면 `부정`도 같은 방식으로 테스트합니다.
+8. AI 권한이 없는 계정 또는 본인 담당 부서가 아닌 고객에서는 실행/검증 버튼이 비활성화되는지 확인합니다.
+9. 기존 `Django 보기` 링크가 `/ai/department/<id>/`로 정상 이동하는지 확인합니다.
+
+### 8. Recommended Next Task
+
+- 사용자의 운영 수동검수 결과를 받은 뒤 다음 React 전환 작업을 진행합니다.
