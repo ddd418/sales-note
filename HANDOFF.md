@@ -14,73 +14,65 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React weekly reports first integration is implemented, pushed, deployed, and smoke-tested.
+React schedule documents first integration is implemented, pushed, deployed, and smoke-tested.
 
 Runtime commit:
 
 ```text
-8c9fdb6 feat: add React weekly reports
+ed5e43c feat: add React schedule documents
 ```
 
 Implemented:
 
-- React routes:
-  - `/weekly-reports/`
-  - `/weekly-reports/new/`
-  - `/weekly-reports/<id>/`
-  - `/weekly-reports/<id>/edit/`
-- Django JSON APIs:
-  - `/reporting/api/weekly-reports/`
-  - `/reporting/api/weekly-reports/create/`
-  - `/reporting/api/weekly-reports/<id>/`
-  - `/reporting/api/weekly-reports/<id>/update/`
-  - `/reporting/api/weekly-reports/<id>/delete/`
-- React weekly report nav item, list filters, metrics, detail view, edit/create form, schedule insertion panel, AI draft button, and manager comment save.
-- Existing Django weekly report template routes remain as fallback.
+- React schedule detail (`/schedules/<id>/`) now shows a `서류 다운로드` panel for document-capable schedules.
+- Quote schedules expose `견적서`.
+- Delivery schedules expose `거래명세서` and `납품서`.
+- React calls existing Django document preview endpoint `/reporting/documents/template-data/<document_type>/<schedule_id>/`.
+- React calls existing Django document generation endpoint `/reporting/documents/generate/<document_type>/<schedule_id>/<output_format>/`.
+- React preview groups template variables, flags empty values, and lists document items.
+- Django schedule detail API now returns document actions, active template counts, preview URLs, and PDF/Excel generation URLs.
+- Existing Django document template management remains linked as fallback.
 - No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
 python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
-cd frontend; npm run build
-cd frontend; node --check server.mjs
 python manage.py check
 python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
 git diff --check
 ```
 
 Results:
 
-- 21 weekly report tests OK.
-- React build OK: `assets/index-D6rGbRO3.js` / `assets/index-CjVBFS4u.css`.
+- 27 schedule API tests OK.
+- React build OK: `assets/index-CSJjhwCa.js` / `assets/index-DEZuogRh.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- Railway `web`: `4216824a-7d1f-4850-8624-11dca0b40b26` SUCCESS.
-- Railway `sales-note-frontend`: `fd8547fc-63f8-4962-92de-88b182eb7984` SUCCESS.
-- Frontend bundle smoke confirmed JS contains `weeklyReports`, `주간보고 작성`, `/reporting/api/weekly-reports/`; CSS contains `.weekly-page`, `.weekly-report-row`, `.weekly-editor-layout`, `.weekly-schedule-card`.
-- Anonymous smoke:
-  - `https://sales-note-frontend-production.up.railway.app/weekly-reports/` → 200.
-  - `https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/` → 401 `login_required`.
-  - `https://web-production-5096.up.railway.app/reporting/api/weekly-reports/` → 401 `login_required`.
-  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+- Railway `web`: `18b88087-7c25-4835-98fd-8c34c505879c` SUCCESS.
+- Railway `sales-note-frontend`: `4f867493-7910-46f3-9762-81d3416bcb80` SUCCESS.
+- Production `/schedules/1/` returns 200 and serves `assets/index-CSJjhwCa.js` / `assets/index-DEZuogRh.css`.
+- Frontend JS contains `schedule-documents-panel` and document download handling.
+- Frontend CSS contains `schedule-document-card` and `schedule-document-variable-row`.
+- Anonymous frontend-proxied and direct backend `/reporting/api/schedules/1/` both return `401 login_required`.
+- Anonymous document preview and generate endpoints redirect to `/reporting/login/`.
 
 Manual production test:
 
-1. Open `https://sales-note-frontend-production.up.railway.app/weekly-reports/`.
-2. Confirm the `주간보고` sidebar item and list filters work.
-3. Create a report from `/weekly-reports/new/`.
-4. Use `일정 불러오기`, select schedule cards, and insert into 영업활동 or 견적/납품.
-5. If the account has AI permission, use `AI 초안`.
-6. Save and confirm detail readability, especially paragraph/line breaks.
-7. Edit/delete with the author account.
-8. Save a manager comment with a manager/admin account.
-9. Confirm Django fallback `/reporting/weekly-reports/` remains available.
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/<quote_schedule_id>/`.
+2. Confirm the right-side `서류 다운로드` section shows `견적서`.
+3. Click `미리보기` and verify variable groups, empty-value highlighting, and item count.
+4. Download `PDF` and `Excel`.
+5. Open `https://sales-note-frontend-production.up.railway.app/schedules/<delivery_schedule_id>/`.
+6. Confirm `거래명세서` and `납품서` each support preview/download.
+7. Confirm the `템플릿` link opens existing Django document template management.
 
 ## Previous Task
 
@@ -611,7 +603,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-8c9fdb6 feat: add React weekly reports
+ed5e43c feat: add React schedule documents
 ```
 
 ## Known Caveats
@@ -630,14 +622,16 @@ Confirmed by user:
 - React dashboard logout button: confirmed complete.
 - Weekly report urgent fixes: good.
 - Django schedule calendar restoration: confirmed complete.
+- React schedule calendar: confirmed complete.
 
 Needs awareness:
 
+- React schedule documents is deployed and awaits user manual production testing.
 - React pipeline department AI panel is deployed and can be manually tested.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.
 
-## Latest In-Progress Work: React Schedule Calendar
+## Previous Completed Work: React Schedule Calendar
 
 User confirmed the weekly report flow works except the `일정 불러오기` button needed to be on the right. That position fix was implemented first, built, committed previously as `2d02547 fix: move weekly schedule loader panel`, pushed, deployed to `sales-note-frontend` deployment `c9d534dd-8e6b-4943-8af2-89f9d643f004`, and smoke-tested (`/weekly-reports/new/` 200, JS/CSS bundle contains `weekly-schedule-load`).
 

@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React Schedule Documents First Integration
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -53,11 +53,41 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: add React schedule documents"
+→ ed5e43c
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React schedule documents ed5e43c" --ci
+→ 4f867493-7910-46f3-9762-81d3416bcb80 SUCCESS
+
+railway deployment list --service web --environment production --limit 2 --json
+→ 18b88087-7c25-4835-98fd-8c34c505879c SUCCESS
 ```
 
 ### 배포 상태
 
-- 운영 배포 예정.
+- Runtime commit: `ed5e43c feat: add React schedule documents`
+- GitHub push: `main` updated from `bbdded8` to `ed5e43c`
+- Railway `web`: `18b88087-7c25-4835-98fd-8c34c505879c` SUCCESS, commit `ed5e43c`
+- Railway `sales-note-frontend`: `4f867493-7910-46f3-9762-81d3416bcb80` SUCCESS, message `Deploy React schedule documents ed5e43c`
+- Production `/schedules/1/` returns 200 and serves `assets/index-CSJjhwCa.js` / `assets/index-DEZuogRh.css`
+- Production JS contains `schedule-documents-panel` and document download handling code.
+- Production CSS contains `schedule-document-card` and `schedule-document-variable-row`.
+- Anonymous frontend proxy `/reporting/api/schedules/1/` returns `401 login_required`.
+- Anonymous direct backend `/reporting/api/schedules/1/` returns `401 login_required`.
+- Anonymous document preview and generate endpoints redirect to `/reporting/login/`.
+
+### 알려진 제한
+
+- 실제 PDF/Excel 생성 성공 여부는 회사별 활성 `DocumentTemplate` 등록 상태와 기존 Django 문서 생성 엔진에 따라 달라집니다.
+- PDF 변환 품질과 fallback 동작은 기존 Django 서류 생성 로직을 그대로 따릅니다.
+
+### 권장 다음 작업
+
+- 사용자 운영 검수 후 React 서류 템플릿 관리 화면(`/documents/`) 1차 통합을 진행하면 서류 생성 workflow가 더 완결됩니다.
 
 ### 수동 서버 테스트 절차
 
