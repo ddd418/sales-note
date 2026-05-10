@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — AI Verification Notes In Department Summary
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -50,7 +50,11 @@ git diff --check
 
 ### 배포 상태
 
-- 커밋/푸시 후 Railway `web` 배포 예정.
+- Runtime commit: `bf5dd23 fix: include AI verification notes in summary`
+- GitHub push: `main` updated from `2a9fe28` to `bf5dd23`
+- Railway `web`: `d67036bf-1de5-44cd-b9b3-881ef6652d7b` SUCCESS, commit `bf5dd23`
+- Production smoke: anonymous `/ai/` redirects to `/reporting/login/?next=/ai/`
+- Production smoke: `/reporting/login/` returns 200 OK
 - React bundle 변경은 없어 `sales-note-frontend` 직접 배포는 필요하지 않습니다.
 
 ### 수동 서버 테스트 절차
@@ -64,7 +68,7 @@ git diff --check
 
 ### 다음 권장 작업
 
-- 이 작업 배포 후, 사용자가 추가 요청한 “고객과 주고받은 메일을 AI 분석 컨텍스트에 반영” 작업을 이어서 진행합니다.
+- 사용자가 추가 요청한 “고객과 주고받은 메일을 AI 분석 컨텍스트에 반영” 작업과 “락인/견적/미팅 고객 단계별 다음 액션 생성” 작업을 이어서 진행합니다.
 
 ---
 

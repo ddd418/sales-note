@@ -14,23 +14,22 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React pipeline department AI panel.
+AI analysis context expansion.
 
-Implemented, pushed, and deployed to production:
+Latest completed task:
 
-- `/reporting/api/pipeline/` deal payload에 `aiDepartment` compact payload 추가.
-- React 파이프라인 우측 상세 패널에 `Department AI` 카드 추가.
-- 선택 고객의 부서 AI 요약, 미팅/견적/납품/PainPoint 카운트, 미검증 PainPoint 알림, AI 결과/허브 링크 표시.
-- 기존 파이프라인 단계 이동, 견적/납품 금액, Django 고객 상세 링크 유지.
+- PainPoint verification notes now influence the next department AI analysis summary.
+- Implemented in `ai_chat/services.py` with deterministic `department_summary` fallback.
+- Confirmed notes are summarized as confirmed facts; denied notes are summarized as denied hypotheses.
+- Existing `verification_insights`, `next_actions`, and `missing_info` fallback behavior is preserved.
 - DB 변경 없음.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.PipelineApiTests --verbosity=1
-cd frontend; npm run build
-cd frontend; node --check server.mjs
-python -m py_compile reporting\funnel_views.py reporting\tests.py
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+python manage.py test ai_chat.tests --verbosity=1
+python -m py_compile ai_chat\services.py ai_chat\tests.py
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
@@ -38,26 +37,28 @@ git diff --check
 
 Results:
 
-- 12 targeted pipeline tests OK.
-- React build OK, bundle `index-CLXRI0TH.js` / `index-AuyH7qvg.css`.
+- 2 targeted memory tests OK.
+- 16 ai_chat tests OK.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment status:
 
-- Runtime commit: `b8e65e9 feat: show department AI in pipeline panel`.
-- Railway `web`: `9690f304-7adb-465b-b582-61ea58192a46` SUCCESS.
-- Railway `sales-note-frontend`: `458c5243-9a04-48b7-bb80-6378231885de` SUCCESS.
-- Production `/dashboard/` serves `index-CLXRI0TH.js` / `index-AuyH7qvg.css`.
-- Production JS contains `aiDepartment`, `Department AI`, `pipeline-ai-card`, and `미검증 PainPoint`.
-- Production CSS contains `pipeline-ai-alert` and `customer-ai-card`.
-- Anonymous pipeline API smoke redirects to `/reporting/login/`.
+- Runtime commit: `bf5dd23 fix: include AI verification notes in summary`.
+- Railway `web`: `d67036bf-1de5-44cd-b9b3-881ef6652d7b` SUCCESS.
+- Production anonymous `/ai/` redirects to `/reporting/login/?next=/ai/`.
+- Production `/reporting/login/` returns 200 OK.
+- React bundle was not rebuilt because this was backend-only.
 
 Next queued by user:
 
-1. Make PainPoint verification notes influence the next AI analysis summary.
-2. Make customer email exchanges, especially inbound customer emails, available to AI analysis context.
+1. Make customer email exchanges, especially inbound customer emails, available to AI analysis context.
+2. Make AI generate stage-aware next actions:
+   - locked-in/won customers: order/win-related next actions
+   - quote customers: quote contents, meetings, and email replies
+   - meeting-only customers: meetings and email replies
+3. After analysis, use verification messages as strongly as possible.
 
 ## Previous Deployed Task
 

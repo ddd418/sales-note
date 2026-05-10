@@ -19,6 +19,8 @@
 - 시스템 프롬프트도 `department_summary`에 검증 메모를 반영하라고 지시한다.
 - 다만 GPT가 요약에서 검증 메모를 약하게 반영하거나 누락할 경우 서버 fallback이 `department_summary`까지 보정하지는 않는다.
 - DB 변경 필요 없음.
+- 구현/로컬 검증/푸시/Railway `web` 운영 배포 완료.
+- 운영 anonymous `/ai/`는 `/reporting/login/?next=/ai/`로 redirect되어 인증 보호 유지 확인.
 
 ### 구현 계획
 
@@ -35,6 +37,59 @@
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 배포 및 운영 AI API login 보호 smoke check
+
+---
+
+## Current urgent task — 고객 메일 AI 분석 컨텍스트 반영
+
+**목표**: 고객과 주고받은 메일, 특히 고객이 보낸 답장/문의 메일을 부서 AI 분석 근거에 포함해 PainPoint, 요약, 다음 액션 판단에 활용한다.
+
+### 확인할 상태
+
+- 기존 Gmail/IMAP/EmailLog 저장 모델과 FollowUp/Department 연결 방식을 먼저 확인한다.
+- 메일 본문은 AI 프롬프트에 넣기 전 제목/방향/발신자/수신자/일시/요약 본문만 제한 길이로 정리한다.
+- 내부 영업 데이터와 인증/권한 범위는 기존 부서 AI 권한 정책을 유지한다.
+- 신규 DB 필드가 필요한지 확인하되, 우선 기존 메일 로그 저장 데이터를 활용한다.
+
+### 구현 계획
+
+- `EmailLog` 또는 기존 메일 저장 모델에서 선택 고객/부서와 연결된 최근 메일을 수집하는 helper를 추가한다.
+- 고객 inbound 메일을 우선 정렬/강조하고, outbound 메일은 맥락 보조 자료로 제한한다.
+- 부서 AI 프롬프트에 `고객 메일/답장 컨텍스트` 섹션을 추가한다.
+- GPT 응답 계약 또는 서버 fallback에 메일 기반 다음 액션이 누락되지 않도록 보정한다.
+- 단위 테스트로 inbound 메일 문구가 AI 프롬프트와 다음 액션 판단 근거에 포함되는지 검증한다.
+
+### 검증 계획
+
+- `python manage.py test ai_chat.tests --verbosity=1`
+- 필요 시 `python manage.py test reporting.tests.*Email* --verbosity=1`
+- `python -m py_compile ai_chat/services.py reporting/models.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 login 보호 smoke check
+
+---
+
+## Current urgent task — 고객 단계별 다음 액션 AI 보고
+
+**목표**: AI 분석 시 고객 단계에 따라 다음 액션을 다르게 산출한다. 락인 고객은 수주 관련 다음 액션, 견적 고객은 견적/미팅/메일 답장 기반 다음 액션, 미팅만 한 고객은 미팅/메일 답장 기반 다음 액션을 보고한다.
+
+### 구현 계획
+
+- FollowUp `pipeline_stage`와 연결 견적/미팅/메일 기록으로 고객 분석 단계를 판별한다.
+- `won`/락인 성격 고객은 수주 이후 확장, 납품, 후속 구매, 리텐션 중심 액션을 우선한다.
+- 견적 단계 고객은 견적 내용, 미팅 내용, 고객 메일 답장을 함께 보고 가격/조건/일정/의사결정자 확인 액션을 만든다.
+- 미팅만 있는 고객은 미팅 기록과 메일 답장을 기반으로 요구사항 확인, 자료 전달, 다음 미팅/견적화 액션을 만든다.
+- 검증 메시지는 분석 이후에도 우선 근거로 활용하며, 기존 검증 메모 summary fallback과 충돌하지 않게 통합한다.
+
+### 검증 계획
+
+- 고객 단계별 AI 프롬프트/서버 fallback 테스트 추가
+- `python manage.py test ai_chat.tests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
 
 ---
 
