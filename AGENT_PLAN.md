@@ -21,7 +21,7 @@
 - DB 변경 필요 없음.
 - 구현/로컬 검증/푸시/Railway `sales-note-frontend` 운영 배포 완료.
 - 운영 번들 `assets/index-cLy6Pc7s.js` / `assets/index-D1AABLev.css`에서 `로그아웃`, `/reporting/logout/`, `X-CSRFToken`, `logout-button` 확인 완료.
-- 사용자 운영 수동검수 대기 중.
+- 사용자 운영 수동검수 완료: 2026-05-10.
 
 ### 구현 계획
 

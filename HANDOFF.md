@@ -48,7 +48,7 @@ Deployment status:
 - Production JS contains `로그아웃`, `/reporting/logout/`, `X-CSRFToken`, and `/reporting/login/`.
 - Production CSS contains `logout-button`.
 - Anonymous dashboard API smoke returns `401 login_required`.
-- Manual production logout click test is pending from the user. Do not start the next feature task until the user confirms the server-side test or explicitly asks to proceed.
+- Manual production logout click test completed by the user on 2026-05-10.
 
 ## Previous Deployed Task
 
@@ -458,11 +458,11 @@ railway deployment list --service sales-note-frontend --environment production -
 
 Confirmed by user:
 
+- React dashboard logout button: confirmed complete.
 - Weekly report urgent fixes: good.
 - Django schedule calendar restoration: confirmed complete.
 
 Needs awareness:
 
-- React dashboard logout button is deployed and awaits user manual production testing.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.
