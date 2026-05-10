@@ -927,6 +927,43 @@ export type PrepaymentListItem = {
   djangoCustomerPrepaymentHref: string;
 };
 
+export type PrepaymentUsageItem = {
+  id: number;
+  usedAt: string | null;
+  productName: string;
+  quantity: number;
+  amount: number;
+  remainingBalance: number;
+  memo: string;
+  scheduleId: number | null;
+  scheduleDate: string | null;
+  scheduleHref: string;
+  djangoScheduleHref: string;
+  deliveryItems: Array<{
+    id: number;
+    itemName: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+};
+
+export type PrepaymentCustomerOption = {
+  id: number;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  ownerName: string;
+  label: string;
+};
+
+export type PrepaymentFormOptions = {
+  customers: PrepaymentCustomerOption[];
+  paymentMethods: Array<{ value: string; label: string }>;
+  statuses: Array<{ value: string; label: string }>;
+};
+
 export type PrepaymentsData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -971,6 +1008,87 @@ export type PrepaymentsData = {
     customers: string;
   };
   prepayments: PrepaymentListItem[];
+};
+
+export type PrepaymentDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    canManage: boolean;
+    isOwner: boolean;
+  };
+  prepayment: (PrepaymentListItem & {
+    usagePercent: number;
+    balancePercent: number;
+  }) | null;
+  metrics: {
+    amount: number;
+    balance: number;
+    usedAmount: number;
+    usageCount: number;
+    usagePercent: number;
+    balancePercent: number;
+  };
+  links: {
+    prepayments: string;
+    reactDetail: string;
+    reactEdit: string;
+    djangoList: string;
+    djangoDetail: string;
+    djangoEdit: string;
+    djangoDelete: string;
+    djangoTransfer: string;
+  };
+  edit: PrepaymentFormOptions & {
+    canEdit: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+  };
+  usages: PrepaymentUsageItem[];
+};
+
+export type PrepaymentCreateData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  create: PrepaymentFormOptions & {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+  };
+  links: {
+    prepayments: string;
+    djangoList: string;
+  };
+};
+
+export type PrepaymentFormPayload = {
+  amount: string;
+  balance?: string;
+  customerId: number;
+  memo?: string;
+  payerName?: string;
+  paymentDate: string;
+  paymentMethod: string;
+  status?: string;
+};
+
+export type PrepaymentMutationResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  prepaymentId?: number;
+  href?: string;
+  djangoHref?: string;
+  prepayment?: PrepaymentListItem;
 };
 
 export type SchedulePrepaymentSelectionPayload = {
@@ -1723,6 +1841,75 @@ const emptyPrepaymentsData: PrepaymentsData = {
     customers: '/customers/',
   },
   prepayments: [],
+};
+
+const emptyPrepaymentFormOptions: PrepaymentFormOptions = {
+  customers: [],
+  paymentMethods: [
+    { value: 'transfer', label: '계좌이체' },
+    { value: 'card', label: '카드' },
+    { value: 'cash', label: '현금' },
+  ],
+  statuses: [
+    { value: 'active', label: '활성' },
+    { value: 'depleted', label: '소진' },
+    { value: 'cancelled', label: '취소' },
+  ],
+};
+
+const emptyPrepaymentDetailData: PrepaymentDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    canManage: false,
+    isOwner: false,
+  },
+  prepayment: null,
+  metrics: {
+    amount: 0,
+    balance: 0,
+    usedAmount: 0,
+    usageCount: 0,
+    usagePercent: 0,
+    balancePercent: 0,
+  },
+  links: {
+    prepayments: '/prepayments/',
+    reactDetail: '',
+    reactEdit: '',
+    djangoList: '/reporting/prepayment/',
+    djangoDetail: '',
+    djangoEdit: '',
+    djangoDelete: '',
+    djangoTransfer: '',
+  },
+  edit: {
+    canEdit: false,
+    message: '',
+    submitUrl: '',
+    djangoUrl: '',
+    ...emptyPrepaymentFormOptions,
+  },
+  usages: [],
+};
+
+const emptyPrepaymentCreateData: PrepaymentCreateData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/prepayments/create/',
+    djangoUrl: '/reporting/prepayment/create/',
+    ...emptyPrepaymentFormOptions,
+  },
+  links: {
+    prepayments: '/prepayments/',
+    djangoList: '/reporting/prepayment/',
+  },
 };
 
 const emptyAIWorkspaceData: AIWorkspaceData = {
@@ -2746,6 +2933,169 @@ export async function loadPrepaymentsData(params: {
       error: error instanceof Error ? error.message : 'Prepayments API unavailable',
     };
   }
+}
+
+export async function loadPrepaymentCreateData(): Promise<PrepaymentCreateData> {
+  try {
+    const response = await fetch('/reporting/api/prepayments/create/', {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Prepayment create API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<PrepaymentCreateData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Prepayment create API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyPrepaymentCreateData,
+      ...payload,
+      create: {
+        ...emptyPrepaymentCreateData.create,
+        ...(payload.create ?? {}),
+        customers: payload.create?.customers ?? emptyPrepaymentCreateData.create.customers,
+        paymentMethods: payload.create?.paymentMethods ?? emptyPrepaymentCreateData.create.paymentMethods,
+        statuses: payload.create?.statuses ?? emptyPrepaymentCreateData.create.statuses,
+      },
+      links: {
+        ...emptyPrepaymentCreateData.links,
+        ...(payload.links ?? {}),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyPrepaymentCreateData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Prepayment create API unavailable',
+    };
+  }
+}
+
+export async function loadPrepaymentDetailData(prepaymentId: number): Promise<PrepaymentDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/prepayments/${prepaymentId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Prepayment detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<PrepaymentDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Prepayment detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyPrepaymentDetailData,
+      ...payload,
+      scope: {
+        ...emptyPrepaymentDetailData.scope,
+        ...(payload.scope ?? {}),
+      },
+      metrics: {
+        ...emptyPrepaymentDetailData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyPrepaymentDetailData.links,
+        ...(payload.links ?? {}),
+      },
+      edit: {
+        ...emptyPrepaymentDetailData.edit,
+        ...(payload.edit ?? {}),
+        customers: payload.edit?.customers ?? emptyPrepaymentDetailData.edit.customers,
+        paymentMethods: payload.edit?.paymentMethods ?? emptyPrepaymentDetailData.edit.paymentMethods,
+        statuses: payload.edit?.statuses ?? emptyPrepaymentDetailData.edit.statuses,
+      },
+      prepayment: payload.prepayment ?? emptyPrepaymentDetailData.prepayment,
+      usages: payload.usages ?? emptyPrepaymentDetailData.usages,
+    };
+  } catch (error) {
+    return {
+      ...emptyPrepaymentDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Prepayment detail API unavailable',
+    };
+  }
+}
+
+function prepaymentPayloadBody(payload: PrepaymentFormPayload): URLSearchParams {
+  const body = new URLSearchParams();
+  body.set('customer', String(payload.customerId));
+  body.set('amount', payload.amount);
+  body.set('payment_date', payload.paymentDate);
+  body.set('payment_method', payload.paymentMethod);
+  if (payload.balance !== undefined) body.set('balance', payload.balance);
+  if (payload.status) body.set('status', payload.status);
+  if (payload.payerName) body.set('payer_name', payload.payerName);
+  if (payload.memo) body.set('memo', payload.memo);
+  return body;
+}
+
+export async function createPrepayment(
+  payload: PrepaymentFormPayload,
+  submitUrl = '/reporting/api/prepayments/create/',
+): Promise<PrepaymentMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: prepaymentPayloadBody(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayment create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayment create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updatePrepayment(
+  payload: PrepaymentFormPayload,
+  submitUrl: string,
+): Promise<PrepaymentMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: prepaymentPayloadBody(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayment update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayment update failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadScheduleDetailData(scheduleId: number): Promise<ScheduleDetailData> {

@@ -9,7 +9,51 @@
 
 ---
 
-## Current task — React 선결제 목록 전환
+## Current task — React 선결제 상세/등록/수정 전환
+
+**목표**: 기존 Django `/reporting/prepayment/*` 화면을 유지하면서 React CRM에서 선결제 상세 조회, 신규 등록, 기본 정보 수정을 처리할 수 있게 한다.
+
+### 확인된 상태
+
+- React `/prepayments/` 목록 화면과 `/reporting/api/prepayments/` 목록 API는 이미 배포되어 있다.
+- 기존 Django 선결제 상세/등록/수정/삭제/이관 URL은 운영 fallback으로 유지해야 한다.
+- 선결제 모델은 `Prepayment`와 `PrepaymentUsage`이며, 이번 작업에서 DB 필드 추가는 필요하지 않다.
+- 기존 Django 수정 정책은 본인이 등록한 선결제만 수정 가능하고, 같은 회사 사용자의 선결제는 조회만 가능하다.
+
+### 구현 계획
+
+- `/reporting/api/prepayments/<id>/` 단건 조회 API를 추가한다.
+  - 같은 회사/접근 가능 사용자 범위만 조회 허용.
+  - 기본 정보, 금액 요약, 사용 내역, Django fallback 링크, 수정 가능 여부, 폼 옵션을 반환한다.
+- `/reporting/api/prepayments/create/` 등록 API를 추가한다.
+  - 기존 Django 등록과 동일하게 고객, 금액, 결제일, 결제방법, 입금자, 메모를 저장한다.
+  - 초기 잔액은 입금액과 동일하게 설정한다.
+  - 고객 선택 범위는 기존 회사/사용자 접근 범위를 유지한다.
+- `/reporting/api/prepayments/<id>/update/` 수정 API를 추가한다.
+  - 본인이 등록한 선결제만 수정 가능하게 유지한다.
+  - 금액, 잔액, 결제일, 결제방법, 상태, 메모를 검증한다.
+  - 사용 내역이 있는 선결제도 기존 Django처럼 기본 정보 수정은 허용하되, 잔액이 금액을 초과하지 않게 서버 검증한다.
+- React 라우팅을 확장한다.
+  - `/prepayments/new/`: React 선결제 등록 화면.
+  - `/prepayments/<id>/`: React 선결제 상세 화면.
+  - `/prepayments/<id>/edit/`: React 선결제 수정 화면.
+  - 목록 행의 `상세`, `수정`, 상단 `선결제 등록`은 React 경로로 이동하고 Django 원본 링크는 별도 fallback으로 유지한다.
+- 신규 migration은 만들지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Previous task — React 선결제 목록 전환
 
 **목표**: 기존 Django 선결제 관리 화면을 유지하면서 React CRM에 `/prepayments/` 읽기 전용 선결제 현황 화면을 추가한다.
 

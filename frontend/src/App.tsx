@@ -49,6 +49,9 @@ import {
   NoteFileItem,
   NoteItem,
   NoteReplyItem,
+  PrepaymentCreateData,
+  PrepaymentDetailData,
+  PrepaymentFormPayload,
   PrepaymentsData,
   PrepaymentOption,
   ProductOption,
@@ -70,6 +73,7 @@ import {
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
+  createPrepayment as createCustomerPrepayment,
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createSchedule as createCustomerSchedule,
@@ -81,6 +85,8 @@ import {
   loadCustomersData,
   loadNoteDetailData,
   loadNotesData,
+  loadPrepaymentCreateData,
+  loadPrepaymentDetailData,
   loadPrepayments,
   loadPrepaymentsData,
   loadProducts,
@@ -93,6 +99,7 @@ import {
   toggleNoteReviewed,
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
+  updatePrepayment as updateCustomerPrepayment,
   updateSchedule as updateCustomerSchedule,
   updateScheduleDeliveryItems,
   uploadNoteFiles,
@@ -163,6 +170,17 @@ type ScheduleEditFormState = ScheduleCreateFormState & {
 type SchedulePrepaymentEditRow = PrepaymentOption & {
   selected: boolean;
   amountInput: string;
+};
+
+type PrepaymentFormState = {
+  amount: string;
+  balance: string;
+  customerId: string;
+  memo: string;
+  payerName: string;
+  paymentDate: string;
+  paymentMethod: string;
+  status: string;
 };
 
 type ScheduleDeliveryEditRow = {
@@ -272,6 +290,28 @@ const makeSchedulePrepaymentRows = (options: PrepaymentOption[] = []): ScheduleP
     amountInput: option.selectedAmount > 0 ? String(option.selectedAmount) : '',
   }))
 );
+
+const makeEmptyPrepaymentForm = (): PrepaymentFormState => ({
+  amount: '',
+  balance: '',
+  customerId: '',
+  memo: '',
+  payerName: '',
+  paymentDate: localDateInputValue(),
+  paymentMethod: 'transfer',
+  status: 'active',
+});
+
+const makePrepaymentEditForm = (prepayment: PrepaymentDetailData['prepayment'] | null): PrepaymentFormState => ({
+  amount: prepayment ? String(prepayment.amount) : '',
+  balance: prepayment ? String(prepayment.balance) : '',
+  customerId: prepayment?.customerId ? String(prepayment.customerId) : '',
+  memo: prepayment?.memo || '',
+  payerName: prepayment?.payerName || '',
+  paymentDate: prepayment?.paymentDate || localDateInputValue(),
+  paymentMethod: prepayment?.paymentMethod || 'transfer',
+  status: prepayment?.status || 'active',
+});
 
 const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): ScheduleDeliveryEditRow => ({
   rowId: item ? `delivery-${item.id}` : `delivery-new-${Date.now()}-${index}`,
@@ -395,7 +435,7 @@ const routeMeta: Record<
     primaryHref: '/prepayments/',
     primaryLabel: '프론트 선결제 보기',
     actions: [
-      { label: '선결제 등록', href: '/reporting/prepayment/create/', primary: true },
+      { label: '선결제 등록', href: '/prepayments/new/', primary: true },
       { label: 'Django 선결제 관리', href: '/reporting/prepayment/' },
       { label: '엑셀 다운로드', href: '/reporting/prepayment/excel/' },
     ],
@@ -450,6 +490,23 @@ function getScheduleDetailId(): number | null {
   }
   const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getPrepaymentDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/prepayments\/(\d+)\/(?:edit\/?)?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function isPrepaymentCreateRoute(): boolean {
+  return /^\/prepayments\/new\/?$/.test(window.location.pathname);
+}
+
+function isPrepaymentEditRoute(): boolean {
+  return /^\/prepayments\/\d+\/edit\/?$/.test(window.location.pathname);
 }
 
 function getCreateCustomerParam(): string {
@@ -4775,11 +4832,12 @@ function PrepaymentsTable({ data }: { data: PrepaymentsData }) {
               </td>
               <td>
                 <div className="customer-row-actions">
-                  <a className="customer-row-action" href={prepayment.href}>상세</a>
-                  {prepayment.editHref ? <a className="customer-row-action" href={prepayment.editHref}>수정</a> : null}
+                  <a className="customer-row-action" href={`/prepayments/${prepayment.id}/`}>상세</a>
+                  {prepayment.canManage ? <a className="customer-row-action" href={`/prepayments/${prepayment.id}/edit/`}>수정</a> : null}
                   {prepayment.djangoCustomerPrepaymentHref ? (
                     <a className="customer-row-action" href={prepayment.djangoCustomerPrepaymentHref}>고객별</a>
                   ) : null}
+                  <a className="customer-row-action" href={prepayment.href}>Django</a>
                 </div>
               </td>
             </tr>
@@ -4855,7 +4913,7 @@ function PrepaymentsPage({
         </div>
         <div className="schedules-summary-actions">
           {data.links.create ? (
-            <a className="route-primary-action" href={data.links.create}>
+            <a className="route-primary-action" href="/prepayments/new/">
               선결제 등록
               <Plus size={16} />
             </a>
@@ -4923,6 +4981,562 @@ function PrepaymentsPage({
         </div>
         <PrepaymentsTable data={data} />
       </section>
+    </section>
+  );
+}
+
+function PrepaymentFormFields({
+  form,
+  options,
+  saving,
+  showStatus,
+  submitLabel,
+  onChange,
+  onSubmit,
+  secondaryActions,
+}: {
+  form: PrepaymentFormState;
+  options: {
+    customers: PrepaymentCreateData['create']['customers'];
+    paymentMethods: PrepaymentCreateData['create']['paymentMethods'];
+    statuses: PrepaymentCreateData['create']['statuses'];
+  };
+  saving: boolean;
+  showStatus: boolean;
+  submitLabel: string;
+  onChange: (field: keyof PrepaymentFormState, value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  secondaryActions?: React.ReactNode;
+}) {
+  return (
+    <form className="notes-create-form prepayment-form" onSubmit={onSubmit}>
+      <div className="notes-create-grid prepayment-form-grid">
+        <label>
+          <span>고객</span>
+          <select
+            onChange={(event) => onChange('customerId', event.target.value)}
+            required
+            value={form.customerId}
+          >
+            <option value="">고객 선택</option>
+            {options.customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.label || [customer.companyName, customer.departmentName, customer.customerName].filter(Boolean).join(' · ')}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>입금일</span>
+          <input
+            onChange={(event) => onChange('paymentDate', event.target.value)}
+            required
+            type="date"
+            value={form.paymentDate}
+          />
+        </label>
+        <label>
+          <span>선결제 금액</span>
+          <input
+            inputMode="numeric"
+            min="1"
+            onChange={(event) => onChange('amount', event.target.value)}
+            placeholder="예: 250000"
+            required
+            type="number"
+            value={form.amount}
+          />
+        </label>
+        {showStatus ? (
+          <label>
+            <span>잔액</span>
+            <input
+              inputMode="numeric"
+              min="0"
+              onChange={(event) => onChange('balance', event.target.value)}
+              required
+              type="number"
+              value={form.balance}
+            />
+          </label>
+        ) : null}
+        <label>
+          <span>입금 방법</span>
+          <select
+            onChange={(event) => onChange('paymentMethod', event.target.value)}
+            required
+            value={form.paymentMethod}
+          >
+            {options.paymentMethods.map((method) => (
+              <option key={method.value} value={method.value}>{method.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>입금자명</span>
+          <input
+            onChange={(event) => onChange('payerName', event.target.value)}
+            placeholder="실제 입금자"
+            value={form.payerName}
+          />
+        </label>
+        {showStatus ? (
+          <label>
+            <span>상태</span>
+            <select
+              onChange={(event) => onChange('status', event.target.value)}
+              required
+              value={form.status}
+            >
+              {options.statuses.map((statusOption) => (
+                <option key={statusOption.value} value={statusOption.value}>{statusOption.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <label>
+        <span>메모</span>
+        <textarea
+          onChange={(event) => onChange('memo', event.target.value)}
+          rows={4}
+          value={form.memo}
+        />
+      </label>
+      <div className="notes-create-actions">
+        {secondaryActions}
+        <button className="route-primary-action" disabled={saving} type="submit">
+          {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+          {submitLabel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PrepaymentCreatePage({
+  data,
+  loading,
+}: {
+  data: PrepaymentCreateData | null;
+  loading: boolean;
+}) {
+  const [form, setForm] = useState<PrepaymentFormState>(() => makeEmptyPrepaymentForm());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [createdHref, setCreatedHref] = useState('');
+
+  useEffect(() => {
+    if (!data?.create.customers.length || form.customerId) {
+      return;
+    }
+    setForm((previous) => ({
+      ...previous,
+      customerId: String(data.create.customers[0].id),
+    }));
+  }, [data?.create.customers, form.customerId]);
+
+  const handleChange = (field: keyof PrepaymentFormState, value: string) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+      ...(field === 'amount' && !previous.balance ? { balance: value } : {}),
+    }));
+    setError('');
+    setMessage('');
+    setCreatedHref('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || saving) {
+      return;
+    }
+    if (!data.create.canCreate) {
+      setError(data.create.message || '등록 권한이 없습니다.');
+      return;
+    }
+    const customerId = Number(form.customerId);
+    if (!customerId) {
+      setError('고객을 선택하세요.');
+      return;
+    }
+    if (!form.amount || Number(form.amount) <= 0) {
+      setError('선결제 금액을 입력하세요.');
+      return;
+    }
+    if (!form.paymentDate) {
+      setError('입금일을 선택하세요.');
+      return;
+    }
+
+    const payload: PrepaymentFormPayload = {
+      amount: form.amount,
+      customerId,
+      memo: form.memo.trim() || undefined,
+      payerName: form.payerName.trim() || undefined,
+      paymentDate: form.paymentDate,
+      paymentMethod: form.paymentMethod,
+    };
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+    setCreatedHref('');
+    try {
+      const created = await createCustomerPrepayment(payload, data.create.submitUrl);
+      setMessage(created.message || '선결제를 등록했습니다.');
+      setCreatedHref(created.href || (created.prepaymentId ? `/prepayments/${created.prepaymentId}/` : ''));
+      setForm((previous) => ({
+        ...makeEmptyPrepaymentForm(),
+        customerId: previous.customerId,
+      }));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '선결제 등록에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>선결제 등록 정보를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const formOptions = {
+    customers: data.create.customers,
+    paymentMethods: data.create.paymentMethods,
+    statuses: data.create.statuses,
+  };
+
+  return (
+    <section className="prepayments-page prepayment-detail-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>선결제 등록 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">New prepayment</span>
+          <h2>선결제 등록</h2>
+          <p>고객별 입금액을 등록하고 납품 일정에서 차감할 수 있게 준비합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href="/prepayments/">목록</a>
+          <a className="route-secondary-action" href={data.create.djangoUrl}>Django 등록</a>
+        </div>
+      </div>
+
+      <section className="dashboard-panel notes-create-panel prepayment-editor-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Prepayment form</span>
+            <h2>입금 정보</h2>
+          </div>
+          {saving ? <Loader2 className="spin-icon" size={18} /> : <CircleDollarSign size={18} />}
+        </div>
+        {message ? (
+          <div className="notes-action-feedback success">
+            <span>{message}</span>
+            {createdHref ? <a href={createdHref}>상세 열기</a> : null}
+          </div>
+        ) : null}
+        {error ? <div className="notes-action-feedback error">{error}</div> : null}
+        {!data.create.canCreate ? (
+          <DashboardEmpty label={data.create.message || '선결제 등록 권한이 없습니다'} />
+        ) : (
+          <PrepaymentFormFields
+            form={form}
+            options={formOptions}
+            saving={saving}
+            secondaryActions={<a className="route-secondary-action" href={data.links.djangoList}>Django 목록</a>}
+            showStatus={false}
+            submitLabel="등록"
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+          />
+        )}
+      </section>
+    </section>
+  );
+}
+
+function PrepaymentDetailPage({
+  data,
+  editRoute,
+  loading,
+  onRefresh,
+}: {
+  data: PrepaymentDetailData | null;
+  editRoute: boolean;
+  loading: boolean;
+  onRefresh: () => Promise<PrepaymentDetailData | null>;
+}) {
+  const prepayment = data?.prepayment ?? null;
+  const [form, setForm] = useState<PrepaymentFormState>(() => makePrepaymentEditForm(prepayment));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setForm(makePrepaymentEditForm(prepayment));
+    setError('');
+    setMessage('');
+    setSaving(false);
+  }, [prepayment?.id]);
+
+  const handleChange = (field: keyof PrepaymentFormState, value: string) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setError('');
+    setMessage('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || !prepayment || saving) {
+      return;
+    }
+    if (!data.edit.canEdit || !data.edit.submitUrl) {
+      setError(data.edit.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const customerId = Number(form.customerId);
+    const amount = Number(form.amount);
+    const balance = Number(form.balance);
+    if (!customerId) {
+      setError('고객을 선택하세요.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('선결제 금액을 입력하세요.');
+      return;
+    }
+    if (!Number.isFinite(balance) || balance < 0) {
+      setError('잔액은 0원 이상이어야 합니다.');
+      return;
+    }
+    if (balance > amount) {
+      setError('잔액은 선결제 금액보다 클 수 없습니다.');
+      return;
+    }
+
+    const payload: PrepaymentFormPayload = {
+      amount: form.amount,
+      balance: form.balance,
+      customerId,
+      memo: form.memo.trim() || undefined,
+      payerName: form.payerName.trim() || undefined,
+      paymentDate: form.paymentDate,
+      paymentMethod: form.paymentMethod,
+      status: form.status,
+    };
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await updateCustomerPrepayment(payload, data.edit.submitUrl);
+      await onRefresh();
+      setMessage(updated.message || '선결제 정보를 수정했습니다.');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '선결제 수정에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>선결제 상세 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data || !prepayment) {
+    return (
+      <section className="prepayments-page">
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>선결제 상세를 불러오지 못했습니다</strong>
+            <span>{data?.error || '선결제 상세 API에 연결되지 않았습니다.'}</span>
+          </div>
+          <a href="/prepayments/">목록</a>
+        </div>
+      </section>
+    );
+  }
+
+  const metrics = [
+    { label: '선결제 금액', value: formatWon(data.metrics.amount), detail: prepayment.paymentDate ? formatDateLabel(prepayment.paymentDate) : '입금일 없음', icon: CircleDollarSign, tone: 'blue' as const },
+    { label: '남은 잔액', value: formatWon(data.metrics.balance), detail: `${data.metrics.balancePercent}% 남음`, icon: CheckCircle2, tone: 'green' as const },
+    { label: '사용 금액', value: formatWon(data.metrics.usedAmount), detail: `${data.metrics.usagePercent}% 사용`, icon: Activity, tone: 'amber' as const },
+    { label: '사용 내역', value: `${formatNumber(data.metrics.usageCount)}건`, detail: prepayment.statusLabel, icon: ListChecks, tone: 'teal' as const },
+  ];
+  const formOptions = {
+    customers: data.edit.customers,
+    paymentMethods: data.edit.paymentMethods,
+    statuses: data.edit.statuses,
+  };
+
+  return (
+    <section className="prepayments-page prepayment-detail-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>선결제 상세 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Prepayment detail</span>
+          <h2>{prepayment.companyName || prepayment.customerName || '선결제 상세'}</h2>
+          <p>{[prepayment.departmentName, prepayment.customerName, prepayment.payerName || '입금자 미지정'].filter(Boolean).join(' · ')}</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href="/prepayments/">목록</a>
+          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
+          {data.links.reactEdit && !editRoute ? <a className="route-primary-action" href={data.links.reactEdit}>수정</a> : null}
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="선결제 상세 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      {editRoute ? (
+        <section className="dashboard-panel notes-create-panel prepayment-editor-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Edit prepayment</span>
+              <h2>선결제 수정</h2>
+            </div>
+            {saving ? <Loader2 className="spin-icon" size={18} /> : <CircleDollarSign size={18} />}
+          </div>
+          {message ? <div className="notes-action-feedback success">{message}</div> : null}
+          {error ? <div className="notes-action-feedback error">{error}</div> : null}
+          {!data.edit.canEdit ? (
+            <DashboardEmpty label={data.edit.message || '수정 권한이 없습니다'} />
+          ) : (
+            <PrepaymentFormFields
+              form={form}
+              options={formOptions}
+              saving={saving}
+              secondaryActions={<a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>Django 수정</a>}
+              showStatus
+              submitLabel="저장"
+              onChange={handleChange}
+              onSubmit={handleSubmit}
+            />
+          )}
+        </section>
+      ) : null}
+
+      <div className="prepayment-detail-layout">
+        <section className="dashboard-panel prepayment-usage-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Usage history</span>
+              <h2>사용 내역</h2>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          {data.usages.length === 0 ? (
+            <DashboardEmpty label="아직 사용 내역이 없습니다" />
+          ) : (
+            <div className="prepayment-usage-list">
+              {data.usages.map((usage) => (
+                <article className="prepayment-usage-row" key={usage.id}>
+                  <div>
+                    <strong>{usage.productName || '사용 내역'}</strong>
+                    <span>
+                      {[usage.usedAt ? formatDateTimeLabel(usage.usedAt) : '', usage.scheduleDate ? `납품 ${formatDateLabel(usage.scheduleDate)}` : ''].filter(Boolean).join(' · ')}
+                    </span>
+                    {usage.deliveryItems.length > 0 ? (
+                      <small>{usage.deliveryItems.map((item) => `${item.itemName} ${formatNumber(item.quantity)}${item.unit || ''}`).join(', ')}</small>
+                    ) : usage.memo ? <small>{usage.memo}</small> : null}
+                  </div>
+                  <div className="prepayment-usage-amount">
+                    <strong>-{formatWon(usage.amount)}</strong>
+                    <span>잔액 {formatWon(usage.remainingBalance)}</span>
+                    {usage.scheduleHref ? <a href={usage.scheduleHref}>일정</a> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <aside className="dashboard-panel prepayment-detail-side">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Summary</span>
+              <h2>기본 정보</h2>
+            </div>
+            <CircleDollarSign size={18} />
+          </div>
+          <PrepaymentStatusBadge label={prepayment.statusLabel} status={prepayment.status} />
+          <dl className="prepayment-detail-list">
+            <div>
+              <dt>입금 방법</dt>
+              <dd>{prepayment.paymentMethodLabel || '-'}</dd>
+            </div>
+            <div>
+              <dt>등록자</dt>
+              <dd>{prepayment.ownerName}</dd>
+            </div>
+            <div>
+              <dt>등록일</dt>
+              <dd>{prepayment.createdAt ? formatDateTimeLabel(prepayment.createdAt) : '-'}</dd>
+            </div>
+            <div>
+              <dt>메모</dt>
+              <dd>{prepayment.memo || '메모 없음'}</dd>
+            </div>
+          </dl>
+          <div className="customers-side-actions">
+            <a href={prepayment.customerHref || prepayment.djangoCustomerHref}>고객 상세</a>
+            <a href={prepayment.djangoCustomerPrepaymentHref}>고객별 선결제</a>
+            {data.links.djangoTransfer ? <a href={data.links.djangoTransfer}>Django 이관</a> : null}
+            {data.links.djangoDelete ? <a href={data.links.djangoDelete}>Django 삭제/취소</a> : null}
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }
@@ -5959,6 +6573,9 @@ export function App() {
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
+  const prepaymentDetailId = currentView === 'prepayments' ? getPrepaymentDetailId() : null;
+  const prepaymentCreateRoute = currentView === 'prepayments' && isPrepaymentCreateRoute();
+  const prepaymentEditRoute = currentView === 'prepayments' && isPrepaymentEditRoute();
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -6014,7 +6631,11 @@ export function App() {
   const [scheduleActivityType, setScheduleActivityType] = useState('');
   const [scheduleRange, setScheduleRange] = useState('');
   const [prepaymentsData, setPrepaymentsData] = useState<PrepaymentsData | null>(null);
-  const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments');
+  const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments' && !prepaymentDetailId && !prepaymentCreateRoute);
+  const [prepaymentCreateData, setPrepaymentCreateData] = useState<PrepaymentCreateData | null>(null);
+  const [prepaymentCreateLoading, setPrepaymentCreateLoading] = useState(prepaymentCreateRoute);
+  const [prepaymentDetailData, setPrepaymentDetailData] = useState<PrepaymentDetailData | null>(null);
+  const [prepaymentDetailLoading, setPrepaymentDetailLoading] = useState(Boolean(prepaymentDetailId));
   const [prepaymentQuery, setPrepaymentQuery] = useState('');
   const [prepaymentStatus, setPrepaymentStatus] = useState('');
   const [prepaymentDataFilter, setPrepaymentDataFilter] = useState('me');
@@ -6251,7 +6872,7 @@ export function App() {
   }, [currentView, scheduleDetailId]);
 
   useEffect(() => {
-    if (currentView !== 'prepayments') {
+    if (currentView !== 'prepayments' || prepaymentDetailId || prepaymentCreateRoute) {
       return;
     }
     let alive = true;
@@ -6271,7 +6892,47 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, prepaymentDataFilter, prepaymentFilterUser, prepaymentQuery, prepaymentStatus]);
+  }, [currentView, prepaymentCreateRoute, prepaymentDataFilter, prepaymentDetailId, prepaymentFilterUser, prepaymentQuery, prepaymentStatus]);
+
+  useEffect(() => {
+    if (currentView !== 'prepayments' || !prepaymentCreateRoute) {
+      setPrepaymentCreateData(null);
+      setPrepaymentCreateLoading(false);
+      return;
+    }
+    let alive = true;
+    setPrepaymentCreateLoading(true);
+    loadPrepaymentCreateData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setPrepaymentCreateData(data);
+      setPrepaymentCreateLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, prepaymentCreateRoute]);
+
+  useEffect(() => {
+    if (currentView !== 'prepayments' || !prepaymentDetailId) {
+      setPrepaymentDetailData(null);
+      setPrepaymentDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setPrepaymentDetailLoading(true);
+    loadPrepaymentDetailData(prepaymentDetailId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setPrepaymentDetailData(data);
+      setPrepaymentDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, prepaymentDetailId]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -6750,6 +7411,14 @@ export function App() {
       }
     }
   };
+  const refreshPrepaymentDetailData = async () => {
+    if (!prepaymentDetailId) {
+      return null;
+    }
+    const data = await loadPrepaymentDetailData(prepaymentDetailId);
+    setPrepaymentDetailData(data);
+    return data;
+  };
 
   if (currentView === 'dashboard') {
     return (
@@ -6893,6 +7562,32 @@ export function App() {
   }
 
   if (currentView === 'prepayments') {
+    if (prepaymentCreateRoute) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <PrepaymentCreatePage
+            data={prepaymentCreateData}
+            loading={prepaymentCreateLoading}
+          />
+        </AppShell>
+      );
+    }
+
+    if (prepaymentDetailId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <PrepaymentDetailPage
+            data={prepaymentDetailData}
+            editRoute={prepaymentEditRoute}
+            loading={prepaymentDetailLoading}
+            onRefresh={refreshPrepaymentDetailData}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

@@ -15826,6 +15826,259 @@ def _prepayment_item_payload(prepayment, actor):
     }
 
 
+def _prepayment_customer_payload(followup):
+    return {
+        'id': followup.id,
+        'customerName': followup.customer_name or followup.manager or '고객명 미정',
+        'companyName': followup.company.name if followup.company else '',
+        'departmentName': followup.department.name if followup.department else '',
+        'ownerName': _user_display_name(followup.user),
+        'label': ' · '.join([
+            value
+            for value in [
+                followup.company.name if followup.company else '',
+                followup.department.name if followup.department else '',
+                followup.customer_name or followup.manager or '고객명 미정',
+            ]
+            if value
+        ]),
+    }
+
+
+def _prepayment_customer_options(request, current_customer=None):
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_admin():
+        customer_queryset = FollowUp.objects.all()
+    elif user_profile.company:
+        same_company_user_ids = UserProfile.objects.filter(
+            company=user_profile.company,
+        ).values_list('user_id', flat=True)
+        customer_queryset = FollowUp.objects.filter(user_id__in=same_company_user_ids)
+    else:
+        customer_queryset = FollowUp.objects.filter(user=request.user)
+
+    customers = list(
+        customer_queryset.select_related('company', 'department', 'user')
+        .order_by('company__name', 'department__name', 'customer_name')[:1000]
+    )
+    if current_customer and all(customer.id != current_customer.id for customer in customers):
+        customers = [current_customer, *customers]
+    return [_prepayment_customer_payload(customer) for customer in customers]
+
+
+def _prepayment_can_view(user, prepayment):
+    return can_access_user_data(user, prepayment.created_by)
+
+
+def _prepayment_can_edit(user, prepayment):
+    return prepayment.created_by_id == user.id
+
+
+def _prepayment_form_options(request, prepayment=None):
+    return {
+        'customers': _prepayment_customer_options(
+            request,
+            current_customer=prepayment.customer if prepayment else None,
+        ),
+        'paymentMethods': [
+            {'value': value, 'label': label}
+            for value, label in Prepayment.PAYMENT_METHOD_CHOICES
+        ],
+        'statuses': [
+            {'value': value, 'label': label}
+            for value, label in Prepayment.STATUS_CHOICES
+        ],
+    }
+
+
+def _prepayment_usage_payload(usage):
+    schedule = usage.schedule
+    delivery_items = []
+    if schedule:
+        delivery_items = [
+            {
+                'id': item.id,
+                'itemName': item.item_name,
+                'quantity': item.quantity,
+                'unit': item.unit or '',
+                'unitPrice': _money_int(item.unit_price),
+                'totalPrice': _money_int(item.total_price),
+            }
+            for item in schedule.delivery_items_set.all().order_by('id')
+        ]
+
+    return {
+        'id': usage.id,
+        'usedAt': _datetime_or_none(usage.used_at),
+        'productName': usage.product_name or '',
+        'quantity': int(usage.quantity or 0),
+        'amount': _money_int(usage.amount),
+        'remainingBalance': _money_int(usage.remaining_balance),
+        'memo': usage.memo or '',
+        'scheduleId': schedule.id if schedule else None,
+        'scheduleDate': _date_or_none(schedule.visit_date) if schedule else None,
+        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
+        'djangoScheduleHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+        'deliveryItems': delivery_items,
+    }
+
+
+def _prepayment_detail_payload(request, prepayment):
+    usages = list(
+        prepayment.usages.select_related(
+            'schedule',
+            'schedule__followup',
+        ).prefetch_related(
+            'schedule__delivery_items_set',
+        ).order_by('-used_at')
+    )
+    amount = _money_int(prepayment.amount)
+    balance = _money_int(prepayment.balance)
+    total_used = max(amount - balance, 0)
+    usage_percent = round((total_used / amount) * 100, 1) if amount > 0 else 0
+    balance_percent = round((balance / amount) * 100, 1) if amount > 0 else 0
+    can_manage = _prepayment_can_edit(request.user, prepayment)
+    item_payload = _prepayment_item_payload(prepayment, request.user)
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _user_display_name(prepayment.created_by),
+            'canManage': can_manage,
+            'isOwner': can_manage,
+        },
+        'prepayment': {
+            **item_payload,
+            'memo': prepayment.memo or '',
+            'usagePercent': usage_percent,
+            'balancePercent': balance_percent,
+        },
+        'metrics': {
+            'amount': amount,
+            'balance': balance,
+            'usedAmount': total_used,
+            'usageCount': len(usages),
+            'usagePercent': usage_percent,
+            'balancePercent': balance_percent,
+        },
+        'links': {
+            'prepayments': '/prepayments/',
+            'reactDetail': f'/prepayments/{prepayment.id}/',
+            'reactEdit': f'/prepayments/{prepayment.id}/edit/' if can_manage else '',
+            'djangoList': reverse('reporting:prepayment_list'),
+            'djangoDetail': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+            'djangoEdit': reverse('reporting:prepayment_edit', args=[prepayment.id]) if can_manage else '',
+            'djangoDelete': reverse('reporting:prepayment_delete', args=[prepayment.id]) if can_manage else '',
+            'djangoTransfer': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if can_manage else '',
+        },
+        'edit': {
+            'canEdit': can_manage,
+            'message': '' if can_manage else '본인이 등록한 선결제만 수정할 수 있습니다.',
+            'submitUrl': reverse('reporting:prepayment_update_api', args=[prepayment.id]) if can_manage else '',
+            'djangoUrl': reverse('reporting:prepayment_edit', args=[prepayment.id]) if can_manage else '',
+            **_prepayment_form_options(request, prepayment=prepayment),
+        },
+        'usages': [
+            _prepayment_usage_payload(usage)
+            for usage in usages
+        ],
+    }
+
+
+def _prepayment_create_payload(request):
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'create': {
+            'canCreate': True,
+            'message': '',
+            'submitUrl': reverse('reporting:prepayment_create_api'),
+            'djangoUrl': reverse('reporting:prepayment_create'),
+            **_prepayment_form_options(request),
+        },
+        'links': {
+            'prepayments': '/prepayments/',
+            'djangoList': reverse('reporting:prepayment_list'),
+        },
+    }
+
+
+def _prepayment_request_data(request):
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except (TypeError, ValueError, UnicodeDecodeError):
+            payload = {}
+        return payload
+    return request.POST
+
+
+def _prepayment_field(data, *names):
+    for name in names:
+        value = data.get(name)
+        if value not in (None, ''):
+            return value
+    return ''
+
+
+def _prepayment_parse_form_data(request, *, existing=None):
+    data = _prepayment_request_data(request)
+    customer_id = _prepayment_field(data, 'customer', 'customer_id', 'customerId')
+    amount = _parse_optional_decimal(_prepayment_field(data, 'amount'))
+    payment_date = _parse_iso_date_or_none(_prepayment_field(data, 'payment_date', 'paymentDate'))
+    payment_method = str(_prepayment_field(data, 'payment_method', 'paymentMethod') or '').strip()
+    payer_name = str(_prepayment_field(data, 'payer_name', 'payerName') or '').strip()[:100]
+    memo = str(_prepayment_field(data, 'memo') or '').strip()
+
+    if not customer_id:
+        raise ValueError('고객을 선택해주세요.')
+    try:
+        customer = FollowUp.objects.select_related('company', 'department', 'user').get(id=customer_id)
+    except (FollowUp.DoesNotExist, ValueError):
+        raise ValueError('선택한 고객을 찾을 수 없습니다.')
+
+    allowed_customer_ids = {
+        option['id']
+        for option in _prepayment_customer_options(request, current_customer=existing.customer if existing else None)
+    }
+    if customer.id not in allowed_customer_ids or not can_access_followup(request.user, customer):
+        raise PermissionError('접근 권한이 없는 고객입니다.')
+    if not customer.company_id:
+        raise ValueError('고객의 업체/학교 정보가 필요합니다.')
+    if amount is None or amount <= 0:
+        raise ValueError('선결제 금액은 1원 이상으로 입력해주세요.')
+    if not payment_date:
+        raise ValueError('입금 날짜를 선택해주세요.')
+    if payment_method not in {value for value, _label in Prepayment.PAYMENT_METHOD_CHOICES}:
+        raise ValueError('올바른 입금 방법을 선택해주세요.')
+
+    cleaned = {
+        'customer': customer,
+        'amount': amount,
+        'payment_date': payment_date,
+        'payment_method': payment_method,
+        'payer_name': payer_name,
+        'memo': memo,
+    }
+
+    if existing:
+        balance = _parse_optional_decimal(_prepayment_field(data, 'balance'))
+        status = str(_prepayment_field(data, 'status') or '').strip()
+        if balance is None:
+            raise ValueError('잔액은 0원 이상으로 입력해주세요.')
+        if balance > amount:
+            raise ValueError('잔액은 선결제 금액보다 클 수 없습니다.')
+        if status not in {value for value, _label in Prepayment.STATUS_CHOICES}:
+            raise ValueError('올바른 상태를 선택해주세요.')
+        cleaned['balance'] = balance
+        cleaned['status'] = status
+
+    return cleaned
+
+
 def _prepayment_summary_payload(request):
     user_profile = get_user_profile(request.user)
     scope = _prepayment_list_scope(request, user_profile)
@@ -15980,6 +16233,135 @@ def prepayment_api_list(request):
         return JsonResponse({'prepayments': prepayments_data})
     except Exception as e:
         return JsonResponse({'prepayments': [], 'error': str(e)})
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET", "POST"])
+def prepayment_create_api(request):
+    """React 선결제 등록 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    if request.method == 'GET':
+        return JsonResponse(_prepayment_create_payload(request))
+
+    try:
+        cleaned = _prepayment_parse_form_data(request)
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    prepayment = Prepayment.objects.create(
+        customer=cleaned['customer'],
+        company=cleaned['customer'].company,
+        amount=cleaned['amount'],
+        balance=cleaned['amount'],
+        payment_date=cleaned['payment_date'],
+        payment_method=cleaned['payment_method'],
+        payer_name=cleaned['payer_name'],
+        memo=cleaned['memo'],
+        status='active',
+        created_by=request.user,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': '선결제를 등록했습니다.',
+        'prepaymentId': prepayment.id,
+        'href': f'/prepayments/{prepayment.id}/',
+        'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+        'prepayment': _prepayment_item_payload(prepayment, request.user),
+    }, status=201)
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def prepayment_detail_api(request, pk):
+    """React 선결제 상세 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related(
+            'customer',
+            'customer__company',
+            'customer__department',
+            'company',
+            'created_by',
+        ).prefetch_related(
+            'usages',
+        ),
+        pk=pk,
+    )
+    if not _prepayment_can_view(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+    return JsonResponse(_prepayment_detail_payload(request, prepayment))
+
+
+@never_cache
+@require_http_methods(["POST"])
+def prepayment_update_api(request, pk):
+    """React 선결제 수정 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        pk=pk,
+    )
+    if not _prepayment_can_view(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not _prepayment_can_edit(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 수정할 수 있습니다.'}, status=403)
+
+    try:
+        cleaned = _prepayment_parse_form_data(request, existing=prepayment)
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    prepayment.customer = cleaned['customer']
+    prepayment.company = cleaned['customer'].company
+    prepayment.amount = cleaned['amount']
+    prepayment.balance = cleaned['balance']
+    prepayment.payment_date = cleaned['payment_date']
+    prepayment.payment_method = cleaned['payment_method']
+    prepayment.payer_name = cleaned['payer_name']
+    prepayment.status = cleaned['status']
+    prepayment.memo = cleaned['memo']
+    if prepayment.status != 'cancelled':
+        prepayment.cancelled_at = None
+        prepayment.cancel_reason = ''
+    prepayment.save(update_fields=[
+        'customer',
+        'company',
+        'amount',
+        'balance',
+        'payment_date',
+        'payment_method',
+        'payer_name',
+        'status',
+        'memo',
+        'cancelled_at',
+        'cancel_reason',
+    ])
+
+    return JsonResponse({
+        'success': True,
+        'message': '선결제 정보를 수정했습니다.',
+        'prepaymentId': prepayment.id,
+        'href': f'/prepayments/{prepayment.id}/',
+        'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+        'prepayment': _prepayment_item_payload(prepayment, request.user),
+    })
 
 
 # ============================================

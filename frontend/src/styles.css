@@ -1045,6 +1045,109 @@ h2 {
   color: #991b1b;
 }
 
+.prepayment-detail-page {
+  min-width: 0;
+}
+
+.prepayment-editor-panel {
+  max-width: 980px;
+}
+
+.prepayment-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.prepayment-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
+}
+
+.prepayment-usage-panel,
+.prepayment-detail-side {
+  min-width: 0;
+}
+
+.prepayment-usage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.prepayment-usage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.prepayment-usage-row > div:first-child,
+.prepayment-usage-amount {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.prepayment-usage-row strong {
+  color: var(--text);
+}
+
+.prepayment-usage-row span,
+.prepayment-usage-row small,
+.prepayment-usage-amount span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.prepayment-usage-amount {
+  justify-items: end;
+  text-align: right;
+}
+
+.prepayment-usage-amount strong {
+  color: #b91c1c;
+}
+
+.prepayment-usage-amount a {
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.prepayment-detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.prepayment-detail-list div {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.prepayment-detail-list dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.prepayment-detail-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .customer-name-link {
   display: grid;
   gap: 3px;
@@ -3988,6 +4091,8 @@ tbody tr:hover {
   .schedules-layout,
   .schedules-filter-bar,
   .prepayments-filter-bar,
+  .prepayment-form-grid,
+  .prepayment-detail-layout,
   .ai-layout,
   .ai-followup-grid,
   .ai-prompt-grid,
@@ -4128,8 +4233,14 @@ tbody tr:hover {
 
   .schedule-prepayment-row,
   .schedule-prepayment-totals,
+  .prepayment-usage-row,
   .customer-ai-actions {
     grid-template-columns: 1fr;
+  }
+
+  .prepayment-usage-amount {
+    justify-items: start;
+    text-align: left;
   }
 
   .pipeline-board {

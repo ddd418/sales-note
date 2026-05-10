@@ -1821,6 +1821,170 @@ class PrepaymentsSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['create'], '')
 
 
+class PrepaymentDetailApiTests(TestCase):
+    """React 선결제 상세/등록/수정 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='선결제상세API회사')
+        self.other_company = UserCompany.objects.create(name='선결제상세API타사회사')
+        self.user = make_user('prepayment_detail_me', role='salesman', company=self.company)
+        self.coworker = make_user('prepayment_detail_coworker', role='salesman', company=self.company)
+        self.other_user = make_user('prepayment_detail_other', role='salesman', company=self.other_company)
+
+    def _create_customer(self, owner, name):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        return FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            company=customer_company,
+            department=department,
+        )
+
+    def _create_prepayment(self, owner, name='선결제', amount=100000, balance=70000):
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        customer = self._create_customer(owner, name)
+        return Prepayment.objects.create(
+            customer=customer,
+            company=customer.company,
+            amount=amount,
+            balance=balance,
+            payment_date=timezone.localdate(),
+            payment_method='transfer',
+            payer_name=f'{name} 입금자',
+            memo='초기 메모',
+            created_by=owner,
+        )
+
+    def test_prepayment_detail_api_returns_usage_and_edit_config(self):
+        from datetime import time
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, PrepaymentUsage, Schedule
+
+        prepayment = self._create_prepayment(self.user, amount=120000, balance=90000)
+        schedule = Schedule.objects.create(
+            user=self.user,
+            followup=prepayment.customer,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='테스트 품목',
+            quantity=2,
+            unit='EA',
+            unit_price=15000,
+            total_price=30000,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=schedule,
+            product_name='테스트 품목',
+            quantity=2,
+            amount=30000,
+            remaining_balance=90000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:prepayment_detail_api', args=[prepayment.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['prepayment']['id'], prepayment.id)
+        self.assertTrue(payload['edit']['canEdit'])
+        self.assertEqual(payload['metrics']['usedAmount'], 30000)
+        self.assertEqual(payload['usages'][0]['amount'], 30000)
+        self.assertEqual(payload['usages'][0]['deliveryItems'][0]['itemName'], '테스트 품목')
+        self.assertEqual(payload['links']['reactEdit'], f'/prepayments/{prepayment.id}/edit/')
+
+    def test_prepayment_detail_api_blocks_other_company(self):
+        prepayment = self._create_prepayment(self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:prepayment_detail_api', args=[prepayment.id]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_prepayment_create_api_creates_with_initial_balance(self):
+        from reporting.models import Prepayment
+
+        customer = self._create_customer(self.user, '등록고객')
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:prepayment_create_api'), {
+            'customer': str(customer.id),
+            'amount': '250000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'payer_name': '등록 입금자',
+            'memo': 'React 등록',
+        })
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = Prepayment.objects.get(id=payload['prepaymentId'])
+        self.assertEqual(created.created_by, self.user)
+        self.assertEqual(int(created.amount), 250000)
+        self.assertEqual(int(created.balance), 250000)
+        self.assertEqual(created.company, customer.company)
+        self.assertEqual(payload['href'], f'/prepayments/{created.id}/')
+
+    def test_prepayment_update_api_only_owner_and_validates_balance(self):
+        prepayment = self._create_prepayment(self.user, amount=100000, balance=80000)
+
+        self.client.force_login(self.coworker)
+        denied = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'customer': str(prepayment.customer_id),
+            'amount': '100000',
+            'balance': '70000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'status': 'active',
+        })
+        self.assertEqual(denied.status_code, 403)
+
+        self.client.force_login(self.user)
+        invalid = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'customer': str(prepayment.customer_id),
+            'amount': '100000',
+            'balance': '120000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'status': 'active',
+        })
+        self.assertEqual(invalid.status_code, 400)
+
+        response = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'customer': str(prepayment.customer_id),
+            'amount': '110000',
+            'balance': '70000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'card',
+            'payer_name': '수정 입금자',
+            'status': 'active',
+            'memo': 'React 수정',
+        })
+        self.assertEqual(response.status_code, 200)
+        prepayment.refresh_from_db()
+        self.assertEqual(int(prepayment.amount), 110000)
+        self.assertEqual(int(prepayment.balance), 70000)
+        self.assertEqual(prepayment.payment_method, 'card')
+        self.assertEqual(prepayment.memo, 'React 수정')
+
+
 class SchedulesSummaryApiTests(TestCase):
     """React 일정 화면 읽기 API 검증"""
 
