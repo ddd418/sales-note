@@ -14,22 +14,25 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Latest Deployed Task
 
-React 선결제 현황 목록 전환.
+React 선결제 상세/등록/수정 전환.
 
 Implemented:
 
-- React `/prepayments/` route and sidebar entry.
-- `/reporting/api/prepayments/` list mode when `customer_id` is absent.
-- Existing schedule edit prepayment option mode is preserved when `customer_id` is present.
-- React summary cards for total amount, balance, used amount, active/depleted counts.
-- Search, status, data range, employee filter controls.
-- Links back to Django prepayment detail/create/excel/customer-specific screens.
+- React `/prepayments/new/` 선결제 등록 화면.
+- React `/prepayments/<id>/` 선결제 상세 화면.
+- React `/prepayments/<id>/edit/` 선결제 수정 화면.
+- `/reporting/api/prepayments/create/` GET/POST API.
+- `/reporting/api/prepayments/<id>/` 상세 API.
+- `/reporting/api/prepayments/<id>/update/` 수정 API.
+- 기존 `/reporting/prepayment/*` 상세/등록/수정/삭제/이관/엑셀 화면은 fallback으로 유지.
+- 삭제/취소/이관은 아직 React 직접 처리하지 않고 Django 링크로 연결.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
 python -m py_compile reporting\views.py reporting\tests.py
+python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
 cd frontend; npm run build
 cd frontend; node --check server.mjs
 python manage.py check
@@ -39,20 +42,21 @@ git diff --check
 
 Results:
 
-- 4 targeted tests OK.
-- React build OK, bundle `index-C-kJugeW.js` / `index-Bj05GhEi.css`.
+- 8 targeted tests OK.
+- React build OK, bundle `index-PKyQkfnX.js` / `index-DhZfNPNe.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment status:
 
-- Commit: `a2df659 feat: add React prepayment list`
-- `web`: `5663d875-ea81-4d4f-9409-f2ce69dd6e6a` SUCCESS
-- `sales-note-frontend`: `f63e24f3-352d-41ed-96a3-6e807535c926` SUCCESS
-- Production `/prepayments/` serves bundle `index-C-kJugeW.js` / `index-Bj05GhEi.css`.
-- Anonymous `/reporting/api/prepayments/` returns `401 login_required` on both frontend proxy and backend.
-- Anonymous `/reporting/prepayment/` redirects to `/reporting/login/?next=/reporting/prepayment/`.
+- Commit: `a777acc feat: add React prepayment detail forms`
+- `web`: `654da7ec-d8fc-43cd-bd91-96b7d4619b92` SUCCESS
+- `sales-note-frontend`: `992e380e-bb26-4308-9900-5ffe20af9ad6` SUCCESS
+- Production `/prepayments/new/` serves bundle `index-PKyQkfnX.js` / `index-DhZfNPNe.css`.
+- Anonymous `/reporting/api/prepayments/create/` returns `401 login_required` on both frontend proxy and backend.
+- Anonymous `/reporting/api/prepayments/1/` returns `401 login_required`.
+- Anonymous `/reporting/prepayment/create/` redirects to `/reporting/login/?next=/reporting/prepayment/create/`.
 
 Manual test status:
 
@@ -261,9 +265,9 @@ React pages should continue to expose Django fallback/original links until featu
 
 ## Recommended Next Work
 
-After the React prepayment list is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
+After the React prepayment detail/create/edit flow is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
 
-1. Move 선결제 상세/등록/수정 into React while preserving Django `/reporting/prepayment/*`.
+1. Move 선결제 삭제/취소/이관 into React while preserving Django `/reporting/prepayment/*`.
 2. Move 견적/문서 생성 workflows into React.
 3. Continue AI React migration only after confirming the latest customer AI manual tests remain good.
 

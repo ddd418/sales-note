@@ -1,5 +1,123 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React 선결제 상세/등록/수정 전환
+
+**상태**: 구현/검증/배포 완료, 사용자 수동검수 대기
+
+### 요약
+
+React CRM에 `/prepayments/new/`, `/prepayments/<id>/`, `/prepayments/<id>/edit/` 흐름을 추가했습니다. 기존 Django `/reporting/prepayment/*` 화면은 삭제하지 않고 fallback 링크로 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 선결제 단건 조회, 등록, 수정 JSON API 추가
+- `reporting/urls.py`: `/reporting/api/prepayments/create/`, `/reporting/api/prepayments/<id>/`, `/reporting/api/prepayments/<id>/update/` 추가
+- `reporting/tests.py`: 선결제 상세/등록/수정 API 권한 및 검증 테스트 추가
+- `frontend/src/api.ts`: 선결제 상세/등록/수정 API client와 타입 추가
+- `frontend/src/App.tsx`: React 선결제 등록/상세/수정 화면과 라우팅 추가
+- `frontend/src/styles.css`: 선결제 상세/사용내역/폼 레이아웃 추가
+- `frontend/README.md`: React 선결제 신규 범위 기록
+- `AGENT_PLAN.md`: 작업 계획 기록
+
+### CRM 개선
+
+- 선결제 등록과 기본 수정이 React CRM 안에서 처리됩니다.
+- 선결제 상세에서 입금 정보, 잔액, 사용률, 사용 내역, 연결 일정 이동을 한 화면에서 확인할 수 있습니다.
+- 삭제/취소/이관은 운영 안전을 위해 기존 Django 화면으로 연결했습니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/prepayment/`, 상세, 등록, 수정, 삭제, 이관, 고객별, 엑셀 URL 유지.
+- 일정 상세의 기존 선결제 선택 API 유지.
+- 비로그인 API 접근은 `401 login_required`.
+- DB 모델 변경 없음, migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
+→ Ran 1 test, OK
+
+cd frontend && npm run build
+→ OK, assets/index-PKyQkfnX.js / assets/index-DhZfNPNe.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### Railway 배포 및 운영 스모크
+
+- Commit: `a777acc feat: add React prepayment detail forms`
+- `web` deployment: `654da7ec-d8fc-43cd-bd91-96b7d4619b92` SUCCESS
+- `sales-note-frontend` deployment: `992e380e-bb26-4308-9900-5ffe20af9ad6` SUCCESS
+
+운영 스모크:
+
+```text
+https://sales-note-frontend-production.up.railway.app/prepayments/new/
+→ 200, assets/index-PKyQkfnX.js / assets/index-DhZfNPNe.css
+
+프론트 JS
+→ /prepayments/new/ 포함, Prepayment detail 포함
+
+프론트 CSS
+→ prepayment-detail-layout 포함
+
+https://sales-note-frontend-production.up.railway.app/reporting/api/prepayments/create/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/api/prepayments/create/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/api/prepayments/1/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/prepayment/create/
+→ 302 /reporting/login/?next=/reporting/prepayment/create/
+
+https://sales-note-frontend-production.up.railway.app/prepayments/1/edit/
+→ 200 React app shell
+```
+
+### 알려진 제한
+
+- React에서 삭제/취소/이관은 아직 직접 처리하지 않고 Django 원본 화면으로 이동합니다.
+- 로그인 세션이 필요한 실제 등록/수정 저장 검수는 사용자가 운영 서버에서 진행해야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/prepayments/`
+2. 로그인 후 `선결제 등록`을 눌러 `/prepayments/new/`로 이동하는지 확인합니다.
+3. 고객, 입금일, 선결제 금액, 입금 방법, 입금자, 메모를 입력해 저장합니다.
+4. 저장 후 `상세 열기`로 이동해 금액/잔액/상태/메모가 맞는지 확인합니다.
+5. 목록에서 새 선결제가 보이는지 확인합니다.
+6. 상세 화면에서 `수정`을 눌러 `/prepayments/<id>/edit/`로 이동합니다.
+7. 입금자명, 메모, 잔액 또는 상태를 수정하고 저장한 뒤 상세 화면 값이 갱신되는지 확인합니다.
+8. 사용 내역이 있는 기존 선결제 상세에서 사용 금액, 남은 잔액, 연결 일정 링크가 정상 표시되는지 확인합니다.
+9. `Django 상세`, `Django 수정`, `Django 이관`, `Django 삭제/취소`, `고객별 선결제` 링크가 기존 Django 화면으로 정상 이동하는지 확인합니다.
+10. `/schedules/<id>/` 납품 일정 상세의 기존 선결제 차감 기능이 계속 동작하는지 확인합니다.
+
+### 다음 권장 작업
+
+- 수동검수 완료 후 선결제 삭제/취소/이관까지 React로 옮길지, 또는 견적/문서 생성 흐름을 React로 옮길지 선택합니다.
+
+---
+
 ## 2026-05-10 — React 선결제 현황 목록 전환
 
 **상태**: 구현/검증/배포 완료, 사용자 수동검수 대기
