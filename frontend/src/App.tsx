@@ -16,6 +16,7 @@ import {
   Filter,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   Loader2,
   MessageSquareText,
   MoveUpRight,
@@ -579,6 +580,31 @@ const riskLabel: Record<Deal['risk'], string> = {
   high: '지연',
 };
 
+function readCookie(name: string): string {
+  const cookie = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${name}=`));
+  return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : '';
+}
+
+async function handleLogout() {
+  const csrfToken = readCookie('csrftoken');
+  try {
+    await fetch('/reporting/logout/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+    });
+  } catch (error) {
+    console.error('Logout request failed', error);
+  } finally {
+    window.location.href = '/reporting/login/';
+  }
+}
+
 function AppShell({ activeView, children }: { activeView: MainView; children: React.ReactNode }) {
   return (
     <div className="app-shell">
@@ -647,6 +673,10 @@ function TopBar({
           <Plus size={17} />
           새 영업노트
         </a>
+        <button className="logout-button" onClick={handleLogout} type="button">
+          <LogOut size={17} />
+          로그아웃
+        </button>
       </div>
     </header>
   );

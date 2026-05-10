@@ -1,8 +1,70 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — Urgent React Dashboard Logout Button
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+
+### 요약
+
+운영 React CRM `/dashboard/`에서 바로 로그아웃할 수 있도록 공통 상단바에 `로그아웃` 버튼을 추가했습니다. 버튼은 기존 Django `/reporting/logout/` URL에 CSRF 포함 `POST` 요청을 보내고, 처리 후 `/reporting/login/`으로 이동합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 로그아웃 버튼, `LogOut` 아이콘, CSRF 쿠키 읽기 및 POST 로그아웃 처리 추가
+- `frontend/src/styles.css`: 로그아웃 버튼 스타일과 모바일 폭 대응 추가
+- `AGENT_PLAN.md`: 긴급 로그아웃 버튼 작업 계획 기록
+- `AGENT_REPORT.md`: 긴급 작업 구현/검증 기록
+- `HANDOFF.md`: 직전 선결제 요약 배포 상태 갱신
+
+### CRM 개선
+
+- React `/dashboard/` 및 React CRM 공통 화면에서 로그아웃 진입점을 즉시 확인할 수 있습니다.
+- 단순 GET 링크가 아니라 기존 Django 인증/CSRF 정책을 유지하는 POST 로그아웃을 사용합니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/logout/`, `/reporting/login/`, `/reporting/*` 인증 흐름은 유지했습니다.
+- DB 변경 및 migration 없음.
+- 내부 CRM 데이터 공개 범위 변경 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npm run build
+→ OK, assets/index-cLy6Pc7s.js / assets/index-D1AABLev.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 예정.
+- Django backend 변경은 없어 `web` 재배포는 필요하지 않습니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/dashboard/`
+2. 로그인된 상태에서 상단 오른쪽의 `로그아웃` 버튼이 보이는지 확인합니다.
+3. `로그아웃`을 클릭합니다.
+4. `/reporting/login/`으로 이동하는지 확인합니다.
+5. 브라우저 뒤로가기로 `/dashboard/`에 돌아갔을 때 데이터가 계속 보이지 않고 로그인 요구 상태가 되는지 확인합니다.
+
+### 다음 권장 작업
+
+- 이 긴급 배포의 운영 수동검수 완료 후에만 다음 React 전환 작업을 이어갑니다.
+
+---
+
 ## 2026-05-10 — React 고객 상세 선결제 요약 통합
 
-**상태**: 구현/로컬 검증/푸시 완료, Railway 배포 차단
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -63,10 +125,53 @@ git diff --check
 
 - Commit: `1b88b4f feat: add customer prepayment summary`
 - GitHub push: `main` 반영 완료
-- Railway CLI: `Unauthorized. Please run railway login again.`
-- 운영 프론트 `/customers/1/` 폴링 결과: 2026-05-10 10:07:48~10:14:06 KST 동안 이전 번들 `assets/index-C1Keut7B.js` / `assets/index-BwpNmJt5.css` 유지
+- Deployment/reporting commit: `f7794db docs: record customer prepayment summary deployment block`
+- Railway CLI 인증 복구 확인: `railway status` 성공
+- Railway `web`: `3e66177e-2ddb-4dd7-be56-6bfb6870ac18` SUCCESS, commit `f7794db`
+- Railway `sales-note-frontend`: `eacfa822-cbd0-42ef-a2ff-418a7079329d` SUCCESS
+- 운영 프론트 `/customers/1/`: 200, `assets/index-VVc8nVTe.js` / `assets/index-COYknf0t.css`
+- 운영 JS: `prepaymentSummary=True`, `/prepayments/customer/=True`, `선결제 요약=True`
+- 운영 CSS: `customer-prepayment-card=True`, `customer-prepayment-metrics=True`, `customer-prepayment-actions=True`
+- 운영 프론트 proxy anonymous `/reporting/api/customers/1/`: `401 login_required`
 - 운영 백엔드 anonymous `/reporting/api/customers/1/`: `401 login_required`
-- 결론: 로컬 구현과 원격 푸시는 완료됐지만, Railway CLI 인증 만료와 자동 배포 미반영으로 이번 런타임 변경은 아직 운영 배포 확인을 완료하지 못했습니다.
+- 운영 로그인 페이지 `/reporting/login/`: 200 OK
+
+추가 실행한 배포/스모크 명령어:
+
+```text
+railway status
+→ 인증/프로젝트 연결 정상, web/sales-note-frontend Online
+
+railway redeploy --service web --from-source --yes --json
+→ {"success":true}
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy customer prepayment summary f7794db" --ci
+→ Deploy complete, assets/index-VVc8nVTe.js / assets/index-COYknf0t.css
+
+railway deployment list --service web --environment production --limit 1 --json
+→ 3e66177e-2ddb-4dd7-be56-6bfb6870ac18 SUCCESS
+
+railway deployment list --service sales-note-frontend --environment production --limit 1 --json
+→ eacfa822-cbd0-42ef-a2ff-418a7079329d SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/1/
+→ 200, assets/index-VVc8nVTe.js / assets/index-COYknf0t.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-VVc8nVTe.js
+→ prepaymentSummary=True, /prepayments/customer/=True, 선결제 요약=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-COYknf0t.css
+→ customer-prepayment-card=True, customer-prepayment-metrics=True, customer-prepayment-actions=True
+
+curl.exe -s -i https://sales-note-frontend-production.up.railway.app/reporting/api/customers/1/
+→ 401 login_required
+
+curl.exe -s -i https://web-production-5096.up.railway.app/reporting/api/customers/1/
+→ 401 login_required
+
+curl.exe -s -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+```
 
 ### 알려진 제한
 
@@ -85,7 +190,8 @@ git diff --check
 
 ### 다음 권장 작업
 
-- 수동검수 완료 후 견적/문서 생성 흐름 또는 고객 상세 내 결제/납품 이력 요약을 이어서 React로 확장합니다.
+- 사용자 수동검수 완료 후 견적/문서 생성 흐름 또는 고객 상세 내 결제/납품 이력 요약을 이어서 React로 확장합니다.
+- 수동검수 확인 전에는 다음 구현 작업을 시작하지 않습니다.
 
 ---
 

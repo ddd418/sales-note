@@ -233,7 +233,8 @@ h2 {
 }
 
 .icon-button,
-.primary-button {
+.primary-button,
+.logout-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -259,6 +260,13 @@ h2 {
   box-shadow: var(--shadow-glow);
 }
 
+.logout-button {
+  padding: 0 14px;
+  background: var(--panel);
+  color: var(--red);
+  font-weight: 700;
+}
+
 .icon-button:hover {
   border-color: var(--primary);
   background: var(--primary-bg);
@@ -269,6 +277,13 @@ h2 {
 .primary-button:hover {
   border-color: var(--primary-light);
   color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.logout-button:hover {
+  border-color: #fecaca;
+  background: var(--danger-bg);
+  color: #b91c1c;
   transform: translateY(-1px);
 }
 
@@ -4483,7 +4498,8 @@ tbody tr:hover {
     grid-column: 2;
   }
 
-  .primary-button {
+  .primary-button,
+  .logout-button {
     width: 100%;
   }
 

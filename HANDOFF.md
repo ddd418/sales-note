@@ -16,7 +16,7 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 React 고객 상세 선결제 요약 통합.
 
-Implemented locally:
+Implemented, pushed, and deployed to production:
 
 - `/reporting/api/customers/<customer_id>/`에 `prepaymentSummary` 추가.
 - 고객 상세와 같은 `scope_users` 범위로 해당 고객의 선결제만 집계.
@@ -47,13 +47,17 @@ Results:
 
 Deployment status:
 
-- Commit pushed: `1b88b4f feat: add customer prepayment summary`.
-- Railway CLI currently fails with `Unauthorized. Please run railway login again.`
-- Production frontend polling from 10:07:48 to 10:14:06 KST still served the previous bundle `index-C1Keut7B.js` / `index-BwpNmJt5.css`, so GitHub auto deploy did not visibly update the frontend during the check window.
-- Anonymous backend smoke still returns `401 login_required` for `/reporting/api/customers/1/`.
-- Next operator step: run `railway login` in this workspace, then deploy/verify both `web` and `frontend` services for commit `1b88b4f`, or trigger deployments from the Railway dashboard.
+- Runtime commit: `1b88b4f feat: add customer prepayment summary`.
+- Deployment/reporting commit: `f7794db docs: record customer prepayment summary deployment block`.
+- Railway `web`: `3e66177e-2ddb-4dd7-be56-6bfb6870ac18` SUCCESS.
+- Railway `sales-note-frontend`: `eacfa822-cbd0-42ef-a2ff-418a7079329d` SUCCESS.
+- Production frontend `/customers/1/` serves `index-VVc8nVTe.js` / `index-COYknf0t.css`.
+- Production JS contains `prepaymentSummary`, `/prepayments/customer/`, and `선결제 요약`.
+- Production CSS contains `customer-prepayment-card`, `customer-prepayment-metrics`, and `customer-prepayment-actions`.
+- Anonymous frontend-proxy and backend API smoke returns `401 login_required` for `/reporting/api/customers/1/`.
+- Manual production test is now pending from the user. Do not start the next feature task until the user confirms the server-side test or explicitly asks to proceed.
 
-## Latest Deployed Task
+## Previous Deployed Task
 
 React 고객별/부서별 선결제 화면 전환.
 
@@ -400,7 +404,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-a2df659 feat: add React prepayment list
+1b88b4f feat: add customer prepayment summary
 ```
 
 ## Known Caveats
@@ -421,4 +425,5 @@ Confirmed by user:
 
 Needs awareness:
 
+- React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.

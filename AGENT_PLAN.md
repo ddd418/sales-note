@@ -9,9 +9,45 @@
 
 ---
 
+## Current urgent task — React 대시보드 로그아웃 버튼 추가
+
+**목표**: 운영 React `/dashboard/` 및 공통 CRM 화면에서 사용자가 바로 로그아웃할 수 있게 한다.
+
+### 확인된 상태
+
+- Django 로그아웃 URL은 기존 `/reporting/logout/`로 제공된다.
+- React production frontend는 `/reporting/*` 요청을 같은 프론트 도메인에서 Django backend로 프록시한다.
+- Django 5 로그아웃은 GET 링크보다 CSRF 포함 POST가 안전하므로 React 버튼에서 POST 요청으로 처리한다.
+- DB 변경 필요 없음.
+
+### 구현 계획
+
+- React 공통 `TopBar`에 로그아웃 아이콘 버튼을 추가해 `/dashboard/` 포함 모든 React CRM 화면에서 접근 가능하게 한다.
+- `csrftoken` 쿠키를 읽어 `/reporting/logout/`에 `POST` 요청을 보내고, 성공/리다이렉트 후 `/reporting/login/`으로 이동한다.
+- 로그아웃 요청 실패 시에도 로그인 페이지로 보내되, 오류는 콘솔에만 남겨 운영 UI를 막지 않는다.
+- 기존 Django `/reporting/*` 로그아웃 경로와 인증 흐름은 유지한다.
+
+### 검증 계획
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/dashboard/` 번들 smoke check
+
+---
+
 ## Current task — React 고객 상세 선결제 요약 통합
 
 **목표**: React 고객 상세(`/customers/<customer_id>/`)에서 해당 고객의 선결제 총액, 사용액, 잔액, 최근 선결제 이력을 바로 확인하게 한다.
+
+### 진행 상태
+
+- 구현, 로컬 검증, GitHub push, Railway `web`/`sales-note-frontend` 운영 배포 완료.
+- 배포된 운영 번들: `assets/index-VVc8nVTe.js` / `assets/index-COYknf0t.css`.
+- 운영 비로그인 API smoke: `/reporting/api/customers/1/`는 frontend proxy와 backend 모두 `401 login_required`.
+- 사용자 운영 수동검수 대기 중.
+- 수동검수 확인 전에는 다음 React 전환 구현을 시작하지 않는다.
 
 ### 확인된 상태
 
