@@ -14,6 +14,44 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+Urgent React dashboard logout button.
+
+Implemented, pushed, and deployed to production:
+
+- React 공통 `TopBar`에 `로그아웃` 버튼 추가.
+- 버튼은 `/reporting/logout/`에 CSRF 포함 `POST` 요청을 보내고 `/reporting/login/`으로 이동.
+- `/dashboard/` 포함 React CRM 전 화면에서 접근 가능.
+- Django `/reporting/logout/`와 기존 인증/CSRF 정책 유지.
+- DB 변경 없음.
+
+Validation:
+
+```powershell
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+git diff --check
+```
+
+Results:
+
+- React build OK, bundle `index-cLy6Pc7s.js` / `index-D1AABLev.css`.
+- `node --check server.mjs` OK.
+- Django check OK.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment status:
+
+- Runtime commit: `28a08db fix: add React logout button`.
+- Railway `sales-note-frontend`: `58a3e89a-fbad-4bca-bf21-172229b095af` SUCCESS.
+- Production `/dashboard/` serves `index-cLy6Pc7s.js` / `index-D1AABLev.css`.
+- Production JS contains `로그아웃`, `/reporting/logout/`, `X-CSRFToken`, and `/reporting/login/`.
+- Production CSS contains `logout-button`.
+- Anonymous dashboard API smoke returns `401 login_required`.
+- Manual production logout click test is pending from the user. Do not start the next feature task until the user confirms the server-side test or explicitly asks to proceed.
+
+## Previous Deployed Task
+
 React 고객 상세 선결제 요약 통합.
 
 Implemented, pushed, and deployed to production:
@@ -57,7 +95,7 @@ Deployment status:
 - Anonymous frontend-proxy and backend API smoke returns `401 login_required` for `/reporting/api/customers/1/`.
 - Manual production test is now pending from the user. Do not start the next feature task until the user confirms the server-side test or explicitly asks to proceed.
 
-## Previous Deployed Task
+## Earlier Deployed Task
 
 React 고객별/부서별 선결제 화면 전환.
 
@@ -404,7 +442,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-1b88b4f feat: add customer prepayment summary
+28a08db fix: add React logout button
 ```
 
 ## Known Caveats
@@ -425,5 +463,6 @@ Confirmed by user:
 
 Needs awareness:
 
+- React dashboard logout button is deployed and awaits user manual production testing.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.

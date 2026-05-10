@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — Urgent React Dashboard Logout Button
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+**상태**: 구현/검증/푸시/운영 배포 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -45,8 +45,46 @@ git diff --check
 
 ### 배포 상태
 
-- 커밋/푸시 후 Railway `sales-note-frontend` 배포 예정.
-- Django backend 변경은 없어 `web` 재배포는 필요하지 않습니다.
+- Runtime commit: `28a08db fix: add React logout button`
+- GitHub push: `main` updated from `f7794db` to `28a08db`
+- Railway `sales-note-frontend`: `58a3e89a-fbad-4bca-bf21-172229b095af` SUCCESS
+- 운영 프론트 `/dashboard/`: 200, `assets/index-cLy6Pc7s.js` / `assets/index-D1AABLev.css`
+- 운영 JS: `로그아웃=True`, `/reporting/logout/=True`, `X-CSRFToken=True`, `/reporting/login/=True`
+- 운영 CSS: `logout-button=True`
+- 운영 `/reporting/login/`: 200 OK
+- 운영 anonymous `/reporting/api/dashboard/`: `401 login_required`
+- Django backend 변경은 없어 `web` 재배포는 수행하지 않았습니다.
+
+배포/운영 smoke 명령:
+
+```text
+git commit -m "fix: add React logout button"
+→ 28a08db fix: add React logout button
+
+git push origin main
+→ main updated from f7794db to 28a08db
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React logout button 28a08db" --ci
+→ Deploy complete
+
+railway deployment list --service sales-note-frontend --environment production --limit 1 --json
+→ 58a3e89a-fbad-4bca-bf21-172229b095af SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+→ 200, assets/index-cLy6Pc7s.js / assets/index-D1AABLev.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-cLy6Pc7s.js
+→ 로그아웃=True, /reporting/logout/=True, X-CSRFToken=True, /reporting/login/=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-D1AABLev.css
+→ logout-button=True
+
+curl.exe -s -I https://sales-note-frontend-production.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -s -i https://sales-note-frontend-production.up.railway.app/reporting/api/dashboard/
+→ 401 login_required
+```
 
 ### 수동 서버 테스트 절차
 
