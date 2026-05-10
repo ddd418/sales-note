@@ -14,21 +14,38 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React mailbox reply quote cleanup.
+React weekly reports first integration is implemented, pushed, deployed, and smoke-tested.
 
-Implemented locally, push/deploy pending:
+Runtime commit:
 
-- React mailbox thread display body now removes Gmail/Outlook quoted previous-message chains.
-- Text quote markers handled include Korean Gmail `님이 작성:`, English `On ... wrote:`, Outlook `Original Message`, `보낸 사람:`, `From:`, `Sent:`, `To:` and common Outlook app footer markers.
-- HTML quote containers handled include `gmail_quote`, Outlook reference containers, and blockquotes.
-- Only React API display `bodyText` is trimmed; stored `EmailLog.body/body_html` remains intact, so AI analysis is not reduced.
-- DB 변경 없음.
+```text
+8c9fdb6 feat: add React weekly reports
+```
+
+Implemented:
+
+- React routes:
+  - `/weekly-reports/`
+  - `/weekly-reports/new/`
+  - `/weekly-reports/<id>/`
+  - `/weekly-reports/<id>/edit/`
+- Django JSON APIs:
+  - `/reporting/api/weekly-reports/`
+  - `/reporting/api/weekly-reports/create/`
+  - `/reporting/api/weekly-reports/<id>/`
+  - `/reporting/api/weekly-reports/<id>/update/`
+  - `/reporting/api/weekly-reports/<id>/delete/`
+- React weekly report nav item, list filters, metrics, detail view, edit/create form, schedule insertion panel, AI draft button, and manager comment save.
+- Existing Django weekly report template routes remain as fallback.
+- No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
-python -m py_compile reporting\gmail_views.py reporting\tests.py
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
@@ -36,16 +53,34 @@ git diff --check
 
 Results:
 
-- 5 React mailbox API tests OK.
+- 21 weekly report tests OK.
+- React build OK: `assets/index-D6rGbRO3.js` / `assets/index-CjVBFS4u.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
-Manual production test after deploy:
+Deployment:
 
-1. Open a multi-reply thread in `/mailbox/thread/<thread_id>/`.
-2. Confirm each card only shows the new body for that email.
-3. Confirm the original stored email remains available to backend/AI flows.
+- Railway `web`: `4216824a-7d1f-4850-8624-11dca0b40b26` SUCCESS.
+- Railway `sales-note-frontend`: `fd8547fc-63f8-4962-92de-88b182eb7984` SUCCESS.
+- Frontend bundle smoke confirmed JS contains `weeklyReports`, `주간보고 작성`, `/reporting/api/weekly-reports/`; CSS contains `.weekly-page`, `.weekly-report-row`, `.weekly-editor-layout`, `.weekly-schedule-card`.
+- Anonymous smoke:
+  - `https://sales-note-frontend-production.up.railway.app/weekly-reports/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/` → 401 `login_required`.
+  - `https://web-production-5096.up.railway.app/reporting/api/weekly-reports/` → 401 `login_required`.
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/weekly-reports/`.
+2. Confirm the `주간보고` sidebar item and list filters work.
+3. Create a report from `/weekly-reports/new/`.
+4. Use `일정 불러오기`, select schedule cards, and insert into 영업활동 or 견적/납품.
+5. If the account has AI permission, use `AI 초안`.
+6. Save and confirm detail readability, especially paragraph/line breaks.
+7. Edit/delete with the author account.
+8. Save a manager comment with a manager/admin account.
+9. Confirm Django fallback `/reporting/weekly-reports/` remains available.
 
 ## Previous Task
 
@@ -475,20 +510,20 @@ React pages should continue to expose Django fallback/original links until featu
 
 Current latest work:
 
-- React customer/department searchable selection UX is implemented, pushed, and deployed.
-- Runtime commit: `344f4a3 feat: add searchable CRM selectors`.
-- Railway `sales-note-frontend`: `a373859f-06f2-407f-9321-f1baead50ef6` SUCCESS.
-- Railway `web`: `44f73bb0-d3be-4346-bd3c-b2331e0912a9` SUCCESS from the same push.
-- Deployed bundle: `assets/index-DGco8KN_.js` / `assets/index-B9odz52n.css`.
-- Changed files: `frontend/src/App.tsx`, `frontend/src/styles.css`, `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`.
-- Local validation passed: `npm run build`, `node --check server.mjs`, `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `git diff --check`.
-- Production smoke passed: frontend bundle contains `searchable-select`, protected customer API returns 401 anonymous, backend login page returns 200.
+- React weekly reports first integration is implemented, pushed, deployed, and smoke-tested.
+- Runtime commit: `8c9fdb6 feat: add React weekly reports`.
+- Railway `web`: `4216824a-7d1f-4850-8624-11dca0b40b26` SUCCESS.
+- Railway `sales-note-frontend`: `fd8547fc-63f8-4962-92de-88b182eb7984` SUCCESS.
+- Deployed bundle: `assets/index-D6rGbRO3.js` / `assets/index-CjVBFS4u.css`.
+- Changed files: `AGENT_PLAN.md`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/styles.css`, `reporting/views.py`, `reporting/urls.py`, `reporting/tests.py`.
+- Local validation passed: weekly report tests, `npm run build`, `node --check server.mjs`, `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `git diff --check`.
+- Production smoke passed: `/weekly-reports/` returns 200, protected weekly report APIs return 401 anonymous, deployed JS/CSS contain the weekly report route/styles.
 
-After the React prepayment detail/create/edit flow is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
+Wait for user manual production verification before starting the next implementation task. Natural next slices after confirmation are:
 
-1. Move 선결제 삭제/취소/이관 into React while preserving Django `/reporting/prepayment/*`.
-2. Move 견적/문서 생성 workflows into React.
-3. Continue AI React migration only after confirming the latest customer AI manual tests remain good.
+1. Move 견적/문서 생성 workflows into React.
+2. React schedule calendar parity audit and fallback links.
+3. Continue customer AI result verification UI in React.
 
 Alternative high-value slice:
 
@@ -576,7 +611,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-b8e65e9 feat: show department AI in pipeline panel
+8c9fdb6 feat: add React weekly reports
 ```
 
 ## Known Caveats

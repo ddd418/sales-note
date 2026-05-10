@@ -11287,3 +11287,114 @@ curl -I https://web-production-5096.up.railway.app/reporting/login/
 ### 10. Recommended Next Task
 
 - 수동검수 완료 후 React 통합 프론트의 다음 Django 템플릿 대체 범위를 진행합니다.
+
+---
+
+## React Weekly Reports First Integration — 주간보고 React 1차 통합 (2026-05-10)
+
+### 1. Summary
+
+기존 Django `/reporting/weekly-reports/*` 주간보고 화면을 유지하면서 React CRM에 `/weekly-reports/`, `/weekly-reports/new/`, `/weekly-reports/<id>/`, `/weekly-reports/<id>/edit/` route를 추가했습니다. React에서 목록 필터, 상세 보기, 작성/수정, 일정 불러오기, AI 초안, 관리자 검토 코멘트를 처리할 수 있습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 주간보고 통합 계획 추가 |
+| `reporting/views.py` | React 주간보고 목록/작성/상세/수정/삭제 JSON API 추가, 관련 React 링크 전환 |
+| `reporting/urls.py` | `/reporting/api/weekly-reports/*` API URL 추가 |
+| `reporting/tests.py` | `WeeklyReportReactApiTests` 추가 |
+| `frontend/src/api.ts` | 주간보고 API 타입/loader/mutation 함수 추가 |
+| `frontend/src/App.tsx` | 주간보고 nav, route, 목록/상세/작성/수정 UI 추가 |
+| `frontend/src/styles.css` | 주간보고 목록/문서/편집/일정 삽입 패널 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 주간보고를 React CRM 사이드바에서 바로 열 수 있습니다.
+- 목록에서 연도, 월, 작성자 필터와 검토 상태 지표를 확인할 수 있습니다.
+- 작성/수정 화면에서 여러 줄 메모를 textarea로 입력하면 서버가 안전한 HTML 문단으로 저장해 상세 화면 가독성을 유지합니다.
+- 기존 일정 불러오기 API를 React 작성 화면에서 재사용하며 선택한 일정을 영업활동 또는 견적/납품 본문에 삽입할 수 있습니다.
+- AI 권한 사용자는 React 작성 화면에서 기존 AI 초안 API를 호출할 수 있습니다.
+- 관리자/매니저는 React 상세 화면에서 검토 코멘트를 저장할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/weekly-reports/*` Django 템플릿 화면은 fallback으로 유지했습니다.
+- 기존 일정 불러오기, AI 초안, 관리자 코멘트 API는 보존했습니다.
+- 실무자는 본인 주간보고만 작성/수정/삭제 가능하고, 관리자/매니저는 같은 회사 범위에서 조회/검토만 가능합니다.
+- 신규 DB 필드와 migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1
+→ Ran 21 tests, OK
+
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend && npm run build
+→ OK, dist/assets/index-D6rGbRO3.js / dist/assets/index-CjVBFS4u.css generated
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: `8c9fdb6 feat: add React weekly reports`
+- GitHub push: `main` updated from `a2bc88d` to `8c9fdb6`
+- Railway `web`: `4216824a-7d1f-4850-8624-11dca0b40b26` SUCCESS
+- Railway `sales-note-frontend`: `fd8547fc-63f8-4962-92de-88b182eb7984` SUCCESS
+- Deployed frontend bundle: `assets/index-D6rGbRO3.js` / `assets/index-CjVBFS4u.css`
+
+### 7. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/weekly-reports/
+→ 200, bundle assets/index-D6rGbRO3.js and assets/index-CjVBFS4u.css
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/
+→ 401 login_required JSON
+
+GET https://web-production-5096.up.railway.app/reporting/api/weekly-reports/
+→ 401 login_required JSON
+
+GET https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+Downloaded JS/CSS bundle
+→ JS contains weeklyReports, 주간보고 작성, /reporting/api/weekly-reports/
+→ CSS contains .weekly-page, .weekly-report-row, .weekly-editor-layout, .weekly-schedule-card
+```
+
+### 8. Known Limitations
+
+- 운영 실제 작성/수정/AI 초안/관리자 검토는 로그인 세션이 필요해 사용자 수동검수가 필요합니다.
+- React 작성 화면은 textarea 기반이며, 기존 Django Quill 화면은 fallback으로 남겨두었습니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/weekly-reports/`
+2. 로그인 후 사이드바 `주간보고`가 보이는지 확인합니다.
+3. 목록에서 연도/월/작성자 필터가 동작하는지 확인합니다.
+4. `보고서 작성`을 열고 시작일/종료일/제목/본문을 입력합니다.
+5. `일정 불러오기`를 눌러 영업활동 또는 견적/납품 본문에 선택 일정을 삽입합니다.
+6. AI 권한 계정이면 `AI 초안` 버튼이 초안을 채우는지 확인합니다.
+7. 저장 후 상세 화면에서 줄바꿈/문단 가독성이 유지되는지 확인합니다.
+8. 작성자 계정으로 수정/삭제가 가능한지 확인합니다.
+9. 매니저/관리자 계정으로 상세 화면에서 검토 코멘트를 저장할 수 있는지 확인합니다.
+10. 기존 Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/weekly-reports/`도 계속 접근 가능한지 확인합니다.
+
+### 10. Recommended Next Task
+
+- 운영 수동검수 완료 후 다음 React 통합 범위로 견적/문서 생성 또는 일정 캘린더 parity audit를 진행합니다.
