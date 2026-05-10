@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — AI Verification Notes In Department Summary
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+
+### 요약
+
+PainPoint 검수 단계에서 사용자가 남긴 확인/부정 메모가 다음 부서 AI 재분석 결과의 `department_summary`에 반드시 포함되도록 서버 fallback을 보강했습니다. GPT가 요약에서 검증 메모를 약하게 반영하거나 누락하더라도 저장 직전에 `검증 메모 반영` 문장이 요약에 추가됩니다.
+
+### 변경된 파일
+
+- `ai_chat/services.py`: 검증 메모 기반 summary fallback 생성 및 `department_summary` 보정 추가
+- `ai_chat/tests.py`: 재분석 결과 요약에 검증 메모가 포함되는 회귀 테스트 추가
+- `AGENT_PLAN.md`: 긴급 검수 메모 요약 반영 작업 계획 기록
+
+### CRM 개선
+
+- 사용자가 PainPoint 검수에서 남긴 메모가 다음 AI 분석의 메인 요약에 직접 반영됩니다.
+- 확인된 가설은 `확인된 사항`, 부정된 가설은 `부정된 가설`로 구분되어 요약에 들어갑니다.
+- 기존 `verification_insights`, `next_actions`, `missing_info` 보정은 유지됩니다.
+
+### 기존 기능 보존
+
+- 기존 AI 분석 실행 URL, PainPoint 검증 저장 URL, 권한 정책은 유지했습니다.
+- DB 변경 및 migration 없음.
+- 검증 메모가 이미 요약에 들어간 경우 중복 삽입하지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test ai_chat.tests --verbosity=1
+→ Ran 16 tests, OK
+
+python -m py_compile ai_chat\services.py ai_chat\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 커밋/푸시 후 Railway `web` 배포 예정.
+- React bundle 변경은 없어 `sales-note-frontend` 직접 배포는 필요하지 않습니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/customers/<customer_id>/`
+2. AI 권한이 있는 계정으로 로그인합니다.
+3. 고객 상세의 PainPoint 검증에서 메모를 입력하고 `확인` 또는 `부정` 처리합니다.
+4. 같은 고객/부서에서 `AI 분석 실행`을 다시 누릅니다.
+5. 재분석 후 부서 AI 요약에 방금 입력한 검증 메모의 핵심 내용이 포함되는지 확인합니다.
+6. `확인` 메모는 확인된 사실로, `부정` 메모는 부정된 가설 또는 대체 원인으로 표현되는지 확인합니다.
+
+### 다음 권장 작업
+
+- 이 작업 배포 후, 사용자가 추가 요청한 “고객과 주고받은 메일을 AI 분석 컨텍스트에 반영” 작업을 이어서 진행합니다.
+
+---
+
 ## 2026-05-10 — React Pipeline Department AI Panel
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

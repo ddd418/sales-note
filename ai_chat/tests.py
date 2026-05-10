@@ -495,6 +495,7 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         self.assertIn('같은 PainPoint 검증 질문을 반복하지 말라', prompt)
         self.assertEqual(token_usage, 37)
         self.assertEqual(result['verification_memory'][0]['verification_status'], 'confirmed')
+        self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', result['department_summary'])
         self.assertEqual(result['verification_insights'][0]['status'], 'confirmed')
         self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', result['verification_insights'][0]['impact'])
         self.assertTrue(any(
@@ -597,6 +598,11 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
             '구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음',
             analysis.analysis_data['verification_insights'][0]['impact'],
         )
+        self.assertIn(
+            '구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음',
+            analysis.analysis_data['department_summary'],
+        )
+        self.assertIn('부정된 가설', analysis.analysis_data['department_summary'])
         self.assertTrue(any(
             '검증 메모리 반영' in action['reason']
             for action in analysis.analysis_data['next_actions']

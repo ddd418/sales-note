@@ -656,10 +656,39 @@ def build_verification_insights_from_memory(memory, limit=6):
     return insights
 
 
+def build_verification_summary_from_memory(memory, existing_summary='', limit=3):
+    """검증 메모리 핵심을 department_summary에 넣을 짧은 문장으로 만든다."""
+    existing_summary = _compact_memory_text(existing_summary, 1400)
+    summary_items = []
+
+    for item in memory[:limit]:
+        note = _compact_memory_text(item.get('verification_note'), 260)
+        hypothesis = _compact_memory_text(item.get('hypothesis'), 160)
+        if not note and not hypothesis:
+            continue
+        if note and note in existing_summary:
+            continue
+
+        status = item.get('verification_status') or ''
+        if status == 'confirmed':
+            prefix = '확인된 사항'
+        elif status == 'denied':
+            prefix = '부정된 가설'
+        else:
+            prefix = '검증 메모'
+
+        content = note or hypothesis
+        summary_items.append(f"{prefix}: {content}")
+
+    if not summary_items:
+        return ''
+    return '검증 메모 반영 - ' + '; '.join(summary_items)
+
+
 def apply_verification_memory_to_analysis_result(analysis_result, verification_memory):
     """
     GPT 응답이 검증 메모리를 빠뜨려도 저장 결과와 React payload에 반영되도록 보정한다.
-    GPT가 작성한 요약/액션을 대체하지 않고, 검증 기반 인사이트와 보조 next action을 추가한다.
+    GPT가 작성한 요약/액션을 대체하지 않고, 검증 기반 요약/인사이트와 보조 next action을 추가한다.
     """
     if not isinstance(analysis_result, dict):
         return analysis_result
@@ -670,6 +699,17 @@ def apply_verification_memory_to_analysis_result(analysis_result, verification_m
         return analysis_result
 
     fallback_insights = build_verification_insights_from_memory(verification_memory)
+    summary_appendix = build_verification_summary_from_memory(
+        verification_memory,
+        analysis_result.get('department_summary') or analysis_result.get('summary') or '',
+    )
+    if summary_appendix:
+        current_summary = _compact_memory_text(analysis_result.get('department_summary'), 1200)
+        analysis_result['department_summary'] = (
+            f"{current_summary} {summary_appendix}".strip()
+            if current_summary else summary_appendix
+        )
+
     existing_insights = analysis_result.get('verification_insights')
     if not isinstance(existing_insights, list):
         existing_insights = []

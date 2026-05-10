@@ -9,6 +9,35 @@
 
 ---
 
+## Current urgent task — PainPoint 검수 메모 AI 요약 반영
+
+**목표**: 사용자가 PainPoint 검수 단계에서 남긴 확인/부정 메모가 다음 부서 AI 재분석 결과의 `department_summary`에 반드시 포함되게 한다.
+
+### 확인된 상태
+
+- 기존 구현은 검증 메모리를 GPT 프롬프트, `verification_insights`, `next_actions`, `missing_info`에 반영한다.
+- 시스템 프롬프트도 `department_summary`에 검증 메모를 반영하라고 지시한다.
+- 다만 GPT가 요약에서 검증 메모를 약하게 반영하거나 누락할 경우 서버 fallback이 `department_summary`까지 보정하지는 않는다.
+- DB 변경 필요 없음.
+
+### 구현 계획
+
+- `ai_chat.services.apply_verification_memory_to_analysis_result()`에서 검증 메모 핵심 문장을 `department_summary`에 deterministic fallback으로 추가한다.
+- 이미 요약에 해당 검증 메모가 포함되어 있으면 중복으로 덧붙이지 않는다.
+- confirmed/denied 상태를 구분해 "확인된 사항" 또는 "부정된 가설"로 요약에 반영한다.
+- 기존 `verification_insights`, `next_actions`, `missing_info` 보정 흐름은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1`
+- `python -m py_compile ai_chat/services.py ai_chat/tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 AI API login 보호 smoke check
+
+---
+
 ## Current urgent task — React 파이프라인 우측 부서 AI 노출
 
 **목표**: React 파이프라인에서 고객 카드를 선택했을 때 우측 상세 패널에 해당 고객의 부서 AI 분석 요약을 표시한다.
