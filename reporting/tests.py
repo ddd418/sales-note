@@ -3,7 +3,9 @@ import json
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
+from django.template.loader import get_template
 from reporting.models import (
+    EmailLog,
     UserProfile,
     UserCompany,
 )
@@ -99,6 +101,51 @@ class AuthenticationSmoke(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:history_list'))
         self.assertEqual(response.status_code, 200)
+
+
+class GmailMailboxThreadRegressionTests(TestCase):
+    """Gmail 스레드 상세 Railway 500 회귀 테스트"""
+
+    def test_thread_detail_template_compiles(self):
+        template = get_template('reporting/gmail/thread_detail.html')
+        self.assertIsNotNone(template)
+
+    def test_save_email_to_db_accepts_gmail_thread_message(self):
+        from reporting.imap_utils import save_email_to_db
+
+        user = User.objects.create_user(
+            username='mailbox-user',
+            password='TestPass123!',
+            email='sales@example.com',
+        )
+
+        email_log = save_email_to_db(
+            user=user,
+            message_id='gmail-msg-1',
+            thread_id='gmail-thread-1',
+            sender_email='Customer Name <customer@example.com>',
+            recipient_email='Sales User <sales@example.com>',
+            cc_emails='Manager <manager@example.com>',
+            subject='Railway thread regression',
+            body='고객 문의 내용입니다.',
+            body_html='<p>고객 문의 내용입니다.</p>',
+            sent_at='Wed, 08 May 2024 12:30:00 +0900',
+            email_type='received',
+            labels=['INBOX', 'UNREAD'],
+        )
+
+        self.assertEqual(EmailLog.objects.count(), 1)
+        self.assertEqual(email_log.gmail_message_id, 'gmail-msg-1')
+        self.assertEqual(email_log.gmail_thread_id, 'gmail-thread-1')
+        self.assertEqual(email_log.sender_email, 'customer@example.com')
+        self.assertEqual(email_log.recipient_email, 'sales@example.com')
+        self.assertEqual(email_log.cc_emails, 'manager@example.com')
+        self.assertEqual(email_log.email_type, 'received')
+        self.assertEqual(email_log.status, 'received')
+        self.assertFalse(email_log.is_read)
+        self.assertIsNotNone(email_log.sent_at)
+        self.assertIsNotNone(email_log.received_at)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 익명 사용자 URL 차단 테스트

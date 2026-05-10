@@ -1,5 +1,72 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — Railway Mailbox Thread 500 Fix
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+
+### 요약
+
+Railway 운영 로그의 실제 500 원인은 `/reporting/mailbox/thread/<thread_id>/` 렌더링 중 `reporting/gmail/thread_detail.html`의 `{% block extra_js %}`가 닫히지 않은 템플릿 오류였습니다. 같은 요청 흐름에서 Gmail 스레드 신규 메시지 저장 시 없는 `save_email_to_db` import도 반복되어 함께 수정했습니다.
+
+### 변경된 파일
+
+- `reporting/templates/reporting/gmail/thread_detail.html`: 삭제 중 남은 미완성 JS 꼬리를 정리하고 `{% endblock %}` 정상 종료
+- `reporting/imap_utils.py`: Gmail 스레드 메시지를 `EmailLog`에 저장하는 `save_email_to_db()` helper 추가
+- `reporting/gmail_views.py`: Gmail 메시지 본문 저장 시 `body_text`/`snippet` fallback 사용
+- `reporting/tests.py`: 템플릿 컴파일 및 Gmail thread 메시지 저장 회귀 테스트 추가
+- `AGENT_PLAN.md`: Railway 긴급 복구 작업 계획 기록
+
+### CRM 개선
+
+- 메일함 스레드 상세 화면의 템플릿 500을 제거했습니다.
+- Gmail에서 스레드 상세 진입 시 새 메시지가 있으면 기존 `EmailLog`에 저장되어 후속 AI/메일 분석 데이터로도 활용될 수 있습니다.
+- raw Gmail 헤더의 `Name <email>` 형태를 이메일 주소/표시명으로 분리해 저장합니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` 라우트, 로그인 보호, Gmail OAuth/메일함 흐름은 유지했습니다.
+- DB 모델 필드 변경 및 migration 없음.
+- 기존 메일 삭제, 답장, 인용 메일 접기 UI는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.GmailMailboxThreadRegressionTests --verbosity=2
+→ Ran 2 tests, OK
+
+python -m py_compile reporting\imap_utils.py reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- Runtime commit: 배포 전
+- Railway `web`: 배포 예정
+- Railway `sales-note-frontend`: 변경 없음
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 메일 연동 계정으로 로그인합니다.
+2. `/reporting/mailbox/` 또는 React 프론트에서 메일함으로 이동합니다.
+3. Gmail 스레드 상세 `/reporting/mailbox/thread/<thread_id>/`를 엽니다.
+4. 화면이 500 없이 열리고 메시지 본문/답장 버튼이 보이는지 확인합니다.
+5. Railway `web` 로그에서 같은 경로의 `TemplateSyntaxError`와 `save_email_to_db` import 오류가 재발하지 않는지 확인합니다.
+
+### 다음 권장 작업
+
+- 운영 수동검수 후 메일함 스레드 상세의 날짜 표시와 기존 수신 메일 chronology 정렬을 별도 개선할 수 있습니다.
+
+---
+
 ## 2026-05-10 — AI Email Context And Stage-Aware Next Actions
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

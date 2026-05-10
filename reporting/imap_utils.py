@@ -472,6 +472,124 @@ class SMTPEmailService:
             return False
 
 
+def _parse_email_datetime(value) -> datetime:
+    """Gmail/IMAP 날짜 헤더를 Django timezone-aware datetime으로 변환."""
+    if not value:
+        return timezone.now()
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            from email.utils import parsedate_to_datetime
+            parsed = parsedate_to_datetime(str(value))
+        except Exception as e:
+            logger.warning(f"이메일 날짜 파싱 실패: {value}, {e}")
+            return timezone.now()
+
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _extract_first_address(header_value: str) -> Tuple[str, str]:
+    """메일 헤더에서 첫 번째 이메일 주소와 표시명을 추출."""
+    if not header_value:
+        return "", ""
+
+    from email.utils import getaddresses
+
+    for name, address in getaddresses([header_value]):
+        if address:
+            return address.strip()[:254], (name or "").strip()[:200]
+
+    fallback = header_value.strip()
+    if "@" in fallback:
+        return fallback[:254], ""
+    return "", fallback[:200]
+
+
+def _normalize_address_list(header_value: str) -> str:
+    """여러 주소 헤더를 쉼표 구분 이메일 목록으로 정리."""
+    if not header_value:
+        return ""
+
+    from email.utils import getaddresses
+
+    addresses = [address.strip() for _, address in getaddresses([header_value]) if address]
+    return ", ".join(addresses) if addresses else header_value.strip()
+
+
+def save_email_to_db(
+    user,
+    message_id: str,
+    thread_id: str,
+    sender_email: str,
+    recipient_email: str,
+    cc_emails: str = "",
+    bcc_emails: str = "",
+    subject: str = "",
+    body: str = "",
+    body_html: str = "",
+    sent_at=None,
+    email_type: str = "received",
+    labels: List[str] = None,
+):
+    """Gmail thread 동기화 메시지를 EmailLog에 저장한다."""
+    from .models import EmailLog
+
+    if not message_id:
+        raise ValueError("message_id is required")
+
+    existing = EmailLog.objects.filter(gmail_message_id=message_id).first()
+    if existing:
+        return existing
+
+    email_type = "sent" if email_type == "sent" else "received"
+    is_sent = email_type == "sent"
+    parsed_date = _parse_email_datetime(sent_at)
+    labels = labels or []
+
+    from_email, from_name = _extract_first_address(sender_email)
+    to_email, to_name = _extract_first_address(recipient_email)
+
+    thread_context = EmailLog.objects.filter(
+        gmail_thread_id=thread_id
+    ).select_related("followup", "schedule").order_by("created_at").first()
+
+    body_content = body or body_html or ""
+    status = "sent" if is_sent else "received"
+
+    return EmailLog.objects.create(
+        user=user,
+        provider="gmail",
+        message_id=message_id,
+        thread_id=thread_id or "",
+        gmail_message_id=message_id,
+        gmail_thread_id=thread_id or "",
+        email_type=email_type,
+        is_sent=is_sent,
+        from_email=from_email,
+        from_name=from_name,
+        to_email=to_email,
+        to_name=to_name,
+        sender=user if is_sent else None,
+        sender_email=from_email,
+        recipient_email=to_email,
+        cc_emails=_normalize_address_list(cc_emails),
+        bcc_emails=_normalize_address_list(bcc_emails),
+        subject=(subject or "(제목 없음)")[:500],
+        body=body_content,
+        body_html=body_html or "",
+        followup=thread_context.followup if thread_context else None,
+        schedule=thread_context.schedule if thread_context else None,
+        status=status,
+        sent_at=parsed_date,
+        received_at=None if is_sent else parsed_date,
+        is_read=True if is_sent else "UNREAD" not in labels,
+    )
+
+
 def test_imap_connection(host: str, port: int, username: str, password: str, use_ssl: bool = True) -> Tuple[bool, str]:
     """IMAP 연결 테스트
     

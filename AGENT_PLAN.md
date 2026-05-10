@@ -9,6 +9,35 @@
 
 ---
 
+## Current urgent task — Railway 메일 스레드 500 복구
+
+**목표**: Railway 운영 로그에서 발생 중인 `/reporting/mailbox/thread/<thread_id>/` 500 오류를 제거해 Gmail/메일함 스레드 상세 화면이 다시 렌더링되게 한다.
+
+### 확인된 상태
+
+- Railway `web`, `sales-note-frontend` 배포 상태는 SUCCESS/Online.
+- 실제 오류는 백엔드 Django 템플릿 렌더링 단계의 `TemplateSyntaxError: Unclosed tag on line 321: 'block'`이다.
+- 같은 요청 흐름에서 Gmail 스레드 신규 메시지 동기화 시 `reporting.imap_utils.save_email_to_db` import 실패도 반복된다.
+- DB 필드 변경 및 migration 필요 없음.
+
+### 구현 계획
+
+- `reporting/templates/reporting/gmail/thread_detail.html`의 미종료 JS/template block을 정상 종료한다.
+- Gmail thread 동기화용 `save_email_to_db()` helper를 기존 `EmailLog` 모델 필드에 맞게 구현한다.
+- Gmail 메시지 본문 저장 시 `body_text`/`snippet` fallback을 사용해 빈 본문 저장을 줄인다.
+- 템플릿 컴파일과 Gmail 메시지 저장 회귀 테스트를 추가한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.GmailMailboxThreadRegressionTests --verbosity=2`
+- `python -m py_compile reporting\imap_utils.py reporting\gmail_views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/mailbox/thread/.../` 500 로그 재발 여부 확인
+
+---
+
 ## Current urgent task — PainPoint 검수 메모 AI 요약 반영
 
 **목표**: 사용자가 PainPoint 검수 단계에서 남긴 확인/부정 메모가 다음 부서 AI 재분석 결과의 `department_summary`에 반드시 포함되게 한다.

@@ -1020,7 +1020,7 @@ def mailbox_thread(request, thread_id):
                                 cc_emails=msg_detail.get('cc', ''),
                                 bcc_emails=msg_detail.get('bcc', ''),
                                 subject=msg_detail.get('subject', ''),
-                                body=msg_detail.get('body', ''),
+                                body=msg_detail.get('body_text') or msg_detail.get('body') or msg_detail.get('snippet', ''),
                                 body_html=msg_detail.get('body_html', ''),
                                 sent_at=msg_detail.get('date'),
                                 email_type=email_type,
