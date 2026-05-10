@@ -2554,7 +2554,7 @@ def dashboard_summary_api(request):
             'customerReport': reverse('reporting:customer_report'),
             'notes': reverse('reporting:history_list'),
             'schedules': reverse('reporting:schedule_list'),
-            'calendar': reverse('reporting:schedule_calendar'),
+            'calendar': '/schedules/calendar/',
             'pipeline': reverse('reporting:funnel_pipeline'),
             'weeklyReports': '/weekly-reports/',
             'pendingReviews': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
@@ -4120,6 +4120,85 @@ def _schedules_combined_items(schedules, personal_schedules, today, limit=80):
     return items[:limit]
 
 
+def _schedules_calendar_date_range(request):
+    from datetime import timedelta
+
+    today = timezone.localdate()
+    start = _parse_iso_date_or_none(request.GET.get('start'))
+    end = _parse_iso_date_or_none(request.GET.get('end'))
+
+    if not start:
+        start = today.replace(day=1)
+    if not end:
+        next_month = start.replace(year=start.year + 1, month=1, day=1) if start.month == 12 else start.replace(month=start.month + 1, day=1)
+        end = next_month - timedelta(days=1)
+    if end < start:
+        end = start
+
+    max_end = start + timedelta(days=120)
+    if end > max_end:
+        end = max_end
+    return start, end
+
+
+def _schedules_calendar_scope(request, user_profile):
+    data_filter = request.GET.get('data_filter') or request.GET.get('dataFilter') or 'me'
+    filter_user_id = request.GET.get('filter_user') or request.GET.get('filterUser') or ''
+    selected_user = None
+
+    if user_profile and user_profile.company:
+        company_users = User.objects.filter(
+            userprofile__company=user_profile.company,
+            is_active=True,
+        ).select_related('userprofile').order_by('username')
+    else:
+        company_users = User.objects.filter(id=request.user.id).select_related('userprofile')
+
+    if data_filter == 'all' and user_profile and user_profile.company:
+        filter_users = company_users
+        scope_label = f'{user_profile.company.name} 전체'
+    elif data_filter == 'user' and filter_user_id and user_profile and user_profile.company:
+        try:
+            selected_user = company_users.get(id=filter_user_id)
+            filter_users = User.objects.filter(id=selected_user.id).select_related('userprofile')
+            scope_label = _user_display_name(selected_user)
+        except (User.DoesNotExist, ValueError):
+            data_filter = 'me'
+            filter_user_id = ''
+            filter_users = User.objects.filter(id=request.user.id).select_related('userprofile')
+            scope_label = _user_display_name(request.user)
+    else:
+        data_filter = 'me'
+        filter_user_id = ''
+        filter_users = User.objects.filter(id=request.user.id).select_related('userprofile')
+        scope_label = _user_display_name(request.user)
+
+    user_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+            'username': user.username,
+            'role': getattr(getattr(user, 'userprofile', None), 'role', ''),
+            'isCurrent': user.id == request.user.id,
+        }
+        for user in company_users
+    ]
+
+    return filter_users, {
+        'label': scope_label,
+        'dataFilter': data_filter,
+        'filterUserId': selected_user.id if selected_user else None,
+        'canViewCompany': bool(user_profile and user_profile.company),
+    }, {
+        'users': user_options,
+        'dataFilters': [
+            {'value': 'me', 'label': '내 일정'},
+            {'value': 'all', 'label': '회사 전체'},
+            {'value': 'user', 'label': '직원 선택'},
+        ],
+    }
+
+
 def _schedules_create_activity_types(request):
     excluded_types = set()
     if not getattr(request, 'is_hanagwahak', False):
@@ -4732,8 +4811,10 @@ def schedules_summary_api(request):
         'links': {
             'createSchedule': reverse('reporting:schedule_create'),
             'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
-            'schedules': reverse('reporting:schedule_list'),
-            'calendar': reverse('reporting:schedule_calendar'),
+            'schedules': '/schedules/',
+            'djangoSchedules': reverse('reporting:schedule_list'),
+            'calendar': '/schedules/calendar/',
+            'djangoCalendar': reverse('reporting:schedule_calendar'),
             'weeklyReports': '/weekly-reports/',
         },
         'create': {
@@ -4750,6 +4831,86 @@ def schedules_summary_api(request):
             for schedule in overdue_schedules
         ],
         'schedules': _schedules_combined_items(schedules[:80], personal_schedules[:80], today, limit=80),
+    })
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def schedules_calendar_api(request):
+    """React CRM schedule calendar API."""
+    from .models import PersonalSchedule
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    start_date, end_date = _schedules_calendar_date_range(request)
+    filter_users, scope_payload, options_payload = _schedules_calendar_scope(request, user_profile)
+    today = timezone.localdate()
+
+    base_schedules = Schedule.objects.filter(
+        user__in=filter_users,
+        visit_date__gte=start_date,
+        visit_date__lte=end_date,
+    )
+    base_personal_schedules = PersonalSchedule.objects.filter(
+        user__in=filter_users,
+        schedule_date__gte=start_date,
+        schedule_date__lte=end_date,
+    )
+
+    schedules = base_schedules.select_related(
+        'user', 'followup', 'followup__company', 'followup__department'
+    ).annotate(
+        history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
+    ).order_by('visit_date', 'visit_time')
+    personal_schedules = base_personal_schedules.select_related(
+        'user', 'company'
+    ).annotate(
+        history_count=Count('histories', distinct=True)
+    ).order_by('schedule_date', 'schedule_time')
+
+    scheduled_count = base_schedules.filter(status='scheduled').count()
+    completed_count = base_schedules.filter(status='completed').count()
+    cancelled_count = base_schedules.filter(status='cancelled').count()
+    overdue_count = base_schedules.filter(visit_date__lt=today, status='scheduled').count()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            **scope_payload,
+            'userCount': filter_users.count(),
+        },
+        'filters': {
+            'start': _date_or_none(start_date),
+            'end': _date_or_none(end_date),
+            'dataFilter': scope_payload['dataFilter'],
+            'filterUser': str(scope_payload['filterUserId'] or ''),
+        },
+        'options': options_payload,
+        'metrics': {
+            'totalSchedules': base_schedules.count() + base_personal_schedules.count(),
+            'customerSchedules': base_schedules.count(),
+            'personalSchedules': base_personal_schedules.count(),
+            'scheduledSchedules': scheduled_count,
+            'completedSchedules': completed_count,
+            'cancelledSchedules': cancelled_count,
+            'overdueSchedules': overdue_count,
+        },
+        'links': {
+            'schedules': '/schedules/',
+            'djangoSchedules': reverse('reporting:schedule_list'),
+            'calendar': '/schedules/calendar/',
+            'djangoCalendar': reverse('reporting:schedule_calendar'),
+            'createSchedule': reverse('reporting:schedule_create'),
+            'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
+            'weeklyReports': '/weekly-reports/',
+        },
+        'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000),
     })
 
 
@@ -5330,7 +5491,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
         'links': {
             'schedules': '/schedules/',
             'djangoSchedules': reverse('reporting:schedule_list'),
-            'calendar': reverse('reporting:schedule_calendar'),
+            'calendar': '/schedules/calendar/',
             'djangoDetail': reverse('reporting:schedule_detail', args=[schedule.id]),
             'djangoEdit': reverse('reporting:schedule_edit', args=[schedule.id]),
             'customer': f'/customers/{followup.id}/',

@@ -1442,7 +1442,9 @@ export type SchedulesData = {
     createSchedule: string;
     createPersonalSchedule: string;
     schedules: string;
+    djangoSchedules?: string;
     calendar: string;
+    djangoCalendar?: string;
     weeklyReports: string;
   };
   create: {
@@ -1464,6 +1466,56 @@ export type SchedulesData = {
   today: ScheduleItem[];
   upcoming: ScheduleItem[];
   overdue: ScheduleItem[];
+  schedules: ScheduleItem[];
+};
+
+export type ScheduleCalendarData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    dataFilter: string;
+    filterUserId: number | null;
+    canViewCompany: boolean;
+    userCount: number;
+  };
+  filters: {
+    start: string;
+    end: string;
+    dataFilter: string;
+    filterUser: string;
+  };
+  options: {
+    dataFilters: Array<{ value: string; label: string }>;
+    users: Array<{
+      id: number;
+      name: string;
+      username: string;
+      role: string;
+      isCurrent: boolean;
+    }>;
+  };
+  metrics: {
+    totalSchedules: number;
+    customerSchedules: number;
+    personalSchedules: number;
+    scheduledSchedules: number;
+    completedSchedules: number;
+    cancelledSchedules: number;
+    overdueSchedules: number;
+  };
+  links: {
+    schedules: string;
+    djangoSchedules: string;
+    calendar: string;
+    djangoCalendar: string;
+    createSchedule: string;
+    createPersonalSchedule: string;
+    weeklyReports: string;
+  };
   schedules: ScheduleItem[];
 };
 
@@ -1881,7 +1933,7 @@ const emptyDashboardData: DashboardData = {
     customerReport: '/reporting/customer-report/',
     notes: '/reporting/histories/',
     schedules: '/reporting/schedules/',
-    calendar: '/reporting/schedules/calendar/',
+    calendar: '/schedules/calendar/',
     pipeline: '/reporting/funnel/pipeline/',
     weeklyReports: '/weekly-reports/',
     pendingReviews: '/reporting/histories/?review_filter=unreviewed',
@@ -2266,8 +2318,10 @@ const emptySchedulesData: SchedulesData = {
   links: {
     createSchedule: '/reporting/schedules/create/',
     createPersonalSchedule: '/reporting/personal-schedules/create/',
-    schedules: '/reporting/schedules/',
-    calendar: '/reporting/schedules/calendar/',
+    schedules: '/schedules/',
+    djangoSchedules: '/reporting/schedules/',
+    calendar: '/schedules/calendar/',
+    djangoCalendar: '/reporting/schedules/calendar/',
     weeklyReports: '/weekly-reports/',
   },
   create: {
@@ -2280,6 +2334,52 @@ const emptySchedulesData: SchedulesData = {
   today: [],
   upcoming: [],
   overdue: [],
+  schedules: [],
+};
+
+const emptyScheduleCalendarData: ScheduleCalendarData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    dataFilter: 'me',
+    filterUserId: null,
+    canViewCompany: false,
+    userCount: 0,
+  },
+  filters: {
+    start: '',
+    end: '',
+    dataFilter: 'me',
+    filterUser: '',
+  },
+  options: {
+    dataFilters: [
+      { value: 'me', label: '내 일정' },
+      { value: 'all', label: '회사 전체' },
+      { value: 'user', label: '직원 선택' },
+    ],
+    users: [],
+  },
+  metrics: {
+    totalSchedules: 0,
+    customerSchedules: 0,
+    personalSchedules: 0,
+    scheduledSchedules: 0,
+    completedSchedules: 0,
+    cancelledSchedules: 0,
+    overdueSchedules: 0,
+  },
+  links: {
+    schedules: '/schedules/',
+    djangoSchedules: '/reporting/schedules/',
+    calendar: '/schedules/calendar/',
+    djangoCalendar: '/reporting/schedules/calendar/',
+    createSchedule: '/reporting/schedules/create/',
+    createPersonalSchedule: '/reporting/personal-schedules/create/',
+    weeklyReports: '/weekly-reports/',
+  },
   schedules: [],
 };
 
@@ -2298,7 +2398,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
   links: {
     schedules: '/schedules/',
     djangoSchedules: '/reporting/schedules/',
-    calendar: '/reporting/schedules/calendar/',
+    calendar: '/schedules/calendar/',
     djangoDetail: '',
     djangoEdit: '',
     customer: '',
@@ -3630,6 +3730,69 @@ export async function loadSchedulesData(params: {
       ...emptySchedulesData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Schedules API unavailable',
+    };
+  }
+}
+
+export async function loadScheduleCalendarData(params: {
+  start?: string;
+  end?: string;
+  dataFilter?: string;
+  filterUser?: string;
+} = {}): Promise<ScheduleCalendarData> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      query.set(key, value);
+    }
+  });
+  try {
+    const response = await fetch(`/reporting/api/schedules/calendar/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Schedule calendar API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ScheduleCalendarData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Schedule calendar API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyScheduleCalendarData,
+      ...payload,
+      scope: {
+        ...emptyScheduleCalendarData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyScheduleCalendarData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyScheduleCalendarData.options,
+        ...(payload.options ?? {}),
+      },
+      metrics: {
+        ...emptyScheduleCalendarData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyScheduleCalendarData.links,
+        ...(payload.links ?? {}),
+      },
+      schedules: payload.schedules ?? emptyScheduleCalendarData.schedules,
+    };
+  } catch (error) {
+    return {
+      ...emptyScheduleCalendarData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Schedule calendar API unavailable',
     };
   }
 }

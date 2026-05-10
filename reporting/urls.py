@@ -181,6 +181,7 @@ urlpatterns = [
     path('api/notes/<int:history_id>/update/', views.notes_update_api, name='notes_update_api'),
     path('api/schedules/', views.schedules_summary_api, name='schedules_summary_api'),
     path('api/schedules/create/', views.schedules_create_api, name='schedules_create_api'),
+    path('api/schedules/calendar/', views.schedules_calendar_api, name='schedules_calendar_api'),
     path('api/schedules/<int:schedule_id>/', views.schedules_detail_api, name='schedules_detail_api'),
     path('api/schedules/<int:schedule_id>/update/', views.schedules_update_api, name='schedules_update_api'),
     path('api/schedules/<int:schedule_id>/delivery-items/update/', views.schedules_delivery_items_update_api, name='schedules_delivery_items_update_api'),

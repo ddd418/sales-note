@@ -9,6 +9,43 @@
 
 ---
 
+## Current task — React 일정 캘린더 1차 통합
+
+**목표**: 기존 Django `/reporting/schedules/calendar/` 화면을 fallback으로 유지하면서 React CRM에 `/schedules/calendar/` 캘린더 route를 추가해 일정 업무의 프론트 통합 범위를 넓힌다.
+
+### 확인된 상태
+
+- React 일정 목록/상세/빠른 등록 화면은 이미 `/schedules/`와 `/schedules/<id>/`에서 동작한다.
+- 기존 Django 캘린더는 `/reporting/schedules/calendar/`와 `/reporting/schedules/api/`를 사용하며 고객 일정과 개인 일정을 함께 표시한다.
+- React 일정 목록 API(`/reporting/api/schedules/`)는 목록용 80건 제한 payload라 월간 캘린더에는 별도 날짜 범위 API가 필요하다.
+- 기존 모델(`Schedule`, `PersonalSchedule`)로 충분하며 DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/schedules/calendar/` 읽기 API를 추가한다.
+  - `start`, `end`, `data_filter`, `filter_user`를 받아 월간 캘린더 날짜 범위의 고객 일정/개인 일정을 반환한다.
+  - 기존 Django 캘린더와 동일하게 본인, 같은 회사 전체, 특정 직원 필터를 지원한다.
+  - 일정 목록과 동일한 React payload helper를 재사용해 상세/고객/legacy 링크를 유지한다.
+- React API client에 캘린더 데이터 타입과 loader를 추가한다.
+- React `/schedules/calendar/` route를 추가한다.
+  - 월 이동, 오늘 이동, 본인/전체/직원 필터, 월간 grid, 선택 일자 목록을 제공한다.
+  - 고객 일정은 React 상세로, 개인 일정은 기존 Django 개인 일정 상세로 연결한다.
+  - Django 캘린더 링크는 fallback으로 유지한다.
+- 기존 일정 목록의 캘린더 링크를 React route로 전환하되 Django 일정 목록/캘린더 fallback 링크를 함께 보존한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/`, `/reporting/api/schedules/calendar/` smoke check
+
+---
+
 ## Current task — React 주간보고 1차 통합
 
 **목표**: 기존 Django `/reporting/weekly-reports/*` 화면을 유지하면서 React CRM에 주간보고 목록, 상세, 작성, 수정 route를 추가해 프론트 통합 범위를 넓힌다.

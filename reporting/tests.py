@@ -2459,6 +2459,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.other_user = make_user('schedules_api_other', role='salesman', company=self.other_company)
         self.url = reverse('reporting:schedules_summary_api')
         self.create_url = reverse('reporting:schedules_create_api')
+        self.calendar_url = reverse('reporting:schedules_calendar_api')
 
     def _create_customer(self, owner, name):
         from reporting.models import Company, Department, FollowUp
@@ -2614,6 +2615,85 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['metrics']['totalSchedules'], 2)
         self.assertTrue(payload['scope']['canViewAll'])
         self.assertFalse(payload['create']['canCreate'])
+
+    def test_schedules_calendar_api_requires_login_json(self):
+        response = self.client.get(self.calendar_url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_schedules_calendar_api_returns_month_range_items(self):
+        import datetime
+
+        target_date = datetime.date(2026, 5, 10)
+        outside_date = datetime.date(2026, 6, 1)
+        own = self._create_schedule(self.user, '월간일정', visit_date=target_date)
+        personal = self._create_personal_schedule(self.user, '월간 개인 일정', schedule_date=target_date)
+        outside = self._create_schedule(self.user, '범위밖일정', visit_date=outside_date)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.calendar_url, {
+            'start': '2026-05-01',
+            'end': '2026-05-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {(item['type'], item['id']) for item in payload['schedules']}
+        self.assertIn(('customer', own.id), ids)
+        self.assertIn(('personal', personal.id), ids)
+        self.assertNotIn(('customer', outside.id), ids)
+        self.assertEqual(payload['filters']['start'], '2026-05-01')
+        self.assertEqual(payload['filters']['end'], '2026-05-31')
+        self.assertEqual(payload['metrics']['totalSchedules'], 2)
+        self.assertEqual(payload['links']['calendar'], '/schedules/calendar/')
+        self.assertEqual(payload['links']['djangoCalendar'], reverse('reporting:schedule_calendar'))
+
+    def test_schedules_calendar_api_all_filter_uses_same_company_only(self):
+        import datetime
+
+        target_date = datetime.date(2026, 5, 10)
+        own = self._create_schedule(self.user, '회사내월간일정', visit_date=target_date)
+        coworker = self._create_schedule(self.coworker, '동료월간일정', visit_date=target_date)
+        other = self._create_schedule(self.other_user, '타사회사월간일정', visit_date=target_date)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.calendar_url, {
+            'start': '2026-05-01',
+            'end': '2026-05-31',
+            'data_filter': 'all',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['schedules'] if item['type'] == 'customer'}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['scope']['dataFilter'], 'all')
+        self.assertTrue(any(option['id'] == self.coworker.id for option in payload['options']['users']))
+
+    def test_schedules_calendar_api_user_filter_limits_to_selected_company_user(self):
+        import datetime
+
+        target_date = datetime.date(2026, 5, 10)
+        self._create_schedule(self.user, '내월간일정', visit_date=target_date)
+        coworker = self._create_schedule(self.coworker, '선택직원월간일정', visit_date=target_date)
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.calendar_url, {
+            'start': '2026-05-01',
+            'end': '2026-05-31',
+            'data_filter': 'user',
+            'filter_user': str(self.coworker.id),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [(item['type'], item['id']) for item in payload['schedules']]
+        self.assertEqual(ids, [('customer', coworker.id)])
+        self.assertEqual(payload['scope']['dataFilter'], 'user')
+        self.assertEqual(payload['scope']['filterUserId'], self.coworker.id)
 
     def test_schedules_create_api_requires_login_json(self):
         import json

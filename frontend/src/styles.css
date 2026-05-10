@@ -2519,6 +2519,188 @@ h2 {
   margin-top: 16px;
 }
 
+.schedule-calendar-summary h2 {
+  font-size: 28px;
+}
+
+.schedule-calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.schedule-calendar-month-controls,
+.schedule-calendar-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schedule-calendar-month-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.schedule-calendar-month-controls button:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.schedule-calendar-month-controls strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.schedule-calendar-filters select {
+  min-width: 150px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.schedule-calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  align-items: start;
+}
+
+.schedule-calendar-grid-panel,
+.schedule-calendar-day-panel {
+  min-width: 0;
+}
+
+.schedule-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.schedule-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.schedule-calendar-day {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 122px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.schedule-calendar-day:hover,
+.schedule-calendar-day.selected {
+  border-color: var(--primary);
+  background: #f8fbff;
+}
+
+.schedule-calendar-day.muted {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.schedule-calendar-day.today .schedule-calendar-date-number {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.schedule-calendar-date-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schedule-calendar-events {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.schedule-calendar-event,
+.schedule-calendar-more {
+  display: block;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 4px 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-calendar-event.completed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.schedule-calendar-event.cancelled {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.schedule-calendar-event.personal {
+  border-color: #e9d5ff;
+  background: #faf5ff;
+  color: #7e22ce;
+}
+
+.schedule-calendar-more {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
 .customer-detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -4404,6 +4586,7 @@ tbody tr:hover {
   .note-edit-section-grid,
   .customer-detail-layout,
   .schedules-layout,
+  .schedule-calendar-layout,
   .schedules-filter-bar,
   .prepayments-filter-bar,
   .prepayment-form-grid,
@@ -4462,6 +4645,7 @@ tbody tr:hover {
   .topbar,
   .topbar-actions,
   .panel-toolbar,
+  .schedule-calendar-toolbar,
   .dashboard-summary-band,
   .route-hero {
     align-items: stretch;
@@ -4546,6 +4730,30 @@ tbody tr:hover {
 
   .schedule-delivery-edit-actions {
     grid-template-columns: 1fr;
+  }
+
+  .schedule-calendar-month-controls,
+  .schedule-calendar-filters,
+  .schedule-calendar-filters select {
+    width: 100%;
+  }
+
+  .schedule-calendar-filters select {
+    min-width: 0;
+  }
+
+  .schedule-calendar-grid-panel {
+    overflow-x: auto;
+  }
+
+  .schedule-calendar-weekdays,
+  .schedule-calendar-grid {
+    min-width: 680px;
+  }
+
+  .schedule-calendar-day {
+    min-height: 96px;
+    padding: 7px;
   }
 
   .schedule-prepayment-row,

@@ -636,3 +636,46 @@ Needs awareness:
 - React pipeline department AI panel is deployed and can be manually tested.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.
+
+## Latest In-Progress Work: React Schedule Calendar
+
+User confirmed the weekly report flow works except the `일정 불러오기` button needed to be on the right. That position fix was implemented first, built, committed previously as `2d02547 fix: move weekly schedule loader panel`, pushed, deployed to `sales-note-frontend` deployment `c9d534dd-8e6b-4943-8af2-89f9d643f004`, and smoke-tested (`/weekly-reports/new/` 200, JS/CSS bundle contains `weekly-schedule-load`).
+
+The next implementation now in progress is React schedule calendar first integration:
+
+- Added `/reporting/api/schedules/calendar/` authenticated JSON API.
+- Added date range parsing, same-company data filters (`me`, `all`, `user`), user options, and calendar metrics.
+- Added React API type/loader `ScheduleCalendarData` and `loadScheduleCalendarData`.
+- Added React `/schedules/calendar/` route with month navigation, data filter, monthly grid, selected-day panel, and Django fallback links.
+- Changed React schedule calendar links from `/reporting/schedules/calendar/` to `/schedules/calendar/` where React screens own the UX.
+- Kept Django `/reporting/schedules/calendar/` and `/reporting/schedules/api/` intact.
+- No DB model changes.
+
+Validation passed before commit:
+
+```powershell
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests reporting.tests.AnonymousAccessTests --verbosity=1
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+python manage.py check
+python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+git diff --check
+```
+
+Current built frontend assets before deployment:
+
+- `dist/assets/index-CTcLLIQe.js`
+- `dist/assets/index-BJ8JCI1J.css`
+
+Pending next steps:
+
+1. Commit and push the React schedule calendar changes.
+2. Deploy Railway `web` and `sales-note-frontend`.
+3. Smoke test:
+   - `https://sales-note-frontend-production.up.railway.app/schedules/calendar/` returns 200.
+   - deployed JS contains `schedule-calendar-page` or `/reporting/api/schedules/calendar/`.
+   - deployed CSS contains `.schedule-calendar-grid`.
+   - anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/calendar/` returns `401 login_required`.
+4. Update `AGENT_REPORT.md` and this handoff with final commit/deployment IDs.

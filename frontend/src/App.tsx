@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock,
@@ -69,6 +70,7 @@ import {
   PrepaymentsData,
   PrepaymentOption,
   ProductOption,
+  ScheduleCalendarData,
   SchedulesData,
   ScheduleDetailData,
   ScheduleDetailItem,
@@ -116,6 +118,7 @@ import {
   loadPrepayments,
   loadPrepaymentsData,
   loadProducts,
+  loadScheduleCalendarData,
   loadScheduleDetailData,
   loadSchedulesData,
   loadAIWorkspaceData,
@@ -157,7 +160,7 @@ const navItems = [
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
-const scheduleCalendarUrl = '/reporting/schedules/calendar/';
+const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
 type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'prepayments' | 'ai';
@@ -297,6 +300,40 @@ type CustomerSelectSource = {
 const localDateInputValue = (date = new Date()) => {
   const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
   return new Date(localTime).toISOString().slice(0, 10);
+};
+
+const parseLocalDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) {
+    return new Date();
+  }
+  return new Date(year, month - 1, day);
+};
+
+const getScheduleCalendarMonthParam = () => {
+  const month = new URLSearchParams(window.location.search).get('month') || '';
+  return /^\d{4}-\d{2}$/.test(month) ? month : localDateInputValue().slice(0, 7);
+};
+
+const getScheduleCalendarRange = (monthValue: string) => {
+  const [year, month] = monthValue.split('-').map(Number);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return {
+    start: localDateInputValue(start),
+    end: localDateInputValue(end),
+  };
+};
+
+const shiftScheduleCalendarMonth = (monthValue: string, offset: number) => {
+  const [year, month] = monthValue.split('-').map(Number);
+  const shifted = new Date(year, month - 1 + offset, 1);
+  return localDateInputValue(shifted).slice(0, 7);
+};
+
+const getScheduleCalendarDataFilterParam = () => {
+  const value = new URLSearchParams(window.location.search).get('data_filter') || '';
+  return value === 'all' || value === 'user' ? value : 'me';
 };
 
 const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
@@ -605,6 +642,10 @@ function getScheduleDetailId(): number | null {
   }
   const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function isScheduleCalendarRoute(): boolean {
+  return /^\/schedules\/calendar\/?$/.test(window.location.pathname);
 }
 
 function getMailboxThreadId(): string {
@@ -3843,6 +3884,240 @@ function SchedulesTable({ schedules }: { schedules: ScheduleItem[] }) {
   );
 }
 
+function buildScheduleCalendarDays(monthValue: string, schedules: ScheduleItem[]) {
+  const [year, month] = monthValue.split('-').map(Number);
+  const firstDay = new Date(year, month - 1, 1);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
+  const todayValue = localDateInputValue();
+  const schedulesByDate = new Map<string, ScheduleItem[]>();
+
+  schedules.forEach((schedule) => {
+    if (!schedule.date) {
+      return;
+    }
+    const items = schedulesByDate.get(schedule.date) ?? [];
+    items.push(schedule);
+    schedulesByDate.set(schedule.date, items);
+  });
+  schedulesByDate.forEach((items) => {
+    items.sort((a, b) => `${a.time} ${a.type}`.localeCompare(`${b.time} ${b.type}`));
+  });
+
+  return Array.from({ length: 42 }, (_item, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    const dateValue = localDateInputValue(date);
+    return {
+      date: dateValue,
+      dayNumber: date.getDate(),
+      inMonth: date.getMonth() === month - 1,
+      isToday: dateValue === todayValue,
+      schedules: schedulesByDate.get(dateValue) ?? [],
+    };
+  });
+}
+
+function ScheduleCalendarPage({
+  data,
+  dataFilter,
+  filterUser,
+  loading,
+  month,
+  onDataFilterChange,
+  onFilterUserChange,
+  onMonthChange,
+}: {
+  data: ScheduleCalendarData | null;
+  dataFilter: string;
+  filterUser: string;
+  loading: boolean;
+  month: string;
+  onDataFilterChange: (value: string) => void;
+  onFilterUserChange: (value: string) => void;
+  onMonthChange: (value: string) => void;
+}) {
+  const range = useMemo(() => getScheduleCalendarRange(month), [month]);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = localDateInputValue();
+    return today >= range.start && today <= range.end ? today : range.start;
+  });
+  const schedules = data?.schedules ?? [];
+  const days = useMemo(() => buildScheduleCalendarDays(month, schedules), [month, schedules]);
+  const selectedDayItems = useMemo(
+    () => schedules.filter((schedule) => schedule.date === selectedDate).sort((a, b) => `${a.time} ${a.type}`.localeCompare(`${b.time} ${b.type}`)),
+    [schedules, selectedDate],
+  );
+  const monthLabel = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(parseLocalDate(`${month}-01`));
+  const todayMonth = localDateInputValue().slice(0, 7);
+  const showUserFilter = dataFilter === 'user';
+
+  useEffect(() => {
+    setSelectedDate((previous) => {
+      if (previous >= range.start && previous <= range.end) {
+        return previous;
+      }
+      const firstScheduledDate = schedules.find((schedule) => schedule.date && schedule.date >= range.start && schedule.date <= range.end)?.date;
+      const today = localDateInputValue();
+      return firstScheduledDate || (today >= range.start && today <= range.end ? today : range.start);
+    });
+  }, [range.end, range.start, schedules]);
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>일정 캘린더를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '월간 일정', value: `${formatNumber(data.metrics.totalSchedules)}건`, detail: data.scope.label || '범위', icon: CalendarDays, tone: 'blue' as const },
+    { label: '고객 일정', value: `${formatNumber(data.metrics.customerSchedules)}건`, detail: '방문/견적/납품', icon: Users, tone: 'green' as const },
+    { label: '개인 일정', value: `${formatNumber(data.metrics.personalSchedules)}건`, detail: '일반 업무', icon: Clock, tone: 'teal' as const },
+    { label: '완료', value: `${formatNumber(data.metrics.completedSchedules)}건`, detail: '고객 일정 기준', icon: CheckCircle2, tone: 'amber' as const },
+    { label: '지연', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
+  ];
+
+  return (
+    <section className="schedules-page schedule-calendar-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>일정 캘린더 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band schedule-calendar-summary">
+        <div>
+          <span className="eyebrow">Schedule Calendar</span>
+          <h2>{monthLabel}</h2>
+          <p>{data.scope.label || '내 일정'} 기준으로 고객 일정과 개인 일정을 월간 캘린더에서 확인합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.schedules}>
+            목록
+          </a>
+          <a className="route-secondary-action" href={data.links.djangoCalendar}>
+            Django 캘린더
+          </a>
+          <a className="route-primary-action" href={data.links.createSchedule}>
+            일정 등록
+            <Plus size={16} />
+          </a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid" aria-label="월간 일정 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="schedule-calendar-toolbar">
+        <div className="schedule-calendar-month-controls">
+          <button aria-label="이전 달" onClick={() => onMonthChange(shiftScheduleCalendarMonth(month, -1))} type="button">
+            <ChevronLeft size={17} />
+          </button>
+          <button onClick={() => onMonthChange(todayMonth)} type="button">오늘</button>
+          <button aria-label="다음 달" onClick={() => onMonthChange(shiftScheduleCalendarMonth(month, 1))} type="button">
+            <ChevronRight size={17} />
+          </button>
+          <strong>{monthLabel}</strong>
+          {loading ? <Loader2 className="spin-icon" size={16} /> : null}
+        </div>
+        <div className="schedule-calendar-filters">
+          <select onChange={(event) => onDataFilterChange(event.target.value)} value={dataFilter}>
+            {data.options.dataFilters.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          {showUserFilter ? (
+            <select onChange={(event) => onFilterUserChange(event.target.value)} value={filterUser}>
+              <option value="">직원 선택</option>
+              {data.options.users.map((user) => (
+                <option key={user.id} value={user.id}>{user.name}{user.isCurrent ? ' (나)' : ''}</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="schedule-calendar-layout">
+        <section className="dashboard-panel schedule-calendar-grid-panel">
+          <div className="schedule-calendar-weekdays" aria-hidden="true">
+            {['월', '화', '수', '목', '금', '토', '일'].map((day) => <span key={day}>{day}</span>)}
+          </div>
+          <div className="schedule-calendar-grid" role="grid" aria-label={`${monthLabel} 일정 캘린더`}>
+            {days.map((day) => (
+              <button
+                className={[
+                  'schedule-calendar-day',
+                  day.inMonth ? '' : 'muted',
+                  day.isToday ? 'today' : '',
+                  selectedDate === day.date ? 'selected' : '',
+                ].filter(Boolean).join(' ')}
+                key={day.date}
+                onClick={() => setSelectedDate(day.date)}
+                type="button"
+              >
+                <span className="schedule-calendar-date-number">{day.dayNumber}</span>
+                <div className="schedule-calendar-events">
+                  {day.schedules.slice(0, 4).map((schedule) => (
+                    <span className={`schedule-calendar-event ${schedule.type} ${schedule.status}`} key={`${schedule.type}-${schedule.id}`}>
+                      {schedule.time ? `${schedule.time} ` : ''}{schedule.company || schedule.title || schedule.customer}
+                    </span>
+                  ))}
+                  {day.schedules.length > 4 ? <span className="schedule-calendar-more">+{day.schedules.length - 4}</span> : null}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <aside className="dashboard-panel schedule-calendar-day-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Selected day</span>
+              <h2>{formatDateLabel(selectedDate)}</h2>
+            </div>
+            <CalendarDays size={18} />
+          </div>
+          <SchedulesCompactList emptyLabel="선택한 날짜의 일정이 없습니다" items={selectedDayItems} />
+          <div className="dashboard-panel-heading schedules-side-heading">
+            <div>
+              <span className="eyebrow">Actions</span>
+              <h2>일정 작업</h2>
+            </div>
+            <Plus size={18} />
+          </div>
+          <div className="customers-side-actions">
+            <a href={data.links.createPersonalSchedule}>개인 일정 등록</a>
+            <a href={data.links.weeklyReports}>주간보고</a>
+            <a href={data.links.djangoSchedules}>Django 일정 목록</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function ScheduleDetailPage({
   data,
   loading,
@@ -5212,7 +5487,8 @@ function SchedulesPage({
           <SchedulesCountRows data={data} />
           <div className="customers-side-actions">
             <a href={data.links.calendar}>일정 캘린더</a>
-            <a href={data.links.schedules}>Django 일정 목록</a>
+            <a href={data.links.djangoSchedules || data.links.schedules}>Django 일정 목록</a>
+            {data.links.djangoCalendar ? <a href={data.links.djangoCalendar}>Django 캘린더</a> : null}
             <a href={data.links.weeklyReports}>주간보고</a>
           </div>
         </aside>
@@ -8429,6 +8705,7 @@ export function App() {
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
+  const scheduleCalendarRoute = currentView === 'schedules' && isScheduleCalendarRoute();
   const mailboxThreadId = currentView === 'mail' ? getMailboxThreadId() : '';
   const initialMailboxBox = currentView === 'mail' ? getMailboxTypeParam() : 'inbox';
   const prepaymentCustomerId = currentView === 'prepayments' ? getPrepaymentCustomerId() : null;
@@ -8478,8 +8755,8 @@ export function App() {
   const [noteCreateError, setNoteCreateError] = useState('');
   const [noteCreateMessage, setNoteCreateMessage] = useState('');
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
-  const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules' && !scheduleDetailId);
-  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && !scheduleDetailId && shouldOpenCreatePanel());
+  const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules' && !scheduleDetailId && !scheduleCalendarRoute);
+  const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && !scheduleDetailId && !scheduleCalendarRoute && shouldOpenCreatePanel());
   const [scheduleCreateForm, setScheduleCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm());
   const [scheduleCreating, setScheduleCreating] = useState(false);
   const [scheduleCreateError, setScheduleCreateError] = useState('');
@@ -8487,6 +8764,11 @@ export function App() {
   const [scheduleCreatedDetailHref, setScheduleCreatedDetailHref] = useState('');
   const [scheduleDetailData, setScheduleDetailData] = useState<ScheduleDetailData | null>(null);
   const [scheduleDetailLoading, setScheduleDetailLoading] = useState(Boolean(scheduleDetailId));
+  const [scheduleCalendarData, setScheduleCalendarData] = useState<ScheduleCalendarData | null>(null);
+  const [scheduleCalendarLoading, setScheduleCalendarLoading] = useState(scheduleCalendarRoute);
+  const [scheduleCalendarMonth, setScheduleCalendarMonth] = useState(getScheduleCalendarMonthParam);
+  const [scheduleCalendarDataFilter, setScheduleCalendarDataFilter] = useState(getScheduleCalendarDataFilterParam);
+  const [scheduleCalendarFilterUser, setScheduleCalendarFilterUser] = useState(() => new URLSearchParams(window.location.search).get('filter_user') || '');
   const [scheduleQuery, setScheduleQuery] = useState('');
   const [scheduleOwner, setScheduleOwner] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
@@ -8545,6 +8827,7 @@ export function App() {
   const [movingDealId, setMovingDealId] = useState<number | null>(null);
   const [moveError, setMoveError] = useState('');
   const [moveMessage, setMoveMessage] = useState('');
+  const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
 
   useEffect(() => {
     if (currentView === 'dashboard') {
@@ -8710,7 +8993,7 @@ export function App() {
   }, [currentView, noteDetailId, notesData]);
 
   useEffect(() => {
-    if (currentView !== 'schedules' || scheduleDetailId) {
+    if (currentView !== 'schedules' || scheduleDetailId || scheduleCalendarRoute) {
       return;
     }
     let alive = true;
@@ -8731,10 +9014,10 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, scheduleActivityType, scheduleDetailId, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
+  }, [currentView, scheduleActivityType, scheduleCalendarRoute, scheduleDetailId, scheduleOwner, scheduleQuery, scheduleRange, scheduleStatus]);
 
   useEffect(() => {
-    if (currentView !== 'schedules' || scheduleDetailId || !schedulesData?.create.canCreate) {
+    if (currentView !== 'schedules' || scheduleDetailId || scheduleCalendarRoute || !schedulesData?.create.canCreate) {
       return;
     }
     const requestedCustomerId = getCreateCustomerParam();
@@ -8746,7 +9029,38 @@ export function App() {
       activityType: previous.activityType || firstActivityType,
       followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
     }));
-  }, [currentView, scheduleDetailId, schedulesData]);
+  }, [currentView, scheduleCalendarRoute, scheduleDetailId, schedulesData]);
+
+  useEffect(() => {
+    if (currentView !== 'schedules' || !scheduleCalendarRoute) {
+      setScheduleCalendarLoading(false);
+      return;
+    }
+    let alive = true;
+    setScheduleCalendarLoading(true);
+    loadScheduleCalendarData({
+      start: scheduleCalendarRange.start,
+      end: scheduleCalendarRange.end,
+      dataFilter: scheduleCalendarDataFilter,
+      filterUser: scheduleCalendarDataFilter === 'user' ? scheduleCalendarFilterUser : '',
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setScheduleCalendarData(data);
+      setScheduleCalendarLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [
+    currentView,
+    scheduleCalendarDataFilter,
+    scheduleCalendarFilterUser,
+    scheduleCalendarRange.end,
+    scheduleCalendarRange.start,
+    scheduleCalendarRoute,
+  ]);
 
   useEffect(() => {
     if (currentView !== 'schedules' || !scheduleDetailId) {
@@ -9310,6 +9624,15 @@ export function App() {
     setScheduleDetailData(data);
     return data;
   };
+  const handleScheduleCalendarMonthChange = (value: string) => {
+    setScheduleCalendarMonth(value);
+  };
+  const handleScheduleCalendarDataFilterChange = (value: string) => {
+    setScheduleCalendarDataFilter(value);
+    if (value !== 'user') {
+      setScheduleCalendarFilterUser('');
+    }
+  };
   const handleScheduleCreateOpenChange = (open: boolean) => {
     setScheduleCreateOpen(open);
     setScheduleCreateError('');
@@ -9745,6 +10068,24 @@ export function App() {
   }
 
   if (currentView === 'schedules') {
+    if (scheduleCalendarRoute) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <ScheduleCalendarPage
+            data={scheduleCalendarData}
+            dataFilter={scheduleCalendarDataFilter}
+            filterUser={scheduleCalendarFilterUser}
+            loading={scheduleCalendarLoading}
+            month={scheduleCalendarMonth}
+            onDataFilterChange={handleScheduleCalendarDataFilterChange}
+            onFilterUserChange={setScheduleCalendarFilterUser}
+            onMonthChange={handleScheduleCalendarMonthChange}
+          />
+        </AppShell>
+      );
+    }
+
     if (scheduleDetailId) {
       return (
         <AppShell activeView={currentView}>

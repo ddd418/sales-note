@@ -11398,3 +11398,99 @@ Downloaded JS/CSS bundle
 ### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 다음 React 통합 범위로 견적/문서 생성 또는 일정 캘린더 parity audit를 진행합니다.
+
+---
+
+## React Schedule Calendar First Integration — 일정 캘린더 React 1차 통합 (2026-05-10)
+
+### 1. Summary
+
+주간보고 작성 화면의 `일정 불러오기` 버튼을 오른쪽 일정 패널로 이동했고, 이어서 React CRM에 `/schedules/calendar/` 월간 일정 캘린더 route를 추가했습니다. 기존 Django `/reporting/schedules/calendar/`는 fallback으로 유지했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 일정 캘린더 1차 통합 계획 추가 |
+| `reporting/views.py` | 일정 캘린더 날짜 범위 API 추가, React 캘린더 링크 전환 |
+| `reporting/urls.py` | `/reporting/api/schedules/calendar/` URL 추가 |
+| `reporting/tests.py` | 일정 캘린더 API 인증/범위/필터 테스트 추가 |
+| `frontend/src/api.ts` | 일정 캘린더 API 타입과 loader 추가 |
+| `frontend/src/App.tsx` | `/schedules/calendar/` route, 월 이동, 본인/전체/직원 필터, 월간 grid, 선택 일자 패널 추가 |
+| `frontend/src/styles.css` | 주간보고 일정 불러오기 위치 스타일과 일정 캘린더 레이아웃/반응형 스타일 추가 |
+
+### 3. CRM Improvements
+
+- React 일정 메뉴에서 월간 캘린더를 바로 열 수 있습니다.
+- 고객 일정과 개인 일정을 같은 월간 grid에서 볼 수 있습니다.
+- 본인, 같은 회사 전체, 특정 직원 필터를 지원합니다.
+- 선택한 날짜의 일정은 오른쪽 패널에서 바로 상세/고객/보고 작성 흐름으로 이어집니다.
+- 일정 목록, 대시보드 일정 카드, 일정 상세의 캘린더 링크가 React 캘린더로 연결됩니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/schedules/calendar/` Django 캘린더와 `/reporting/schedules/api/`는 제거하지 않았습니다.
+- 기존 `/reporting/*` 인증, 개인 일정 생성/상세, 고객 일정 생성/상세 경로는 유지했습니다.
+- 신규 DB 필드와 migration은 없습니다.
+- React 캘린더 API는 로그인 required JSON 응답을 유지합니다.
+
+### 5. Commands Run and Results
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 26 tests, OK
+
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests reporting.tests.AnonymousAccessTests --verbosity=1
+→ Ran 33 tests, OK
+
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-CTcLLIQe.js / dist/assets/index-BJ8JCI1J.css generated
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: pending
+- GitHub push: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- Deployed frontend bundle: pending
+
+### 7. Production Smoke Check
+
+- Pending until Railway deployment completes.
+
+### 8. Known Limitations
+
+- React 캘린더는 월간 조회/필터/상세 연결 1차 통합입니다. 기존 Django 캘린더의 드래그 이동, 상세 모달 편집 등 고급 조작은 fallback 화면으로 유지했습니다.
+- 운영에서 실제 로그인 세션 기반 일정 데이터 확인은 사용자 수동검수가 필요합니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`
+2. 로그인 후 월간 캘린더가 열리고 오늘 날짜가 강조되는지 확인합니다.
+3. 이전 달, 오늘, 다음 달 버튼으로 월 이동이 되는지 확인합니다.
+4. `내 일정`, `회사 전체`, `직원 선택` 필터가 동작하는지 확인합니다.
+5. 일정이 있는 날짜를 클릭하면 오른쪽 선택 일자 패널에 해당 일정만 보이는지 확인합니다.
+6. 고객 일정은 상세 링크가 React `/schedules/<id>/`로 열리는지 확인합니다.
+7. 개인 일정은 기존 Django 개인 일정 상세로 열리는지 확인합니다.
+8. `Django 캘린더` fallback 링크가 기존 화면으로 열리는지 확인합니다.
+9. `/weekly-reports/new/`에서 `일정 불러오기` 버튼이 오른쪽 일정 패널 안에 있는지 확인합니다.
+
+### 10. Recommended Next Task
+
+- 운영 수동검수 완료 후 React 통합 프론트의 다음 고가치 영역인 견적/문서 생성 workflow 또는 일정 캘린더 고급 조작 parity를 진행합니다.
