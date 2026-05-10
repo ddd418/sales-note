@@ -14,28 +14,28 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Latest Deployed Task
 
-React 선결제 삭제/취소/이관 전환.
+React 고객별/부서별 선결제 화면 전환.
 
 Implemented:
 
-- React `/prepayments/<id>/` 상세 우측 액션 패널.
-- `/reporting/api/prepayments/<id>/cancel/` 취소 API.
-- `/reporting/api/prepayments/<id>/delete/` 삭제 API.
-- `/reporting/api/prepayments/<id>/transfer/` 이관 API.
-- 상세 API action config: 취소/삭제/이관 가능 여부, submit URL, 이관 대상 목록.
-- 기존 `/reporting/prepayment/*` 상세/등록/수정/삭제/이관/엑셀 화면은 fallback으로 유지.
-- 사용 내역 있는 선결제 hard delete 차단.
-- 이관 시 메모에 `[이관]` 기록과 사유를 추가.
-- 같은 회사 사용자는 조회 가능하지만 취소/삭제/이관은 등록자 본인만 가능.
+- React `/prepayments/customer/<customer_id>/` 고객별/부서별 선결제 화면.
+- `/reporting/api/prepayments/customer/<customer_id>/` 고객별/부서별 선결제 API.
+- 선결제 item payload에 React 고객별 링크 `customerPrepaymentHref` 추가.
+- 선결제 목록/상세의 `고객별` 링크를 React 경로로 전환.
+- 기존 `/reporting/prepayment/customer/<customer_id>/` Django 고객별 화면 유지.
+- 기존 `/reporting/prepayment/customer/<customer_id>/excel/` 엑셀 다운로드 유지.
+- Django 기존 의미대로, 기준 고객에게 부서가 있으면 같은 부서 전체 고객의 선결제를 표시.
+- Salesman 접근은 고객 담당자 또는 해당 고객에 본인이 등록한 선결제가 있는 경우만 허용.
+- Manager/Admin 선택 사용자 세션 필터 유지, React 조회 사용자 선택 추가.
 
 Validation:
 
 ```powershell
+python manage.py test reporting.tests.PrepaymentCustomerApiTests --verbosity=1
 python -m py_compile reporting\views.py reporting\tests.py
-python manage.py test reporting.tests.PrepaymentDetailApiTests --verbosity=1
-python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
 cd frontend; npm run build
 cd frontend; node --check server.mjs
+python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
@@ -43,23 +43,22 @@ git diff --check
 
 Results:
 
-- 11 targeted tests OK.
-- React build OK, bundle `index-DzdnV2E4.js` / `index-BaTcueuX.css`.
+- 14 targeted tests OK.
+- React build OK, bundle `index-C1Keut7B.js` / `index-BwpNmJt5.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment status:
 
-- Commit: `741af97 feat: add React prepayment actions`
-- `web`: `9ae4383b-665c-4372-92ed-bcc3881bdfc9` SUCCESS
-- `sales-note-frontend`: `7ad4bcbd-0e85-40ae-823c-2c81b9fd99f6` SUCCESS
-- Production `/prepayments/1/` serves bundle `index-DzdnV2E4.js` / `index-BaTcueuX.css`.
-- Production JS contains action strings for cancel/transfer/delete.
-- Production CSS contains `prepayment-action-panel` and `prepayment-danger-button`.
-- Anonymous `/reporting/api/prepayments/1/` returns `401 login_required` on both frontend proxy and backend.
-- Anonymous POST to backend cancel/delete/transfer with valid CSRF/Referer returns `401 login_required`.
-- Anonymous POST to frontend proxy cancel with valid CSRF/Referer returns `401 login_required`.
+- Commit: `e918e7f feat: add React customer prepayments`
+- `web`: `cad3948b-a777-4cc6-9984-992e34213ffd` SUCCESS
+- `sales-note-frontend`: `8103ea72-d9a0-49bc-88ad-466a72a4e996` SUCCESS
+- Production `/prepayments/customer/1/` serves bundle `index-C1Keut7B.js` / `index-BwpNmJt5.css`.
+- Production JS contains `/prepayments/customer/`, `/reporting/api/prepayments/customer/`, and `고객별 선결제`.
+- Production CSS contains `prepayment-customer-layout` and `prepayment-customer-table`.
+- Anonymous `/reporting/api/prepayments/customer/1/` returns `401 login_required` on both frontend proxy and backend.
+- Anonymous Django customer prepayment page/excel redirects to login.
 
 Manual test status:
 

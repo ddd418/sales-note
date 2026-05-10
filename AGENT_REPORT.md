@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React 고객별/부서별 선결제 화면 전환
 
-**상태**: 구현/로컬 검증 완료, Railway 배포 준비
+**상태**: 구현/검증/배포 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -64,9 +64,34 @@ git diff --check
 
 ### Railway 배포 및 운영 스모크
 
-- Commit: 배포 전
-- `web` deployment: 배포 전
-- `sales-note-frontend` deployment: 배포 전
+- Commit: `e918e7f feat: add React customer prepayments`
+- `web` deployment: `cad3948b-a777-4cc6-9984-992e34213ffd` SUCCESS
+- `sales-note-frontend` deployment: `8103ea72-d9a0-49bc-88ad-466a72a4e996` SUCCESS
+
+운영 스모크:
+
+```text
+https://sales-note-frontend-production.up.railway.app/prepayments/customer/1/
+→ 200, assets/index-C1Keut7B.js / assets/index-BwpNmJt5.css
+
+프론트 JS
+→ /prepayments/customer/ 포함, /reporting/api/prepayments/customer/ 포함, 고객별 선결제=True
+
+프론트 CSS
+→ prepayment-customer-layout=True, prepayment-customer-table=True
+
+https://web-production-5096.up.railway.app/reporting/api/prepayments/customer/1/
+→ 401 login_required
+
+https://sales-note-frontend-production.up.railway.app/reporting/api/prepayments/customer/1/
+→ 401 login_required
+
+https://web-production-5096.up.railway.app/reporting/prepayment/customer/1/
+→ 302 /reporting/login/?next=/reporting/prepayment/customer/1/
+
+https://web-production-5096.up.railway.app/reporting/prepayment/customer/1/excel/
+→ 302 /reporting/login/?next=/reporting/prepayment/customer/1/excel/
+```
 
 ### 알려진 제한
 
