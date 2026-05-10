@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React 고객 상세 선결제 요약 통합
 
-**상태**: 구현/로컬 검증 완료, 배포 진행 전
+**상태**: 구현/로컬 검증/푸시 완료, Railway 배포 차단
 
 ### 요약
 
@@ -61,8 +61,12 @@ git diff --check
 
 ### Railway 배포 및 운영 스모크
 
-- 배포 진행 전.
-- Railway CLI는 현재 OAuth 토큰 갱신 실패(`invalid_grant`)로 deployment 조회가 막혀 있어, 커밋/푸시 후 운영 URL smoke로 자동 배포 반영 여부를 확인할 예정입니다.
+- Commit: `1b88b4f feat: add customer prepayment summary`
+- GitHub push: `main` 반영 완료
+- Railway CLI: `Unauthorized. Please run railway login again.`
+- 운영 프론트 `/customers/1/` 폴링 결과: 2026-05-10 10:07:48~10:14:06 KST 동안 이전 번들 `assets/index-C1Keut7B.js` / `assets/index-BwpNmJt5.css` 유지
+- 운영 백엔드 anonymous `/reporting/api/customers/1/`: `401 login_required`
+- 결론: 로컬 구현과 원격 푸시는 완료됐지만, Railway CLI 인증 만료와 자동 배포 미반영으로 이번 런타임 변경은 아직 운영 배포 확인을 완료하지 못했습니다.
 
 ### 알려진 제한
 

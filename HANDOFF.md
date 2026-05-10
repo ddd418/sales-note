@@ -47,8 +47,11 @@ Results:
 
 Deployment status:
 
-- Pending commit/push/deployment.
-- Railway CLI currently fails OAuth refresh with `invalid_grant`; confirm deployment through GitHub auto deploy and production smoke checks, or re-login Railway CLI if needed.
+- Commit pushed: `1b88b4f feat: add customer prepayment summary`.
+- Railway CLI currently fails with `Unauthorized. Please run railway login again.`
+- Production frontend polling from 10:07:48 to 10:14:06 KST still served the previous bundle `index-C1Keut7B.js` / `index-BwpNmJt5.css`, so GitHub auto deploy did not visibly update the frontend during the check window.
+- Anonymous backend smoke still returns `401 login_required` for `/reporting/api/customers/1/`.
+- Next operator step: run `railway login` in this workspace, then deploy/verify both `web` and `frontend` services for commit `1b88b4f`, or trigger deployments from the Railway dashboard.
 
 ## Latest Deployed Task
 
