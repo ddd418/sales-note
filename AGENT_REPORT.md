@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — AI Email Context And Stage-Aware Next Actions
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -51,7 +51,11 @@ git diff --check
 
 ### 배포 상태
 
-- 커밋/푸시 후 Railway `web` 배포 예정.
+- Runtime commit: `7055257 feat: use customer emails in AI next actions`
+- GitHub push: `main` updated from `4394aba` to `7055257`
+- Railway `web`: `69401c16-b987-47bc-95e1-7e56c946dc18` SUCCESS, commit `7055257`
+- Production smoke: anonymous `/ai/` redirects to `/reporting/login/?next=/ai/`
+- Production smoke: `/reporting/login/` returns 200 OK
 - React bundle 변경은 없어 `sales-note-frontend` 직접 배포는 필요하지 않습니다.
 
 ### 수동 서버 테스트 절차

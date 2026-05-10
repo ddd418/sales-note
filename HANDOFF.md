@@ -14,20 +14,25 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-AI analysis context expansion.
+AI email context and stage-aware next actions.
 
-Latest completed task:
+Implemented, pushed, and deployed to production:
 
-- PainPoint verification notes now influence the next department AI analysis summary.
-- Implemented in `ai_chat/services.py` with deterministic `department_summary` fallback.
-- Confirmed notes are summarized as confirmed facts; denied notes are summarized as denied hypotheses.
-- Existing `verification_insights`, `next_actions`, and `missing_info` fallback behavior is preserved.
+- Department AI and individual FollowUp AI now read linked `EmailLog` records.
+- Customer→sales inbound emails are prioritized as customer intent/obstacle/request evidence.
+- Department AI stores `email_context`, `customer_stage_context`, and `stage_action_guidance` in `analysis_data`.
+- FollowUp AI stores `email_context` and `stage_action_guidance` in `analysis_data`.
+- Stage-aware fallback actions are added:
+  - `won` / locked-in customers: delivery, additional order, repurchase, retention, expansion actions
+  - quote/negotiation customers: quote contents, meetings, customer email replies, decision schedule/condition checks
+  - meeting-only customers: meeting notes, customer replies, materials, next meeting, quote conversion
+- Existing PainPoint verification notes continue to be used and are also referenced in fallback action reasons.
 - DB 변경 없음.
 
 Validation:
 
 ```powershell
-python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+python manage.py test ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=2
 python manage.py test ai_chat.tests --verbosity=1
 python -m py_compile ai_chat\services.py ai_chat\tests.py
 python manage.py check
@@ -37,28 +42,31 @@ git diff --check
 
 Results:
 
-- 2 targeted memory tests OK.
-- 16 ai_chat tests OK.
+- 2 targeted email/stage tests OK.
+- 18 ai_chat tests OK.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment status:
 
-- Runtime commit: `bf5dd23 fix: include AI verification notes in summary`.
-- Railway `web`: `d67036bf-1de5-44cd-b9b3-881ef6652d7b` SUCCESS.
+- Runtime commit: `7055257 feat: use customer emails in AI next actions`.
+- Railway `web`: `69401c16-b987-47bc-95e1-7e56c946dc18` SUCCESS.
 - Production anonymous `/ai/` redirects to `/reporting/login/?next=/ai/`.
 - Production `/reporting/login/` returns 200 OK.
 - React bundle was not rebuilt because this was backend-only.
 
+Manual production test:
+
+1. Pick a customer with linked Gmail/IMAP `EmailLog` records, preferably inbound customer replies.
+2. Run department AI analysis again from customer detail or `/ai/`.
+3. Confirm inbound email content affects summary/PainPoint/next action reasoning.
+4. Check `won`, quote, and meeting-only customers produce stage-appropriate next actions.
+5. If verified/denied PainPoint notes exist, confirm those notes still influence the new analysis.
+
 Next queued by user:
 
-1. Make customer email exchanges, especially inbound customer emails, available to AI analysis context.
-2. Make AI generate stage-aware next actions:
-   - locked-in/won customers: order/win-related next actions
-   - quote customers: quote contents, meetings, and email replies
-   - meeting-only customers: meetings and email replies
-3. After analysis, use verification messages as strongly as possible.
+- Continue React unified frontend migration or expose AI email evidence more visibly in the React AI/customer panels after manual production test.
 
 ## Previous Deployed Task
 
