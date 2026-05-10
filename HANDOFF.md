@@ -1,6 +1,6 @@
 # Sales Note Handoff
 
-Last updated: 2026-05-10 KST
+Last updated: 2026-05-11 KST
 
 ## Current Goal
 
@@ -14,30 +14,31 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React schedule documents first integration is implemented, pushed, deployed, smoke-tested, and user-confirmed.
+AI department meeting scope fix and React document template management first integration are implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-ed5e43c feat: add React schedule documents
+6b1be06 feat: add React documents and department AI meetings
 ```
 
 Implemented:
 
-- React schedule detail (`/schedules/<id>/`) now shows a `서류 다운로드` panel for document-capable schedules.
-- Quote schedules expose `견적서`.
-- Delivery schedules expose `거래명세서` and `납품서`.
-- React calls existing Django document preview endpoint `/reporting/documents/template-data/<document_type>/<schedule_id>/`.
-- React calls existing Django document generation endpoint `/reporting/documents/generate/<document_type>/<schedule_id>/<output_format>/`.
-- React preview groups template variables, flags empty values, and lists document items.
-- Django schedule detail API now returns document actions, active template counts, preview URLs, and PDF/Excel generation URLs.
-- Existing Django document template management remains linked as fallback.
+- Urgent AI fix: `ai_chat.services.gather_meeting_data()` now collects all FollowUp customer meetings in the selected department instead of only the requesting user's FollowUps.
+- AI department analysis prompt now shows the meeting owner in each meeting heading so department-wide evidence is traceable.
+- React CRM now has `/documents/` for document template management.
+- Added `/reporting/api/documents/` and create/update/delete/toggle-default APIs for React.
+- React document screen supports type filter, summary, template download, create/edit/delete, and default template setting.
+- Schedule document management links now route to React `/documents/`, while Django `/reporting/documents/` remains available as fallback.
+- Existing document generation endpoints remain unchanged.
 - No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+python -m py_compile ai_chat\services.py ai_chat\tests.py
+python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests --verbosity=1
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
 python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
 python manage.py check
 python manage.py makemigrations --check --dry-run
@@ -48,32 +49,34 @@ git diff --check
 
 Results:
 
-- 27 schedule API tests OK.
-- React build OK: `assets/index-CSJjhwCa.js` / `assets/index-DEZuogRh.css`.
+- 3 AI quote/delivery/meeting collection tests OK.
+- 34 document template and schedule API tests OK.
+- React build OK: `assets/index-yYKBGQDv.js` / `assets/index-B5cHVWQY.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- Railway `web`: `18b88087-7c25-4835-98fd-8c34c505879c` SUCCESS.
-- Railway `sales-note-frontend`: `4f867493-7910-46f3-9762-81d3416bcb80` SUCCESS.
-- Production `/schedules/1/` returns 200 and serves `assets/index-CSJjhwCa.js` / `assets/index-DEZuogRh.css`.
-- Frontend JS contains `schedule-documents-panel` and document download handling.
-- Frontend CSS contains `schedule-document-card` and `schedule-document-variable-row`.
-- Anonymous frontend-proxied and direct backend `/reporting/api/schedules/1/` both return `401 login_required`.
-- Anonymous document preview and generate endpoints redirect to `/reporting/login/`.
-- User manual production test: confirmed complete on 2026-05-10.
+- Railway `web`: `6db56b0e-b6d2-4e02-80bc-edcdeb50cba4` SUCCESS.
+- Railway `sales-note-frontend`: `e3e8e8b7-23b1-4992-8abc-58291ad08035` SUCCESS.
+- Production `/documents/` returns 200 and serves `assets/index-yYKBGQDv.js` / `assets/index-B5cHVWQY.css`.
+- Frontend JS contains `/reporting/api/documents/` and document UI text.
+- Frontend CSS contains `.documents-page`.
+- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` both return `401 Unauthorized`.
+- Anonymous `/ai/department/1/` redirects to `/reporting/login/?next=/ai/department/1/`.
+- Recent checked Railway logs show successful web startup and no new traceback/500.
 
 Manual production test:
 
-1. Open `https://sales-note-frontend-production.up.railway.app/schedules/<quote_schedule_id>/`.
-2. Confirm the right-side `서류 다운로드` section shows `견적서`.
-3. Click `미리보기` and verify variable groups, empty-value highlighting, and item count.
-4. Download `PDF` and `Excel`.
-5. Open `https://sales-note-frontend-production.up.railway.app/schedules/<delivery_schedule_id>/`.
-6. Confirm `거래명세서` and `납품서` each support preview/download.
-7. Confirm the `템플릿` link opens existing Django document template management.
+1. Open `https://sales-note-frontend-production.up.railway.app/documents/`.
+2. Confirm the sidebar `서류` menu opens the React document template page.
+3. Confirm type filters work for 전체/견적서/거래명세서/납품서.
+4. With admin/manager, create, edit, set default, download, and delete a template.
+5. With salesman, confirm create/edit/delete are blocked and read/download remains available.
+6. Open `/schedules/<id>/` and confirm document template management opens `/documents/`.
+7. Re-run an AI department analysis and confirm same-department coworker meeting content is reflected in the meeting evidence.
+8. Confirm Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/documents/` still opens.
 
 ## Previous Task
 
@@ -604,7 +607,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-ed5e43c feat: add React schedule documents
+6b1be06 feat: add React documents and department AI meetings
 ```
 
 ## Known Caveats
@@ -628,6 +631,8 @@ Confirmed by user:
 
 Needs awareness:
 
+- React document template management `/documents/` is deployed and awaits user manual production testing.
+- AI department meeting scope fix is deployed; existing stored AI analysis results require rerun to include coworker department meetings.
 - React pipeline department AI panel is deployed and can be manually tested.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.

@@ -11465,18 +11465,44 @@ git diff --check
 
 ### 6. Deployment Status
 
-- Runtime commit: pending
-- GitHub push: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
-- Deployed frontend bundle: pending
+- Runtime commit: `6b1be06 feat: add React documents and department AI meetings`
+- GitHub push: `main` updated from `930cbd8` to `6b1be06`
+- Railway `web`: `6db56b0e-b6d2-4e02-80bc-edcdeb50cba4` SUCCESS, commit `6b1be06`
+- Railway `sales-note-frontend`: `e3e8e8b7-23b1-4992-8abc-58291ad08035` SUCCESS, message `Deploy React documents and AI meetings 6b1be06`
+- Deployed frontend bundle: `assets/index-yYKBGQDv.js` / `assets/index-B5cHVWQY.css`
 
-### 7. Known Limitations
+### 7. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/documents/
+→ 200, bundle assets/index-yYKBGQDv.js and assets/index-B5cHVWQY.css
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/documents/
+→ 401 Unauthorized
+
+GET https://web-production-5096.up.railway.app/reporting/api/documents/
+→ 401 Unauthorized
+
+GET https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+GET https://web-production-5096.up.railway.app/ai/department/1/
+→ 302 redirect to /reporting/login/?next=/ai/department/1/
+
+Downloaded JS/CSS bundle
+→ JS contains /reporting/api/documents/ and documents UI text
+→ CSS contains .documents-page
+
+Railway logs checked
+→ web started successfully; no new traceback/500 observed in recent checked logs
+```
+
+### 8. Known Limitations
 
 - 운영에서 실제 서류 템플릿 파일 업로드/삭제와 AI 부서 재분석 결과 확인은 로그인 세션이 필요해 사용자 수동검수가 필요합니다.
 - 이번 AI 긴급 수정은 미팅 수집 범위만 부서 전체로 넓혔고, 견적/납품/메일 수집 범위는 기존 정책을 유지했습니다.
 
-### 8. Manual Server Test Process
+### 9. Manual Server Test Process
 
 1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/documents/`
 2. 로그인 후 사이드바 `서류` 메뉴가 보이는지 확인합니다.
@@ -11488,7 +11514,7 @@ git diff --check
 8. 운영 `/ai/department/<department_id>/`에서 부서 분석을 다시 실행하고, 같은 부서의 다른 담당자 미팅 내용도 미팅 기록 근거에 반영되는지 확인합니다.
 9. 기존 Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/documents/`도 계속 접근 가능한지 확인합니다.
 
-### 9. Recommended Next Task
+### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 React 일정 캘린더 고급 조작 parity 또는 서류 생성 이력/템플릿 변수 편집 UX를 이어서 진행합니다.
 
