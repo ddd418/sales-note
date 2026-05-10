@@ -60,6 +60,25 @@ export type Deal = {
     location: string;
   } | null;
   detailUrl?: string;
+  aiDepartment?: {
+    departmentId: number | null;
+    departmentName: string;
+    companyName: string;
+    canUseAi: boolean;
+    canAnalyze: boolean;
+    hasAnalysis: boolean;
+    message: string;
+    summary: string;
+    updatedAt: string | null;
+    meetingCount: number;
+    quoteCount: number;
+    deliveryCount: number;
+    painpointCount: number;
+    unverifiedPainpointCount: number;
+    href: string;
+    hubHref: string;
+    runHref: string;
+  };
 };
 
 export type PipelineMetrics = {

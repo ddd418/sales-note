@@ -6929,6 +6929,8 @@ function DetailPanel({
     );
   }
 
+  const aiDepartment = deal.aiDepartment;
+
   return (
     <aside className="detail-panel">
       <div className="panel-heading">
@@ -6990,6 +6992,53 @@ function DetailPanel({
         <strong>{deal.nextAction}</strong>
         <small>{deal.due}</small>
       </div>
+      {aiDepartment ? (
+        <div className="customer-ai-card pipeline-ai-card">
+          <div className="customer-ai-card-heading">
+            <div>
+              <span className="eyebrow">Department AI</span>
+              <h3>{aiDepartment.departmentName || '부서 AI 분석'}</h3>
+            </div>
+            <Sparkles size={18} />
+          </div>
+          {aiDepartment.hasAnalysis ? (
+            <p>{aiDepartment.summary || '분석 요약 없음'}</p>
+          ) : (
+            <p>{aiDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
+          )}
+          <div className="customer-ai-metrics">
+            <span>미팅 <strong>{formatNumber(aiDepartment.meetingCount)}</strong></span>
+            <span>견적 <strong>{formatNumber(aiDepartment.quoteCount)}</strong></span>
+            <span>납품 <strong>{formatNumber(aiDepartment.deliveryCount)}</strong></span>
+            <span>PainPoint <strong>{formatNumber(aiDepartment.painpointCount)}</strong></span>
+          </div>
+          {aiDepartment.unverifiedPainpointCount > 0 ? (
+            <div className="pipeline-ai-alert">
+              <AlertTriangle size={15} />
+              <span>미검증 PainPoint {formatNumber(aiDepartment.unverifiedPainpointCount)}건</span>
+            </div>
+          ) : null}
+          <div className="customer-ai-actions">
+            {aiDepartment.href ? (
+              <a className="route-secondary-action" href={aiDepartment.href}>
+                AI 결과
+                <MoveUpRight size={15} />
+              </a>
+            ) : aiDepartment.hubHref ? (
+              <a className="route-secondary-action" href={aiDepartment.hubHref}>
+                AI 허브
+                <MoveUpRight size={15} />
+              </a>
+            ) : null}
+            {deal.detailUrl ? (
+              <a className="route-secondary-action" href={`/customers/${deal.id}/`}>
+                고객 상세
+                <MoveUpRight size={15} />
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {deal.nextSchedule ? (
         <div className="detail-box">
           <div className="section-title">다음 일정</div>

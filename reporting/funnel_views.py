@@ -7,6 +7,7 @@ from decimal import Decimal
 from datetime import date
 
 from django.shortcuts import render, get_object_or_404
+from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
@@ -1387,6 +1388,93 @@ def _attention_score(stage, latest_quote, next_schedule, last_history, has_overd
     return score, ' · '.join(reasons[:3]) if reasons else '추가 활동 필요'
 
 
+def _pipeline_ai_department_payload(request, followup, user_profile):
+    """파이프라인 우측 패널용 부서 AI compact payload."""
+    department = followup.department
+    can_use_ai = bool(getattr(user_profile, 'can_use_ai', False))
+    if not department:
+        return {
+            'departmentId': None,
+            'departmentName': '',
+            'companyName': followup.company.name if followup.company else '',
+            'canUseAi': can_use_ai,
+            'canAnalyze': False,
+            'hasAnalysis': False,
+            'message': '부서가 지정되지 않았습니다.',
+            'summary': '',
+            'updatedAt': None,
+            'meetingCount': 0,
+            'quoteCount': 0,
+            'deliveryCount': 0,
+            'painpointCount': 0,
+            'unverifiedPainpointCount': 0,
+            'href': '',
+            'hubHref': reverse('ai_chat:department_list') if can_use_ai else '',
+            'runHref': '',
+        }
+
+    has_own_department_followup = FollowUp.objects.filter(
+        user=request.user,
+        department=department,
+    ).exists()
+    can_analyze = can_use_ai and has_own_department_followup
+    analysis = None
+    painpoint_count = 0
+    unverified_painpoint_count = 0
+
+    if can_analyze:
+        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
+        from .views import _ai_workspace_analysis_summary, _datetime_or_none
+
+        analysis = AIDepartmentAnalysis.objects.filter(
+            user=request.user,
+            department=department,
+        ).first()
+        if analysis:
+            painpoint_count = PainPointCard.objects.filter(analysis=analysis).count()
+            unverified_painpoint_count = PainPointCard.objects.filter(
+                analysis=analysis,
+                verification_status='unverified',
+            ).count()
+            summary = _ai_workspace_analysis_summary(analysis)[:180]
+            updated_at = _datetime_or_none(analysis.updated_at)
+        else:
+            summary = ''
+            updated_at = None
+    else:
+        summary = ''
+        updated_at = None
+
+    if not can_use_ai:
+        message = 'AI 기능 사용 권한이 없습니다.'
+    elif not has_own_department_followup:
+        message = '본인 담당 고객이 있는 부서만 AI 분석할 수 있습니다.'
+    elif analysis:
+        message = ''
+    else:
+        message = '아직 부서 AI 분석이 없습니다.'
+
+    return {
+        'departmentId': department.id,
+        'departmentName': department.name,
+        'companyName': department.company.name if department.company else (followup.company.name if followup.company else ''),
+        'canUseAi': can_use_ai,
+        'canAnalyze': can_analyze,
+        'hasAnalysis': analysis is not None,
+        'message': message,
+        'summary': summary,
+        'updatedAt': updated_at,
+        'meetingCount': analysis.meeting_count if analysis else 0,
+        'quoteCount': analysis.quote_count if analysis else 0,
+        'deliveryCount': analysis.delivery_count if analysis else 0,
+        'painpointCount': painpoint_count,
+        'unverifiedPainpointCount': unverified_painpoint_count,
+        'href': reverse('ai_chat:department_analysis', args=[department.id]) if can_analyze else '',
+        'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}" if can_use_ai else '',
+        'runHref': reverse('ai_chat:run_analysis', args=[department.id]) if can_analyze else '',
+    }
+
+
 @login_required
 @require_GET
 @ensure_csrf_cookie
@@ -1443,6 +1531,7 @@ def pipeline_command_center_api(request):
     stage_amounts = {stage_key: Decimal('0') for stage_key, *_ in PIPELINE_STAGES}
     stage_overdue_counts = {stage_key: 0 for stage_key, *_ in PIPELINE_STAGES}
     deals = []
+    user_profile = _get_user_profile(request.user)
 
     for fu in followups:
         stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
@@ -1529,6 +1618,7 @@ def pipeline_command_center_api(request):
             'quoteComparison': _quote_comparison_api_payload(quote_comparison),
             'nextSchedule': next_schedule_payload,
             'detailUrl': f'/reporting/followups/{fu.id}/',
+            'aiDepartment': _pipeline_ai_department_payload(request, fu, user_profile),
         }
         stage_map[stage].append(deal)
         stage_amounts[stage] += pricing_amount or Decimal('0')

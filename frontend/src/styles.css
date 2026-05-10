@@ -2756,6 +2756,20 @@ h2 {
   opacity: 0.68;
 }
 
+.pipeline-ai-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .customer-ai-result {
   display: grid;
   gap: 12px;

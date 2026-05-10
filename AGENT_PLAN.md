@@ -9,6 +9,37 @@
 
 ---
 
+## Current urgent task — React 파이프라인 우측 부서 AI 노출
+
+**목표**: React 파이프라인에서 고객 카드를 선택했을 때 우측 상세 패널에 해당 고객의 부서 AI 분석 요약을 표시한다.
+
+### 확인된 상태
+
+- 파이프라인 데이터는 `/reporting/api/pipeline/`의 deal payload로 우측 패널을 구성한다.
+- 고객 상세 API에는 이미 부서 AI 분석 권한/요약/링크 payload가 있다.
+- 이번 작업은 파이프라인 우측 패널에 compact AI 요약을 추가하는 작업이며, AI 실행/검증 전체 UI는 고객 상세 화면과 AI 허브에 계속 둔다.
+- DB 변경 필요 없음.
+
+### 구현 계획
+
+- `pipeline_command_center_api`의 각 deal payload에 `aiDepartment` compact payload를 추가한다.
+- 권한은 기존 고객 상세 AI 정책과 동일하게 `can_use_ai`와 본인 담당 부서 여부를 기준으로 한다.
+- React `Deal` 타입에 `aiDepartment` 필드를 추가한다.
+- React `DetailPanel`에서 고객 선택 시 `Department AI` 카드, 분석 요약, 미팅/견적/납품/PainPoint 카운트, AI 허브/Django 보기 링크를 표시한다.
+- 기존 파이프라인 단계 이동, 견적/납품 금액, Django 고객 상세 링크는 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/dashboard/`/파이프라인 번들 smoke check
+
+---
+
 ## Current urgent task — React 대시보드 로그아웃 버튼 추가
 
 **목표**: 운영 React `/dashboard/` 및 공통 CRM 화면에서 사용자가 바로 로그아웃할 수 있게 한다.

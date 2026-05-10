@@ -3487,6 +3487,70 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['nextSchedule']['type'], '견적 제출')
         self.assertIn('csrftoken', response.cookies)
 
+    def test_pipeline_api_includes_department_ai_summary(self):
+        from datetime import date
+        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
+
+        profile = self.user.userprofile
+        profile.can_use_ai = True
+        profile.save(update_fields=['can_use_ai'])
+        followup = self._create_pipeline_customer(self.user, 'AI고객')
+        analysis = AIDepartmentAnalysis.objects.create(
+            user=self.user,
+            department=followup.department,
+            analysis_data={'department_summary': '검수 메모를 반영해야 하는 부서입니다.'},
+            meeting_count=3,
+            quote_count=2,
+            delivery_count=1,
+            analysis_period_start=date(2026, 4, 1),
+            analysis_period_end=date(2026, 5, 1),
+        )
+        PainPointCard.objects.create(
+            analysis=analysis,
+            category='budget',
+            hypothesis='예산 승인 지연 가능성',
+            confidence='high',
+            confidence_score=82,
+            evidence=[],
+            attribution='lab',
+            verification_question='예산 승인자가 누구인가요?',
+            action_if_yes='승인자에게 필요 서류를 보냅니다.',
+            action_if_no='대체 지연 원인을 확인합니다.',
+        )
+        PainPointCard.objects.create(
+            analysis=analysis,
+            category='delivery',
+            hypothesis='납기 리스크는 낮음',
+            confidence='med',
+            confidence_score=65,
+            evidence=[],
+            attribution='lab',
+            verification_question='납기 조건이 확정됐나요?',
+            action_if_yes='납품 일정을 잡습니다.',
+            action_if_no='납기 조건을 재확인합니다.',
+            verification_status='confirmed',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
+        ai_department = deal['aiDepartment']
+        self.assertEqual(ai_department['departmentId'], followup.department_id)
+        self.assertEqual(ai_department['departmentName'], followup.department.name)
+        self.assertTrue(ai_department['canUseAi'])
+        self.assertTrue(ai_department['canAnalyze'])
+        self.assertTrue(ai_department['hasAnalysis'])
+        self.assertEqual(ai_department['summary'], '검수 메모를 반영해야 하는 부서입니다.')
+        self.assertEqual(ai_department['meetingCount'], 3)
+        self.assertEqual(ai_department['quoteCount'], 2)
+        self.assertEqual(ai_department['deliveryCount'], 1)
+        self.assertEqual(ai_department['painpointCount'], 2)
+        self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
+        self.assertEqual(ai_department['href'], reverse('ai_chat:department_analysis', args=[followup.department_id]))
+        self.assertEqual(ai_department['runHref'], reverse('ai_chat:run_analysis', args=[followup.department_id]))
+
     def test_pipeline_api_uses_stage_relevant_quote_amount(self):
         quote_followup = self._create_pipeline_customer(self.user, '견적가격', stage='quote')
         self._create_delivery_item(quote_followup.schedules.first(), '견적품목', 2000000)

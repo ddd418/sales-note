@@ -1,5 +1,79 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React Pipeline Department AI Panel
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+
+### 요약
+
+React 파이프라인에서 고객 카드를 선택하면 우측 상세 패널에 해당 고객의 부서 AI 분석 요약이 표시되도록 확장했습니다. 파이프라인 API의 deal payload에 부서 AI compact 정보를 추가하고, React 상세 패널에 분석 요약, 미팅/견적/납품/PainPoint 카운트, 미검증 PainPoint 알림, AI 결과/허브 링크를 표시합니다.
+
+### 변경된 파일
+
+- `reporting/funnel_views.py`: 파이프라인 deal payload에 `aiDepartment` compact payload 추가
+- `reporting/tests.py`: 파이프라인 API 부서 AI 요약 payload 테스트 추가
+- `frontend/src/mockData.ts`: `Deal.aiDepartment` 타입 추가
+- `frontend/src/App.tsx`: 파이프라인 우측 상세 패널에 `Department AI` 카드 추가
+- `frontend/src/styles.css`: 파이프라인 AI 미검증 알림 스타일 추가
+- `AGENT_PLAN.md`: 긴급 파이프라인 부서 AI 작업 계획 기록
+
+### CRM 개선
+
+- 파이프라인 카드 선택만으로 해당 고객의 부서 AI 분석 상태를 바로 볼 수 있습니다.
+- 미팅/견적/납품/PainPoint 카운트와 미검증 PainPoint 수가 우측 패널에 표시됩니다.
+- 분석 결과가 있으면 AI 결과 화면으로, 없으면 AI 허브로 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 파이프라인 단계 이동, 견적/납품 금액 계산, Django 고객 상세 링크는 유지했습니다.
+- AI 실행/검증 전체 UI는 기존 고객 상세/AI 허브 흐름을 유지했습니다.
+- DB 변경 및 migration 없음.
+- `/reporting/*` 인증/권한 정책 유지.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 12 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-CLXRI0TH.js / assets/index-AuyH7qvg.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/dashboard/`
+2. 파이프라인 보드에서 고객 카드를 클릭합니다.
+3. 오른쪽 상세 패널에 `Department AI` 카드가 보이는지 확인합니다.
+4. 분석이 있는 고객은 요약, 미팅/견적/납품/PainPoint 카운트와 `AI 결과` 링크가 보이는지 확인합니다.
+5. 분석이 없는 고객은 `아직 부서 AI 분석이 없습니다` 또는 권한 메시지와 `AI 허브` 링크가 보이는지 확인합니다.
+6. 기존 단계 변경, Django 고객 상세 열기, 견적/납품 정보 표시가 그대로 동작하는지 확인합니다.
+
+### 다음 권장 작업
+
+- 이 작업 배포/검수 후, 사용자가 추가 요청한 “PainPoint 검수 메모를 다음 AI 분석 요약에 반영” 작업을 이어서 진행합니다.
+
+---
+
 ## 2026-05-10 — Urgent React Dashboard Logout Button
 
 **상태**: 구현/검증/푸시/운영 배포/사용자 수동검수 완료
