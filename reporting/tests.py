@@ -4088,6 +4088,158 @@ class WeeklyReportTests(TestCase):
         self.assertNotContains(detail, '&lt;p&gt;04/28')
 
 
+class WeeklyReportReactApiTests(TestCase):
+    """React 주간보고 API 권한/저장 동작 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='React주간보고회사')
+        self.other_company = UserCompany.objects.create(name='다른주간보고회사')
+        self.salesman = make_user('react_wr_salesman', role='salesman', company=self.company, can_use_ai=True)
+        self.colleague = make_user('react_wr_colleague', role='salesman', company=self.company)
+        self.manager = make_user('react_wr_manager', role='manager', company=self.company)
+        self.other_salesman = make_user('react_wr_other', role='salesman', company=self.other_company)
+
+    def test_weekly_reports_api_requires_login(self):
+        r = self.client.get(reverse('reporting:weekly_reports_api'))
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(r.json()['error'], 'login_required')
+
+    def test_salesman_list_api_returns_own_reports_only(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        own = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='내 주간보고',
+        )
+        WeeklyReport.objects.create(
+            user=self.colleague,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='동료 주간보고',
+        )
+
+        self.client.force_login(self.salesman)
+        r = self.client.get(reverse('reporting:weekly_reports_api'), {'year': '2026', 'month': '5'})
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data['source'], 'django')
+        self.assertEqual([item['id'] for item in data['reports']], [own.id])
+        self.assertEqual(data['links']['create'], '/weekly-reports/new/')
+
+    def test_manager_list_api_is_limited_to_same_company(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        same_company = WeeklyReport.objects.create(
+            user=self.colleague,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='같은 회사 보고',
+        )
+        WeeklyReport.objects.create(
+            user=self.other_salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='다른 회사 보고',
+        )
+
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:weekly_reports_api'), {'year': '2026', 'month': '5'})
+        self.assertEqual(r.status_code, 200)
+        report_ids = [item['id'] for item in r.json()['reports']]
+        self.assertIn(same_company.id, report_ids)
+        self.assertEqual(len(report_ids), 1)
+
+    def test_create_api_saves_plain_text_as_readable_html(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        self.client.force_login(self.salesman)
+        r = self.client.post(
+            reverse('reporting:weekly_report_create_api'),
+            data=json.dumps({
+                'weekStart': '2026-05-04',
+                'weekEnd': '2026-05-08',
+                'title': 'React 저장 테스트',
+                'activityNotes': '첫 줄\n둘째 줄\n\n다음 문단',
+                'quoteDeliveryNotes': '- 견적 A\n- 납품 B',
+                'otherNotes': '기타 메모',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(r.status_code, 200)
+        report = WeeklyReport.objects.get(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+        )
+        self.assertIn('<p>첫 줄<br>둘째 줄</p>', report.activity_notes)
+        self.assertIn('<p>다음 문단</p>', report.activity_notes)
+        self.assertEqual(r.json()['report']['href'], f'/weekly-reports/{report.id}/')
+
+    def test_detail_api_returns_html_and_editor_text(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='상세 테스트',
+            activity_notes='<p>첫 줄<br>둘째 줄</p>',
+        )
+
+        self.client.force_login(self.manager)
+        r = self.client.get(reverse('reporting:weekly_report_detail_api', args=[report.id]))
+        self.assertEqual(r.status_code, 200)
+        data = r.json()['report']
+        self.assertIn('첫 줄', data['activityNotesHtml'])
+        self.assertEqual(data['activityNotes'], '첫 줄\n둘째 줄')
+        self.assertTrue(data['canComment'])
+        self.assertFalse(data['canEdit'])
+
+    def test_update_and_delete_api_owner_only(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='삭제 테스트',
+        )
+
+        self.client.force_login(self.manager)
+        forbidden_update = self.client.post(
+            reverse('reporting:weekly_report_update_api', args=[report.id]),
+            data=json.dumps({'title': '권한 없음'}),
+            content_type='application/json',
+        )
+        self.assertEqual(forbidden_update.status_code, 403)
+
+        self.client.force_login(self.salesman)
+        update = self.client.post(
+            reverse('reporting:weekly_report_update_api', args=[report.id]),
+            data=json.dumps({
+                'weekStart': '2026-05-04',
+                'weekEnd': '2026-05-08',
+                'title': '수정 완료',
+                'activityNotes': '수정된 내용',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update.status_code, 200)
+        report.refresh_from_db()
+        self.assertEqual(report.title, '수정 완료')
+
+        delete = self.client.post(reverse('reporting:weekly_report_delete_api', args=[report.id]))
+        self.assertEqual(delete.status_code, 200)
+        self.assertFalse(WeeklyReport.objects.filter(pk=report.id).exists())
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Manager 역할 권한 검증 테스트
 # ─────────────────────────────────────────────────────────────────────────────

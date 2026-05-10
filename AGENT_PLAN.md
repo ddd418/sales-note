@@ -9,6 +9,44 @@
 
 ---
 
+## Current task — React 주간보고 1차 통합
+
+**목표**: 기존 Django `/reporting/weekly-reports/*` 화면을 유지하면서 React CRM에 주간보고 목록, 상세, 작성, 수정 route를 추가해 프론트 통합 범위를 넓힌다.
+
+### 확인된 상태
+
+- 주간보고 모델(`WeeklyReport`)과 Django 템플릿 목록/작성/수정/상세 화면은 운영 중이다.
+- 일정 불러오기, 견적/납품 금액 포함, AI 초안, 관리자 검토 코멘트 API는 이미 Django에 있다.
+- React CRM은 대시보드/고객/파이프라인/노트/일정/메일/선결제/AI를 담당하지만 주간보고 독립 route가 없다.
+- 이번 작업은 React 통합과 JSON API 추가이며 DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/weekly-reports/` 목록 API를 추가한다.
+  - 기존 목록 권한과 동일하게 실무자는 본인 보고서만, 관리자/어드민은 같은 회사 사용자의 보고서를 조회한다.
+  - 연도, 월, 작성자 필터와 검토/미검토 지표, 작성자 선택 옵션을 반환한다.
+- `/reporting/api/weekly-reports/create/`, `/reporting/api/weekly-reports/<id>/`, `/update/`, `/delete/` API를 추가한다.
+  - 작성/수정은 본인 보고서만 허용한다.
+  - 관리자 검토 코멘트 API는 기존 경로를 계속 사용한다.
+  - React textarea 입력은 서버에서 안전한 HTML 문단으로 변환해 줄바꿈 가독성을 보존한다.
+- React에 `/weekly-reports/`, `/weekly-reports/new/`, `/weekly-reports/<id>/`, `/weekly-reports/<id>/edit/` route를 추가한다.
+  - 목록 필터, 상세 HTML 렌더링, 관리자 검토, 작성/수정 폼, 일정 불러오기, AI 초안 버튼을 제공한다.
+  - 기존 Django 주간보고 화면 링크는 보조/fallback으로 유지한다.
+- 대시보드, 영업노트, 일정, AI 업무도구에서 주간보고 링크를 React route로 전환한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests reporting.tests.WeeklyReportLoadSchedulesExtendedTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/weekly-reports/` smoke check
+
+---
+
 ## Current task — React 고객/부서 검색 선택 UX
 
 **목표**: React CRM의 메일 작성, 고객 등록/수정, 영업노트 작성/수정, 일정 작성/수정, 선결제 등록/수정에서 고객·업체·부서를 Django 화면처럼 검색해서 선택하게 한다.

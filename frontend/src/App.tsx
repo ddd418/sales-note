@@ -82,6 +82,11 @@ import {
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
+  WeeklyReportCreateData,
+  WeeklyReportDetailData,
+  WeeklyReportFormPayload,
+  WeeklyReportsData,
+  WeeklyReportSchedulesData,
   NoteCreatePayload,
   addNoteReply,
   cancelPrepayment as cancelCustomerPrepayment,
@@ -96,6 +101,8 @@ import {
   deleteNoteFile,
   deleteNoteReply,
   deleteScheduleFile,
+  deleteWeeklyReport,
+  generateWeeklyReportAiDraft,
   loadDashboardData,
   loadCustomerDetailData,
   loadCustomersData,
@@ -112,6 +119,10 @@ import {
   loadScheduleDetailData,
   loadSchedulesData,
   loadAIWorkspaceData,
+  loadWeeklyReportCreateData,
+  loadWeeklyReportDetailData,
+  loadWeeklyReportsData,
+  loadWeeklyReportSchedules,
   loadPipelineData,
   moveDealStage,
   runAiDepartmentAnalysis,
@@ -129,6 +140,8 @@ import {
   uploadScheduleFiles,
   verifyAiPainpoint,
   replyMailboxEmail,
+  saveWeeklyReport,
+  saveWeeklyReportManagerComment,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -139,6 +152,7 @@ const navItems = [
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
+  { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
@@ -146,7 +160,7 @@ const navItems = [
 const scheduleCalendarUrl = '/reporting/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -286,6 +300,15 @@ const localDateInputValue = (date = new Date()) => {
 };
 
 const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
+
+const makeEmptyWeeklyReportForm = (): WeeklyReportFormPayload => ({
+  weekStart: '',
+  weekEnd: '',
+  title: '',
+  activityNotes: '',
+  quoteDeliveryNotes: '',
+  otherNotes: '',
+});
 
 const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   actionType: 'customer_meeting',
@@ -479,7 +502,7 @@ const routeMeta: Record<
     actions: [
       { label: '노트 작성', href: '/notes/?create=1', primary: true },
       { label: '미검토 노트', href: '/notes/' },
-      { label: '주간보고', href: '/reporting/weekly-reports/' },
+      { label: '주간보고', href: '/weekly-reports/' },
     ],
   },
   schedules: {
@@ -491,7 +514,7 @@ const routeMeta: Record<
     actions: [
       { label: '일정 캘린더', href: scheduleCalendarUrl, primary: true },
       { label: '새 일정 등록', href: '/reporting/schedules/create/' },
-      { label: '이번 주 보고', href: '/reporting/weekly-reports/' },
+      { label: '이번 주 보고', href: '/weekly-reports/' },
     ],
   },
   mail: {
@@ -504,6 +527,18 @@ const routeMeta: Record<
       { label: '메일 작성', href: '/mailbox/?compose=1', primary: true },
       { label: '받은편지함', href: '/mailbox/?box=inbox' },
       { label: 'Django 메일함', href: '/reporting/mailbox/inbox/' },
+    ],
+  },
+  weeklyReports: {
+    eyebrow: 'Sales CRM / Weekly Reports',
+    title: '주간보고',
+    summary: '이번 주 영업활동, 견적/납품, 기타 메모를 보고서로 정리하고 검토합니다.',
+    primaryHref: '/weekly-reports/new/',
+    primaryLabel: '주간보고 작성',
+    actions: [
+      { label: '보고서 작성', href: '/weekly-reports/new/', primary: true },
+      { label: 'Django 주간보고', href: '/reporting/weekly-reports/' },
+      { label: '영업노트', href: '/notes/' },
     ],
   },
   prepayments: {
@@ -539,6 +574,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/mailbox/')) return 'mail';
+  if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   return 'pipeline';
@@ -608,6 +644,23 @@ function isPrepaymentCreateRoute(): boolean {
 
 function isPrepaymentEditRoute(): boolean {
   return /^\/prepayments\/\d+\/edit\/?$/.test(window.location.pathname);
+}
+
+function getWeeklyReportDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/weekly-reports\/(\d+)\/(?:edit\/?)?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function isWeeklyReportCreateRoute(): boolean {
+  return /^\/weekly-reports\/new\/?$/.test(window.location.pathname);
+}
+
+function isWeeklyReportEditRoute(): boolean {
+  return /^\/weekly-reports\/\d+\/edit\/?$/.test(window.location.pathname);
 }
 
 function getCreateCustomerParam(): string {
@@ -6877,6 +6930,545 @@ function MailboxThreadPage({
   );
 }
 
+function weeklyDraftValue(draft: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = draft[key];
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item)).join('\n');
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function weeklyScheduleText(item: WeeklyReportSchedulesData['schedules'][number]): string {
+  const lines = [
+    `- ${item.date}${item.weekday ? `(${item.weekday})` : ''}: ${item.customer || '-'}${item.activity_type_display ? ` - ${item.activity_type_display}` : ''}`,
+  ];
+  const context = [item.company, item.department, item.manager].filter(Boolean).join(' · ');
+  if (context) lines.push(`  고객/부서: ${context}`);
+  if (item.notes) lines.push(`  메모: ${item.notes}`);
+  if (item.amount && item.amount_label) lines.push(`  ${item.amount_label}: ${item.amount}`);
+  (item.histories ?? []).forEach((history) => {
+    if (history.snippet) lines.push(`  기록: ${history.snippet}`);
+    if (history.amount) lines.push(`  기록 금액: ${history.amount}`);
+  });
+  (item.quotes ?? []).forEach((quote) => {
+    const quoteParts = [quote.number, quote.stage, quote.amount, quote.probability ? `${quote.probability}%` : ''].filter(Boolean);
+    if (quoteParts.length) lines.push(`  견적: ${quoteParts.join(' · ')}`);
+  });
+  return lines.join('\n');
+}
+
+function WeeklyReportsPage({
+  data,
+  loading,
+  month,
+  userId,
+  year,
+  onMonthChange,
+  onUserChange,
+  onYearChange,
+  routeData,
+}: {
+  data: WeeklyReportsData | null;
+  loading: boolean;
+  month: string;
+  routeData: PipelineData;
+  userId: string;
+  year: string;
+  onMonthChange: (value: string) => void;
+  onUserChange: (value: string) => void;
+  onYearChange: (value: string) => void;
+}) {
+  const source = data;
+  const metrics = source?.metrics;
+  return (
+    <div className="weekly-page">
+      <WorkspaceRoutePage data={routeData} view="weeklyReports" />
+      <section className="dashboard-metric-grid weekly-metrics">
+        <DashboardMetricCard label="전체 보고" value={`${formatNumber(metrics?.filteredReports ?? 0)}건`} detail={source?.scope.label || '내 보고서'} icon={ListChecks} tone="blue" />
+        <DashboardMetricCard label="검토 완료" value={`${formatNumber(metrics?.reviewedReports ?? 0)}건`} detail="관리자 코멘트 포함" icon={CheckCircle2} tone="green" />
+        <DashboardMetricCard label="미검토" value={`${formatNumber(metrics?.pendingReports ?? 0)}건`} detail="검토 대기" icon={Clock} tone="amber" />
+        <DashboardMetricCard label="이번 달" value={`${formatNumber(metrics?.thisMonthReports ?? 0)}건`} detail="작성된 주간보고" icon={CalendarDays} tone="teal" />
+      </section>
+
+      <section className="table-card weekly-list-card">
+        <div className="section-heading-row">
+          <div>
+            <p className="eyebrow">Weekly Reports</p>
+            <h2>주간보고 목록</h2>
+          </div>
+          <div className="route-actions">
+            <a className="route-secondary-action primary" href="/weekly-reports/new/">
+              <Plus size={16} />
+              보고서 작성
+            </a>
+            <a className="route-secondary-action" href={source?.links.djangoList || '/reporting/weekly-reports/'}>
+              Django
+            </a>
+          </div>
+        </div>
+        <div className="filter-row weekly-filter-row">
+          <label>
+            <span>연도</span>
+            <select value={year} onChange={(event) => onYearChange(event.target.value)}>
+              <option value="">전체</option>
+              {(source?.options.years ?? [2024, 2025, 2026, 2027]).map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>월</span>
+            <select value={month} onChange={(event) => onMonthChange(event.target.value)}>
+              <option value="">전체</option>
+              {(source?.options.months ?? Array.from({ length: 12 }, (_, index) => index + 1)).map((option) => (
+                <option key={option} value={option}>{option}월</option>
+              ))}
+            </select>
+          </label>
+          {source?.scope.canViewAll ? (
+            <label>
+              <span>작성자</span>
+              <select value={userId} onChange={(event) => onUserChange(event.target.value)}>
+                <option value="">전체</option>
+                {source.options.users.map((user) => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+
+        {loading ? (
+          <div className="empty-state">주간보고를 불러오는 중입니다.</div>
+        ) : source?.error ? (
+          <div className="empty-state error">{source.error}</div>
+        ) : source?.reports.length ? (
+          <div className="weekly-report-table">
+            {source.reports.map((report) => (
+              <a className="weekly-report-row" href={report.href} key={report.id}>
+                <div>
+                  <strong>{report.title}</strong>
+                  <span>{formatDateLabel(report.weekStart)} - {formatDateLabel(report.weekEnd)}</span>
+                </div>
+                <div>
+                  <span>{report.user.name}</span>
+                  <small>{report.user.company || report.user.roleLabel}</small>
+                </div>
+                <span className={`status-pill ${report.reviewed ? 'done' : 'pending'}`}>
+                  {report.reviewed ? '검토 완료' : '검토 대기'}
+                </span>
+                <MoveUpRight size={16} />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">조건에 맞는 주간보고가 없습니다.</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function WeeklyReportDetailPage({
+  data,
+  loading,
+  onRefresh,
+  routeData,
+}: {
+  data: WeeklyReportDetailData | null;
+  loading: boolean;
+  onRefresh: () => Promise<unknown>;
+  routeData: PipelineData;
+}) {
+  const report = data?.report;
+  const [comment, setComment] = useState('');
+  const [savingComment, setSavingComment] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setComment(report?.managerComment || '');
+    setActionError('');
+    setActionMessage('');
+  }, [report?.id, report?.managerComment]);
+
+  const handleCommentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!report?.managerCommentHref || savingComment) return;
+    setSavingComment(true);
+    setActionError('');
+    setActionMessage('');
+    try {
+      await saveWeeklyReportManagerComment(report.managerCommentHref, comment);
+      setActionMessage('검토 코멘트를 저장했습니다.');
+      await onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '검토 저장에 실패했습니다.');
+    } finally {
+      setSavingComment(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!report?.deleteHref || deleting) return;
+    if (!window.confirm('이 주간보고를 삭제할까요?')) return;
+    setDeleting(true);
+    setActionError('');
+    try {
+      const result = await deleteWeeklyReport(report.deleteHref);
+      window.location.href = result.redirect || '/weekly-reports/';
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '삭제에 실패했습니다.');
+      setDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="weekly-page"><div className="empty-state">주간보고를 불러오는 중입니다.</div></div>;
+  }
+  if (!report || data?.error) {
+    return <div className="weekly-page"><div className="empty-state error">{data?.error || '주간보고를 찾을 수 없습니다.'}</div></div>;
+  }
+
+  return (
+    <div className="weekly-page">
+      <WorkspaceRoutePage data={routeData} view="weeklyReports" />
+      <section className="weekly-detail-layout">
+        <article className="weekly-report-document">
+          <div className="weekly-document-header">
+            <div>
+              <p className="eyebrow">Weekly Report</p>
+              <h2>{report.title}</h2>
+              <p>{formatDateLabel(report.weekStart)} - {formatDateLabel(report.weekEnd)} · {report.user.name}</p>
+            </div>
+            <span className={`status-pill ${report.reviewed ? 'done' : 'pending'}`}>
+              {report.reviewed ? '검토 완료' : '검토 대기'}
+            </span>
+          </div>
+          <WeeklyReportHtmlSection title="영업 활동" html={report.activityNotesHtml} />
+          <WeeklyReportHtmlSection title="견적/납품" html={report.quoteDeliveryNotesHtml} />
+          <WeeklyReportHtmlSection title="기타" html={report.otherNotesHtml} />
+          {report.managerComment ? (
+            <section className="weekly-html-section manager">
+              <h3>관리자 검토</h3>
+              <p>{report.managerComment}</p>
+              <small>{report.reviewedBy}{report.reviewedAt ? ` · ${formatDateTimeLabel(report.reviewedAt)}` : ''}</small>
+            </section>
+          ) : null}
+        </article>
+
+        <aside className="weekly-side-panel">
+          <div className="side-card">
+            <h3>작업</h3>
+            <div className="button-stack">
+              {report.canEdit ? <a className="route-secondary-action primary" href={report.editHref}>수정</a> : null}
+              <button type="button" className="route-secondary-action" onClick={() => window.print()}>인쇄</button>
+              <a className="route-secondary-action" href={report.djangoHref}>Django 보기</a>
+              {report.canDelete ? (
+                <button type="button" className="route-secondary-action danger" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? '삭제 중' : '삭제'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {report.canComment ? (
+            <form className="side-card weekly-comment-form" onSubmit={handleCommentSubmit}>
+              <h3>검토 코멘트</h3>
+              <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={7} />
+              {actionError ? <p className="form-error">{actionError}</p> : null}
+              {actionMessage ? <p className="form-success">{actionMessage}</p> : null}
+              <button type="submit" className="primary-button" disabled={savingComment}>
+                {savingComment ? '저장 중' : '검토 저장'}
+              </button>
+            </form>
+          ) : actionError ? (
+            <div className="side-card"><p className="form-error">{actionError}</p></div>
+          ) : null}
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function WeeklyReportHtmlSection({ title, html }: { title: string; html: string }) {
+  return (
+    <section className="weekly-html-section">
+      <h3>{title}</h3>
+      {html ? (
+        <div className="weekly-html-content" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <p className="muted-text">작성된 내용이 없습니다.</p>
+      )}
+    </section>
+  );
+}
+
+function WeeklyReportEditorPage({
+  createData,
+  detailData,
+  loading,
+  mode,
+  routeData,
+}: {
+  createData: WeeklyReportCreateData | null;
+  detailData: WeeklyReportDetailData | null;
+  loading: boolean;
+  mode: 'create' | 'edit';
+  routeData: PipelineData;
+}) {
+  const sourceForm = mode === 'create' ? createData?.form : detailData?.form;
+  const report = detailData?.report;
+  const links = mode === 'create' ? createData?.links : detailData?.links;
+  const canUseAi = mode === 'create' ? Boolean(createData?.canUseAi) : Boolean(detailData?.canUseAi);
+  const [form, setForm] = useState<WeeklyReportFormPayload>(() => makeEmptyWeeklyReportForm());
+  const [saving, setSaving] = useState(false);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [schedules, setSchedules] = useState<WeeklyReportSchedulesData | null>(null);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
+  const [formError, setFormError] = useState('');
+  const [formMessage, setFormMessage] = useState('');
+
+  useEffect(() => {
+    if (!sourceForm) return;
+    setForm({
+      ...makeEmptyWeeklyReportForm(),
+      ...sourceForm,
+    });
+    setSelectedScheduleIds([]);
+  }, [sourceForm?.weekStart, sourceForm?.weekEnd, sourceForm?.title, mode]);
+
+  const handleChange = (field: keyof WeeklyReportFormPayload, value: string) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setFormError('');
+  };
+
+  const handleLoadSchedules = async () => {
+    if (!form.weekStart || !form.weekEnd || loadingSchedules) return;
+    setLoadingSchedules(true);
+    setFormError('');
+    try {
+      const result = await loadWeeklyReportSchedules(form.weekStart, form.weekEnd);
+      setSchedules(result);
+      setSelectedScheduleIds([]);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '일정 불러오기에 실패했습니다.');
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  const selectedSchedules = [
+    ...(schedules?.categorized.activity ?? []),
+    ...(schedules?.categorized.quote_delivery ?? []),
+  ].filter((item) => selectedScheduleIds.includes(item.id));
+
+  const appendSelectedSchedules = (field: 'activityNotes' | 'quoteDeliveryNotes') => {
+    if (!selectedSchedules.length) {
+      setFormError('삽입할 일정을 선택하세요.');
+      return;
+    }
+    const text = selectedSchedules.map(weeklyScheduleText).join('\n\n');
+    setForm((previous) => ({
+      ...previous,
+      [field]: [previous[field], text].filter(Boolean).join('\n\n'),
+    }));
+    setFormMessage('선택한 일정을 본문에 삽입했습니다.');
+    setFormError('');
+  };
+
+  const handleAiDraft = async () => {
+    if (!form.weekStart || !form.weekEnd || aiLoading) return;
+    setAiLoading(true);
+    setFormError('');
+    setFormMessage('');
+    try {
+      const draft = await generateWeeklyReportAiDraft(form.weekStart, form.weekEnd);
+      const record = draft as Record<string, unknown>;
+      setForm((previous) => ({
+        ...previous,
+        title: weeklyDraftValue(record, ['title']) || previous.title,
+        activityNotes: weeklyDraftValue(record, ['activityNotes', 'activity_notes', 'activity', 'summary']) || previous.activityNotes,
+        quoteDeliveryNotes: weeklyDraftValue(record, ['quoteDeliveryNotes', 'quote_delivery_notes', 'quoteDelivery']) || previous.quoteDeliveryNotes,
+        otherNotes: weeklyDraftValue(record, ['otherNotes', 'other_notes', 'other']) || previous.otherNotes,
+      }));
+      setFormMessage('AI 초안을 적용했습니다.');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'AI 초안 생성에 실패했습니다.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const submitUrl = mode === 'create' ? links?.createApi : report?.updateHref;
+    if (!submitUrl || saving) return;
+    if (!form.weekStart || !form.weekEnd) {
+      setFormError('보고 기간을 선택하세요.');
+      return;
+    }
+    setSaving(true);
+    setFormError('');
+    setFormMessage('');
+    try {
+      const result = await saveWeeklyReport(submitUrl, form);
+      window.location.href = result.report?.href || '/weekly-reports/';
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="weekly-page"><div className="empty-state">주간보고 폼을 불러오는 중입니다.</div></div>;
+  }
+  if (!sourceForm || (mode === 'edit' && !report?.canEdit)) {
+    return <div className="weekly-page"><div className="empty-state error">주간보고를 작성하거나 수정할 권한이 없습니다.</div></div>;
+  }
+
+  return (
+    <div className="weekly-page">
+      <WorkspaceRoutePage data={routeData} view="weeklyReports" />
+      <section className="weekly-editor-layout">
+        <form className="weekly-editor-form" onSubmit={handleSubmit}>
+          <div className="section-heading-row">
+            <div>
+              <p className="eyebrow">{mode === 'create' ? 'Create' : 'Edit'}</p>
+              <h2>{mode === 'create' ? '주간보고 작성' : '주간보고 수정'}</h2>
+            </div>
+            <div className="route-actions">
+              <a className="route-secondary-action" href={mode === 'edit' && report ? report.href : '/weekly-reports/'}>취소</a>
+              {mode === 'edit' && report ? <a className="route-secondary-action" href={report.djangoEditHref}>Django 수정</a> : null}
+            </div>
+          </div>
+          {mode === 'create' && createData?.existingReport ? (
+            <div className="inline-alert">
+              이번 주 보고서가 이미 있습니다.
+              <a href={createData.existingReport.editHref}>기존 보고서 수정</a>
+            </div>
+          ) : null}
+          <div className="form-grid two-columns">
+            <label>
+              <span>시작일</span>
+              <input type="date" value={form.weekStart} onChange={(event) => handleChange('weekStart', event.target.value)} />
+            </label>
+            <label>
+              <span>종료일</span>
+              <input type="date" value={form.weekEnd} onChange={(event) => handleChange('weekEnd', event.target.value)} />
+            </label>
+          </div>
+          <label className="form-field full">
+            <span>제목</span>
+            <input value={form.title} onChange={(event) => handleChange('title', event.target.value)} placeholder="주간보고 제목" />
+          </label>
+          <label className="form-field full">
+            <span>영업 활동</span>
+            <textarea value={form.activityNotes} onChange={(event) => handleChange('activityNotes', event.target.value)} rows={10} />
+          </label>
+          <label className="form-field full">
+            <span>견적/납품</span>
+            <textarea value={form.quoteDeliveryNotes} onChange={(event) => handleChange('quoteDeliveryNotes', event.target.value)} rows={9} />
+          </label>
+          <label className="form-field full">
+            <span>기타</span>
+            <textarea value={form.otherNotes} onChange={(event) => handleChange('otherNotes', event.target.value)} rows={6} />
+          </label>
+          {formError ? <p className="form-error">{formError}</p> : null}
+          {formMessage ? <p className="form-success">{formMessage}</p> : null}
+          <div className="form-actions">
+            <button type="button" className="secondary-button" onClick={handleLoadSchedules} disabled={loadingSchedules || !form.weekStart || !form.weekEnd}>
+              {loadingSchedules ? '불러오는 중' : '일정 불러오기'}
+            </button>
+            {canUseAi ? (
+              <button type="button" className="secondary-button" onClick={handleAiDraft} disabled={aiLoading || !form.weekStart || !form.weekEnd}>
+                {aiLoading ? 'AI 생성 중' : 'AI 초안'}
+              </button>
+            ) : null}
+            <button type="submit" className="primary-button" disabled={saving}>
+              {saving ? '저장 중' : '저장'}
+            </button>
+          </div>
+        </form>
+
+        <aside className="weekly-schedule-panel">
+          <div className="section-heading-row compact">
+            <div>
+              <p className="eyebrow">Schedules</p>
+              <h3>일정 불러오기</h3>
+            </div>
+            <span>{formatNumber(selectedScheduleIds.length)}개 선택</span>
+          </div>
+          <div className="weekly-insert-actions">
+            <button type="button" onClick={() => appendSelectedSchedules('activityNotes')}>영업활동에 삽입</button>
+            <button type="button" onClick={() => appendSelectedSchedules('quoteDeliveryNotes')}>견적/납품에 삽입</button>
+          </div>
+          <WeeklyScheduleGroup
+            items={schedules?.categorized.activity ?? []}
+            selectedIds={selectedScheduleIds}
+            title="영업활동"
+            onToggle={(id) => setSelectedScheduleIds((previous) => (
+              previous.includes(id) ? previous.filter((value) => value !== id) : [...previous, id]
+            ))}
+          />
+          <WeeklyScheduleGroup
+            items={schedules?.categorized.quote_delivery ?? []}
+            selectedIds={selectedScheduleIds}
+            title="견적/납품"
+            onToggle={(id) => setSelectedScheduleIds((previous) => (
+              previous.includes(id) ? previous.filter((value) => value !== id) : [...previous, id]
+            ))}
+          />
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function WeeklyScheduleGroup({
+  items,
+  onToggle,
+  selectedIds,
+  title,
+}: {
+  items: WeeklyReportSchedulesData['schedules'];
+  onToggle: (id: number) => void;
+  selectedIds: number[];
+  title: string;
+}) {
+  return (
+    <section className="weekly-schedule-group">
+      <h4>{title}</h4>
+      {items.length ? items.map((item) => (
+        <label className="weekly-schedule-card" key={item.id}>
+          <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
+          <div>
+            <strong>{item.date}{item.weekday ? `(${item.weekday})` : ''} · {item.customer}</strong>
+            <span>{[item.company, item.department, item.activity_type_display].filter(Boolean).join(' · ')}</span>
+            {item.notes ? <p>{item.notes}</p> : null}
+            {item.amount && item.amount_label ? <small>{item.amount_label}: {item.amount}</small> : null}
+            {(item.histories?.length || item.quotes?.length) ? (
+              <small>{formatNumber((item.histories?.length ?? 0) + (item.quotes?.length ?? 0))}개 연결 기록</small>
+            ) : null}
+          </div>
+        </label>
+      )) : (
+        <div className="empty-state compact">불러온 일정이 없습니다.</div>
+      )}
+    </section>
+  );
+}
+
 function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; loading: boolean }) {
   const [copiedPromptId, setCopiedPromptId] = useState('');
 
@@ -7840,6 +8432,9 @@ export function App() {
   const prepaymentDetailId = currentView === 'prepayments' ? getPrepaymentDetailId() : null;
   const prepaymentCreateRoute = currentView === 'prepayments' && isPrepaymentCreateRoute();
   const prepaymentEditRoute = currentView === 'prepayments' && isPrepaymentEditRoute();
+  const weeklyReportDetailId = currentView === 'weeklyReports' ? getWeeklyReportDetailId() : null;
+  const weeklyReportCreateRoute = currentView === 'weeklyReports' && isWeeklyReportCreateRoute();
+  const weeklyReportEditRoute = currentView === 'weeklyReports' && isWeeklyReportEditRoute();
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -7907,6 +8502,17 @@ export function App() {
   const [prepaymentStatus, setPrepaymentStatus] = useState('');
   const [prepaymentDataFilter, setPrepaymentDataFilter] = useState('me');
   const [prepaymentFilterUser, setPrepaymentFilterUser] = useState('');
+  const [weeklyReportsData, setWeeklyReportsData] = useState<WeeklyReportsData | null>(null);
+  const [weeklyReportsLoading, setWeeklyReportsLoading] = useState(
+    currentView === 'weeklyReports' && !weeklyReportDetailId && !weeklyReportCreateRoute,
+  );
+  const [weeklyReportCreateData, setWeeklyReportCreateData] = useState<WeeklyReportCreateData | null>(null);
+  const [weeklyReportCreateLoading, setWeeklyReportCreateLoading] = useState(weeklyReportCreateRoute);
+  const [weeklyReportDetailData, setWeeklyReportDetailData] = useState<WeeklyReportDetailData | null>(null);
+  const [weeklyReportDetailLoading, setWeeklyReportDetailLoading] = useState(Boolean(weeklyReportDetailId));
+  const [weeklyReportYear, setWeeklyReportYear] = useState(() => new URLSearchParams(window.location.search).get('year') || '');
+  const [weeklyReportMonth, setWeeklyReportMonth] = useState(() => new URLSearchParams(window.location.search).get('month') || '');
+  const [weeklyReportUser, setWeeklyReportUser] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
   const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
@@ -8244,6 +8850,69 @@ export function App() {
       alive = false;
     };
   }, [currentView, prepaymentDetailId]);
+
+  useEffect(() => {
+    if (currentView !== 'weeklyReports' || weeklyReportDetailId || weeklyReportCreateRoute) {
+      setWeeklyReportsLoading(false);
+      return;
+    }
+    let alive = true;
+    setWeeklyReportsLoading(true);
+    loadWeeklyReportsData({
+      year: weeklyReportYear,
+      month: weeklyReportMonth,
+      userId: weeklyReportUser,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setWeeklyReportsData(data);
+      setWeeklyReportsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, weeklyReportCreateRoute, weeklyReportDetailId, weeklyReportMonth, weeklyReportUser, weeklyReportYear]);
+
+  useEffect(() => {
+    if (currentView !== 'weeklyReports' || !weeklyReportCreateRoute) {
+      setWeeklyReportCreateData(null);
+      setWeeklyReportCreateLoading(false);
+      return;
+    }
+    let alive = true;
+    setWeeklyReportCreateLoading(true);
+    loadWeeklyReportCreateData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setWeeklyReportCreateData(data);
+      setWeeklyReportCreateLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, weeklyReportCreateRoute]);
+
+  useEffect(() => {
+    if (currentView !== 'weeklyReports' || !weeklyReportDetailId) {
+      setWeeklyReportDetailData(null);
+      setWeeklyReportDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setWeeklyReportDetailLoading(true);
+    loadWeeklyReportDetailData(weeklyReportDetailId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setWeeklyReportDetailData(data);
+      setWeeklyReportDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, weeklyReportDetailId]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -8766,6 +9435,14 @@ export function App() {
       }
     }
   };
+  const refreshWeeklyReportDetailData = async () => {
+    if (!weeklyReportDetailId) {
+      return null;
+    }
+    const data = await loadWeeklyReportDetailData(weeklyReportDetailId);
+    setWeeklyReportDetailData(data);
+    return data;
+  };
   const refreshPrepaymentDetailData = async () => {
     if (!prepaymentDetailId) {
       return null;
@@ -9154,6 +9831,69 @@ export function App() {
           onComposeSubmit={handleMailComposeSubmit}
           onQueryChange={setMailboxQuery}
           onSync={handleMailboxSync}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'weeklyReports') {
+    if (weeklyReportCreateRoute) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <WeeklyReportEditorPage
+            createData={weeklyReportCreateData}
+            detailData={null}
+            loading={weeklyReportCreateLoading}
+            mode="create"
+            routeData={pipelineData}
+          />
+        </AppShell>
+      );
+    }
+
+    if (weeklyReportDetailId && weeklyReportEditRoute) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <WeeklyReportEditorPage
+            createData={null}
+            detailData={weeklyReportDetailData}
+            loading={weeklyReportDetailLoading}
+            mode="edit"
+            routeData={pipelineData}
+          />
+        </AppShell>
+      );
+    }
+
+    if (weeklyReportDetailId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <WeeklyReportDetailPage
+            data={weeklyReportDetailData}
+            loading={weeklyReportDetailLoading}
+            onRefresh={refreshWeeklyReportDetailData}
+            routeData={pipelineData}
+          />
+        </AppShell>
+      );
+    }
+
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <WeeklyReportsPage
+          data={weeklyReportsData}
+          loading={weeklyReportsLoading}
+          month={weeklyReportMonth}
+          routeData={pipelineData}
+          userId={weeklyReportUser}
+          year={weeklyReportYear}
+          onMonthChange={setWeeklyReportMonth}
+          onUserChange={setWeeklyReportUser}
+          onYearChange={setWeeklyReportYear}
         />
       </AppShell>
     );

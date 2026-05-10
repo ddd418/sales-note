@@ -23,6 +23,7 @@ import mimetypes
 import logging
 import json
 import re
+import html
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -2555,7 +2556,7 @@ def dashboard_summary_api(request):
             'schedules': reverse('reporting:schedule_list'),
             'calendar': reverse('reporting:schedule_calendar'),
             'pipeline': reverse('reporting:funnel_pipeline'),
-            'weeklyReports': reverse('reporting:weekly_report_list'),
+            'weeklyReports': '/weekly-reports/',
             'pendingReviews': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
         },
         'today': {
@@ -3938,7 +3939,7 @@ def notes_summary_api(request):
             'createNote': '/notes/?create=1',
             'notes': reverse('reporting:history_list'),
             'unreviewed': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
-            'weeklyReports': reverse('reporting:weekly_report_list'),
+            'weeklyReports': '/weekly-reports/',
         },
         'create': {
             'canCreate': can_create_note,
@@ -4733,7 +4734,7 @@ def schedules_summary_api(request):
             'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
             'schedules': reverse('reporting:schedule_list'),
             'calendar': reverse('reporting:schedule_calendar'),
-            'weeklyReports': reverse('reporting:weekly_report_list'),
+            'weeklyReports': '/weekly-reports/',
         },
         'create': {
             'canCreate': can_create_schedule,
@@ -5802,8 +5803,8 @@ def ai_workspace_summary_api(request):
 
     base_links = {
         'aiHub': reverse('ai_chat:department_list'),
-        'weeklyReports': reverse('reporting:weekly_report_list'),
-        'weeklyReportCreate': reverse('reporting:weekly_report_create'),
+        'weeklyReports': '/weekly-reports/',
+        'weeklyReportCreate': '/weekly-reports/new/',
         'weeklyAiDraft': (
             f"{reverse('reporting:weekly_report_ai_draft')}"
             f"?week_start={week_start.isoformat()}&week_end={week_end.isoformat()}"
@@ -19233,6 +19234,432 @@ def _render_report_field(text: str) -> str:
     """주간보고 필드를 안전한 HTML로 변환 (뷰 내부 전용)."""
     from reporting.utils_html import render_report_field
     return render_report_field(text)
+
+
+def _weekly_report_is_reviewer(profile) -> bool:
+    return bool(profile and profile.role in ['admin', 'superadmin', 'manager'])
+
+
+def _weekly_report_scope(request):
+    """기존 주간보고 목록 권한과 같은 조회 범위를 반환한다."""
+    profile = getattr(request.user, 'userprofile', None)
+    company = profile.company if profile else None
+    if _weekly_report_is_reviewer(profile):
+        if company:
+            users = User.objects.filter(userprofile__company=company, is_active=True)
+        else:
+            users = User.objects.filter(is_active=True)
+    else:
+        users = User.objects.filter(id=request.user.id)
+    return users.select_related('userprofile', 'userprofile__company'), profile
+
+
+def _weekly_report_can_view(request, report, profile=None) -> bool:
+    if report.user_id == request.user.id:
+        return True
+    profile = profile or getattr(request.user, 'userprofile', None)
+    if not _weekly_report_is_reviewer(profile):
+        return False
+    company = profile.company if profile else None
+    if company:
+        report_company = getattr(getattr(report.user, 'userprofile', None), 'company', None)
+        return report_company == company
+    return True
+
+
+def _weekly_report_can_comment(request, report, profile=None) -> bool:
+    profile = profile or getattr(request.user, 'userprofile', None)
+    if not _weekly_report_is_reviewer(profile):
+        return False
+    company = profile.company if profile else None
+    if company:
+        report_company = getattr(getattr(report.user, 'userprofile', None), 'company', None)
+        return report_company == company
+    return True
+
+
+def _weekly_report_user_payload(user):
+    profile = getattr(user, 'userprofile', None)
+    company = profile.company if profile else None
+    return {
+        'id': user.id,
+        'name': _user_display_name(user),
+        'username': user.username,
+        'role': profile.role if profile else '',
+        'roleLabel': profile.get_role_display() if profile else '',
+        'company': company.name if company else '',
+    }
+
+
+def _weekly_report_text_to_html(value: str) -> str:
+    """React textarea 입력을 안전한 주간보고 HTML로 정규화한다."""
+    from django.utils.html import escape
+    from reporting.utils_html import sanitize_html
+
+    text = str(value or '').replace('\r\n', '\n').replace('\r', '\n').strip()
+    if not text:
+        return ''
+    if re.search(r'</?(p|div|br|ul|ol|li|strong|em|b|i|h[1-6]|blockquote)\b', text, flags=re.IGNORECASE):
+        return sanitize_html(text)
+
+    paragraphs = []
+    current_lines = []
+    for raw_line in text.split('\n'):
+        line = raw_line.strip()
+        if not line:
+            if current_lines:
+                paragraphs.append(f"<p>{'<br>'.join(current_lines)}</p>")
+                current_lines = []
+            continue
+        current_lines.append(escape(line))
+    if current_lines:
+        paragraphs.append(f"<p>{'<br>'.join(current_lines)}</p>")
+    return sanitize_html('\n'.join(paragraphs))
+
+
+def _weekly_report_html_to_text(value: str) -> str:
+    """저장된 HTML/레거시 텍스트를 React textarea 편집용 텍스트로 변환한다."""
+    from django.utils.html import strip_tags
+
+    rendered = _render_report_field(value or '')
+    if not rendered:
+        return ''
+    rendered = re.sub(r'<br\s*/?>', '\n', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'<li[^>]*>', '- ', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'</(p|div|li|h[1-6]|blockquote)\s*>', '\n', rendered, flags=re.IGNORECASE)
+    text = html.unescape(strip_tags(rendered))
+    text = re.sub(r'[ \t]+\n', '\n', text)
+    text = re.sub(r'\n[ \t]+', '\n', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _weekly_report_request_payload(request):
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}'), None
+        except json.JSONDecodeError:
+            return {}, '잘못된 요청 형식입니다.'
+    return request.POST, None
+
+
+def _weekly_report_get_payload_value(payload, *keys):
+    for key in keys:
+        if key in payload:
+            return payload.get(key)
+    return ''
+
+
+def _weekly_report_default_dates():
+    from datetime import timedelta
+
+    today = timezone.localdate()
+    monday = today - timedelta(days=today.weekday())
+    friday = monday + timedelta(days=4)
+    return monday, friday
+
+
+def _weekly_report_form_defaults(report=None):
+    if report:
+        return {
+            'weekStart': report.week_start.isoformat(),
+            'weekEnd': report.week_end.isoformat(),
+            'title': report.title,
+            'activityNotes': _weekly_report_html_to_text(report.activity_notes),
+            'quoteDeliveryNotes': _weekly_report_html_to_text(report.quote_delivery_notes),
+            'otherNotes': _weekly_report_html_to_text(report.other_notes),
+        }
+    week_start, week_end = _weekly_report_default_dates()
+    return {
+        'weekStart': week_start.isoformat(),
+        'weekEnd': week_end.isoformat(),
+        'title': f"{week_start.strftime('%Y년 %m월 %d일')} 주간보고",
+        'activityNotes': '',
+        'quoteDeliveryNotes': '',
+        'otherNotes': '',
+    }
+
+
+def _weekly_report_payload(request, report, include_text=False):
+    profile = getattr(request.user, 'userprofile', None)
+    can_edit = report.user_id == request.user.id
+    payload = {
+        'id': report.id,
+        'title': report.title,
+        'weekStart': report.week_start.isoformat(),
+        'weekEnd': report.week_end.isoformat(),
+        'user': _weekly_report_user_payload(report.user),
+        'activityNotesHtml': _render_report_field(report.activity_notes),
+        'quoteDeliveryNotesHtml': _render_report_field(report.quote_delivery_notes),
+        'otherNotesHtml': _render_report_field(report.other_notes),
+        'managerComment': report.manager_comment or '',
+        'reviewed': bool(report.reviewed_at),
+        'reviewedBy': _user_display_name(report.reviewed_by) if report.reviewed_by else '',
+        'reviewedAt': _datetime_or_none(report.reviewed_at),
+        'createdAt': _datetime_or_none(report.created_at),
+        'updatedAt': _datetime_or_none(report.updated_at),
+        'canEdit': can_edit,
+        'canDelete': can_edit,
+        'canComment': _weekly_report_can_comment(request, report, profile),
+        'href': f'/weekly-reports/{report.id}/',
+        'editHref': f'/weekly-reports/{report.id}/edit/',
+        'deleteHref': reverse('reporting:weekly_report_delete_api', args=[report.id]),
+        'updateHref': reverse('reporting:weekly_report_update_api', args=[report.id]),
+        'managerCommentHref': reverse('reporting:weekly_report_manager_comment', args=[report.id]),
+        'djangoHref': reverse('reporting:weekly_report_detail', args=[report.id]),
+        'djangoEditHref': reverse('reporting:weekly_report_edit', args=[report.id]),
+    }
+    if include_text:
+        payload.update({
+            'activityNotes': _weekly_report_html_to_text(report.activity_notes),
+            'quoteDeliveryNotes': _weekly_report_html_to_text(report.quote_delivery_notes),
+            'otherNotes': _weekly_report_html_to_text(report.other_notes),
+        })
+    return payload
+
+
+def _weekly_report_links():
+    return {
+        'list': '/weekly-reports/',
+        'create': '/weekly-reports/new/',
+        'createApi': reverse('reporting:weekly_report_create_api'),
+        'schedulesApi': reverse('reporting:weekly_report_load_schedules'),
+        'aiDraftApi': reverse('reporting:weekly_report_ai_draft'),
+        'djangoList': reverse('reporting:weekly_report_list'),
+        'djangoCreate': reverse('reporting:weekly_report_create'),
+    }
+
+
+def _weekly_report_save_from_payload(request, report=None):
+    payload, error = _weekly_report_request_payload(request)
+    if error:
+        return None, JsonResponse({'success': False, 'error': error}, status=400)
+
+    week_start = _parse_iso_date_or_none(_weekly_report_get_payload_value(payload, 'weekStart', 'week_start'))
+    week_end = _parse_iso_date_or_none(_weekly_report_get_payload_value(payload, 'weekEnd', 'week_end'))
+    if not week_start or not week_end:
+        return None, JsonResponse({'success': False, 'error': '보고 기간을 선택하세요.'}, status=400)
+    if week_end < week_start:
+        return None, JsonResponse({'success': False, 'error': '종료일은 시작일 이후여야 합니다.'}, status=400)
+
+    title = str(_weekly_report_get_payload_value(payload, 'title') or '').strip()
+    if not title:
+        title = f"{week_start.strftime('%Y년 %m월 %d일')} 주간보고"
+
+    defaults = {
+        'week_end': week_end,
+        'title': title[:200],
+        'activity_notes': _weekly_report_text_to_html(
+            _weekly_report_get_payload_value(payload, 'activityNotes', 'activity_notes')
+        ),
+        'quote_delivery_notes': _weekly_report_text_to_html(
+            _weekly_report_get_payload_value(payload, 'quoteDeliveryNotes', 'quote_delivery_notes')
+        ),
+        'other_notes': _weekly_report_text_to_html(
+            _weekly_report_get_payload_value(payload, 'otherNotes', 'other_notes')
+        ),
+    }
+
+    if report is None:
+        report, _ = WeeklyReport.objects.update_or_create(
+            user=request.user,
+            week_start=week_start,
+            defaults=defaults,
+        )
+        return report, None
+
+    duplicate = WeeklyReport.objects.filter(
+        user=request.user,
+        week_start=week_start,
+    ).exclude(pk=report.pk).first()
+    if duplicate:
+        return None, JsonResponse({
+            'success': False,
+            'error': '해당 시작일의 주간보고가 이미 있습니다. 기존 보고서를 수정하세요.',
+            'existingHref': f'/weekly-reports/{duplicate.id}/edit/',
+        }, status=400)
+
+    report.week_start = week_start
+    report.week_end = week_end
+    report.title = defaults['title']
+    report.activity_notes = defaults['activity_notes']
+    report.quote_delivery_notes = defaults['quote_delivery_notes']
+    report.other_notes = defaults['other_notes']
+    report.save()
+    return report, None
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def weekly_reports_api(request):
+    """React 주간보고 목록 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    users, profile = _weekly_report_scope(request)
+    reports = WeeklyReport.objects.filter(user__in=users).select_related(
+        'user', 'user__userprofile', 'user__userprofile__company', 'reviewed_by'
+    )
+
+    year = str(request.GET.get('year') or '').strip()
+    month = str(request.GET.get('month') or '').strip()
+    target_user = str(request.GET.get('user_id') or request.GET.get('user') or '').strip()
+    if year.isdigit():
+        reports = reports.filter(week_start__year=int(year))
+    if month.isdigit():
+        reports = reports.filter(week_start__month=int(month))
+    if target_user.isdigit():
+        reports = reports.filter(user_id=int(target_user))
+
+    filtered_count = reports.count()
+    reviewed_count = reports.filter(reviewed_at__isnull=False).count()
+    report_rows = list(reports.order_by('-week_start', '-updated_at')[:80])
+    today = timezone.localdate()
+    this_month_count = WeeklyReport.objects.filter(
+        user__in=users,
+        week_start__year=today.year,
+        week_start__month=today.month,
+    ).count()
+    scope_label = _user_display_name(request.user)
+    if _weekly_report_is_reviewer(profile):
+        scope_label = f"{profile.company.name} 팀" if profile and profile.company else '전체 팀'
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'canViewAll': _weekly_report_is_reviewer(profile),
+            'userCount': users.count(),
+        },
+        'filters': {
+            'year': year if year.isdigit() else '',
+            'month': month if month.isdigit() else '',
+            'userId': target_user if target_user.isdigit() else '',
+        },
+        'options': {
+            'years': [2024, 2025, 2026, 2027],
+            'months': list(range(1, 13)),
+            'users': [_weekly_report_user_payload(user) for user in users.order_by('username')],
+        },
+        'metrics': {
+            'filteredReports': filtered_count,
+            'reviewedReports': reviewed_count,
+            'pendingReports': max(filtered_count - reviewed_count, 0),
+            'thisMonthReports': this_month_count,
+        },
+        'links': _weekly_report_links(),
+        'reports': [
+            _weekly_report_payload(request, report)
+            for report in report_rows
+        ],
+    })
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def weekly_report_create_api(request):
+    """React 주간보고 작성 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    profile = getattr(request.user, 'userprofile', None)
+    if request.method == 'POST':
+        report, error_response = _weekly_report_save_from_payload(request)
+        if error_response:
+            return error_response
+        return JsonResponse({
+            'success': True,
+            'source': 'django',
+            'message': '주간보고가 저장되었습니다.',
+            'report': _weekly_report_payload(request, report, include_text=True),
+        })
+
+    week_start, _week_end = _weekly_report_default_dates()
+    existing = WeeklyReport.objects.filter(user=request.user, week_start=week_start).select_related(
+        'user', 'user__userprofile', 'user__userprofile__company', 'reviewed_by'
+    ).first()
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'canUseAi': bool(profile and profile.can_use_ai),
+        'form': _weekly_report_form_defaults(),
+        'existingReport': _weekly_report_payload(request, existing, include_text=True) if existing else None,
+        'links': _weekly_report_links(),
+    })
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def weekly_report_detail_api(request, pk):
+    """React 주간보고 상세 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    report = get_object_or_404(
+        WeeklyReport.objects.select_related(
+            'user', 'user__userprofile', 'user__userprofile__company', 'reviewed_by'
+        ),
+        pk=pk,
+    )
+    profile = getattr(request.user, 'userprofile', None)
+    if not _weekly_report_can_view(request, report, profile):
+        return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'canUseAi': bool(profile and profile.can_use_ai and report.user_id == request.user.id),
+        'report': _weekly_report_payload(request, report, include_text=True),
+        'form': _weekly_report_form_defaults(report) if report.user_id == request.user.id else None,
+        'links': _weekly_report_links(),
+    })
+
+
+@require_http_methods(["POST"])
+def weekly_report_update_api(request, pk):
+    """React 주간보고 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    report = get_object_or_404(WeeklyReport, pk=pk)
+    if report.user_id != request.user.id:
+        return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'}, status=403)
+    report, error_response = _weekly_report_save_from_payload(request, report=report)
+    if error_response:
+        return error_response
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '주간보고가 수정되었습니다.',
+        'report': _weekly_report_payload(request, report, include_text=True),
+    })
+
+
+@require_http_methods(["POST"])
+def weekly_report_delete_api(request, pk):
+    """React 주간보고 삭제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    report = get_object_or_404(WeeklyReport, pk=pk)
+    if report.user_id != request.user.id:
+        return JsonResponse({'success': False, 'error': '삭제 권한이 없습니다.'}, status=403)
+    report.delete()
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '주간보고가 삭제되었습니다.',
+        'redirect': '/weekly-reports/',
+    })
 
 
 @login_required
