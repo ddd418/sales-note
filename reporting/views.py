@@ -5418,7 +5418,8 @@ def _schedules_document_actions(schedule, user):
 
     return {
         'canGenerate': bool(document_types),
-        'templateManagerHref': reverse('reporting:document_template_list'),
+        'templateManagerHref': '/documents/',
+        'djangoTemplateManagerHref': reverse('reporting:document_template_list'),
         'items': [
             {
                 'type': document_type,
@@ -17450,6 +17451,328 @@ def product_api_list(request):
 # ============================================================
 # 서류 템플릿 관리 뷰
 # ============================================================
+
+def _document_template_user_can_manage(user, template=None):
+    if user.is_superuser:
+        return True
+    user_profile = get_user_profile(user)
+    if user_profile.role not in ['admin', 'manager']:
+        return False
+    if template is None:
+        return bool(user_profile.company)
+    return template.company_id == getattr(user_profile.company, 'id', None)
+
+
+def _document_template_user_can_access(user, template):
+    if user.is_superuser:
+        return True
+    user_profile = get_user_profile(user)
+    return template.company_id == getattr(user_profile.company, 'id', None)
+
+
+def _document_template_queryset_for_user(user):
+    queryset = DocumentTemplate.objects.filter(is_active=True).select_related('created_by', 'company')
+    if user.is_superuser:
+        return queryset
+    user_profile = get_user_profile(user)
+    if not user_profile.company:
+        return queryset.none()
+    return queryset.filter(company=user_profile.company)
+
+
+def _document_template_file_name(template):
+    if not template.file:
+        return ''
+    return os.path.basename(template.file.name)
+
+
+def _document_template_payload(template, actor):
+    return {
+        'id': template.id,
+        'documentType': template.document_type,
+        'documentTypeLabel': template.get_document_type_display(),
+        'name': template.name,
+        'description': template.description or '',
+        'fileType': template.file_type,
+        'fileName': _document_template_file_name(template),
+        'isDefault': template.is_default,
+        'isActive': template.is_active,
+        'company': {
+            'id': template.company_id,
+            'name': template.company.name if template.company else '',
+        },
+        'createdBy': _user_display_name(template.created_by) if template.created_by else '',
+        'createdAt': _datetime_or_none(template.created_at),
+        'updatedAt': _datetime_or_none(template.updated_at),
+        'downloadHref': reverse('reporting:document_template_download', args=[template.id]),
+        'toggleDefaultUrl': reverse('reporting:document_template_api_toggle_default', args=[template.id]),
+        'updateUrl': reverse('reporting:document_template_api_update', args=[template.id]),
+        'deleteUrl': reverse('reporting:document_template_api_delete', args=[template.id]),
+        'djangoEditHref': reverse('reporting:document_template_edit', args=[template.id]),
+        'canManage': _document_template_user_can_manage(actor, template),
+        'canToggleDefault': _document_template_user_can_access(actor, template),
+    }
+
+
+def _document_template_document_types_payload():
+    return [
+        {'value': value, 'label': label}
+        for value, label in DocumentTemplate.DOCUMENT_TYPE_CHOICES
+    ]
+
+
+def _document_template_can_create_payload(request, user_profile):
+    can_manage = request.user.is_superuser or user_profile.role in ['admin', 'manager']
+    has_company = request.user.is_superuser or bool(user_profile.company)
+    if not can_manage:
+        message = '서류 템플릿 등록은 관리자 또는 매니저만 가능합니다.'
+    elif not has_company:
+        message = '소속 회사가 설정되어 있지 않습니다.'
+    else:
+        message = ''
+    return can_manage and has_company, message
+
+
+def _document_template_api_context(request, templates):
+    user_profile = get_user_profile(request.user)
+    base_queryset = _document_template_queryset_for_user(request.user)
+    type_counts = {
+        item['document_type']: item['count']
+        for item in base_queryset.values('document_type').annotate(count=Count('id'))
+    }
+    default_counts = {
+        item['document_type']: item['count']
+        for item in base_queryset.filter(is_default=True).values('document_type').annotate(count=Count('id'))
+    }
+    can_create, create_message = _document_template_can_create_payload(request, user_profile)
+    companies = []
+    if request.user.is_superuser:
+        companies = [
+            {'id': company.id, 'name': company.name}
+            for company in UserCompany.objects.order_by('name')
+        ]
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'currentUser': {
+            'id': request.user.id,
+            'name': _user_display_name(request.user),
+            'role': user_profile.role,
+            'roleLabel': user_profile.get_role_display(),
+            'company': user_profile.company.name if user_profile.company else '',
+            'isSuperuser': request.user.is_superuser,
+        },
+        'filters': {
+            'type': request.GET.get('type', ''),
+        },
+        'documentTypes': _document_template_document_types_payload(),
+        'summary': {
+            'totalTemplates': base_queryset.count(),
+            'defaultTemplates': base_queryset.filter(is_default=True).count(),
+            'byType': [
+                {
+                    'type': value,
+                    'label': label,
+                    'count': type_counts.get(value, 0),
+                    'defaultCount': default_counts.get(value, 0),
+                }
+                for value, label in DocumentTemplate.DOCUMENT_TYPE_CHOICES
+            ],
+        },
+        'create': {
+            'canCreate': can_create,
+            'message': create_message,
+            'submitUrl': reverse('reporting:document_template_api_create'),
+            'djangoCreateHref': reverse('reporting:document_template_create'),
+            'companies': companies,
+        },
+        'links': {
+            'self': '/documents/',
+            'djangoList': reverse('reporting:document_template_list'),
+            'scheduleList': '/schedules/',
+            'scheduleCalendar': '/schedules/calendar/',
+        },
+        'templates': [
+            _document_template_payload(template, request.user)
+            for template in templates
+        ],
+    }
+
+
+def _document_template_validate_file(file, required=False):
+    if not file:
+        if required:
+            return None, JsonResponse({'success': False, 'error': '파일을 선택해주세요.'}, status=400)
+        return None, None
+    file_ext = os.path.splitext(file.name)[1].lower()
+    if file_ext not in ['.xlsx', '.xls']:
+        return None, JsonResponse({'success': False, 'error': '엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.'}, status=400)
+    return 'xlsx', None
+
+
+def _document_template_company_from_request(request):
+    if request.user.is_superuser:
+        company_id = request.POST.get('companyId') or request.POST.get('company')
+        if not company_id:
+            return None, JsonResponse({'success': False, 'error': '회사를 선택해주세요.'}, status=400)
+        try:
+            return UserCompany.objects.get(pk=company_id), None
+        except (UserCompany.DoesNotExist, ValueError):
+            return None, JsonResponse({'success': False, 'error': '올바른 회사를 선택해주세요.'}, status=400)
+    user_profile = get_user_profile(request.user)
+    if not user_profile.company:
+        return None, JsonResponse({'success': False, 'error': '소속 회사가 설정되어 있지 않습니다.'}, status=400)
+    return user_profile.company, None
+
+
+def _document_template_mutation_values(request, require_file=False):
+    document_type = (request.POST.get('documentType') or request.POST.get('document_type') or '').strip()
+    valid_types = {value for value, _label in DocumentTemplate.DOCUMENT_TYPE_CHOICES}
+    if document_type not in valid_types:
+        return None, JsonResponse({'success': False, 'error': '서류 종류를 선택해주세요.'}, status=400)
+
+    name = (request.POST.get('name') or '').strip()
+    if not name:
+        return None, JsonResponse({'success': False, 'error': '서류명을 입력해주세요.'}, status=400)
+
+    file = request.FILES.get('file')
+    file_type, error_response = _document_template_validate_file(file, required=require_file)
+    if error_response:
+        return None, error_response
+
+    return {
+        'document_type': document_type,
+        'name': name,
+        'description': request.POST.get('description', ''),
+        'is_default': str(request.POST.get('isDefault') or request.POST.get('is_default') or '').lower() in ['1', 'true', 'on', 'yes'],
+        'file': file,
+        'file_type': file_type,
+    }, None
+
+
+@never_cache
+@require_http_methods(["GET"])
+def document_templates_api(request):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    templates = _document_template_queryset_for_user(request.user)
+    document_type = request.GET.get('type')
+    valid_types = {value for value, _label in DocumentTemplate.DOCUMENT_TYPE_CHOICES}
+    if document_type and document_type in valid_types:
+        templates = templates.filter(document_type=document_type)
+    elif document_type:
+        templates = templates.none()
+
+    templates = templates.order_by('-is_default', '-created_at')
+    return JsonResponse(_document_template_api_context(request, templates))
+
+
+@require_http_methods(["POST"])
+def document_template_create_api(request):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    if not _document_template_user_can_manage(request.user):
+        return JsonResponse({'success': False, 'error': '서류 템플릿 등록 권한이 없습니다.'}, status=403)
+
+    company, error_response = _document_template_company_from_request(request)
+    if error_response:
+        return error_response
+    values, error_response = _document_template_mutation_values(request, require_file=True)
+    if error_response:
+        return error_response
+
+    template = DocumentTemplate.objects.create(
+        company=company,
+        document_type=values['document_type'],
+        name=values['name'],
+        description=values['description'],
+        is_default=values['is_default'],
+        file=values['file'],
+        file_type=values['file_type'],
+        created_by=request.user,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'서류 "{template.name}"이(가) 등록되었습니다.',
+        'template': _document_template_payload(template, request.user),
+    })
+
+
+@require_http_methods(["POST"])
+def document_template_update_api(request, pk):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    template = get_object_or_404(DocumentTemplate, pk=pk, is_active=True)
+    if not _document_template_user_can_manage(request.user, template):
+        return JsonResponse({'success': False, 'error': '서류 템플릿 수정 권한이 없습니다.'}, status=403)
+
+    values, error_response = _document_template_mutation_values(request, require_file=False)
+    if error_response:
+        return error_response
+
+    template.document_type = values['document_type']
+    template.name = values['name']
+    template.description = values['description']
+    template.is_default = values['is_default']
+    if values['file']:
+        template.file = values['file']
+        template.file_type = values['file_type']
+    template.save()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'서류 "{template.name}"이(가) 수정되었습니다.',
+        'template': _document_template_payload(template, request.user),
+    })
+
+
+@require_http_methods(["POST"])
+def document_template_delete_api(request, pk):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    template = get_object_or_404(DocumentTemplate, pk=pk, is_active=True)
+    if not _document_template_user_can_manage(request.user, template):
+        return JsonResponse({'success': False, 'error': '서류 템플릿 삭제 권한이 없습니다.'}, status=403)
+
+    template.is_active = False
+    template.save(update_fields=['is_active', 'updated_at'])
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'서류 "{template.name}"이(가) 삭제되었습니다.',
+    })
+
+
+@require_http_methods(["POST"])
+def document_template_toggle_default_api(request, pk):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    template = get_object_or_404(DocumentTemplate, pk=pk, is_active=True)
+    if not _document_template_user_can_access(request.user, template):
+        return JsonResponse({'success': False, 'error': '권한이 없습니다.'}, status=403)
+
+    template.is_default = not template.is_default
+    template.save()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'isDefault': template.is_default,
+        'template': _document_template_payload(template, request.user),
+    })
+
 
 @login_required
 def document_template_list(request):

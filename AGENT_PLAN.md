@@ -9,6 +9,52 @@
 
 ---
 
+## Current task — React 서류 템플릿 관리 1차 통합
+
+**목표**: 기존 Django `/reporting/documents/` 서류 템플릿 관리 화면을 fallback으로 유지하면서 React CRM에 `/documents/` 관리 화면을 추가해 일정 상세의 서류 다운로드 workflow를 React 안에서 완결한다.
+
+### 긴급 인터럽트 반영 — AI 부서 미팅 범위
+
+- 확인 결과 `ai_chat.services.gather_meeting_data()`가 `department + user` 조건으로 요청자 개인 담당 고객 미팅만 수집하고 있었다.
+- 부서 AI 분석 의도에 맞게 `department` 전체 FollowUp의 고객 미팅을 수집하도록 수정한다.
+- 부서 전체 미팅이 프롬프트에 섞일 때 출처가 흐려지지 않도록 미팅 항목 제목에 담당자명을 표시한다.
+- 견적/납품/메일 수집 범위는 이번 긴급 요청 범위가 아니므로 기존 정책을 유지한다.
+- 회귀 테스트로 같은 부서의 동료 담당 고객 미팅이 수집 및 AI 프롬프트에 포함되는지 검증한다.
+
+### 확인된 상태
+
+- 기존 서류 템플릿은 `DocumentTemplate` 모델을 사용하며 `quotation`, `transaction_statement`, `delivery_note` 3종류를 지원한다.
+- 기존 Django 목록/등록/수정/삭제/기본 설정/다운로드 URL은 `/reporting/documents/*`에 있다.
+- 등록/수정/삭제는 admin/manager 권한이며, 목록/다운로드는 같은 회사 범위에서 조회한다.
+- React 일정 상세는 문서 미리보기와 PDF/Excel 생성을 지원하지만 템플릿 관리는 Django fallback 링크로만 이동한다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/documents/` React용 JSON API를 추가한다.
+  - 서류 종류 필터, 회사 범위, 유형별/기본 템플릿 수, 관리 가능 여부, Django fallback 링크를 반환한다.
+- `/reporting/api/documents/create/`, `/reporting/api/documents/<id>/update/`, `/reporting/api/documents/<id>/delete/`, `/reporting/api/documents/<id>/toggle-default/` API를 추가한다.
+  - 기존 `DocumentTemplate` 파일 업로드, soft delete, 기본 템플릿 단일화 정책을 재사용한다.
+  - 인증/회사 범위/역할 권한을 유지한다.
+- React API client에 문서 템플릿 타입, 목록 로더, 생성/수정/삭제/기본 설정 mutation을 추가한다.
+- React `/documents/` route와 사이드바 메뉴를 추가한다.
+  - 유형별 필터, 요약 카드, 템플릿 목록, 다운로드, 기본 설정, 등록/수정 패널, 삭제 버튼을 제공한다.
+  - 기존 Django `/reporting/documents/` 링크를 fallback으로 유지한다.
+- React 일정 상세의 템플릿 관리 링크는 `/documents/`로 전환하고, React 문서 화면에서 Django fallback을 제공한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/documents/` bundle/API smoke check
+
+---
+
 ## Current task — React 일정 상세 문서 생성 1차 통합
 
 **목표**: 기존 Django 일정 상세의 견적서/거래명세서/납품서 생성 workflow를 React 일정 상세(`/schedules/<id>/`)에 추가한다. Django 서류 템플릿 관리와 생성 endpoint는 backend/fallback으로 유지한다.

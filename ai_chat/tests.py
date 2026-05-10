@@ -215,6 +215,82 @@ class AIDepartmentQuoteDeliveryCollectionTests(TestCase):
         self.assertEqual(data['summary']['product_stats']['견적용 피펫']['quote_amount'], 220000)
         self.assertEqual(data['summary']['product_stats']['납품용 팁']['delivery_amount'], 165000)
 
+    def test_department_analysis_meetings_include_all_department_followups(self):
+        from reporting.models import History
+        from .services import analyze_department, gather_meeting_data
+
+        user = make_ai_user('ai_department_all_meetings_user', can_use_ai=True)
+        company, department = make_department_with_followup(user)
+        own_followup = FollowUp.objects.get(user=user, department=department)
+        coworker = make_ai_user('ai_department_coworker_user', can_use_ai=True)
+        coworker_followup = FollowUp.objects.create(
+            user=coworker,
+            company=company,
+            department=department,
+            customer_name='동료 담당 고객',
+        )
+        History.objects.create(
+            user=user,
+            followup=own_followup,
+            action_type='customer_meeting',
+            content='내 담당 미팅 내용',
+        )
+        History.objects.create(
+            user=coworker,
+            followup=coworker_followup,
+            action_type='customer_meeting',
+            content='동료 담당 미팅 내용',
+        )
+
+        meetings = gather_meeting_data(department, user)
+
+        self.assertEqual(len(meetings), 2)
+        self.assertEqual(
+            {meeting['customer'] for meeting in meetings},
+            {'테스트 고객', '동료 담당 고객'},
+        )
+        self.assertIn('ai_department_coworker_user', {meeting.get('owner') for meeting in meetings})
+
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class Usage:
+                    total_tokens = 13
+
+                class Message:
+                    content = json.dumps({
+                        'department_summary': '부서 전체 미팅을 반영했습니다.',
+                        'painpoint_cards': [],
+                    })
+
+                class Choice:
+                    message = Message()
+
+                class Response:
+                    choices = [Choice()]
+                    usage = Usage()
+
+                return Response()
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+
+        with patch('ai_chat.services.get_openai_client', return_value=FakeClient()):
+            analyze_department(analysis, department, user)
+
+        prompt = captured['messages'][1]['content']
+        self.assertIn('미팅 기록 (2건)', prompt)
+        self.assertIn('내 담당 미팅 내용', prompt)
+        self.assertIn('동료 담당 미팅 내용', prompt)
+        self.assertIn('담당자: ai_department_coworker_user', prompt)
+
     def test_department_analysis_prompt_includes_schedule_quote_and_delivery_context(self):
         from datetime import time
         from decimal import Decimal

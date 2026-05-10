@@ -8,6 +8,7 @@ from django.utils import timezone
 from reporting.models import (
     Company,
     Department,
+    DocumentTemplate,
     EmailLog,
     FollowUp,
     UserProfile,
@@ -2841,7 +2842,8 @@ class SchedulesSummaryApiTests(TestCase):
             first_document['formats'][1]['href'],
             reverse('reporting:generate_document_pdf_format', args=['transaction_statement', schedule.id, 'xlsx']),
         )
-        self.assertEqual(payload['documents']['templateManagerHref'], reverse('reporting:document_template_list'))
+        self.assertEqual(payload['documents']['templateManagerHref'], '/documents/')
+        self.assertEqual(payload['documents']['djangoTemplateManagerHref'], reverse('reporting:document_template_list'))
 
     def test_schedules_detail_api_document_actions_match_activity_type(self):
         quote_schedule = self._create_schedule(self.user, '견적서류', activity_type='quote')
@@ -3436,6 +3438,171 @@ class SchedulesSummaryApiTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['success'])
         self.assertFalse(ScheduleFile.objects.filter(pk=schedule_file.id).exists())
+
+
+class DocumentTemplatesReactApiTests(TestCase):
+    """React 서류 템플릿 관리 API 회귀 테스트"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='서류API회사')
+        self.other_company = UserCompany.objects.create(name='서류API타사회사')
+        self.admin = make_user('doc-admin', role='admin', company=self.company)
+        self.manager = make_user('doc-manager', role='manager', company=self.company)
+        self.salesman = make_user('doc-sales', role='salesman', company=self.company)
+        self.other_manager = make_user('doc-other-manager', role='manager', company=self.other_company)
+        self.list_url = reverse('reporting:document_templates_api')
+        self.create_url = reverse('reporting:document_template_api_create')
+
+    def _uploaded_xlsx(self, name='template.xlsx'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(
+            name,
+            b'fake xlsx content',
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def _create_template(self, company, name, document_type='quotation', is_default=False, created_by=None):
+        template = DocumentTemplate.objects.create(
+            company=company,
+            document_type=document_type,
+            name=name,
+            description=f'{name} 설명',
+            file=self._uploaded_xlsx(f'{name}.xlsx'),
+            file_type='xlsx',
+            is_default=is_default,
+            created_by=created_by or self.manager,
+        )
+        self.addCleanup(template.file.delete, False)
+        return template
+
+    def test_document_templates_api_requires_login(self):
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_document_templates_api_lists_same_company_and_summary(self):
+        default_template = self._create_template(self.company, '기본견적서', is_default=True)
+        delivery_template = self._create_template(self.company, '납품서', document_type='delivery_note')
+        self._create_template(self.other_company, '타사견적서', created_by=self.other_manager)
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(self.list_url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'django')
+        self.assertFalse(payload['create']['canCreate'])
+        self.assertEqual({item['id'] for item in payload['templates']}, {default_template.id, delivery_template.id})
+        self.assertNotIn('타사견적서', [item['name'] for item in payload['templates']])
+        quotation_summary = next(item for item in payload['summary']['byType'] if item['type'] == 'quotation')
+        self.assertEqual(quotation_summary['count'], 1)
+        self.assertEqual(quotation_summary['defaultCount'], 1)
+        self.assertEqual(payload['links']['djangoList'], reverse('reporting:document_template_list'))
+
+    def test_document_templates_api_filters_by_document_type(self):
+        quotation = self._create_template(self.company, '견적서')
+        self._create_template(self.company, '거래명세서', document_type='transaction_statement')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.list_url, {'type': 'quotation'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item['id'] for item in payload['templates']], [quotation.id])
+        self.assertTrue(payload['create']['canCreate'])
+
+    def test_document_template_create_update_delete_api(self):
+        old_default = self._create_template(self.company, '기존기본', is_default=True)
+        self.client.force_login(self.manager)
+
+        create_response = self.client.post(self.create_url, {
+            'documentType': 'quotation',
+            'name': '신규견적서',
+            'description': 'React 업로드',
+            'isDefault': 'true',
+            'file': self._uploaded_xlsx('new-template.xlsx'),
+        })
+
+        self.assertEqual(create_response.status_code, 200)
+        created_payload = create_response.json()
+        self.assertTrue(created_payload['success'])
+        created = DocumentTemplate.objects.get(pk=created_payload['template']['id'])
+        self.addCleanup(created.file.delete, False)
+        self.assertEqual(created.company, self.company)
+        self.assertEqual(created.created_by, self.manager)
+        self.assertTrue(created.is_default)
+        old_default.refresh_from_db()
+        self.assertFalse(old_default.is_default)
+
+        update_response = self.client.post(
+            reverse('reporting:document_template_api_update', args=[created.id]),
+            {
+                'documentType': 'transaction_statement',
+                'name': '수정거래명세서',
+                'description': '수정 설명',
+                'isDefault': 'false',
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        created.refresh_from_db()
+        self.assertEqual(created.document_type, 'transaction_statement')
+        self.assertEqual(created.name, '수정거래명세서')
+        self.assertFalse(created.is_default)
+
+        delete_response = self.client.post(reverse('reporting:document_template_api_delete', args=[created.id]))
+
+        self.assertEqual(delete_response.status_code, 200)
+        created.refresh_from_db()
+        self.assertFalse(created.is_active)
+
+    def test_document_template_api_blocks_salesman_mutations(self):
+        template = self._create_template(self.company, '수정불가')
+        self.client.force_login(self.salesman)
+
+        create_response = self.client.post(self.create_url, {
+            'documentType': 'quotation',
+            'name': '권한없음',
+            'file': self._uploaded_xlsx('blocked.xlsx'),
+        })
+        update_response = self.client.post(
+            reverse('reporting:document_template_api_update', args=[template.id]),
+            {'documentType': 'quotation', 'name': '수정시도'},
+        )
+        delete_response = self.client.post(reverse('reporting:document_template_api_delete', args=[template.id]))
+
+        self.assertEqual(create_response.status_code, 403)
+        self.assertEqual(update_response.status_code, 403)
+        self.assertEqual(delete_response.status_code, 403)
+
+    def test_document_template_api_blocks_other_company(self):
+        other_template = self._create_template(self.other_company, '타사서류', created_by=self.other_manager)
+        self.client.force_login(self.manager)
+
+        update_response = self.client.post(
+            reverse('reporting:document_template_api_update', args=[other_template.id]),
+            {'documentType': 'quotation', 'name': '타사수정'},
+        )
+        toggle_response = self.client.post(reverse('reporting:document_template_api_toggle_default', args=[other_template.id]))
+
+        self.assertEqual(update_response.status_code, 403)
+        self.assertEqual(toggle_response.status_code, 403)
+
+    def test_document_template_toggle_default_api_uses_existing_single_default_rule(self):
+        old_default = self._create_template(self.company, '기존기본', is_default=True)
+        new_template = self._create_template(self.company, '새기본')
+        self.client.force_login(self.salesman)
+
+        response = self.client.post(reverse('reporting:document_template_api_toggle_default', args=[new_template.id]))
+
+        self.assertEqual(response.status_code, 200)
+        new_template.refresh_from_db()
+        old_default.refresh_from_db()
+        self.assertTrue(new_template.is_default)
+        self.assertFalse(old_default.is_default)
 
 
 class AIWorkspaceSummaryApiTests(TestCase):

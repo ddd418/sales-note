@@ -1373,6 +1373,7 @@ export type ScheduleDocumentAction = {
 export type ScheduleDocumentsData = {
   canGenerate: boolean;
   templateManagerHref: string;
+  djangoTemplateManagerHref?: string;
   items: ScheduleDocumentAction[];
 };
 
@@ -1404,6 +1405,101 @@ export type ScheduleDocumentPreviewData = {
 export type ScheduleDocumentDownloadResult = {
   blob: Blob;
   filename: string;
+};
+
+export type DocumentTemplateTypeOption = {
+  value: string;
+  label: string;
+};
+
+export type DocumentTemplateCompanyOption = {
+  id: number;
+  name: string;
+};
+
+export type DocumentTemplateItem = {
+  id: number;
+  documentType: string;
+  documentTypeLabel: string;
+  name: string;
+  description: string;
+  fileType: string;
+  fileName: string;
+  isDefault: boolean;
+  isActive: boolean;
+  company: DocumentTemplateCompanyOption;
+  createdBy: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  downloadHref: string;
+  toggleDefaultUrl: string;
+  updateUrl: string;
+  deleteUrl: string;
+  djangoEditHref: string;
+  canManage: boolean;
+  canToggleDefault: boolean;
+};
+
+export type DocumentTemplatesData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  currentUser: {
+    id: number | null;
+    name: string;
+    role: string;
+    roleLabel: string;
+    company: string;
+    isSuperuser: boolean;
+  };
+  filters: {
+    type: string;
+  };
+  documentTypes: DocumentTemplateTypeOption[];
+  summary: {
+    totalTemplates: number;
+    defaultTemplates: number;
+    byType: Array<{
+      type: string;
+      label: string;
+      count: number;
+      defaultCount: number;
+    }>;
+  };
+  create: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    djangoCreateHref: string;
+    companies: DocumentTemplateCompanyOption[];
+  };
+  links: {
+    self: string;
+    djangoList: string;
+    scheduleList: string;
+    scheduleCalendar: string;
+  };
+  templates: DocumentTemplateItem[];
+};
+
+export type DocumentTemplateMutationPayload = {
+  documentType: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+  companyId?: string;
+  file?: File | null;
+};
+
+export type DocumentTemplateMutationResponse = {
+  success: boolean;
+  source?: 'django';
+  error?: string;
+  message?: string;
+  isDefault?: boolean;
+  template?: DocumentTemplateItem;
 };
 
 export type ScheduleCreatePayload = {
@@ -2473,9 +2569,51 @@ const emptyScheduleDetailData: ScheduleDetailData = {
   deliveryItems: [],
   documents: {
     canGenerate: false,
-    templateManagerHref: '/reporting/documents/',
+    templateManagerHref: '/documents/',
+    djangoTemplateManagerHref: '/reporting/documents/',
     items: [],
   },
+};
+
+const emptyDocumentTemplatesData: DocumentTemplatesData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  currentUser: {
+    id: null,
+    name: '',
+    role: '',
+    roleLabel: '',
+    company: '',
+    isSuperuser: false,
+  },
+  filters: {
+    type: '',
+  },
+  documentTypes: [
+    { value: 'quotation', label: '견적서' },
+    { value: 'transaction_statement', label: '거래명세서' },
+    { value: 'delivery_note', label: '납품서' },
+  ],
+  summary: {
+    totalTemplates: 0,
+    defaultTemplates: 0,
+    byType: [],
+  },
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/documents/create/',
+    djangoCreateHref: '/reporting/documents/create/',
+    companies: [],
+  },
+  links: {
+    self: '/documents/',
+    djangoList: '/reporting/documents/',
+    scheduleList: '/schedules/',
+    scheduleCalendar: '/schedules/calendar/',
+  },
+  templates: [],
 };
 
 const emptyPrepaymentsData: PrepaymentsData = {
@@ -4539,6 +4677,126 @@ export async function downloadScheduleDocument(downloadUrl: string): Promise<Sch
     blob: await response.blob(),
     filename: filename || 'document.xlsx',
   };
+}
+
+export async function loadDocumentTemplatesData(type = ''): Promise<DocumentTemplatesData> {
+  try {
+    const params = new URLSearchParams();
+    if (type) params.set('type', type);
+    const response = await fetch(`/reporting/api/documents/${params.toString() ? `?${params.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Document templates API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<DocumentTemplatesData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Document templates API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyDocumentTemplatesData,
+      ...payload,
+      currentUser: {
+        ...emptyDocumentTemplatesData.currentUser,
+        ...(payload.currentUser ?? {}),
+      },
+      filters: {
+        ...emptyDocumentTemplatesData.filters,
+        ...(payload.filters ?? {}),
+      },
+      documentTypes: payload.documentTypes ?? emptyDocumentTemplatesData.documentTypes,
+      summary: {
+        ...emptyDocumentTemplatesData.summary,
+        ...(payload.summary ?? {}),
+        byType: payload.summary?.byType ?? emptyDocumentTemplatesData.summary.byType,
+      },
+      create: {
+        ...emptyDocumentTemplatesData.create,
+        ...(payload.create ?? {}),
+        companies: payload.create?.companies ?? emptyDocumentTemplatesData.create.companies,
+      },
+      links: {
+        ...emptyDocumentTemplatesData.links,
+        ...(payload.links ?? {}),
+      },
+      templates: payload.templates ?? emptyDocumentTemplatesData.templates,
+    };
+  } catch (error) {
+    return {
+      ...emptyDocumentTemplatesData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Document templates API unavailable',
+      filters: {
+        type,
+      },
+    };
+  }
+}
+
+function documentTemplatePayloadToFormData(payload: DocumentTemplateMutationPayload): FormData {
+  const formData = new FormData();
+  formData.set('documentType', payload.documentType);
+  formData.set('name', payload.name);
+  formData.set('description', payload.description ?? '');
+  formData.set('isDefault', payload.isDefault ? 'true' : 'false');
+  if (payload.companyId) formData.set('companyId', payload.companyId);
+  if (payload.file) formData.set('file', payload.file);
+  return formData;
+}
+
+async function postDocumentTemplateForm(
+  submitUrl: string,
+  payload?: DocumentTemplateMutationPayload,
+): Promise<DocumentTemplateMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: payload ? documentTemplatePayloadToFormData(payload) : undefined,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Document template request failed: ${response.status}`);
+  }
+  const data = (await response.json()) as DocumentTemplateMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Document template request failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function createDocumentTemplate(
+  submitUrl: string,
+  payload: DocumentTemplateMutationPayload,
+): Promise<DocumentTemplateMutationResponse> {
+  return postDocumentTemplateForm(submitUrl, payload);
+}
+
+export async function updateDocumentTemplate(
+  submitUrl: string,
+  payload: DocumentTemplateMutationPayload,
+): Promise<DocumentTemplateMutationResponse> {
+  return postDocumentTemplateForm(submitUrl, payload);
+}
+
+export async function deleteDocumentTemplate(deleteUrl: string): Promise<DocumentTemplateMutationResponse> {
+  return postDocumentTemplateForm(deleteUrl);
+}
+
+export async function toggleDocumentTemplateDefault(toggleUrl: string): Promise<DocumentTemplateMutationResponse> {
+  return postDocumentTemplateForm(toggleUrl);
 }
 
 export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: string): Promise<ScheduleEditResponse> {

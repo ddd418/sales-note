@@ -11392,6 +11392,108 @@ curl -I https://web-production-5096.up.railway.app/reporting/login/
 
 ---
 
+## AI Department Meetings and React Document Templates — 부서 AI 미팅 범위 수정 + React 서류 템플릿 관리 (2026-05-11)
+
+### 1. Summary
+
+긴급 요청으로 AI 부서 분석의 미팅 수집 범위를 확인했고, 기존 구현이 요청자 개인 담당 고객 미팅만 수집하던 문제를 수정했습니다. 이제 부서 분석의 `미팅 기록` 섹션은 같은 부서의 전체 고객 미팅을 포함하며, 각 미팅 제목에는 담당자명이 표시됩니다.
+
+중단했던 작업도 이어서 진행해 React CRM에 `/documents/` 서류 템플릿 관리 화면과 `/reporting/api/documents/*` API를 추가했습니다. 기존 Django `/reporting/documents/*` 화면과 `/reporting/*` 문서 생성 endpoint는 fallback으로 유지했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | React 서류 템플릿 통합 계획 및 AI 부서 미팅 긴급 수정 범위 기록 |
+| `ai_chat/services.py` | 부서 AI 미팅 수집을 개인 담당 고객에서 부서 전체 FollowUp 기준으로 변경, 프롬프트 담당자 표시 추가 |
+| `ai_chat/tests.py` | 동료 담당 고객 미팅이 부서 AI 수집/프롬프트에 포함되는 회귀 테스트 추가 |
+| `reporting/views.py` | React 문서 템플릿 목록/생성/수정/삭제/기본 설정 API 추가, 일정 상세 문서 관리 링크를 React로 전환 |
+| `reporting/urls.py` | `/reporting/api/documents/*` URL 추가 |
+| `reporting/tests.py` | 문서 템플릿 React API 권한/회사 범위/변경 테스트 추가 |
+| `frontend/src/api.ts` | 문서 템플릿 API 타입, loader, mutation 함수 추가 |
+| `frontend/src/App.tsx` | 사이드바 `서류`, `/documents/` route, 템플릿 목록/필터/등록/수정/삭제 UI 추가 |
+| `frontend/src/styles.css` | 문서 템플릿 관리 화면 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 부서 AI 분석이 특정 영업사원의 미팅만 보는 대신 부서 전체 미팅을 근거로 사용합니다.
+- 부서 전체 미팅 기록에서 담당자명이 함께 표시되어 분석 근거의 소유자를 구분할 수 있습니다.
+- React CRM에서 서류 템플릿을 등록, 수정, 삭제, 기본 템플릿 설정, 다운로드할 수 있습니다.
+- 일정 상세 문서 생성 workflow의 템플릿 관리 링크가 React `/documents/`로 이어집니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/documents/*` Django 템플릿 관리 화면은 fallback으로 유지했습니다.
+- 기존 `/reporting/documents/generate/*` 문서 생성 endpoint는 유지했습니다.
+- 문서 템플릿 등록/수정/삭제 권한은 admin/manager만 허용하고, salesman은 조회 및 기본 템플릿 선택 흐름만 유지했습니다.
+- 부서 AI 견적/납품/메일 수집 범위는 이번 긴급 요청 범위 밖이라 기존 정책을 유지했습니다.
+- 신규 DB 필드와 migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile ai_chat\services.py ai_chat\tests.py
+→ OK
+
+python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests.test_department_analysis_meetings_include_all_department_followups --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 34 tests, OK
+
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-yYKBGQDv.js / dist/assets/index-B5cHVWQY.css generated
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: pending
+- GitHub push: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- Deployed frontend bundle: pending
+
+### 7. Known Limitations
+
+- 운영에서 실제 서류 템플릿 파일 업로드/삭제와 AI 부서 재분석 결과 확인은 로그인 세션이 필요해 사용자 수동검수가 필요합니다.
+- 이번 AI 긴급 수정은 미팅 수집 범위만 부서 전체로 넓혔고, 견적/납품/메일 수집 범위는 기존 정책을 유지했습니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/documents/`
+2. 로그인 후 사이드바 `서류` 메뉴가 보이는지 확인합니다.
+3. 서류 종류 필터가 전체/견적서/거래명세서/납품서로 동작하는지 확인합니다.
+4. admin/manager 계정으로 템플릿 파일을 등록하고 목록에 표시되는지 확인합니다.
+5. 등록한 템플릿을 수정, 기본 설정, 삭제할 수 있는지 확인합니다.
+6. salesman 계정으로 등록/수정/삭제가 차단되고 목록 조회/다운로드만 가능한지 확인합니다.
+7. `/schedules/<id>/` 일정 상세의 문서 생성 섹션에서 `템플릿 관리`가 `/documents/`로 열리는지 확인합니다.
+8. 운영 `/ai/department/<department_id>/`에서 부서 분석을 다시 실행하고, 같은 부서의 다른 담당자 미팅 내용도 미팅 기록 근거에 반영되는지 확인합니다.
+9. 기존 Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/documents/`도 계속 접근 가능한지 확인합니다.
+
+### 9. Recommended Next Task
+
+- 운영 수동검수 완료 후 React 일정 캘린더 고급 조작 parity 또는 서류 생성 이력/템플릿 변수 편집 UX를 이어서 진행합니다.
+
+---
+
 ## React Weekly Reports First Integration — 주간보고 React 1차 통합 (2026-05-10)
 
 ### 1. Summary

@@ -27,13 +27,13 @@ def get_openai_client():
 # ================================================
 
 def gather_meeting_data(department, user, months=6):
-    """부서의 최근 N개월 미팅 데이터 수집"""
+    """부서 전체의 최근 N개월 미팅 데이터 수집"""
     from reporting.models import History, FollowUp
 
     cutoff = timezone.now().date() - timedelta(days=months * 30)
 
     followups = FollowUp.objects.filter(
-        user=user, department=department
+        department=department
     )
 
     meetings = History.objects.filter(
@@ -41,6 +41,9 @@ def gather_meeting_data(department, user, months=6):
         action_type='customer_meeting',
     ).filter(
         created_at__date__gte=cutoff
+    ).select_related(
+        'followup',
+        'followup__user',
     ).order_by('-created_at')
 
     meeting_list = []
@@ -49,6 +52,9 @@ def gather_meeting_data(department, user, months=6):
             'date': (m.meeting_date or m.created_at.date()).strftime('%Y-%m-%d'),
             'customer': m.followup.customer_name if m.followup else '미정',
         }
+        owner = getattr(m.followup, 'user', None) if m.followup else None
+        if owner:
+            entry['owner'] = owner.get_full_name() or owner.username
         parts = []
         if m.meeting_situation:
             parts.append(f"[상황] {m.meeting_situation}")
@@ -1310,7 +1316,8 @@ def analyze_department(analysis, department, user):
     prompt_parts.append(f"━━━ 미팅 기록 ({len(meetings)}건) ━━━")
     if meetings:
         for i, m in enumerate(meetings, 1):
-            prompt_parts.append(f"\n[미팅 #{i}] {m['date']} - {m['customer']}")
+            owner_label = f" | 담당자: {m['owner']}" if m.get('owner') else ''
+            prompt_parts.append(f"\n[미팅 #{i}] {m['date']} - {m['customer']}{owner_label}")
             prompt_parts.append(m['content'])
     else:
         prompt_parts.append("(미팅 기록 없음)")

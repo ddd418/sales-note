@@ -234,6 +234,11 @@ urlpatterns = [
     path('personal-schedules/comments/<int:comment_id>/delete/', personal_schedule_views.personal_schedule_delete_comment, name='personal_schedule_delete_comment'),
     
     # 서류 템플릿 관리 URL들
+    path('api/documents/', views.document_templates_api, name='document_templates_api'),
+    path('api/documents/create/', views.document_template_create_api, name='document_template_api_create'),
+    path('api/documents/<int:pk>/update/', views.document_template_update_api, name='document_template_api_update'),
+    path('api/documents/<int:pk>/delete/', views.document_template_delete_api, name='document_template_api_delete'),
+    path('api/documents/<int:pk>/toggle-default/', views.document_template_toggle_default_api, name='document_template_api_toggle_default'),
     path('documents/', views.document_template_list, name='document_template_list'),
     path('documents/create/', views.document_template_create, name='document_template_create'),
     path('documents/<int:pk>/edit/', views.document_template_edit, name='document_template_edit'),
