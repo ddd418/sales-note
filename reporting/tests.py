@@ -1909,6 +1909,14 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(payload['usages'][0]['amount'], 30000)
         self.assertEqual(payload['usages'][0]['deliveryItems'][0]['itemName'], '테스트 품목')
         self.assertEqual(payload['links']['reactEdit'], f'/prepayments/{prepayment.id}/edit/')
+        self.assertTrue(payload['actions']['canCancel'])
+        self.assertFalse(payload['actions']['canDelete'])
+        self.assertIn('1개의 사용 내역', payload['actions']['deleteMessage'])
+        self.assertTrue(payload['actions']['canTransfer'])
+        self.assertEqual(payload['actions']['cancelUrl'], reverse('reporting:prepayment_cancel_api', args=[prepayment.id]))
+        self.assertEqual(payload['actions']['deleteUrl'], reverse('reporting:prepayment_delete_api', args=[prepayment.id]))
+        self.assertEqual(payload['actions']['transferUrl'], reverse('reporting:prepayment_transfer_api', args=[prepayment.id]))
+        self.assertIn(self.coworker.id, [user['id'] for user in payload['actions']['transferUsers']])
 
     def test_prepayment_detail_api_blocks_other_company(self):
         prepayment = self._create_prepayment(self.other_user)
@@ -1983,6 +1991,86 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(int(prepayment.balance), 70000)
         self.assertEqual(prepayment.payment_method, 'card')
         self.assertEqual(prepayment.memo, 'React 수정')
+
+    def test_prepayment_cancel_api_only_owner_and_records_reason(self):
+        prepayment = self._create_prepayment(self.user)
+
+        self.client.force_login(self.coworker)
+        denied = self.client.post(reverse('reporting:prepayment_cancel_api', args=[prepayment.id]), {
+            'cancel_reason': '동료 취소 시도',
+        })
+        self.assertEqual(denied.status_code, 403)
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('reporting:prepayment_cancel_api', args=[prepayment.id]), {
+            'cancel_reason': 'React 취소',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        prepayment.refresh_from_db()
+        self.assertEqual(prepayment.status, 'cancelled')
+        self.assertEqual(prepayment.cancel_reason, 'React 취소')
+        self.assertIsNotNone(prepayment.cancelled_at)
+        self.assertEqual(payload['prepayment']['status'], 'cancelled')
+
+    def test_prepayment_delete_api_blocks_used_records_and_deletes_unused(self):
+        from reporting.models import Prepayment, PrepaymentUsage
+
+        used_prepayment = self._create_prepayment(self.user)
+        PrepaymentUsage.objects.create(
+            prepayment=used_prepayment,
+            product_name='삭제 차단 품목',
+            quantity=1,
+            amount=10000,
+            remaining_balance=60000,
+        )
+        self.client.force_login(self.user)
+
+        blocked = self.client.post(reverse('reporting:prepayment_delete_api', args=[used_prepayment.id]))
+        self.assertEqual(blocked.status_code, 400)
+        self.assertTrue(Prepayment.objects.filter(id=used_prepayment.id).exists())
+
+        unused_prepayment = self._create_prepayment(self.user, name='삭제가능')
+        deleted = self.client.post(reverse('reporting:prepayment_delete_api', args=[unused_prepayment.id]))
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertTrue(deleted.json()['success'])
+        self.assertEqual(deleted.json()['href'], '/prepayments/')
+        self.assertFalse(Prepayment.objects.filter(id=unused_prepayment.id).exists())
+
+    def test_prepayment_transfer_api_moves_owner_and_appends_memo(self):
+        prepayment = self._create_prepayment(self.user)
+        self.client.force_login(self.user)
+
+        other_company_response = self.client.post(reverse('reporting:prepayment_transfer_api', args=[prepayment.id]), {
+            'target_user': str(self.other_user.id),
+            'reason': '타사 이관 시도',
+        })
+        self.assertEqual(other_company_response.status_code, 400)
+
+        response = self.client.post(reverse('reporting:prepayment_transfer_api', args=[prepayment.id]), {
+            'target_user': str(self.coworker.id),
+            'reason': '담당자 변경',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['prepayment']['ownerId'], self.coworker.id)
+        self.assertFalse(payload['prepayment']['canManage'])
+
+        prepayment.refresh_from_db()
+        self.assertEqual(prepayment.created_by, self.coworker)
+        self.assertIn('[이관]', prepayment.memo)
+        self.assertIn('담당자 변경', prepayment.memo)
+
+        detail = self.client.get(reverse('reporting:prepayment_detail_api', args=[prepayment.id]))
+        self.assertEqual(detail.status_code, 200)
+        detail_payload = detail.json()
+        self.assertFalse(detail_payload['edit']['canEdit'])
+        self.assertFalse(detail_payload['actions']['canTransfer'])
 
 
 class SchedulesSummaryApiTests(TestCase):

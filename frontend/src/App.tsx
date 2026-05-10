@@ -70,12 +70,14 @@ import {
   AIWorkspacePromptTarget,
   NoteCreatePayload,
   addNoteReply,
+  cancelPrepayment as cancelCustomerPrepayment,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
   createPrepayment as createCustomerPrepayment,
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
+  deletePrepayment as deleteCustomerPrepayment,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
   deleteNoteReply,
@@ -97,6 +99,7 @@ import {
   moveDealStage,
   runAiDepartmentAnalysis,
   toggleNoteReviewed,
+  transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updatePrepayment as updateCustomerPrepayment,
@@ -5293,13 +5296,38 @@ function PrepaymentDetailPage({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [transferUserId, setTransferUserId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [actionBusy, setActionBusy] = useState<'cancel' | 'delete' | 'transfer' | ''>('');
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const transferUserIdsKey = data?.actions.transferUsers.map((user) => user.id).join(',') ?? '';
 
   useEffect(() => {
     setForm(makePrepaymentEditForm(prepayment));
     setError('');
     setMessage('');
     setSaving(false);
+    setCancelReason('');
+    setTransferReason('');
+    setDeleteConfirm('');
+    setActionBusy('');
+    setActionError('');
+    setActionMessage('');
   }, [prepayment?.id]);
+
+  useEffect(() => {
+    const transferUsers = data?.actions.transferUsers ?? [];
+    const firstTransferUserId = transferUsers[0] ? String(transferUsers[0].id) : '';
+    setTransferUserId((current) => {
+      if (current && transferUsers.some((user) => String(user.id) === current)) {
+        return current;
+      }
+      return firstTransferUserId;
+    });
+  }, [prepayment?.id, transferUserIdsKey]);
 
   const handleChange = (field: keyof PrepaymentFormState, value: string) => {
     setForm((previous) => ({
@@ -5364,6 +5392,87 @@ function PrepaymentDetailPage({
     }
   };
 
+  const handleCancel = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || !prepayment || actionBusy) {
+      return;
+    }
+    if (!data.actions.canCancel || !data.actions.cancelUrl) {
+      setActionError('취소 권한이 없거나 이미 취소된 선결제입니다.');
+      return;
+    }
+
+    setActionBusy('cancel');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const cancelled = await cancelCustomerPrepayment(data.actions.cancelUrl, cancelReason);
+      await onRefresh();
+      setCancelReason('');
+      setActionMessage(cancelled.message || '선결제를 취소했습니다.');
+    } catch (cancelError) {
+      setActionError(cancelError instanceof Error ? cancelError.message : '선결제 취소에 실패했습니다.');
+    } finally {
+      setActionBusy('');
+    }
+  };
+
+  const handleTransfer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || !prepayment || actionBusy) {
+      return;
+    }
+    if (!data.actions.canTransfer || !data.actions.transferUrl) {
+      setActionError('이관 권한이 없습니다.');
+      return;
+    }
+    const targetUserId = Number(transferUserId);
+    if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+      setActionError('이관 대상을 선택하세요.');
+      return;
+    }
+
+    setActionBusy('transfer');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const transferred = await transferCustomerPrepayment(data.actions.transferUrl, targetUserId, transferReason);
+      await onRefresh();
+      setTransferReason('');
+      setActionMessage(transferred.message || '선결제를 이관했습니다.');
+    } catch (transferError) {
+      setActionError(transferError instanceof Error ? transferError.message : '선결제 이관에 실패했습니다.');
+    } finally {
+      setActionBusy('');
+    }
+  };
+
+  const handleDelete = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || !prepayment || actionBusy) {
+      return;
+    }
+    if (!data.actions.canDelete || !data.actions.deleteUrl) {
+      setActionError(data.actions.deleteMessage || '삭제할 수 없는 선결제입니다.');
+      return;
+    }
+    if (deleteConfirm.trim() !== '삭제') {
+      setActionError('확인 문구를 입력하세요.');
+      return;
+    }
+
+    setActionBusy('delete');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const deleted = await deleteCustomerPrepayment(data.actions.deleteUrl);
+      window.location.href = deleted.href || '/prepayments/';
+    } catch (deleteError) {
+      setActionError(deleteError instanceof Error ? deleteError.message : '선결제 삭제에 실패했습니다.');
+      setActionBusy('');
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -5399,6 +5508,8 @@ function PrepaymentDetailPage({
     paymentMethods: data.edit.paymentMethods,
     statuses: data.edit.statuses,
   };
+  const deleteConfirmed = deleteConfirm.trim() === '삭제';
+  const actionDisabled = Boolean(actionBusy);
 
   return (
     <section className="prepayments-page prepayment-detail-page">
@@ -5529,6 +5640,98 @@ function PrepaymentDetailPage({
               <dd>{prepayment.memo || '메모 없음'}</dd>
             </div>
           </dl>
+          {actionMessage ? <div className="notes-action-feedback success">{actionMessage}</div> : null}
+          {actionError ? <div className="notes-action-feedback error">{actionError}</div> : null}
+          {!data.scope.canManage ? (
+            <DashboardEmpty label="등록자만 취소/삭제/이관할 수 있습니다" />
+          ) : (
+            <div className="prepayment-action-panel">
+              <form className="prepayment-action-block" onSubmit={handleCancel}>
+                <div className="prepayment-action-heading">
+                  <X size={15} />
+                  <strong>취소</strong>
+                </div>
+                <textarea
+                  disabled={!data.actions.canCancel || actionDisabled}
+                  onChange={(event) => {
+                    setCancelReason(event.target.value);
+                    setActionError('');
+                    setActionMessage('');
+                  }}
+                  placeholder="취소 사유"
+                  value={cancelReason}
+                />
+                <button className="route-secondary-action" disabled={!data.actions.canCancel || actionDisabled} type="submit">
+                  {actionBusy === 'cancel' ? <Loader2 className="spin-icon" size={15} /> : <X size={15} />}
+                  취소 처리
+                </button>
+              </form>
+
+              <form className="prepayment-action-block" onSubmit={handleTransfer}>
+                <div className="prepayment-action-heading">
+                  <ArrowRightLeft size={15} />
+                  <strong>이관</strong>
+                </div>
+                <select
+                  disabled={!data.actions.canTransfer || actionDisabled || data.actions.transferUsers.length === 0}
+                  onChange={(event) => {
+                    setTransferUserId(event.target.value);
+                    setActionError('');
+                    setActionMessage('');
+                  }}
+                  value={transferUserId}
+                >
+                  {data.actions.transferUsers.length === 0 ? (
+                    <option value="">대상 없음</option>
+                  ) : (
+                    data.actions.transferUsers.map((user) => (
+                      <option key={user.id} value={user.id}>{user.name}</option>
+                    ))
+                  )}
+                </select>
+                <textarea
+                  disabled={!data.actions.canTransfer || actionDisabled || data.actions.transferUsers.length === 0}
+                  onChange={(event) => {
+                    setTransferReason(event.target.value);
+                    setActionError('');
+                    setActionMessage('');
+                  }}
+                  placeholder="이관 사유"
+                  value={transferReason}
+                />
+                <button
+                  className="route-secondary-action"
+                  disabled={!data.actions.canTransfer || !transferUserId || data.actions.transferUsers.length === 0 || actionDisabled}
+                  type="submit"
+                >
+                  {actionBusy === 'transfer' ? <Loader2 className="spin-icon" size={15} /> : <ArrowRightLeft size={15} />}
+                  이관
+                </button>
+              </form>
+
+              <form className="prepayment-action-block danger" onSubmit={handleDelete}>
+                <div className="prepayment-action-heading">
+                  <Trash2 size={15} />
+                  <strong>삭제</strong>
+                </div>
+                {data.actions.deleteMessage ? <small>{data.actions.deleteMessage}</small> : null}
+                <input
+                  disabled={!data.actions.canDelete || actionDisabled}
+                  onChange={(event) => {
+                    setDeleteConfirm(event.target.value);
+                    setActionError('');
+                    setActionMessage('');
+                  }}
+                  placeholder="삭제"
+                  value={deleteConfirm}
+                />
+                <button className="prepayment-danger-button" disabled={!data.actions.canDelete || !deleteConfirmed || actionDisabled} type="submit">
+                  {actionBusy === 'delete' ? <Loader2 className="spin-icon" size={15} /> : <Trash2 size={15} />}
+                  삭제
+                </button>
+              </form>
+            </div>
+          )}
           <div className="customers-side-actions">
             <a href={prepayment.customerHref || prepayment.djangoCustomerHref}>고객 상세</a>
             <a href={prepayment.djangoCustomerPrepaymentHref}>고객별 선결제</a>

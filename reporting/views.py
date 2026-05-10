@@ -15891,6 +15891,28 @@ def _prepayment_form_options(request, prepayment=None):
     }
 
 
+def _prepayment_transfer_options(request, prepayment):
+    user_profile = get_user_profile(request.user)
+    if not user_profile.company:
+        return []
+
+    profiles = UserProfile.objects.filter(
+        company=user_profile.company,
+        role='salesman',
+        user__is_active=True,
+    ).exclude(
+        user_id=prepayment.created_by_id,
+    ).select_related('user').order_by('user__first_name', 'user__username')
+
+    return [
+        {
+            'id': profile.user_id,
+            'name': _user_display_name(profile.user),
+        }
+        for profile in profiles
+    ]
+
+
 def _prepayment_usage_payload(usage):
     schedule = usage.schedule
     delivery_items = []
@@ -15939,6 +15961,8 @@ def _prepayment_detail_payload(request, prepayment):
     balance_percent = round((balance / amount) * 100, 1) if amount > 0 else 0
     can_manage = _prepayment_can_edit(request.user, prepayment)
     item_payload = _prepayment_item_payload(prepayment, request.user)
+    usage_count = len(usages)
+    delete_message = '' if usage_count == 0 else f'이미 {usage_count}개의 사용 내역이 있어 삭제할 수 없습니다.'
 
     return {
         'success': True,
@@ -15972,6 +15996,16 @@ def _prepayment_detail_payload(request, prepayment):
             'djangoEdit': reverse('reporting:prepayment_edit', args=[prepayment.id]) if can_manage else '',
             'djangoDelete': reverse('reporting:prepayment_delete', args=[prepayment.id]) if can_manage else '',
             'djangoTransfer': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if can_manage else '',
+        },
+        'actions': {
+            'canCancel': bool(can_manage and prepayment.status != 'cancelled'),
+            'cancelUrl': reverse('reporting:prepayment_cancel_api', args=[prepayment.id]) if can_manage else '',
+            'canDelete': bool(can_manage and usage_count == 0),
+            'deleteUrl': reverse('reporting:prepayment_delete_api', args=[prepayment.id]) if can_manage else '',
+            'deleteMessage': delete_message,
+            'canTransfer': bool(can_manage),
+            'transferUrl': reverse('reporting:prepayment_transfer_api', args=[prepayment.id]) if can_manage else '',
+            'transferUsers': _prepayment_transfer_options(request, prepayment) if can_manage else [],
         },
         'edit': {
             'canEdit': can_manage,
@@ -16357,6 +16391,141 @@ def prepayment_update_api(request, pk):
     return JsonResponse({
         'success': True,
         'message': '선결제 정보를 수정했습니다.',
+        'prepaymentId': prepayment.id,
+        'href': f'/prepayments/{prepayment.id}/',
+        'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+        'prepayment': _prepayment_item_payload(prepayment, request.user),
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def prepayment_cancel_api(request, pk):
+    """React 선결제 취소 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        pk=pk,
+    )
+    if not _prepayment_can_view(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not _prepayment_can_edit(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 취소할 수 있습니다.'}, status=403)
+
+    data = _prepayment_request_data(request)
+    reason = str(_prepayment_field(data, 'cancel_reason', 'cancelReason', 'reason') or '사용자 요청으로 취소').strip()
+    if not reason:
+        reason = '사용자 요청으로 취소'
+
+    prepayment.status = 'cancelled'
+    prepayment.cancelled_at = timezone.now()
+    prepayment.cancel_reason = reason[:1000]
+    prepayment.save(update_fields=['status', 'cancelled_at', 'cancel_reason'])
+
+    customer_name = prepayment.customer.customer_name if prepayment.customer else '고객'
+    return JsonResponse({
+        'success': True,
+        'message': f'{customer_name}의 선결제가 취소되었습니다.',
+        'prepaymentId': prepayment.id,
+        'href': f'/prepayments/{prepayment.id}/',
+        'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),
+        'prepayment': _prepayment_item_payload(prepayment, request.user),
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def prepayment_delete_api(request, pk):
+    """React 선결제 삭제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        pk=pk,
+    )
+    if not _prepayment_can_view(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not _prepayment_can_edit(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 삭제할 수 있습니다.'}, status=403)
+
+    usage_count = prepayment.usages.count()
+    if usage_count > 0:
+        return JsonResponse({
+            'success': False,
+            'error': f'이미 {usage_count}개의 사용 내역이 있는 선결제는 삭제할 수 없습니다.',
+        }, status=400)
+
+    customer_name = prepayment.customer.customer_name if prepayment.customer else '고객'
+    prepayment.delete()
+    return JsonResponse({
+        'success': True,
+        'message': f'{customer_name}의 선결제가 삭제되었습니다.',
+        'href': '/prepayments/',
+        'djangoHref': reverse('reporting:prepayment_list'),
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def prepayment_transfer_api(request, pk):
+    """React 선결제 이관 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        pk=pk,
+    )
+    if not _prepayment_can_view(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not _prepayment_can_edit(request.user, prepayment):
+        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 이관할 수 있습니다.'}, status=403)
+
+    data = _prepayment_request_data(request)
+    target_user_id = _prepayment_field(data, 'target_user', 'targetUser', 'targetUserId')
+    reason = str(_prepayment_field(data, 'reason', 'transferReason') or '').strip()
+    if not target_user_id:
+        return JsonResponse({'success': False, 'error': '이관 대상을 선택해주세요.'}, status=400)
+
+    try:
+        target_user_id = int(target_user_id)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': '이관 대상 정보를 확인해주세요.'}, status=400)
+    if target_user_id == request.user.id:
+        return JsonResponse({'success': False, 'error': '본인에게는 이관할 수 없습니다.'}, status=400)
+
+    user_profile = get_user_profile(request.user)
+    if not user_profile.company:
+        return JsonResponse({'success': False, 'error': '소속 회사 정보가 없어 이관할 수 없습니다.'}, status=400)
+
+    target_user = User.objects.filter(
+        pk=target_user_id,
+        is_active=True,
+        userprofile__company=user_profile.company,
+        userprofile__role='salesman',
+    ).first()
+    if not target_user:
+        return JsonResponse({'success': False, 'error': '같은 회사의 영업사원만 이관 대상으로 선택할 수 있습니다.'}, status=400)
+
+    from_name = _user_display_name(request.user)
+    to_name = _user_display_name(target_user)
+    transfer_note = f"[이관] {from_name} → {to_name} ({prepayment.created_at.strftime('%Y-%m-%d')})"
+    if reason:
+        transfer_note += f"\n사유: {reason[:1000]}"
+
+    prepayment.created_by = target_user
+    prepayment.memo = f"{prepayment.memo}\n{transfer_note}" if prepayment.memo else transfer_note
+    prepayment.save(update_fields=['created_by', 'memo'])
+
+    return JsonResponse({
+        'success': True,
+        'message': f'선결제가 {to_name}님께 이관되었습니다.',
         'prepaymentId': prepayment.id,
         'href': f'/prepayments/{prepayment.id}/',
         'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),

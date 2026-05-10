@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React 선결제 삭제/취소/이관 전환
+
+**상태**: 구현/로컬 검증 완료, Railway 배포 준비
+
+### 요약
+
+React 선결제 상세 화면에서 취소, 삭제, 이관을 직접 처리하도록 확장했습니다. 기존 Django `/reporting/prepayment/*` 화면과 fallback 링크는 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 선결제 상세 action payload, 취소/삭제/이관 JSON API 추가
+- `reporting/urls.py`: `/reporting/api/prepayments/<id>/cancel|delete|transfer/` 추가
+- `reporting/tests.py`: 선결제 액션 권한, 삭제 차단, 이관 메모/소유자 변경 테스트 추가
+- `frontend/src/api.ts`: 선결제 취소/삭제/이관 API client와 action 타입 추가
+- `frontend/src/App.tsx`: 선결제 상세 우측 액션 패널 추가
+- `frontend/src/styles.css`: 선결제 액션 패널/위험 버튼 스타일 추가
+- `frontend/README.md`: React 선결제 범위 갱신
+- `AGENT_PLAN.md`: 작업 계획 기록
+
+### CRM 개선
+
+- 선결제 취소, 미사용 선결제 삭제, 같은 회사 영업사원 이관을 React 상세 화면에서 처리할 수 있습니다.
+- 사용 내역이 있는 선결제는 React와 API 모두 hard delete를 차단합니다.
+- 이관 시 기존 Django와 동일하게 메모에 이관 기록과 사유를 남깁니다.
+- 같은 회사 사용자는 조회 가능하지만, 액션은 등록자 본인에게만 노출/허용됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/prepayment/`, 상세, 등록, 수정, 삭제, 이관, 고객별, 엑셀 URL 유지.
+- Django 삭제/취소/이관 fallback 링크 유지.
+- 비로그인 API 접근은 `401 login_required`.
+- DB 모델 변경 없음, migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npm run build
+→ OK, assets/index-DzdnV2E4.js / assets/index-BaTcueuX.css
+
+python manage.py test reporting.tests.PrepaymentDetailApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### Railway 배포 및 운영 스모크
+
+- Commit: 배포 전
+- `web` deployment: 배포 전
+- `sales-note-frontend` deployment: 배포 전
+
+### 알려진 제한
+
+- 실제 데이터 변경 액션은 로그인 세션이 필요하므로 운영 서버에서 사용자가 직접 취소/삭제/이관을 수동 검수해야 합니다.
+- 이관 대상은 같은 회사의 활성 영업사원으로 제한합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/prepayments/`
+2. 로그인 후 본인이 등록한 선결제 상세 `/prepayments/<id>/`로 이동합니다.
+3. 사용 내역이 있는 선결제에서 삭제 버튼이 비활성/차단되는지 확인합니다.
+4. 사용 내역이 없는 테스트 선결제에서 삭제 확인 문구 입력 후 삭제하면 목록으로 돌아가는지 확인합니다.
+5. 다른 테스트 선결제에서 취소 사유 입력 후 취소하면 상태가 `취소`로 바뀌고 취소 사유가 남는지 확인합니다.
+6. 같은 회사 동료를 선택해 이관하면 등록자가 변경되고 메모에 `[이관]` 기록과 사유가 추가되는지 확인합니다.
+7. 이관 후 기존 등록자 계정에서는 상세 조회는 가능하지만 수정/취소/삭제/이관 액션이 비활성인지 확인합니다.
+8. `Django 이관`, `Django 삭제/취소`, `Django 상세`, `고객별 선결제` 링크가 기존 Django 화면으로 정상 이동하는지 확인합니다.
+9. `/reporting/prepayment/` 기존 Django 선결제 목록/상세/삭제/이관 화면이 계속 동작하는지 확인합니다.
+10. `/schedules/<id>/` 납품 일정 상세의 기존 선결제 차감 기능이 계속 동작하는지 확인합니다.
+
+### 다음 권장 작업
+
+- 수동검수 완료 후 선결제 고객별 화면 또는 견적/문서 생성 흐름 중 다음 React 전환 대상을 선택합니다.
+
+---
+
 ## 2026-05-10 — React 선결제 상세/등록/수정 전환
 
 **상태**: 구현/검증/배포 완료, 사용자 수동검수 대기

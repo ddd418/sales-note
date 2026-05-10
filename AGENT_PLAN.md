@@ -9,7 +9,54 @@
 
 ---
 
-## Current task — React 선결제 상세/등록/수정 전환
+## Current task — React 선결제 삭제/취소/이관 전환
+
+**목표**: 기존 Django `/reporting/prepayment/*` 운영 화면을 유지하면서 React 선결제 상세 화면에서 삭제, 취소, 이관까지 처리할 수 있게 한다.
+
+### 확인된 상태
+
+- React 선결제 목록, 등록, 상세, 수정은 배포 후 사용자가 수동검수를 완료했다.
+- 기존 Django `prepayment_delete_view`는 등록자 본인만 취소/삭제 가능하다.
+  - `action=cancel`이면 사용 내역 여부와 관계없이 `status=cancelled`, `cancelled_at`, `cancel_reason`을 저장한다.
+  - 삭제는 사용 내역이 있으면 차단하고, 사용 내역이 없는 선결제만 hard delete한다.
+- 기존 Django `prepayment_transfer_view`는 등록자 본인만 같은 회사 다른 영업사원에게 이관할 수 있다.
+- DB 필드 추가는 필요하지 않다.
+
+### 구현 계획
+
+- 선결제 상세 API payload에 React action config를 추가한다.
+  - 취소 가능 여부, 삭제 가능 여부, 이관 가능 여부
+  - 이관 대상 사용자 목록
+  - 각 React API submit URL
+- React용 API를 추가한다.
+  - `/reporting/api/prepayments/<id>/cancel/`
+  - `/reporting/api/prepayments/<id>/delete/`
+  - `/reporting/api/prepayments/<id>/transfer/`
+- 기존 Django 권한/운영 규칙을 유지한다.
+  - 같은 회사 사용자는 조회 가능하지만 수정/취소/삭제/이관은 등록자 본인만 가능
+  - 사용 내역이 있으면 hard delete 차단
+  - 이관 후 메모에 이관 기록을 남김
+- React 상세 화면에 작업 패널을 추가한다.
+  - 취소 사유 입력 후 취소
+  - 사용 내역 없는 건만 영구 삭제
+  - 같은 회사 동료 선택 후 이관
+  - Django 삭제/취소/이관 fallback 링크 유지
+- 신규 migration은 만들지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.PrepaymentDetailApiTests --verbosity=1`
+- `python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Previous task — React 선결제 상세/등록/수정 전환
 
 **목표**: 기존 Django `/reporting/prepayment/*` 화면을 유지하면서 React CRM에서 선결제 상세 조회, 신규 등록, 기본 정보 수정을 처리할 수 있게 한다.
 

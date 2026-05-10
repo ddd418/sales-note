@@ -1043,6 +1043,16 @@ export type PrepaymentDetailData = {
     djangoDelete: string;
     djangoTransfer: string;
   };
+  actions: {
+    canCancel: boolean;
+    cancelUrl: string;
+    canDelete: boolean;
+    deleteUrl: string;
+    deleteMessage: string;
+    canTransfer: boolean;
+    transferUrl: string;
+    transferUsers: Array<{ id: number; name: string }>;
+  };
   edit: PrepaymentFormOptions & {
     canEdit: boolean;
     message: string;
@@ -1884,6 +1894,16 @@ const emptyPrepaymentDetailData: PrepaymentDetailData = {
     djangoEdit: '',
     djangoDelete: '',
     djangoTransfer: '',
+  },
+  actions: {
+    canCancel: false,
+    cancelUrl: '',
+    canDelete: false,
+    deleteUrl: '',
+    deleteMessage: '',
+    canTransfer: false,
+    transferUrl: '',
+    transferUsers: [],
   },
   edit: {
     canEdit: false,
@@ -3010,6 +3030,11 @@ export async function loadPrepaymentDetailData(prepaymentId: number): Promise<Pr
         ...emptyPrepaymentDetailData.links,
         ...(payload.links ?? {}),
       },
+      actions: {
+        ...emptyPrepaymentDetailData.actions,
+        ...(payload.actions ?? {}),
+        transferUsers: payload.actions?.transferUsers ?? emptyPrepaymentDetailData.actions.transferUsers,
+      },
       edit: {
         ...emptyPrepaymentDetailData.edit,
         ...(payload.edit ?? {}),
@@ -3094,6 +3119,99 @@ export async function updatePrepayment(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Prepayment update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function cancelPrepayment(
+  cancelUrl: string,
+  reason: string,
+): Promise<PrepaymentMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  if (reason.trim()) {
+    body.set('cancel_reason', reason.trim());
+  }
+
+  const response = await fetch(cancelUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayment cancel API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayment cancel failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deletePrepayment(
+  deleteUrl: string,
+): Promise<PrepaymentMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayment delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayment delete failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function transferPrepayment(
+  transferUrl: string,
+  targetUserId: number,
+  reason: string,
+): Promise<PrepaymentMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('target_user', String(targetUserId));
+  if (reason.trim()) {
+    body.set('reason', reason.trim());
+  }
+
+  const response = await fetch(transferUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Prepayment transfer API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PrepaymentMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Prepayment transfer failed: ${response.status}`);
   }
   return data;
 }
