@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React 고객 상세 선결제 요약 통합
+
+**상태**: 구현/로컬 검증 완료, 배포 진행 전
+
+### 요약
+
+React 고객 상세(`/customers/<customer_id>/`)에서 해당 고객의 선결제 총액, 잔액, 사용액, 상태별 건수와 최근 선결제 이력을 바로 볼 수 있게 확장했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 고객 상세 API `prepaymentSummary` payload 추가
+- `reporting/tests.py`: 고객 상세 선결제 요약 범위/집계 테스트 추가
+- `frontend/src/api.ts`: 고객 상세 선결제 요약 타입과 fallback merge 추가
+- `frontend/src/App.tsx`: 고객 상세 우측 선결제 요약 패널 추가
+- `frontend/src/styles.css`: 고객 상세 선결제 요약 패널 스타일 추가
+- `frontend/README.md`: 고객 상세 선결제 요약 범위 기록
+- `AGENT_PLAN.md`: 작업 계획 기록
+
+### CRM 개선
+
+- 고객 상세에서 선결제 총액, 남은 잔액, 사용 금액, 전체 건수를 즉시 확인할 수 있습니다.
+- 최근 선결제 5건의 입금일, 입금자, 담당자, 잔액, 상태를 고객 상세 안에서 확인합니다.
+- `고객별 선결제` 링크로 기존 React 고객별/부서별 선결제 전체 화면으로 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/api/customers/<id>/` 인증/권한 흐름 유지.
+- 선결제 요약은 고객 상세와 같은 `scope_users` 범위로 제한해 다른 사용자 데이터 노출을 막습니다.
+- 기존 `/prepayments/customer/<id>/`, `/reporting/prepayment/customer/<id>/`, 엑셀 fallback 유지.
+- DB 모델 변경 없음, migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+python manage.py test reporting.tests.PrepaymentCustomerApiTests reporting.tests.PrepaymentDetailApiTests --verbosity=1
+→ Ran 11 tests, OK
+
+cd frontend && npm run build
+→ OK, assets/index-VVc8nVTe.js / assets/index-COYknf0t.css
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### Railway 배포 및 운영 스모크
+
+- 배포 진행 전.
+- Railway CLI는 현재 OAuth 토큰 갱신 실패(`invalid_grant`)로 deployment 조회가 막혀 있어, 커밋/푸시 후 운영 URL smoke로 자동 배포 반영 여부를 확인할 예정입니다.
+
+### 알려진 제한
+
+- 고객 상세 요약은 "해당 고객" 선결제만 집계하며, 같은 부서 전체 선결제는 기존 `/prepayments/customer/<id>/` 화면에서 확인합니다.
+- 운영 서버에서 로그인 세션 기준 실제 데이터 표시 범위는 사용자가 수동 검수해야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/customers/<customer_id>/`
+2. 고객 상세 우측의 `선결제 요약` 패널이 표시되는지 확인합니다.
+3. 총액, 잔액, 사용, 건수와 최근 선결제 목록이 `/prepayments/customer/<customer_id>/` 및 Django 고객별 선결제 화면과 맞는지 비교합니다.
+4. 선결제가 없는 고객에서는 빈 상태가 깨지지 않는지 확인합니다.
+5. `상세` 링크가 React 선결제 상세로 이동하는지 확인합니다.
+6. `고객별 선결제`, `선결제 목록` 링크가 정상 이동하는지 확인합니다.
+7. 다른 영업사원 데이터가 보이면 안 되는 Salesman 계정에서 본인 범위만 보이는지 확인합니다.
+
+### 다음 권장 작업
+
+- 수동검수 완료 후 견적/문서 생성 흐름 또는 고객 상세 내 결제/납품 이력 요약을 이어서 React로 확장합니다.
+
+---
+
 ## 2026-05-10 — React 고객별/부서별 선결제 화면 전환
 
 **상태**: 구현/검증/배포/사용자 수동검수 완료

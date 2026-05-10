@@ -9,7 +9,45 @@
 
 ---
 
-## Current task — React 고객별/부서별 선결제 화면 전환
+## Current task — React 고객 상세 선결제 요약 통합
+
+**목표**: React 고객 상세(`/customers/<customer_id>/`)에서 해당 고객의 선결제 총액, 사용액, 잔액, 최근 선결제 이력을 바로 확인하게 한다.
+
+### 확인된 상태
+
+- React 선결제 목록, 등록, 상세, 수정, 취소, 삭제, 이관, 고객별/부서별 화면은 배포 후 사용자가 수동검수를 완료했다.
+- 고객 상세 API는 이미 `can_access_followup()` 권한 확인 후 같은 사용자 범위(`scope_users`)의 노트/일정을 집계한다.
+- 고객별 선결제 전체 화면은 `/prepayments/customer/<customer_id>/`로 제공되며 Django fallback `/reporting/prepayment/customer/<customer_id>/`와 엑셀 다운로드는 유지된다.
+- 이번 작업은 고객 상세의 요약 노출이며, 선결제 모델/DB 필드 추가는 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/customers/<customer_id>/` payload에 `prepaymentSummary`를 추가한다.
+  - 고객 상세에서 이미 검증한 고객만 대상으로 한다.
+  - 선결제 데이터는 해당 고객 + `scope_users` 범위로 제한한다.
+  - 총액, 잔액, 사용액, 전체/활성/소진/취소 건수와 최근 선결제 목록을 반환한다.
+  - React 고객별 선결제, React 선결제 목록, Django 고객별 선결제 링크를 함께 반환한다.
+- React `CustomerDetailData` 타입과 fallback 데이터를 확장한다.
+- React 고객 상세 우측 영역에 선결제 요약 패널을 추가한다.
+  - 총액/잔액/사용액/건수 요약.
+  - 최근 선결제 5건, 상태, 결제일, 입금자, 잔액 표시.
+  - 고객별 선결제 전체 화면 및 Django fallback 링크 제공.
+- 신규 migration은 만들지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.PrepaymentCustomerApiTests reporting.tests.PrepaymentDetailApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Previous task — React 고객별/부서별 선결제 화면 전환
 
 **목표**: 기존 Django `/reporting/prepayment/customer/<customer_id>/` 운영 화면을 유지하면서 React CRM에서 고객별(실제로는 같은 부서 전체) 선결제 현황을 확인할 수 있게 한다.
 

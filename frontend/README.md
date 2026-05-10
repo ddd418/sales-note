@@ -29,6 +29,7 @@ http://127.0.0.1:5173/
 - `/schedules/?create=1` 실제 고객 일정 빠른 등록
 - `/prepayments/` 실제 선결제 현황/잔액/검색/필터 화면
 - `/prepayments/new/`, `/prepayments/<id>/`, `/prepayments/<id>/edit/`, `/prepayments/customer/<customer_id>/` 실제 선결제 등록/상세/수정/취소/삭제/이관/고객별 화면
+- `/customers/<id>/` 고객 상세 선결제 총액/잔액/최근 이력 요약
 - `/ai-workspace/` 실제 AI 업무 상태 화면
 - `/pipeline/` route shell
 - 대시보드 KPI, 오늘 일정, 지연 후속조치, 최근 영업노트, 우선 고객
@@ -38,6 +39,7 @@ http://127.0.0.1:5173/
 - Django dashboard API 우선 조회
 - Django customers API 우선 조회
 - Django customer detail API 우선 조회
+- Django customer detail API의 선결제 요약 우선 조회
 - Django notes API 우선 조회
 - Django schedules API 우선 조회
 - Django schedules create API 우선 사용

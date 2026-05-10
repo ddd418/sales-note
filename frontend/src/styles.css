@@ -2548,6 +2548,128 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.customer-prepayment-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+}
+
+.customer-prepayment-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customer-prepayment-heading h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.customer-prepayment-heading svg {
+  flex: 0 0 auto;
+  color: #15803d;
+}
+
+.customer-prepayment-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.customer-prepayment-metrics span {
+  display: grid;
+  gap: 3px;
+  min-height: 46px;
+  padding: 7px 8px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-prepayment-metrics strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.customer-prepayment-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-prepayment-state span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-prepayment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-prepayment-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(22, 163, 74, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.customer-prepayment-list article > div {
+  min-width: 0;
+}
+
+.customer-prepayment-list article > div:first-child,
+.customer-prepayment-list article > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.customer-prepayment-list strong,
+.customer-prepayment-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-prepayment-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.customer-prepayment-list a {
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.customer-prepayment-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
 .customer-ai-card {
   display: grid;
   gap: 10px;
@@ -4397,6 +4519,8 @@ tbody tr:hover {
   .schedule-prepayment-row,
   .schedule-prepayment-totals,
   .prepayment-usage-row,
+  .customer-prepayment-list article,
+  .customer-prepayment-actions,
   .customer-ai-actions {
     grid-template-columns: 1fr;
   }

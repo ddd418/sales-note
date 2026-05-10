@@ -2983,6 +2983,56 @@ def customers_summary_api(request):
     })
 
 
+def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
+    base_prepayments = Prepayment.objects.filter(
+        customer=followup,
+        created_by__in=scope_users,
+    )
+    stats = base_prepayments.aggregate(
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance'),
+        total_count=Count('id'),
+        active_count=Count('id', filter=Q(status='active', balance__gt=0)),
+        depleted_count=Count('id', filter=Q(status='depleted')),
+        cancelled_count=Count('id', filter=Q(status='cancelled')),
+    )
+    total_amount = _money_int(stats['total_amount'])
+    total_balance = _money_int(stats['total_balance'])
+    recent_prepayments = list(
+        base_prepayments.select_related(
+            'company',
+            'customer',
+            'customer__company',
+            'customer__department',
+            'created_by',
+        ).annotate(
+            usage_count=Count('usages', distinct=True),
+        ).order_by('-payment_date', '-created_at', '-id')[:5]
+    )
+
+    return {
+        'metrics': {
+            'totalAmount': total_amount,
+            'totalBalance': total_balance,
+            'totalUsed': max(total_amount - total_balance, 0),
+            'totalCount': stats['total_count'] or 0,
+            'activeCount': stats['active_count'] or 0,
+            'depletedCount': stats['depleted_count'] or 0,
+            'cancelledCount': stats['cancelled_count'] or 0,
+        },
+        'links': {
+            'prepayments': '/prepayments/',
+            'createPrepayment': '/prepayments/new/',
+            'customerPrepayments': f'/prepayments/customer/{followup.id}/',
+            'djangoCustomerPrepayments': reverse('reporting:prepayment_customer', args=[followup.id]),
+        },
+        'recentPrepayments': [
+            _prepayment_item_payload(prepayment, actor)
+            for prepayment in recent_prepayments
+        ],
+    }
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -3107,6 +3157,7 @@ def customer_detail_summary_api(request, followup_id):
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
         },
+        'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
         'aiDepartment': _customers_department_ai_payload(request, followup, user_profile),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [

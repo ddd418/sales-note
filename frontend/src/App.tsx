@@ -1503,6 +1503,7 @@ function CustomerDetailPage({
 
   const customerDetail = data.customer;
   const aiDepartment = data.aiDepartment;
+  const prepaymentSummary = data.prepaymentSummary;
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -1734,6 +1735,70 @@ function CustomerDetailPage({
                 <dd>{customerDetail.lastActivityLabel || '최근 활동 없음'}</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="customer-prepayment-card">
+            <div className="customer-prepayment-heading">
+              <div>
+                <span className="eyebrow">Prepayment</span>
+                <h3>선결제 요약</h3>
+              </div>
+              <CircleDollarSign size={18} />
+            </div>
+            <div className="customer-prepayment-metrics">
+              <span>
+                총액
+                <strong>{formatWon(prepaymentSummary.metrics.totalAmount)}</strong>
+              </span>
+              <span>
+                잔액
+                <strong>{formatWon(prepaymentSummary.metrics.totalBalance)}</strong>
+              </span>
+              <span>
+                사용
+                <strong>{formatWon(prepaymentSummary.metrics.totalUsed)}</strong>
+              </span>
+              <span>
+                건수
+                <strong>{formatNumber(prepaymentSummary.metrics.totalCount)}건</strong>
+              </span>
+            </div>
+            <div className="customer-prepayment-state">
+              <span>활성 {formatNumber(prepaymentSummary.metrics.activeCount)}</span>
+              <span>소진 {formatNumber(prepaymentSummary.metrics.depletedCount)}</span>
+              <span>취소 {formatNumber(prepaymentSummary.metrics.cancelledCount)}</span>
+            </div>
+            {prepaymentSummary.recentPrepayments.length > 0 ? (
+              <div className="customer-prepayment-list">
+                {prepaymentSummary.recentPrepayments.map((prepayment) => (
+                  <article key={prepayment.id}>
+                    <div>
+                      <strong>{prepayment.paymentDate ? formatDateLabel(prepayment.paymentDate) : '입금일 없음'}</strong>
+                      <small>{[prepayment.payerName || '입금자 미지정', prepayment.ownerName].filter(Boolean).join(' · ')}</small>
+                    </div>
+                    <div>
+                      <strong className={prepayment.balance > 0 ? 'prepayment-balance-active' : 'customer-muted-cell'}>
+                        {formatWon(prepayment.balance)}
+                      </strong>
+                      <PrepaymentStatusBadge label={prepayment.statusLabel} status={prepayment.status} />
+                    </div>
+                    <a href={`/prepayments/${prepayment.id}/`}>상세</a>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty label="이 고객의 선결제가 없습니다" />
+            )}
+            <div className="customer-prepayment-actions">
+              <a className="route-secondary-action" href={prepaymentSummary.links.customerPrepayments || prepaymentSummary.links.djangoCustomerPrepayments}>
+                고객별 선결제
+                <MoveUpRight size={15} />
+              </a>
+              <a className="route-secondary-action" href={prepaymentSummary.links.prepayments}>
+                선결제 목록
+                <MoveUpRight size={15} />
+              </a>
+            </div>
           </div>
 
           <div className="customer-ai-card">

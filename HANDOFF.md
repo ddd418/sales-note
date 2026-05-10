@@ -12,6 +12,44 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 - Do not copy the old Django visual design into React. Build a distinct internal CRM interface.
 - Remove Django frontend templates only after React feature parity, Railway deployment, and manual production testing are complete.
 
+## Current Task
+
+React 고객 상세 선결제 요약 통합.
+
+Implemented locally:
+
+- `/reporting/api/customers/<customer_id>/`에 `prepaymentSummary` 추가.
+- 고객 상세와 같은 `scope_users` 범위로 해당 고객의 선결제만 집계.
+- React `/customers/<id>/` 우측 패널에 총액/잔액/사용액/건수, 상태별 건수, 최근 선결제 5건 표시.
+- React 고객별 선결제 전체 화면과 선결제 목록 링크 유지.
+- DB 변경 없음.
+
+Local validation:
+
+```powershell
+python -m py_compile reporting\views.py reporting\tests.py
+cd frontend; node --check server.mjs
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+python manage.py test reporting.tests.PrepaymentCustomerApiTests reporting.tests.PrepaymentDetailApiTests --verbosity=1
+cd frontend; npm run build
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 30 targeted tests OK.
+- React build OK, bundle `index-VVc8nVTe.js` / `index-COYknf0t.css`.
+- Django check OK.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment status:
+
+- Pending commit/push/deployment.
+- Railway CLI currently fails OAuth refresh with `invalid_grant`; confirm deployment through GitHub auto deploy and production smoke checks, or re-login Railway CLI if needed.
+
 ## Latest Deployed Task
 
 React 고객별/부서별 선결제 화면 전환.

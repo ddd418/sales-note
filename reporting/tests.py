@@ -797,6 +797,61 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(any(option['id'] == target.company_id for option in payload['edit']['companies']))
         self.assertTrue(any(option['id'] == target.department_id for option in payload['edit']['departments']))
 
+    def test_customer_detail_summary_api_includes_scoped_prepayment_summary(self):
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        target = self._create_customer(self.user, '상세선결제', priority='urgent')
+        first = Prepayment.objects.create(
+            customer=target,
+            company=target.company,
+            amount=100000,
+            balance=80000,
+            payment_date=timezone.localdate(),
+            payer_name='상세입금자',
+            status='active',
+            created_by=self.user,
+        )
+        second = Prepayment.objects.create(
+            customer=target,
+            company=target.company,
+            amount=50000,
+            balance=0,
+            payment_date=timezone.localdate(),
+            payer_name='상세소진',
+            status='depleted',
+            created_by=self.user,
+        )
+        coworker_prepayment = Prepayment.objects.create(
+            customer=target,
+            company=target.company,
+            amount=999000,
+            balance=999000,
+            payment_date=timezone.localdate(),
+            payer_name='동료입금자',
+            status='active',
+            created_by=self.coworker,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()['prepaymentSummary']
+        self.assertEqual(summary['metrics']['totalAmount'], 150000)
+        self.assertEqual(summary['metrics']['totalBalance'], 80000)
+        self.assertEqual(summary['metrics']['totalUsed'], 70000)
+        self.assertEqual(summary['metrics']['totalCount'], 2)
+        self.assertEqual(summary['metrics']['activeCount'], 1)
+        self.assertEqual(summary['metrics']['depletedCount'], 1)
+        self.assertEqual(summary['links']['prepayments'], '/prepayments/')
+        self.assertEqual(summary['links']['customerPrepayments'], f'/prepayments/customer/{target.id}/')
+        self.assertTrue(summary['links']['djangoCustomerPrepayments'].endswith(f'/prepayment/customer/{target.id}/'))
+        prepayment_ids = {item['id'] for item in summary['recentPrepayments']}
+        self.assertIn(first.id, prepayment_ids)
+        self.assertIn(second.id, prepayment_ids)
+        self.assertNotIn(coworker_prepayment.id, prepayment_ids)
+
     def test_customer_detail_summary_api_includes_department_ai_action(self):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard

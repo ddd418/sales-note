@@ -313,6 +313,25 @@ export type DepartmentCreateResponse = {
   };
 };
 
+export type CustomerPrepaymentSummary = {
+  metrics: {
+    totalAmount: number;
+    totalBalance: number;
+    totalUsed: number;
+    totalCount: number;
+    activeCount: number;
+    depletedCount: number;
+    cancelledCount: number;
+  };
+  links: {
+    prepayments: string;
+    createPrepayment: string;
+    customerPrepayments: string;
+    djangoCustomerPrepayments: string;
+  };
+  recentPrepayments: PrepaymentListItem[];
+};
+
 export type CustomerDetailData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -339,6 +358,7 @@ export type CustomerDetailData = {
     createSchedule: string;
     createNote: string;
   };
+  prepaymentSummary: CustomerPrepaymentSummary;
   aiDepartment: CustomerAiDepartment;
   edit: {
     canEdit: boolean;
@@ -1617,6 +1637,24 @@ const emptyCustomerDetailData: CustomerDetailData = {
     createSchedule: '/schedules/?create=1',
     createNote: '/notes/?create=1',
   },
+  prepaymentSummary: {
+    metrics: {
+      totalAmount: 0,
+      totalBalance: 0,
+      totalUsed: 0,
+      totalCount: 0,
+      activeCount: 0,
+      depletedCount: 0,
+      cancelledCount: 0,
+    },
+    links: {
+      prepayments: '/prepayments/',
+      createPrepayment: '/prepayments/new/',
+      customerPrepayments: '',
+      djangoCustomerPrepayments: '',
+    },
+    recentPrepayments: [],
+  },
   aiDepartment: {
     departmentId: null,
     departmentName: '',
@@ -2409,6 +2447,19 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       links: {
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
+      },
+      prepaymentSummary: {
+        ...emptyCustomerDetailData.prepaymentSummary,
+        ...(payload.prepaymentSummary ?? {}),
+        metrics: {
+          ...emptyCustomerDetailData.prepaymentSummary.metrics,
+          ...(payload.prepaymentSummary?.metrics ?? {}),
+        },
+        links: {
+          ...emptyCustomerDetailData.prepaymentSummary.links,
+          ...(payload.prepaymentSummary?.links ?? {}),
+        },
+        recentPrepayments: payload.prepaymentSummary?.recentPrepayments ?? emptyCustomerDetailData.prepaymentSummary.recentPrepayments,
       },
       aiDepartment: {
         ...emptyCustomerDetailData.aiDepartment,
