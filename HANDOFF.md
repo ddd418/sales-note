@@ -475,10 +475,14 @@ React pages should continue to expose Django fallback/original links until featu
 
 Current latest work:
 
-- React customer/department searchable selection UX is implemented locally.
+- React customer/department searchable selection UX is implemented, pushed, and deployed.
+- Runtime commit: `344f4a3 feat: add searchable CRM selectors`.
+- Railway `sales-note-frontend`: `a373859f-06f2-407f-9321-f1baead50ef6` SUCCESS.
+- Railway `web`: `44f73bb0-d3be-4346-bd3c-b2331e0912a9` SUCCESS from the same push.
+- Deployed bundle: `assets/index-DGco8KN_.js` / `assets/index-B9odz52n.css`.
 - Changed files: `frontend/src/App.tsx`, `frontend/src/styles.css`, `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`.
 - Local validation passed: `npm run build`, `node --check server.mjs`, `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `git diff --check`.
-- Deployment is pending commit/push and Railway `sales-note-frontend` deploy.
+- Production smoke passed: frontend bundle contains `searchable-select`, protected customer API returns 401 anonymous, backend login page returns 200.
 
 After the React prepayment detail/create/edit flow is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
 

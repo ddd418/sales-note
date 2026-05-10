@@ -11248,14 +11248,35 @@ git diff --check
 
 ### 6. Deployment Status
 
-- Pending commit/push and Railway `sales-note-frontend` deployment.
+- Runtime commit: `344f4a3 feat: add searchable CRM selectors`
+- GitHub push: `main` updated from `d05620f` to `344f4a3`
+- Railway `sales-note-frontend`: `a373859f-06f2-407f-9321-f1baead50ef6` SUCCESS
+- Railway `web`: `44f73bb0-d3be-4346-bd3c-b2331e0912a9` SUCCESS from the same push
+- Deployed frontend bundle: `assets/index-DGco8KN_.js` / `assets/index-B9odz52n.css`
 
-### 7. Known Limitations
+### 7. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/dashboard/
+→ 200, bundle assets/index-DGco8KN_.js and assets/index-B9odz52n.css
+
+Downloaded JS/CSS bundle
+→ JS contains searchable-select and "고객, 회사, 이메일 검색"
+→ CSS contains .searchable-select
+
+curl -i https://sales-note-frontend-production.up.railway.app/reporting/api/customers/1/
+→ 401 login_required JSON, 인증 보호 유지
+
+curl -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+```
+
+### 8. Known Limitations
 
 - 로그인 세션이 필요한 실제 고객 목록 검색 UX는 운영 배포 후 사용자 수동검수가 필요합니다.
 - 필터용 select와 사용자 이관 대상 select는 이번 요청 범위가 아니므로 유지했습니다.
 
-### 8. Manual Server Test Process
+### 9. Manual Server Test Process
 
 1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/dashboard/`
 2. `/mailbox/`에서 `메일 작성`을 열고 `연결 고객`에서 고객명, 회사명, 이메일 일부로 검색되는지 확인합니다.
@@ -11263,6 +11284,6 @@ git diff --check
 4. 기존 고객 상세에서 `수정`을 열고 업체/부서 검색 선택 후 저장이 정상 동작하는지 확인합니다.
 5. `/notes/?create=1`, `/schedules/?create=1`, `/prepayments/new/`에서 고객 검색 선택이 동작하는지 확인합니다.
 
-### 9. Recommended Next Task
+### 10. Recommended Next Task
 
 - 수동검수 완료 후 React 통합 프론트의 다음 Django 템플릿 대체 범위를 진행합니다.
