@@ -237,6 +237,51 @@ class ReactMailboxApiTests(TestCase):
         self.email.refresh_from_db()
         self.assertTrue(self.email.is_read)
 
+    def test_mailbox_thread_api_hides_quoted_reply_chain_from_display_body(self):
+        self.email.body = (
+            '이번 답장에 새로 작성한 내용입니다.\n\n'
+            '검토 부탁드립니다.\n\n'
+            '2026년 5월 10일 (일) 오후 3:00, 영업팀 <sales@example.com>님이 작성:\n'
+            '> 이전 메일 내용입니다.\n'
+            '> 더 오래된 답장입니다.'
+        )
+        self.email.save(update_fields=['body'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body_text = response.json()['emails'][0]['bodyText']
+        self.assertIn('이번 답장에 새로 작성한 내용입니다.', body_text)
+        self.assertIn('검토 부탁드립니다.', body_text)
+        self.assertNotIn('이전 메일 내용입니다.', body_text)
+        self.assertNotIn('더 오래된 답장입니다.', body_text)
+
+    def test_mailbox_thread_api_hides_gmail_html_quote_from_display_body(self):
+        self.email.body = ''
+        self.email.body_html = (
+            '<div>새 답장 본문입니다.</div>'
+            '<div>두 번째 줄입니다.</div>'
+            '<div class="gmail_quote">'
+            '<div>2026년 5월 10일 영업팀 &lt;sales@example.com&gt;님이 작성:</div>'
+            '<blockquote>이전 메일 HTML 본문입니다.</blockquote>'
+            '</div>'
+        )
+        self.email.save(update_fields=['body', 'body_html'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body_text = response.json()['emails'][0]['bodyText']
+        self.assertIn('새 답장 본문입니다.', body_text)
+        self.assertIn('두 번째 줄입니다.', body_text)
+        self.assertNotIn('이전 메일 HTML 본문입니다.', body_text)
+
     def test_mailbox_action_api_toggles_star(self):
         self.client.force_login(self.user)
 

@@ -1,5 +1,59 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React Mailbox Reply Quote Cleanup
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React 메일 스레드에서 답장 메일 본문 아래에 Gmail/Outlook 인용 체인과 이전 메일이 반복 표시되는 문제를 수정했습니다. 화면 표시용 `bodyText`에서만 인용 구간을 제거하고, DB에 저장된 원본 `EmailLog.body/body_html`은 유지해 AI 분석 원본 데이터에는 영향을 주지 않습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: Gmail/Outlook HTML 인용 컨테이너와 텍스트 인용 패턴 제거 helper 추가
+- `reporting/tests.py`: 텍스트 Gmail 답장 인용과 HTML `gmail_quote` 인용 제거 회귀 테스트 추가
+
+### CRM 개선
+
+- React 스레드 상세에서 각 메일 카드가 해당 메일의 신규 본문만 보여 더 읽기 쉬워졌습니다.
+- 긴 답장 체인이 여러 메일 카드마다 중복 노출되지 않습니다.
+
+### AI 영향
+
+- AI는 기존처럼 `EmailLog` 원본 저장 필드를 읽습니다.
+- 이번 변경은 React API의 표시용 `bodyText` 직렬화에만 적용되어 AI 판단 근거가 줄어들지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
+→ Ran 5 tests, OK
+
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/mailbox/thread/<thread_id>/`에서 답장 메일이 여러 개 있는 스레드를 엽니다.
+2. 각 메일 카드에 해당 메일의 신규 본문만 보이는지 확인합니다.
+3. Gmail/Outlook의 `이전 메일`, `On ... wrote:`, `보낸 사람:`, `From:` 아래 내용이 반복 노출되지 않는지 확인합니다.
+
+---
+
 ## 2026-05-10 — React Mailbox Body Linebreak Fix
 
 **상태**: 구현/로컬 검증 완료, 운영 배포 예정

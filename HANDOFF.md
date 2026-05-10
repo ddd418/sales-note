@@ -14,6 +14,41 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+React mailbox reply quote cleanup.
+
+Implemented locally, push/deploy pending:
+
+- React mailbox thread display body now removes Gmail/Outlook quoted previous-message chains.
+- Text quote markers handled include Korean Gmail `님이 작성:`, English `On ... wrote:`, Outlook `Original Message`, `보낸 사람:`, `From:`, `Sent:`, `To:` and common Outlook app footer markers.
+- HTML quote containers handled include `gmail_quote`, Outlook reference containers, and blockquotes.
+- Only React API display `bodyText` is trimmed; stored `EmailLog.body/body_html` remains intact, so AI analysis is not reduced.
+- DB 변경 없음.
+
+Validation:
+
+```powershell
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 5 React mailbox API tests OK.
+- Django check OK.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Manual production test after deploy:
+
+1. Open a multi-reply thread in `/mailbox/thread/<thread_id>/`.
+2. Confirm each card only shows the new body for that email.
+3. Confirm the original stored email remains available to backend/AI flows.
+
+## Previous Task
+
 React mailbox body linebreak fix.
 
 Implemented locally, push/deploy pending:

@@ -730,6 +730,7 @@ def _email_body_text(email, limit=12000):
 
     raw = email.body_html or email.body or ''
     if email.body_html:
+        raw = _strip_quoted_html_for_display(raw)
         text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
         text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table)\s*>', '\n', text)
         text = re.sub(r'(?i)<\s*li(?:\s[^>]*)?>', '- ', text)
@@ -751,7 +752,55 @@ def _email_body_text(email, limit=12000):
         normalized.append(line)
         previous_blank = False
 
-    return Truncator('\n'.join(normalized).strip()).chars(limit)
+    return Truncator(_strip_quoted_text_for_display('\n'.join(normalized).strip())).chars(limit)
+
+
+def _strip_quoted_html_for_display(raw_html):
+    """React 메일 상세 표시에서는 Gmail/Outlook 인용 체인을 숨긴다."""
+    import re
+
+    quote_patterns = [
+        r'(?is)<div[^>]+class=["\'][^"\']*gmail_quote[^"\']*["\'][^>]*>.*$',
+        r'(?is)<div[^>]+id=["\']mail-editor-reference-message-container["\'][^>]*>.*$',
+        r'(?is)<div[^>]+class=["\'][^"\']*ms-outlook-mobile-reference-message[^"\']*["\'][^>]*>.*$',
+        r'(?is)<blockquote\b[^>]*>.*$',
+    ]
+    cut_positions = []
+    for pattern in quote_patterns:
+        match = re.search(pattern, raw_html)
+        if match and match.start() >= 20:
+            cut_positions.append(match.start())
+
+    if not cut_positions:
+        return raw_html
+    return raw_html[:min(cut_positions)]
+
+
+def _strip_quoted_text_for_display(text):
+    import re
+
+    quote_patterns = [
+        r'\n\s*\d{4}년\s+\d{1,2}월\s+\d{1,2}일.{0,500}?(님이 작성:|wrote:)',
+        r'\n\s*On .{1,500}? wrote:',
+        r'\n\s*-{2,}\s*Original Message\s*-{2,}',
+        r'\n\s*-----Original Message-----',
+        r'\n\s*보낸 사람\s*:',
+        r'\n\s*From\s*:',
+        r'\n\s*Sent\s*:',
+        r'\n\s*받는 사람\s*:',
+        r'\n\s*To\s*:',
+        r'\n\s*Get Outlook for',
+        r'\n\s*받기 Mac용 Outlook',
+    ]
+    cut_positions = []
+    for pattern in quote_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match and match.start() >= 20:
+            cut_positions.append(match.start())
+
+    if not cut_positions:
+        return text
+    return text[:min(cut_positions)].rstrip()
 
 
 def _serialize_email_item(email, mailbox_type='inbox'):
