@@ -19,6 +19,8 @@
 - 고객 상세 API에는 이미 부서 AI 분석 권한/요약/링크 payload가 있다.
 - 이번 작업은 파이프라인 우측 패널에 compact AI 요약을 추가하는 작업이며, AI 실행/검증 전체 UI는 고객 상세 화면과 AI 허브에 계속 둔다.
 - DB 변경 필요 없음.
+- 구현/로컬 검증/푸시/Railway `web`, `sales-note-frontend` 운영 배포 완료.
+- 운영 번들 `assets/index-CLXRI0TH.js` / `assets/index-AuyH7qvg.css`에서 `Department AI`, `aiDepartment`, `pipeline-ai-card`, `pipeline-ai-alert` 확인 완료.
 
 ### 구현 계획
 

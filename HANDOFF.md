@@ -14,6 +14,53 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+React pipeline department AI panel.
+
+Implemented, pushed, and deployed to production:
+
+- `/reporting/api/pipeline/` deal payload에 `aiDepartment` compact payload 추가.
+- React 파이프라인 우측 상세 패널에 `Department AI` 카드 추가.
+- 선택 고객의 부서 AI 요약, 미팅/견적/납품/PainPoint 카운트, 미검증 PainPoint 알림, AI 결과/허브 링크 표시.
+- 기존 파이프라인 단계 이동, 견적/납품 금액, Django 고객 상세 링크 유지.
+- DB 변경 없음.
+
+Validation:
+
+```powershell
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 12 targeted pipeline tests OK.
+- React build OK, bundle `index-CLXRI0TH.js` / `index-AuyH7qvg.css`.
+- Django check OK.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment status:
+
+- Runtime commit: `b8e65e9 feat: show department AI in pipeline panel`.
+- Railway `web`: `9690f304-7adb-465b-b582-61ea58192a46` SUCCESS.
+- Railway `sales-note-frontend`: `458c5243-9a04-48b7-bb80-6378231885de` SUCCESS.
+- Production `/dashboard/` serves `index-CLXRI0TH.js` / `index-AuyH7qvg.css`.
+- Production JS contains `aiDepartment`, `Department AI`, `pipeline-ai-card`, and `미검증 PainPoint`.
+- Production CSS contains `pipeline-ai-alert` and `customer-ai-card`.
+- Anonymous pipeline API smoke redirects to `/reporting/login/`.
+
+Next queued by user:
+
+1. Make PainPoint verification notes influence the next AI analysis summary.
+2. Make customer email exchanges, especially inbound customer emails, available to AI analysis context.
+
+## Previous Deployed Task
+
 Urgent React dashboard logout button.
 
 Implemented, pushed, and deployed to production:
@@ -50,7 +97,7 @@ Deployment status:
 - Anonymous dashboard API smoke returns `401 login_required`.
 - Manual production logout click test completed by the user on 2026-05-10.
 
-## Previous Deployed Task
+## Earlier Deployed Task
 
 React 고객 상세 선결제 요약 통합.
 
@@ -442,7 +489,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-28a08db fix: add React logout button
+b8e65e9 feat: show department AI in pipeline panel
 ```
 
 ## Known Caveats
@@ -464,5 +511,6 @@ Confirmed by user:
 
 Needs awareness:
 
+- React pipeline department AI panel is deployed and can be manually tested.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.

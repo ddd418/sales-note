@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React Pipeline Department AI Panel
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -57,7 +57,48 @@ git diff --check
 
 ### 배포 상태
 
-- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 예정.
+- Runtime commit: `b8e65e9 feat: show department AI in pipeline panel`
+- GitHub push: `main` updated from `9236cbf` to `b8e65e9`
+- Railway `web`: `9690f304-7adb-465b-b582-61ea58192a46` SUCCESS
+- Railway `sales-note-frontend`: `458c5243-9a04-48b7-bb80-6378231885de` SUCCESS
+- 운영 프론트 `/dashboard/`: 200, `assets/index-CLXRI0TH.js` / `assets/index-AuyH7qvg.css`
+- 운영 JS: `aiDepartment=True`, `Department AI=True`, `pipeline-ai-card=True`, `미검증 PainPoint=True`
+- 운영 CSS: `pipeline-ai-alert=True`, `customer-ai-card=True`
+- 운영 anonymous `/reporting/api/pipeline/`: `302 /reporting/login/?next=/reporting/api/pipeline/`
+
+배포/운영 smoke 명령:
+
+```text
+git commit -m "feat: show department AI in pipeline panel"
+→ b8e65e9 feat: show department AI in pipeline panel
+
+git push origin main
+→ main updated from 9236cbf to b8e65e9
+
+railway redeploy --service web --from-source --yes --json
+→ {"success":true}
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy pipeline department AI b8e65e9" --ci
+→ Deploy complete
+
+railway deployment list --service web --environment production --limit 1 --json
+→ 9690f304-7adb-465b-b582-61ea58192a46 SUCCESS
+
+railway deployment list --service sales-note-frontend --environment production --limit 1 --json
+→ 458c5243-9a04-48b7-bb80-6378231885de SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+→ 200, assets/index-CLXRI0TH.js / assets/index-AuyH7qvg.css
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-CLXRI0TH.js
+→ aiDepartment=True, Department AI=True, pipeline-ai-card=True, 미검증 PainPoint=True
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-AuyH7qvg.css
+→ pipeline-ai-alert=True, customer-ai-card=True
+
+curl.exe -s -i https://web-production-5096.up.railway.app/reporting/api/pipeline/
+→ 302 /reporting/login/?next=/reporting/api/pipeline/
+```
 
 ### 수동 서버 테스트 절차
 
