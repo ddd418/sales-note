@@ -16,7 +16,7 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 React mailbox first integration.
 
-Implemented locally, push/deploy pending:
+Implemented, pushed, and deployed to production:
 
 - React sidebar now includes `메일`.
 - React `/mailbox/` provides inbox/sent/starred/archived/trash tabs, search, sync, compose, customer selection, and mailbox actions.
@@ -37,7 +37,7 @@ cd frontend; node --check server.mjs
 git diff --check
 ```
 
-Results so far:
+Results:
 
 - 5 mailbox tests OK.
 - Django check OK.
@@ -45,7 +45,17 @@ Results so far:
 - React build OK, bundle `index-BtG-R--E.js` / `index-B6vJbiFg.css`.
 - `git diff --check` OK with LF→CRLF warnings only.
 
-Manual production test after deploy:
+Deployment status:
+
+- Runtime commit: `1501588 feat: add React mailbox`.
+- Railway `web`: `b97fc890-33ef-400c-a67a-3f15a468f082` SUCCESS.
+- Railway `sales-note-frontend`: `092cbf4d-4072-47e7-966c-7bef7372f479` SUCCESS.
+- Production `/mailbox/` serves `index-BtG-R--E.js` / `index-B6vJbiFg.css`.
+- Production anonymous `/reporting/api/mailbox/` redirects to login on both frontend proxy and backend.
+- Production JS/CSS contain the new mailbox route, API path, and mailbox styles.
+- Local preview server started at `http://localhost:4173`.
+
+Manual production test:
 
 1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
 2. Verify mailbox tabs, search, sync, and a customer thread.

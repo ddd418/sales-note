@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React Mailbox First Integration
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -58,7 +58,17 @@ git diff --check
 
 ### 배포 상태
 
-- 운영 배포 예정.
+- Runtime commit: `1501588 feat: add React mailbox`
+- GitHub push: `main` updated from `06a1c22` to `1501588`
+- Railway `web`: `b97fc890-33ef-400c-a67a-3f15a468f082` SUCCESS, commit `1501588`
+- Railway `sales-note-frontend`: `092cbf4d-4072-47e7-966c-7bef7372f479` SUCCESS, message `Deploy React mailbox 1501588`
+- Production `/mailbox/` returns 200 and serves `assets/index-BtG-R--E.js` / `assets/index-B6vJbiFg.css`
+- Production JS contains `메일`, `/reporting/api/mailbox/`, `mailbox-page`, `답장 발송`
+- Production CSS contains `mailbox-page`, `mail-row`, `mail-thread-page`, `mail-compose-panel`
+- Anonymous frontend proxy `/reporting/api/mailbox/` redirects to `/reporting/login/?next=/reporting/api/mailbox/` with 302
+- Anonymous backend `/reporting/api/mailbox/` redirects to `/reporting/login/?next=/reporting/api/mailbox/` with 302
+- Railway `web` and `sales-note-frontend` logs checked: mailbox-related ERROR/Traceback/500 재발 없음
+- Local preview server started: `http://localhost:4173`
 
 ### 수동 서버 테스트 절차
 
