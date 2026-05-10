@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React 선결제 삭제/취소/이관 전환
 
-**상태**: 구현/로컬 검증 완료, Railway 배포 준비
+**상태**: 구현/검증/배포 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -63,9 +63,41 @@ git diff --check
 
 ### Railway 배포 및 운영 스모크
 
-- Commit: 배포 전
-- `web` deployment: 배포 전
-- `sales-note-frontend` deployment: 배포 전
+- Commit: `741af97 feat: add React prepayment actions`
+- `web` deployment: `9ae4383b-665c-4372-92ed-bcc3881bdfc9` SUCCESS
+- `sales-note-frontend` deployment: `7ad4bcbd-0e85-40ae-823c-2c81b9fd99f6` SUCCESS
+
+운영 스모크:
+
+```text
+https://sales-note-frontend-production.up.railway.app/prepayments/
+→ 200
+
+https://sales-note-frontend-production.up.railway.app/prepayments/1/
+→ 200, assets/index-DzdnV2E4.js / assets/index-BaTcueuX.css
+
+프론트 JS
+→ 취소 처리=True, target_user=True, Prepayment delete=True
+
+프론트 CSS
+→ prepayment-action-panel=True, prepayment-danger-button=True
+
+https://web-production-5096.up.railway.app/reporting/api/prepayments/1/
+→ 401 login_required
+
+https://sales-note-frontend-production.up.railway.app/reporting/api/prepayments/1/
+→ 401 login_required
+
+CSRF/Referer 포함 익명 POST:
+https://web-production-5096.up.railway.app/reporting/api/prepayments/1/cancel/
+https://web-production-5096.up.railway.app/reporting/api/prepayments/1/delete/
+https://web-production-5096.up.railway.app/reporting/api/prepayments/1/transfer/
+→ 모두 401 login_required
+
+프론트 proxy 익명 POST:
+https://sales-note-frontend-production.up.railway.app/reporting/api/prepayments/1/cancel/
+→ 401 login_required
+```
 
 ### 알려진 제한
 

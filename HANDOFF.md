@@ -14,25 +14,26 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Latest Deployed Task
 
-React 선결제 상세/등록/수정 전환.
+React 선결제 삭제/취소/이관 전환.
 
 Implemented:
 
-- React `/prepayments/new/` 선결제 등록 화면.
-- React `/prepayments/<id>/` 선결제 상세 화면.
-- React `/prepayments/<id>/edit/` 선결제 수정 화면.
-- `/reporting/api/prepayments/create/` GET/POST API.
-- `/reporting/api/prepayments/<id>/` 상세 API.
-- `/reporting/api/prepayments/<id>/update/` 수정 API.
+- React `/prepayments/<id>/` 상세 우측 액션 패널.
+- `/reporting/api/prepayments/<id>/cancel/` 취소 API.
+- `/reporting/api/prepayments/<id>/delete/` 삭제 API.
+- `/reporting/api/prepayments/<id>/transfer/` 이관 API.
+- 상세 API action config: 취소/삭제/이관 가능 여부, submit URL, 이관 대상 목록.
 - 기존 `/reporting/prepayment/*` 상세/등록/수정/삭제/이관/엑셀 화면은 fallback으로 유지.
-- 삭제/취소/이관은 아직 React 직접 처리하지 않고 Django 링크로 연결.
+- 사용 내역 있는 선결제 hard delete 차단.
+- 이관 시 메모에 `[이관]` 기록과 사유를 추가.
+- 같은 회사 사용자는 조회 가능하지만 취소/삭제/이관은 등록자 본인만 가능.
 
 Validation:
 
 ```powershell
 python -m py_compile reporting\views.py reporting\tests.py
-python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1
-python manage.py test reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
+python manage.py test reporting.tests.PrepaymentDetailApiTests --verbosity=1
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.SchedulesSummaryApiTests.test_prepayment_api_list_includes_same_department_and_existing_usage --verbosity=1
 cd frontend; npm run build
 cd frontend; node --check server.mjs
 python manage.py check
@@ -42,21 +43,23 @@ git diff --check
 
 Results:
 
-- 8 targeted tests OK.
-- React build OK, bundle `index-PKyQkfnX.js` / `index-DhZfNPNe.css`.
+- 11 targeted tests OK.
+- React build OK, bundle `index-DzdnV2E4.js` / `index-BaTcueuX.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment status:
 
-- Commit: `a777acc feat: add React prepayment detail forms`
-- `web`: `654da7ec-d8fc-43cd-bd91-96b7d4619b92` SUCCESS
-- `sales-note-frontend`: `992e380e-bb26-4308-9900-5ffe20af9ad6` SUCCESS
-- Production `/prepayments/new/` serves bundle `index-PKyQkfnX.js` / `index-DhZfNPNe.css`.
-- Anonymous `/reporting/api/prepayments/create/` returns `401 login_required` on both frontend proxy and backend.
-- Anonymous `/reporting/api/prepayments/1/` returns `401 login_required`.
-- Anonymous `/reporting/prepayment/create/` redirects to `/reporting/login/?next=/reporting/prepayment/create/`.
+- Commit: `741af97 feat: add React prepayment actions`
+- `web`: `9ae4383b-665c-4372-92ed-bcc3881bdfc9` SUCCESS
+- `sales-note-frontend`: `7ad4bcbd-0e85-40ae-823c-2c81b9fd99f6` SUCCESS
+- Production `/prepayments/1/` serves bundle `index-DzdnV2E4.js` / `index-BaTcueuX.css`.
+- Production JS contains action strings for cancel/transfer/delete.
+- Production CSS contains `prepayment-action-panel` and `prepayment-danger-button`.
+- Anonymous `/reporting/api/prepayments/1/` returns `401 login_required` on both frontend proxy and backend.
+- Anonymous POST to backend cancel/delete/transfer with valid CSRF/Referer returns `401 login_required`.
+- Anonymous POST to frontend proxy cancel with valid CSRF/Referer returns `401 login_required`.
 
 Manual test status:
 
