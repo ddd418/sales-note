@@ -14,6 +14,43 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+React mailbox body linebreak fix.
+
+Implemented locally, push/deploy pending:
+
+- React mailbox thread `bodyText` now preserves original text newlines.
+- HTML email bodies convert `<br>`, paragraph/div/list/table row endings into newlines before tag stripping.
+- Mailbox list `preview` remains compact and single-line.
+- Regression test added to ensure `/reporting/api/mailbox/thread/<thread_id>/` preserves blank lines and line breaks.
+- DB 변경 없음.
+
+Validation:
+
+```powershell
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+python manage.py check
+python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+git diff --check
+```
+
+Results:
+
+- 3 React mailbox API tests OK.
+- Django check OK.
+- No migration changes.
+- React build OK.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Manual production test after deploy:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
+2. Open a thread with multi-line customer email content.
+3. Confirm paragraph breaks and newlines are preserved in `/mailbox/thread/<thread_id>/`.
+
+## Previous Task
+
 React mailbox first integration.
 
 Implemented, pushed, and deployed to production:

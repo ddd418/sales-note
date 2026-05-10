@@ -1,5 +1,63 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React Mailbox Body Linebreak Fix
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React 메일 스레드 상세에서 본문 줄바꿈이 모두 사라져 가독성이 떨어지는 문제를 수정했습니다. 메일 목록 `preview`는 한 줄 요약으로 유지하고, 스레드 상세 `bodyText`는 원본 텍스트 개행과 HTML `<br>`/문단 구분을 보존하도록 API 직렬화 로직을 분리했습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: 스레드 본문용 `_email_body_text()` 추가 및 `bodyText` 직렬화에 적용
+- `reporting/tests.py`: React 메일 스레드 API가 본문 개행을 보존하는 회귀 테스트 추가
+
+### CRM 개선
+
+- 고객 메일 본문이 문단 단위로 표시되어 긴 요청/답장 내용의 가독성이 개선됩니다.
+- 목록 미리보기는 기존처럼 짧게 유지되어 테이블 밀도는 유지됩니다.
+
+### 기존 기능 보존
+
+- React CSS와 화면 구조는 변경하지 않았습니다.
+- 기존 Django 메일함, Gmail/IMAP 연동, 발송/답장/상태 변경 API는 유지했습니다.
+- DB 변경 및 migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
+→ Ran 3 tests, OK
+
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `/mailbox/`에서 줄바꿈이 있는 고객 메일 스레드를 엽니다.
+2. `/mailbox/thread/<thread_id>/` 본문에서 문단 구분과 줄바꿈이 유지되는지 확인합니다.
+3. 목록 화면 미리보기는 한 줄 요약으로 유지되는지 확인합니다.
+
+---
+
 ## 2026-05-10 — React Mailbox First Integration
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

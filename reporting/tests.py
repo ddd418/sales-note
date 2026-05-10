@@ -186,7 +186,7 @@ class ReactMailboxApiTests(TestCase):
             sender_email='customer@example.com',
             recipient_email='sales@example.com',
             subject='React mailbox inbound',
-            body='고객이 보낸 중요한 요청입니다.',
+            body='고객이 보낸 중요한 요청입니다.\n\n첫 번째 확인 사항입니다.\n두 번째 확인 사항입니다.',
             gmail_message_id='gmail-msg-react-1',
             gmail_thread_id='gmail-thread-react-1',
             followup=self.followup,
@@ -233,6 +233,7 @@ class ReactMailboxApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['thread']['messageCount'], 1)
         self.assertIn('중요한 요청', payload['emails'][0]['bodyText'])
+        self.assertIn('\n\n첫 번째 확인 사항입니다.\n두 번째 확인 사항입니다.', payload['emails'][0]['bodyText'])
         self.email.refresh_from_db()
         self.assertTrue(self.email.is_read)
 

@@ -722,6 +722,38 @@ def _email_text_preview(email, limit=160):
     return Truncator(text).chars(limit)
 
 
+def _email_body_text(email, limit=12000):
+    import html
+    import re
+    from django.utils.html import strip_tags
+    from django.utils.text import Truncator
+
+    raw = email.body_html or email.body or ''
+    if email.body_html:
+        text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
+        text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table)\s*>', '\n', text)
+        text = re.sub(r'(?i)<\s*li(?:\s[^>]*)?>', '- ', text)
+        text = strip_tags(text)
+    else:
+        text = raw
+
+    text = html.unescape(text).replace('\xa0', ' ')
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    lines = [' '.join(line.split()) for line in text.split('\n')]
+    normalized = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank and normalized:
+                normalized.append('')
+            previous_blank = True
+            continue
+        normalized.append(line)
+        previous_blank = False
+
+    return Truncator('\n'.join(normalized).strip()).chars(limit)
+
+
 def _serialize_email_item(email, mailbox_type='inbox'):
     thread_id = _email_thread_identifier(email)
     followup = email.followup
@@ -737,7 +769,7 @@ def _serialize_email_item(email, mailbox_type='inbox'):
         'recipientEmail': email.recipient_email or email.to_email,
         'ccEmails': email.cc_emails,
         'preview': _email_text_preview(email),
-        'bodyText': _email_text_preview(email, limit=4000),
+        'bodyText': _email_body_text(email),
         'sentAt': email.sent_at.isoformat() if email.sent_at else None,
         'receivedAt': email.received_at.isoformat() if email.received_at else None,
         'happenedAt': happened_at.isoformat() if happened_at else None,
