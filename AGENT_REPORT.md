@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — Railway Mailbox Thread 500 Fix
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료
 
 ### 요약
 
@@ -49,9 +49,15 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: 배포 전
-- Railway `web`: 배포 예정
-- Railway `sales-note-frontend`: 변경 없음
+- Runtime commit: `53e36f3 fix: restore mailbox thread page`
+- GitHub push: `main` updated from `cd616f2` to `53e36f3`
+- Railway `web`: `dfe55f5d-e6be-44b3-aef2-ee7b8caf85cf` SUCCESS, commit `53e36f3`
+- Railway `web` 환경변수: `EMAIL_ENCRYPTION_KEY` 설정 완료, 시작 로그의 해당 error 제거
+- Production smoke: backend `/reporting/login/` returns 200 OK
+- Production smoke: backend `/reporting/mailbox/thread/railway-smoke-thread/` redirects to `/reporting/login/?next=...` with 302
+- Production smoke: frontend proxy `/reporting/mailbox/thread/railway-smoke-thread/` redirects to `/reporting/login/?next=...` with 302
+- Production log check: `TemplateSyntaxError`, `save_email_to_db`, `EMAIL_ENCRYPTION_KEY`, HTTP `>=500` 재발 없음
+- Railway `sales-note-frontend`: 코드 변경 없음, proxy smoke만 확인
 
 ### 수동 서버 테스트 절차
 

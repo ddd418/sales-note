@@ -19,6 +19,8 @@
 - 실제 오류는 백엔드 Django 템플릿 렌더링 단계의 `TemplateSyntaxError: Unclosed tag on line 321: 'block'`이다.
 - 같은 요청 흐름에서 Gmail 스레드 신규 메시지 동기화 시 `reporting.imap_utils.save_email_to_db` import 실패도 반복된다.
 - DB 필드 변경 및 migration 필요 없음.
+- 구현/로컬 검증/푸시/Railway `web` 운영 배포 완료.
+- Railway `web`의 `EMAIL_ENCRYPTION_KEY` 미설정 error 로그도 환경변수 설정으로 제거했다.
 
 ### 구현 계획
 
