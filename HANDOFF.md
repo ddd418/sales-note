@@ -14,7 +14,7 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React schedule documents first integration is implemented, pushed, deployed, and smoke-tested.
+React schedule documents first integration is implemented, pushed, deployed, smoke-tested, and user-confirmed.
 
 Runtime commit:
 
@@ -63,6 +63,7 @@ Deployment:
 - Frontend CSS contains `schedule-document-card` and `schedule-document-variable-row`.
 - Anonymous frontend-proxied and direct backend `/reporting/api/schedules/1/` both return `401 login_required`.
 - Anonymous document preview and generate endpoints redirect to `/reporting/login/`.
+- User manual production test: confirmed complete on 2026-05-10.
 
 Manual production test:
 
@@ -623,10 +624,10 @@ Confirmed by user:
 - Weekly report urgent fixes: good.
 - Django schedule calendar restoration: confirmed complete.
 - React schedule calendar: confirmed complete.
+- React schedule documents: confirmed complete.
 
 Needs awareness:
 
-- React schedule documents is deployed and awaits user manual production testing.
 - React pipeline department AI panel is deployed and can be manually tested.
 - React customer detail prepayment summary is deployed and awaits user manual production testing.
 - AI quote/delivery context fix is deployed, but existing stored AI results require rerun. If validating customer `454`, click AI analysis again and inspect the new output.

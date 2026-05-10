@@ -2,7 +2,7 @@
 
 ## 2026-05-10 — React Schedule Documents First Integration
 
-**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
+**상태**: 구현/로컬 검증/푸시/운영 배포/사용자 수동검수 완료
 
 ### 요약
 
@@ -79,6 +79,7 @@ railway deployment list --service web --environment production --limit 2 --json
 - Anonymous frontend proxy `/reporting/api/schedules/1/` returns `401 login_required`.
 - Anonymous direct backend `/reporting/api/schedules/1/` returns `401 login_required`.
 - Anonymous document preview and generate endpoints redirect to `/reporting/login/`.
+- 사용자 운영 검수: 2026-05-10 완료 확인.
 
 ### 알려진 제한
 
