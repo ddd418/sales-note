@@ -62,7 +62,7 @@ Deployment status:
 
 Manual test status:
 
-- Pending user confirmation.
+- Completed by user on 2026-05-10.
 
 ## Operating Rule From User
 
