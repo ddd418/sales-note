@@ -304,6 +304,172 @@ class AIDepartmentQuoteDeliveryCollectionTests(TestCase):
         self.assertEqual(result['department_summary'], '견적과 납품을 반영했습니다.')
 
 
+class AIEmailAndStageActionContextTests(TestCase):
+    def _fake_client(self, captured, payload):
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+
+                class Usage:
+                    total_tokens = 29
+
+                class Message:
+                    content = json.dumps(payload)
+
+                class Choice:
+                    message = Message()
+
+                class Response:
+                    choices = [Choice()]
+                    usage = Usage()
+
+                return Response()
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeClient:
+            chat = FakeChat()
+
+        return FakeClient()
+
+    def test_department_analysis_uses_customer_emails_and_stage_actions(self):
+        from reporting.models import EmailLog, History
+        from .services import analyze_department
+
+        user = make_ai_user('ai_email_stage_user', can_use_ai=True)
+        company, department = make_department_with_followup(user)
+        quote_followup = FollowUp.objects.get(user=user, department=department)
+        quote_followup.customer_name = '견적고객'
+        quote_followup.pipeline_stage = 'quote'
+        quote_followup.save(update_fields=['customer_name', 'pipeline_stage'])
+        won_followup = FollowUp.objects.create(
+            user=user,
+            company=company,
+            department=department,
+            customer_name='락인고객',
+            pipeline_stage='won',
+        )
+        meeting_followup = FollowUp.objects.create(
+            user=user,
+            company=company,
+            department=department,
+            customer_name='미팅고객',
+            pipeline_stage='contact',
+        )
+        History.objects.create(
+            user=user,
+            followup=meeting_followup,
+            action_type='customer_meeting',
+            content='자료 전달 요청',
+            meeting_researcher_quote='다음 미팅 전에 제품 자료를 보내주세요.',
+        )
+        EmailLog.objects.create(
+            user=user,
+            followup=quote_followup,
+            email_type='received',
+            is_sent=False,
+            status='received',
+            from_email='customer@example.com',
+            to_email='sales@example.com',
+            sender_email='customer@example.com',
+            recipient_email='sales@example.com',
+            subject='견적 검토 회신',
+            body='가격 조정 가능 여부와 5월 말 납기 가능 여부를 확인 부탁드립니다.',
+            received_at=timezone.now(),
+        )
+        EmailLog.objects.create(
+            user=user,
+            followup=meeting_followup,
+            email_type='received',
+            is_sent=False,
+            status='received',
+            from_email='meeting@example.com',
+            to_email='sales@example.com',
+            subject='미팅 후 자료 요청',
+            body='미팅에서 설명한 제품 비교표와 다음 미팅 가능 일정을 보내주세요.',
+            received_at=timezone.now(),
+        )
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        captured = {}
+
+        with patch(
+            'ai_chat.services.get_openai_client',
+            return_value=self._fake_client(captured, {
+                'department_summary': '메일과 고객 단계를 반영합니다.',
+                'painpoint_cards': [],
+                'next_actions': [],
+            }),
+        ):
+            result, _qd_data, _token_usage = analyze_department(analysis, department, user)
+
+        prompt = captured['messages'][1]['content']
+        self.assertIn('고객 메일/답장 컨텍스트', prompt)
+        self.assertIn('고객→영업', prompt)
+        self.assertIn('가격 조정 가능 여부와 5월 말 납기 가능 여부', prompt)
+        self.assertIn('고객 단계별 다음 액션 기준', prompt)
+        self.assertIn('락인/수주 고객', prompt)
+        self.assertIn('견적 고객', prompt)
+        self.assertIn('미팅만 진행 고객', prompt)
+        self.assertEqual(result['email_context']['summary']['inbound_count'], 2)
+        context_types = {
+            item['context_type']
+            for item in result['customer_stage_context']
+        }
+        self.assertIn('won_locked', context_types)
+        self.assertIn('quote', context_types)
+        self.assertIn('meeting_only', context_types)
+        actions = ' '.join(action['action'] for action in result['next_actions'])
+        self.assertIn('수주/락인', actions)
+        self.assertIn('견적', actions)
+        self.assertIn('미팅', actions)
+
+    def test_followup_analysis_uses_email_reply_and_quote_stage_action(self):
+        from reporting.models import EmailLog
+        from .services import analyze_followup
+
+        user = make_ai_user('ai_followup_email_user', can_use_ai=True)
+        _company, department = make_department_with_followup(user)
+        followup = FollowUp.objects.get(user=user, department=department)
+        followup.pipeline_stage = 'quote'
+        followup.save(update_fields=['pipeline_stage'])
+        EmailLog.objects.create(
+            user=user,
+            followup=followup,
+            email_type='received',
+            is_sent=False,
+            status='received',
+            from_email='buyer@example.com',
+            to_email='sales@example.com',
+            subject='견적 답장',
+            body='예산은 가능하지만 결제 조건과 납기 일정을 다시 받고 싶습니다.',
+            received_at=timezone.now(),
+        )
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        captured = {}
+
+        with patch(
+            'ai_chat.services.get_openai_client',
+            return_value=self._fake_client(captured, {
+                'deal_probability': 50,
+                'next_best_actions': [],
+            }),
+        ):
+            result, _meeting_count, _token_usage = analyze_followup(analysis, followup, user)
+
+        prompt = captured['messages'][1]['content']
+        self.assertIn('고객 메일/답장 컨텍스트', prompt)
+        self.assertIn('현재 고객 분석 기준', prompt)
+        self.assertIn('견적 고객', prompt)
+        self.assertIn('결제 조건과 납기 일정을 다시 받고 싶습니다', prompt)
+        self.assertEqual(result['email_context']['summary']['inbound_count'], 1)
+        self.assertEqual(result['stage_action_guidance']['context_type'], 'quote')
+        self.assertTrue(any(
+            '견적 내용, 미팅 이슈, 고객 메일 답장' in action['action']
+            for action in result['next_best_actions']
+        ))
+
+
 class AIDepartmentPromptHubViewTests(TestCase):
     def setUp(self):
         self.client = Client()

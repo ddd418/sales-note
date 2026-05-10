@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — AI Email Context And Stage-Aware Next Actions
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 중
+
+### 요약
+
+부서 AI와 개별 고객 AI 분석에 고객 메일 답장 컨텍스트를 추가했습니다. 특히 고객이 보낸 수신 메일을 우선 근거로 프롬프트에 넣고, 고객 단계가 락인/수주, 견적, 미팅만 진행 중인지에 따라 다음 액션이 자동 보강되도록 했습니다.
+
+### 변경된 파일
+
+- `ai_chat/services.py`: `EmailLog` 기반 메일 컨텍스트 수집, 고객 단계별 분석 기준 생성, 부서/개별 고객 AI 프롬프트 및 fallback 다음 액션 보강
+- `ai_chat/tests.py`: 메일 수신 내용과 락인/견적/미팅 고객 단계별 다음 액션 반영 회귀 테스트 추가
+
+### CRM 개선
+
+- 고객이 보낸 메일 답장이 AI 분석의 실제 근거로 들어갑니다.
+- 락인/수주 고객은 납품, 추가 발주, 재구매, 리텐션 중심 액션을 생성합니다.
+- 견적 고객은 견적 내용, 미팅 내용, 고객 메일 답장을 함께 보고 수정 견적/조건 확인/의사결정 일정 액션을 생성합니다.
+- 미팅만 진행한 고객은 미팅 내용과 고객 메일 답장을 기반으로 자료 전달, 다음 미팅, 견적화 액션을 생성합니다.
+- 기존 PainPoint 검증 메모리는 단계별 액션 보정 reason에도 우선 반영됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/ai/*`, `/reporting/*`, React CRM 경로와 인증/권한 정책은 유지했습니다.
+- 신규 DB 필드와 migration 없음.
+- 메일 데이터는 기존 `EmailLog`와 연결된 `FollowUp`/`Schedule` 범위 안에서만 수집합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test ai_chat.tests --verbosity=1
+→ Ran 18 tests, OK
+
+python -m py_compile ai_chat\services.py ai_chat\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 커밋/푸시 후 Railway `web` 배포 예정.
+- React bundle 변경은 없어 `sales-note-frontend` 직접 배포는 필요하지 않습니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 Gmail/IMAP 동기화 또는 메일 발송/수신 기록이 연결된 고객을 선택합니다.
+2. 고객 상세 또는 AI 허브에서 해당 부서 `AI 분석 실행`을 다시 누릅니다.
+3. 고객이 보낸 최근 메일의 핵심 내용이 요약/PainPoint/다음 액션 판단에 반영되는지 확인합니다.
+4. 수주 단계 고객은 납품/추가 발주/재구매 중심 액션이 나오는지 확인합니다.
+5. 견적 단계 고객은 견적 내용, 미팅 내용, 메일 답장을 근거로 조건 확인/수정 견적/결정 일정 액션이 나오는지 확인합니다.
+6. 미팅만 진행한 고객은 자료 전달, 다음 미팅, 견적화 액션이 나오는지 확인합니다.
+7. 검증 완료/부정 메모가 있는 고객은 해당 검증 메모가 다음 액션 reason에 우선 반영되는지 확인합니다.
+
+### 다음 권장 작업
+
+- 운영 수동검수 후 React 통합 프론트 전환 또는 AI 결과 화면에서 메일 근거 요약을 별도 섹션으로 노출하는 작업을 검토합니다.
+
+---
+
 ## 2026-05-10 — AI Verification Notes In Department Summary
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
