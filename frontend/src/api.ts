@@ -1355,6 +1355,57 @@ export type ScheduleDetailItem = ScheduleItem & {
   files: ScheduleFileItem[];
 };
 
+export type ScheduleDocumentFormatAction = {
+  format: 'pdf' | 'xlsx';
+  label: string;
+  href: string;
+};
+
+export type ScheduleDocumentAction = {
+  type: string;
+  label: string;
+  description: string;
+  templateCount: number;
+  previewHref: string;
+  formats: ScheduleDocumentFormatAction[];
+};
+
+export type ScheduleDocumentsData = {
+  canGenerate: boolean;
+  templateManagerHref: string;
+  items: ScheduleDocumentAction[];
+};
+
+export type ScheduleDocumentPreviewData = {
+  success?: boolean;
+  error?: string;
+  templateUrl?: string;
+  templateFilename?: string;
+  variables: Record<string, string | number | null | undefined>;
+  fileInfo: {
+    companyName?: string;
+    customerCompany?: string;
+    docName?: string;
+    todayStr?: string;
+    baseDate?: string;
+    transactionNumber?: string;
+  };
+  items: Array<{
+    index: number;
+    name: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    subtotal: number;
+  }>;
+  itemCount: number;
+};
+
+export type ScheduleDocumentDownloadResult = {
+  blob: Blob;
+  filename: string;
+};
+
 export type ScheduleCreatePayload = {
   activityType: string;
   expectedRevenue?: string;
@@ -1566,6 +1617,7 @@ export type ScheduleDetailData = {
   };
   relatedNotes: NoteItem[];
   deliveryItems: ScheduleDeliveryItem[];
+  documents: ScheduleDocumentsData;
 };
 
 export type ScheduleEditResponse = ScheduleDetailData & {
@@ -2419,6 +2471,11 @@ const emptyScheduleDetailData: ScheduleDetailData = {
   },
   relatedNotes: [],
   deliveryItems: [],
+  documents: {
+    canGenerate: false,
+    templateManagerHref: '/reporting/documents/',
+    items: [],
+  },
 };
 
 const emptyPrepaymentsData: PrepaymentsData = {
@@ -4343,6 +4400,11 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
       schedule: payload.schedule ?? emptyScheduleDetailData.schedule,
       relatedNotes: payload.relatedNotes ?? emptyScheduleDetailData.relatedNotes,
       deliveryItems: payload.deliveryItems ?? emptyScheduleDetailData.deliveryItems,
+      documents: {
+        ...emptyScheduleDetailData.documents,
+        ...(payload.documents ?? {}),
+        items: payload.documents?.items ?? emptyScheduleDetailData.documents.items,
+      },
     };
   } catch (error) {
     return {
@@ -4351,6 +4413,132 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
       error: error instanceof Error ? error.message : 'Schedule detail API unavailable',
     };
   }
+}
+
+export async function loadScheduleDocumentPreview(previewUrl: string): Promise<ScheduleDocumentPreviewData> {
+  type RawScheduleDocumentPreviewData = {
+    success?: boolean;
+    error?: string;
+    templateUrl?: string;
+    template_url?: string;
+    templateFilename?: string;
+    template_filename?: string;
+    variables?: ScheduleDocumentPreviewData['variables'];
+    fileInfo?: ScheduleDocumentPreviewData['fileInfo'];
+    file_info?: {
+      company_name?: string;
+      customer_company?: string;
+      doc_name?: string;
+      today_str?: string;
+      base_date?: string;
+      transaction_number?: string;
+    };
+    items?: Array<{
+      index?: number;
+      name?: string;
+      quantity?: number;
+      unit?: string;
+      unit_price?: number;
+      unitPrice?: number;
+      subtotal?: number;
+    }>;
+    itemCount?: number;
+    item_count?: number;
+  };
+
+  const response = await fetch(previewUrl, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Document preview API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as RawScheduleDocumentPreviewData;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || `Document preview failed: ${response.status}`);
+  }
+  const rawFileInfo = data.fileInfo ?? {};
+  const snakeFileInfo = data.file_info ?? {};
+  return {
+    success: true,
+    variables: data.variables ?? {},
+    fileInfo: {
+      companyName: rawFileInfo.companyName ?? snakeFileInfo.company_name,
+      customerCompany: rawFileInfo.customerCompany ?? snakeFileInfo.customer_company,
+      docName: rawFileInfo.docName ?? snakeFileInfo.doc_name,
+      todayStr: rawFileInfo.todayStr ?? snakeFileInfo.today_str,
+      baseDate: rawFileInfo.baseDate ?? snakeFileInfo.base_date,
+      transactionNumber: rawFileInfo.transactionNumber ?? snakeFileInfo.transaction_number,
+    },
+    items: (data.items ?? []).map((item, index) => ({
+      index: item.index ?? index + 1,
+      name: item.name ?? '',
+      quantity: item.quantity ?? 0,
+      unit: item.unit ?? '',
+      unitPrice: item.unitPrice ?? item.unit_price ?? 0,
+      subtotal: item.subtotal ?? 0,
+    })),
+    itemCount: data.itemCount ?? data.item_count ?? 0,
+    templateUrl: data.templateUrl ?? data.template_url,
+    templateFilename: data.templateFilename ?? data.template_filename,
+  };
+}
+
+function filenameFromContentDisposition(value: string): string {
+  const encodedMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1].trim());
+    } catch {
+      return encodedMatch[1].trim();
+    }
+  }
+  const quotedMatch = value.match(/filename="?([^";]+)"?/i);
+  return quotedMatch?.[1]?.trim() || '';
+}
+
+export async function downloadScheduleDocument(downloadUrl: string): Promise<ScheduleDocumentDownloadResult> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(downloadUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/octet-stream, application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const data = (await response.json()) as { success?: boolean; error?: string; message?: string };
+    redirectIfLoginRequired(response, data);
+    throw new Error(data.error || data.message || `Document download failed: ${response.status}`);
+  }
+  if (!response.ok) {
+    throw new Error(`Document download failed: ${response.status}`);
+  }
+  const xFilename = response.headers.get('X-Filename') || '';
+  let filename = '';
+  if (xFilename) {
+    try {
+      filename = decodeURIComponent(xFilename);
+    } catch {
+      filename = xFilename;
+    }
+  }
+  if (!filename) {
+    filename = filenameFromContentDisposition(response.headers.get('content-disposition') || '');
+  }
+  return {
+    blob: await response.blob(),
+    filename: filename || 'document.xlsx',
+  };
 }
 
 export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: string): Promise<ScheduleEditResponse> {

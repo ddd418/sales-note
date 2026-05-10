@@ -2829,6 +2829,40 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
+        document_types = [item['type'] for item in payload['documents']['items']]
+        self.assertEqual(document_types, ['transaction_statement', 'delivery_note'])
+        first_document = payload['documents']['items'][0]
+        self.assertEqual(first_document['previewHref'], reverse('reporting:get_document_template_data', args=['transaction_statement', schedule.id]))
+        self.assertEqual(
+            first_document['formats'][0]['href'],
+            reverse('reporting:generate_document_pdf_format', args=['transaction_statement', schedule.id, 'pdf']),
+        )
+        self.assertEqual(
+            first_document['formats'][1]['href'],
+            reverse('reporting:generate_document_pdf_format', args=['transaction_statement', schedule.id, 'xlsx']),
+        )
+        self.assertEqual(payload['documents']['templateManagerHref'], reverse('reporting:document_template_list'))
+
+    def test_schedules_detail_api_document_actions_match_activity_type(self):
+        quote_schedule = self._create_schedule(self.user, '견적서류', activity_type='quote')
+        meeting_schedule = self._create_schedule(self.user, '미팅서류없음', activity_type='customer_meeting')
+        self.client.force_login(self.user)
+
+        quote_response = self.client.get(reverse('reporting:schedules_detail_api', args=[quote_schedule.id]))
+        meeting_response = self.client.get(reverse('reporting:schedules_detail_api', args=[meeting_schedule.id]))
+
+        self.assertEqual(quote_response.status_code, 200)
+        self.assertEqual(meeting_response.status_code, 200)
+        quote_payload = quote_response.json()
+        meeting_payload = meeting_response.json()
+        self.assertTrue(quote_payload['documents']['canGenerate'])
+        self.assertEqual([item['type'] for item in quote_payload['documents']['items']], ['quotation'])
+        self.assertEqual(
+            quote_payload['documents']['items'][0]['formats'][1]['href'],
+            reverse('reporting:generate_document_pdf_format', args=['quotation', quote_schedule.id, 'xlsx']),
+        )
+        self.assertFalse(meeting_payload['documents']['canGenerate'])
+        self.assertEqual(meeting_payload['documents']['items'], [])
 
     def test_schedules_detail_api_manager_read_only_and_other_company_blocked(self):
         schedule = self._create_schedule(self.user, '읽기전용')

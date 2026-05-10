@@ -14,6 +14,9 @@ import {
   Clock,
   Columns3,
   Copy,
+  Download,
+  Eye,
+  FileSpreadsheet,
   FileText,
   Filter,
   LayoutDashboard,
@@ -76,6 +79,9 @@ import {
   ScheduleDetailItem,
   ScheduleDeliveryItem,
   ScheduleDeliveryItemPayload,
+  ScheduleDocumentAction,
+  ScheduleDocumentFormatAction,
+  ScheduleDocumentPreviewData,
   ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
@@ -104,6 +110,7 @@ import {
   deleteNoteReply,
   deleteScheduleFile,
   deleteWeeklyReport,
+  downloadScheduleDocument,
   generateWeeklyReportAiDraft,
   loadDashboardData,
   loadCustomerDetailData,
@@ -119,6 +126,7 @@ import {
   loadPrepaymentsData,
   loadProducts,
   loadScheduleCalendarData,
+  loadScheduleDocumentPreview,
   loadScheduleDetailData,
   loadSchedulesData,
   loadAIWorkspaceData,
@@ -4118,6 +4126,229 @@ function ScheduleCalendarPage({
   );
 }
 
+const scheduleDocumentVariableBuckets: Array<{ label: string; keys: string[] }> = [
+  { label: '기본 정보', keys: ['년', '월', '일', '거래번호', '일정날짜', '날짜', '발행일'] },
+  { label: '고객 정보', keys: ['고객명', '업체명', '학교명', '부서명', '연구실', '담당자', '이메일', '담당자이메일', '연락처', '전화번호'] },
+  { label: '영업 담당', keys: ['실무자', '영업담당자', '담당영업', '영업담당자이메일'] },
+  { label: '견적 정보', keys: ['견적번호', '메모'] },
+  { label: '회사 정보', keys: ['회사명'] },
+  { label: '금액', keys: ['공급가액', '소계', '부가세액', '부가세', '총액', '합계', '총액한글', '한글금액'] },
+];
+
+const isScheduleDocumentEmptyValue = (value: ScheduleDocumentPreviewData['variables'][string]) => (
+  value === null || value === undefined || String(value).trim() === ''
+);
+
+const formatScheduleDocumentValue = (value: ScheduleDocumentPreviewData['variables'][string]) => {
+  if (isScheduleDocumentEmptyValue(value)) {
+    return '미입력';
+  }
+  return typeof value === 'number' ? formatNumber(value) : String(value);
+};
+
+function buildScheduleDocumentVariableGroups(variables: ScheduleDocumentPreviewData['variables']) {
+  const usedKeys = new Set<string>();
+  const groups = scheduleDocumentVariableBuckets.map((bucket) => {
+    const entries = bucket.keys
+      .filter((key) => Object.prototype.hasOwnProperty.call(variables, key))
+      .map((key) => {
+        usedKeys.add(key);
+        return [key, variables[key]] as const;
+      });
+    return { label: bucket.label, entries };
+  }).filter((group) => group.entries.length > 0);
+
+  const itemEntries: Array<readonly [string, ScheduleDocumentPreviewData['variables'][string]]> = [];
+  const otherEntries: Array<readonly [string, ScheduleDocumentPreviewData['variables'][string]]> = [];
+  Object.entries(variables).forEach(([key, value]) => {
+    if (usedKeys.has(key)) {
+      return;
+    }
+    if (/^품목\d+_/.test(key)) {
+      itemEntries.push([key, value]);
+    } else {
+      otherEntries.push([key, value]);
+    }
+  });
+
+  if (itemEntries.length > 0) {
+    groups.push({ label: '품목 변수', entries: itemEntries });
+  }
+  if (otherEntries.length > 0) {
+    groups.push({ label: '기타 변수', entries: otherEntries });
+  }
+  return groups;
+}
+
+function saveDownloadedBlob(blob: Blob, filename: string) {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+function ScheduleDocumentsPanel({
+  documents,
+  downloadingKey,
+  previewAction,
+  previewData,
+  previewError,
+  previewLoading,
+  onClosePreview,
+  onDownload,
+  onPreview,
+}: {
+  documents: ScheduleDetailData['documents'];
+  downloadingKey: string;
+  previewAction: ScheduleDocumentAction | null;
+  previewData: ScheduleDocumentPreviewData | null;
+  previewError: string;
+  previewLoading: boolean;
+  onClosePreview: () => void;
+  onDownload: (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction) => void;
+  onPreview: (action: ScheduleDocumentAction) => void;
+}) {
+  if (!documents.items.length) {
+    return null;
+  }
+
+  const variableGroups = previewData ? buildScheduleDocumentVariableGroups(previewData.variables) : [];
+
+  return (
+    <section className="schedule-documents-panel" aria-label="서류 다운로드">
+      <div className="schedule-file-heading schedule-document-heading">
+        <h3 className="customer-detail-section-heading">서류 다운로드</h3>
+        <a className="customer-row-action schedule-document-template-link" href={documents.templateManagerHref}>
+          <FileText size={14} />
+          <span>템플릿</span>
+        </a>
+      </div>
+      <div className="schedule-document-list">
+        {documents.items.map((action) => {
+          const hasTemplate = action.templateCount > 0;
+          return (
+            <div className="schedule-document-card" key={action.type}>
+              <div className="schedule-document-card-main">
+                <div>
+                  <strong>{action.label}</strong>
+                  <span>{action.description}</span>
+                </div>
+                <span className={hasTemplate ? 'schedule-document-template-count' : 'schedule-document-template-count empty'}>
+                  {hasTemplate ? `${formatNumber(action.templateCount)}개 템플릿` : '템플릿 없음'}
+                </span>
+              </div>
+              <div className="schedule-document-actions">
+                <button
+                  className="customer-row-action schedule-document-action-button"
+                  disabled={!hasTemplate || previewLoading}
+                  onClick={() => onPreview(action)}
+                  type="button"
+                >
+                  {previewLoading && previewAction?.type === action.type ? <Loader2 className="spin-icon" size={14} /> : <Eye size={14} />}
+                  <span>미리보기</span>
+                </button>
+                {action.formats.map((formatAction) => {
+                  const actionKey = `${action.type}-${formatAction.format}`;
+                  const downloading = downloadingKey === actionKey;
+                  return (
+                    <button
+                      className="customer-row-action schedule-document-action-button"
+                      disabled={!hasTemplate || Boolean(downloadingKey)}
+                      key={formatAction.format}
+                      onClick={() => onDownload(action, formatAction)}
+                      type="button"
+                    >
+                      {downloading ? (
+                        <Loader2 className="spin-icon" size={14} />
+                      ) : formatAction.format === 'xlsx' ? (
+                        <FileSpreadsheet size={14} />
+                      ) : (
+                        <Download size={14} />
+                      )}
+                      <span>{formatAction.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {previewError ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>{previewError}</span>
+        </div>
+      ) : null}
+
+      {previewAction ? (
+        <div className="schedule-document-preview">
+          <div className="schedule-document-preview-heading">
+            <div>
+              <span className="eyebrow">Preview</span>
+              <h4>{previewAction.label} 변수</h4>
+            </div>
+            <button className="customer-row-action schedule-document-close-button" onClick={onClosePreview} type="button">
+              <X size={13} />
+              <span>닫기</span>
+            </button>
+          </div>
+          {previewLoading ? (
+            <div className="schedule-document-preview-loading">
+              <Loader2 className="spin-icon" size={15} />
+              <span>변수 데이터를 불러오는 중입니다</span>
+            </div>
+          ) : previewData ? (
+            <>
+              <div className="schedule-document-preview-meta">
+                <span>{previewData.fileInfo.docName || previewAction.label}</span>
+                <span>{previewData.templateFilename || '템플릿 파일명 없음'}</span>
+                <span>품목 {formatNumber(previewData.itemCount)}개</span>
+              </div>
+              {variableGroups.length > 0 ? (
+                <div className="schedule-document-variable-groups">
+                  {variableGroups.map((group) => (
+                    <div className="schedule-document-variable-group" key={group.label}>
+                      <h5>{group.label}</h5>
+                      <div className="schedule-document-variable-grid">
+                        {group.entries.map(([key, value]) => (
+                          <div className={isScheduleDocumentEmptyValue(value) ? 'schedule-document-variable-row empty' : 'schedule-document-variable-row'} key={key}>
+                            <span>{key}</span>
+                            <strong>{formatScheduleDocumentValue(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmpty label="표시할 서류 변수가 없습니다" />
+              )}
+              {previewData.items.length > 0 ? (
+                <div className="schedule-document-item-list">
+                  {previewData.items.map((item) => (
+                    <div key={item.index}>
+                      <strong>{item.name || `품목 ${item.index}`}</strong>
+                      <span>{[`${formatNumber(item.quantity)}${item.unit || ''}`, formatWon(item.unitPrice), formatWon(item.subtotal)].join(' · ')}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmpty label="서류에 들어갈 품목이 없습니다" />
+              )}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function ScheduleDetailPage({
   data,
   loading,
@@ -4150,6 +4381,11 @@ function ScheduleDetailPage({
   const [prepaymentRows, setPrepaymentRows] = useState<SchedulePrepaymentEditRow[]>([]);
   const [prepaymentsLoading, setPrepaymentsLoading] = useState(false);
   const [prepaymentsError, setPrepaymentsError] = useState('');
+  const [documentDownloadingKey, setDocumentDownloadingKey] = useState('');
+  const [documentPreviewAction, setDocumentPreviewAction] = useState<ScheduleDocumentAction | null>(null);
+  const [documentPreviewData, setDocumentPreviewData] = useState<ScheduleDocumentPreviewData | null>(null);
+  const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
+  const [documentPreviewError, setDocumentPreviewError] = useState('');
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -4169,6 +4405,11 @@ function ScheduleDetailPage({
     setPrepaymentRows([]);
     setPrepaymentsLoading(false);
     setPrepaymentsError('');
+    setDocumentDownloadingKey('');
+    setDocumentPreviewAction(null);
+    setDocumentPreviewData(null);
+    setDocumentPreviewLoading(false);
+    setDocumentPreviewError('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -4586,6 +4827,48 @@ function ScheduleDetailPage({
     }
   };
 
+  const handleDocumentPreview = async (action: ScheduleDocumentAction) => {
+    if (documentPreviewLoading) {
+      return;
+    }
+    setDocumentPreviewAction(action);
+    setDocumentPreviewData(null);
+    setDocumentPreviewLoading(true);
+    setDocumentPreviewError('');
+    try {
+      const preview = await loadScheduleDocumentPreview(action.previewHref);
+      setDocumentPreviewData(preview);
+    } catch (error) {
+      setDocumentPreviewError(error instanceof Error ? error.message : '서류 변수 미리보기에 실패했습니다.');
+    } finally {
+      setDocumentPreviewLoading(false);
+    }
+  };
+
+  const handleDocumentDownload = async (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction) => {
+    if (documentDownloadingKey) {
+      return;
+    }
+    const actionKey = `${action.type}-${formatAction.format}`;
+    setDocumentDownloadingKey(actionKey);
+    setDocumentPreviewError('');
+    try {
+      const result = await downloadScheduleDocument(formatAction.href);
+      saveDownloadedBlob(result.blob, result.filename);
+    } catch (error) {
+      setDocumentPreviewError(error instanceof Error ? error.message : `${action.label} 다운로드에 실패했습니다.`);
+    } finally {
+      setDocumentDownloadingKey('');
+    }
+  };
+
+  const handleDocumentPreviewClose = () => {
+    setDocumentPreviewAction(null);
+    setDocumentPreviewData(null);
+    setDocumentPreviewLoading(false);
+    setDocumentPreviewError('');
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -4949,6 +5232,17 @@ function ScheduleDetailPage({
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
+          <ScheduleDocumentsPanel
+            documents={data.documents}
+            downloadingKey={documentDownloadingKey}
+            onClosePreview={handleDocumentPreviewClose}
+            onDownload={handleDocumentDownload}
+            onPreview={handleDocumentPreview}
+            previewAction={documentPreviewAction}
+            previewData={documentPreviewData}
+            previewError={documentPreviewError}
+            previewLoading={documentPreviewLoading}
+          />
           <div className="schedule-file-heading schedule-delivery-heading">
             <h3 className="customer-detail-section-heading">납품 품목</h3>
             {schedule.canEdit && data.links.updateDeliveryItems ? (

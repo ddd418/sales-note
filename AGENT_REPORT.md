@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React Schedule Documents First Integration
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React 일정 상세(`/schedules/<id>/`) 오른쪽 패널에 기존 Django 서류 생성 workflow를 붙였습니다. 견적 일정은 견적서, 납품 일정은 거래명세서/납품서의 PDF 및 Excel 다운로드와 변수 미리보기를 React에서 바로 실행할 수 있습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 일정 상세 API payload에 활동 유형별 문서 action, 미리보기 URL, 생성 URL, 활성 템플릿 수 추가
+- `reporting/tests.py`: 일정 상세 API의 문서 action 회귀 테스트 추가
+- `frontend/src/api.ts`: 서류 미리보기 GET, 파일 다운로드 POST helper 및 타입 추가
+- `frontend/src/App.tsx`: React 일정 상세 서류 다운로드/변수 미리보기 패널 추가
+- `frontend/src/styles.css`: 서류 패널, 다운로드 버튼, 변수 그룹, 모바일 반응형 스타일 추가
+- `AGENT_PLAN.md`: React 일정 상세 문서 생성 통합 계획 기록
+
+### CRM 개선
+
+- 견적/납품 일정에서 Django 상세 화면으로 이동하지 않고 React 일정 상세에서 바로 서류를 생성할 수 있습니다.
+- 생성 전 템플릿 변수와 품목 데이터를 React 패널에서 확인할 수 있어 서류 생성 실패나 빈 값 입력을 줄입니다.
+- Django 서류 템플릿 관리 화면은 fallback/관리 화면으로 그대로 연결됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/documents/*` 템플릿 관리, 변수 미리보기, 파일 생성 endpoint는 유지했습니다.
+- 기존 Django 일정 상세와 `/reporting/*` routes는 삭제하지 않았습니다.
+- DB 모델 변경 및 migration은 없습니다.
+- 기존 인증/권한 검사는 Django 문서 생성 endpoint의 `login_required`와 `can_access_user_data`를 그대로 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 27 tests, OK
+
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-CSJjhwCa.js / assets/index-DEZuogRh.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/schedules/<quote_schedule_id>/`에서 견적 일정 상세를 엽니다.
+2. 오른쪽 `서류 다운로드` 섹션에 `견적서`가 보이는지 확인합니다.
+3. `미리보기`를 눌러 고객/금액/품목 변수가 줄바꿈과 그룹 구분으로 읽히는지 확인합니다.
+4. `PDF`, `Excel` 다운로드를 눌러 파일이 생성되는지 확인합니다.
+5. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/schedules/<delivery_schedule_id>/`에서 납품 일정 상세를 엽니다.
+6. `거래명세서`, `납품서`가 보이고 각각 미리보기/다운로드가 동작하는지 확인합니다.
+7. `템플릿` 링크가 기존 Django 서류 템플릿 관리 화면으로 이동하는지 확인합니다.
+
+---
+
 ## 2026-05-10 — React Mailbox Reply Quote Cleanup
 
 **상태**: 구현/로컬 검증 완료, 운영 배포 예정

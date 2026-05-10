@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -5383,6 +5383,67 @@ def _schedules_delivery_items_summary(schedule):
     return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
 
 
+def _schedules_document_actions(schedule, user):
+    document_configs = {
+        'quotation': {
+            'label': '견적서',
+            'description': '등록된 품목 정보를 포함한 견적서를 생성합니다.',
+        },
+        'transaction_statement': {
+            'label': '거래명세서',
+            'description': '납품 완료 또는 예정 품목의 거래명세서를 생성합니다.',
+        },
+        'delivery_note': {
+            'label': '납품서',
+            'description': '납품 예정 품목의 납품서를 생성합니다.',
+        },
+    }
+    activity_documents = {
+        'quote': ['quotation'],
+        'delivery': ['transaction_statement', 'delivery_note'],
+    }
+    document_types = activity_documents.get(schedule.activity_type, [])
+    company = getattr(getattr(user, 'userprofile', None), 'company', None)
+
+    template_counts = {}
+    if company and document_types:
+        template_counts = {
+            item['document_type']: item['count']
+            for item in DocumentTemplate.objects.filter(
+                company=company,
+                document_type__in=document_types,
+                is_active=True,
+            ).values('document_type').annotate(count=Count('id'))
+        }
+
+    return {
+        'canGenerate': bool(document_types),
+        'templateManagerHref': reverse('reporting:document_template_list'),
+        'items': [
+            {
+                'type': document_type,
+                'label': document_configs[document_type]['label'],
+                'description': document_configs[document_type]['description'],
+                'templateCount': template_counts.get(document_type, 0),
+                'previewHref': reverse('reporting:get_document_template_data', args=[document_type, schedule.id]),
+                'formats': [
+                    {
+                        'format': 'pdf',
+                        'label': 'PDF',
+                        'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'pdf']),
+                    },
+                    {
+                        'format': 'xlsx',
+                        'label': 'Excel',
+                        'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'xlsx']),
+                    },
+                ],
+            }
+            for document_type in document_types
+        ],
+    }
+
+
 def _schedules_sync_delivery_histories(schedule, actor, created_count):
     delivery_text, total_delivery_amount = _schedules_delivery_items_summary(schedule)
     related_histories = schedule.histories.filter(action_type='delivery_schedule')
@@ -5502,6 +5563,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
+        'documents': _schedules_document_actions(schedule, request.user),
         'relatedNotes': related_notes,
         'deliveryItems': delivery_items,
     }

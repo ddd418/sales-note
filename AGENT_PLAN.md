@@ -9,6 +9,44 @@
 
 ---
 
+## Current task — React 일정 상세 문서 생성 1차 통합
+
+**목표**: 기존 Django 일정 상세의 견적서/거래명세서/납품서 생성 workflow를 React 일정 상세(`/schedules/<id>/`)에 추가한다. Django 서류 템플릿 관리와 생성 endpoint는 backend/fallback으로 유지한다.
+
+### 확인된 상태
+
+- 기존 Django 일정 상세(`/reporting/schedules/<id>/`)에는 활동 유형에 따라 견적서, 거래명세서, 납품서 PDF/Excel 생성 버튼과 변수 미리보기가 있다.
+- 서류 템플릿은 `DocumentTemplate`, 생성 로그는 `DocumentGenerationLog`, 품목은 `DeliveryItem`을 사용한다.
+- 기존 생성 endpoint는 `/reporting/documents/generate/<document_type>/<schedule_id>/<output_format>/`이고, 변수 미리보기 endpoint는 `/reporting/documents/template-data/<document_type>/<schedule_id>/`이다.
+- React 일정 상세는 납품 품목/첨부파일/선결제 편집은 지원하지만 서류 생성 UI가 없다.
+- 이번 작업은 React UI/API client와 일정 상세 payload 확장이다. DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- React 일정 상세 API payload에 활동 유형별 문서 생성 action을 추가한다.
+  - 견적 일정(`quote`): 견적서
+  - 납품 일정(`delivery`): 거래명세서, 납품서
+  - 각 문서별 PDF/Excel 생성 URL과 변수 미리보기 URL을 내려준다.
+- React API client에 문서 다운로드 POST와 변수 미리보기 GET helper를 추가한다.
+- React 일정 상세 오른쪽 패널에 문서 생성 섹션을 추가한다.
+  - PDF/Excel 다운로드 버튼을 제공한다.
+  - 변수 미리보기는 React 패널에서 템플릿 변수, 값, 품목 개수를 확인하게 한다.
+  - 서류 템플릿 관리 Django fallback 링크를 유지한다.
+- 기존 Django 서류 생성 endpoint와 템플릿 관리 화면은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/<id>/` bundle/API smoke check
+
+---
+
 ## Current task — React 일정 캘린더 1차 통합
 
 **목표**: 기존 Django `/reporting/schedules/calendar/` 화면을 fallback으로 유지하면서 React CRM에 `/schedules/calendar/` 캘린더 route를 추가해 일정 업무의 프론트 통합 범위를 넓힌다.
