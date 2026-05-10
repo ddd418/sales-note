@@ -473,6 +473,13 @@ React pages should continue to expose Django fallback/original links until featu
 
 ## Recommended Next Work
 
+Current latest work:
+
+- React customer/department searchable selection UX is implemented locally.
+- Changed files: `frontend/src/App.tsx`, `frontend/src/styles.css`, `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`.
+- Local validation passed: `npm run build`, `node --check server.mjs`, `python manage.py check`, `python manage.py makemigrations --check --dry-run`, `git diff --check`.
+- Deployment is pending commit/push and Railway `sales-note-frontend` deploy.
+
 After the React prepayment detail/create/edit flow is deployed and manually verified, continue React unified frontend migration. Natural next slices are:
 
 1. Move 선결제 삭제/취소/이관 into React while preserving Django `/reporting/prepayment/*`.

@@ -9,6 +9,39 @@
 
 ---
 
+## Current task — React 고객/부서 검색 선택 UX
+
+**목표**: React CRM의 메일 작성, 고객 등록/수정, 영업노트 작성/수정, 일정 작성/수정, 선결제 등록/수정에서 고객·업체·부서를 Django 화면처럼 검색해서 선택하게 한다.
+
+### 확인된 상태
+
+- 기존 React 주요 작성/수정 폼은 고객·부서 선택에 기본 `<select>`를 사용해 목록이 길어질수록 선택이 어렵다.
+- Django 운영 화면은 select2/search 기반 선택 UX가 있어 고객/부서 검색이 가능했다.
+- 이번 작업은 React UI 컴포넌트 교체이며, API payload와 DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- React 공통 `SearchableSelect` 컴포넌트를 추가한다.
+- 고객, 업체/학교, 부서/연구실 option 변환 helper를 만들어 화면별 payload 차이를 흡수한다.
+- 다음 화면의 고객·업체·부서 선택을 검색형으로 교체한다.
+  - 메일 작성의 연결 고객
+  - 고객 빠른 등록/고객 상세 수정의 업체·부서
+  - 영업노트 빠른 작성/상세 수정의 고객
+  - 일정 빠른 등록/상세 수정의 고객
+  - 선결제 등록/수정의 고객
+- 필터/상태/활동유형처럼 단순 범주 선택은 기존 select를 유지한다.
+
+### 검증 계획
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 번들 smoke check
+
+---
+
 ## Current task — React 메일함 1차 통합
 
 **목표**: 프론트 통합 로드맵의 1단계로 고객 메일함을 React CRM에 추가하고, 기존 Django Gmail/IMAP/EmailLog 로직은 API/backend 역할로 유지한다.

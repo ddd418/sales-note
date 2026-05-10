@@ -11197,3 +11197,72 @@ curl -i "https://sales-note-frontend-production.up.railway.app/reporting/api/wee
 ### 10. Recommended Next Task
 
 - 수동검수 결과를 받은 뒤 React 통합 프론트 전환 작업으로 복귀합니다.
+
+---
+
+## React Customer/Department Searchable Select UX — 고객·부서 검색 선택 (2026-05-10)
+
+### 1. Summary
+
+React CRM 주요 작성/수정 폼의 고객, 업체/학교, 부서/연구실 선택을 검색 가능한 선택 UI로 교체했습니다. 메일 작성에서도 연결 고객을 이름, 회사, 이메일로 검색해 선택할 수 있습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 고객/부서 검색 선택 UX 작업 계획 추가 |
+| `frontend/src/App.tsx` | 공통 `SearchableSelect` 추가, 고객/업체/부서 option helper 추가, 주요 폼 적용 |
+| `frontend/src/styles.css` | 검색 선택 컨트롤, 결과 목록, 폼 라벨 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 메일 작성의 연결 고객 선택에서 고객/회사/이메일 검색이 가능합니다.
+- 고객 등록/수정에서 업체와 부서를 검색해서 선택할 수 있습니다.
+- 영업노트, 일정, 선결제의 고객 선택에서 긴 목록을 스크롤하지 않고 검색할 수 있습니다.
+- 키보드 방향키, Enter, Escape, 외부 클릭/탭 이동 닫기 동작을 지원합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 API payload, 저장 API, 권한 체크, `/reporting/*` fallback 경로는 변경하지 않았습니다.
+- 상태, 우선순위, 활동 유형, 필터처럼 단순 범주 선택은 기존 select를 유지했습니다.
+- 신규 DB 필드와 migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+cd frontend && npm run build
+→ OK, dist/assets/index-DGco8KN_.js / dist/assets/index-B9odz52n.css generated
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Pending commit/push and Railway `sales-note-frontend` deployment.
+
+### 7. Known Limitations
+
+- 로그인 세션이 필요한 실제 고객 목록 검색 UX는 운영 배포 후 사용자 수동검수가 필요합니다.
+- 필터용 select와 사용자 이관 대상 select는 이번 요청 범위가 아니므로 유지했습니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/dashboard/`
+2. `/mailbox/`에서 `메일 작성`을 열고 `연결 고객`에서 고객명, 회사명, 이메일 일부로 검색되는지 확인합니다.
+3. `/customers/`에서 `새 고객 등록`을 열고 업체/학교와 부서/연구실이 검색되는지 확인합니다.
+4. 기존 고객 상세에서 `수정`을 열고 업체/부서 검색 선택 후 저장이 정상 동작하는지 확인합니다.
+5. `/notes/?create=1`, `/schedules/?create=1`, `/prepayments/new/`에서 고객 검색 선택이 동작하는지 확인합니다.
+
+### 9. Recommended Next Task
+
+- 수동검수 완료 후 React 통합 프론트의 다음 Django 템플릿 대체 범위를 진행합니다.

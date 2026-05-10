@@ -38,7 +38,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { type ChangeEvent, type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -257,6 +257,27 @@ type CustomerEditFormState = {
   pipelineStage: string;
   priority: string;
   status: string;
+};
+
+type SearchableSelectOption = {
+  value: string;
+  label: string;
+  meta?: string;
+  searchText?: string;
+};
+
+type CustomerSelectSource = {
+  id: number;
+  label?: string;
+  customer?: string;
+  customerName?: string;
+  company?: string;
+  companyName?: string;
+  department?: string;
+  departmentName?: string;
+  email?: string;
+  ownerName?: string;
+  priorityLabel?: string;
 };
 
 const localDateInputValue = (date = new Date()) => {
@@ -668,6 +689,232 @@ async function handleLogout() {
   } finally {
     window.location.href = '/reporting/login/';
   }
+}
+
+const searchableOptionLimit = 80;
+
+const joinOptionParts = (parts: Array<string | undefined>) => parts.filter(Boolean).join(' · ');
+
+function normalizeOptionText(value: string): string {
+  return value.trim().toLocaleLowerCase('ko-KR');
+}
+
+function makeCompanySelectOption(company: { id: number; name: string }): SearchableSelectOption {
+  return {
+    value: String(company.id),
+    label: company.name,
+    searchText: company.name,
+  };
+}
+
+function makeDepartmentSelectOption(department: { id: number; name: string; companyName?: string }): SearchableSelectOption {
+  const label = joinOptionParts([department.companyName, department.name]) || department.name;
+  return {
+    value: String(department.id),
+    label,
+    searchText: label,
+  };
+}
+
+function makeCustomerSelectOption(customer: CustomerSelectSource): SearchableSelectOption {
+  const label = customer.label || joinOptionParts([
+    customer.company || customer.companyName,
+    customer.department || customer.departmentName,
+    customer.customer || customer.customerName,
+  ]) || `고객 #${customer.id}`;
+  const meta = joinOptionParts([customer.email, customer.ownerName, customer.priorityLabel]);
+  return {
+    value: String(customer.id),
+    label,
+    meta,
+    searchText: [
+      label,
+      customer.company,
+      customer.companyName,
+      customer.department,
+      customer.departmentName,
+      customer.customer,
+      customer.customerName,
+      customer.email,
+      customer.ownerName,
+      customer.priorityLabel,
+    ].filter(Boolean).join(' '),
+  };
+}
+
+function SearchableSelect({
+  allowEmpty = false,
+  ariaLabel,
+  className = '',
+  disabled = false,
+  emptyLabel = '선택 없음',
+  onChange,
+  options,
+  placeholder = '검색해서 선택',
+  value,
+}: {
+  allowEmpty?: boolean;
+  ariaLabel: string;
+  className?: string;
+  disabled?: boolean;
+  emptyLabel?: string;
+  onChange: (value: string) => void;
+  options: SearchableSelectOption[];
+  placeholder?: string;
+  value: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectedOption = options.find((option) => option.value === value);
+  const allOptions = useMemo(
+    () => (allowEmpty ? [{ value: '', label: emptyLabel, searchText: emptyLabel }, ...options] : options),
+    [allowEmpty, emptyLabel, options],
+  );
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = normalizeOptionText(query);
+    const matches = normalizedQuery
+      ? allOptions.filter((option) => normalizeOptionText(`${option.label} ${option.meta || ''} ${option.searchText || ''}`).includes(normalizedQuery))
+      : allOptions;
+    return matches.slice(0, searchableOptionLimit);
+  }, [allOptions, query]);
+  const inputValue = open ? query : selectedOption?.label || (!value && allowEmpty ? emptyLabel : '');
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, filteredOptions.length]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current || containerRef.current.contains(event.target as Node)) {
+        return;
+      }
+      setOpen(false);
+      setQuery('');
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
+  const handleSelect = (nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((index) => Math.min(index + 1, Math.max(filteredOptions.length - 1, 0)));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((index) => Math.max(index - 1, 0));
+      return;
+    }
+    if (event.key === 'Enter' && open) {
+      event.preventDefault();
+      const activeOption = filteredOptions[activeIndex];
+      if (activeOption) {
+        handleSelect(activeOption.value);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setOpen(false);
+      setQuery('');
+    }
+  };
+
+  return (
+    <div
+      className={`searchable-select ${open ? 'open' : ''} ${disabled ? 'disabled' : ''} ${className}`.trim()}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setOpen(false);
+          setQuery('');
+        }
+      }}
+      ref={containerRef}
+    >
+      <div aria-expanded={open} aria-haspopup="listbox" className="searchable-select-control" role="combobox">
+        <Search size={15} />
+        <input
+          aria-autocomplete="list"
+          aria-label={ariaLabel}
+          className="searchable-select-input"
+          disabled={disabled}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setQuery('');
+            setOpen(true);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          value={inputValue}
+        />
+        {allowEmpty && value ? (
+          <button
+            aria-label={`${ariaLabel} 선택 해제`}
+            className="searchable-select-clear"
+            disabled={disabled}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              handleSelect('');
+            }}
+            type="button"
+          >
+            <X size={14} />
+          </button>
+        ) : null}
+        <button
+          aria-label={`${ariaLabel} 목록 열기`}
+          className="searchable-select-toggle"
+          disabled={disabled}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            setOpen((current) => !current);
+            setQuery('');
+          }}
+          type="button"
+        >
+          <ChevronDown size={15} />
+        </button>
+      </div>
+      {open && !disabled ? (
+        <div className="searchable-select-menu" role="listbox">
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option, index) => (
+              <button
+                aria-selected={option.value === value}
+                className={`searchable-select-option ${index === activeIndex ? 'active' : ''} ${option.value === value ? 'selected' : ''}`.trim()}
+                key={`${option.value}-${option.label}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  handleSelect(option.value);
+                }}
+                onMouseEnter={() => setActiveIndex(index)}
+                role="option"
+                type="button"
+              >
+                <span>{option.label}</span>
+                {option.meta ? <small>{option.meta}</small> : null}
+              </button>
+            ))
+          ) : (
+            <div className="searchable-select-empty">검색 결과 없음</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function AppShell({ activeView, children }: { activeView: MainView; children: React.ReactNode }) {
@@ -1671,32 +1918,27 @@ function CustomerDetailPage({
           {editOpen ? (
             <form className="notes-create-form customer-edit-form" onSubmit={handleEditSubmit}>
               <div className="notes-create-grid">
-                <label>
+                <div className="form-field">
                   <span>업체/학교</span>
-                  <select
-                    onChange={(event) => handleEditFieldChange('companyId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="업체/학교 선택"
+                    onChange={(nextValue) => handleEditFieldChange('companyId', nextValue)}
+                    options={editCompanies.map(makeCompanySelectOption)}
+                    placeholder="업체/학교 검색"
                     value={editForm.companyId}
-                  >
-                    <option value="">업체 선택</option>
-                    {editCompanies.map((company) => (
-                      <option key={company.id} value={company.id}>{company.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
+                  />
+                </div>
+                <div className="form-field">
                   <span>부서/연구실</span>
-                  <select
-                    onChange={(event) => handleEditFieldChange('departmentId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="부서/연구실 선택"
+                    disabled={!editForm.companyId}
+                    onChange={(nextValue) => handleEditFieldChange('departmentId', nextValue)}
+                    options={editDepartments.map(makeDepartmentSelectOption)}
+                    placeholder={editForm.companyId ? '부서/연구실 검색' : '업체를 먼저 선택'}
                     value={editForm.departmentId}
-                  >
-                    <option value="">부서 선택</option>
-                    {editDepartments.map((department) => (
-                      <option key={department.id} value={department.id}>{department.name}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>고객명</span>
                   <input
@@ -2166,34 +2408,27 @@ function CustomersPage({
                 </label>
               </div>
               <div className="notes-create-grid customer-create-grid">
-                <label>
+                <div className="form-field">
                   <span>업체/학교</span>
-                  <select
-                    onChange={(event) => onCreateFormChange('companyId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="업체/학교 선택"
+                    onChange={(nextValue) => onCreateFormChange('companyId', nextValue)}
+                    options={createCompanies.map(makeCompanySelectOption)}
+                    placeholder="업체/학교 검색"
                     value={createForm.companyId}
-                  >
-                    <option value="">업체 선택</option>
-                    {createCompanies.map((company) => (
-                      <option key={company.id} value={company.id}>{company.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
+                  />
+                </div>
+                <div className="form-field">
                   <span>부서/연구실</span>
-                  <select
-                    onChange={(event) => onCreateFormChange('departmentId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="부서/연구실 선택"
+                    disabled={!createForm.companyId}
+                    onChange={(nextValue) => onCreateFormChange('departmentId', nextValue)}
+                    options={createDepartments.map(makeDepartmentSelectOption)}
+                    placeholder={createForm.companyId ? '부서/연구실 검색' : '업체를 먼저 선택'}
                     value={createForm.departmentId}
-                  >
-                    <option value="">부서 선택</option>
-                    {createDepartments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.companyName} · {department.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>고객명</span>
                   <input
@@ -2823,19 +3058,16 @@ function NoteDetailPage({
           {editOpen ? (
             <form className="notes-create-form note-edit-form" onSubmit={handleEditSubmit}>
               <div className="notes-create-grid">
-                <label>
+                <div className="form-field">
                   <span>고객</span>
-                  <select
-                    onChange={(event) => handleEditFieldChange('followupId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="고객 선택"
+                    onChange={(nextValue) => handleEditFieldChange('followupId', nextValue)}
+                    options={data.edit.customers.map(makeCustomerSelectOption)}
+                    placeholder="고객, 회사, 부서 검색"
                     value={editForm.followupId}
-                  >
-                    <option value="">고객 선택</option>
-                    {data.edit.customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>{customer.label}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>활동 유형</span>
                   <select
@@ -3293,21 +3525,16 @@ function NotesPage({
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
               <div className="notes-create-grid">
-                <label>
+                <div className="form-field">
                   <span>고객</span>
-                  <select
-                    onChange={(event) => onCreateFormChange('followupId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="고객 선택"
+                    onChange={(nextValue) => onCreateFormChange('followupId', nextValue)}
+                    options={createCustomers.map(makeCustomerSelectOption)}
+                    placeholder="고객, 회사, 부서 검색"
                     value={createForm.followupId}
-                  >
-                    <option value="">고객 선택</option>
-                    {createCustomers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>활동 유형</span>
                   <select
@@ -4132,19 +4359,16 @@ function ScheduleDetailPage({
           {editOpen ? (
             <form className="notes-create-form schedule-edit-form" onSubmit={handleEditSubmit}>
               <div className="notes-create-grid schedules-create-grid">
-                <label>
+                <div className="form-field">
                   <span>고객</span>
-                  <select
-                    onChange={(event) => handleEditFieldChange('followupId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="고객 선택"
+                    onChange={(nextValue) => handleEditFieldChange('followupId', nextValue)}
+                    options={data.edit.customers.map(makeCustomerSelectOption)}
+                    placeholder="고객, 회사, 부서 검색"
                     value={editForm.followupId}
-                  >
-                    <option value="">고객 선택</option>
-                    {data.edit.customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>{customer.label}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>활동 유형</span>
                   <select
@@ -4752,21 +4976,16 @@ function SchedulesPage({
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
               <div className="notes-create-grid schedules-create-grid">
-                <label>
+                <div className="form-field">
                   <span>고객</span>
-                  <select
-                    onChange={(event) => onCreateFormChange('followupId', event.target.value)}
-                    required
+                  <SearchableSelect
+                    ariaLabel="고객 선택"
+                    onChange={(nextValue) => onCreateFormChange('followupId', nextValue)}
+                    options={createCustomers.map(makeCustomerSelectOption)}
+                    placeholder="고객, 회사, 부서 검색"
                     value={createForm.followupId}
-                  >
-                    <option value="">고객 선택</option>
-                    {createCustomers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <label>
                   <span>활동 유형</span>
                   <select
@@ -5368,21 +5587,16 @@ function PrepaymentFormFields({
   return (
     <form className="notes-create-form prepayment-form" onSubmit={onSubmit}>
       <div className="notes-create-grid prepayment-form-grid">
-        <label>
+        <div className="form-field">
           <span>고객</span>
-          <select
-            onChange={(event) => onChange('customerId', event.target.value)}
-            required
+          <SearchableSelect
+            ariaLabel="고객 선택"
+            onChange={(nextValue) => onChange('customerId', nextValue)}
+            options={options.customers.map(makeCustomerSelectOption)}
+            placeholder="고객, 회사, 부서 검색"
             value={form.customerId}
-          >
-            <option value="">고객 선택</option>
-            {options.customers.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.label || [customer.companyName, customer.departmentName, customer.customerName].filter(Boolean).join(' · ')}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
         <label>
           <span>입금일</span>
           <input
@@ -6273,17 +6487,18 @@ function MailComposePanel({
       </div>
       <form className="mail-compose-form" onSubmit={onSubmit}>
         {create.customers.length > 0 ? (
-          <label>
+          <div className="form-field">
             <span>연결 고객</span>
-            <select value={form.followupId} onChange={(event) => onCustomerChange(event.target.value)}>
-              <option value="">고객 선택 없음</option>
-              {create.customers.map((customer) => (
-                <option value={customer.id} key={customer.id}>
-                  {customer.company} · {customer.customer || customer.department} {customer.email ? `(${customer.email})` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+            <SearchableSelect
+              allowEmpty
+              ariaLabel="연결 고객 선택"
+              emptyLabel="고객 선택 없음"
+              onChange={onCustomerChange}
+              options={create.customers.map(makeCustomerSelectOption)}
+              placeholder="고객, 회사, 이메일 검색"
+              value={form.followupId}
+            />
+          </div>
         ) : null}
         <label>
           <span>받는 사람</span>
