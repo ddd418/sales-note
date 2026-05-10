@@ -15822,6 +15822,7 @@ def _prepayment_item_payload(prepayment, actor):
         'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if owner_id_matches else '',
         'customerHref': f'/customers/{customer.id}/' if customer else '',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[customer.id]) if customer else '',
+        'customerPrepaymentHref': f'/prepayments/customer/{customer.id}/' if customer else '',
         'djangoCustomerPrepaymentHref': reverse('reporting:prepayment_customer', args=[customer.id]) if customer else '',
     }
 
@@ -16037,6 +16038,153 @@ def _prepayment_create_payload(request):
             'prepayments': '/prepayments/',
             'djangoList': reverse('reporting:prepayment_list'),
         },
+    }
+
+
+def _prepayment_customer_target_user(request, user_profile):
+    target_user = request.user
+    selected_user_id = request.GET.get('user') or request.GET.get('target_user') or request.session.get('selected_user_id')
+    if user_profile.can_view_all_users() and selected_user_id:
+        try:
+            accessible_users = get_accessible_users(request.user, request)
+            target_user = accessible_users.get(id=selected_user_id)
+        except (User.DoesNotExist, ValueError, TypeError):
+            target_user = request.user
+    return target_user
+
+
+def _prepayment_customer_access_allowed(request, customer):
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_admin() or user_profile.is_manager():
+        return True
+    is_customer_owner = customer.user_id == request.user.id
+    has_prepayment = Prepayment.objects.filter(
+        customer=customer,
+        created_by=request.user,
+    ).exists()
+    return bool(is_customer_owner or has_prepayment)
+
+
+def _prepayment_customer_context_payload(request, customer):
+    department = customer.department
+    company = customer.company
+    user_profile = get_user_profile(request.user)
+    target_user = _prepayment_customer_target_user(request, user_profile)
+
+    if department:
+        department_followups = list(
+            FollowUp.objects.filter(department=department)
+            .select_related('company', 'department', 'user')
+            .order_by('customer_name', 'id')
+        )
+        prepayments = Prepayment.objects.filter(
+            customer__department=department,
+            created_by=target_user,
+        )
+        scope_name = ' · '.join([value for value in [
+            company.name if company else '',
+            department.name,
+        ] if value])
+        scope_mode = 'department'
+    else:
+        department_followups = [customer]
+        prepayments = Prepayment.objects.filter(
+            customer=customer,
+            created_by=target_user,
+        )
+        scope_name = customer.customer_name or '고객명 미정'
+        scope_mode = 'customer'
+
+    prepayments = prepayments.select_related(
+        'company',
+        'customer',
+        'customer__company',
+        'customer__department',
+        'created_by',
+    ).annotate(
+        usage_count=Count('usages', distinct=True),
+    ).order_by('payment_date', 'id')
+
+    stats = prepayments.aggregate(
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance'),
+        total_count=Count('id'),
+        active_count=Count('id', filter=Q(status='active')),
+        depleted_count=Count('id', filter=Q(status='depleted')),
+        cancelled_count=Count('id', filter=Q(status='cancelled')),
+    )
+    total_amount = _money_int(stats['total_amount'])
+    total_balance = _money_int(stats['total_balance'])
+    rows = list(prepayments)
+
+    accessible_users = []
+    if user_profile.can_view_all_users():
+        accessible_users = [
+            {
+                'id': user.id,
+                'name': _user_display_name(user),
+            }
+            for user in get_accessible_users(request.user, request).order_by('first_name', 'username')
+        ]
+
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'mode': scope_mode,
+            'name': scope_name,
+            'label': f'{scope_name} 선결제',
+            'targetUserId': target_user.id,
+            'targetUserName': _user_display_name(target_user),
+            'canSelectUser': bool(user_profile.can_view_all_users()),
+        },
+        'customer': {
+            'id': customer.id,
+            'customerName': customer.customer_name or customer.manager or '고객명 미정',
+            'companyId': company.id if company else None,
+            'companyName': company.name if company else '',
+            'departmentId': department.id if department else None,
+            'departmentName': department.name if department else '',
+            'ownerName': _user_display_name(customer.user),
+            'href': f'/customers/{customer.id}/',
+            'djangoHref': reverse('reporting:followup_detail', args=[customer.id]),
+        },
+        'departmentCustomers': [
+            {
+                'id': followup.id,
+                'customerName': followup.customer_name or followup.manager or '고객명 미정',
+                'ownerName': _user_display_name(followup.user),
+                'href': f'/customers/{followup.id}/',
+                'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
+            }
+            for followup in department_followups
+        ],
+        'metrics': {
+            'totalAmount': total_amount,
+            'totalBalance': total_balance,
+            'totalUsed': max(total_amount - total_balance, 0),
+            'totalCount': stats['total_count'] or 0,
+            'activeCount': stats['active_count'] or 0,
+            'depletedCount': stats['depleted_count'] or 0,
+            'cancelledCount': stats['cancelled_count'] or 0,
+        },
+        'options': {
+            'owners': accessible_users,
+        },
+        'links': {
+            'prepayments': '/prepayments/',
+            'reactCustomer': f'/prepayments/customer/{customer.id}/',
+            'djangoList': reverse('reporting:prepayment_list'),
+            'djangoCustomer': reverse('reporting:prepayment_customer', args=[customer.id]),
+            'djangoExcel': reverse('reporting:prepayment_customer_excel', args=[customer.id]),
+            'customerDetail': f'/customers/{customer.id}/',
+            'djangoCustomerDetail': reverse('reporting:followup_detail', args=[customer.id]),
+        },
+        'prepayments': [
+            _prepayment_item_payload(prepayment, request.user)
+            for prepayment in rows
+        ],
     }
 
 
@@ -16309,6 +16457,25 @@ def prepayment_create_api(request):
         'djangoHref': reverse('reporting:prepayment_detail', args=[prepayment.id]),
         'prepayment': _prepayment_item_payload(prepayment, request.user),
     }, status=201)
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def prepayment_customer_api(request, customer_id):
+    """React 고객별/부서별 선결제 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    customer = get_object_or_404(
+        FollowUp.objects.select_related('company', 'department', 'user'),
+        pk=customer_id,
+    )
+    if not _prepayment_customer_access_allowed(request, customer):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+    return JsonResponse(_prepayment_customer_context_payload(request, customer))
 
 
 @ensure_csrf_cookie

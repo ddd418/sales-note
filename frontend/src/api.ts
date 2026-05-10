@@ -924,6 +924,7 @@ export type PrepaymentListItem = {
   transferHref: string;
   customerHref: string;
   djangoCustomerHref: string;
+  customerPrepaymentHref: string;
   djangoCustomerPrepaymentHref: string;
 };
 
@@ -1078,6 +1079,62 @@ export type PrepaymentCreateData = {
     prepayments: string;
     djangoList: string;
   };
+};
+
+export type PrepaymentCustomerData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    mode: string;
+    name: string;
+    label: string;
+    targetUserId: number | null;
+    targetUserName: string;
+    canSelectUser: boolean;
+  };
+  customer: {
+    id: number | null;
+    customerName: string;
+    companyId: number | null;
+    companyName: string;
+    departmentId: number | null;
+    departmentName: string;
+    ownerName: string;
+    href: string;
+    djangoHref: string;
+  };
+  departmentCustomers: Array<{
+    id: number;
+    customerName: string;
+    ownerName: string;
+    href: string;
+    djangoHref: string;
+  }>;
+  metrics: {
+    totalAmount: number;
+    totalBalance: number;
+    totalUsed: number;
+    totalCount: number;
+    activeCount: number;
+    depletedCount: number;
+    cancelledCount: number;
+  };
+  options: {
+    owners: Array<{ id: number; name: string }>;
+  };
+  links: {
+    prepayments: string;
+    reactCustomer: string;
+    djangoList: string;
+    djangoCustomer: string;
+    djangoExcel: string;
+    customerDetail: string;
+    djangoCustomerDetail: string;
+  };
+  prepayments: PrepaymentListItem[];
 };
 
 export type PrepaymentFormPayload = {
@@ -1930,6 +1987,54 @@ const emptyPrepaymentCreateData: PrepaymentCreateData = {
     prepayments: '/prepayments/',
     djangoList: '/reporting/prepayment/',
   },
+};
+
+const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    mode: '',
+    name: '',
+    label: '',
+    targetUserId: null,
+    targetUserName: '',
+    canSelectUser: false,
+  },
+  customer: {
+    id: null,
+    customerName: '',
+    companyId: null,
+    companyName: '',
+    departmentId: null,
+    departmentName: '',
+    ownerName: '',
+    href: '',
+    djangoHref: '',
+  },
+  departmentCustomers: [],
+  metrics: {
+    totalAmount: 0,
+    totalBalance: 0,
+    totalUsed: 0,
+    totalCount: 0,
+    activeCount: 0,
+    depletedCount: 0,
+    cancelledCount: 0,
+  },
+  options: {
+    owners: [],
+  },
+  links: {
+    prepayments: '/prepayments/',
+    reactCustomer: '',
+    djangoList: '/reporting/prepayment/',
+    djangoCustomer: '',
+    djangoExcel: '',
+    customerDetail: '',
+    djangoCustomerDetail: '',
+  },
+  prepayments: [],
 };
 
 const emptyAIWorkspaceData: AIWorkspaceData = {
@@ -2993,6 +3098,68 @@ export async function loadPrepaymentCreateData(): Promise<PrepaymentCreateData> 
       ...emptyPrepaymentCreateData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Prepayment create API unavailable',
+    };
+  }
+}
+
+export async function loadPrepaymentCustomerData(
+  customerId: number,
+  targetUserId?: string,
+): Promise<PrepaymentCustomerData> {
+  const query = new URLSearchParams();
+  if (targetUserId) {
+    query.set('user', targetUserId);
+  }
+
+  try {
+    const response = await fetch(`/reporting/api/prepayments/customer/${customerId}/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Prepayment customer API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<PrepaymentCustomerData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Prepayment customer API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyPrepaymentCustomerData,
+      ...payload,
+      scope: {
+        ...emptyPrepaymentCustomerData.scope,
+        ...(payload.scope ?? {}),
+      },
+      customer: {
+        ...emptyPrepaymentCustomerData.customer,
+        ...(payload.customer ?? {}),
+      },
+      metrics: {
+        ...emptyPrepaymentCustomerData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      options: {
+        ...emptyPrepaymentCustomerData.options,
+        ...(payload.options ?? {}),
+        owners: payload.options?.owners ?? emptyPrepaymentCustomerData.options.owners,
+      },
+      links: {
+        ...emptyPrepaymentCustomerData.links,
+        ...(payload.links ?? {}),
+      },
+      departmentCustomers: payload.departmentCustomers ?? emptyPrepaymentCustomerData.departmentCustomers,
+      prepayments: payload.prepayments ?? emptyPrepaymentCustomerData.prepayments,
+    };
+  } catch (error) {
+    return {
+      ...emptyPrepaymentCustomerData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Prepayment customer API unavailable',
     };
   }
 }

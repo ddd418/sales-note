@@ -1235,6 +1235,81 @@ h2 {
   opacity: 0.58;
 }
 
+.prepayment-customer-page {
+  min-width: 0;
+}
+
+.prepayment-customer-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: start;
+}
+
+.prepayment-customer-filter {
+  margin-bottom: 12px;
+}
+
+.prepayment-customer-filter label {
+  display: grid;
+  max-width: 260px;
+  gap: 6px;
+}
+
+.prepayment-customer-filter span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.prepayment-customer-filter select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.prepayment-customer-side {
+  min-width: 0;
+}
+
+.prepayment-customer-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.prepayment-customer-list a {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.prepayment-customer-list a.active {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+
+.prepayment-customer-list strong {
+  font-size: 13px;
+}
+
+.prepayment-customer-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.prepayment-customer-table {
+  min-width: 900px;
+}
+
 .customer-name-link {
   display: grid;
   gap: 3px;
@@ -4180,6 +4255,7 @@ tbody tr:hover {
   .prepayments-filter-bar,
   .prepayment-form-grid,
   .prepayment-detail-layout,
+  .prepayment-customer-layout,
   .ai-layout,
   .ai-followup-grid,
   .ai-prompt-grid,

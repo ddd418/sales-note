@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React 고객별/부서별 선결제 화면 전환
+
+**상태**: 구현/로컬 검증 완료, Railway 배포 준비
+
+### 요약
+
+React CRM에 `/prepayments/customer/<customer_id>/` 고객별/부서별 선결제 화면을 추가했습니다. 기존 Django `/reporting/prepayment/customer/<customer_id>/` 및 엑셀 다운로드는 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 고객별/부서별 선결제 JSON API와 React 고객별 링크 payload 추가
+- `reporting/urls.py`: `/reporting/api/prepayments/customer/<customer_id>/` 추가
+- `reporting/tests.py`: 고객별 선결제 API 권한, 부서 범위, 선택 사용자 필터 테스트 추가
+- `frontend/src/api.ts`: `PrepaymentCustomerData`, `loadPrepaymentCustomerData()` 추가
+- `frontend/src/App.tsx`: `/prepayments/customer/<id>/` 라우팅과 고객별 선결제 화면 추가
+- `frontend/src/styles.css`: 고객별 선결제 화면 레이아웃/고객 목록 스타일 추가
+- `frontend/README.md`: React 선결제 고객별 범위 기록
+- `AGENT_PLAN.md`: 작업 계획 기록
+
+### CRM 개선
+
+- 고객별 선결제 화면을 React CRM 안에서 확인할 수 있습니다.
+- 기존 운영 의미대로, 고객이 부서에 속해 있으면 같은 부서 전체 고객의 선결제를 함께 보여줍니다.
+- 금액/잔액/사용액/상태별 건수와 같은 부서 고객 목록을 한 화면에 제공합니다.
+- 선결제 목록/상세의 `고객별` 링크가 React 화면으로 이동하며, Django 고객별/엑셀 fallback도 유지됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/prepayment/customer/<customer_id>/` Django 화면 유지.
+- 기존 `/reporting/prepayment/customer/<customer_id>/excel/` 엑셀 다운로드 유지.
+- Salesman 접근 규칙 유지: 고객 담당자이거나 해당 고객에 본인이 등록한 선결제가 있어야 접근 가능.
+- Admin/Manager 선택 사용자 세션 필터 유지 및 React query 필터 추가.
+- DB 모델 변경 없음, migration 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.PrepaymentCustomerApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npm run build
+→ OK, assets/index-C1Keut7B.js / assets/index-BwpNmJt5.css
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1
+→ Ran 10 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### Railway 배포 및 운영 스모크
+
+- Commit: 배포 전
+- `web` deployment: 배포 전
+- `sales-note-frontend` deployment: 배포 전
+
+### 알려진 제한
+
+- 운영 서버에서 실제 로그인 세션으로 고객별 화면의 권한별 데이터 범위는 사용자가 직접 확인해야 합니다.
+- 기존 Django 엑셀 다운로드는 React가 직접 생성하지 않고 Django 링크로 유지합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/prepayments/`
+2. 선결제 목록에서 `고객별`을 눌러 `/prepayments/customer/<customer_id>/`로 이동하는지 확인합니다.
+3. 같은 부서의 여러 고객이 있는 경우 부서 전체 고객과 해당 사용자의 선결제가 함께 표시되는지 확인합니다.
+4. 총 선결제, 남은 잔액, 사용 금액, 상태별 건수가 Django 고객별 화면과 맞는지 비교합니다.
+5. 고객별 화면의 선결제 `상세`, `수정`, `Django` 링크가 정상 이동하는지 확인합니다.
+6. 우측 부서 고객 목록에서 다른 고객을 눌러도 같은 부서 기준 화면이 유지되는지 확인합니다.
+7. Manager/Admin 계정에서는 조회 사용자 선택이 보이고 사용자 변경 시 해당 사용자의 선결제로 갱신되는지 확인합니다.
+8. 접근 권한이 없는 salesman 계정에서 URL 직접 접근이 차단되는지 확인합니다.
+9. `Django 고객별`, `엑셀`, `Django 고객 상세` 링크가 기존 Django 화면/다운로드로 정상 연결되는지 확인합니다.
+
+### 다음 권장 작업
+
+- 수동검수 완료 후 견적/문서 생성 흐름 또는 고객 상세 내 선결제/결제 이력 요약을 React로 확장합니다.
+
+---
+
 ## 2026-05-10 — React 선결제 삭제/취소/이관 전환
 
 **상태**: 구현/검증/배포 완료, 사용자 수동검수 대기

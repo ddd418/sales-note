@@ -9,7 +9,48 @@
 
 ---
 
-## Current task — React 선결제 삭제/취소/이관 전환
+## Current task — React 고객별/부서별 선결제 화면 전환
+
+**목표**: 기존 Django `/reporting/prepayment/customer/<customer_id>/` 운영 화면을 유지하면서 React CRM에서 고객별(실제로는 같은 부서 전체) 선결제 현황을 확인할 수 있게 한다.
+
+### 확인된 상태
+
+- React 선결제 목록, 등록, 상세, 수정, 취소, 삭제, 이관은 배포 후 사용자가 수동검수를 완료했다.
+- 기존 Django `prepayment_customer_view`는 URL의 고객을 기준으로 부서를 찾고, 부서가 있으면 같은 부서 전체 고객의 선결제를 보여준다.
+- Salesman 접근 규칙은 고객 담당자이거나 해당 고객에 본인이 등록한 선결제가 있는 경우만 허용한다.
+- Admin/Manager는 접근 가능하며, `selected_user_id` 세션 필터가 있으면 해당 접근 가능 사용자의 선결제를 본다.
+- 기존 Django 엑셀 다운로드 `/reporting/prepayment/customer/<customer_id>/excel/`은 유지한다.
+- DB 필드 추가는 필요하지 않다.
+
+### 구현 계획
+
+- React용 고객별 선결제 API를 추가한다.
+  - `/reporting/api/prepayments/customer/<customer_id>/`
+  - 권한 규칙은 기존 Django view와 동일하게 유지한다.
+  - 기준 고객, 회사/부서, 부서 내 고객 목록, target owner, 상태별/금액별 지표, 선결제 목록, Django fallback/엑셀 링크를 반환한다.
+- React 라우팅을 추가한다.
+  - `/prepayments/customer/<customer_id>/`
+  - 선결제 목록과 상세 화면의 `고객별` 링크를 React 경로로 전환한다.
+  - Django 고객별/엑셀 fallback 링크는 별도 유지한다.
+- 고객별 화면 UI를 추가한다.
+  - 부서/고객 컨텍스트, 총액/사용액/잔액/건수, 상태별 카운트, 같은 부서 고객 목록, 선결제 테이블.
+  - 각 선결제는 React 상세와 Django 상세로 이동 가능.
+- 신규 migration은 만들지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.PrepaymentCustomerApiTests --verbosity=1`
+- `python manage.py test reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentsSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+---
+
+## Previous task — React 선결제 삭제/취소/이관 전환
 
 **목표**: 기존 Django `/reporting/prepayment/*` 운영 화면을 유지하면서 React 선결제 상세 화면에서 삭제, 취소, 이관까지 처리할 수 있게 한다.
 

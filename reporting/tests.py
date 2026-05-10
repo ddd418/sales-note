@@ -2073,6 +2073,129 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertFalse(detail_payload['actions']['canTransfer'])
 
 
+class PrepaymentCustomerApiTests(TestCase):
+    """React 고객별/부서별 선결제 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='고객별선결제API회사')
+        self.other_company = UserCompany.objects.create(name='고객별선결제API타사회사')
+        self.user = make_user('prepayment_customer_me', role='salesman', company=self.company)
+        self.coworker = make_user('prepayment_customer_coworker', role='salesman', company=self.company)
+        self.manager = make_user('prepayment_customer_manager', role='manager', company=self.company)
+        self.other_user = make_user('prepayment_customer_other', role='salesman', company=self.other_company)
+
+    def _create_department_customers(self, owner=None):
+        from reporting.models import Company, Department, FollowUp
+
+        owner = owner or self.user
+        customer_company = Company.objects.create(name=f'고객별선결제 고객사 {owner.username}', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name='공동 연구실',
+            created_by=owner,
+        )
+        first = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name='1번 담당자',
+            company=customer_company,
+            department=department,
+        )
+        second = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name='2번 담당자',
+            company=customer_company,
+            department=department,
+        )
+        return customer_company, department, first, second
+
+    def _create_prepayment(self, owner, customer, amount=100000, balance=70000, status='active', payer='입금자'):
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        return Prepayment.objects.create(
+            customer=customer,
+            company=customer.company,
+            amount=amount,
+            balance=balance,
+            payment_date=timezone.localdate(),
+            payment_method='transfer',
+            payer_name=payer,
+            memo='고객별 메모',
+            status=status,
+            created_by=owner,
+        )
+
+    def test_customer_prepayment_api_returns_department_scope_and_metrics(self):
+        _company, department, first, second = self._create_department_customers()
+        self._create_prepayment(self.user, first, amount=100000, balance=70000, status='active', payer='첫 입금')
+        self._create_prepayment(self.user, second, amount=200000, balance=0, status='depleted', payer='둘째 입금')
+        self._create_prepayment(self.coworker, first, amount=500000, balance=500000, payer='동료 입금')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['scope']['mode'], 'department')
+        self.assertEqual(payload['customer']['departmentId'], department.id)
+        self.assertEqual(payload['scope']['targetUserId'], self.user.id)
+        self.assertEqual(len(payload['departmentCustomers']), 2)
+        self.assertEqual(payload['metrics']['totalAmount'], 300000)
+        self.assertEqual(payload['metrics']['totalBalance'], 70000)
+        self.assertEqual(payload['metrics']['totalUsed'], 230000)
+        self.assertEqual(payload['metrics']['totalCount'], 2)
+        self.assertEqual(payload['metrics']['activeCount'], 1)
+        self.assertEqual(payload['metrics']['depletedCount'], 1)
+        self.assertEqual([item['customerId'] for item in payload['prepayments']], [first.id, second.id])
+        self.assertEqual(payload['links']['reactCustomer'], f'/prepayments/customer/{first.id}/')
+        self.assertEqual(payload['links']['djangoExcel'], reverse('reporting:prepayment_customer_excel', args=[first.id]))
+        self.assertEqual(payload['prepayments'][0]['customerPrepaymentHref'], f'/prepayments/customer/{first.id}/')
+
+    def test_customer_prepayment_api_uses_selected_accessible_user_for_manager(self):
+        _company, _department, first, _second = self._create_department_customers()
+        self._create_prepayment(self.user, first, amount=100000, balance=100000, payer='내 입금')
+        self._create_prepayment(self.coworker, first, amount=250000, balance=150000, payer='동료 입금')
+        session = self.client.session
+        session['selected_user_id'] = str(self.coworker.id)
+        session.save()
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['scope']['canSelectUser'])
+        self.assertEqual(payload['scope']['targetUserId'], self.coworker.id)
+        self.assertEqual(payload['metrics']['totalAmount'], 250000)
+        self.assertEqual(len(payload['prepayments']), 1)
+        self.assertEqual(payload['prepayments'][0]['ownerId'], self.coworker.id)
+
+    def test_customer_prepayment_api_allows_salesman_with_own_prepayment_and_blocks_unrelated(self):
+        _company, _department, first, _second = self._create_department_customers(owner=self.coworker)
+        self._create_prepayment(self.user, first, amount=90000, balance=50000, payer='접근 허용 입금')
+
+        self.client.force_login(self.user)
+        allowed = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()['metrics']['totalAmount'], 90000)
+
+        self.client.force_login(self.other_user)
+        blocked = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+        self.assertEqual(blocked.status_code, 403)
+
+    def test_customer_prepayment_api_requires_login(self):
+        _company, _department, first, _second = self._create_department_customers()
+
+        response = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+
 class SchedulesSummaryApiTests(TestCase):
     """React 일정 화면 읽기 API 검증"""
 
