@@ -11464,15 +11464,31 @@ git diff --check
 
 ### 6. Deployment Status
 
-- Runtime commit: pending
-- GitHub push: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
-- Deployed frontend bundle: pending
+- Runtime commit: `07d0776 feat: add React schedule calendar`
+- GitHub push: `main` updated from `2d02547` to `07d0776`
+- Railway `web`: `ffa1cb41-76f6-4c82-9cf8-6731ebda092d` SUCCESS
+- Railway `sales-note-frontend`: `5126b81d-e0ba-4da7-9711-d9f8248a8f25` SUCCESS
+- Deployed frontend bundle: `assets/index-CTcLLIQe.js` / `assets/index-BJ8JCI1J.css`
 
 ### 7. Production Smoke Check
 
-- Pending until Railway deployment completes.
+```text
+GET https://sales-note-frontend-production.up.railway.app/schedules/calendar/
+→ 200, bundle assets/index-CTcLLIQe.js and assets/index-BJ8JCI1J.css
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/calendar/
+→ 401 login_required JSON
+
+GET https://web-production-5096.up.railway.app/reporting/api/schedules/calendar/
+→ 401 login_required JSON
+
+GET https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+Downloaded JS/CSS bundle
+→ JS contains schedule-calendar-page, /reporting/api/schedules/calendar/, weekly-schedule-load
+→ CSS contains .schedule-calendar-grid, .schedule-calendar-day, .weekly-schedule-load
+```
 
 ### 8. Known Limitations
 

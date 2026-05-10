@@ -641,7 +641,7 @@ Needs awareness:
 
 User confirmed the weekly report flow works except the `일정 불러오기` button needed to be on the right. That position fix was implemented first, built, committed previously as `2d02547 fix: move weekly schedule loader panel`, pushed, deployed to `sales-note-frontend` deployment `c9d534dd-8e6b-4943-8af2-89f9d643f004`, and smoke-tested (`/weekly-reports/new/` 200, JS/CSS bundle contains `weekly-schedule-load`).
 
-The next implementation now in progress is React schedule calendar first integration:
+The next implementation completed is React schedule calendar first integration:
 
 - Added `/reporting/api/schedules/calendar/` authenticated JSON API.
 - Added date range parsing, same-company data filters (`me`, `all`, `user`), user options, and calendar metrics.
@@ -664,18 +664,30 @@ cd frontend; node --check server.mjs
 git diff --check
 ```
 
-Current built frontend assets before deployment:
+Runtime commit and deployments:
+
+- Runtime commit: `07d0776 feat: add React schedule calendar`
+- Railway `web`: `ffa1cb41-76f6-4c82-9cf8-6731ebda092d` SUCCESS
+- Railway `sales-note-frontend`: `5126b81d-e0ba-4da7-9711-d9f8248a8f25` SUCCESS
+
+Deployed frontend assets:
 
 - `dist/assets/index-CTcLLIQe.js`
 - `dist/assets/index-BJ8JCI1J.css`
 
-Pending next steps:
+Production smoke passed:
 
-1. Commit and push the React schedule calendar changes.
-2. Deploy Railway `web` and `sales-note-frontend`.
-3. Smoke test:
-   - `https://sales-note-frontend-production.up.railway.app/schedules/calendar/` returns 200.
-   - deployed JS contains `schedule-calendar-page` or `/reporting/api/schedules/calendar/`.
-   - deployed CSS contains `.schedule-calendar-grid`.
-   - anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/calendar/` returns `401 login_required`.
-4. Update `AGENT_REPORT.md` and this handoff with final commit/deployment IDs.
+- `https://sales-note-frontend-production.up.railway.app/schedules/calendar/` returns 200.
+- deployed JS contains `schedule-calendar-page`, `/reporting/api/schedules/calendar/`, and `weekly-schedule-load`.
+- deployed CSS contains `.schedule-calendar-grid`, `.schedule-calendar-day`, and `.weekly-schedule-load`.
+- anonymous frontend-proxied API and direct backend API `/reporting/api/schedules/calendar/` return `401 login_required`.
+
+Manual test requested from user:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`.
+2. Verify month navigation and today highlight.
+3. Verify `내 일정`, `회사 전체`, `직원 선택` filters.
+4. Click a scheduled date and verify right-side selected-day list.
+5. Open a customer schedule and a personal schedule from the list.
+6. Confirm `Django 캘린더` fallback still works.
+7. Recheck `/weekly-reports/new/` has `일정 불러오기` in the right schedule panel.
