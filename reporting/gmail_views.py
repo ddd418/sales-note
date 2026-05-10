@@ -693,6 +693,390 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
 # 메일함 조회
 # ============================================
 
+def _mailbox_email_q(user):
+    from django.db.models import Q
+
+    return Q(sender=user) | Q(user=user) | Q(followup__user=user) | Q(schedule__user=user)
+
+
+def _email_thread_identifier(email):
+    return email.gmail_thread_id or email.thread_id or email.gmail_message_id or email.message_id or str(email.id)
+
+
+def _email_contact_for_box(email, mailbox_type):
+    if mailbox_type == 'sent':
+        return email.recipient_name or email.to_name or email.recipient_email or email.to_email
+    return email.from_name or email.sender_email or email.from_email or email.sender_email
+
+
+def _email_datetime(email):
+    return email.received_at or email.sent_at or email.created_at
+
+
+def _email_text_preview(email, limit=160):
+    from django.utils.html import strip_tags
+    from django.utils.text import Truncator
+
+    text = strip_tags(email.body_html or email.body or '').replace('\xa0', ' ')
+    text = ' '.join(text.split())
+    return Truncator(text).chars(limit)
+
+
+def _serialize_email_item(email, mailbox_type='inbox'):
+    thread_id = _email_thread_identifier(email)
+    followup = email.followup
+    schedule = email.schedule
+    happened_at = _email_datetime(email)
+    return {
+        'id': email.id,
+        'type': email.email_type,
+        'typeLabel': '보낸 메일' if email.email_type == 'sent' else '받은 메일',
+        'subject': email.subject,
+        'contact': _email_contact_for_box(email, mailbox_type),
+        'senderEmail': email.sender_email or email.from_email,
+        'recipientEmail': email.recipient_email or email.to_email,
+        'ccEmails': email.cc_emails,
+        'preview': _email_text_preview(email),
+        'bodyText': _email_text_preview(email, limit=4000),
+        'sentAt': email.sent_at.isoformat() if email.sent_at else None,
+        'receivedAt': email.received_at.isoformat() if email.received_at else None,
+        'happenedAt': happened_at.isoformat() if happened_at else None,
+        'isRead': email.is_read,
+        'isStarred': email.is_starred,
+        'isArchived': email.is_archived,
+        'isTrashed': email.is_trashed,
+        'threadId': thread_id,
+        'threadHref': f'/mailbox/thread/{thread_id}/',
+        'djangoThreadHref': reverse('reporting:mailbox_thread', args=[thread_id]),
+        'replyHref': reverse('reporting:mailbox_api_reply', args=[email.id]),
+        'toggleStarHref': reverse('reporting:mailbox_api_toggle_star', args=[email.id]),
+        'archiveHref': reverse('reporting:mailbox_api_archive', args=[email.id]),
+        'trashHref': reverse('reporting:mailbox_api_move_to_trash', args=[email.id]),
+        'restoreHref': reverse('reporting:mailbox_api_restore', args=[email.id]),
+        'deleteHref': reverse('reporting:mailbox_api_delete', args=[email.id]),
+        'followup': {
+            'id': followup.id if followup else None,
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'href': f'/customers/{followup.id}/' if followup else '',
+            'djangoHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        },
+        'schedule': {
+            'id': schedule.id if schedule else None,
+            'href': f'/schedules/{schedule.id}/' if schedule else '',
+            'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+        },
+        'attachments': email.attachments_info or [],
+    }
+
+
+def _mailbox_connection_payload(profile):
+    provider = profile.email_provider or ('gmail' if profile.gmail_token else 'imap')
+    address = profile.gmail_email or profile.imap_email or ''
+    connected = bool(profile.gmail_token or profile.imap_connected_at)
+    return {
+        'connected': connected,
+        'provider': provider,
+        'address': address,
+        'gmailConnected': bool(profile.gmail_token),
+        'imapConnected': bool(profile.imap_connected_at),
+        'lastSyncAt': (
+            profile.gmail_last_sync_at.isoformat() if profile.gmail_last_sync_at
+            else profile.imap_last_sync_at.isoformat() if profile.imap_last_sync_at
+            else None
+        ),
+        'connectHref': reverse('reporting:gmail_connect'),
+        'imapConnectHref': reverse('reporting:imap_connect'),
+        'profileHref': reverse('reporting:profile'),
+    }
+
+
+def _mailbox_counts(user):
+    base = EmailLog.objects.filter(_mailbox_email_q(user))
+    return {
+        'inbox': base.filter(email_type='received', is_trashed=False, is_archived=False).count(),
+        'sent': base.filter(email_type='sent', is_trashed=False).count(),
+        'starred': base.filter(is_starred=True, is_trashed=False).count(),
+        'archived': base.filter(is_archived=True, is_trashed=False).count(),
+        'trash': base.filter(is_trashed=True).count(),
+        'unread': base.filter(email_type='received', is_read=False, is_trashed=False).count(),
+    }
+
+
+def _mailbox_queryset(user, mailbox_type):
+    from django.db.models.functions import Coalesce
+
+    base = EmailLog.objects.filter(_mailbox_email_q(user)).select_related(
+        'sender', 'followup', 'followup__company', 'followup__department', 'schedule', 'business_card'
+    )
+    if mailbox_type == 'sent':
+        return base.filter(email_type='sent', is_trashed=False).order_by('-sent_at', '-created_at')
+    if mailbox_type == 'starred':
+        return base.filter(is_starred=True, is_trashed=False).order_by(Coalesce('received_at', 'sent_at', 'created_at').desc())
+    if mailbox_type == 'archived':
+        return base.filter(is_archived=True, is_trashed=False).order_by(Coalesce('received_at', 'sent_at', 'created_at').desc())
+    if mailbox_type == 'trash':
+        return base.filter(is_trashed=True).order_by('-trashed_at', '-created_at')
+    return base.filter(email_type='received', is_trashed=False, is_archived=False).order_by(
+        Coalesce('received_at', 'created_at').desc()
+    )
+
+
+def _mailbox_create_payload(user):
+    followups = FollowUp.objects.filter(user=user).select_related('company', 'department').order_by('company__name', 'customer_name')
+    business_cards = BusinessCard.objects.filter(user=user, is_active=True).order_by('-is_default', '-created_at')
+    return {
+        'canSend': True,
+        'message': '',
+        'submitUrl': reverse('reporting:mailbox_api_send'),
+        'djangoUrl': reverse('reporting:send_email_from_mailbox'),
+        'customers': [
+            {
+                'id': followup.id,
+                'customer': followup.customer_name or '',
+                'company': followup.company.name if followup.company else '',
+                'department': followup.department.name if followup.department else '',
+                'email': followup.email or '',
+            }
+            for followup in followups
+        ],
+        'businessCards': [
+            {
+                'id': card.id,
+                'name': card.name,
+                'fullName': card.full_name,
+                'email': card.email,
+                'isDefault': card.is_default,
+            }
+            for card in business_cards
+        ],
+    }
+
+
+def _followup_allowed_for_mail(user, followup):
+    profile = user.userprofile
+    if profile.is_admin():
+        return True
+    if followup.user_id == user.id:
+        return True
+    if profile.company and followup.user_id:
+        try:
+            return followup.user.userprofile.company_id == profile.company_id
+        except UserProfile.DoesNotExist:
+            return False
+    return False
+
+
+def _json_method_error():
+    return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'}, status=405)
+
+
+@login_required
+def mailbox_api_list(request):
+    """React 메일함 목록 API"""
+    from django.db.models import Q
+
+    mailbox_type = request.GET.get('box') or 'inbox'
+    if mailbox_type not in {'inbox', 'sent', 'starred', 'archived', 'trash'}:
+        mailbox_type = 'inbox'
+
+    query = (request.GET.get('q') or '').strip()
+    emails = _mailbox_queryset(request.user, mailbox_type)
+    if query:
+        emails = emails.filter(
+            Q(subject__icontains=query) |
+            Q(body__icontains=query) |
+            Q(body_html__icontains=query) |
+            Q(sender_email__icontains=query) |
+            Q(recipient_email__icontains=query) |
+            Q(followup__customer_name__icontains=query) |
+            Q(followup__company__name__icontains=query) |
+            Q(followup__department__name__icontains=query)
+        )
+
+    paginator = Paginator(emails, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    profile = request.user.userprofile
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'mailboxType': mailbox_type,
+        'filters': {
+            'q': query,
+            'page': page_obj.number,
+        },
+        'connection': _mailbox_connection_payload(profile),
+        'counts': _mailbox_counts(request.user),
+        'pagination': {
+            'page': page_obj.number,
+            'totalPages': paginator.num_pages,
+            'totalCount': paginator.count,
+            'hasNext': page_obj.has_next(),
+            'hasPrevious': page_obj.has_previous(),
+            'nextPage': page_obj.next_page_number() if page_obj.has_next() else None,
+            'previousPage': page_obj.previous_page_number() if page_obj.has_previous() else None,
+        },
+        'links': {
+            'inbox': '/mailbox/?box=inbox',
+            'sent': '/mailbox/?box=sent',
+            'starred': '/mailbox/?box=starred',
+            'archived': '/mailbox/?box=archived',
+            'trash': '/mailbox/?box=trash',
+            'sync': reverse('reporting:mailbox_api_sync'),
+            'djangoInbox': reverse('reporting:mailbox_inbox'),
+            'djangoSent': reverse('reporting:mailbox_sent'),
+        },
+        'create': _mailbox_create_payload(request.user),
+        'emails': [_serialize_email_item(email, mailbox_type) for email in page_obj],
+    })
+
+
+@login_required
+def mailbox_api_thread(request, thread_id):
+    """React 메일 스레드 상세 API"""
+    from django.db.models import Q
+
+    emails = EmailLog.objects.filter(
+        _mailbox_email_q(request.user),
+        Q(gmail_thread_id=thread_id) | Q(thread_id=thread_id) | Q(message_id=thread_id) | Q(gmail_message_id=thread_id)
+    ).select_related('sender', 'followup', 'followup__company', 'followup__department', 'schedule', 'business_card').order_by(
+        'sent_at', 'received_at', 'created_at'
+    )
+
+    if not emails.exists():
+        return JsonResponse({'success': False, 'error': '메일 스레드를 찾을 수 없습니다.'}, status=404)
+
+    unread = emails.filter(email_type='received', is_read=False)
+    if unread.exists():
+        unread.update(is_read=True)
+
+    first_email = emails.first()
+    last_received_email = emails.filter(email_type='received').order_by('-sent_at', '-received_at', '-created_at').first()
+    profile = request.user.userprofile
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'thread': {
+            'id': thread_id,
+            'subject': first_email.subject if first_email else '',
+            'followup': _serialize_email_item(first_email)['followup'] if first_email else None,
+            'messageCount': emails.count(),
+            'lastReceivedEmailId': last_received_email.id if last_received_email else None,
+        },
+        'connection': _mailbox_connection_payload(profile),
+        'links': {
+            'mailbox': '/mailbox/',
+            'djangoThread': reverse('reporting:mailbox_thread', args=[thread_id]),
+            'reply': reverse('reporting:mailbox_api_reply', args=[last_received_email.id]) if last_received_email else '',
+        },
+        'create': _mailbox_create_payload(request.user),
+        'emails': [_serialize_email_item(email) for email in emails],
+    })
+
+
+@login_required
+def mailbox_api_send(request):
+    """React 메일 작성 API"""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    profile = request.user.userprofile
+    if not profile.gmail_token and not profile.imap_connected_at:
+        return JsonResponse({'success': False, 'error': '이메일 계정을 먼저 연결해주세요.'}, status=400)
+
+    followup = None
+    selected_followup_id = request.POST.get('selected_followup_id') or request.POST.get('followup_id')
+    if selected_followup_id:
+        try:
+            followup = FollowUp.objects.select_related('user', 'user__userprofile').get(id=selected_followup_id)
+        except (FollowUp.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': '선택한 고객을 찾을 수 없습니다.'}, status=404)
+        if not _followup_allowed_for_mail(request.user, followup):
+            return JsonResponse({'success': False, 'error': '고객 메일 발송 권한이 없습니다.'}, status=403)
+
+    result = _handle_email_send(request, followup=followup)
+    if isinstance(result, dict):
+        return JsonResponse({
+            'success': False,
+            'error': result.get('exception') or '메일 발송 입력값을 확인해주세요.',
+            'form': result.get('form_data', {}),
+        }, status=400)
+
+    location = result.get('Location', '/mailbox/?box=sent') if hasattr(result, 'get') else '/mailbox/?box=sent'
+    return JsonResponse({
+        'success': True,
+        'message': '이메일이 발송되었습니다.',
+        'href': location.replace('/reporting/mailbox/thread/', '/mailbox/thread/') if location else '/mailbox/?box=sent',
+        'djangoHref': location,
+    })
+
+
+@login_required
+def mailbox_api_reply(request, email_id):
+    """React 메일 답장 API"""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    email = EmailLog.objects.filter(_mailbox_email_q(request.user), id=email_id).select_related('followup', 'schedule').first()
+    if not email:
+        return JsonResponse({'success': False, 'error': '답장할 메일을 찾을 수 없습니다.'}, status=404)
+
+    profile = request.user.userprofile
+    if not profile.gmail_token and not profile.imap_connected_at:
+        return JsonResponse({'success': False, 'error': '이메일 계정을 먼저 연결해주세요.'}, status=400)
+
+    result = _handle_email_send(request, reply_to=email)
+    if isinstance(result, dict):
+        return JsonResponse({
+            'success': False,
+            'error': result.get('exception') or '메일 답장 입력값을 확인해주세요.',
+            'form': result.get('form_data', {}),
+        }, status=400)
+
+    thread_id = _email_thread_identifier(email)
+    return JsonResponse({
+        'success': True,
+        'message': '답장을 발송했습니다.',
+        'href': f'/mailbox/thread/{thread_id}/',
+        'djangoHref': reverse('reporting:mailbox_thread', args=[thread_id]),
+    })
+
+
+@login_required
+def mailbox_api_sync(request):
+    """React 메일 동기화 API"""
+    if request.method != 'POST':
+        return _json_method_error()
+    return sync_received_emails(request)
+
+
+@login_required
+def mailbox_api_toggle_star(request, email_id):
+    return toggle_star_email(request, email_id)
+
+
+@login_required
+def mailbox_api_archive(request, email_id):
+    return archive_email(request, email_id)
+
+
+@login_required
+def mailbox_api_move_to_trash(request, email_id):
+    return move_to_trash_email(request, email_id)
+
+
+@login_required
+def mailbox_api_restore(request, email_id):
+    return restore_email(request, email_id)
+
+
+@login_required
+def mailbox_api_delete(request, email_id):
+    return delete_email(request, email_id)
+
 @login_required
 def mailbox_inbox(request):
     """받은편지함 (본인 담당 팔로우업 연결 메일만)"""

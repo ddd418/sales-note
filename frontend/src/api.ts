@@ -140,6 +140,164 @@ export type DashboardData = {
   }>;
 };
 
+export type MailboxType = 'inbox' | 'sent' | 'starred' | 'archived' | 'trash';
+
+export type MailboxEmailItem = {
+  id: number;
+  type: 'sent' | 'received';
+  typeLabel: string;
+  subject: string;
+  contact: string;
+  senderEmail: string;
+  recipientEmail: string;
+  ccEmails: string;
+  preview: string;
+  bodyText: string;
+  sentAt: string | null;
+  receivedAt: string | null;
+  happenedAt: string | null;
+  isRead: boolean;
+  isStarred: boolean;
+  isArchived: boolean;
+  isTrashed: boolean;
+  threadId: string;
+  threadHref: string;
+  djangoThreadHref: string;
+  replyHref: string;
+  toggleStarHref: string;
+  archiveHref: string;
+  trashHref: string;
+  restoreHref: string;
+  deleteHref: string;
+  followup: {
+    id: number | null;
+    customer: string;
+    company: string;
+    department: string;
+    href: string;
+    djangoHref: string;
+  };
+  schedule: {
+    id: number | null;
+    href: string;
+    djangoHref: string;
+  };
+  attachments: Array<{
+    filename?: string;
+    size?: number;
+    mimetype?: string;
+  }>;
+};
+
+export type MailboxCreateOptions = {
+  canSend: boolean;
+  message: string;
+  submitUrl: string;
+  djangoUrl: string;
+  customers: Array<{
+    id: number;
+    customer: string;
+    company: string;
+    department: string;
+    email: string;
+  }>;
+  businessCards: Array<{
+    id: number;
+    name: string;
+    fullName: string;
+    email: string;
+    isDefault: boolean;
+  }>;
+};
+
+export type MailboxData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  mailboxType: MailboxType;
+  filters: {
+    q: string;
+    page: number;
+  };
+  connection: {
+    connected: boolean;
+    provider: string;
+    address: string;
+    gmailConnected: boolean;
+    imapConnected: boolean;
+    lastSyncAt: string | null;
+    connectHref: string;
+    imapConnectHref: string;
+    profileHref: string;
+  };
+  counts: Record<MailboxType | 'unread', number>;
+  pagination: {
+    page: number;
+    totalPages: number;
+    totalCount: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+    nextPage: number | null;
+    previousPage: number | null;
+  };
+  links: {
+    inbox: string;
+    sent: string;
+    starred: string;
+    archived: string;
+    trash: string;
+    sync: string;
+    djangoInbox: string;
+    djangoSent: string;
+  };
+  create: MailboxCreateOptions;
+  emails: MailboxEmailItem[];
+};
+
+export type MailboxThreadData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  thread: {
+    id: string;
+    subject: string;
+    followup: MailboxEmailItem['followup'] | null;
+    messageCount: number;
+    lastReceivedEmailId: number | null;
+  };
+  connection: MailboxData['connection'];
+  links: {
+    mailbox: string;
+    djangoThread: string;
+    reply: string;
+  };
+  create: MailboxCreateOptions;
+  emails: MailboxEmailItem[];
+};
+
+export type MailboxSendPayload = {
+  toEmail: string;
+  ccEmails?: string;
+  bccEmails?: string;
+  subject: string;
+  bodyText: string;
+  followupId?: number;
+  businessCardId?: number;
+};
+
+export type MailboxActionResponse = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  href?: string;
+  djangoHref?: string;
+  is_starred?: boolean;
+  is_archived?: boolean;
+  synced?: number;
+};
+
 export type CustomerItem = {
   id: number;
   customer: string;
@@ -1559,6 +1717,87 @@ const emptyDashboardData: DashboardData = {
   teamActivity: [],
 };
 
+const emptyMailboxCreateOptions: MailboxCreateOptions = {
+  canSend: false,
+  message: '',
+  submitUrl: '/reporting/api/mailbox/send/',
+  djangoUrl: '/reporting/gmail/send/mailbox/',
+  customers: [],
+  businessCards: [],
+};
+
+const emptyMailboxData: MailboxData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  mailboxType: 'inbox',
+  filters: {
+    q: '',
+    page: 1,
+  },
+  connection: {
+    connected: false,
+    provider: '',
+    address: '',
+    gmailConnected: false,
+    imapConnected: false,
+    lastSyncAt: null,
+    connectHref: '/reporting/gmail/connect/',
+    imapConnectHref: '/reporting/imap/connect/',
+    profileHref: '/reporting/profile/',
+  },
+  counts: {
+    inbox: 0,
+    sent: 0,
+    starred: 0,
+    archived: 0,
+    trash: 0,
+    unread: 0,
+  },
+  pagination: {
+    page: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasNext: false,
+    hasPrevious: false,
+    nextPage: null,
+    previousPage: null,
+  },
+  links: {
+    inbox: '/mailbox/?box=inbox',
+    sent: '/mailbox/?box=sent',
+    starred: '/mailbox/?box=starred',
+    archived: '/mailbox/?box=archived',
+    trash: '/mailbox/?box=trash',
+    sync: '/reporting/api/mailbox/sync/',
+    djangoInbox: '/reporting/mailbox/inbox/',
+    djangoSent: '/reporting/mailbox/sent/',
+  },
+  create: emptyMailboxCreateOptions,
+  emails: [],
+};
+
+const emptyMailboxThreadData: MailboxThreadData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  thread: {
+    id: '',
+    subject: '',
+    followup: null,
+    messageCount: 0,
+    lastReceivedEmailId: null,
+  },
+  connection: emptyMailboxData.connection,
+  links: {
+    mailbox: '/mailbox/',
+    djangoThread: '',
+    reply: '',
+  },
+  create: emptyMailboxCreateOptions,
+  emails: [],
+};
+
 const emptyCustomersData: CustomersData = {
   success: false,
   source: 'unavailable',
@@ -2201,6 +2440,193 @@ export async function loadDashboardData(): Promise<DashboardData> {
       error: error instanceof Error ? error.message : 'Dashboard API unavailable',
     };
   }
+}
+
+export async function loadMailboxData(params: {
+  box?: MailboxType;
+  q?: string;
+  page?: number;
+} = {}): Promise<MailboxData> {
+  const query = new URLSearchParams();
+  if (params.box) query.set('box', params.box);
+  if (params.q) query.set('q', params.q);
+  if (params.page && params.page > 1) query.set('page', String(params.page));
+
+  try {
+    const response = await fetch(`/reporting/api/mailbox/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Mailbox API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<MailboxData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || `Mailbox API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyMailboxData,
+      ...payload,
+      mailboxType: payload.mailboxType ?? params.box ?? emptyMailboxData.mailboxType,
+      filters: {
+        ...emptyMailboxData.filters,
+        ...(payload.filters ?? {}),
+      },
+      connection: {
+        ...emptyMailboxData.connection,
+        ...(payload.connection ?? {}),
+      },
+      counts: {
+        ...emptyMailboxData.counts,
+        ...(payload.counts ?? {}),
+      },
+      pagination: {
+        ...emptyMailboxData.pagination,
+        ...(payload.pagination ?? {}),
+      },
+      links: {
+        ...emptyMailboxData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyMailboxCreateOptions,
+        ...(payload.create ?? {}),
+        customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
+        businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
+      },
+      emails: payload.emails ?? emptyMailboxData.emails,
+    };
+  } catch (error) {
+    return {
+      ...emptyMailboxData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Mailbox API unavailable',
+      mailboxType: params.box ?? emptyMailboxData.mailboxType,
+      filters: {
+        ...emptyMailboxData.filters,
+        q: params.q ?? '',
+        page: params.page ?? 1,
+      },
+    };
+  }
+}
+
+export async function loadMailboxThreadData(threadId: string): Promise<MailboxThreadData> {
+  try {
+    const response = await fetch(`/reporting/api/mailbox/thread/${encodeURIComponent(threadId)}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Mailbox thread API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<MailboxThreadData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || `Mailbox thread API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyMailboxThreadData,
+      ...payload,
+      thread: {
+        ...emptyMailboxThreadData.thread,
+        ...(payload.thread ?? {}),
+      },
+      connection: {
+        ...emptyMailboxData.connection,
+        ...(payload.connection ?? {}),
+      },
+      links: {
+        ...emptyMailboxThreadData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyMailboxCreateOptions,
+        ...(payload.create ?? {}),
+        customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
+        businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
+      },
+      emails: payload.emails ?? emptyMailboxThreadData.emails,
+    };
+  } catch (error) {
+    return {
+      ...emptyMailboxThreadData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Mailbox thread API unavailable',
+      thread: {
+        ...emptyMailboxThreadData.thread,
+        id: threadId,
+      },
+    };
+  }
+}
+
+function mailboxPayloadToBody(payload: MailboxSendPayload): URLSearchParams {
+  const body = new URLSearchParams();
+  body.set('to_email', payload.toEmail);
+  body.set('subject', payload.subject);
+  body.set('body_text', payload.bodyText);
+  if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
+  if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
+  if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
+  if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
+  return body;
+}
+
+async function postMailboxForm(url: string, payload?: MailboxSendPayload): Promise<MailboxActionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: payload ? mailboxPayloadToBody(payload) : undefined,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Mailbox request failed: ${response.status}`);
+  }
+  const data = (await response.json()) as MailboxActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Mailbox request failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function sendMailboxEmail(
+  payload: MailboxSendPayload,
+  submitUrl = '/reporting/api/mailbox/send/',
+): Promise<MailboxActionResponse> {
+  return postMailboxForm(submitUrl, payload);
+}
+
+export async function replyMailboxEmail(
+  submitUrl: string,
+  payload: MailboxSendPayload,
+): Promise<MailboxActionResponse> {
+  return postMailboxForm(submitUrl, payload);
+}
+
+export async function runMailboxSync(syncUrl = '/reporting/api/mailbox/sync/'): Promise<MailboxActionResponse> {
+  return postMailboxForm(syncUrl);
+}
+
+export async function runMailboxAction(actionUrl: string): Promise<MailboxActionResponse> {
+  return postMailboxForm(actionUrl);
 }
 
 export async function loadCustomersData(params: {

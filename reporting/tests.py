@@ -4,8 +4,12 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.template.loader import get_template
+from django.utils import timezone
 from reporting.models import (
+    Company,
+    Department,
     EmailLog,
+    FollowUp,
     UserProfile,
     UserCompany,
 )
@@ -145,6 +149,104 @@ class GmailMailboxThreadRegressionTests(TestCase):
         self.assertFalse(email_log.is_read)
         self.assertIsNotNone(email_log.sent_at)
         self.assertIsNotNone(email_log.received_at)
+
+
+class ReactMailboxApiTests(TestCase):
+    """React 메일함 API 회귀 테스트"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='Hana CRM')
+        self.user = make_user('mail-api-user', company=self.company)
+        self.other_user = make_user('mail-api-other', company=self.company)
+        self.customer_company = Company.objects.create(name='고객사 A', created_by=self.user)
+        self.department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실 A',
+            created_by=self.user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='김고객',
+            email='customer@example.com',
+        )
+        self.other_followup = FollowUp.objects.create(
+            user=self.other_user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='다른고객',
+            email='other@example.com',
+        )
+        self.email = EmailLog.objects.create(
+            email_type='received',
+            sender_email='customer@example.com',
+            recipient_email='sales@example.com',
+            subject='React mailbox inbound',
+            body='고객이 보낸 중요한 요청입니다.',
+            gmail_message_id='gmail-msg-react-1',
+            gmail_thread_id='gmail-thread-react-1',
+            followup=self.followup,
+            status='received',
+            received_at=timezone.now(),
+            is_read=False,
+        )
+        EmailLog.objects.create(
+            email_type='received',
+            sender_email='other@example.com',
+            recipient_email='sales@example.com',
+            subject='Hidden mailbox inbound',
+            body='다른 담당자 메일입니다.',
+            gmail_message_id='gmail-msg-hidden-1',
+            gmail_thread_id='gmail-thread-hidden-1',
+            followup=self.other_followup,
+            status='received',
+            received_at=timezone.now(),
+        )
+
+    def test_mailbox_api_lists_only_current_users_customer_mail(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:mailbox_api_list'), {'box': 'inbox'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'django')
+        self.assertEqual(payload['counts']['inbox'], 1)
+        self.assertEqual(len(payload['emails']), 1)
+        self.assertEqual(payload['emails'][0]['subject'], 'React mailbox inbound')
+        self.assertEqual(payload['emails'][0]['threadHref'], '/mailbox/thread/gmail-thread-react-1/')
+        self.assertEqual(payload['create']['customers'][0]['email'], 'customer@example.com')
+
+    def test_mailbox_thread_api_marks_received_mail_read(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['thread']['messageCount'], 1)
+        self.assertIn('중요한 요청', payload['emails'][0]['bodyText'])
+        self.email.refresh_from_db()
+        self.assertTrue(self.email.is_read)
+
+    def test_mailbox_action_api_toggles_star(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:mailbox_api_toggle_star', args=[self.email.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.email.refresh_from_db()
+        self.assertTrue(self.email.is_starred)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

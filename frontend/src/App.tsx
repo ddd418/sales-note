@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
   Bell,
   Building2,
   CalendarDays,
@@ -18,13 +19,19 @@ import {
   ListChecks,
   LogOut,
   Loader2,
+  Inbox,
+  Mail,
   MessageSquareText,
   MoveUpRight,
   ArrowRightLeft,
   PanelRight,
   Plus,
+  RefreshCw,
+  Reply,
   Search,
+  Send,
   Sparkles,
+  Star,
   Target,
   Trash2,
   Upload,
@@ -43,6 +50,11 @@ import {
   CustomerCreatePayload,
   CustomersData,
   CustomerItem,
+  MailboxData,
+  MailboxEmailItem,
+  MailboxSendPayload,
+  MailboxThreadData,
+  MailboxType,
   NotesData,
   NoteDetailData,
   NoteDetailItem,
@@ -87,6 +99,8 @@ import {
   loadDashboardData,
   loadCustomerDetailData,
   loadCustomersData,
+  loadMailboxData,
+  loadMailboxThreadData,
   loadNoteDetailData,
   loadNotesData,
   loadPrepaymentCreateData,
@@ -101,6 +115,9 @@ import {
   loadPipelineData,
   moveDealStage,
   runAiDepartmentAnalysis,
+  runMailboxAction,
+  runMailboxSync,
+  sendMailboxEmail,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -111,6 +128,7 @@ import {
   uploadNoteFiles,
   uploadScheduleFiles,
   verifyAiPainpoint,
+  replyMailboxEmail,
 } from './api';
 import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -120,6 +138,7 @@ const navItems = [
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/' },
+  { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
@@ -127,7 +146,7 @@ const navItems = [
 const scheduleCalendarUrl = '/reporting/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -203,6 +222,16 @@ type ScheduleDeliveryEditRow = {
 };
 
 type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
+
+type MailComposeFormState = {
+  bodyText: string;
+  businessCardId: string;
+  ccEmails: string;
+  bccEmails: string;
+  followupId: string;
+  subject: string;
+  toEmail: string;
+};
 
 type CustomerCreateFormState = {
   address: string;
@@ -338,6 +367,16 @@ const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): Sched
     : [makeScheduleDeliveryEditRow(undefined, 0)]
 );
 
+const makeEmptyMailComposeForm = (): MailComposeFormState => ({
+  bodyText: '',
+  businessCardId: '',
+  ccEmails: '',
+  bccEmails: '',
+  followupId: '',
+  subject: '',
+  toEmail: '',
+});
+
 const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   address: '',
   companyId: '',
@@ -434,6 +473,18 @@ const routeMeta: Record<
       { label: '이번 주 보고', href: '/reporting/weekly-reports/' },
     ],
   },
+  mail: {
+    eyebrow: 'Sales CRM / Mailbox',
+    title: '메일',
+    summary: '고객과 주고받은 메일을 고객 기록, AI 판단 근거와 함께 관리합니다.',
+    primaryHref: '/mailbox/',
+    primaryLabel: '프론트 메일함 보기',
+    actions: [
+      { label: '메일 작성', href: '/mailbox/?compose=1', primary: true },
+      { label: '받은편지함', href: '/mailbox/?box=inbox' },
+      { label: 'Django 메일함', href: '/reporting/mailbox/inbox/' },
+    ],
+  },
   prepayments: {
     eyebrow: 'Sales CRM / Prepayments',
     title: '선결제',
@@ -466,6 +517,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
+  if (pathname.startsWith('/mailbox/')) return 'mail';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   return 'pipeline';
@@ -496,6 +548,19 @@ function getScheduleDetailId(): number | null {
   }
   const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getMailboxThreadId(): string {
+  const match = window.location.pathname.match(/^\/mailbox\/thread\/(.+?)\/?$/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function getMailboxTypeParam(): MailboxType {
+  const value = new URLSearchParams(window.location.search).get('box');
+  if (value === 'sent' || value === 'starred' || value === 'archived' || value === 'trash') {
+    return value;
+  }
+  return 'inbox';
 }
 
 function getPrepaymentDetailId(): number | null {
@@ -6158,6 +6223,445 @@ function AIWorkspacePromptQueue({
   );
 }
 
+const mailboxTabs: Array<{ id: MailboxType; label: string; icon: typeof Inbox }> = [
+  { id: 'inbox', label: '받은편지함', icon: Inbox },
+  { id: 'sent', label: '보낸편지함', icon: Send },
+  { id: 'starred', label: '중요편지함', icon: Star },
+  { id: 'archived', label: '보관함', icon: Archive },
+  { id: 'trash', label: '휴지통', icon: Trash2 },
+];
+
+function MailComposePanel({
+  create,
+  form,
+  open,
+  saving,
+  error,
+  message,
+  submitLabel,
+  onChange,
+  onCustomerChange,
+  onOpenChange,
+  onSubmit,
+}: {
+  create: MailboxData['create'];
+  form: MailComposeFormState;
+  open: boolean;
+  saving: boolean;
+  error: string;
+  message: string;
+  submitLabel: string;
+  onChange: (field: keyof MailComposeFormState, value: string) => void;
+  onCustomerChange: (customerId: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <section className="mail-compose-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Compose</span>
+          <h2>{submitLabel}</h2>
+        </div>
+        <button className="icon-button" type="button" onClick={() => onOpenChange(false)} aria-label="메일 작성 닫기">
+          <X size={17} />
+        </button>
+      </div>
+      <form className="mail-compose-form" onSubmit={onSubmit}>
+        {create.customers.length > 0 ? (
+          <label>
+            <span>연결 고객</span>
+            <select value={form.followupId} onChange={(event) => onCustomerChange(event.target.value)}>
+              <option value="">고객 선택 없음</option>
+              {create.customers.map((customer) => (
+                <option value={customer.id} key={customer.id}>
+                  {customer.company} · {customer.customer || customer.department} {customer.email ? `(${customer.email})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label>
+          <span>받는 사람</span>
+          <input value={form.toEmail} onChange={(event) => onChange('toEmail', event.target.value)} placeholder="customer@example.com" />
+        </label>
+        <div className="mail-compose-grid">
+          <label>
+            <span>참조</span>
+            <input value={form.ccEmails} onChange={(event) => onChange('ccEmails', event.target.value)} placeholder="쉼표로 구분" />
+          </label>
+          <label>
+            <span>숨은참조</span>
+            <input value={form.bccEmails} onChange={(event) => onChange('bccEmails', event.target.value)} placeholder="쉼표로 구분" />
+          </label>
+        </div>
+        <label>
+          <span>제목</span>
+          <input value={form.subject} onChange={(event) => onChange('subject', event.target.value)} placeholder="메일 제목" />
+        </label>
+        <label>
+          <span>본문</span>
+          <textarea value={form.bodyText} onChange={(event) => onChange('bodyText', event.target.value)} rows={8} />
+        </label>
+        {create.businessCards.length > 0 ? (
+          <label>
+            <span>명함 서명</span>
+            <select value={form.businessCardId} onChange={(event) => onChange('businessCardId', event.target.value)}>
+              <option value="">사용 안 함</option>
+              {create.businessCards.map((card) => (
+                <option value={card.id} key={card.id}>
+                  {card.name}{card.isDefault ? ' · 기본' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
+        {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
+        <div className="mail-compose-actions">
+          <button className="route-secondary-action" type="button" onClick={() => onOpenChange(false)}>취소</button>
+          <button className="route-primary-action" disabled={saving} type="submit">
+            {saving ? <Loader2 className="spin-icon" size={16} /> : <Send size={16} />}
+            {submitLabel}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function MailboxPage({
+  data,
+  loading,
+  selectedBox,
+  query,
+  composeOpen,
+  composeForm,
+  composing,
+  composeError,
+  composeMessage,
+  syncing,
+  actioningId,
+  onAction,
+  onBoxChange,
+  onComposeCustomerChange,
+  onComposeFormChange,
+  onComposeOpenChange,
+  onComposeSubmit,
+  onQueryChange,
+  onSync,
+}: {
+  data: MailboxData | null;
+  loading: boolean;
+  selectedBox: MailboxType;
+  query: string;
+  composeOpen: boolean;
+  composeForm: MailComposeFormState;
+  composing: boolean;
+  composeError: string;
+  composeMessage: string;
+  syncing: boolean;
+  actioningId: number | null;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onBoxChange: (box: MailboxType) => void;
+  onComposeCustomerChange: (customerId: string) => void;
+  onComposeFormChange: (field: keyof MailComposeFormState, value: string) => void;
+  onComposeOpenChange: (open: boolean) => void;
+  onComposeSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onQueryChange: (value: string) => void;
+  onSync: () => void;
+}) {
+  const mailbox = data ?? null;
+  const counts = mailbox?.counts ?? { inbox: 0, sent: 0, starred: 0, archived: 0, trash: 0, unread: 0 };
+
+  return (
+    <section className="mailbox-page">
+      {mailbox?.source !== 'django' && !loading ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>메일 API에 연결되지 않았습니다</strong>
+            <span>{mailbox?.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="mailbox-summary-band">
+        <div>
+          <span className="eyebrow">Customer mailbox</span>
+          <h2>{mailbox?.connection.address || '메일함'}</h2>
+          <p>{mailbox?.connection.connected ? `${mailbox.connection.provider} 연결됨` : '메일 계정 연결이 필요합니다'}</p>
+        </div>
+        <div className="mailbox-summary-actions">
+          <button className="route-secondary-action" disabled={syncing || !mailbox?.connection.gmailConnected} onClick={onSync} type="button">
+            {syncing ? <Loader2 className="spin-icon" size={16} /> : <RefreshCw size={16} />}
+            동기화
+          </button>
+          <button className="route-primary-action" onClick={() => onComposeOpenChange(true)} type="button">
+            <Send size={16} />
+            메일 작성
+          </button>
+        </div>
+      </div>
+
+      {!mailbox?.connection.connected ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>Gmail 또는 IMAP 계정을 연결하면 React 메일함에서 고객 메일을 관리할 수 있습니다.</span>
+          <a href={mailbox?.connection.connectHref || '/reporting/gmail/connect/'}>Gmail 연결</a>
+          <a href={mailbox?.connection.imapConnectHref || '/reporting/imap/connect/'}>IMAP 연결</a>
+        </div>
+      ) : null}
+
+      <MailComposePanel
+        create={mailbox?.create ?? {
+          canSend: false,
+          message: '',
+          submitUrl: '/reporting/api/mailbox/send/',
+          djangoUrl: '/reporting/gmail/send/mailbox/',
+          customers: [],
+          businessCards: [],
+        }}
+        error={composeError}
+        form={composeForm}
+        message={composeMessage}
+        open={composeOpen}
+        saving={composing}
+        submitLabel="메일 발송"
+        onChange={onComposeFormChange}
+        onCustomerChange={onComposeCustomerChange}
+        onOpenChange={onComposeOpenChange}
+        onSubmit={onComposeSubmit}
+      />
+
+      <div className="mailbox-layout">
+        <aside className="mailbox-rail">
+          {mailboxTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button className={selectedBox === tab.id ? 'active' : ''} key={tab.id} onClick={() => onBoxChange(tab.id)} type="button">
+                <Icon size={16} />
+                <span>{tab.label}</span>
+                <strong>{formatNumber(counts[tab.id] || 0)}</strong>
+              </button>
+            );
+          })}
+          <a className="mailbox-legacy-link" href={mailbox?.links.djangoInbox || '/reporting/mailbox/inbox/'}>
+            Django 메일함
+            <MoveUpRight size={15} />
+          </a>
+        </aside>
+
+        <section className="mailbox-list-panel">
+          <div className="mailbox-toolbar">
+            <label className="search-box mailbox-search">
+              <Search size={17} />
+              <input onChange={(event) => onQueryChange(event.target.value)} placeholder="제목, 고객, 본문 검색" value={query} />
+            </label>
+            <span>{formatNumber(mailbox?.pagination.totalCount || 0)}건</span>
+          </div>
+          {loading ? (
+            <div className="loading-state"><Loader2 className="spin-icon" size={18} /> 메일을 불러오는 중입니다.</div>
+          ) : mailbox?.emails.length ? (
+            <div className="mail-row-list">
+              {mailbox.emails.map((email) => (
+                <article className={`mail-row ${email.type === 'received' && !email.isRead ? 'unread' : ''}`} key={email.id}>
+                  <a className="mail-row-main" href={email.threadHref}>
+                    <div>
+                      <strong>{email.subject || '(제목 없음)'}</strong>
+                      <span>{email.contact || email.senderEmail || email.recipientEmail}</span>
+                    </div>
+                    <p>{email.preview || '본문 미리보기가 없습니다.'}</p>
+                    <small>
+                      {email.followup.company ? `${email.followup.company} · ` : ''}
+                      {email.followup.customer || email.followup.department || email.typeLabel}
+                    </small>
+                  </a>
+                  <div className="mail-row-side">
+                    <time>{formatDateTimeLabel(email.happenedAt)}</time>
+                    <div className="mail-row-actions">
+                      <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
+                        <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
+                      </button>
+                      {selectedBox === 'trash' ? (
+                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'restore')} type="button" aria-label="복원">
+                          <Archive size={15} />
+                        </button>
+                      ) : (
+                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'archive')} type="button" aria-label="보관">
+                          <Archive size={15} />
+                        </button>
+                      )}
+                      <button disabled={actioningId === email.id} onClick={() => onAction(email, selectedBox === 'trash' ? 'delete' : 'trash')} type="button" aria-label="삭제">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>표시할 메일이 없습니다</strong>
+              <span>검색어를 지우거나 다른 메일함을 선택하세요.</span>
+            </div>
+          )}
+          {mailbox?.pagination.totalPages && mailbox.pagination.totalPages > 1 ? (
+            <div className="mailbox-pagination">
+              <a className={!mailbox.pagination.hasPrevious ? 'disabled' : ''} href={`/mailbox/?box=${selectedBox}&page=${mailbox.pagination.previousPage || 1}${query ? `&q=${encodeURIComponent(query)}` : ''}`}>이전</a>
+              <span>{mailbox.pagination.page} / {mailbox.pagination.totalPages}</span>
+              <a className={!mailbox.pagination.hasNext ? 'disabled' : ''} href={`/mailbox/?box=${selectedBox}&page=${mailbox.pagination.nextPage || mailbox.pagination.page}${query ? `&q=${encodeURIComponent(query)}` : ''}`}>다음</a>
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function MailboxThreadPage({
+  data,
+  loading,
+  replyForm,
+  replyOpen,
+  replySaving,
+  replyError,
+  replyMessage,
+  actioningId,
+  onAction,
+  onReplyFormChange,
+  onReplyOpenChange,
+  onReplySubmit,
+}: {
+  data: MailboxThreadData | null;
+  loading: boolean;
+  replyForm: MailComposeFormState;
+  replyOpen: boolean;
+  replySaving: boolean;
+  replyError: string;
+  replyMessage: string;
+  actioningId: number | null;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onReplyFormChange: (field: keyof MailComposeFormState, value: string) => void;
+  onReplyOpenChange: (open: boolean) => void;
+  onReplySubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const thread = data ?? {
+    success: false,
+    source: 'unavailable' as const,
+    error: '',
+    thread: { id: '', subject: '', followup: null, messageCount: 0, lastReceivedEmailId: null },
+    connection: {
+      connected: false,
+      provider: '',
+      address: '',
+      gmailConnected: false,
+      imapConnected: false,
+      lastSyncAt: null,
+      connectHref: '/reporting/gmail/connect/',
+      imapConnectHref: '/reporting/imap/connect/',
+      profileHref: '/reporting/profile/',
+    },
+    links: { mailbox: '/mailbox/', djangoThread: '', reply: '' },
+    create: { canSend: false, message: '', submitUrl: '', djangoUrl: '', customers: [], businessCards: [] },
+    emails: [],
+  };
+  const lastEmail = thread.emails[thread.emails.length - 1];
+
+  return (
+    <section className="mail-thread-page">
+      <div className="route-detail-header">
+        <div>
+          <a href="/mailbox/">메일함</a>
+          <span>/</span>
+          <strong>{thread.thread.subject || '메일 스레드'}</strong>
+        </div>
+        <div className="route-detail-actions">
+          <a className="route-secondary-action" href={thread.links.djangoThread || `/reporting/mailbox/thread/${thread.thread.id}/`}>Django 보기</a>
+          <button className="route-primary-action" disabled={!lastEmail} onClick={() => onReplyOpenChange(true)} type="button">
+            <Reply size={16} />
+            답장
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading-state"><Loader2 className="spin-icon" size={18} /> 스레드를 불러오는 중입니다.</div>
+      ) : thread.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>메일 스레드를 불러올 수 없습니다</strong>
+            <span>{thread.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : (
+        <>
+          <div className="mail-thread-summary">
+            <div>
+              <span className="eyebrow">Thread</span>
+              <h2>{thread.thread.subject || '(제목 없음)'}</h2>
+              <p>
+                {thread.thread.followup?.company ? `${thread.thread.followup.company} · ` : ''}
+                {thread.thread.followup?.customer || thread.thread.followup?.department || `${thread.thread.messageCount}개 메시지`}
+              </p>
+            </div>
+            {thread.thread.followup?.href ? <a className="route-secondary-action" href={thread.thread.followup.href}>고객 상세</a> : null}
+          </div>
+
+          <MailComposePanel
+            create={thread.create}
+            error={replyError}
+            form={replyForm}
+            message={replyMessage}
+            open={replyOpen}
+            saving={replySaving}
+            submitLabel="답장 발송"
+            onChange={onReplyFormChange}
+            onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
+            onOpenChange={onReplyOpenChange}
+            onSubmit={onReplySubmit}
+          />
+
+          <div className="mail-thread-list">
+            {thread.emails.map((email) => (
+              <article className={`mail-message-card ${email.type}`} key={email.id}>
+                <div className="mail-message-header">
+                  <div>
+                    <strong>{email.type === 'sent' ? email.recipientEmail : email.senderEmail}</strong>
+                    <span>{email.typeLabel} · {formatDateTimeLabel(email.happenedAt)}</span>
+                  </div>
+                  <div className="mail-row-actions">
+                    <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
+                      <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
+                    </button>
+                    <button disabled={actioningId === email.id} onClick={() => onAction(email, 'trash')} type="button" aria-label="휴지통">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mail-message-body">{email.bodyText || email.preview || '본문이 없습니다.'}</div>
+                {email.followup.href ? (
+                  <div className="mail-message-links">
+                    <a href={email.followup.href}>{email.followup.company || '고객'} 상세</a>
+                    {email.schedule.href ? <a href={email.schedule.href}>연결 일정</a> : null}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; loading: boolean }) {
   const [copiedPromptId, setCopiedPromptId] = useState('');
 
@@ -7115,6 +7619,8 @@ export function App() {
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
+  const mailboxThreadId = currentView === 'mail' ? getMailboxThreadId() : '';
+  const initialMailboxBox = currentView === 'mail' ? getMailboxTypeParam() : 'inbox';
   const prepaymentCustomerId = currentView === 'prepayments' ? getPrepaymentCustomerId() : null;
   const prepaymentDetailId = currentView === 'prepayments' ? getPrepaymentDetailId() : null;
   const prepaymentCreateRoute = currentView === 'prepayments' && isPrepaymentCreateRoute();
@@ -7188,6 +7694,27 @@ export function App() {
   const [prepaymentFilterUser, setPrepaymentFilterUser] = useState('');
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
+  const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
+  const [mailboxLoading, setMailboxLoading] = useState(currentView === 'mail' && !mailboxThreadId);
+  const [mailboxThreadData, setMailboxThreadData] = useState<MailboxThreadData | null>(null);
+  const [mailboxThreadLoading, setMailboxThreadLoading] = useState(Boolean(mailboxThreadId));
+  const [mailboxBox, setMailboxBox] = useState<MailboxType>(initialMailboxBox);
+  const [mailboxQuery, setMailboxQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [mailboxPage, setMailboxPage] = useState(() => Number(new URLSearchParams(window.location.search).get('page') || '1') || 1);
+  const [mailComposeOpen, setMailComposeOpen] = useState(
+    currentView === 'mail' && !mailboxThreadId && new URLSearchParams(window.location.search).get('compose') === '1',
+  );
+  const [mailComposeForm, setMailComposeForm] = useState<MailComposeFormState>(() => makeEmptyMailComposeForm());
+  const [mailComposing, setMailComposing] = useState(false);
+  const [mailComposeError, setMailComposeError] = useState('');
+  const [mailComposeMessage, setMailComposeMessage] = useState('');
+  const [mailSyncing, setMailSyncing] = useState(false);
+  const [mailActioningId, setMailActioningId] = useState<number | null>(null);
+  const [mailReplyOpen, setMailReplyOpen] = useState(false);
+  const [mailReplyForm, setMailReplyForm] = useState<MailComposeFormState>(() => makeEmptyMailComposeForm());
+  const [mailReplySaving, setMailReplySaving] = useState(false);
+  const [mailReplyError, setMailReplyError] = useState('');
+  const [mailReplyMessage, setMailReplyMessage] = useState('');
   const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<SavedView>('priority');
@@ -7520,6 +8047,50 @@ export function App() {
       alive = false;
     };
   }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'mail' || mailboxThreadId) {
+      setMailboxData(null);
+      setMailboxLoading(false);
+      return;
+    }
+    let alive = true;
+    setMailboxLoading(true);
+    loadMailboxData({
+      box: mailboxBox,
+      q: mailboxQuery,
+      page: mailboxPage,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setMailboxData(data);
+      setMailboxLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, mailboxBox, mailboxPage, mailboxQuery, mailboxThreadId]);
+
+  useEffect(() => {
+    if (currentView !== 'mail' || !mailboxThreadId) {
+      setMailboxThreadData(null);
+      setMailboxThreadLoading(false);
+      return;
+    }
+    let alive = true;
+    setMailboxThreadLoading(true);
+    loadMailboxThreadData(mailboxThreadId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setMailboxThreadData(data);
+      setMailboxThreadLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, mailboxThreadId]);
 
   const selectDeal = (deal: Deal) => {
     setSelectedDealId(deal.id);
@@ -7988,6 +8559,198 @@ export function App() {
     setPrepaymentDetailData(data);
     return data;
   };
+  const refreshMailboxData = async () => {
+    const data = await loadMailboxData({
+      box: mailboxBox,
+      q: mailboxQuery,
+      page: mailboxPage,
+    });
+    setMailboxData(data);
+    return data;
+  };
+  const refreshMailboxThreadData = async () => {
+    if (!mailboxThreadId) {
+      return null;
+    }
+    const data = await loadMailboxThreadData(mailboxThreadId);
+    setMailboxThreadData(data);
+    return data;
+  };
+  const handleMailboxBoxChange = (box: MailboxType) => {
+    setMailboxBox(box);
+    setMailboxPage(1);
+    window.history.replaceState(null, '', `/mailbox/?box=${box}`);
+  };
+  const handleMailComposeOpenChange = (open: boolean) => {
+    setMailComposeOpen(open);
+    setMailComposeError('');
+    if (open) {
+      setMailComposeMessage('');
+    }
+  };
+  const handleMailComposeFormChange = (field: keyof MailComposeFormState, value: string) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setMailComposeError('');
+  };
+  const handleMailComposeCustomerChange = (customerId: string) => {
+    const customer = mailboxData?.create.customers.find((item) => String(item.id) === customerId);
+    setMailComposeForm((previous) => ({
+      ...previous,
+      followupId: customerId,
+      toEmail: customer?.email || previous.toEmail,
+    }));
+    setMailComposeError('');
+  };
+  const makeMailboxPayload = (form: MailComposeFormState): MailboxSendPayload => ({
+    toEmail: form.toEmail.trim(),
+    ccEmails: form.ccEmails.trim() || undefined,
+    bccEmails: form.bccEmails.trim() || undefined,
+    subject: form.subject.trim(),
+    bodyText: form.bodyText.trim(),
+    followupId: form.followupId ? Number(form.followupId) : undefined,
+    businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
+  });
+  const handleMailComposeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!mailboxData || mailComposing) {
+      return;
+    }
+    const payload = makeMailboxPayload(mailComposeForm);
+    if (!payload.toEmail || !payload.subject || !payload.bodyText) {
+      setMailComposeError('받는 사람, 제목, 본문을 입력하세요.');
+      return;
+    }
+    setMailComposing(true);
+    setMailComposeError('');
+    setMailComposeMessage('');
+    try {
+      await sendMailboxEmail(payload, mailboxData.create.submitUrl);
+      setMailComposeMessage('메일을 발송했습니다.');
+      setMailComposeForm(makeEmptyMailComposeForm());
+      await refreshMailboxData();
+    } catch (error) {
+      setMailComposeError(error instanceof Error ? error.message : '메일 발송에 실패했습니다.');
+    } finally {
+      setMailComposing(false);
+    }
+  };
+  const handleMailboxSync = async () => {
+    if (!mailboxData || mailSyncing) {
+      return;
+    }
+    setMailSyncing(true);
+    setMailComposeError('');
+    setMailComposeMessage('');
+    try {
+      const result = await runMailboxSync(mailboxData.links.sync);
+      setMailComposeMessage(result.message || '메일 동기화를 완료했습니다.');
+      await refreshMailboxData();
+    } catch (error) {
+      setMailComposeError(error instanceof Error ? error.message : '메일 동기화에 실패했습니다.');
+    } finally {
+      setMailSyncing(false);
+    }
+  };
+  const handleMailboxAction = async (
+    email: MailboxEmailItem,
+    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete',
+  ) => {
+    if (mailActioningId !== null) {
+      return;
+    }
+    const url = {
+      star: email.toggleStarHref,
+      archive: email.archiveHref,
+      trash: email.trashHref,
+      restore: email.restoreHref,
+      delete: email.deleteHref,
+    }[action];
+    if (!url) {
+      return;
+    }
+    if (action === 'delete' && !window.confirm('메일을 영구 삭제하시겠습니까?')) {
+      return;
+    }
+    setMailActioningId(email.id);
+    try {
+      await runMailboxAction(url);
+      if (mailboxThreadId) {
+        await refreshMailboxThreadData();
+      } else {
+        await refreshMailboxData();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '메일 작업에 실패했습니다.';
+      if (mailboxThreadId) {
+        setMailReplyError(message);
+      } else {
+        setMailComposeError(message);
+      }
+    } finally {
+      setMailActioningId(null);
+    }
+  };
+  const handleMailReplyOpenChange = (open: boolean) => {
+    setMailReplyOpen(open);
+    setMailReplyError('');
+    if (!open) {
+      return;
+    }
+    setMailReplyMessage('');
+    const received = [...(mailboxThreadData?.emails ?? [])].reverse().find((email) => email.type === 'received');
+    const target = received ?? mailboxThreadData?.emails[mailboxThreadData.emails.length - 1];
+    setMailReplyForm((previous) => ({
+      ...previous,
+      toEmail: target?.senderEmail || previous.toEmail,
+      subject: mailboxThreadData?.thread.subject
+        ? mailboxThreadData.thread.subject.startsWith('Re:')
+          ? mailboxThreadData.thread.subject
+          : `Re: ${mailboxThreadData.thread.subject}`
+        : previous.subject,
+      followupId: target?.followup.id ? String(target.followup.id) : previous.followupId,
+    }));
+  };
+  const handleMailReplyFormChange = (field: keyof MailComposeFormState, value: string) => {
+    setMailReplyForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setMailReplyError('');
+  };
+  const handleMailReplySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!mailboxThreadData || mailReplySaving) {
+      return;
+    }
+    const payload = makeMailboxPayload(mailReplyForm);
+    if (!payload.toEmail || !payload.subject || !payload.bodyText) {
+      setMailReplyError('받는 사람, 제목, 본문을 입력하세요.');
+      return;
+    }
+    const received = [...mailboxThreadData.emails].reverse().find((email) => email.type === 'received');
+    const target = received ?? mailboxThreadData.emails[mailboxThreadData.emails.length - 1];
+    const submitUrl = mailboxThreadData.links.reply || target?.replyHref;
+    if (!submitUrl) {
+      setMailReplyError('답장 대상 메일을 찾을 수 없습니다.');
+      return;
+    }
+    setMailReplySaving(true);
+    setMailReplyError('');
+    setMailReplyMessage('');
+    try {
+      await replyMailboxEmail(submitUrl, payload);
+      setMailReplyMessage('답장을 발송했습니다.');
+      setMailReplyForm(makeEmptyMailComposeForm());
+      await refreshMailboxThreadData();
+    } catch (error) {
+      setMailReplyError(error instanceof Error ? error.message : '답장 발송에 실패했습니다.');
+    } finally {
+      setMailReplySaving(false);
+    }
+  };
 
   if (currentView === 'dashboard') {
     return (
@@ -8125,6 +8888,57 @@ export function App() {
           onQueryChange={setScheduleQuery}
           onRangeChange={setScheduleRange}
           onStatusChange={setScheduleStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'mail') {
+    if (mailboxThreadId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <MailboxThreadPage
+            actioningId={mailActioningId}
+            data={mailboxThreadData}
+            loading={mailboxThreadLoading}
+            replyError={mailReplyError}
+            replyForm={mailReplyForm}
+            replyMessage={mailReplyMessage}
+            replyOpen={mailReplyOpen}
+            replySaving={mailReplySaving}
+            onAction={handleMailboxAction}
+            onReplyFormChange={handleMailReplyFormChange}
+            onReplyOpenChange={handleMailReplyOpenChange}
+            onReplySubmit={handleMailReplySubmit}
+          />
+        </AppShell>
+      );
+    }
+
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <MailboxPage
+          actioningId={mailActioningId}
+          composeError={mailComposeError}
+          composeForm={mailComposeForm}
+          composeMessage={mailComposeMessage}
+          composeOpen={mailComposeOpen}
+          composing={mailComposing}
+          data={mailboxData}
+          loading={mailboxLoading}
+          query={mailboxQuery}
+          selectedBox={mailboxBox}
+          syncing={mailSyncing}
+          onAction={handleMailboxAction}
+          onBoxChange={handleMailboxBoxChange}
+          onComposeCustomerChange={handleMailComposeCustomerChange}
+          onComposeFormChange={handleMailComposeFormChange}
+          onComposeOpenChange={handleMailComposeOpenChange}
+          onComposeSubmit={handleMailComposeSubmit}
+          onQueryChange={setMailboxQuery}
+          onSync={handleMailboxSync}
         />
       </AppShell>
     );

@@ -14,59 +14,44 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-AI email context and stage-aware next actions.
+React mailbox first integration.
 
-Implemented, pushed, and deployed to production:
+Implemented locally, push/deploy pending:
 
-- Department AI and individual FollowUp AI now read linked `EmailLog` records.
-- Customer→sales inbound emails are prioritized as customer intent/obstacle/request evidence.
-- Department AI stores `email_context`, `customer_stage_context`, and `stage_action_guidance` in `analysis_data`.
-- FollowUp AI stores `email_context` and `stage_action_guidance` in `analysis_data`.
-- Stage-aware fallback actions are added:
-  - `won` / locked-in customers: delivery, additional order, repurchase, retention, expansion actions
-  - quote/negotiation customers: quote contents, meetings, customer email replies, decision schedule/condition checks
-  - meeting-only customers: meeting notes, customer replies, materials, next meeting, quote conversion
-- Existing PainPoint verification notes continue to be used and are also referenced in fallback action reasons.
+- React sidebar now includes `메일`.
+- React `/mailbox/` provides inbox/sent/starred/archived/trash tabs, search, sync, compose, customer selection, and mailbox actions.
+- React `/mailbox/thread/<thread_id>/` provides thread detail, customer links, reply, star, and trash actions.
+- Django now exposes `/reporting/api/mailbox/*` JSON APIs for list, thread, send, reply, sync, toggle star, archive, move to trash, restore, and delete.
+- Existing Django Gmail/IMAP connection, send helper, `EmailLog` model, and `/reporting/mailbox/*` fallback screens remain available.
 - DB 변경 없음.
 
 Validation:
 
 ```powershell
-python manage.py test ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=2
-python manage.py test ai_chat.tests --verbosity=1
-python -m py_compile ai_chat\services.py ai_chat\tests.py
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.GmailMailboxThreadRegressionTests --verbosity=2
+python -m py_compile reporting\gmail_views.py reporting\urls.py
 python manage.py check
 python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
 git diff --check
 ```
 
-Results:
+Results so far:
 
-- 2 targeted email/stage tests OK.
-- 18 ai_chat tests OK.
+- 5 mailbox tests OK.
 - Django check OK.
 - No migration changes.
+- React build OK, bundle `index-BtG-R--E.js` / `index-B6vJbiFg.css`.
 - `git diff --check` OK with LF→CRLF warnings only.
 
-Deployment status:
+Manual production test after deploy:
 
-- Runtime commit: `7055257 feat: use customer emails in AI next actions`.
-- Railway `web`: `69401c16-b987-47bc-95e1-7e56c946dc18` SUCCESS.
-- Production anonymous `/ai/` redirects to `/reporting/login/?next=/ai/`.
-- Production `/reporting/login/` returns 200 OK.
-- React bundle was not rebuilt because this was backend-only.
-
-Manual production test:
-
-1. Pick a customer with linked Gmail/IMAP `EmailLog` records, preferably inbound customer replies.
-2. Run department AI analysis again from customer detail or `/ai/`.
-3. Confirm inbound email content affects summary/PainPoint/next action reasoning.
-4. Check `won`, quote, and meeting-only customers produce stage-appropriate next actions.
-5. If verified/denied PainPoint notes exist, confirm those notes still influence the new analysis.
-
-Next queued by user:
-
-- Continue React unified frontend migration or expose AI email evidence more visibly in the React AI/customer panels after manual production test.
+1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
+2. Verify mailbox tabs, search, sync, and a customer thread.
+3. Open `/mailbox/thread/<thread_id>/`, verify message body and customer links.
+4. Test star/archive/trash and a reply from the React screen.
+5. Confirm Django fallback `/reporting/mailbox/inbox/` still works until React redirect cleanup is approved.
 
 ## Previous Deployed Task
 

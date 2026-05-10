@@ -1,5 +1,80 @@
 # AGENT_REPORT.md
 
+## 2026-05-10 — React Mailbox First Integration
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React CRM에 `/mailbox/` 메일함과 `/mailbox/thread/<thread_id>/` 스레드 상세 화면을 추가했습니다. 기존 Django Gmail/IMAP/EmailLog 발송·답장·동기화·메일 상태 변경 로직은 유지하고, React가 사용할 `/reporting/api/mailbox/*` JSON API를 새로 붙였습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: React 메일함 목록/스레드/발송/답장/동기화/상태 변경 API 추가
+- `reporting/urls.py`: `/reporting/api/mailbox/*` API route와 누락됐던 legacy archive route 추가
+- `reporting/tests.py`: React 메일함 API 권한/스레드 읽음/중요표시 회귀 테스트 추가
+- `frontend/src/api.ts`: 메일함 타입, 빈 상태, API client 추가
+- `frontend/src/App.tsx`: 사이드바 메일 메뉴, 메일함 목록, 스레드 상세, 작성/답장 UI 추가
+- `frontend/src/styles.css`: 메일함/스레드/작성 폼 스타일 추가
+- `AGENT_PLAN.md`: React 메일함 1차 통합 계획 기록
+
+### CRM 개선
+
+- 고객 메일을 React CRM 내부에서 조회하고 고객 상세/일정으로 바로 이동할 수 있습니다.
+- 메일 작성 시 고객을 선택하면 고객 이메일이 자동으로 채워지고, 기존 명함 서명 선택도 사용할 수 있습니다.
+- 스레드 상세에서 답장, 중요표시, 휴지통 이동을 처리할 수 있습니다.
+- 받은편지함/보낸편지함/중요/보관/휴지통 탭과 검색을 React에서 제공합니다.
+
+### 기존 기능 보존
+
+- 기존 Django `/reporting/mailbox/*`, Gmail OAuth, IMAP/SMTP 연결, Django 템플릿 화면은 유지했습니다.
+- 기존 `EmailLog` 모델과 발송 helper를 재사용했고 DB 변경 및 migration은 없습니다.
+- 운영 수동검수 전에는 Django 메일함을 React로 강제 redirect하지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.GmailMailboxThreadRegressionTests --verbosity=2
+→ Ran 5 tests, OK
+
+python -m py_compile reporting\gmail_views.py reporting\urls.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-BtG-R--E.js / assets/index-B6vJbiFg.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트에서 로그인 후 `/mailbox/`로 이동합니다.
+2. 받은편지함/보낸편지함/중요/보관/휴지통 탭이 열리는지 확인합니다.
+3. 고객 메일 스레드 하나를 열어 `/mailbox/thread/<thread_id>/`에서 본문과 고객 링크가 보이는지 확인합니다.
+4. 중요표시, 보관, 휴지통 이동이 반영되는지 확인합니다.
+5. `메일 작성`에서 고객 선택 시 받는 사람이 채워지고 발송이 되는지 확인합니다.
+6. 스레드 상세에서 `답장` 발송 후 같은 스레드에 메일이 추가되는지 확인합니다.
+
+### 다음 권장 작업
+
+- 운영 검수 완료 후 Django 메일함 주요 진입 링크를 React `/mailbox/`로 전환하고, 고객 상세/AI 화면에 메일 근거 섹션을 더 노출합니다.
+
+---
+
 ## 2026-05-10 — Railway Mailbox Thread 500 Fix
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료

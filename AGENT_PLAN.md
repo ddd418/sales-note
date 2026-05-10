@@ -9,6 +9,38 @@
 
 ---
 
+## Current task — React 메일함 1차 통합
+
+**목표**: 프론트 통합 로드맵의 1단계로 고객 메일함을 React CRM에 추가하고, 기존 Django Gmail/IMAP/EmailLog 로직은 API/backend 역할로 유지한다.
+
+### 확인된 상태
+
+- 기존 메일함은 `reporting.gmail_views`의 Django 템플릿 화면과 `EmailLog` 모델을 중심으로 동작한다.
+- Gmail/IMAP 연결, 발송, 답장, 중요표시, 보관, 휴지통, 삭제 로직은 이미 Django에 있다.
+- React는 대시보드/고객/노트/일정/선결제/AI/파이프라인을 담당하지만 메일함 route는 없었다.
+- DB 모델 변경 및 migration 필요 없음.
+
+### 구현 계획
+
+- `/reporting/api/mailbox/*` JSON API를 추가해 목록, 스레드 상세, 발송, 답장, 동기화, 중요표시/보관/휴지통/복원/삭제 액션을 제공한다.
+- API 권한은 본인이 보낸 메일, 본인 고객/일정에 연결된 메일만 대상으로 제한한다.
+- React에 `/mailbox/` 목록, `/mailbox/thread/<thread_id>/` 상세/답장 화면을 추가한다.
+- 공통 사이드바에 `메일` 메뉴를 추가하고, 메일 작성/동기화/고객 연결/명함 선택을 React에서 처리한다.
+- 기존 Django 메일함은 fallback으로 유지하고, 운영 검수 전 강제 redirect는 적용하지 않는다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.GmailMailboxThreadRegressionTests --verbosity=2`
+- `python -m py_compile reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/mailbox/` smoke check
+
+---
+
 ## Current urgent task — Railway 메일 스레드 500 복구
 
 **목표**: Railway 운영 로그에서 발생 중인 `/reporting/mailbox/thread/<thread_id>/` 500 오류를 제거해 Gmail/메일함 스레드 상세 화면이 다시 렌더링되게 한다.

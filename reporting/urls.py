@@ -285,8 +285,21 @@ urlpatterns = [
     path('mailbox/sync/', lazy_view('reporting.gmail_views.sync_received_emails'), name='sync_received_emails'),
     path('mailbox/delete/<int:email_id>/', lazy_view('reporting.gmail_views.delete_email'), name='delete_email'),
     path('mailbox/toggle-star/<int:email_id>/', lazy_view('reporting.gmail_views.toggle_star_email'), name='toggle_star_email'),
+    path('mailbox/archive/<int:email_id>/', lazy_view('reporting.gmail_views.archive_email'), name='archive_email'),
     path('mailbox/move-to-trash/<int:email_id>/', lazy_view('reporting.gmail_views.move_to_trash_email'), name='move_to_trash_email'),
     path('mailbox/restore/<int:email_id>/', lazy_view('reporting.gmail_views.restore_email'), name='restore_email'),
+
+    # React 메일함 API
+    path('api/mailbox/', lazy_view('reporting.gmail_views.mailbox_api_list'), name='mailbox_api_list'),
+    path('api/mailbox/thread/<str:thread_id>/', lazy_view('reporting.gmail_views.mailbox_api_thread'), name='mailbox_api_thread'),
+    path('api/mailbox/send/', lazy_view('reporting.gmail_views.mailbox_api_send'), name='mailbox_api_send'),
+    path('api/mailbox/reply/<int:email_id>/', lazy_view('reporting.gmail_views.mailbox_api_reply'), name='mailbox_api_reply'),
+    path('api/mailbox/sync/', lazy_view('reporting.gmail_views.mailbox_api_sync'), name='mailbox_api_sync'),
+    path('api/mailbox/<int:email_id>/toggle-star/', lazy_view('reporting.gmail_views.mailbox_api_toggle_star'), name='mailbox_api_toggle_star'),
+    path('api/mailbox/<int:email_id>/archive/', lazy_view('reporting.gmail_views.mailbox_api_archive'), name='mailbox_api_archive'),
+    path('api/mailbox/<int:email_id>/move-to-trash/', lazy_view('reporting.gmail_views.mailbox_api_move_to_trash'), name='mailbox_api_move_to_trash'),
+    path('api/mailbox/<int:email_id>/restore/', lazy_view('reporting.gmail_views.mailbox_api_restore'), name='mailbox_api_restore'),
+    path('api/mailbox/<int:email_id>/delete/', lazy_view('reporting.gmail_views.mailbox_api_delete'), name='mailbox_api_delete'),
     
     # 명함 관리
     path('business-cards/', lazy_view('reporting.gmail_views.business_card_list'), name='business_card_list'),
