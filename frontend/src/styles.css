@@ -5383,6 +5383,22 @@ tbody tr:hover {
   margin-bottom: 8px;
 }
 
+.weekly-schedule-load {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.weekly-schedule-load .secondary-button {
+  width: 100%;
+}
+
+.weekly-schedule-load small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .weekly-insert-actions button {
   min-height: 36px;
   padding: 0 10px;

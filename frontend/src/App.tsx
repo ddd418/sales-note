@@ -7387,9 +7387,6 @@ function WeeklyReportEditorPage({
           {formError ? <p className="form-error">{formError}</p> : null}
           {formMessage ? <p className="form-success">{formMessage}</p> : null}
           <div className="form-actions">
-            <button type="button" className="secondary-button" onClick={handleLoadSchedules} disabled={loadingSchedules || !form.weekStart || !form.weekEnd}>
-              {loadingSchedules ? '불러오는 중' : '일정 불러오기'}
-            </button>
             {canUseAi ? (
               <button type="button" className="secondary-button" onClick={handleAiDraft} disabled={aiLoading || !form.weekStart || !form.weekEnd}>
                 {aiLoading ? 'AI 생성 중' : 'AI 초안'}
@@ -7408,6 +7405,12 @@ function WeeklyReportEditorPage({
               <h3>일정 불러오기</h3>
             </div>
             <span>{formatNumber(selectedScheduleIds.length)}개 선택</span>
+          </div>
+          <div className="weekly-schedule-load">
+            <button type="button" className="secondary-button" onClick={handleLoadSchedules} disabled={loadingSchedules || !form.weekStart || !form.weekEnd}>
+              {loadingSchedules ? '불러오는 중' : '일정 불러오기'}
+            </button>
+            <small>{form.weekStart && form.weekEnd ? `${formatDateLabel(form.weekStart)} - ${formatDateLabel(form.weekEnd)}` : '보고 기간을 먼저 선택하세요.'}</small>
           </div>
           <div className="weekly-insert-actions">
             <button type="button" onClick={() => appendSelectedSchedules('activityNotes')}>영업활동에 삽입</button>
