@@ -3352,14 +3352,10 @@ h2 {
   color: var(--teal);
 }
 
+.customer-ai-verification-list article.checked,
 .customer-ai-verification-list article.confirmed {
   border-color: rgba(22, 163, 74, 0.36);
   background: #f0fdf4;
-}
-
-.customer-ai-verification-list article.denied {
-  border-color: rgba(220, 38, 38, 0.3);
-  background: #fef2f2;
 }
 
 .customer-ai-verification-head {
@@ -3381,14 +3377,10 @@ h2 {
   gap: 6px;
 }
 
+.customer-ai-painpoint.checked,
 .customer-ai-painpoint.confirmed {
   border-color: rgba(22, 163, 74, 0.36);
   background: #f0fdf4;
-}
-
-.customer-ai-painpoint.denied {
-  border-color: rgba(220, 38, 38, 0.3);
-  background: #fef2f2;
 }
 
 .customer-ai-painpoint-head {

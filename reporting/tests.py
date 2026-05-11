@@ -1082,8 +1082,8 @@ class CustomersSummaryApiTests(TestCase):
                     'reason': '견적 후속 지연 해소',
                 }],
                 'verification_insights': [{
-                    'status': 'confirmed',
-                    'status_label': '확인됨',
+                    'status': 'checked',
+                    'status_label': '검증 메모',
                     'hypothesis': '구매 결재 단계가 길어 견적 후속이 지연됩니다.',
                     'insight': '김박사가 최종 승인자로 확인되어 승인자 기준 후속이 필요합니다.',
                     'impact': '6월 예산 소진 뒤 구매 가능하다는 검증 메모를 다음 액션에 반영해야 합니다.',
@@ -1155,7 +1155,8 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn('납품 전환율', ai_department['quoteInsights']['conversionAnalysis'])
         self.assertEqual(ai_department['quoteInsights']['stalledQuotes'][0]['quoteInfo'], 'Q-001')
         self.assertEqual(ai_department['nextActions'][0]['action'], '결재 승인자 확인')
-        self.assertEqual(ai_department['verificationInsights'][0]['statusLabel'], '확인됨')
+        self.assertEqual(ai_department['verificationInsights'][0]['status'], 'checked')
+        self.assertEqual(ai_department['verificationInsights'][0]['statusLabel'], '검증 메모')
         self.assertIn('김박사', ai_department['verificationInsights'][0]['insight'])
         self.assertEqual(ai_department['verificationInsights'][0]['nextVerification'], '6월 예산 집행일과 필요 서류를 확인합니다.')
         self.assertEqual(ai_department['missingInfo']['questions'][0], '결재 최종 승인자는 누구인가요?')

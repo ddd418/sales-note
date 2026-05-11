@@ -3533,12 +3533,10 @@ export async function runAiDepartmentAnalysis(runHref: string): Promise<AiDepart
 
 export async function verifyAiPainpoint(
   verifyHref: string,
-  status: 'confirmed' | 'denied',
   note = '',
 ): Promise<AiPainpointVerifyResponse> {
   const csrfToken = getCookie('csrftoken');
   const body = new URLSearchParams();
-  body.set('status', status);
   if (note.trim()) {
     body.set('note', note.trim());
   }

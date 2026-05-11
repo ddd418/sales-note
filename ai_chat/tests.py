@@ -734,18 +734,20 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         self.assertIn('미팅 기록과 동급의 분석 근거', prompt)
         self.assertIn('요약, 미팅 인사이트, PainPoint, 다음 액션, missing_info', prompt)
         self.assertIn('승인 일정/예산/필요 서류', prompt)
-        self.assertIn('같은 PainPoint 검증 질문을 반복하지 말라', prompt)
+        self.assertIn('상태값으로 의미를 고정하지 말고', prompt)
+        self.assertIn('같은 질문을 그대로 반복하지 않는다', prompt)
         self.assertEqual(token_usage, 37)
-        self.assertEqual(result['verification_memory'][0]['verification_status'], 'confirmed')
+        self.assertEqual(result['verification_memory'][0]['verification_status'], 'checked')
+        self.assertEqual(result['verification_memory'][0]['verification_status_label'], '검증 메모')
         self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', result['department_summary'])
-        self.assertEqual(result['verification_insights'][0]['status'], 'confirmed')
+        self.assertEqual(result['verification_insights'][0]['status'], 'checked')
         self.assertIn('김박사가 최종 승인자라고 5월 미팅에서 확인함', result['verification_insights'][0]['impact'])
         self.assertTrue(any(
             '김박사가 최종 승인자라고 5월 미팅에서 확인함' in action['reason']
             for action in result['next_actions']
         ))
         self.assertTrue(any(
-            '의사결정 일정' in question
+            '다음 단계 확인 질문' in question
             for question in result['missing_info']['questions']
         ))
 
@@ -844,8 +846,44 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
             '구매 지연 원인은 결재가 아니라 기존 재고 소진 대기였음',
             analysis.analysis_data['department_summary'],
         )
-        self.assertIn('부정된 가설', analysis.analysis_data['department_summary'])
+        self.assertIn('검증 메모', analysis.analysis_data['department_summary'])
+        self.assertNotIn('부정된 가설', analysis.analysis_data['department_summary'])
         self.assertTrue(any(
             '검증 메모리 반영' in action['reason']
             for action in analysis.analysis_data['next_actions']
         ))
+
+    def test_verify_card_uses_confirm_only_and_saves_note_for_ai_judgment(self):
+        user = make_ai_user('ai_verify_confirm_only_user', can_use_ai=True)
+        _, department = make_department_with_followup(user)
+        analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
+        card = PainPointCard.objects.create(
+            analysis=analysis,
+            category='budget',
+            hypothesis='예산 지연 가능성이 있습니다.',
+            confidence='med',
+            confidence_score=60,
+            evidence=[],
+            attribution='lab',
+            verification_question='예산 집행일은 언제인가요?',
+            action_if_yes='예산 일정에 맞춰 견적을 보냅니다.',
+            action_if_no='다음 예산 주기를 확인합니다.',
+        )
+        self.client.force_login(user)
+
+        denied_response = self.client.post(
+            reverse('ai_chat:verify_card', args=[card.id]),
+            {'status': 'denied', 'note': '단순 거절 버튼은 더 이상 사용하지 않습니다.'},
+        )
+        self.assertEqual(denied_response.status_code, 400)
+
+        response = self.client.post(
+            reverse('ai_chat:verify_card', args=[card.id]),
+            {'note': '예산은 있으나 집행 시점을 고객이 아직 못 정했습니다.'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], '검증 메모')
+        card.refresh_from_db()
+        self.assertEqual(card.verification_status, 'confirmed')
+        self.assertEqual(card.verification_note, '예산은 있으나 집행 시점을 고객이 아직 못 정했습니다.')

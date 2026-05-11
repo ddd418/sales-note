@@ -1571,7 +1571,7 @@ function CustomerAiResultPanel({
   verificationNotes: Record<number, string>;
   verifyingId: number | null;
   onNoteChange: (cardId: number, value: string) => void;
-  onVerify: (card: CustomerAiPainpoint, status: 'confirmed' | 'denied') => void;
+  onVerify: (card: CustomerAiPainpoint) => void;
 }) {
   const quoteDelivery = aiDepartment.quoteDelivery;
   const quoteInsights = aiDepartment.quoteInsights;
@@ -1761,20 +1761,11 @@ function CustomerAiResultPanel({
                       <button
                         className="route-secondary-action customer-ai-confirm-button"
                         disabled={Boolean(verifyingId)}
-                        onClick={() => onVerify(card, 'confirmed')}
+                        onClick={() => onVerify(card)}
                         type="button"
                       >
                         {verifyingId === card.id ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
                         확인
-                      </button>
-                      <button
-                        className="route-secondary-action customer-ai-deny-button"
-                        disabled={Boolean(verifyingId)}
-                        onClick={() => onVerify(card, 'denied')}
-                        type="button"
-                      >
-                        {verifyingId === card.id ? <Loader2 className="spin-icon" size={14} /> : <X size={14} />}
-                        부정
                       </button>
                     </div>
                   </div>
@@ -1942,7 +1933,7 @@ function CustomerDetailPage({
     }));
   };
 
-  const handleAiPainpointVerify = async (card: CustomerAiPainpoint, status: 'confirmed' | 'denied') => {
+  const handleAiPainpointVerify = async (card: CustomerAiPainpoint) => {
     if (!card.canVerify || !card.verifyHref || aiVerifyingId) {
       return;
     }
@@ -1951,9 +1942,9 @@ function CustomerDetailPage({
     setAiError('');
     setAiMessage('');
     try {
-      await verifyAiPainpoint(card.verifyHref, status, aiVerificationNotes[card.id] || '');
+      await verifyAiPainpoint(card.verifyHref, aiVerificationNotes[card.id] || '');
       await onRefresh();
-      setAiMessage(status === 'confirmed' ? 'PainPoint를 확인 처리했습니다.' : 'PainPoint를 부정 처리했습니다.');
+      setAiMessage('PainPoint 검증 메모를 저장했습니다.');
       setAiVerificationNotes((previous) => {
         const next = { ...previous };
         delete next[card.id];

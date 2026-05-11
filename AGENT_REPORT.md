@@ -11392,6 +11392,102 @@ curl -I https://web-production-5096.up.railway.app/reporting/login/
 
 ---
 
+## AI PainPoint Verification Memo Confirm-Only — 검증 메모 확인 단일화 (2026-05-11)
+
+### 1. Summary
+
+긴급 요청에 따라 PainPoint 검증에서 `확인/부정` 선택을 제거하고 `확인` 하나만 남겼습니다. 사용자는 검증 메모만 저장하고, 다음 AI 재분석 때 AI가 메모 본문을 읽어 사실 확인, 반박, 대체 원인을 직접 판단합니다.
+
+기존 DB의 `verification_status` 필드는 호환성을 위해 유지했지만, 프롬프트와 서버 fallback은 더 이상 `confirmed`/`denied`를 의미로 해석하지 않습니다. 기존 `denied` 데이터도 재분석 메모리에서는 `검증 메모`로 취급됩니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 긴급 PainPoint 검증 메모 단일화 계획 추가 |
+| `ai_chat/services.py` | 검증 메모 프롬프트/요약/인사이트/fallback에서 확인·부정 분기 제거 |
+| `ai_chat/views.py` | `verify_card` API를 확인 단일 흐름으로 변경, `denied` 요청 차단 |
+| `ai_chat/templates/ai_chat/department_analysis.html` | Django fallback 화면의 부정 버튼 제거, 확인 버튼만 유지 |
+| `ai_chat/tests.py` | 검증 메모 단일화 및 기존 denied 데이터 정규화 회귀 테스트 추가 |
+| `reporting/views.py` | React 고객 상세 AI payload의 검증 상태 라벨을 `검증 메모`로 정규화 |
+| `reporting/tests.py` | React 고객 상세 AI payload 기대값 갱신 |
+| `frontend/src/api.ts` | PainPoint 검증 요청에서 status 전송 제거 |
+| `frontend/src/App.tsx` | React 고객 상세 PainPoint 검증 UI에서 부정 버튼 제거 |
+| `frontend/src/styles.css` | 부정 상태 전용 스타일 제거, 확인 메모 스타일 유지 |
+
+### 3. CRM Improvements
+
+- PainPoint 검증 UI가 `확인` 하나로 단순해져 사용자가 확인/부정을 헷갈릴 여지를 줄였습니다.
+- 검증 메모는 상태값이 아니라 AI 판단 근거로 저장됩니다.
+- 재분석 시 서버 fallback도 메모를 `확인된 사실`이나 `부정된 가설`로 고정하지 않습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 미검증/검증 완료 카드 보존 흐름은 유지했습니다.
+- 기존 `PainPointCard.verification_status` 필드는 유지해 migration이 없습니다.
+- 기존 `/ai/card/<id>/verify/`, React 고객 상세, Django fallback 부서 분석 route는 유지했습니다.
+- 기존 stored `confirmed`/`denied` 카드는 재분석 메모리에서 모두 `검증 메모`로 정규화됩니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\tests.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_department_ai_action reporting.tests.PipelineApiTests.test_pipeline_api_includes_department_ai_summary --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test ai_chat.tests --verbosity=1
+→ Ran 20 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-DLXnGDxW.js / dist/assets/index-CWzMMK9v.css generated
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Deployment Status
+
+- Runtime commit: pending
+- GitHub push: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- Deployed frontend bundle: pending
+
+### 7. Known Limitations
+
+- 운영에서 실제 AI 재분석 결과 확인은 로그인 세션과 실제 부서 데이터가 필요해 사용자 수동검수가 필요합니다.
+- DB 선택지에는 호환성 때문에 기존 `confirmed`/`denied` 값이 남아 있지만 사용자 UI와 AI 판단 로직에서는 부정 선택을 사용하지 않습니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 고객 상세 또는 AI 부서 분석 화면에서 PainPoint 검증 영역을 엽니다.
+2. 검증 버튼이 `확인` 하나만 있는지 확인합니다.
+3. 검증 메모를 입력하고 `확인`을 누릅니다.
+4. 저장 후 카드 상태가 `검증 메모`로 보이는지 확인합니다.
+5. 부서 AI 재분석을 실행합니다.
+6. 재분석 결과가 메모를 `확인된 사실/부정된 가설`로 고정하지 않고 메모 본문을 근거로 판단하는지 확인합니다.
+7. 기존 Django fallback `/ai/department/<department_id>/`에서도 부정 버튼이 사라졌는지 확인합니다.
+
+### 9. Recommended Next Task
+
+- 운영 수동검수 완료 후 중단했던 다음 React CRM 통합 작업을 이어갑니다.
+
+---
+
 ## AI Department Meetings and React Document Templates — 부서 AI 미팅 범위 수정 + React 서류 템플릿 관리 (2026-05-11)
 
 ### 1. Summary

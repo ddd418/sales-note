@@ -13,6 +13,14 @@
 
 **목표**: 기존 Django `/reporting/documents/` 서류 템플릿 관리 화면을 fallback으로 유지하면서 React CRM에 `/documents/` 관리 화면을 추가해 일정 상세의 서류 다운로드 workflow를 React 안에서 완결한다.
 
+### 긴급 인터럽트 반영 — AI PainPoint 검증 메모 단일화
+
+- PainPoint 검증 UI/API에서 사용자가 `확인`/`부정`을 고르지 않게 한다.
+- 사용자는 검증 메모만 저장하고, AI가 다음 재분석에서 메모 내용을 읽어 사실 확인/반박/대체 원인을 판단한다.
+- 기존 DB의 `verification_status` 컬럼은 호환성을 위해 유지하지만, 프롬프트와 서버 fallback은 더 이상 `confirmed`/`denied` 의미를 해석하지 않는다.
+- 기존 `denied` 카드도 재분석 메모리에서는 `검증 메모`로 취급해 과거 데이터가 부정/확정 의미로 고정되지 않게 한다.
+- React 고객 상세와 Django fallback 부서 분석 화면 모두 버튼을 `확인` 하나로 정리한다.
+
 ### 긴급 인터럽트 반영 — AI 부서 미팅 범위
 
 - 확인 결과 `ai_chat.services.gather_meeting_data()`가 `department + user` 조건으로 요청자 개인 담당 고객 미팅만 수집하고 있었다.

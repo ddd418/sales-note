@@ -4366,6 +4366,7 @@ def _customers_ai_quote_delivery_payload(analysis):
 
 
 def _customers_ai_painpoint_payload(card, can_verify):
+    verification_status = 'unverified' if card.verification_status == 'unverified' else 'checked'
     evidence_items = []
     for evidence in _ai_json_list(card.evidence)[:4]:
         if not isinstance(evidence, dict):
@@ -4398,8 +4399,8 @@ def _customers_ai_painpoint_payload(card, can_verify):
         'actionIfYes': _ai_payload_text(card.action_if_yes, 320),
         'actionIfNo': _ai_payload_text(card.action_if_no, 320),
         'caution': _ai_payload_text(card.caution, 240),
-        'verificationStatus': card.verification_status,
-        'verificationStatusLabel': card.get_verification_status_display(),
+        'verificationStatus': verification_status,
+        'verificationStatusLabel': '미검증' if verification_status == 'unverified' else '검증 메모',
         'verificationNote': _ai_payload_text(card.verification_note, 260),
         'verifiedAt': _datetime_or_none(card.verified_at),
         'canVerify': can_verify and card.verification_status == 'unverified',
@@ -4449,12 +4450,14 @@ def _customers_ai_result_payload(analysis, can_verify):
     for item in _ai_json_list(raw_verification_insights)[:8]:
         if not isinstance(item, dict):
             continue
+        raw_status = _ai_payload_text(
+            item.get('status') or item.get('verification_status'),
+            40,
+        )
+        status = 'checked' if raw_status and raw_status != 'unverified' else raw_status
         verification_insights.append({
-            'status': _ai_payload_text(
-                item.get('status') or item.get('verification_status'),
-                40,
-            ),
-            'statusLabel': _ai_payload_text(
+            'status': status,
+            'statusLabel': '검증 메모' if status == 'checked' else _ai_payload_text(
                 item.get('status_label') or item.get('verification_status_label'),
                 80,
             ),

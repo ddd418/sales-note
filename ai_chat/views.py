@@ -243,7 +243,7 @@ def run_analysis(request, department_id):
         analysis.token_usage = token_usage
         analysis.save()
 
-        # 검증 완료/부정 카드는 메모리로 보존하고, 미검증 카드만 새 분석 결과로 교체한다.
+        # 사용자가 확인한 검증 메모 카드는 메모리로 보존하고, 미검증 카드만 새 분석 결과로 교체한다.
         preserved_cards = analysis.painpoint_cards.exclude(verification_status='unverified').count()
         analysis.painpoint_cards.filter(verification_status='unverified').delete()
         created_cards = []
@@ -274,16 +274,16 @@ def run_analysis(request, department_id):
 @ai_permission_required
 @require_POST
 def verify_card(request, card_id):
-    """PainPoint 카드 검증 상태 업데이트"""
+    """PainPoint 카드 검증 메모 저장."""
     card = get_object_or_404(PainPointCard, id=card_id, analysis__user=request.user)
 
-    status = request.POST.get('status', '')
+    status = request.POST.get('status', 'confirmed')
     note = request.POST.get('note', '')
 
-    if status not in ('confirmed', 'denied'):
-        return JsonResponse({'error': '유효한 상태를 선택하세요. (confirmed/denied)'}, status=400)
+    if status not in ('', 'confirmed'):
+        return JsonResponse({'error': '검증 메모는 확인만 지원합니다.'}, status=400)
 
-    card.verification_status = status
+    card.verification_status = 'confirmed'
     card.verification_note = note
     card.verified_at = timezone.now()
     card.save(update_fields=['verification_status', 'verification_note', 'verified_at'])
@@ -291,7 +291,7 @@ def verify_card(request, card_id):
     return JsonResponse({
         'success': True,
         'card_id': card.id,
-        'status': card.get_verification_status_display(),
+        'status': '검증 메모',
     })
 
 
@@ -348,7 +348,7 @@ def _painpoint_memory_key(category, hypothesis, verification_question):
 
 
 def _painpoint_card_matches_memory(card_data, verification_memory):
-    """이미 검증/부정된 가설과 같은 카드를 재생성하지 않도록 거른다."""
+    """이미 검증 메모가 남은 가설과 같은 카드를 재생성하지 않도록 거른다."""
     if not verification_memory:
         return False
 
@@ -363,7 +363,8 @@ def _painpoint_card_matches_memory(card_data, verification_memory):
         if not isinstance(item, dict):
             continue
         memory_status = item.get('verification_status') or item.get('verificationStatus') or ''
-        if memory_status not in ('confirmed', 'denied'):
+        memory_note = item.get('verification_note') or item.get('verificationNote') or ''
+        if memory_status == 'unverified' and not memory_note:
             continue
 
         memory_category = item.get('category', '')
