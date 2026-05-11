@@ -8278,6 +8278,7 @@ function DocumentsPage({
 
   const canCreate = Boolean(data?.create.canCreate);
   const documentTypes = data?.documentTypes ?? [];
+  const recentGenerations = data?.recentGenerations ?? [];
 
   const openCreate = () => {
     setEditingTemplate(null);
@@ -8518,6 +8519,14 @@ function DocumentsPage({
                 <span>기본</span>
                 <strong>{formatNumber(data?.summary.defaultTemplates ?? 0)}</strong>
               </div>
+              <div>
+                <span>오늘 생성</span>
+                <strong>{formatNumber(data?.summary.generatedToday ?? 0)}</strong>
+              </div>
+              <div>
+                <span>최근 이력</span>
+                <strong>{formatNumber(data?.summary.recentGenerationCount ?? 0)}</strong>
+              </div>
             </div>
             <div className="document-type-summary">
               {(data?.summary.byType ?? []).map((item) => (
@@ -8592,6 +8601,48 @@ function DocumentsPage({
               </div>
             </div>
           )}
+
+          <div className="document-summary-panel document-generation-panel">
+            <h3>최근 생성 이력</h3>
+            {recentGenerations.length ? (
+              <div className="document-generation-list">
+                {recentGenerations.map((generation) => {
+                  const customerLine = [
+                    generation.customerCompany,
+                    generation.departmentName,
+                    generation.customerName,
+                  ].filter(Boolean).join(' · ');
+                  const cardBody = (
+                    <>
+                      <div className="document-generation-card-head">
+                        <span>{generation.documentTypeLabel}</span>
+                        <strong>{generation.transactionNumber}</strong>
+                      </div>
+                      <div className="document-generation-card-meta">
+                        <span>{generation.outputFormatLabel}</span>
+                        <span>{formatDateTimeLabel(generation.createdAt)}</span>
+                      </div>
+                      <p>{customerLine || '연결된 고객 정보가 없습니다.'}</p>
+                      <small>
+                        {[generation.createdBy, generation.schedule.visitDate ? `일정 ${formatDateLabel(generation.schedule.visitDate)}` : ''].filter(Boolean).join(' · ')}
+                      </small>
+                    </>
+                  );
+                  return generation.schedule.href ? (
+                    <a className="document-generation-card" href={generation.schedule.href} key={generation.id}>
+                      {cardBody}
+                    </a>
+                  ) : (
+                    <div className="document-generation-card" key={generation.id}>
+                      {cardBody}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-state compact">최근 생성된 서류가 없습니다.</div>
+            )}
+          </div>
         </aside>
       </div>
     </section>

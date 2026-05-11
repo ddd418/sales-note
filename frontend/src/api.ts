@@ -1459,6 +1459,31 @@ export type DocumentTemplateItem = {
   canToggleDefault: boolean;
 };
 
+export type DocumentGenerationItem = {
+  id: number;
+  documentType: string;
+  documentTypeLabel: string;
+  transactionNumber: string;
+  outputFormat: 'pdf' | 'xlsx' | string;
+  outputFormatLabel: string;
+  createdAt: string | null;
+  createdBy: string;
+  company: DocumentTemplateCompanyOption;
+  schedule: {
+    id: number | null;
+    visitDate: string | null;
+    activityType: string;
+    activityTypeLabel: string;
+    status: string;
+    statusLabel: string;
+    href: string;
+    djangoHref: string;
+  };
+  customerName: string;
+  customerCompany: string;
+  departmentName: string;
+};
+
 export type DocumentTemplatesData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -1480,6 +1505,8 @@ export type DocumentTemplatesData = {
   summary: {
     totalTemplates: number;
     defaultTemplates: number;
+    generatedToday: number;
+    recentGenerationCount: number;
     byType: Array<{
       type: string;
       label: string;
@@ -1501,6 +1528,7 @@ export type DocumentTemplatesData = {
     scheduleCalendar: string;
   };
   templates: DocumentTemplateItem[];
+  recentGenerations: DocumentGenerationItem[];
 };
 
 export type DocumentTemplateMutationPayload = {
@@ -2629,6 +2657,8 @@ const emptyDocumentTemplatesData: DocumentTemplatesData = {
   summary: {
     totalTemplates: 0,
     defaultTemplates: 0,
+    generatedToday: 0,
+    recentGenerationCount: 0,
     byType: [],
   },
   create: {
@@ -2645,6 +2675,7 @@ const emptyDocumentTemplatesData: DocumentTemplatesData = {
     scheduleCalendar: '/schedules/calendar/',
   },
   templates: [],
+  recentGenerations: [],
 };
 
 const emptyPrepaymentsData: PrepaymentsData = {
@@ -4758,6 +4789,7 @@ export async function loadDocumentTemplatesData(type = ''): Promise<DocumentTemp
         ...(payload.links ?? {}),
       },
       templates: payload.templates ?? emptyDocumentTemplatesData.templates,
+      recentGenerations: payload.recentGenerations ?? emptyDocumentTemplatesData.recentGenerations,
     };
   } catch (error) {
     return {

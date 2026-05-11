@@ -10,6 +10,7 @@ from django.utils import timezone
 from reporting.models import (
     Company,
     Department,
+    DocumentGenerationLog,
     DocumentTemplate,
     EmailLog,
     FollowUp,
@@ -3604,6 +3605,32 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.addCleanup(template.file.delete, False)
         return template
 
+    def _create_schedule(self, owner, name='서류고객', activity_type='quote'):
+        from reporting.models import Schedule
+
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            company=customer_company,
+            department=department,
+            manager=f'{name} 책임',
+        )
+        return Schedule.objects.create(
+            user=owner,
+            company=owner.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type=activity_type,
+        )
+
     def test_document_templates_api_requires_login(self):
         response = self.client.get(self.list_url)
 
@@ -3629,6 +3656,55 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(quotation_summary['count'], 1)
         self.assertEqual(quotation_summary['defaultCount'], 1)
         self.assertEqual(payload['links']['djangoList'], reverse('reporting:document_template_list'))
+
+    def test_document_templates_api_includes_recent_generation_logs_scoped_by_company(self):
+        quote_schedule = self._create_schedule(self.manager, name='견적이력', activity_type='quote')
+        delivery_schedule = self._create_schedule(self.manager, name='납품이력', activity_type='delivery')
+        other_schedule = self._create_schedule(self.other_manager, name='타사이력', activity_type='quote')
+        quote_log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=quote_schedule,
+            user=self.manager,
+            transaction_number='Q-20260511-001',
+            output_format='xlsx',
+        )
+        DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='delivery_note',
+            schedule=delivery_schedule,
+            user=self.manager,
+            transaction_number='D-20260511-001',
+            output_format='pdf',
+        )
+        DocumentGenerationLog.objects.create(
+            company=self.other_company,
+            document_type='quotation',
+            schedule=other_schedule,
+            user=self.other_manager,
+            transaction_number='OTHER-001',
+            output_format='xlsx',
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(self.list_url, {'type': 'quotation'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['generatedToday'], 1)
+        self.assertEqual(payload['summary']['recentGenerationCount'], 1)
+        self.assertEqual([item['id'] for item in payload['recentGenerations']], [quote_log.id])
+        generation = payload['recentGenerations'][0]
+        self.assertEqual(generation['transactionNumber'], 'Q-20260511-001')
+        self.assertEqual(generation['documentTypeLabel'], '견적서')
+        self.assertEqual(generation['outputFormatLabel'], 'Excel')
+        self.assertEqual(generation['createdBy'], self.manager.get_full_name() or self.manager.username)
+        self.assertEqual(generation['customerName'], '견적이력 담당자')
+        self.assertEqual(generation['customerCompany'], '견적이력 회사')
+        self.assertEqual(generation['departmentName'], '견적이력 연구실')
+        self.assertEqual(generation['schedule']['href'], f'/schedules/{quote_schedule.id}/')
+        self.assertEqual(generation['schedule']['djangoHref'], reverse('reporting:schedule_detail', args=[quote_schedule.id]))
+        self.assertNotIn('OTHER-001', [item['transactionNumber'] for item in payload['recentGenerations']])
 
     def test_document_templates_api_filters_by_document_type(self):
         quotation = self._create_template(self.company, '견적서')

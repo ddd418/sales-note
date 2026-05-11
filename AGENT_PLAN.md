@@ -9,6 +9,38 @@
 
 ---
 
+## Current task — React 서류 생성 이력 노출
+
+**목표**: React `/documents/`에서 서류 템플릿 관리뿐 아니라 최근 서류 생성/다운로드 이력을 확인할 수 있게 해 견적/거래명세서/납품서 생성 workflow의 추적성을 높인다.
+
+### 확인된 상태
+
+- 기존 `DocumentGenerationLog` 모델이 서류 종류, 일정, 생성자, 거래번호, 출력 형식, 생성일을 기록한다.
+- 일정 상세 React 화면은 이미 일정 기반 서류 미리보기/다운로드를 제공하고, 다운로드 시 기존 Django 생성 로직이 `DocumentGenerationLog`를 저장한다.
+- React `/documents/` API는 현재 템플릿 목록/요약만 반환해 최근 어떤 서류가 생성됐는지 알 수 없다.
+- 회사 범위 권한은 템플릿 API와 동일하게 유지하면 되고, 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/documents/` payload에 최근 서류 생성 이력 `recentGenerations`를 추가한다.
+- 각 이력에는 거래번호, 서류 종류, 출력 형식, 생성일, 생성자, 회사, 연결 일정/고객/부서, React 일정 상세 링크와 Django fallback 링크를 포함한다.
+- `type` 필터가 선택되면 생성 이력도 같은 서류 종류로 제한한다.
+- React 타입/빈 상태를 확장하고 `/documents/` 오른쪽 패널에 최근 생성 이력 목록을 추가한다.
+- 기존 템플릿 등록/수정/삭제/기본 설정, 일정 상세 서류 생성, Django fallback은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/documents/` smoke check
+
+---
+
 ## Current task — React 메일 발송 첨부파일 지원
 
 **목표**: React `/mailbox/`의 새 메일 작성과 `/mailbox/thread/<id>/` 답장에서 첨부파일을 선택해 발송할 수 있게 한다.

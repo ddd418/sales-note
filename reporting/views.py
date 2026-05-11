@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate
+from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -17694,6 +17694,55 @@ def _document_template_payload(template, actor):
     }
 
 
+def _document_generation_log_queryset_for_user(user):
+    queryset = DocumentGenerationLog.objects.select_related(
+        'company',
+        'user',
+        'schedule',
+        'schedule__followup',
+        'schedule__followup__company',
+        'schedule__followup__department',
+    )
+    if user.is_superuser:
+        return queryset
+    user_profile = get_user_profile(user)
+    if not user_profile.company:
+        return queryset.none()
+    return queryset.filter(company=user_profile.company)
+
+
+def _document_generation_log_payload(log):
+    schedule = log.schedule
+    followup = schedule.followup if schedule else None
+    return {
+        'id': log.id,
+        'documentType': log.document_type,
+        'documentTypeLabel': log.get_document_type_display(),
+        'transactionNumber': log.transaction_number,
+        'outputFormat': log.output_format,
+        'outputFormatLabel': log.get_output_format_display(),
+        'createdAt': _datetime_or_none(log.created_at),
+        'createdBy': _user_display_name(log.user) if log.user else '',
+        'company': {
+            'id': log.company_id,
+            'name': log.company.name if log.company else '',
+        },
+        'schedule': {
+            'id': schedule.id if schedule else None,
+            'visitDate': _date_or_none(schedule.visit_date) if schedule else None,
+            'activityType': schedule.activity_type if schedule else '',
+            'activityTypeLabel': schedule.get_activity_type_display() if schedule else '',
+            'status': schedule.status if schedule else '',
+            'statusLabel': schedule.get_status_display() if schedule else '',
+            'href': f'/schedules/{schedule.id}/' if schedule else '',
+            'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+        },
+        'customerName': followup.customer_name if followup else '',
+        'customerCompany': followup.company.name if followup and followup.company else '',
+        'departmentName': followup.department.name if followup and followup.department else '',
+    }
+
+
 def _document_template_document_types_payload():
     return [
         {'value': value, 'label': label}
@@ -17716,6 +17765,13 @@ def _document_template_can_create_payload(request, user_profile):
 def _document_template_api_context(request, templates):
     user_profile = get_user_profile(request.user)
     base_queryset = _document_template_queryset_for_user(request.user)
+    valid_types = {value for value, _label in DocumentTemplate.DOCUMENT_TYPE_CHOICES}
+    document_type_filter = request.GET.get('type', '')
+    log_queryset = _document_generation_log_queryset_for_user(request.user)
+    if document_type_filter in valid_types:
+        log_queryset = log_queryset.filter(document_type=document_type_filter)
+    elif document_type_filter:
+        log_queryset = log_queryset.none()
     type_counts = {
         item['document_type']: item['count']
         for item in base_queryset.values('document_type').annotate(count=Count('id'))
@@ -17751,6 +17807,8 @@ def _document_template_api_context(request, templates):
         'summary': {
             'totalTemplates': base_queryset.count(),
             'defaultTemplates': base_queryset.filter(is_default=True).count(),
+            'generatedToday': log_queryset.filter(created_at__date=timezone.localdate()).count(),
+            'recentGenerationCount': log_queryset.count(),
             'byType': [
                 {
                     'type': value,
@@ -17777,6 +17835,10 @@ def _document_template_api_context(request, templates):
         'templates': [
             _document_template_payload(template, request.user)
             for template in templates
+        ],
+        'recentGenerations': [
+            _document_generation_log_payload(log)
+            for log in log_queryset.order_by('-created_at')[:10]
         ],
     }
 
