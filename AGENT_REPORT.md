@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — React Schedule Calendar Selected-Date Create Flow
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -41,6 +41,15 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "fix: route calendar creates to React schedule form"
+→ b405466
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React calendar create flow b405466" --ci
+→ d8ae8549-a810-4332-b6a7-8ee421bb3981 SUCCESS
 ```
 
 ### 알려진 제한
@@ -50,8 +59,14 @@ git diff --check
 
 ### 배포 상태
 
-- Production deployment: pending
-- Production smoke: pending
+- Runtime commit: `b405466 fix: route calendar creates to React schedule form`
+- GitHub push: `main` updated from `97ee492` to `b405466`
+- Railway `sales-note-frontend`: `d8ae8549-a810-4332-b6a7-8ee421bb3981` SUCCESS, message `Deploy React calendar create flow b405466`
+- Production `/schedules/calendar/` returns 200.
+- Production `/schedules/?create=1&date=2026-05-11` returns 200.
+- Production frontend serves `assets/index-Bdw-ncC7.js` / `assets/index-M9Uvw-6H.css`.
+- Production JS contains `/schedules/?create=1&date=`, `고객 일정 등록`, and `Django 상세 등록`.
+- Anonymous frontend proxy `/reporting/api/schedules/calendar/` returns `401`.
 
 ### 수동 서버 테스트 절차
 
