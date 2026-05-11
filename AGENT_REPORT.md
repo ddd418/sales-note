@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — AI Workspace Department Selection in React
 
-**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -56,10 +56,16 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
-- 운영 smoke check: pending
+- Runtime commit: `67f00ea feat: keep AI workspace department selection in React`
+- GitHub push: `main` updated from `7dea9dd` to `67f00ea`
+- Railway `web`: `45f20216-05f1-44bd-931d-8e4b1f6bf8de` SUCCESS, commit `67f00ea`
+- Railway `sales-note-frontend`: `09a7ea82-a5b5-453f-b639-5573f0156705` SUCCESS, message `Deploy AI workspace department selection 67f00ea`
+- Production `/ai-workspace/` returns 200 and serves `assets/index-rJt-C9JT.js` / `assets/index-CpCyMmMT.css`.
+- Production JS contains `department_id`, `선택됨`, and `/reporting/api/ai-workspace/`.
+- Production CSS contains `.ai-department-row.selected`.
+- Anonymous frontend proxy `/reporting/api/ai-workspace/?department_id=1` returns `401 login_required`.
+- Anonymous backend `/reporting/api/ai-workspace/?department_id=1` returns `401 login_required`.
+- Recent `web` deployment logs show successful migration check/startup and no traceback/500; smoke requests only logged expected `Unauthorized`.
 
 ### 수동 서버 테스트 절차
 
