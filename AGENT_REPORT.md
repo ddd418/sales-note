@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — React Mailbox Send Attachments
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -52,6 +52,15 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: add React mailbox attachments"
+→ de930af
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React mailbox attachments de930af" --ci
+→ d55ba8c7-62a7-4237-b26e-9b456f7a7787 SUCCESS
 ```
 
 ### 알려진 제한
@@ -61,8 +70,13 @@ git diff --check
 
 ### 배포 상태
 
-- Production deployment: pending
-- Production smoke: pending
+- Runtime commit: `de930af feat: add React mailbox attachments`
+- GitHub push: `main` updated from `70ce675` to `de930af`
+- Railway `sales-note-frontend`: `d55ba8c7-62a7-4237-b26e-9b456f7a7787` SUCCESS, message `Deploy React mailbox attachments de930af`
+- Production `/mailbox/` returns 200.
+- Production frontend serves `assets/index-BVsunKYp.js` / `assets/index-BPeRJO55.css`.
+- Production JS contains `첨부파일`, `mail-attachment-list`, and `attachments`.
+- Anonymous frontend proxy `/reporting/api/mailbox/` redirects to `/reporting/login/?next=/reporting/api/mailbox/`.
 
 ### 수동 서버 테스트 절차
 
