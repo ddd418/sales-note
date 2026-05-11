@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — React AI Workspace Customer-Style Panel
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -52,11 +52,40 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: add AI workspace result panel"
+→ 9ec4256
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI workspace result panel 9ec4256" --ci
+→ 659c310f-395f-4f47-a3f3-974fad1299b9 SUCCESS
+
+railway deployment list --service web --environment production --limit 2 --json
+→ d70e164d-daf9-4f26-a788-1518bbf183f8 SUCCESS, commit 9ec4256
+
+curl -I https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 OK
+
+curl https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required
+
+curl https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required
 ```
 
 ### 배포 상태
 
-- 운영 배포 예정.
+- Runtime commit: `9ec4256 feat: add AI workspace result panel`
+- GitHub push: `main` updated from `168c85c` to `9ec4256`
+- Railway `web`: `d70e164d-daf9-4f26-a788-1518bbf183f8` SUCCESS, commit `9ec4256`
+- Railway `sales-note-frontend`: `659c310f-395f-4f47-a3f3-974fad1299b9` SUCCESS, message `Deploy AI workspace result panel 9ec4256`
+- Production `/ai-workspace/` returns 200 and serves `assets/index-D8ySrsxQ.js` / `assets/index-C66GcgeW.css`
+- Production JS contains `featuredDepartment`, `Department AI`, and PainPoint confirm memo handling strings.
+- Production CSS contains `ai-workspace-layout` and `ai-featured-customer-chips`.
+- Anonymous frontend proxy `/reporting/api/ai-workspace/` returns `401 login_required`.
+- Anonymous direct backend `/reporting/api/ai-workspace/` returns `401 login_required`.
 
 ### 알려진 제한
 
