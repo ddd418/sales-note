@@ -1,5 +1,62 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — AI Workspace Department List Search Limit
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React `/ai-workspace/`의 `Department analysis / 부서 분석 대상` 목록을 최대 5개만 보이도록 제한하고, 회사/부서/고객/요약 기준 검색 input을 추가했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: `AIWorkspaceDepartmentList`에 검색 상태, 필터링, 5개 제한 표시 추가
+- `frontend/src/styles.css`: 부서 검색창, 목록 메타, 안내 문구 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 부서 분석 대상이 많아도 AI workspace 메인 영역이 길게 밀리지 않습니다.
+- 사용자는 검색으로 필요한 부서를 찾아 바로 AI 허브/부서 분석으로 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/ai-workspace/`와 기존 Django `/ai/*` route는 변경하지 않았습니다.
+- 부서 목록 데이터는 API에서 계속 전체를 받아오고, React 화면에서만 5개로 제한합니다.
+- DB 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npm run build
+→ OK, assets/index-D0kCzolk.js / assets/index-ChIABZDB.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `Department analysis / 부서 분석 대상`에서 검색창이 보이는지 확인합니다.
+3. 초기 목록이 최대 5개만 보이는지 확인합니다.
+4. 회사명, 부서명, 고객명 일부를 입력했을 때 결과가 필터링되고 계속 최대 5개만 표시되는지 확인합니다.
+
+---
+
 ## 2026-05-11 — React AI Workspace Customer-Style Panel
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

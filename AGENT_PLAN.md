@@ -9,6 +9,34 @@
 
 ---
 
+## Current task — AI Workspace 부서 분석 대상 검색/5개 제한
+
+**목표**: React `/ai-workspace/`의 `Department analysis / 부서 분석 대상` 목록을 화면상 5개로 제한하고 검색으로 필요한 부서를 찾게 한다.
+
+### 확인된 상태
+
+- `/reporting/api/ai-workspace/`는 사용자의 AI 분석 대상 부서를 모두 내려준다.
+- React `AIWorkspaceDepartmentList`는 현재 전달받은 부서를 전부 렌더링한다.
+- DB/API 변경은 필요하지 않고 프론트 표시 로직만 조정하면 된다.
+
+### 구현 계획
+
+- `AIWorkspaceDepartmentList`에 검색 input을 추가한다.
+- 회사명, 부서명, 고객 preview, AI 요약을 검색 대상으로 삼는다.
+- 검색 결과는 항상 상위 5개만 표시한다.
+- 전체/검색 결과/표시 건수를 작은 메타 텍스트로 보여준다.
+
+### 검증 계획
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke check
+
+---
+
 ## Current task — React AI 업무도구 고객형 AI 패널 정리
 
 **목표**: 운영 `/ai-workspace/` 화면을 고객 상세 오른쪽 AI 패널과 같은 형태로 정리해, 최근 부서 AI 분석 결과와 PainPoint 검증 메모를 한 화면에서 판단하게 한다.

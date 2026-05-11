@@ -6974,28 +6974,72 @@ function PrepaymentDetailPage({
 }
 
 function AIWorkspaceDepartmentList({ departments }: { departments: AIWorkspaceDepartment[] }) {
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredDepartments = useMemo(() => {
+    if (!normalizedQuery) {
+      return departments;
+    }
+    return departments.filter((department) => {
+      const searchableText = [
+        department.company,
+        department.name,
+        department.summary,
+        ...department.customerPreview,
+      ].join(' ').toLowerCase();
+      return searchableText.includes(normalizedQuery);
+    });
+  }, [departments, normalizedQuery]);
+  const visibleDepartments = filteredDepartments.slice(0, 5);
+
   if (departments.length === 0) {
     return <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />;
   }
 
   return (
-    <div className="ai-department-list">
-      {departments.map((department) => (
-        <a className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''}`} href={department.hubHref} key={department.id}>
-          <div>
-            <strong>{department.company || department.name}</strong>
-            <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
-            {department.summary ? <small>{department.summary}</small> : null}
-            {!department.summary && department.customerPreview.length > 0 ? (
-              <small>{department.customerPreview.join(', ')}</small>
-            ) : null}
-          </div>
-          <div className="ai-row-meta">
-            <span>{department.hasAnalysis ? '분석 완료' : '분석 필요'}</span>
-            <strong>{formatNumber(department.unverifiedPainpointCount)}</strong>
-          </div>
-        </a>
-      ))}
+    <div className="ai-department-block">
+      <label className="ai-department-search">
+        <Search size={16} />
+        <input
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="회사, 부서, 고객, 요약 검색"
+          value={query}
+        />
+      </label>
+      <div className="ai-department-list-meta">
+        <span>
+          전체 {formatNumber(departments.length)}개
+          {normalizedQuery ? ` · 검색 ${formatNumber(filteredDepartments.length)}개` : ''}
+        </span>
+        <strong>최대 5개 표시</strong>
+      </div>
+      {visibleDepartments.length === 0 ? (
+        <DashboardEmpty label="검색 결과가 없습니다" />
+      ) : (
+        <div className="ai-department-list">
+          {visibleDepartments.map((department) => (
+            <a className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''}`} href={department.hubHref} key={department.id}>
+              <div>
+                <strong>{department.company || department.name}</strong>
+                <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
+                {department.summary ? <small>{department.summary}</small> : null}
+                {!department.summary && department.customerPreview.length > 0 ? (
+                  <small>{department.customerPreview.join(', ')}</small>
+                ) : null}
+              </div>
+              <div className="ai-row-meta">
+                <span>{department.hasAnalysis ? '분석 완료' : '분석 필요'}</span>
+                <strong>{formatNumber(department.unverifiedPainpointCount)}</strong>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+      {filteredDepartments.length > visibleDepartments.length ? (
+        <p className="ai-department-list-hint">
+          {formatNumber(filteredDepartments.length - visibleDepartments.length)}개가 더 있습니다. 검색어를 더 구체적으로 입력하세요.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -3560,6 +3560,51 @@ h2 {
   gap: 9px;
 }
 
+.ai-department-block {
+  display: grid;
+  gap: 9px;
+}
+
+.ai-department-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.ai-department-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ai-department-list-meta,
+.ai-department-list-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-department-list-meta strong {
+  color: var(--primary-strong);
+  white-space: nowrap;
+}
+
 .ai-department-row,
 .ai-painpoint-row {
   display: flex;
