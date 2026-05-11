@@ -4505,7 +4505,12 @@ class WeeklyReportReactApiTests(TestCase):
         )
         self.assertIn('<p>첫 줄<br>둘째 줄</p>', report.activity_notes)
         self.assertIn('<p>다음 문단</p>', report.activity_notes)
-        self.assertEqual(r.json()['report']['href'], f'/weekly-reports/{report.id}/')
+        response_report = r.json()['report']
+        self.assertIn('첫 줄', response_report['activityNotesHtml'])
+        self.assertIn('둘째 줄', response_report['activityNotesHtml'])
+        self.assertIn('다음 문단', response_report['activityNotesHtml'])
+        self.assertIn('<br>', response_report['activityNotesHtml'])
+        self.assertEqual(response_report['href'], f'/weekly-reports/{report.id}/')
 
     def test_detail_api_returns_html_and_editor_text(self):
         import datetime
@@ -4524,6 +4529,7 @@ class WeeklyReportReactApiTests(TestCase):
         self.assertEqual(r.status_code, 200)
         data = r.json()['report']
         self.assertIn('첫 줄', data['activityNotesHtml'])
+        self.assertIn('<br>', data['activityNotesHtml'])
         self.assertEqual(data['activityNotes'], '첫 줄\n둘째 줄')
         self.assertTrue(data['canComment'])
         self.assertFalse(data['canEdit'])

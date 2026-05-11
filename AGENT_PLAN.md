@@ -9,6 +9,37 @@
 
 ---
 
+## Current task — React 주간보고 줄바꿈 표시 보존
+
+**목표**: React `/weekly-reports/`에서 주간보고를 저장한 뒤 상세 화면에서 사용자가 입력한 줄바꿈이 그대로 보이게 한다.
+
+### 확인된 상태
+
+- React 주간보고 작성/수정 화면은 일반 `textarea`로 `activityNotes`, `quoteDeliveryNotes`, `otherNotes`를 저장한다.
+- Django React API는 plain text 줄바꿈을 `<br>`/`<p>` HTML로 정규화해 저장하고, 상세 payload에 `activityNotesHtml` 등으로 내려준다.
+- React 상세 화면은 `dangerouslySetInnerHTML`로 주간보고 본문을 렌더링하지만, CSS가 raw newline text node와 관리자 코멘트 줄바꿈을 보존하도록 명시하지 않는다.
+- DB 변경은 필요하지 않다.
+
+### 구현 계획
+
+- 주간보고 본문 표시 CSS에 `white-space: pre-wrap`을 적용해 저장 HTML 안의 raw newline도 접히지 않게 한다.
+- 관리자 검토 코멘트 `<p>`도 같은 방식으로 줄바꿈을 보존한다.
+- React API 회귀 테스트에 저장 응답/상세 응답의 `<br>` 보존 확인을 추가한다.
+- 기존 Django 주간보고 fallback, API 권한, 저장 방식은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/weekly-reports/` smoke check
+
+---
+
 ## Current task — AI Workspace 부서 선택 React 전환
 
 **목표**: React `/ai-workspace/`의 `부서 분석 대상` 클릭이 Django AI 허브로 이동하지 않고, 같은 React 화면 오른쪽 `Department AI` 패널을 해당 부서 분석 결과로 전환하게 한다.

@@ -1,5 +1,71 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React Weekly Report Linebreak Display
+
+**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 예정
+
+### 요약
+
+React `/weekly-reports/`에서 주간보고 저장 후 상세 화면에 표시되는 본문과 관리자 검토 코멘트가 입력 줄바꿈을 보존하도록 표시 CSS를 보강했습니다.
+
+### 변경된 파일
+
+- `frontend/src/styles.css`: 주간보고 HTML 본문과 관리자 코멘트에 `white-space: pre-wrap` 적용
+- `reporting/tests.py`: React 주간보고 저장/상세 API가 줄바꿈용 `<br>`를 포함하는지 회귀 테스트 보강
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 사용자가 주간보고 `textarea`에서 줄을 나눠 입력한 내용이 상세 화면에서 한 줄로 붙어 보이지 않습니다.
+- 기존 저장 데이터가 HTML 안에 raw newline을 포함해도 React 표시 영역에서 줄바꿈을 접지 않습니다.
+- 관리자 검토 코멘트도 여러 줄 입력 시 그대로 보입니다.
+
+### 기존 기능 보존
+
+- 주간보고 저장 API, 권한 범위, Django fallback 화면은 유지했습니다.
+- DB 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-BQMADz31.js / assets/index-C_Dt-dqM.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- Runtime commit: pending
+- Railway `sales-note-frontend`: pending
+- 운영 smoke check: pending
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/weekly-reports/new/`에서 주간보고를 작성합니다.
+2. `영업 활동`, `견적/납품`, `기타` 중 하나에 여러 줄과 빈 줄을 포함해 입력합니다.
+3. 저장 후 상세 화면에서 입력한 줄바꿈이 그대로 보이는지 확인합니다.
+4. 수정 화면에서 다시 열었을 때 textarea에도 줄바꿈이 유지되는지 확인합니다.
+5. 관리자 계정에서 검토 코멘트를 여러 줄로 저장한 뒤 상세 화면에 줄바꿈이 유지되는지 확인합니다.
+
+---
+
 ## 2026-05-11 — AI Workspace Department Selection in React
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
