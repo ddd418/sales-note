@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## Current task — 메일 발송 줄바꿈 과다 간격 수정
+
+**목표**: React `/mailbox/`에서 메일을 보낼 때 사용자가 입력한 줄바꿈이 실제 수신 메일에서 2~3배로 벌어지지 않게, plain text 본문을 HTML 메일로 변환하는 공통 발송 로직을 정규화한다.
+
+### 확인된 상태
+
+- React 메일 작성/답장은 `body_text`만 `FormData`로 전송하고 `body_html`은 보내지 않는다.
+- Django `_handle_email_send()`는 `body_html`이 없으면 `body_text.replace('\n', '<br>')`로 HTML을 만든 뒤 `white-space: pre-wrap` 스타일을 함께 적용한다.
+- multipart/form-data를 거친 textarea 줄바꿈은 `\r\n`으로 들어올 수 있어 현재 변환은 `\r<br>`를 남기며, HTML 메일 클라이언트에서 줄바꿈이 중복될 수 있다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- 메일 발송 공통 로직에서 `body_text`의 `\r\n`, `\r`을 먼저 `\n`으로 정규화한다.
+- plain text → HTML 변환 helper를 추가해 HTML escape 후 `\n`만 `<br>`로 변환한다.
+- 변환 HTML에서는 `white-space: pre-wrap`을 제거하고 line-height/margin만 지정해 `<br>`이 줄바꿈을 단독으로 담당하게 한다.
+- Gmail API/IMAP SMTP 발송, EmailLog 저장, 첨부파일/명함 서명/답장 흐름은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python -m py_compile reporting\gmail_views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/mailbox/`/메일 API 보호 smoke check
+
+---
+
 ## Current task — React 일정 메뉴 캘린더 우선 진입
 
 **목표**: React 공통 사이드바에서 `일정`을 클릭하면 목록 화면(`/schedules/`)이 아니라 캘린더 화면(`/schedules/calendar/`)으로 먼저 진입하게 한다.

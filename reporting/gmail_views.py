@@ -23,6 +23,20 @@ from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_
 # 헬퍼 함수
 # ============================================
 
+def _normalize_email_body_text(value):
+    """Normalize textarea line endings before MIME and HTML conversion."""
+    return (value or '').replace('\r\n', '\n').replace('\r', '\n')
+
+
+def _plain_email_body_to_html(value):
+    from html import escape
+
+    normalized = _normalize_email_body_text(value)
+    escaped = escape(normalized, quote=False)
+    html_body = escaped.replace('\n', '<br>\n')
+    return f'<div style="font-family: Arial, sans-serif; line-height: 1.45; margin: 0;">{html_body}</div>'
+
+
 def _sync_emails_by_days(user, days=1):
     """
     지정한 일수만큼 메일 동기화
@@ -433,7 +447,7 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
         cc_emails = request.POST.get('cc_emails', '')
         bcc_emails = request.POST.get('bcc_emails', '')
         subject = request.POST.get('subject', '')
-        body_text = request.POST.get('body_text', '')
+        body_text = _normalize_email_body_text(request.POST.get('body_text', ''))
         body_html = request.POST.get('body_html', '')
         business_card_id = request.POST.get('business_card_id', '')
         
@@ -488,9 +502,7 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
         else:
             # HTML이 비어있으면 body_text를 사용
             if body_text and body_text.strip():
-                # 텍스트를 HTML로 변환 (줄바꿈 보존)
-                text_as_html = body_text.replace('\n', '<br>')
-                full_body_html = f'<div style="font-family: Arial, sans-serif; white-space: pre-wrap;">{text_as_html}</div>' + separator + signature_html
+                full_body_html = _plain_email_body_to_html(body_text) + separator + signature_html
             else:
                 full_body_html = signature_html
         

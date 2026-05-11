@@ -342,6 +342,57 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
         self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
 
+    def test_mailbox_send_api_normalizes_plain_text_line_breaks_for_html(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        body_text = (
+            '안녕하세요 이다민 연구원님.\r\n'
+            '하나과학 안재현 대리입니다.\r\n'
+            '\r\n'
+            '5 < 10 & 확인 부탁드립니다.'
+        )
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-linebreak-normalized',
+                'thread_id': 'gmail-thread-linebreak-normalized',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '줄바꿈 테스트',
+                    'body_text': body_text,
+                    'selected_followup_id': str(self.followup.id),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_kwargs = gmail_service.send_email.call_args.kwargs
+        self.assertEqual(
+            sent_kwargs['body_text'],
+            '안녕하세요 이다민 연구원님.\n'
+            '하나과학 안재현 대리입니다.\n'
+            '\n'
+            '5 < 10 & 확인 부탁드립니다.',
+        )
+        body_html = sent_kwargs['body_html']
+        self.assertIn('안녕하세요 이다민 연구원님.<br>\n하나과학 안재현 대리입니다.', body_html)
+        self.assertIn('하나과학 안재현 대리입니다.<br>\n<br>\n5 &lt; 10 &amp; 확인 부탁드립니다.', body_html)
+        self.assertEqual(body_html.count('<br>'), 3)
+        self.assertNotIn('\r', body_html)
+        self.assertNotIn('white-space: pre-wrap', body_html)
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-linebreak-normalized')
+        self.assertEqual(email_log.body, sent_kwargs['body_text'])
+        self.assertEqual(email_log.body_html.count('<br>'), 3)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 익명 사용자 URL 차단 테스트
