@@ -1754,6 +1754,11 @@ export type AIWorkspaceDepartment = {
   runHref: string;
 };
 
+export type AIWorkspaceFeaturedDepartment = CustomerAiDepartment & {
+  customerCount: number;
+  customerPreview: string[];
+};
+
 export type AIWorkspacePainpoint = {
   id: number;
   category: string;
@@ -1851,6 +1856,7 @@ export type AIWorkspaceData = {
     end: string;
   };
   departments: AIWorkspaceDepartment[];
+  featuredDepartment: AIWorkspaceFeaturedDepartment | null;
   recentDepartmentAnalyses: AIWorkspaceAnalysis[];
   painpoints: AIWorkspacePainpoint[];
   followupTargets: AIWorkspaceFollowupTarget[];
@@ -2829,6 +2835,7 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     end: '',
   },
   departments: [],
+  featuredDepartment: null,
   recentDepartmentAnalyses: [],
   painpoints: [],
   followupTargets: [],
@@ -4920,6 +4927,7 @@ export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {
     }
     return {
       ...payload,
+      featuredDepartment: payload.featuredDepartment ?? null,
       promptTargets: payload.promptTargets ?? [],
     };
   } catch (error) {

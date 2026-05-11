@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React AI Workspace Customer-Style Panel
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React `/ai-workspace/` 화면 오른쪽에 고객 상세에서 쓰는 부서 AI 결과 패널을 붙였습니다. 최신 부서 분석의 미팅/견적/납품 인사이트, 검증 기반 인사이트, 추천 액션, 확인 필요 사항, PainPoint 검증 메모를 AI 업무도구에서 바로 볼 수 있습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI workspace API에 `featuredDepartment` 상세 AI payload 추가
+- `reporting/tests.py`: `featuredDepartment`와 PainPoint 검증 URL 회귀 테스트 추가
+- `frontend/src/api.ts`: AI workspace 대표 부서 타입과 loader 정규화 추가
+- `frontend/src/App.tsx`: `/ai-workspace/` 오른쪽 고객형 AI 패널, AI 분석 실행, PainPoint 확인 메모 저장 연결
+- `frontend/src/styles.css`: AI workspace 2열 레이아웃과 대표 부서 고객 chip 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 고객 상세의 오른쪽 AI 경험을 `/ai-workspace/`에서도 그대로 사용할 수 있습니다.
+- AI 업무도구에서 최신 부서 분석 결과를 열람하고 PainPoint 검증 메모를 `확인` 하나로 저장할 수 있습니다.
+- 기존 작업 큐, 부서 분석 대상, 고객 분석 대상, 전체 검증 대기 목록은 유지했습니다.
+
+### 기존 기능 보존
+
+- 기존 Django `/ai/*`, `/reporting/*`, React 고객 상세 AI 패널은 유지했습니다.
+- 신규 DB 필드와 migration은 없습니다.
+- AI 권한이 없는 사용자는 기존처럼 권한 안내만 받고 `featuredDepartment`는 `null`입니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-D8ySrsxQ.js / assets/index-C66GcgeW.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 알려진 제한
+
+- 오른쪽 대표 AI 패널은 현재 사용자 기준 최신 부서 분석을 우선 표시합니다. 분석이 없으면 첫 분석 대상 부서의 빈 AI 패널을 보여주고 실행 버튼을 제공합니다.
+
+### 권장 다음 작업
+
+- 사용자 운영 검수 후 기존 진행 예정이던 React 서류 템플릿 관리(`/documents/`) 또는 다음 우선순위 작업으로 돌아갑니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 로그인한 상태로 접속합니다.
+2. 오른쪽 `Department AI` 패널이 고객 상세 오른쪽 AI 패널처럼 미팅/견적/납품 분석, 검증 기반 인사이트, 추천 액션, 확인 필요, PainPoint 검증을 보여주는지 확인합니다.
+3. 미검증 PainPoint 카드에 검증 메모를 입력하고 `확인`을 누른 뒤 카드가 저장/새로고침되는지 확인합니다.
+4. `확인` 외에 `부정` 선택지가 없는지 확인합니다.
+5. 기존 AI 작업 큐, 부서 분석 대상, 고객 분석 대상, 전체 검증 대기 목록이 계속 보이는지 확인합니다.
+
+---
+
 ## 2026-05-10 — React Schedule Documents First Integration
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/사용자 수동검수 완료

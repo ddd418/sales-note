@@ -8425,8 +8425,21 @@ function DocumentsPage({
   );
 }
 
-function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; loading: boolean }) {
+function AIWorkspacePage({
+  data,
+  loading,
+  onRefresh,
+}: {
+  data: AIWorkspaceData | null;
+  loading: boolean;
+  onRefresh: () => Promise<AIWorkspaceData>;
+}) {
   const [copiedPromptId, setCopiedPromptId] = useState('');
+  const [featuredVerificationNotes, setFeaturedVerificationNotes] = useState<Record<number, string>>({});
+  const [featuredVerifyingId, setFeaturedVerifyingId] = useState<number | null>(null);
+  const [featuredRunningId, setFeaturedRunningId] = useState<number | null>(null);
+  const [aiPanelMessage, setAiPanelMessage] = useState('');
+  const [aiPanelError, setAiPanelError] = useState('');
 
   const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
     try {
@@ -8435,6 +8448,60 @@ function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; load
       window.setTimeout(() => setCopiedPromptId(''), 1600);
     } catch {
       setCopiedPromptId('');
+    }
+  };
+
+  const handleFeaturedVerificationNoteChange = (cardId: number, value: string) => {
+    setFeaturedVerificationNotes((previous) => ({
+      ...previous,
+      [cardId]: value,
+    }));
+  };
+
+  const handleFeaturedPainpointVerify = async (card: CustomerAiPainpoint) => {
+    if (!card.canVerify || !card.verifyHref || featuredVerifyingId) {
+      return;
+    }
+
+    setFeaturedVerifyingId(card.id);
+    setAiPanelError('');
+    setAiPanelMessage('');
+    try {
+      await verifyAiPainpoint(card.verifyHref, featuredVerificationNotes[card.id] || '');
+      await onRefresh();
+      setAiPanelMessage('PainPoint 검증 메모를 저장했습니다.');
+      setFeaturedVerificationNotes((previous) => {
+        const next = { ...previous };
+        delete next[card.id];
+        return next;
+      });
+    } catch (error) {
+      setAiPanelError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
+    } finally {
+      setFeaturedVerifyingId(null);
+    }
+  };
+
+  const handleFeaturedDepartmentRun = async () => {
+    const featuredDepartment = data?.featuredDepartment;
+    if (!featuredDepartment?.canAnalyze || !featuredDepartment.runHref || featuredRunningId) {
+      setAiPanelError(featuredDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
+      setAiPanelMessage('');
+      return;
+    }
+
+    setFeaturedRunningId(featuredDepartment.departmentId);
+    setAiPanelError('');
+    setAiPanelMessage('');
+    try {
+      const result = await runAiDepartmentAnalysis(featuredDepartment.runHref);
+      await onRefresh();
+      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
+      setAiPanelMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+    } catch (error) {
+      setAiPanelError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
+    } finally {
+      setFeaturedRunningId(null);
     }
   };
 
@@ -8458,6 +8525,7 @@ function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; load
     { label: '고객 분석', value: `${formatNumber(data.metrics.followupAnalyses)}건`, detail: '개별 고객', icon: Target, tone: 'amber' as const },
     { label: '이번 달 보고', value: `${formatNumber(data.metrics.weeklyReportsThisMonth)}건`, detail: '주간보고', icon: FileText, tone: 'green' as const },
   ];
+  const featuredDepartment = data.featuredDepartment;
 
   return (
     <section className="ai-page">
@@ -8530,86 +8598,164 @@ function AIWorkspacePage({ data, loading }: { data: AIWorkspaceData | null; load
         </section>
       ) : null}
 
-      <div className="ai-layout">
-        <section className="dashboard-panel ai-main-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Department analysis</span>
-              <h2>부서 분석 대상</h2>
-            </div>
-            <Sparkles size={18} />
-          </div>
-          <AIWorkspaceDepartmentList departments={data.departments} />
-        </section>
+      {data.permission.canUseAi ? (
+        <div className="ai-workspace-layout">
+          <div className="ai-workspace-main">
+            <section className="dashboard-panel ai-main-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <span className="eyebrow">Department analysis</span>
+                  <h2>부서 분석 대상</h2>
+                </div>
+                <Sparkles size={18} />
+              </div>
+              <AIWorkspaceDepartmentList departments={data.departments} />
+            </section>
 
-        <aside className="dashboard-panel ai-side-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Action</span>
-              <h2>바로 실행</h2>
-            </div>
-            <MoveUpRight size={18} />
-          </div>
-          <div className="ai-tool-list">
-            <a href={data.links.aiHub}>
-              <Sparkles size={17} />
-              <span>부서 분석/프롬프트</span>
-            </a>
-            <a href={data.links.weeklyAiDraft}>
-              <FileText size={17} />
-              <span>이번 주 AI 초안</span>
-            </a>
-            <a href={data.links.customers}>
-              <Users size={17} />
-              <span>고객 목록</span>
-            </a>
-            <a href={data.links.notes}>
-              <MessageSquareText size={17} />
-              <span>영업노트</span>
-            </a>
+            <section className="dashboard-panel ai-followup-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <span className="eyebrow">Account AI</span>
+                  <h2>고객 분석 대상</h2>
+                </div>
+                <Target size={18} />
+              </div>
+              <AIWorkspaceFollowupTargets targets={data.followupTargets} />
+            </section>
+
+            {data.recommendedGoals.length > 0 ? (
+              <section className="dashboard-panel ai-goal-panel">
+                <div className="dashboard-panel-heading">
+                  <div>
+                    <span className="eyebrow">Prompt goals</span>
+                    <h2>추천 목표</h2>
+                  </div>
+                  <CheckCircle2 size={18} />
+                </div>
+                <div className="ai-goal-grid">
+                  {data.recommendedGoals.map((goal) => (
+                    <article className="ai-goal-card" key={goal.title}>
+                      <strong>{goal.title}</strong>
+                      <span>{goal.description}</span>
+                      {goal.reason ? <small>{goal.reason}</small> : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
 
-          <div className="dashboard-panel-heading ai-side-heading">
-            <div>
-              <span className="eyebrow">PainPoint</span>
-              <h2>검증 대기</h2>
+          <aside className="ai-workspace-copilot">
+            <div className="customer-ai-card ai-workspace-featured-ai">
+              <div className="customer-ai-card-heading">
+                <div>
+                  <span className="eyebrow">Department AI</span>
+                  <h3>{featuredDepartment?.departmentName || '부서 AI 분석'}</h3>
+                </div>
+                <Sparkles size={18} />
+              </div>
+              {featuredDepartment ? (
+                <>
+                  {featuredDepartment.hasAnalysis ? (
+                    <p>{featuredDepartment.summary || '분석 요약 없음'}</p>
+                  ) : (
+                    <p>{featuredDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
+                  )}
+                  <div className="customer-ai-metrics">
+                    <span>고객 <strong>{formatNumber(featuredDepartment.customerCount)}</strong></span>
+                    <span>미팅 <strong>{formatNumber(featuredDepartment.meetingCount)}</strong></span>
+                    <span>견적 <strong>{formatNumber(featuredDepartment.quoteCount)}</strong></span>
+                    <span>납품 <strong>{formatNumber(featuredDepartment.deliveryCount)}</strong></span>
+                    <span>PainPoint <strong>{formatNumber(featuredDepartment.painpointCount)}</strong></span>
+                    <span>미검증 <strong>{formatNumber(featuredDepartment.unverifiedPainpointCount)}</strong></span>
+                  </div>
+                  {featuredDepartment.customerPreview.length > 0 ? (
+                    <div className="ai-featured-customer-chips">
+                      {featuredDepartment.customerPreview.map((customer) => (
+                        <span key={customer}>{customer}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {aiPanelError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiPanelError}</span></div> : null}
+                  {aiPanelMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiPanelMessage}</span></div> : null}
+                  <div className="customer-ai-actions">
+                    {featuredDepartment.href ? (
+                      <a className="route-secondary-action" href={featuredDepartment.href}>
+                        Django 보기
+                        <MoveUpRight size={15} />
+                      </a>
+                    ) : null}
+                    {featuredDepartment.hubHref ? (
+                      <a className="route-secondary-action" href={featuredDepartment.hubHref}>
+                        AI 허브
+                        <MoveUpRight size={15} />
+                      </a>
+                    ) : null}
+                    <button
+                      className="route-primary-action customer-ai-run-button"
+                      disabled={!featuredDepartment.canAnalyze || !featuredDepartment.runHref || Boolean(featuredRunningId)}
+                      onClick={handleFeaturedDepartmentRun}
+                      type="button"
+                    >
+                      {featuredRunningId === featuredDepartment.departmentId ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
+                      AI 분석 실행
+                    </button>
+                  </div>
+                  {featuredDepartment.hasAnalysis ? (
+                    <CustomerAiResultPanel
+                      aiDepartment={featuredDepartment}
+                      verificationNotes={featuredVerificationNotes}
+                      verifyingId={featuredVerifyingId}
+                      onNoteChange={handleFeaturedVerificationNoteChange}
+                      onVerify={handleFeaturedPainpointVerify}
+                    />
+                  ) : (
+                    <DashboardEmpty label="AI 분석 실행 후 결과가 표시됩니다" />
+                  )}
+                </>
+              ) : (
+                <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />
+              )}
             </div>
-            <AlertTriangle size={18} />
-          </div>
-          <AIWorkspacePainpointList painpoints={data.painpoints} />
-        </aside>
-      </div>
 
-      <section className="dashboard-panel ai-followup-panel">
-        <div className="dashboard-panel-heading">
-          <div>
-            <span className="eyebrow">Account AI</span>
-            <h2>고객 분석 대상</h2>
-          </div>
-          <Target size={18} />
+            <section className="dashboard-panel ai-side-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <span className="eyebrow">Action</span>
+                  <h2>바로 실행</h2>
+                </div>
+                <MoveUpRight size={18} />
+              </div>
+              <div className="ai-tool-list">
+                <a href={data.links.aiHub}>
+                  <Sparkles size={17} />
+                  <span>부서 분석/프롬프트</span>
+                </a>
+                <a href={data.links.weeklyAiDraft}>
+                  <FileText size={17} />
+                  <span>이번 주 AI 초안</span>
+                </a>
+                <a href={data.links.customers}>
+                  <Users size={17} />
+                  <span>고객 목록</span>
+                </a>
+                <a href={data.links.notes}>
+                  <MessageSquareText size={17} />
+                  <span>영업노트</span>
+                </a>
+              </div>
+
+              <div className="dashboard-panel-heading ai-side-heading">
+                <div>
+                  <span className="eyebrow">PainPoint</span>
+                  <h2>검증 대기</h2>
+                </div>
+                <AlertTriangle size={18} />
+              </div>
+              <AIWorkspacePainpointList painpoints={data.painpoints} />
+            </section>
+          </aside>
         </div>
-        <AIWorkspaceFollowupTargets targets={data.followupTargets} />
-      </section>
-
-      {data.recommendedGoals.length > 0 ? (
-        <section className="dashboard-panel ai-goal-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Prompt goals</span>
-              <h2>추천 목표</h2>
-            </div>
-            <CheckCircle2 size={18} />
-          </div>
-          <div className="ai-goal-grid">
-            {data.recommendedGoals.map((goal) => (
-              <article className="ai-goal-card" key={goal.title}>
-                <strong>{goal.title}</strong>
-                <span>{goal.description}</span>
-                {goal.reason ? <small>{goal.reason}</small> : null}
-              </article>
-            ))}
-          </div>
-        </section>
       ) : null}
     </section>
   );
@@ -10473,6 +10619,11 @@ export function App() {
     setDocumentsData(data);
     return data;
   };
+  const refreshAIWorkspaceData = async () => {
+    const data = await loadAIWorkspaceData();
+    setAiWorkspaceData(data);
+    return data;
+  };
   const handleDocumentTypeFilterChange = (value: string) => {
     setDocumentTypeFilter(value);
     const params = new URLSearchParams(window.location.search);
@@ -11038,7 +11189,7 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <AIWorkspacePage data={aiWorkspaceData} loading={aiWorkspaceLoading} />
+        <AIWorkspacePage data={aiWorkspaceData} loading={aiWorkspaceLoading} onRefresh={refreshAIWorkspaceData} />
       </AppShell>
     );
   }

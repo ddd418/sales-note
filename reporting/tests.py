@@ -3649,6 +3649,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
             department=department,
             analysis_data={
                 'department_summary': '후속 연락이 지연되고 있어 견적 대응이 필요합니다.',
+                'meeting_insights': [
+                    {
+                        'theme': '후속 견적',
+                        'details': '견적 제출 이후 고객 확인이 늦어지고 있습니다.',
+                        'frequency': '최근 3회',
+                    },
+                ],
                 'next_actions': [{'action': '견적 후속 연락', 'priority': 'high'}],
             },
             quote_delivery_data={'total_quotes': 2, 'total_deliveries': 1},
@@ -3688,6 +3695,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertFalse(payload['permission']['canUseAi'])
         self.assertEqual(payload['departments'], [])
         self.assertEqual(payload['promptTargets'], [])
+        self.assertIsNone(payload['featuredDepartment'])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
 
     def test_ai_workspace_summary_api_lists_own_ai_operational_data(self):
@@ -3720,6 +3728,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('후속', prompt_text)
         self.assertIn('/ai/department/', payload['departments'][0]['href'])
         self.assertIn('week_start=', payload['links']['weeklyAiDraft'])
+        self.assertEqual(payload['featuredDepartment']['departmentId'], department.id)
+        self.assertTrue(payload['featuredDepartment']['hasAnalysis'])
+        self.assertEqual(payload['featuredDepartment']['meetingCount'], 3)
+        self.assertEqual(payload['featuredDepartment']['customerCount'], 1)
+        self.assertEqual(payload['featuredDepartment']['meetingInsights'][0]['theme'], '후속 견적')
+        self.assertEqual(payload['featuredDepartment']['painpoints'][0]['verificationStatusLabel'], '미검증')
+        self.assertIn('/ai/card/', payload['featuredDepartment']['painpoints'][0]['verifyHref'])
         self.assertTrue(payload['recommendedGoals'])
 
     def test_ai_workspace_prompts_include_recent_notes_and_sales_amounts(self):

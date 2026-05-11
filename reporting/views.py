@@ -6010,6 +6010,50 @@ def _ai_workspace_painpoint_prompt(card, user=None, followup_ids=None):
     return context, prompt
 
 
+def _ai_workspace_featured_department_payload(
+    department,
+    analysis,
+    customer_names_by_department,
+    followup_counts_by_department,
+    painpoint_counts,
+    unverified_counts,
+):
+    if not department:
+        return None
+
+    customer_names = customer_names_by_department.get(department.id, [])
+    result_payload = (
+        _customers_ai_result_payload(analysis, True)
+        if analysis
+        else _customers_empty_ai_result_payload()
+    )
+    painpoint_count = painpoint_counts.get(analysis.id, 0) if analysis else 0
+    unverified_painpoint_count = unverified_counts.get(analysis.id, 0) if analysis else 0
+
+    return {
+        'departmentId': department.id,
+        'departmentName': department.name,
+        'companyName': department.company.name if department.company else '',
+        'customerCount': followup_counts_by_department.get(department.id, 0),
+        'customerPreview': customer_names[:4],
+        'canUseAi': True,
+        'canAnalyze': True,
+        'hasAnalysis': analysis is not None,
+        'message': '' if analysis else '아직 부서 AI 분석이 없습니다.',
+        'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+        'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
+        'meetingCount': analysis.meeting_count if analysis else 0,
+        'quoteCount': analysis.quote_count if analysis else 0,
+        'deliveryCount': analysis.delivery_count if analysis else 0,
+        'painpointCount': painpoint_count,
+        'unverifiedPainpointCount': unverified_painpoint_count,
+        'href': reverse('ai_chat:department_analysis', args=[department.id]),
+        'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}",
+        'runHref': reverse('ai_chat:run_analysis', args=[department.id]),
+        **result_payload,
+    }
+
+
 @never_cache
 @require_http_methods(["GET"])
 def ai_workspace_summary_api(request):
@@ -6080,6 +6124,7 @@ def ai_workspace_summary_api(request):
             'recentFollowupAnalyses': [],
             'promptTargets': [],
             'recommendedGoals': [],
+            'featuredDepartment': None,
         })
 
     followup_rows = list(FollowUp.objects.filter(
@@ -6227,6 +6272,26 @@ def ai_workspace_summary_api(request):
     if latest_analysis:
         recommended_goals = suggest_goals_from_department_analysis(latest_analysis)[:6]
 
+    featured_department = None
+    if latest_analysis:
+        featured_department = _ai_workspace_featured_department_payload(
+            latest_analysis.department,
+            latest_analysis,
+            customer_names_by_department,
+            followup_counts_by_department,
+            painpoint_counts,
+            unverified_counts,
+        )
+    elif departments:
+        featured_department = _ai_workspace_featured_department_payload(
+            departments[0],
+            None,
+            customer_names_by_department,
+            followup_counts_by_department,
+            painpoint_counts,
+            unverified_counts,
+        )
+
     prompt_targets = []
     for card in painpoint_cards[:3]:
         department = card.analysis.department
@@ -6334,6 +6399,7 @@ def ai_workspace_summary_api(request):
         'followupTargets': followup_targets,
         'recentFollowupAnalyses': recent_followup_analyses,
         'promptTargets': prompt_targets,
+        'featuredDepartment': featured_department,
         'recommendedGoals': [
             {
                 'title': goal.get('title', ''),

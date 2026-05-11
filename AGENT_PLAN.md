@@ -9,6 +9,41 @@
 
 ---
 
+## Current task — React AI 업무도구 고객형 AI 패널 정리
+
+**목표**: 운영 `/ai-workspace/` 화면을 고객 상세 오른쪽 AI 패널과 같은 형태로 정리해, 최근 부서 AI 분석 결과와 PainPoint 검증 메모를 한 화면에서 판단하게 한다.
+
+### 확인된 상태
+
+- React `/ai-workspace/`는 현재 AI 작업 큐, 부서 목록, 검증 대기 PainPoint 목록 중심의 업무 대시보드다.
+- React 고객 상세 오른쪽 AI 영역은 `CustomerAiResultPanel`로 분석 기간, 미팅/견적/납품 인사이트, 검증 기반 인사이트, 다음 액션, 확인 필요 사항, PainPoint 검증 메모를 한 흐름으로 보여준다.
+- `/reporting/api/ai-workspace/`는 부서/작업 큐/검증 대기 목록은 제공하지만 고객 상세 AI 패널에 필요한 대표 부서 분석 상세 payload는 제공하지 않는다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/ai-workspace/` 응답에 최신 부서 AI 분석을 `featuredDepartment`로 추가한다.
+  - 기존 고객 상세 AI payload helper를 재사용해 미팅/견적/납품/검증/다음 액션/PainPoint 데이터를 동일한 구조로 내려준다.
+  - 최신 분석이 없으면 첫 분석 대상 부서를 빈 AI 결과 payload로 내려주고, AI 권한이 없거나 대상 부서가 없으면 `featuredDepartment: null`을 반환한다.
+- React API 타입에 `AIWorkspaceFeaturedDepartment`를 추가하고 `/ai-workspace/` loader에서 정규화한다.
+- React `/ai-workspace/` 화면 오른쪽에 고객 상세와 동일한 `CustomerAiResultPanel`을 배치한다.
+  - PainPoint 검증은 기존 단일 `확인` 메모 저장 API를 그대로 사용한다.
+  - 저장 후 `/ai-workspace/` 데이터를 새로고침해 검증 상태를 즉시 반영한다.
+- 기존 부서 목록, 작업 큐, 전체 검증 대기 목록은 보존해 업무 대시보드 기능을 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke check
+
+---
+
 ## Current task — React 서류 템플릿 관리 1차 통합
 
 **목표**: 기존 Django `/reporting/documents/` 서류 템플릿 관리 화면을 fallback으로 유지하면서 React CRM에 `/documents/` 관리 화면을 추가해 일정 상세의 서류 다운로드 workflow를 React 안에서 완결한다.
