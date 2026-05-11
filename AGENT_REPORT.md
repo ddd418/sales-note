@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — Mailbox Email Line Break Normalization
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React `/mailbox/`에서 작성한 plain text 메일 본문이 실제 메일에서 과하게 벌어지던 문제를 수정했습니다. `body_text`의 `\r\n`/`\r` 줄바꿈을 먼저 `\n`으로 정규화하고, HTML 변환 시 escape 후 `<br>`만 사용하도록 바꿔 `\r<br>`와 `white-space: pre-wrap`의 중복 줄바꿈 해석을 제거했습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: 메일 본문 줄바꿈 정규화 helper 및 plain text → HTML 변환 helper 추가
+- `reporting/tests.py`: React 메일 발송 API가 줄바꿈 수만큼만 `<br>`을 만들고 HTML escape를 유지하는 회귀 테스트 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 사용자가 메일 작성창에서 한 번 줄바꿈한 내용이 수신 메일에서 2~3줄로 벌어지는 현상을 줄였습니다.
+- Gmail API와 IMAP/SMTP 공통 발송 경로의 plain text 본문 처리를 동일하게 안정화했습니다.
+
+### 기존 기능 보존
+
+- 첨부파일, 명함 서명, 답장, 고객 연결, EmailLog 저장 흐름은 유지했습니다.
+- React 메일 UI와 기존 Django 메일 fallback URL은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "fix: normalize mailbox email line breaks"
+→ 329cb0d
+
+git push
+→ main pushed to GitHub
+
+railway up --service web --environment production --message "Deploy mailbox email line break fix 329cb0d" --ci
+→ af9f5751-3896-445c-bf7e-9c3cba56d154 Deploy complete / SUCCESS
+```
+
+### 알려진 제한
+
+- 운영 smoke에서는 실제 메일 발송을 하지 않았습니다.
+- 이번 수정은 React처럼 `body_text`만 보내는 plain text 메일 변환 경로를 대상으로 합니다. Django rich HTML 작성 화면에서 직접 만든 `body_html`의 문단 스타일은 그대로 보존됩니다.
+
+### 배포 상태
+
+- Runtime commit: `329cb0d fix: normalize mailbox email line breaks`
+- GitHub push: `main` updated to `329cb0d`
+- Railway `web`: `af9f5751-3896-445c-bf7e-9c3cba56d154` SUCCESS
+- `sales-note-frontend` 배포 없음: 프론트 코드 변경 없음
+- Production `/mailbox/` returns 200.
+- Production `/reporting/login/` returns 200.
+- Anonymous frontend-proxied and backend `GET /reporting/api/mailbox/` redirect to `/reporting/login/`.
+- Anonymous frontend-proxied and backend `POST /reporting/api/mailbox/send/` are blocked by CSRF with 403.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/mailbox/`에 접속합니다.
+2. 새 메일 작성에서 본문에 한 번 Enter 한 줄과 의도적으로 빈 줄을 하나 포함해 테스트 메일을 작성합니다.
+3. 본인 또는 테스트 수신처로 메일을 발송합니다.
+4. 수신 메일에서 한 번 Enter 한 줄이 2~3줄로 벌어지지 않는지 확인합니다.
+5. 의도적으로 빈 줄을 둔 문단 구분은 한 줄 공백 정도로만 보이는지 확인합니다.
+6. 스레드 답장에서도 같은 본문으로 발송해 줄바꿈이 동일하게 보존되는지 확인합니다.
+7. 첨부파일 또는 명함 서명을 함께 선택해도 기존처럼 발송되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-11 — React Schedule Calendar Report Content And Nav
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

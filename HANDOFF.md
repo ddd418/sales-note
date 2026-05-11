@@ -14,33 +14,27 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React schedule calendar report content and nav-first calendar entry are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+React mailbox email line break normalization is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
-Runtime commits:
+Runtime commit:
 
 ```text
-c96f7d5 feat: show schedule reports in calendar
-d455127 feat: open schedule nav on calendar
+329cb0d fix: normalize mailbox email line breaks
 ```
 
 Implemented:
 
-- `/reporting/api/schedules/calendar/` customer schedule payloads now include a `reports` array.
-- Calendar schedule queryset prefetches linked top-level `History` rows to avoid per-card report queries.
-- Each report payload includes action label, summary, content, meeting situation, researcher quote, confirmed facts, obstacles, meeting next action, delivery items/amount, next action, dates, and React/Django note links.
-- React `/schedules/calendar/` selected-day cards now show a `보고 내용` block when reports exist.
-- Each report block links to the React note detail through `보고 상세`.
-- React sidebar `일정` now opens `/schedules/calendar/` first instead of `/schedules/`.
-- Personal schedules keep `reports: []`.
+- `_handle_email_send()` now normalizes `body_text` line endings from `\r\n`/`\r` to `\n` before validation, MIME send, HTML conversion, and EmailLog storage.
+- Plain text → HTML conversion now escapes text and uses `<br>` for line breaks without `white-space: pre-wrap`.
+- This removes the `\r<br>` + pre-wrap combination that could make one textarea newline render as multiple visual breaks in email clients.
+- React mailbox send/reply, Gmail API, IMAP/SMTP, attachments, business card signatures, and EmailLog storage are preserved.
 - No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
-python -m py_compile reporting\views.py reporting\tests.py
-cd frontend; npm run build
-cd frontend; node --check server.mjs
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+python -m py_compile reporting\gmail_views.py reporting\tests.py
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
@@ -48,21 +42,53 @@ git diff --check
 
 Results:
 
-- 28 React schedule API tests OK.
-- React build OK: `assets/index-rK47uPvT.js` / `assets/index--s--1gtx.css`.
+- 7 React mailbox API tests OK.
+- Python compile OK.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- GitHub push complete: `main` updated to `d455127`.
+- GitHub push complete: `main` updated to `329cb0d`.
+- Railway `web`: `af9f5751-3896-445c-bf7e-9c3cba56d154` SUCCESS.
+- `sales-note-frontend` deployment not needed because frontend files did not change.
+- Production `/mailbox/` returns 200.
+- Production `/reporting/login/` returns 200.
+- Anonymous frontend-proxied and backend `GET /reporting/api/mailbox/` redirect to `/reporting/login/`.
+- Anonymous frontend-proxied and backend `POST /reporting/api/mailbox/send/` are blocked by CSRF with `403 Forbidden`.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
+2. Compose a test email with a body that has a single Enter line break and one intentional blank line.
+3. Send it to yourself or a test recipient.
+4. Confirm one Enter does not render as 2-3 blank lines in the received email.
+5. Confirm an intentional paragraph blank line remains about one blank line.
+6. Repeat from a mailbox thread reply.
+7. Confirm attachments/signature still work if selected.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
+React schedule calendar report content and nav-first calendar entry.
+
+Implemented, pushed, deployed, and smoke-tested on 2026-05-11. User manual production testing was pending when the mailbox line-break fix was requested:
+
+- `/reporting/api/schedules/calendar/` customer schedule payloads include recent linked report `reports`.
+- React `/schedules/calendar/` selected-day cards show `보고 내용` and `보고 상세`.
+- React sidebar `일정` opens `/schedules/calendar/` first.
+- Runtime commits:
+  - `c96f7d5 feat: show schedule reports in calendar`
+  - `d455127 feat: open schedule nav on calendar`
+- Deployment/report commit:
+  - `0cc9345 docs: record schedule calendar reports deployment`
 - Railway `web`: `1969669f-d1c8-4bda-8fe6-d1d3d06c15c0` Deploy complete.
 - Railway `sales-note-frontend`: `bee0b840-3a45-4cbd-be0f-0cbf9badcfe6` Deploy complete.
 - Production `/schedules/calendar/` returns 200 and serves `assets/index-rK47uPvT.js` / `assets/index--s--1gtx.css`.
-- Production JS contains `보고 내용`, `schedule-calendar-report-list`, and `/schedules/calendar/`.
-- Production CSS contains `schedule-calendar-report-list` and `schedule-calendar-report-item`.
-- Anonymous frontend-proxied and backend `/reporting/api/schedules/calendar/` return `401 Unauthorized`.
 
 Manual production test:
 
@@ -732,6 +758,8 @@ Confirmed by user:
 
 Needs awareness:
 
+- React mailbox email line-break normalization is deployed and awaits user manual production testing.
+- React schedule calendar report content/nav-first calendar entry is deployed and awaits user manual production testing.
 - AI PainPoint verification memo confirm-only change is deployed and awaits user manual production testing.
 - React document template management `/documents/` is deployed and awaits user manual production testing.
 - AI department meeting scope fix is deployed; existing stored AI analysis results require rerun to include coworker department meetings.
