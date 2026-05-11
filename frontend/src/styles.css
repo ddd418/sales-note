@@ -2997,6 +2997,79 @@ h2 {
   white-space: nowrap;
 }
 
+.schedule-calendar-report-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.schedule-calendar-report-heading,
+.schedule-calendar-report-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.schedule-calendar-report-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.schedule-calendar-report-heading small,
+.schedule-calendar-report-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.schedule-calendar-report-item {
+  display: grid;
+  gap: 5px;
+  padding-left: 9px;
+  border-left: 3px solid #bfdbfe;
+}
+
+.schedule-calendar-report-meta strong {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.schedule-calendar-report-body {
+  display: grid;
+  gap: 4px;
+}
+
+.schedule-calendar-report-body p,
+.schedule-calendar-report-empty {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.schedule-calendar-report-empty {
+  color: var(--muted);
+}
+
+.schedule-calendar-report-item a {
+  width: fit-content;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.schedule-calendar-report-item a:hover {
+  text-decoration: underline;
+}
+
 .schedule-calendar-selected-actions,
 .schedule-calendar-status-actions {
   display: flex;
@@ -5240,6 +5313,16 @@ tbody tr:hover {
   }
 
   .schedule-calendar-selected-main time {
+    white-space: normal;
+  }
+
+  .schedule-calendar-report-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .schedule-calendar-report-meta span {
     white-space: normal;
   }
 

@@ -4031,6 +4031,25 @@ function buildScheduleCalendarDays(monthValue: string, schedules: ScheduleItem[]
   });
 }
 
+function getScheduleReportPreviewLines(report: NonNullable<ScheduleItem['reports']>[number]) {
+  const lines = [
+    report.content,
+    report.meetingSituation ? `상황: ${report.meetingSituation}` : '',
+    report.meetingResearcherQuote ? `발언: ${report.meetingResearcherQuote}` : '',
+    report.meetingConfirmedFacts ? `확인: ${report.meetingConfirmedFacts}` : '',
+    report.meetingObstacles ? `장애물: ${report.meetingObstacles}` : '',
+    report.meetingNextAction ? `미팅 다음 액션: ${report.meetingNextAction}` : '',
+    report.deliveryItems ? `납품 품목: ${report.deliveryItems}` : '',
+    report.deliveryAmount > 0 ? `납품 금액: ${formatWon(report.deliveryAmount)}` : '',
+    report.nextAction ? `다음 액션: ${report.nextAction}` : '',
+  ].filter(Boolean);
+
+  if (lines.length > 0) {
+    return lines;
+  }
+  return report.summary ? [report.summary] : [];
+}
+
 function ScheduleCalendarSelectedList({
   items,
   statusUpdatingKey,
@@ -4049,6 +4068,7 @@ function ScheduleCalendarSelectedList({
       {items.map((item) => {
         const itemKey = `${item.type}-${item.id}`;
         const statusOptions = item.statusOptions ?? [];
+        const reports = item.reports ?? [];
         const canChangeStatus = item.type === 'customer' && Boolean(item.canEdit && item.statusUpdateHref && statusOptions.length);
         const isUpdating = statusUpdatingKey === itemKey;
         return (
@@ -4064,6 +4084,33 @@ function ScheduleCalendarSelectedList({
               </time>
             </div>
             <ScheduleStatusBadge schedule={item} />
+            {reports.length > 0 ? (
+              <div className="schedule-calendar-report-list">
+                <div className="schedule-calendar-report-heading">
+                  <span>보고 내용</span>
+                  <small>{reports.length}건</small>
+                </div>
+                {reports.map((report) => {
+                  const previewLines = getScheduleReportPreviewLines(report);
+                  return (
+                    <div className="schedule-calendar-report-item" key={report.id}>
+                      <div className="schedule-calendar-report-meta">
+                        <strong>{report.actionLabel}</strong>
+                        <span>{report.activityDate ? formatDateLabel(report.activityDate) : formatDateTimeLabel(report.createdAt)}</span>
+                      </div>
+                      {previewLines.length > 0 ? (
+                        <div className="schedule-calendar-report-body">
+                          {previewLines.map((line, index) => <p key={`${report.id}-${index}`}>{line}</p>)}
+                        </div>
+                      ) : (
+                        <p className="schedule-calendar-report-empty">보고 내용이 비어 있습니다.</p>
+                      )}
+                      <a href={report.href}>보고 상세</a>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             <div className="schedule-calendar-selected-actions">
               <a href={item.href}>상세</a>
               {item.customerHref ? <a href={item.customerHref}>고객</a> : null}

@@ -932,6 +932,28 @@ export type NoteReplyActionResponse = {
   memo?: NoteReplyItem;
 };
 
+export type ScheduleReportItem = {
+  id: number;
+  actionType: string;
+  actionLabel: string;
+  summary: string;
+  content: string;
+  meetingSituation: string;
+  meetingResearcherQuote: string;
+  meetingConfirmedFacts: string;
+  meetingObstacles: string;
+  meetingNextAction: string;
+  deliveryItems: string;
+  deliveryAmount: number;
+  nextAction: string;
+  nextActionDate: string | null;
+  activityDate: string | null;
+  createdAt: string | null;
+  overdue: boolean;
+  href: string;
+  djangoHref: string;
+};
+
 export type ScheduleItem = {
   id: number;
   type: 'customer' | 'personal';
@@ -959,6 +981,7 @@ export type ScheduleItem = {
   purchaseConfirmed?: boolean;
   overdue: boolean;
   historyCount: number;
+  reports?: ScheduleReportItem[];
   href: string;
   djangoHref?: string;
   djangoEditHref?: string;

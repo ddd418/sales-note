@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## Current task — React 일정 캘린더 보고 내용 표시
+
+**목표**: React `/schedules/calendar/`에서 날짜를 선택해 일정 카드를 볼 때, 해당 일정에 연결된 최근 영업보고 내용도 카드 안에서 바로 확인할 수 있게 한다.
+
+### 확인된 상태
+
+- React 캘린더 선택일 카드에는 일정 메모, 상태, 상세/고객/보고/Django fallback 액션이 표시된다.
+- 일정 상세 API는 `relatedNotes`로 연결된 영업보고 기록을 이미 보여주지만, 캘린더 API payload에는 보고 내용이 없다.
+- `History` 모델은 일정 연결(`schedule`)과 구조화된 미팅 필드/납품 보고 필드를 이미 가지고 있다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- 캘린더 API에서 고객 일정 queryset에 연결된 최신 영업보고를 prefetch한다.
+- 일정 payload에 최근 보고 요약/본문/미팅 구조화 필드/납품 품목/다음 액션/보고 상세 링크를 포함한 `reports` 배열을 추가한다.
+- React `ScheduleItem` 타입을 확장하고 선택일 카드 안에 `보고 내용` 블록을 추가한다.
+- 보고가 없으면 기존 카드 크기를 불필요하게 키우지 않고, 보고가 있을 때만 내용을 노출한다.
+- 개인 일정과 Django fallback, 기존 상태 변경 동선은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/` smoke check
+
+---
+
 ## 프로젝트 개요
 
 **세일즈 노트** — 한국 영업팀을 위한 내부 CRM/SFA 시스템 (Django 5.2.3)

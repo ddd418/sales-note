@@ -2754,12 +2754,24 @@ class SchedulesSummaryApiTests(TestCase):
 
     def test_schedules_calendar_api_returns_month_range_items(self):
         import datetime
+        from reporting.models import History
 
         target_date = datetime.date(2026, 5, 10)
         outside_date = datetime.date(2026, 6, 1)
         own = self._create_schedule(self.user, '월간일정', visit_date=target_date)
         personal = self._create_personal_schedule(self.user, '월간 개인 일정', schedule_date=target_date)
         outside = self._create_schedule(self.user, '범위밖일정', visit_date=outside_date)
+        report = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=own.followup,
+            schedule=own,
+            action_type='customer_meeting',
+            content='캘린더에서 보여줄 미팅 보고 본문',
+            meeting_situation='PCR 장비 도입 검토 중',
+            meeting_confirmed_facts='예산 담당자 확인',
+            meeting_next_action='견적서 송부',
+        )
         self.client.force_login(self.user)
 
         response = self.client.get(self.calendar_url, {
@@ -2782,8 +2794,14 @@ class SchedulesSummaryApiTests(TestCase):
             {option['value'] for option in own_item['statusOptions']},
             {'scheduled', 'completed', 'cancelled'},
         )
+        self.assertEqual(own_item['reports'][0]['id'], report.id)
+        self.assertEqual(own_item['reports'][0]['content'], '캘린더에서 보여줄 미팅 보고 본문')
+        self.assertEqual(own_item['reports'][0]['meetingSituation'], 'PCR 장비 도입 검토 중')
+        self.assertEqual(own_item['reports'][0]['meetingConfirmedFacts'], '예산 담당자 확인')
+        self.assertEqual(own_item['reports'][0]['nextAction'], '견적서 송부')
         self.assertFalse(personal_item['canEdit'])
         self.assertEqual(personal_item['statusOptions'], [])
+        self.assertEqual(personal_item['reports'], [])
         self.assertEqual(payload['filters']['start'], '2026-05-01')
         self.assertEqual(payload['filters']['end'], '2026-05-31')
         self.assertEqual(payload['metrics']['totalSchedules'], 2)

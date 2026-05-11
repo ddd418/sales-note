@@ -4069,6 +4069,61 @@ def notes_create_api(request):
     }, status=201)
 
 
+def _schedules_report_text(value, limit=480):
+    text = (value or '').strip()
+    if limit and len(text) > limit:
+        return f'{text[:limit].rstrip()}...'
+    return text
+
+
+def _schedules_report_payload(history, today):
+    activity_date = history.meeting_date or history.delivery_date
+    if not activity_date and history.schedule_id and history.schedule:
+        activity_date = history.schedule.visit_date
+    if not activity_date:
+        activity_date = history.created_at.date()
+
+    next_action = (history.next_action or history.meeting_next_action or '').strip()
+    summary = (
+        history.content
+        or history.meeting_situation
+        or history.meeting_confirmed_facts
+        or history.meeting_next_action
+        or history.delivery_items
+        or ''
+    ).strip()
+
+    return {
+        'id': history.id,
+        'actionType': history.action_type,
+        'actionLabel': history.get_action_type_display(),
+        'summary': _schedules_report_text(summary, 220),
+        'content': _schedules_report_text(history.content, 480),
+        'meetingSituation': _schedules_report_text(history.meeting_situation, 360),
+        'meetingResearcherQuote': _schedules_report_text(history.meeting_researcher_quote, 360),
+        'meetingConfirmedFacts': _schedules_report_text(history.meeting_confirmed_facts, 360),
+        'meetingObstacles': _schedules_report_text(history.meeting_obstacles, 360),
+        'meetingNextAction': _schedules_report_text(history.meeting_next_action, 360),
+        'deliveryItems': _schedules_report_text(history.delivery_items, 480),
+        'deliveryAmount': _money_int(history.delivery_amount),
+        'nextAction': _schedules_report_text(next_action, 260),
+        'nextActionDate': _date_or_none(history.next_action_date),
+        'activityDate': _date_or_none(activity_date),
+        'createdAt': _datetime_or_none(history.created_at),
+        'overdue': bool(history.next_action_date and history.next_action_date < today and not history.reviewed_at),
+        'href': f'/notes/{history.id}/',
+        'djangoHref': reverse('reporting:history_detail', args=[history.id]),
+    }
+
+
+def _schedules_schedule_reports_payload(schedule, today, limit=3):
+    report_histories = getattr(schedule, 'calendar_report_histories', [])
+    return [
+        _schedules_report_payload(history, today)
+        for history in list(report_histories)[:limit]
+    ]
+
+
 def _schedules_schedule_payload(schedule, today, can_edit=None):
     followup = schedule.followup
     history_count = getattr(schedule, 'history_count', None)
@@ -4101,6 +4156,7 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
         'purchaseConfirmed': bool(schedule.purchase_confirmed),
         'overdue': bool(schedule.status == 'scheduled' and schedule.visit_date < today),
         'historyCount': history_count if history_count is not None else schedule.histories.count(),
+        'reports': _schedules_schedule_reports_payload(schedule, today),
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
         'djangoEditHref': reverse('reporting:schedule_edit', args=[schedule.id]) if can_edit else '',
@@ -4143,6 +4199,7 @@ def _schedules_personal_payload(personal_schedule, today):
         'purchaseConfirmed': False,
         'overdue': False,
         'historyCount': getattr(personal_schedule, 'history_count', 0),
+        'reports': [],
         'followupId': None,
         'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
@@ -4956,8 +5013,15 @@ def schedules_calendar_api(request):
         schedule_date__lte=end_date,
     )
 
+    calendar_report_qs = History.objects.filter(
+        parent_history__isnull=True,
+    ).select_related(
+        'schedule',
+    ).order_by('-created_at')
     schedules = base_schedules.select_related(
         'user', 'followup', 'followup__company', 'followup__department'
+    ).prefetch_related(
+        Prefetch('histories', queryset=calendar_report_qs, to_attr='calendar_report_histories')
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('visit_date', 'visit_time')
