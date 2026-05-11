@@ -1,5 +1,31 @@
 # AGENT_PLAN.md
 
+## Current task — React 일정 메뉴 캘린더 우선 진입
+
+**목표**: React 공통 사이드바에서 `일정`을 클릭하면 목록 화면(`/schedules/`)이 아니라 캘린더 화면(`/schedules/calendar/`)으로 먼저 진입하게 한다.
+
+### 확인된 상태
+
+- React route metadata의 일정 대표 링크는 이미 캘린더를 가리킨다.
+- 공통 사이드바 `NAV_ITEMS`의 `일정` 링크만 `/schedules/`로 남아 있다.
+- 일정 목록 화면과 `/schedules/` 라우트는 계속 유지해 기존 목록 접근을 보존한다.
+
+### 구현 계획
+
+- `frontend/src/App.tsx`의 `NAV_ITEMS` 일정 href를 `/schedules/calendar/`로 변경한다.
+- 기존 일정 목록, 일정 상세, 캘린더 API, Django fallback은 변경하지 않는다.
+- 이전 커밋의 캘린더 보고 내용 표시와 함께 운영 배포한다.
+
+### 검증 계획
+
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/` smoke check
+
+---
+
 ## Current task — React 일정 캘린더 보고 내용 표시
 
 **목표**: React `/schedules/calendar/`에서 날짜를 선택해 일정 카드를 볼 때, 해당 일정에 연결된 최근 영업보고 내용도 카드 안에서 바로 확인할 수 있게 한다.

@@ -170,7 +170,7 @@ const navItems = [
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
-  { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/' },
+  { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
