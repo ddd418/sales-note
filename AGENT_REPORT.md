@@ -1,5 +1,104 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React Schedule Calendar Status Actions
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React `/schedules/calendar/`에서 날짜를 선택했을 때 선택일 일정 카드에서 상세/고객/보고/Django fallback으로 이동하고, 본인 고객 일정은 React 화면에서 바로 상태를 변경할 수 있게 했습니다. 기존 Django 상태 변경 API를 재사용해 권한과 업무 로직은 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 일정 payload에 `canEdit`, `statusUpdateHref`, `djangoEditHref`, `statusOptions` 추가
+- `reporting/tests.py`: 일정 캘린더 API의 본인/타인/개인 일정 권한 payload 회귀 테스트 추가
+- `frontend/src/api.ts`: 일정 상태 변경 API client 추가
+- `frontend/src/App.tsx`: 선택일 일정 카드, 이동 액션, 상태 변경 버튼/메시지/갱신 로직 추가
+- `frontend/src/styles.css`: 선택일 일정 카드와 상태 버튼 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 캘린더에서 선택한 날짜의 일정을 카드 단위로 확인할 수 있습니다.
+- 본인 고객 일정은 React 캘린더 화면에서 예정/완료/취소 상태를 바로 변경할 수 있습니다.
+- 타인 일정과 개인 일정은 읽기 전용으로 유지해 권한 혼선을 줄였습니다.
+- 일정 상세, 고객, 보고, Django 상세/수정 fallback 이동 경로를 함께 제공합니다.
+
+### 기존 기능 보존
+
+- 기존 Django `/reporting/schedules/*` 화면과 상태 변경 API를 유지했습니다.
+- 권한 판정은 기존 일정 소유자/관리자 로직을 따릅니다.
+- 개인 일정은 이번 상태 변경 대상에서 제외했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 28 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-C1R5m0RT.js / assets/index-Bxi4eBNz.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "feat: add React calendar status actions"
+→ 7bb71e8
+
+git push
+→ main pushed to GitHub
+
+railway up --service web --environment production --message "Deploy React calendar status actions 7bb71e8" --ci
+→ d7eba974-f6db-4e90-a53c-5097ccad0164 Deploy complete
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy React calendar status actions 7bb71e8" --ci
+→ 898c94ca-cf72-4dba-b329-35304d8c4979 Deploy complete
+```
+
+### 알려진 제한
+
+- 실제 상태 변경은 로그인 세션과 운영 데이터가 필요해 사용자 수동검수가 필요합니다.
+- 이번 범위는 선택일 일정 액션과 상태 변경이며, 새 일정 생성/편집 폼 전체 React 전환은 다음 별도 작업입니다.
+
+### 배포 상태
+
+- Runtime commit: `7bb71e8 feat: add React calendar status actions`
+- Railway `web`: `d7eba974-f6db-4e90-a53c-5097ccad0164` Deploy complete
+- Railway `sales-note-frontend`: `898c94ca-cf72-4dba-b329-35304d8c4979` Deploy complete
+- Production `/schedules/calendar/` returns 200.
+- Production frontend serves `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
+- Production JS contains `statusUpdateHref` and schedule status update UI strings.
+- Production CSS contains `schedule-calendar-selected-card` and `schedule-calendar-status-actions`.
+- Anonymous frontend-proxied and backend `/reporting/api/schedules/calendar/` return `401 Unauthorized`.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에 접속합니다.
+2. 본인 고객 일정이 있는 날짜를 선택합니다.
+3. 선택일 카드에 `상세`, `고객`, `보고`, `Django 상세`, `Django 수정` 액션이 보이는지 확인합니다.
+4. 본인 일정 상태를 `완료` 또는 `취소`로 바꾸고 성공 메시지와 캘린더/지표 갱신을 확인합니다.
+5. `회사 전체` 또는 직원 선택 상태에서 타인 일정에는 상태 버튼이 나오지 않는지 확인합니다.
+6. 견적 일정은 편집 가능해도 `완료` 버튼이 제공되지 않고 허용 상태만 보이는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-11 — React Document Generation History
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/사용자 수동검수 완료

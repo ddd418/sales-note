@@ -14,15 +14,72 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React document generation history is implemented, pushed, deployed, smoke-tested, and user manual production testing is complete.
+React schedule calendar selected-day status actions are implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-0f98c24 feat: show document generation history
+7bb71e8 feat: add React calendar status actions
 ```
 
 Implemented:
+
+- `/reporting/api/schedules/calendar/` customer schedule payloads now include `canEdit`, `statusUpdateHref`, `djangoEditHref`, and `statusOptions`.
+- Edit permission is computed per customer schedule using existing owner/manager/admin rules.
+- Personal schedule payloads remain read-only and expose no status options.
+- React `/schedules/calendar/` selected-day panel now uses schedule cards instead of a compact link list.
+- Selected-day cards expose `상세`, `고객`, `보고`, `Django 상세`, and `Django 수정` actions when available.
+- Editable own customer schedules can be changed directly from the React calendar with the existing Django status update API.
+- Calendar data reloads after a status change so the grid, selected-day list, and metrics stay in sync.
+- No DB model or migration changes.
+
+Validation:
+
+```powershell
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+python -m py_compile reporting\views.py reporting\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 28 React schedule API tests OK.
+- React build OK: `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
+- Django check OK.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment:
+
+- Railway `web`: `d7eba974-f6db-4e90-a53c-5097ccad0164` Deploy complete.
+- Railway `sales-note-frontend`: `898c94ca-cf72-4dba-b329-35304d8c4979` Deploy complete.
+- Production `/schedules/calendar/` returns 200 and serves `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
+- Frontend JS contains `statusUpdateHref` and schedule status update UI strings.
+- Frontend CSS contains `schedule-calendar-selected-card` and `schedule-calendar-status-actions`.
+- Anonymous frontend-proxied and backend `/reporting/api/schedules/calendar/` return `401 Unauthorized`.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`.
+2. Select a date that has an own customer schedule.
+3. Confirm the selected-day card shows `상세`, `고객`, `보고`, `Django 상세`, and `Django 수정` actions.
+4. Change an own schedule status to `완료` or `취소`, then confirm the success message and refreshed calendar/metrics.
+5. Switch to `회사 전체` or another employee and confirm coworker/manager read-only schedules do not show status buttons.
+6. For quote schedules, confirm the `완료` button is not offered and only allowed statuses appear.
+
+Manual test result:
+
+- Pending.
+
+## Previous Task
+
+React document generation history.
+
+Implemented, pushed, deployed, smoke-tested, and user manual production testing completed on 2026-05-11:
 
 - `/reporting/api/documents/` now includes recent `DocumentGenerationLog` entries as `recentGenerations`.
 - The API returns document type, transaction number, output format, created date, creator, company, schedule, customer, and department metadata.
