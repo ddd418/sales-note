@@ -1,5 +1,99 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React Schedule Calendar Report Content
+
+**상태**: 구현/로컬 검증/푸시 완료, Railway CLI 재인증 필요로 운영 배포 대기
+
+### 요약
+
+React `/schedules/calendar/`에서 날짜를 선택해 일정 카드를 볼 때, 해당 고객 일정에 연결된 최근 영업보고 내용을 카드 안에서 바로 확인할 수 있게 했습니다. 캘린더 API는 일정별 최신 보고를 prefetch해 `reports` 배열로 내려주고, React 선택일 카드에는 `보고 내용` 블록과 보고 상세 링크를 표시합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 캘린더 일정 payload에 최근 연결 보고 `reports` 추가, 캘린더 queryset에 보고 prefetch 추가
+- `reporting/tests.py`: 캘린더 API가 보고 본문/미팅 구조화 필드/다음 액션을 반환하는 회귀 테스트 추가
+- `frontend/src/api.ts`: `ScheduleReportItem` 타입과 `ScheduleItem.reports` 추가
+- `frontend/src/App.tsx`: 선택일 일정 카드에 보고 내용 블록 추가
+- `frontend/src/styles.css`: 캘린더 보고 내용 표시 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 캘린더에서 일정만 보는 것이 아니라 연결된 보고 본문, 미팅 상황, 확인한 사실, 다음 액션을 함께 볼 수 있습니다.
+- 보고 상세 화면으로 바로 이동할 수 있습니다.
+- 보고가 없는 일정은 기존 카드 형태를 유지합니다.
+
+### 기존 기능 보존
+
+- 기존 일정 상세의 `relatedNotes` 보고 기록은 유지했습니다.
+- 개인 일정, Django fallback, 상태 변경 버튼, 일정 등록 동선은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 28 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-CIFf8_Jx.js / assets/index--s--1gtx.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "feat: show schedule reports in calendar"
+→ c96f7d5
+
+git push
+→ main pushed to GitHub
+```
+
+### 알려진 제한
+
+- 캘린더 카드에는 일정별 최신 보고 최대 3건을 표시합니다.
+- 운영 배포는 Railway CLI 인증 만료로 아직 완료하지 못했습니다.
+
+### 배포 상태
+
+- Runtime commit: `c96f7d5 feat: show schedule reports in calendar`
+- GitHub push: `main` updated from `4e3d707` to `c96f7d5`
+- Railway deploy attempt:
+  - `railway up --service web --environment production ...` → `Unauthorized. Please run railway login again.`
+  - `railway up frontend --path-as-root --service sales-note-frontend --environment production ...` → `Unauthorized. Please run railway login again.`
+- `RAILWAY_TOKEN` environment variable is missing.
+- Production `/schedules/calendar/` still serves previous bundle `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
+- Production `/schedules/calendar/` returns 200.
+- Anonymous frontend-proxied `/reporting/api/schedules/calendar/` returns `401 Unauthorized`.
+
+### 수동 서버 테스트 절차
+
+배포 후:
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에 접속합니다.
+2. 영업보고가 연결된 고객 일정이 있는 날짜를 선택합니다.
+3. 선택일 일정 카드 안에 `보고 내용` 블록이 표시되는지 확인합니다.
+4. 보고 본문, 미팅 상황, 확인한 사실, 다음 액션이 보이는지 확인합니다.
+5. `보고 상세` 링크가 해당 React 영업노트 상세로 이동하는지 확인합니다.
+6. 보고가 없는 일정은 기존처럼 일정 메모/상태/액션만 보이는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 운영 배포 대기.
+
+---
+
 ## 2026-05-11 — React Schedule Calendar Status Actions
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
