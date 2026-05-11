@@ -3244,6 +3244,7 @@ h2 {
 .customer-ai-insight-list,
 .customer-ai-text-list,
 .customer-ai-product-list,
+.customer-ai-delivery-list,
 .customer-ai-stalled-list,
 .customer-ai-action-list,
 .customer-ai-verification-list,
@@ -3255,6 +3256,7 @@ h2 {
 .customer-ai-insight-list article,
 .customer-ai-text-list div,
 .customer-ai-product-list div,
+.customer-ai-delivery-item,
 .customer-ai-stalled-list div,
 .customer-ai-action-list > div,
 .customer-ai-verification-list article,
@@ -3270,6 +3272,7 @@ h2 {
 .customer-ai-insight-list strong,
 .customer-ai-text-list strong,
 .customer-ai-product-list strong,
+.customer-ai-delivery-list strong,
 .customer-ai-stalled-list strong,
 .customer-ai-action-list strong,
 .customer-ai-verification-list strong {
@@ -3290,6 +3293,7 @@ h2 {
 
 .customer-ai-insight-list small,
 .customer-ai-product-list small,
+.customer-ai-delivery-list small,
 .customer-ai-stalled-list small,
 .customer-ai-action-list small,
 .customer-ai-verification-list small {
@@ -3299,9 +3303,33 @@ h2 {
 }
 
 .customer-ai-product-list span,
+.customer-ai-delivery-list span,
 .customer-ai-stalled-list span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.customer-ai-list-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.customer-ai-delivery-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.customer-ai-delivery-head span {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.customer-ai-delivery-products {
+  display: grid;
+  gap: 3px;
 }
 
 .customer-ai-quote-grid {
@@ -4102,7 +4130,8 @@ h2 {
   color: #166534;
 }
 
-.source-badge.mock {
+.source-badge.mock,
+.source-badge.unavailable {
   background: var(--warning-bg);
   color: #92400e;
 }

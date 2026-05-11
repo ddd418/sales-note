@@ -9,7 +9,43 @@
 
 ---
 
-## Current task — React 주간보고 줄바꿈 표시 보존
+## Current task — AI 납품 품목 노출, 리스트 최신순, 주간보고 상세 저장 줄바꿈 보존
+
+**목표**: React `/ai-workspace/?department_id=10`의 Department AI 패널에서 최근 납품 제품/수량을 확인하게 하고, React CRM 주요 리스트의 기본 정렬을 최신순으로 맞춘다. 이어서 `/weekly-reports/<id>/` 수정 저장 시 textarea 줄바꿈이 사라지지 않게 한다.
+
+### 확인된 상태
+
+- 부서 AI 분석 수집 로직은 `quote_delivery_data.deliveries`에 최근 납품 일정과 품목(product, quantity, unit_price, total_price)을 이미 저장한다.
+- React 고객형 AI 패널은 총 견적/납품 지표와 제품 통계만 표시하고, 최근 납품 품목 상세는 payload/type/UI에서 빠져 있다.
+- `/reporting/api/schedules/`의 기본 일정 목록은 오름차순 날짜 정렬이며, 고객 목록도 우선순위/AI점수 우선 정렬이라 기본 리스트가 최신순으로 느껴지지 않는다.
+- React 주간보고 수정 화면은 저장 후 상세로 이동하지만, HTML을 다시 textarea 텍스트로 변환하는 과정에서 일부 줄바꿈이 보존되지 않을 수 있다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- AI 부서/고객 상세 payload의 `quoteDelivery`에 `recentDeliveries`를 추가한다.
+  - 최근 납품일 기준으로 최대 몇 건만 내려주고, 각 납품의 제품명/수량/금액/고객/출처를 포함한다.
+  - 기존 총계, 제품 통계, PainPoint 검증 payload는 유지한다.
+- React 타입과 빈 payload 정규화를 확장하고 `CustomerAiResultPanel`의 견적/납품 분석 섹션에 `최근 납품 품목` 리스트를 추가한다.
+- `/reporting/api/schedules/` 기본 목록과 주요 React 고객 목록을 최신 수정/일자 기준 내림차순으로 조정한다.
+  - 캘린더/다가오는 일정처럼 시간 흐름이 중요한 보조 목록은 기존 의도를 훼손하지 않는다.
+- 주간보고 HTML→textarea 변환이 `<br>` 및 문단 경계를 안정적으로 줄바꿈으로 복원하게 보강한다.
+- 관련 API 회귀 테스트를 추가/보강한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.SchedulesSummaryApiTests reporting.tests.WeeklyReportReactApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/?department_id=10`, `/schedules/`, `/weekly-reports/2/` smoke check
+
+---
+
+## Previous task — React 주간보고 줄바꿈 표시 보존
 
 **목표**: React `/weekly-reports/`에서 주간보고를 저장한 뒤 상세 화면에서 사용자가 입력한 줄바꿈이 그대로 보이게 한다.
 

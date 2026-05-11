@@ -96,7 +96,7 @@ export type PriorityTask = {
 };
 
 export type PipelineData = {
-  source: 'mock' | 'django';
+  source: 'mock' | 'django' | 'unavailable';
   generatedAt?: string;
   stages: StageSummary[];
   deals: Deal[];
@@ -267,4 +267,18 @@ export const mockPipelineData: PipelineData = {
     { title: '오늘 연락 필요', count: 12, tone: 'warning' },
     { title: '관리자 검토 요청', count: 3, tone: 'info' },
   ],
+};
+
+export const emptyPipelineData: PipelineData = {
+  source: 'unavailable',
+  stages: mockStages,
+  deals: [],
+  metrics: {
+    totalPipelineValue: 0,
+    weightedPipelineValue: 0,
+    activeCount: 0,
+    overdueCount: 0,
+    contactCount: 0,
+  },
+  priorityTasks: [],
 };

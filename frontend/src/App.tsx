@@ -162,7 +162,7 @@ import {
   toggleDocumentTemplateDefault,
   updateDocumentTemplate,
 } from './api';
-import { Deal, mockPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
+import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
@@ -862,12 +862,12 @@ function makeCompanySelectOption(company: { id: number; name: string }): Searcha
   };
 }
 
-function makeDepartmentSelectOption(department: { id: number; name: string; companyName?: string }): SearchableSelectOption {
+function makeDepartmentSelectOption(department: { id: number; name: string; companyName?: string; searchText?: string }): SearchableSelectOption {
   const label = joinOptionParts([department.companyName, department.name]) || department.name;
   return {
     value: String(department.id),
     label,
-    searchText: label,
+    searchText: [label, department.searchText || ''].filter(Boolean).join(' '),
   };
 }
 
@@ -1593,6 +1593,11 @@ function CustomerAiResultPanel({
     { label: '제품 트렌드', value: quoteInsights.productTrends },
   ].filter((item) => item.value);
   const hasQuoteMetrics = quoteDelivery.totalQuotes > 0 || quoteDelivery.totalDeliveries > 0;
+  const hasQuoteSection = hasQuoteMetrics
+    || quoteInsightItems.length > 0
+    || quoteDelivery.productStats.length > 0
+    || quoteDelivery.recentDeliveries.length > 0
+    || quoteInsights.stalledQuotes.length > 0;
 
   return (
     <div className="customer-ai-result">
@@ -1617,7 +1622,7 @@ function CustomerAiResultPanel({
         </section>
       ) : null}
 
-      {hasQuoteMetrics || quoteInsightItems.length > 0 ? (
+      {hasQuoteSection ? (
         <section className="customer-ai-section">
           <h4>견적/납품 분석</h4>
           {hasQuoteMetrics ? (
@@ -1645,6 +1650,31 @@ function CustomerAiResultPanel({
                   <strong>{product.name}</strong>
                   <span>견적 {formatNumber(product.quoted)}회 · 납품 {formatNumber(product.delivered)}회</span>
                   <small>{formatWon(product.quoteAmount)} / {formatWon(product.deliveryAmount)}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {quoteDelivery.recentDeliveries.length > 0 ? (
+            <div className="customer-ai-delivery-list">
+              <strong className="customer-ai-list-label">최근 납품 품목</strong>
+              {quoteDelivery.recentDeliveries.slice(0, 5).map((delivery) => (
+                <div className="customer-ai-delivery-item" key={`${delivery.date}-${delivery.customer}-${delivery.source}`}>
+                  <div className="customer-ai-delivery-head">
+                    <strong>{[delivery.date ? formatDateLabel(delivery.date) : '', delivery.customer].filter(Boolean).join(' · ') || '최근 납품'}</strong>
+                    <span>{[delivery.source, delivery.amount ? formatWon(delivery.amount) : ''].filter(Boolean).join(' · ')}</span>
+                  </div>
+                  {delivery.items.length > 0 ? (
+                    <div className="customer-ai-delivery-products">
+                      {delivery.items.map((item) => (
+                        <small key={`${delivery.date}-${delivery.customer}-${item.product}`}>
+                          {item.product} · {formatNumber(item.quantity)}개{item.totalPrice ? ` · ${formatWon(item.totalPrice)}` : ''}
+                        </small>
+                      ))}
+                    </div>
+                  ) : (
+                    <small>품목 정보 없음</small>
+                  )}
+                  {delivery.notes ? <small>{delivery.notes}</small> : null}
                 </div>
               ))}
             </div>
@@ -9106,7 +9136,7 @@ function FilterRail({
           <span>데이터</span>
         </div>
         <div className={`source-badge ${source}`}>
-          {source === 'django' ? 'Django API 연결됨' : 'Mock data fallback'}
+          {source === 'django' ? 'Django API 연결됨' : '데이터 연결 대기'}
         </div>
       </div>
       <div className="rail-section">
@@ -9616,7 +9646,8 @@ export function App() {
   const weeklyReportEditRoute = currentView === 'weeklyReports' && isWeeklyReportEditRoute();
   const initialAIWorkspaceDepartmentId = currentView === 'ai' ? getAIWorkspaceDepartmentIdParam() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
-  const [pipelineData, setPipelineData] = useState(mockPipelineData);
+  const [pipelineData, setPipelineData] = useState(emptyPipelineData);
+  const [pipelineLoading, setPipelineLoading] = useState(currentView === 'pipeline');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
@@ -9725,7 +9756,7 @@ export function App() {
   const [mailReplySaving, setMailReplySaving] = useState(false);
   const [mailReplyError, setMailReplyError] = useState('');
   const [mailReplyMessage, setMailReplyMessage] = useState('');
-  const [selectedDealId, setSelectedDealId] = useState<number | null>(mockPipelineData.deals[0]?.id ?? null);
+  const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<SavedView>('priority');
   const [movingDealId, setMovingDealId] = useState<number | null>(null);
@@ -9738,12 +9769,14 @@ export function App() {
       return;
     }
     let alive = true;
+    setPipelineLoading(true);
     loadPipelineData().then((data) => {
       if (!alive) {
         return;
       }
       setPipelineData(data);
       setSelectedDealId(data.deals[0]?.id ?? null);
+      setPipelineLoading(false);
     });
     return () => {
       alive = false;
@@ -11297,6 +11330,18 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <WorkspaceRoutePage data={pipelineData} view={currentView} />
+      </AppShell>
+    );
+  }
+
+  if (pipelineLoading && pipelineData.source !== 'django') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <section className="dashboard-loading">
+          <Loader2 className="spin-icon" size={24} />
+          <span>파이프라인 데이터를 불러오는 중입니다</span>
+        </section>
       </AppShell>
     );
   }

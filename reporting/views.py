@@ -2615,6 +2615,28 @@ def _customers_schedule_payload(schedule):
     }
 
 
+def _customers_department_search_text_map(departments, scope_users=None):
+    department_ids = [department.id for department in departments if department and department.id]
+    if not department_ids:
+        return {}
+
+    followups = FollowUp.objects.filter(department_id__in=department_ids)
+    if scope_users is not None:
+        followups = followups.filter(user__in=scope_users)
+
+    search_map = {department_id: [] for department_id in department_ids}
+    for row in followups.values('department_id', 'customer_name', 'manager', 'email'):
+        bucket = search_map.setdefault(row['department_id'], [])
+        for term in [row.get('customer_name'), row.get('manager'), row.get('email')]:
+            value = str(term or '').strip()
+            if value and value not in bucket:
+                bucket.append(value)
+    return {
+        department_id: ' '.join(terms)
+        for department_id, terms in search_map.items()
+    }
+
+
 def _customers_enriched_queryset(queryset, today, priority_order, recent_histories_qs, upcoming_schedules_qs):
     activity_types = [
         value
@@ -2716,6 +2738,11 @@ def _customers_edit_config(request, user_profile, followup, can_edit):
     departments_qs = Department.objects.filter(
         Q(company__in=companies_qs) | Q(id=followup.department_id)
     ).select_related('company').distinct().order_by('company__name', 'name')
+    departments = list(departments_qs)
+    department_search_map = _customers_department_search_text_map(
+        departments,
+        get_same_company_users(request.user),
+    )
 
     return {
         'canEdit': bool(can_edit),
@@ -2744,8 +2771,9 @@ def _customers_edit_config(request, user_profile, followup, can_edit):
                 'name': department.name,
                 'companyId': department.company_id,
                 'companyName': department.company.name,
+                'searchText': department_search_map.get(department.id, ''),
             }
-            for department in departments_qs
+            for department in departments
         ],
     }
 
@@ -2823,7 +2851,7 @@ def customers_summary_api(request):
         recent_histories_qs,
         upcoming_schedules_qs,
     ).order_by(
-        'priority_rank', '-ai_score', '-updated_at', 'company__name', 'customer_name'
+        '-updated_at', '-created_at', '-id'
     )
 
     customers = list(followups[:60])
@@ -2882,6 +2910,7 @@ def customers_summary_api(request):
     create_company_options = []
     create_department_options = []
     if can_create_customer:
+        create_users = User.objects.filter(id=request.user.id)
         if user_profile.is_admin():
             create_users = get_accessible_users(request.user, request)
             create_companies_qs = Company.objects.filter(
@@ -2897,6 +2926,11 @@ def customers_summary_api(request):
         create_departments_qs = Department.objects.filter(
             company__in=create_companies_qs
         ).select_related('company').order_by('company__name', 'name')
+        create_departments = list(create_departments_qs)
+        create_department_search_map = _customers_department_search_text_map(
+            create_departments,
+            create_users,
+        )
         create_company_options = [
             {
                 'id': company.id,
@@ -2910,8 +2944,9 @@ def customers_summary_api(request):
                 'name': department.name,
                 'companyId': department.company_id,
                 'companyName': department.company.name,
+                'searchText': create_department_search_map.get(department.id, ''),
             }
-            for department in create_departments_qs
+            for department in create_departments
         ]
 
     return JsonResponse({
@@ -4108,7 +4143,7 @@ def _schedules_personal_payload(personal_schedule, today):
     }
 
 
-def _schedules_combined_items(schedules, personal_schedules, today, limit=80):
+def _schedules_combined_items(schedules, personal_schedules, today, limit=80, latest_first=True):
     items = [
         _schedules_schedule_payload(schedule, today)
         for schedule in schedules
@@ -4116,7 +4151,10 @@ def _schedules_combined_items(schedules, personal_schedules, today, limit=80):
         _schedules_personal_payload(personal_schedule, today)
         for personal_schedule in personal_schedules
     ]
-    items.sort(key=lambda item: (item['date'] or '', item['time'] or '', item['type'], item['id']))
+    items.sort(
+        key=lambda item: (item['date'] or '', item['time'] or '', item['type'], item['id']),
+        reverse=latest_first,
+    )
     return items[:limit]
 
 
@@ -4316,6 +4354,7 @@ def _customers_empty_ai_result_payload():
             'totalDeliveries': 0,
             'avgDeliveryIntervalDays': 0,
             'productStats': [],
+            'recentDeliveries': [],
         },
         'quoteInsights': {
             'conversionAnalysis': '',
@@ -4351,6 +4390,41 @@ def _customers_ai_product_stats_payload(product_stats):
     return rows[:8]
 
 
+def _customers_ai_recent_deliveries_payload(deliveries):
+    rows = []
+    for delivery in _ai_json_list(deliveries):
+        if not isinstance(delivery, dict):
+            continue
+
+        items = []
+        for item in _ai_json_list(delivery.get('items'))[:8]:
+            if not isinstance(item, dict):
+                continue
+            total_price = item.get('total_price')
+            if total_price is None:
+                total_price = item.get('subtotal')
+            items.append({
+                'product': _ai_payload_text(item.get('product') or '미정', 140),
+                'quantity': _ai_payload_number(item.get('quantity'), 0),
+                'unitPrice': int(_ai_payload_number(item.get('unit_price'), 0)),
+                'totalPrice': int(_ai_payload_number(total_price, 0)),
+            })
+
+        schedule_id = _ai_payload_number(delivery.get('schedule_id'), 0)
+        rows.append({
+            'date': _ai_payload_text(delivery.get('date'), 40),
+            'customer': _ai_payload_text(delivery.get('customer'), 140),
+            'amount': int(_ai_payload_number(delivery.get('amount'), 0)),
+            'items': items,
+            'source': _ai_payload_text(delivery.get('source'), 80),
+            'scheduleId': int(schedule_id) if schedule_id else None,
+            'notes': _ai_payload_text(delivery.get('notes'), 240),
+        })
+
+    rows.sort(key=lambda item: item.get('date') or '', reverse=True)
+    return rows[:6]
+
+
 def _customers_ai_quote_delivery_payload(analysis):
     raw = _ai_json_dict(analysis.quote_delivery_data)
     quote_data = _ai_json_dict(raw.get('summary')) or raw
@@ -4362,6 +4436,7 @@ def _customers_ai_quote_delivery_payload(analysis):
         'totalDeliveries': int(_ai_payload_number(quote_data.get('total_deliveries'), 0)),
         'avgDeliveryIntervalDays': _ai_payload_number(quote_data.get('avg_delivery_interval_days'), 0),
         'productStats': _customers_ai_product_stats_payload(quote_data.get('product_stats')),
+        'recentDeliveries': _customers_ai_recent_deliveries_payload(raw.get('deliveries')),
     }
 
 
@@ -4680,10 +4755,10 @@ def schedules_summary_api(request):
 
     schedules = schedules.annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
-    ).order_by('visit_date', 'visit_time')
+    ).order_by('-visit_date', '-visit_time', '-created_at', '-id')
     personal_schedules = personal_schedules.annotate(
         history_count=Count('histories', distinct=True)
-    ).order_by('schedule_date', 'schedule_time')
+    ).order_by('-schedule_date', '-schedule_time', '-created_at', '-id')
 
     owner_options = [
         {
@@ -4717,10 +4792,10 @@ def schedules_summary_api(request):
         'user', 'followup', 'followup__company', 'followup__department'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
-    ).order_by('visit_time')
+    ).order_by('-visit_time', '-created_at', '-id')
     today_personal_schedules = base_personal_schedules.filter(schedule_date=today).select_related(
         'user', 'company'
-    ).annotate(history_count=Count('histories', distinct=True)).order_by('schedule_time')
+    ).annotate(history_count=Count('histories', distinct=True)).order_by('-schedule_time', '-created_at', '-id')
 
     upcoming_schedules = base_schedules.filter(
         visit_date__gt=today,
@@ -4729,13 +4804,13 @@ def schedules_summary_api(request):
         'user', 'followup', 'followup__company', 'followup__department'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
-    ).order_by('visit_date', 'visit_time')
+    ).order_by('-visit_date', '-visit_time', '-created_at', '-id')
     upcoming_personal_schedules = base_personal_schedules.filter(
         schedule_date__gt=today,
         schedule_date__lte=week_end,
     ).select_related('user', 'company').annotate(
         history_count=Count('histories', distinct=True)
-    ).order_by('schedule_date', 'schedule_time')
+    ).order_by('-schedule_date', '-schedule_time', '-created_at', '-id')
 
     overdue_schedules = base_schedules.filter(
         visit_date__lt=today,
@@ -4744,7 +4819,7 @@ def schedules_summary_api(request):
         'user', 'followup', 'followup__company', 'followup__department'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
-    ).order_by('-visit_date', 'visit_time')[:10]
+    ).order_by('-visit_date', '-visit_time', '-created_at', '-id')[:10]
 
     filtered_customer_count = schedules.count()
     filtered_personal_count = personal_schedules.count()
@@ -4913,7 +4988,7 @@ def schedules_calendar_api(request):
             'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
             'weeklyReports': '/weekly-reports/',
         },
-        'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000),
+        'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000, latest_first=False),
     })
 
 
@@ -10843,7 +10918,12 @@ def department_autocomplete(request):
     
     # Admin 사용자는 모든 부서 검색 가능
     if getattr(request, 'is_admin', False) or (hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'admin'):
-        departments = Department.objects.filter(name__icontains=query)
+        departments = Department.objects.filter(
+            Q(name__icontains=query) |
+            Q(followup_departments__manager__icontains=query) |
+            Q(followup_departments__customer_name__icontains=query) |
+            Q(followup_departments__email__icontains=query)
+        )
     else:
         # 일반 사용자: 같은 회사 사용자들이 생성한 업체의 부서만 검색
         user_company = getattr(request, 'user_company', None)
@@ -10853,13 +10933,19 @@ def department_autocomplete(request):
             same_company_users = User.objects.filter(userprofile__company=user_company)
             # 같은 회사 사용자들이 생성한 업체의 부서만 필터링
             departments = Department.objects.filter(
-                name__icontains=query,
+                Q(name__icontains=query) |
+                Q(followup_departments__manager__icontains=query) |
+                Q(followup_departments__customer_name__icontains=query) |
+                Q(followup_departments__email__icontains=query),
                 company__created_by__in=same_company_users
             )
         elif user_profile and user_profile.company:
             same_company_users = User.objects.filter(userprofile__company=user_profile.company)
             departments = Department.objects.filter(
-                name__icontains=query,
+                Q(name__icontains=query) |
+                Q(followup_departments__manager__icontains=query) |
+                Q(followup_departments__customer_name__icontains=query) |
+                Q(followup_departments__email__icontains=query),
                 company__created_by__in=same_company_users
             )
         else:
@@ -10869,7 +10955,7 @@ def department_autocomplete(request):
     if company_id:
         departments = departments.filter(company_id=company_id)
     
-    departments = departments.select_related('company').order_by('company__name', 'name')[:10]
+    departments = departments.select_related('company').distinct().order_by('company__name', 'name')[:10]
     
     results = []
     for dept in departments:
@@ -19960,13 +20046,16 @@ def _weekly_report_text_to_html(value: str) -> str:
 def _weekly_report_html_to_text(value: str) -> str:
     """저장된 HTML/레거시 텍스트를 React textarea 편집용 텍스트로 변환한다."""
     from django.utils.html import strip_tags
+    from reporting.utils_html import is_html_content, normalize_report_html_input
 
-    rendered = _render_report_field(value or '')
+    source = normalize_report_html_input(value or '')
+    rendered = source if is_html_content(source) else _render_report_field(source)
     if not rendered:
         return ''
     rendered = re.sub(r'<br\s*/?>', '\n', rendered, flags=re.IGNORECASE)
     rendered = re.sub(r'<li[^>]*>', '- ', rendered, flags=re.IGNORECASE)
-    rendered = re.sub(r'</(p|div|li|h[1-6]|blockquote)\s*>', '\n', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'</li\s*>', '\n', rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r'</(p|div|h[1-6]|blockquote)\s*>', '\n\n', rendered, flags=re.IGNORECASE)
     text = html.unescape(strip_tags(rendered))
     text = re.sub(r'[ \t]+\n', '\n', text)
     text = re.sub(r'\n[ \t]+', '\n', text)

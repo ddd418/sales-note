@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — AI Deliveries, Latest Lists, Weekly Report Edit Linebreaks
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+React `/ai-workspace/?department_id=10`의 Department AI 패널에서 최근 납품 제품과 수량을 볼 수 있게 했고, React CRM 주요 리스트 기본 정렬을 최신순으로 맞췄습니다. `/weekly-reports/<id>/` 수정 저장 시 textarea 줄바꿈이 사라지는 문제와 `/customers/` 부서 입력에서 PI/책임자명으로 부서를 찾지 못하는 문제도 함께 수정했습니다. 루트 파이프라인 화면은 API 로딩 전에 하드코딩 mock 데이터가 잠깐 보이지 않도록 빈 로딩 상태로 시작합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI 납품 payload, 고객/일정 최신순 API 정렬, 부서 PI 검색 텍스트, 주간보고 HTML→textarea 변환 보강
+- `reporting/tests.py`: AI 최근 납품, 고객/일정 최신순, 부서 PI 검색, 주간보고 문단 줄바꿈 회귀 테스트 추가
+- `frontend/src/api.ts`: AI 최근 납품 타입/정규화, 부서 검색 텍스트 타입, 파이프라인 빈 fallback 적용
+- `frontend/src/App.tsx`: 최근 납품 품목 UI, 부서 검색어 확장, 파이프라인 초기 로딩 상태 적용
+- `frontend/src/mockData.ts`: 파이프라인 unavailable 빈 상태 추가
+- `frontend/src/styles.css`: AI 납품 목록과 파이프라인 unavailable 배지 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- Department AI의 `견적/납품 분석`에서 최근 납품일, 고객, 출처, 금액, 제품명, 수량을 확인할 수 있습니다.
+- `/schedules/` 기본 일정 목록과 `/customers/` 고객 목록이 최신 항목부터 표시됩니다.
+- `/customers/` 부서 선택 검색에서 부서명뿐 아니라 해당 부서 FollowUp의 고객명, PI/책임자명, 이메일도 검색 대상으로 사용합니다.
+- `/weekly-reports/<id>/` 수정 화면에서 기존 HTML 문단이 textarea 텍스트로 돌아올 때 빈 줄과 줄바꿈이 보존됩니다.
+- `/` 파이프라인 화면은 Django API 응답 전 mock deal/금액/작업 카드가 깜빡이지 않습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` route, Django fallback 화면, 로그인/권한/회사 범위 정책은 유지했습니다.
+- 캘린더 API는 일정 흐름 확인 용도라 기존 시간순 정렬을 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.SchedulesSummaryApiTests reporting.tests.WeeklyReportReactApiTests --verbosity=1
+→ Ran 62 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-CK647J3B.js / assets/index-M9Uvw-6H.css
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- "모든 리스트 최신순"은 이번 변경에서 React CRM의 주요 고객/일정 기본 리스트 기준으로 적용했습니다. 달력처럼 시간 흐름이 기능인 화면은 최신순으로 바꾸지 않았습니다.
+- 운영에서 실제 납품 데이터 표시 여부는 해당 부서 AI 분석 데이터의 `quote_delivery_data.deliveries` 존재 여부에 따라 달라집니다.
+
+### 배포 상태
+
+- Runtime commit: 예정
+- GitHub push: 예정
+- Railway `web`: 예정
+- Railway `sales-note-frontend`: 예정
+- Production smoke check: 예정
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10`에서 오른쪽 `Department AI`의 `견적/납품 분석`에 `최근 납품 품목`이 보이는지 확인합니다.
+2. `/schedules/`에 접속해 기본 일정 목록이 최신 날짜/시간 항목부터 보이는지 확인합니다.
+3. `/customers/`에서 고객 등록/수정의 부서 입력에 PI 또는 책임자명 일부를 입력했을 때 관련 부서가 검색되는지 확인합니다.
+4. `/weekly-reports/2/`를 수정 화면으로 열고 여러 줄/빈 줄이 있는 내용을 저장한 뒤 다시 수정 화면에서 줄바꿈이 유지되는지 확인합니다.
+5. `/` 파이프라인 화면을 새로고침했을 때 실제 API 로딩 전 하드코딩된 deal/금액/작업 카드가 잠깐 보이지 않는지 확인합니다.
+
+---
+
 ## 2026-05-11 — React Weekly Report Linebreak Display
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

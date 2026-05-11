@@ -1,4 +1,4 @@
-import { mockPipelineData, PipelineData, PipelineStage } from './mockData';
+import { emptyPipelineData, PipelineData, PipelineStage } from './mockData';
 
 type PipelineApiResponse = PipelineData & {
   success?: boolean;
@@ -400,7 +400,7 @@ export type CustomersData = {
     advancedUrl: string;
     priorities: Array<{ value: string; label: string }>;
     companies: Array<{ id: number; name: string }>;
-    departments: Array<{ id: number; name: string; companyId: number; companyName: string }>;
+    departments: Array<{ id: number; name: string; companyId: number; companyName: string; searchText?: string }>;
   };
   customers: CustomerItem[];
   priorityCustomers: CustomerItem[];
@@ -527,7 +527,7 @@ export type CustomerDetailData = {
     statuses: Array<{ value: string; label: string }>;
     stages: Array<{ value: string; label: string }>;
     companies: Array<{ id: number; name: string }>;
-    departments: Array<{ id: number; name: string; companyId: number; companyName: string }>;
+    departments: Array<{ id: number; name: string; companyId: number; companyName: string; searchText?: string }>;
   };
   recentNotes: NoteItem[];
   overdueActions: NoteItem[];
@@ -579,6 +579,7 @@ export type CustomerAiQuoteDelivery = {
   totalDeliveries: number;
   avgDeliveryIntervalDays: number;
   productStats: CustomerAiProductStat[];
+  recentDeliveries: CustomerAiRecentDelivery[];
 };
 
 export type CustomerAiProductStat = {
@@ -587,6 +588,23 @@ export type CustomerAiProductStat = {
   quoteAmount: number;
   delivered: number;
   deliveryAmount: number;
+};
+
+export type CustomerAiDeliveryItem = {
+  product: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+};
+
+export type CustomerAiRecentDelivery = {
+  date: string;
+  customer: string;
+  amount: number;
+  items: CustomerAiDeliveryItem[];
+  source: string;
+  scheduleId: number | null;
+  notes: string;
 };
 
 export type CustomerAiQuoteInsights = {
@@ -2316,6 +2334,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
       totalDeliveries: 0,
       avgDeliveryIntervalDays: 0,
       productStats: [],
+      recentDeliveries: [],
     },
     quoteInsights: {
       conversionAnalysis: '',
@@ -3486,6 +3505,7 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
           ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
           ...(payload.aiDepartment?.quoteDelivery ?? {}),
           productStats: payload.aiDepartment?.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
+          recentDeliveries: payload.aiDepartment?.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
         },
         quoteInsights: {
           ...emptyCustomerDetailData.aiDepartment.quoteInsights,
@@ -4936,10 +4956,21 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `AI workspace API unavailable: ${response.status}`);
     }
+    const featuredDepartment = payload.featuredDepartment
+      ? {
+          ...payload.featuredDepartment,
+          quoteDelivery: {
+            ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
+            ...(payload.featuredDepartment.quoteDelivery ?? {}),
+            productStats: payload.featuredDepartment.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
+            recentDeliveries: payload.featuredDepartment.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
+          },
+        }
+      : null;
     return {
       ...payload,
-      featuredDepartment: payload.featuredDepartment ?? null,
-      selectedDepartmentId: payload.selectedDepartmentId ?? payload.featuredDepartment?.departmentId ?? null,
+      featuredDepartment,
+      selectedDepartmentId: payload.selectedDepartmentId ?? featuredDepartment?.departmentId ?? null,
       promptTargets: payload.promptTargets ?? [],
     };
   } catch (error) {
@@ -5256,7 +5287,10 @@ export async function loadPipelineData(): Promise<PipelineData> {
       source: 'django',
     };
   } catch {
-    return mockPipelineData;
+    return {
+      ...emptyPipelineData,
+      generatedAt: new Date().toISOString(),
+    };
   }
 }
 

@@ -737,7 +737,46 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['create']['companySubmitUrl'], reverse('reporting:company_create_api'))
         self.assertEqual(payload['create']['departmentSubmitUrl'], reverse('reporting:department_create_api'))
         self.assertTrue(any(option['id'] == own.company_id for option in payload['create']['companies']))
-        self.assertTrue(any(option['id'] == own.department_id for option in payload['create']['departments']))
+        department_option = next(option for option in payload['create']['departments'] if option['id'] == own.department_id)
+        self.assertIn('내고객 책임', department_option['searchText'])
+
+    def test_department_autocomplete_finds_department_by_pi_manager_name(self):
+        target = self._create_customer(self.user, 'PI검색고객')
+        target.manager = '김PI교수'
+        target.save(update_fields=['manager'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:department_autocomplete'), {
+            'q': '김PI',
+            'company': target.company_id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        department_ids = {item['id'] for item in response.json()['results']}
+        self.assertIn(target.department_id, department_ids)
+
+    def test_customers_summary_api_defaults_to_latest_updated_first(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import FollowUp
+
+        older = self._create_customer(self.user, '오래된고객')
+        newer = self._create_customer(self.user, '최근고객')
+        FollowUp.objects.filter(pk=older.pk).update(
+            updated_at=timezone.now() - timedelta(days=5),
+            created_at=timezone.now() - timedelta(days=5),
+        )
+        FollowUp.objects.filter(pk=newer.pk).update(
+            updated_at=timezone.now(),
+            created_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['customers'][0]['id'], newer.id)
 
     def test_customers_summary_api_filters_search_owner_and_priority(self):
         target = self._create_customer(self.user, 'PCR핵심', priority='urgent')
@@ -1096,21 +1135,37 @@ class CustomersSummaryApiTests(TestCase):
                     'questions': ['결재 최종 승인자는 누구인가요?'],
                 },
             },
-            quote_delivery_data={'summary': {
-                'total_quotes': 2,
-                'converted_quotes': 1,
-                'conversion_rate': 50,
-                'total_deliveries': 1,
-                'avg_delivery_interval_days': 21,
-                'product_stats': {
-                    'PCR Mix': {
-                        'quoted': 2,
-                        'quote_amount': 300000,
-                        'delivered': 1,
-                        'delivery_amount': 150000,
+            quote_delivery_data={
+                'summary': {
+                    'total_quotes': 2,
+                    'converted_quotes': 1,
+                    'conversion_rate': 50,
+                    'total_deliveries': 1,
+                    'avg_delivery_interval_days': 21,
+                    'product_stats': {
+                        'PCR Mix': {
+                            'quoted': 2,
+                            'quote_amount': 300000,
+                            'delivered': 1,
+                            'delivery_amount': 150000,
+                        },
                     },
                 },
-            }},
+                'deliveries': [{
+                    'date': '2026-04-29',
+                    'customer': 'AI고객 담당자',
+                    'amount': 150000,
+                    'items': [{
+                        'product': 'PCR Mix',
+                        'quantity': 3,
+                        'unit_price': 50000,
+                        'total_price': 150000,
+                    }],
+                    'source': '납품 일정',
+                    'schedule_id': 101,
+                    'notes': '최근 납품 메모',
+                }],
+            },
             meeting_count=3,
             quote_count=2,
             delivery_count=1,
@@ -1152,6 +1207,8 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(ai_department['quoteDelivery']['convertedQuotes'], 1)
         self.assertEqual(ai_department['quoteDelivery']['conversionRate'], 50)
         self.assertEqual(ai_department['quoteDelivery']['productStats'][0]['name'], 'PCR Mix')
+        self.assertEqual(ai_department['quoteDelivery']['recentDeliveries'][0]['items'][0]['product'], 'PCR Mix')
+        self.assertEqual(ai_department['quoteDelivery']['recentDeliveries'][0]['items'][0]['quantity'], 3)
         self.assertIn('납품 전환율', ai_department['quoteInsights']['conversionAnalysis'])
         self.assertEqual(ai_department['quoteInsights']['stalledQuotes'][0]['quoteInfo'], 'Q-001')
         self.assertEqual(ai_department['nextActions'][0]['action'], '결재 승인자 확인')
@@ -2550,6 +2607,30 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(own_item['href'], f'/schedules/{own.id}/')
         self.assertEqual(own_item['djangoHref'], reverse('reporting:schedule_detail', args=[own.id]))
 
+    def test_schedules_summary_api_defaults_to_latest_schedule_first(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        older = self._create_schedule(
+            self.user,
+            '오래된일정',
+            visit_date=timezone.localdate() - timedelta(days=4),
+        )
+        newer = self._create_schedule(
+            self.user,
+            '최근일정',
+            visit_date=timezone.localdate() + timedelta(days=2),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['schedules'][0]['type'], 'customer')
+        self.assertEqual(payload['schedules'][0]['id'], newer.id)
+        self.assertNotEqual(payload['schedules'][0]['id'], older.id)
+
     def test_schedules_summary_api_filters_search_owner_status_activity_and_range(self):
         from datetime import timedelta
         from django.utils import timezone
@@ -3658,7 +3739,23 @@ class AIWorkspaceSummaryApiTests(TestCase):
                 ],
                 'next_actions': [{'action': '견적 후속 연락', 'priority': 'high'}],
             },
-            quote_delivery_data={'total_quotes': 2, 'total_deliveries': 1},
+            quote_delivery_data={
+                'summary': {'total_quotes': 2, 'total_deliveries': 1},
+                'deliveries': [{
+                    'date': '2026-04-30',
+                    'customer': f'{department.name} 담당자',
+                    'amount': 220000,
+                    'items': [{
+                        'product': 'qPCR Reagent',
+                        'quantity': 4,
+                        'unit_price': 55000,
+                        'total_price': 220000,
+                    }],
+                    'source': '납품 일정',
+                    'schedule_id': 202,
+                    'notes': 'AI 워크스페이스 최근 납품',
+                }],
+            },
             meeting_count=3,
             quote_count=2,
             delivery_count=1,
@@ -3733,6 +3830,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['featuredDepartment']['meetingCount'], 3)
         self.assertEqual(payload['featuredDepartment']['customerCount'], 1)
         self.assertEqual(payload['featuredDepartment']['meetingInsights'][0]['theme'], '후속 견적')
+        self.assertEqual(payload['featuredDepartment']['quoteDelivery']['recentDeliveries'][0]['items'][0]['product'], 'qPCR Reagent')
+        self.assertEqual(payload['featuredDepartment']['quoteDelivery']['recentDeliveries'][0]['items'][0]['quantity'], 4)
         self.assertEqual(payload['featuredDepartment']['painpoints'][0]['verificationStatusLabel'], '미검증')
         self.assertIn('/ai/card/', payload['featuredDepartment']['painpoints'][0]['verifyHref'])
         self.assertTrue(payload['recommendedGoals'])
@@ -4533,6 +4632,27 @@ class WeeklyReportReactApiTests(TestCase):
         self.assertEqual(data['activityNotes'], '첫 줄\n둘째 줄')
         self.assertTrue(data['canComment'])
         self.assertFalse(data['canEdit'])
+
+    def test_detail_api_preserves_paragraph_breaks_for_edit_text(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='문단 줄바꿈 테스트',
+            activity_notes='<p>첫 문단<br>둘째 줄</p><p>다음 문단</p>',
+            quote_delivery_notes='<p>제품 A 납품</p><p>제품 B 납품</p>',
+        )
+
+        self.client.force_login(self.salesman)
+        response = self.client.get(reverse('reporting:weekly_report_detail_api', args=[report.id]))
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['report']
+        self.assertEqual(data['activityNotes'], '첫 문단\n둘째 줄\n\n다음 문단')
+        self.assertEqual(data['quoteDeliveryNotes'], '제품 A 납품\n\n제품 B 납품')
 
     def test_update_and_delete_api_owner_only(self):
         import datetime
