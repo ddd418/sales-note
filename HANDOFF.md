@@ -14,32 +14,31 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-AI department meeting scope fix and React document template management first integration are implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
+AI PainPoint verification memo confirm-only change is implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-6b1be06 feat: add React documents and department AI meetings
+b345687 fix: simplify AI painpoint verification
 ```
 
 Implemented:
 
-- Urgent AI fix: `ai_chat.services.gather_meeting_data()` now collects all FollowUp customer meetings in the selected department instead of only the requesting user's FollowUps.
-- AI department analysis prompt now shows the meeting owner in each meeting heading so department-wide evidence is traceable.
-- React CRM now has `/documents/` for document template management.
-- Added `/reporting/api/documents/` and create/update/delete/toggle-default APIs for React.
-- React document screen supports type filter, summary, template download, create/edit/delete, and default template setting.
-- Schedule document management links now route to React `/documents/`, while Django `/reporting/documents/` remains available as fallback.
-- Existing document generation endpoints remain unchanged.
+- PainPoint verification no longer offers separate `확인` and `부정` choices.
+- React customer detail and Django fallback AI department screen now show one `확인` action for saving a verification memo.
+- The verify API rejects `denied` status and stores verification notes through the confirm-only path.
+- AI prompts and fallback logic no longer interpret stored `confirmed`/`denied` as fixed meaning.
+- Existing stored `confirmed`/`denied` cards are normalized to `검증 메모` in AI memory and React payloads.
+- Reanalysis uses the note text as evidence and asks AI to judge fact, contradiction, or alternate cause from the memo body.
 - No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python -m py_compile ai_chat\services.py ai_chat\tests.py
-python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests --verbosity=1
-python manage.py test reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
-python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\tests.py reporting\views.py reporting\tests.py
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_department_ai_action reporting.tests.PipelineApiTests.test_pipeline_api_includes_department_ai_summary --verbosity=1
+python manage.py test ai_chat.tests --verbosity=1
 python manage.py check
 python manage.py makemigrations --check --dry-run
 cd frontend; npm run build
@@ -49,34 +48,35 @@ git diff --check
 
 Results:
 
-- 3 AI quote/delivery/meeting collection tests OK.
-- 34 document template and schedule API tests OK.
-- React build OK: `assets/index-yYKBGQDv.js` / `assets/index-B5cHVWQY.css`.
+- 3 AI memory tests OK.
+- 2 React customer/pipeline AI payload tests OK.
+- 20 ai_chat tests OK.
+- React build OK: `assets/index-DLXnGDxW.js` / `assets/index-CWzMMK9v.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- Railway `web`: `6db56b0e-b6d2-4e02-80bc-edcdeb50cba4` SUCCESS.
-- Railway `sales-note-frontend`: `e3e8e8b7-23b1-4992-8abc-58291ad08035` SUCCESS.
-- Production `/documents/` returns 200 and serves `assets/index-yYKBGQDv.js` / `assets/index-B5cHVWQY.css`.
-- Frontend JS contains `/reporting/api/documents/` and document UI text.
-- Frontend CSS contains `.documents-page`.
-- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` both return `401 Unauthorized`.
+- Railway `web`: `feabc944-2069-4934-977e-27316eb71175` SUCCESS.
+- Railway `sales-note-frontend`: `d807a6c1-d75a-4c99-a3ee-1d0d395869c4` SUCCESS.
+- Production `/customers/1/` returns 200 and serves `assets/index-DLXnGDxW.js` / `assets/index-CWzMMK9v.css`.
+- Frontend JS contains `PainPoint 검증 메모를 저장했습니다.` and does not contain `부정`.
+- Frontend CSS contains `.customer-ai-painpoint.checked`.
+- Anonymous frontend-proxied `/reporting/api/customers/1/` returns `401 Unauthorized`.
 - Anonymous `/ai/department/1/` redirects to `/reporting/login/?next=/ai/department/1/`.
 - Recent checked Railway logs show successful web startup and no new traceback/500.
 
 Manual production test:
 
-1. Open `https://sales-note-frontend-production.up.railway.app/documents/`.
-2. Confirm the sidebar `서류` menu opens the React document template page.
-3. Confirm type filters work for 전체/견적서/거래명세서/납품서.
-4. With admin/manager, create, edit, set default, download, and delete a template.
-5. With salesman, confirm create/edit/delete are blocked and read/download remains available.
-6. Open `/schedules/<id>/` and confirm document template management opens `/documents/`.
-7. Re-run an AI department analysis and confirm same-department coworker meeting content is reflected in the meeting evidence.
-8. Confirm Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/documents/` still opens.
+1. Open a React customer detail page with AI analysis, such as `https://sales-note-frontend-production.up.railway.app/customers/<customer_id>/`.
+2. Open the PainPoint verification area.
+3. Confirm there is only one `확인` action and no `부정` action.
+4. Enter a verification memo and click `확인`.
+5. Confirm the saved card displays as `검증 메모`.
+6. Re-run department AI analysis.
+7. Confirm the result uses the memo body as evidence and does not force it into a fixed confirmed/denied interpretation.
+8. Confirm Django fallback `/ai/department/<department_id>/` also has no `부정` button.
 
 ## Previous Task
 
@@ -607,7 +607,7 @@ railway deployment list --service sales-note-frontend --environment production -
 - The latest runtime commit documented at handoff is:
 
 ```text
-6b1be06 feat: add React documents and department AI meetings
+b345687 fix: simplify AI painpoint verification
 ```
 
 ## Known Caveats
@@ -631,6 +631,7 @@ Confirmed by user:
 
 Needs awareness:
 
+- AI PainPoint verification memo confirm-only change is deployed and awaits user manual production testing.
 - React document template management `/documents/` is deployed and awaits user manual production testing.
 - AI department meeting scope fix is deployed; existing stored AI analysis results require rerun to include coworker department meetings.
 - React pipeline department AI panel is deployed and can be manually tested.

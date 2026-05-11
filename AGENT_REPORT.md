@@ -11461,18 +11461,39 @@ git diff --check
 
 ### 6. Deployment Status
 
-- Runtime commit: pending
-- GitHub push: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
-- Deployed frontend bundle: pending
+- Runtime commit: `b345687 fix: simplify AI painpoint verification`
+- GitHub push: `main` updated from `dcf5836` to `b345687`
+- Railway `web`: `feabc944-2069-4934-977e-27316eb71175` SUCCESS, commit `b345687`
+- Railway `sales-note-frontend`: `d807a6c1-d75a-4c99-a3ee-1d0d395869c4` SUCCESS, message `Deploy AI painpoint verify simplification b345687`
+- Deployed frontend bundle: `assets/index-DLXnGDxW.js` / `assets/index-CWzMMK9v.css`
 
-### 7. Known Limitations
+### 7. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/customers/1/
+→ 200, bundle assets/index-DLXnGDxW.js and assets/index-CWzMMK9v.css
+
+Downloaded JS/CSS bundle
+→ JS contains "PainPoint 검증 메모를 저장했습니다."
+→ JS does not contain "부정"
+→ CSS contains .customer-ai-painpoint.checked
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/customers/1/
+→ 401 Unauthorized
+
+GET https://web-production-5096.up.railway.app/ai/department/1/
+→ 302 redirect to /reporting/login/?next=/ai/department/1/
+
+Railway logs checked
+→ web started successfully; recent checked logs show no traceback/500
+```
+
+### 8. Known Limitations
 
 - 운영에서 실제 AI 재분석 결과 확인은 로그인 세션과 실제 부서 데이터가 필요해 사용자 수동검수가 필요합니다.
 - DB 선택지에는 호환성 때문에 기존 `confirmed`/`denied` 값이 남아 있지만 사용자 UI와 AI 판단 로직에서는 부정 선택을 사용하지 않습니다.
 
-### 8. Manual Server Test Process
+### 9. Manual Server Test Process
 
 1. 운영 고객 상세 또는 AI 부서 분석 화면에서 PainPoint 검증 영역을 엽니다.
 2. 검증 버튼이 `확인` 하나만 있는지 확인합니다.
@@ -11482,7 +11503,7 @@ git diff --check
 6. 재분석 결과가 메모를 `확인된 사실/부정된 가설`로 고정하지 않고 메모 본문을 근거로 판단하는지 확인합니다.
 7. 기존 Django fallback `/ai/department/<department_id>/`에서도 부정 버튼이 사라졌는지 확인합니다.
 
-### 9. Recommended Next Task
+### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 중단했던 다음 React CRM 통합 작업을 이어갑니다.
 
