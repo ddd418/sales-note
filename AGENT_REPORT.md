@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — AI Workspace Department Selection in React
+
+**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 예정
+
+### 요약
+
+React `/ai-workspace/`의 `부서 분석 대상` 행 클릭이 Django AI 허브로 이동하지 않고, 같은 React 화면에서 오른쪽 `Department AI` 패널을 선택 부서로 갱신하도록 변경했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: `/reporting/api/ai-workspace/`에 `department_id` 선택 파라미터 추가, 접근 가능한 부서만 `featuredDepartment`로 반영
+- `reporting/tests.py`: 선택 부서 반영 및 범위 밖 부서 무시 회귀 테스트 추가
+- `frontend/src/api.ts`: AI workspace loader에 `department_id` query 지원과 `selectedDepartmentId` 정규화 추가
+- `frontend/src/App.tsx`: URL 초기 선택값, 부서 행 버튼 선택, React 상태/API refresh 연결
+- `frontend/src/styles.css`: 선택된 부서 행 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- `/ai-workspace/`에서 부서를 클릭해도 Django 화면으로 이동하지 않고, 오른쪽 AI 결과 패널이 즉시 해당 부서로 전환됩니다.
+- 선택한 부서는 `department_id` query로 URL에 남아 새로고침 후에도 같은 부서 패널을 불러올 수 있습니다.
+- 선택된 부서 행은 `선택됨` 상태로 표시됩니다.
+
+### 기존 기능 보존
+
+- 명시적인 `Django 보기`/`AI 허브` fallback 링크와 기존 `/ai/*`, `/reporting/*` route는 유지했습니다.
+- API는 요청자 본인 FollowUp 기반 부서 범위만 선택 가능하게 하여 내부 데이터 노출 범위를 넓히지 않았습니다.
+- DB 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-rJt-C9JT.js / assets/index-CpCyMmMT.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- Runtime commit: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- 운영 smoke check: pending
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `Department analysis / 부서 분석 대상`에서 첫 번째가 아닌 다른 부서를 클릭합니다.
+3. URL에 `department_id=<id>`가 붙고 페이지가 Django `/ai/` 화면으로 이동하지 않는지 확인합니다.
+4. 오른쪽 `Department AI` 패널 제목/요약/고객 chip/미팅·견적·납품 수치가 클릭한 부서 기준으로 바뀌는지 확인합니다.
+5. 새로고침 후에도 같은 부서가 선택되어 있는지 확인합니다.
+6. 명시적인 `Django 보기` 버튼은 기존 fallback으로 계속 열리는지 확인합니다.
+
+---
+
 ## 2026-05-11 — AI Workspace Prompt Queue Reposition
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

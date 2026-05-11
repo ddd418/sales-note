@@ -1857,6 +1857,7 @@ export type AIWorkspaceData = {
   };
   departments: AIWorkspaceDepartment[];
   featuredDepartment: AIWorkspaceFeaturedDepartment | null;
+  selectedDepartmentId: number | null;
   recentDepartmentAnalyses: AIWorkspaceAnalysis[];
   painpoints: AIWorkspacePainpoint[];
   followupTargets: AIWorkspaceFollowupTarget[];
@@ -1867,6 +1868,10 @@ export type AIWorkspaceData = {
     description: string;
     reason: string;
   }>;
+};
+
+export type AIWorkspaceLoadParams = {
+  departmentId?: number | null;
 };
 
 export type WeeklyReportUser = {
@@ -2836,6 +2841,7 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
   },
   departments: [],
   featuredDepartment: null,
+  selectedDepartmentId: null,
   recentDepartmentAnalyses: [],
   painpoints: [],
   followupTargets: [],
@@ -4907,9 +4913,14 @@ export async function deleteScheduleFile(deleteUrl: string): Promise<ScheduleFil
   return data;
 }
 
-export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {
+export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): Promise<AIWorkspaceData> {
+  const query = new URLSearchParams();
+  if (params.departmentId) {
+    query.set('department_id', String(params.departmentId));
+  }
+  const queryString = query.toString();
   try {
-    const response = await fetch('/reporting/api/ai-workspace/', {
+    const response = await fetch(`/reporting/api/ai-workspace/${queryString ? `?${queryString}` : ''}`, {
       credentials: 'include',
       headers: {
         Accept: 'application/json',
@@ -4928,6 +4939,7 @@ export async function loadAIWorkspaceData(): Promise<AIWorkspaceData> {
     return {
       ...payload,
       featuredDepartment: payload.featuredDepartment ?? null,
+      selectedDepartmentId: payload.selectedDepartmentId ?? payload.featuredDepartment?.departmentId ?? null,
       promptTargets: payload.promptTargets ?? [],
     };
   } catch (error) {

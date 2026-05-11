@@ -9,6 +9,39 @@
 
 ---
 
+## Current task — AI Workspace 부서 선택 React 전환
+
+**목표**: React `/ai-workspace/`의 `부서 분석 대상` 클릭이 Django AI 허브로 이동하지 않고, 같은 React 화면 오른쪽 `Department AI` 패널을 해당 부서 분석 결과로 전환하게 한다.
+
+### 확인된 상태
+
+- 현재 `AIWorkspaceDepartmentList`는 부서 행을 `department.hubHref` 링크로 렌더링해 클릭 시 `/ai/?department=...` Django 화면으로 이동한다.
+- `/reporting/api/ai-workspace/`는 최신 분석 부서를 `featuredDepartment`로 내려주지만, 특정 부서를 선택하는 query parameter는 없다.
+- 부서 데이터 범위는 현재 요청자 본인 FollowUp 기반으로 제한되어 있으며, 이 권한 범위는 유지해야 한다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- `/reporting/api/ai-workspace/`에 `department_id` query parameter를 추가한다.
+  - 요청자가 접근 가능한 부서 ID일 때만 해당 부서를 `featuredDepartment`로 내려준다.
+  - 접근 불가/잘못된 ID는 기존 최신 분석 부서 fallback을 유지해 내부 데이터 노출을 막는다.
+- React API client `loadAIWorkspaceData`가 선택 부서 ID를 query string으로 전달하게 한다.
+- React `/ai-workspace/`가 URL의 `department_id` 초기값을 읽고, 부서 행 클릭 시 `history.replaceState`와 API refresh로 같은 화면에서 오른쪽 패널만 바꾸게 한다.
+- 선택된 부서 행은 시각적으로 표시하고, 기존 Django fallback 링크/명시적 실행 버튼은 유지한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke check
+
+---
+
 ## Current task — AI Workspace 작업 큐 보조화
 
 **목표**: React `/ai-workspace/`의 `AI 작업 큐`를 메인 상단에서 내리고, 오른쪽 `Department AI` 결과 패널 중심의 흐름을 유지한다.

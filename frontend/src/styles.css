@@ -3624,9 +3624,23 @@ h2 {
   text-decoration: none;
 }
 
+.ai-department-row {
+  width: 100%;
+  border-style: solid;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .ai-department-row.ready {
   border-color: #bfdbfe;
   background: #f8fbff;
+}
+
+.ai-department-row.selected {
+  border-color: var(--primary);
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .ai-department-row:hover,

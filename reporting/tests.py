@@ -3737,6 +3737,36 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('/ai/card/', payload['featuredDepartment']['painpoints'][0]['verifyHref'])
         self.assertTrue(payload['recommendedGoals'])
 
+    def test_ai_workspace_summary_api_uses_requested_department_for_featured_panel(self):
+        _first_followup, first_department = self._create_customer(self.user, '선택부서')
+        _second_followup, second_department = self._create_customer(self.user, '최신부서')
+        self._create_department_analysis(self.user, first_department)
+        self._create_department_analysis(self.user, second_department)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': first_department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['featuredDepartment']['departmentId'], first_department.id)
+        self.assertEqual(payload['featuredDepartment']['departmentName'], first_department.name)
+        self.assertEqual(payload['selectedDepartmentId'], first_department.id)
+
+    def test_ai_workspace_summary_api_ignores_inaccessible_requested_department(self):
+        _own_followup, own_department = self._create_customer(self.user, '내부서')
+        _coworker_followup, coworker_department = self._create_customer(self.coworker, '동료부서')
+        self._create_department_analysis(self.user, own_department)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': coworker_department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['featuredDepartment']['departmentId'], own_department.id)
+        self.assertEqual(payload['selectedDepartmentId'], own_department.id)
+        department_ids = {department['id'] for department in payload['departments']}
+        self.assertNotIn(coworker_department.id, department_ids)
+
     def test_ai_workspace_prompts_include_recent_notes_and_sales_amounts(self):
         from datetime import time, timedelta
         from decimal import Decimal

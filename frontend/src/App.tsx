@@ -715,6 +715,13 @@ function getMailboxTypeParam(): MailboxType {
   return 'inbox';
 }
 
+function getAIWorkspaceDepartmentIdParam(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  const rawValue = params.get('department_id') || params.get('department');
+  const id = Number(rawValue);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 function getPrepaymentDetailId(): number | null {
   const match = window.location.pathname.match(/^\/prepayments\/(\d+)\/(?:edit\/?)?$/);
   if (!match) {
@@ -6973,7 +6980,15 @@ function PrepaymentDetailPage({
   );
 }
 
-function AIWorkspaceDepartmentList({ departments }: { departments: AIWorkspaceDepartment[] }) {
+function AIWorkspaceDepartmentList({
+  departments,
+  selectedDepartmentId,
+  onSelect,
+}: {
+  departments: AIWorkspaceDepartment[];
+  selectedDepartmentId: number | null;
+  onSelect: (department: AIWorkspaceDepartment) => void;
+}) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
   const filteredDepartments = useMemo(() => {
@@ -7017,22 +7032,30 @@ function AIWorkspaceDepartmentList({ departments }: { departments: AIWorkspaceDe
         <DashboardEmpty label="검색 결과가 없습니다" />
       ) : (
         <div className="ai-department-list">
-          {visibleDepartments.map((department) => (
-            <a className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''}`} href={department.hubHref} key={department.id}>
-              <div>
-                <strong>{department.company || department.name}</strong>
-                <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
-                {department.summary ? <small>{department.summary}</small> : null}
-                {!department.summary && department.customerPreview.length > 0 ? (
-                  <small>{department.customerPreview.join(', ')}</small>
-                ) : null}
-              </div>
-              <div className="ai-row-meta">
-                <span>{department.hasAnalysis ? '분석 완료' : '분석 필요'}</span>
-                <strong>{formatNumber(department.unverifiedPainpointCount)}</strong>
-              </div>
-            </a>
-          ))}
+          {visibleDepartments.map((department) => {
+            const selected = department.id === selectedDepartmentId;
+            return (
+              <button
+                className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''} ${selected ? 'selected' : ''}`}
+                key={department.id}
+                onClick={() => onSelect(department)}
+                type="button"
+              >
+                <div>
+                  <strong>{department.company || department.name}</strong>
+                  <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
+                  {department.summary ? <small>{department.summary}</small> : null}
+                  {!department.summary && department.customerPreview.length > 0 ? (
+                    <small>{department.customerPreview.join(', ')}</small>
+                  ) : null}
+                </div>
+                <div className="ai-row-meta">
+                  <span>{selected ? '선택됨' : department.hasAnalysis ? '분석 완료' : '분석 필요'}</span>
+                  <strong>{formatNumber(department.unverifiedPainpointCount)}</strong>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
       {filteredDepartments.length > visibleDepartments.length ? (
@@ -8473,10 +8496,14 @@ function AIWorkspacePage({
   data,
   loading,
   onRefresh,
+  selectedDepartmentId,
+  onDepartmentSelect,
 }: {
   data: AIWorkspaceData | null;
   loading: boolean;
-  onRefresh: () => Promise<AIWorkspaceData>;
+  onRefresh: (params?: { departmentId?: number | null }) => Promise<AIWorkspaceData>;
+  selectedDepartmentId: number | null;
+  onDepartmentSelect: (department: AIWorkspaceDepartment) => void;
 }) {
   const [copiedPromptId, setCopiedPromptId] = useState('');
   const [featuredVerificationNotes, setFeaturedVerificationNotes] = useState<Record<number, string>>({});
@@ -8512,7 +8539,7 @@ function AIWorkspacePage({
     setAiPanelMessage('');
     try {
       await verifyAiPainpoint(card.verifyHref, featuredVerificationNotes[card.id] || '');
-      await onRefresh();
+      await onRefresh({ departmentId: data?.featuredDepartment?.departmentId ?? selectedDepartmentId });
       setAiPanelMessage('PainPoint 검증 메모를 저장했습니다.');
       setFeaturedVerificationNotes((previous) => {
         const next = { ...previous };
@@ -8539,7 +8566,7 @@ function AIWorkspacePage({
     setAiPanelMessage('');
     try {
       const result = await runAiDepartmentAnalysis(featuredDepartment.runHref);
-      await onRefresh();
+      await onRefresh({ departmentId: featuredDepartment.departmentId });
       const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
       setAiPanelMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
     } catch (error) {
@@ -8570,6 +8597,7 @@ function AIWorkspacePage({
     { label: '이번 달 보고', value: `${formatNumber(data.metrics.weeklyReportsThisMonth)}건`, detail: '주간보고', icon: FileText, tone: 'green' as const },
   ];
   const featuredDepartment = data.featuredDepartment;
+  const activeDepartmentId = featuredDepartment?.departmentId ?? selectedDepartmentId ?? data.selectedDepartmentId ?? null;
 
   return (
     <section className="ai-page">
@@ -8636,7 +8664,11 @@ function AIWorkspacePage({
                 </div>
                 <Sparkles size={18} />
               </div>
-              <AIWorkspaceDepartmentList departments={data.departments} />
+              <AIWorkspaceDepartmentList
+                departments={data.departments}
+                selectedDepartmentId={activeDepartmentId}
+                onSelect={onDepartmentSelect}
+              />
             </section>
 
             <section className="dashboard-panel ai-followup-panel">
@@ -9582,6 +9614,7 @@ export function App() {
   const weeklyReportDetailId = currentView === 'weeklyReports' ? getWeeklyReportDetailId() : null;
   const weeklyReportCreateRoute = currentView === 'weeklyReports' && isWeeklyReportCreateRoute();
   const weeklyReportEditRoute = currentView === 'weeklyReports' && isWeeklyReportEditRoute();
+  const initialAIWorkspaceDepartmentId = currentView === 'ai' ? getAIWorkspaceDepartmentIdParam() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(mockPipelineData);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -9670,6 +9703,7 @@ export function App() {
   const [documentTypeFilter, setDocumentTypeFilter] = useState(() => new URLSearchParams(window.location.search).get('type') || '');
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
+  const [aiWorkspaceDepartmentId, setAiWorkspaceDepartmentId] = useState<number | null>(() => initialAIWorkspaceDepartmentId);
   const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
   const [mailboxLoading, setMailboxLoading] = useState(currentView === 'mail' && !mailboxThreadId);
   const [mailboxThreadData, setMailboxThreadData] = useState<MailboxThreadData | null>(null);
@@ -10126,11 +10160,12 @@ export function App() {
     }
     let alive = true;
     setAiWorkspaceLoading(true);
-    loadAIWorkspaceData().then((data) => {
+    loadAIWorkspaceData({ departmentId: aiWorkspaceDepartmentId }).then((data) => {
       if (!alive) {
         return;
       }
       setAiWorkspaceData(data);
+      setAiWorkspaceDepartmentId(data.selectedDepartmentId ?? data.featuredDepartment?.departmentId ?? null);
       setAiWorkspaceLoading(false);
     });
     return () => {
@@ -10663,10 +10698,23 @@ export function App() {
     setDocumentsData(data);
     return data;
   };
-  const refreshAIWorkspaceData = async () => {
-    const data = await loadAIWorkspaceData();
+  const refreshAIWorkspaceData = async (params: { departmentId?: number | null } = {}) => {
+    const departmentId = params.departmentId !== undefined ? params.departmentId : aiWorkspaceDepartmentId;
+    const data = await loadAIWorkspaceData({ departmentId });
     setAiWorkspaceData(data);
+    setAiWorkspaceDepartmentId(data.selectedDepartmentId ?? data.featuredDepartment?.departmentId ?? null);
     return data;
+  };
+  const handleAIWorkspaceDepartmentSelect = async (department: AIWorkspaceDepartment) => {
+    setAiWorkspaceDepartmentId(department.id);
+    const params = new URLSearchParams(window.location.search);
+    params.set('department_id', String(department.id));
+    params.delete('department');
+    const query = params.toString();
+    window.history.replaceState(null, '', `/ai-workspace/${query ? `?${query}` : ''}`);
+    setAiWorkspaceLoading(true);
+    await refreshAIWorkspaceData({ departmentId: department.id });
+    setAiWorkspaceLoading(false);
   };
   const handleDocumentTypeFilterChange = (value: string) => {
     setDocumentTypeFilter(value);
@@ -11233,7 +11281,13 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <AIWorkspacePage data={aiWorkspaceData} loading={aiWorkspaceLoading} onRefresh={refreshAIWorkspaceData} />
+        <AIWorkspacePage
+          data={aiWorkspaceData}
+          loading={aiWorkspaceLoading}
+          selectedDepartmentId={aiWorkspaceDepartmentId}
+          onDepartmentSelect={handleAIWorkspaceDepartmentSelect}
+          onRefresh={refreshAIWorkspaceData}
+        />
       </AppShell>
     );
   }

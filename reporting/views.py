@@ -6125,6 +6125,7 @@ def ai_workspace_summary_api(request):
             'promptTargets': [],
             'recommendedGoals': [],
             'featuredDepartment': None,
+            'selectedDepartmentId': None,
         })
 
     followup_rows = list(FollowUp.objects.filter(
@@ -6150,6 +6151,18 @@ def ai_workspace_summary_api(request):
         department_id__in=department_ids,
     ).select_related('department', 'department__company').order_by('-updated_at'))
     analysis_map = {analysis.department_id: analysis for analysis in analyses}
+    requested_department_id = None
+    requested_department_value = request.GET.get('department_id') or request.GET.get('department')
+    if requested_department_value:
+        try:
+            requested_department_id = int(requested_department_value)
+        except (TypeError, ValueError):
+            requested_department_id = None
+    selected_department = (
+        next((department for department in departments if department.id == requested_department_id), None)
+        if requested_department_id
+        else None
+    )
 
     painpoint_counts = {
         item['analysis_id']: item['count']
@@ -6269,11 +6282,22 @@ def ai_workspace_summary_api(request):
 
     recommended_goals = []
     latest_analysis = analyses[0] if analyses else None
-    if latest_analysis:
-        recommended_goals = suggest_goals_from_department_analysis(latest_analysis)[:6]
+    selected_analysis = analysis_map.get(selected_department.id) if selected_department else None
+    goals_source_analysis = selected_analysis if selected_department else latest_analysis
+    if goals_source_analysis:
+        recommended_goals = suggest_goals_from_department_analysis(goals_source_analysis)[:6]
 
     featured_department = None
-    if latest_analysis:
+    if selected_department:
+        featured_department = _ai_workspace_featured_department_payload(
+            selected_department,
+            selected_analysis,
+            customer_names_by_department,
+            followup_counts_by_department,
+            painpoint_counts,
+            unverified_counts,
+        )
+    elif latest_analysis:
         featured_department = _ai_workspace_featured_department_payload(
             latest_analysis.department,
             latest_analysis,
@@ -6400,6 +6424,7 @@ def ai_workspace_summary_api(request):
         'recentFollowupAnalyses': recent_followup_analyses,
         'promptTargets': prompt_targets,
         'featuredDepartment': featured_department,
+        'selectedDepartmentId': featured_department['departmentId'] if featured_department else None,
         'recommendedGoals': [
             {
                 'title': goal.get('title', ''),
