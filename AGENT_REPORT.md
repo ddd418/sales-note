@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — AI Workspace Prompt Queue Reposition
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+**상태**: 구현/로컬 검증/푸시 완료, 운영 배포 차단
 
 ### 요약
 
@@ -42,11 +42,28 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: reposition AI prompt queue"
+→ 687c820
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI prompt queue reposition 687c820" --ci
+→ Unauthorized. Please run `railway login` again.
+
+railway deployment list --service web --environment production --limit 2 --json
+→ Unauthorized. Please run `railway login` again.
 ```
 
 ### 배포 상태
 
-- 운영 배포 예정.
+- Runtime commit: `687c820 feat: reposition AI prompt queue`
+- GitHub push: `main` updated from `48b1e66` to `687c820`
+- Railway CLI OAuth token expired: `invalid_grant`, `Please run railway login again.`
+- Railway `sales-note-frontend` 배포는 아직 실행되지 않았습니다.
+- Production `/ai-workspace/`는 아직 이전 번들 `assets/index-D0kCzolk.js` / `assets/index-ChIABZDB.css`를 제공합니다.
+- 운영 배포는 Railway 재로그인 후 재시도해야 합니다.
 
 ### 수동 서버 테스트 절차
 
