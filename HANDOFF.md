@@ -14,7 +14,7 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React document generation history is implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
+React document generation history is implemented, pushed, deployed, smoke-tested, and user manual production testing is complete.
 
 Runtime commit:
 
@@ -69,6 +69,10 @@ Manual production test:
 4. Click a generation history card and confirm it opens the linked React schedule detail.
 5. Change the document type filter and confirm both templates and generation history follow the filter.
 6. Generate a schedule document from React schedule detail, then return to `/documents/` and confirm a new history entry appears.
+
+Manual test result:
+
+- Completed by user on 2026-05-11.
 
 ## Previous Task
 
