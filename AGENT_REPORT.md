@@ -1,19 +1,19 @@
 # AGENT_REPORT.md
 
-## 2026-05-11 — React Schedule Calendar Report Content
+## 2026-05-11 — React Schedule Calendar Report Content And Nav
 
-**상태**: 구현/로컬 검증/푸시 완료, Railway CLI 재인증 필요로 운영 배포 대기
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
-React `/schedules/calendar/`에서 날짜를 선택해 일정 카드를 볼 때, 해당 고객 일정에 연결된 최근 영업보고 내용을 카드 안에서 바로 확인할 수 있게 했습니다. 캘린더 API는 일정별 최신 보고를 prefetch해 `reports` 배열로 내려주고, React 선택일 카드에는 `보고 내용` 블록과 보고 상세 링크를 표시합니다.
+React `/schedules/calendar/`에서 날짜를 선택해 일정 카드를 볼 때, 해당 고객 일정에 연결된 최근 영업보고 내용을 카드 안에서 바로 확인할 수 있게 했습니다. 캘린더 API는 일정별 최신 보고를 prefetch해 `reports` 배열로 내려주고, React 선택일 카드에는 `보고 내용` 블록과 보고 상세 링크를 표시합니다. 또한 React 사이드바의 `일정` 메뉴는 목록이 아니라 캘린더로 먼저 진입하게 했습니다.
 
 ### 변경된 파일
 
 - `reporting/views.py`: 캘린더 일정 payload에 최근 연결 보고 `reports` 추가, 캘린더 queryset에 보고 prefetch 추가
 - `reporting/tests.py`: 캘린더 API가 보고 본문/미팅 구조화 필드/다음 액션을 반환하는 회귀 테스트 추가
 - `frontend/src/api.ts`: `ScheduleReportItem` 타입과 `ScheduleItem.reports` 추가
-- `frontend/src/App.tsx`: 선택일 일정 카드에 보고 내용 블록 추가
+- `frontend/src/App.tsx`: 선택일 일정 카드에 보고 내용 블록 추가, 사이드바 `일정` 링크를 `/schedules/calendar/`로 변경
 - `frontend/src/styles.css`: 캘린더 보고 내용 표시 스타일 추가
 - `AGENT_PLAN.md`: 현재 작업 계획 기록
 
@@ -39,7 +39,7 @@ python -m py_compile reporting\views.py reporting\tests.py
 → OK
 
 cd frontend; npm run build
-→ OK, assets/index-CIFf8_Jx.js / assets/index--s--1gtx.css
+→ OK, assets/index-rK47uPvT.js / assets/index--s--1gtx.css
 
 cd frontend; node --check server.mjs
 → OK
@@ -58,39 +58,52 @@ git commit -m "feat: show schedule reports in calendar"
 
 git push
 → main pushed to GitHub
+
+git commit -m "feat: open schedule nav on calendar"
+→ d455127
+
+git push
+→ main pushed to GitHub
+
+railway up --service web --environment production --message "Deploy schedule calendar reports and nav d455127" --ci
+→ 1969669f-d1c8-4bda-8fe6-d1d3d06c15c0 Deploy complete
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy schedule calendar reports and nav d455127" --ci
+→ bee0b840-3a45-4cbd-be0f-0cbf9badcfe6 Deploy complete
 ```
 
 ### 알려진 제한
 
 - 캘린더 카드에는 일정별 최신 보고 최대 3건을 표시합니다.
-- 운영 배포는 Railway CLI 인증 만료로 아직 완료하지 못했습니다.
+- `/schedules/` 목록 화면은 직접 URL 또는 화면 내 목록 링크로 계속 접근 가능합니다.
 
 ### 배포 상태
 
-- Runtime commit: `c96f7d5 feat: show schedule reports in calendar`
-- GitHub push: `main` updated from `4e3d707` to `c96f7d5`
-- Railway deploy attempt:
-  - `railway up --service web --environment production ...` → `Unauthorized. Please run railway login again.`
-  - `railway up frontend --path-as-root --service sales-note-frontend --environment production ...` → `Unauthorized. Please run railway login again.`
-- `RAILWAY_TOKEN` environment variable is missing.
-- Production `/schedules/calendar/` still serves previous bundle `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
+- Runtime commits:
+  - `c96f7d5 feat: show schedule reports in calendar`
+  - `d455127 feat: open schedule nav on calendar`
+- GitHub push: `main` updated to `d455127`
+- Railway `web`: `1969669f-d1c8-4bda-8fe6-d1d3d06c15c0` Deploy complete
+- Railway `sales-note-frontend`: `bee0b840-3a45-4cbd-be0f-0cbf9badcfe6` Deploy complete
+- Production `/schedules/calendar/` serves `assets/index-rK47uPvT.js` / `assets/index--s--1gtx.css`.
 - Production `/schedules/calendar/` returns 200.
-- Anonymous frontend-proxied `/reporting/api/schedules/calendar/` returns `401 Unauthorized`.
+- Production JS contains `보고 내용`, `schedule-calendar-report-list`, and `/schedules/calendar/`.
+- Production CSS contains `schedule-calendar-report-list` and `schedule-calendar-report-item`.
+- Anonymous frontend-proxied and backend `/reporting/api/schedules/calendar/` return `401 Unauthorized`.
 
 ### 수동 서버 테스트 절차
-
-배포 후:
 
 1. `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에 접속합니다.
 2. 영업보고가 연결된 고객 일정이 있는 날짜를 선택합니다.
 3. 선택일 일정 카드 안에 `보고 내용` 블록이 표시되는지 확인합니다.
 4. 보고 본문, 미팅 상황, 확인한 사실, 다음 액션이 보이는지 확인합니다.
 5. `보고 상세` 링크가 해당 React 영업노트 상세로 이동하는지 확인합니다.
-6. 보고가 없는 일정은 기존처럼 일정 메모/상태/액션만 보이는지 확인합니다.
+6. 왼쪽 사이드바의 `일정`을 눌렀을 때 `/schedules/calendar/`로 이동하는지 확인합니다.
+7. 보고가 없는 일정은 기존처럼 일정 메모/상태/액션만 보이는지 확인합니다.
 
 ### 사용자 수동검수 결과
 
-- 운영 배포 대기.
+- 대기 중.
 
 ---
 

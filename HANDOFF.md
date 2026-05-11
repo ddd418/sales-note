@@ -14,12 +14,13 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React schedule calendar report content is implemented, locally verified, and pushed. Production deployment is blocked until Railway CLI is re-authenticated.
+React schedule calendar report content and nav-first calendar entry are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
-Runtime commit:
+Runtime commits:
 
 ```text
 c96f7d5 feat: show schedule reports in calendar
+d455127 feat: open schedule nav on calendar
 ```
 
 Implemented:
@@ -29,6 +30,7 @@ Implemented:
 - Each report payload includes action label, summary, content, meeting situation, researcher quote, confirmed facts, obstacles, meeting next action, delivery items/amount, next action, dates, and React/Django note links.
 - React `/schedules/calendar/` selected-day cards now show a `보고 내용` block when reports exist.
 - Each report block links to the React note detail through `보고 상세`.
+- React sidebar `일정` now opens `/schedules/calendar/` first instead of `/schedules/`.
 - Personal schedules keep `reports: []`.
 - No DB model or migration changes.
 
@@ -47,33 +49,34 @@ git diff --check
 Results:
 
 - 28 React schedule API tests OK.
-- React build OK: `assets/index-CIFf8_Jx.js` / `assets/index--s--1gtx.css`.
+- React build OK: `assets/index-rK47uPvT.js` / `assets/index--s--1gtx.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- GitHub push complete: `main` updated to `c96f7d5`.
-- Railway deploy blocked: both `web` and `sales-note-frontend` deploy attempts returned `Unauthorized. Please run railway login again.`
-- `RAILWAY_TOKEN` is not set.
-- Production `/schedules/calendar/` still returns 200 but serves previous `assets/index-C1R5m0RT.js` / `assets/index-Bxi4eBNz.css`.
-- Anonymous frontend-proxied `/reporting/api/schedules/calendar/` returns `401 Unauthorized`.
+- GitHub push complete: `main` updated to `d455127`.
+- Railway `web`: `1969669f-d1c8-4bda-8fe6-d1d3d06c15c0` Deploy complete.
+- Railway `sales-note-frontend`: `bee0b840-3a45-4cbd-be0f-0cbf9badcfe6` Deploy complete.
+- Production `/schedules/calendar/` returns 200 and serves `assets/index-rK47uPvT.js` / `assets/index--s--1gtx.css`.
+- Production JS contains `보고 내용`, `schedule-calendar-report-list`, and `/schedules/calendar/`.
+- Production CSS contains `schedule-calendar-report-list` and `schedule-calendar-report-item`.
+- Anonymous frontend-proxied and backend `/reporting/api/schedules/calendar/` return `401 Unauthorized`.
 
 Manual production test:
-
-After Railway re-authentication and deployment:
 
 1. Open `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`.
 2. Select a date that has a customer schedule with linked sales notes/reports.
 3. Confirm the selected-day card shows `보고 내용`.
 4. Confirm report content, meeting situation, confirmed facts, and next action are visible when present.
 5. Click `보고 상세` and confirm it opens the React note detail.
-6. Confirm schedules without reports still show the existing schedule memo/status/actions only.
+6. Click the left sidebar `일정` and confirm it opens `/schedules/calendar/`.
+7. Confirm schedules without reports still show the existing schedule memo/status/actions only.
 
 Manual test result:
 
-- Deployment pending.
+- Pending user confirmation.
 
 ## Previous Task
 
