@@ -1,5 +1,72 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React Schedule Calendar Selected-Date Create Flow
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 예정
+
+### 요약
+
+React `/schedules/calendar/`에서 선택한 날짜 기준으로 고객 일정 등록을 React 빠른 등록 패널에서 바로 시작하도록 변경했습니다. 선택일 패널의 개인 일정 등록과 Django 상세 등록 fallback도 같은 날짜 query를 붙여 열리게 했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 선택일 기반 일정 등록 링크, `date` query 검증, React 빠른 등록 방문 날짜 초기값 반영
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 캘린더 상단 `일정 등록`은 `/schedules/?create=1&date=YYYY-MM-DD`로 이동해 React 일정 빠른 등록을 엽니다.
+- React 빠른 등록의 방문 날짜가 캘린더에서 선택한 날짜로 자동 입력됩니다.
+- 선택일 패널에서 `고객 일정 등록`, `개인 일정 등록`, `Django 상세 등록`을 날짜 맥락 그대로 사용할 수 있습니다.
+
+### 기존 기능 보존
+
+- Django `/reporting/schedules/create/`, `/reporting/personal-schedules/create/`, `/reporting/schedules/calendar/` fallback은 유지했습니다.
+- 로그인/권한 정책과 DB 모델은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npm run build
+→ OK, assets/index-Bdw-ncC7.js / assets/index-M9Uvw-6H.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- React 캘린더의 drag/drop 이동, 상세 모달 편집 같은 고급 조작은 아직 Django 캘린더 fallback을 사용합니다.
+- 고객 일정 빠른 등록은 기존 React 등록 폼 범위 안에서 동작하므로, Django 상세 등록의 납품 품목/선결제 고급 입력이 필요하면 `Django 상세 등록` fallback을 사용합니다.
+
+### 배포 상태
+
+- Production deployment: pending
+- Production smoke: pending
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에서 날짜를 하나 선택합니다.
+2. 상단 `일정 등록`을 눌렀을 때 `/schedules/?create=1&date=선택일`로 이동하고 빠른 등록 패널의 방문 날짜가 선택일인지 확인합니다.
+3. 캘린더 선택일 패널의 `고객 일정 등록`도 같은 동작인지 확인합니다.
+4. `개인 일정 등록`을 누르면 Django 개인 일정 등록 화면에 선택 날짜가 들어가는지 확인합니다.
+5. `Django 상세 등록`을 누르면 기존 Django 일정 등록 화면에 선택 날짜가 들어가는지 확인합니다.
+
+### 다음 작업
+
+- 사용자 요청에 따라 이 배포 후 React `/mailbox/` 메일 발송 첨부파일 지원을 진행합니다.
+
+---
+
 ## 2026-05-11 — AI Deliveries, Latest Lists, Weekly Report Edit Linebreaks
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

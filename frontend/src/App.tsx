@@ -398,14 +398,14 @@ const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
   serviceStatus: note?.serviceStatus || 'received',
 });
 
-const makeEmptyScheduleCreateForm = (): ScheduleCreateFormState => ({
+const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): ScheduleCreateFormState => ({
   activityType: 'customer_meeting',
   expectedRevenue: '',
   followupId: '',
   location: '',
   notes: '',
   probability: '',
-  visitDate: localDateInputValue(),
+  visitDate,
   visitTime: '09:00',
 });
 
@@ -767,6 +767,22 @@ function isWeeklyReportEditRoute(): boolean {
 
 function getCreateCustomerParam(): string {
   return new URLSearchParams(window.location.search).get('customer') || '';
+}
+
+function getCreateDateParam(): string {
+  const value = new URLSearchParams(window.location.search).get('date') || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return '';
+  }
+  return localDateInputValue(parseLocalDate(value)) === value ? value : '';
+}
+
+function appendDateQuery(href: string, dateValue: string): string {
+  if (!dateValue) {
+    return href;
+  }
+  const separator = href.includes('?') ? '&' : '?';
+  return `${href}${separator}date=${encodeURIComponent(dateValue)}`;
 }
 
 const savedViews: Array<{ id: SavedView; label: string }> = [
@@ -4033,6 +4049,7 @@ function ScheduleCalendarPage({
   const monthLabel = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(parseLocalDate(`${month}-01`));
   const todayMonth = localDateInputValue().slice(0, 7);
   const showUserFilter = dataFilter === 'user';
+  const reactScheduleCreateHref = `/schedules/?create=1&date=${encodeURIComponent(selectedDate)}`;
 
   useEffect(() => {
     setSelectedDate((previous) => {
@@ -4065,6 +4082,8 @@ function ScheduleCalendarPage({
     { label: '완료', value: `${formatNumber(data.metrics.completedSchedules)}건`, detail: '고객 일정 기준', icon: CheckCircle2, tone: 'amber' as const },
     { label: '지연', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
+  const djangoScheduleCreateHref = appendDateQuery(data.links.createSchedule, selectedDate);
+  const personalScheduleCreateHref = appendDateQuery(data.links.createPersonalSchedule, selectedDate);
 
   return (
     <section className="schedules-page schedule-calendar-page">
@@ -4092,7 +4111,7 @@ function ScheduleCalendarPage({
           <a className="route-secondary-action" href={data.links.djangoCalendar}>
             Django 캘린더
           </a>
-          <a className="route-primary-action" href={data.links.createSchedule}>
+          <a className="route-primary-action" href={reactScheduleCreateHref}>
             일정 등록
             <Plus size={16} />
           </a>
@@ -4190,7 +4209,9 @@ function ScheduleCalendarPage({
             <Plus size={18} />
           </div>
           <div className="customers-side-actions">
-            <a href={data.links.createPersonalSchedule}>개인 일정 등록</a>
+            <a href={reactScheduleCreateHref}>고객 일정 등록</a>
+            <a href={personalScheduleCreateHref}>개인 일정 등록</a>
+            <a href={djangoScheduleCreateHref}>Django 상세 등록</a>
             <a href={data.links.weeklyReports}>주간보고</a>
             <a href={data.links.djangoSchedules}>Django 일정 목록</a>
           </div>
@@ -9688,7 +9709,7 @@ export function App() {
   const [schedulesData, setSchedulesData] = useState<SchedulesData | null>(null);
   const [schedulesLoading, setSchedulesLoading] = useState(currentView === 'schedules' && !scheduleDetailId && !scheduleCalendarRoute);
   const [scheduleCreateOpen, setScheduleCreateOpen] = useState(currentView === 'schedules' && !scheduleDetailId && !scheduleCalendarRoute && shouldOpenCreatePanel());
-  const [scheduleCreateForm, setScheduleCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm());
+  const [scheduleCreateForm, setScheduleCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm(getCreateDateParam() || undefined));
   const [scheduleCreating, setScheduleCreating] = useState(false);
   const [scheduleCreateError, setScheduleCreateError] = useState('');
   const [scheduleCreateMessage, setScheduleCreateMessage] = useState('');
@@ -9965,6 +9986,7 @@ export function App() {
       ...previous,
       activityType: previous.activityType || firstActivityType,
       followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
+      visitDate: previous.visitDate || getCreateDateParam(),
     }));
   }, [currentView, scheduleCalendarRoute, scheduleDetailId, schedulesData]);
 
@@ -10606,7 +10628,7 @@ export function App() {
     setScheduleCreateError('');
   };
   const resetScheduleCreateForm = (data: SchedulesData | null) => {
-    const nextForm = makeEmptyScheduleCreateForm();
+    const nextForm = makeEmptyScheduleCreateForm(getCreateDateParam() || undefined);
     nextForm.activityType = data?.create.activityTypes[0]?.value || nextForm.activityType;
     nextForm.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
     setScheduleCreateForm(nextForm);

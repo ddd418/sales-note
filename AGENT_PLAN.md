@@ -9,6 +9,37 @@
 
 ---
 
+## Current task — React 일정 캘린더 선택일 등록 동선 보강
+
+**목표**: React `/schedules/calendar/`에서 날짜를 선택한 뒤 `일정 등록`을 누르면 Django 화면으로 이동하지 않고 React `/schedules/?create=1&date=YYYY-MM-DD` 빠른 등록 패널이 열리며, 선택한 날짜가 방문 날짜로 자동 입력되게 한다. 기존 Django 일정 등록/개인 일정 등록 fallback은 선택 날짜를 포함해 유지한다.
+
+### 확인된 상태
+
+- React 일정 캘린더는 월간 grid, 선택일 패널, Django 캘린더 fallback을 이미 제공한다.
+- 현재 캘린더 상단 `일정 등록`은 Django `/reporting/schedules/create/`로 이동해 React CRM 전환 흐름이 끊긴다.
+- Django 고객 일정 생성과 개인 일정 생성은 이미 `?date=YYYY-MM-DD` 초기값을 지원한다.
+- React 일정 빠른 등록은 `?create=1`과 `?customer=`만 처리하고 `?date=`는 읽지 않는다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- React URL helper에 `date` query 검증 함수를 추가한다.
+- React `/schedules/?create=1&date=YYYY-MM-DD`에서 빠른 등록 패널의 방문 날짜를 query 날짜로 초기화한다.
+- React 캘린더 상단 `일정 등록`과 선택일 패널의 `고객 일정 등록`은 React 빠른 등록 링크로 연결한다.
+- 선택일 패널의 `개인 일정 등록`과 `Django 상세 등록` fallback은 기존 Django URL에 선택 날짜 query를 붙인다.
+- `/reporting/*` 일정/개인 일정 fallback과 API 권한 정책은 그대로 유지한다.
+
+### 검증 계획
+
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/schedules/calendar/`, `/schedules/?create=1&date=YYYY-MM-DD` smoke check
+
+---
+
 ## Current task — AI 납품 품목 노출, 리스트 최신순, 주간보고 상세 저장 줄바꿈 보존
 
 **목표**: React `/ai-workspace/?department_id=10`의 Department AI 패널에서 최근 납품 제품/수량을 확인하게 하고, React CRM 주요 리스트의 기본 정렬을 최신순으로 맞춘다. 이어서 `/weekly-reports/<id>/` 수정 저장 시 textarea 줄바꿈이 사라지지 않게 한다.
