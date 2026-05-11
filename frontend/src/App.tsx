@@ -258,6 +258,7 @@ type ScheduleDeliveryEditRow = {
 type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
 
 type MailComposeFormState = {
+  attachments: File[];
   bodyText: string;
   businessCardId: string;
   ccEmails: string;
@@ -266,6 +267,8 @@ type MailComposeFormState = {
   subject: string;
   toEmail: string;
 };
+
+type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments'>;
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -474,6 +477,7 @@ const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): Sched
 );
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
+  attachments: [],
   bodyText: '',
   businessCardId: '',
   ccEmails: '',
@@ -808,6 +812,16 @@ const formatSignedWon = (value: number) => {
 const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value}%`;
 
 const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
+
+const formatFileSize = (size: number) => {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+  return `${size} B`;
+};
 
 const formatDateLabel = (value?: string | null) => {
   if (!value) return '';
@@ -7231,6 +7245,8 @@ function MailComposePanel({
   error,
   message,
   submitLabel,
+  onAttachmentRemove,
+  onAttachmentsChange,
   onChange,
   onCustomerChange,
   onOpenChange,
@@ -7243,7 +7259,9 @@ function MailComposePanel({
   error: string;
   message: string;
   submitLabel: string;
-  onChange: (field: keyof MailComposeFormState, value: string) => void;
+  onAttachmentRemove: (index: number) => void;
+  onAttachmentsChange: (files: File[]) => void;
+  onChange: (field: MailComposeTextField, value: string) => void;
   onCustomerChange: (customerId: string) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -7300,6 +7318,31 @@ function MailComposePanel({
           <span>본문</span>
           <textarea value={form.bodyText} onChange={(event) => onChange('bodyText', event.target.value)} rows={8} />
         </label>
+        <label className="mail-attachment-field">
+          <span>첨부파일</span>
+          <input
+            multiple
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              onAttachmentsChange(Array.from(event.target.files ?? []));
+              event.currentTarget.value = '';
+            }}
+            type="file"
+          />
+        </label>
+        {form.attachments.length > 0 ? (
+          <div className="mail-attachment-list" aria-label="선택된 첨부파일">
+            {form.attachments.map((file, index) => (
+              <div className="mail-attachment-item" key={`${file.name}-${file.size}-${index}`}>
+                <Upload size={14} />
+                <span>{file.name}</span>
+                <small>{formatFileSize(file.size)}</small>
+                <button aria-label={`${file.name} 첨부 제거`} onClick={() => onAttachmentRemove(index)} type="button">
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {create.businessCards.length > 0 ? (
           <label>
             <span>명함 서명</span>
@@ -7340,6 +7383,8 @@ function MailboxPage({
   syncing,
   actioningId,
   onAction,
+  onComposeAttachmentRemove,
+  onComposeAttachmentsChange,
   onBoxChange,
   onComposeCustomerChange,
   onComposeFormChange,
@@ -7360,9 +7405,11 @@ function MailboxPage({
   syncing: boolean;
   actioningId: number | null;
   onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onComposeAttachmentRemove: (index: number) => void;
+  onComposeAttachmentsChange: (files: File[]) => void;
   onBoxChange: (box: MailboxType) => void;
   onComposeCustomerChange: (customerId: string) => void;
-  onComposeFormChange: (field: keyof MailComposeFormState, value: string) => void;
+  onComposeFormChange: (field: MailComposeTextField, value: string) => void;
   onComposeOpenChange: (open: boolean) => void;
   onComposeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onQueryChange: (value: string) => void;
@@ -7426,6 +7473,8 @@ function MailboxPage({
         open={composeOpen}
         saving={composing}
         submitLabel="메일 발송"
+        onAttachmentRemove={onComposeAttachmentRemove}
+        onAttachmentsChange={onComposeAttachmentsChange}
         onChange={onComposeFormChange}
         onCustomerChange={onComposeCustomerChange}
         onOpenChange={onComposeOpenChange}
@@ -7527,6 +7576,8 @@ function MailboxThreadPage({
   replyMessage,
   actioningId,
   onAction,
+  onReplyAttachmentRemove,
+  onReplyAttachmentsChange,
   onReplyFormChange,
   onReplyOpenChange,
   onReplySubmit,
@@ -7540,7 +7591,9 @@ function MailboxThreadPage({
   replyMessage: string;
   actioningId: number | null;
   onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
-  onReplyFormChange: (field: keyof MailComposeFormState, value: string) => void;
+  onReplyAttachmentRemove: (index: number) => void;
+  onReplyAttachmentsChange: (files: File[]) => void;
+  onReplyFormChange: (field: MailComposeTextField, value: string) => void;
   onReplyOpenChange: (open: boolean) => void;
   onReplySubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -7616,6 +7669,8 @@ function MailboxThreadPage({
             open={replyOpen}
             saving={replySaving}
             submitLabel="답장 발송"
+            onAttachmentRemove={onReplyAttachmentRemove}
+            onAttachmentsChange={onReplyAttachmentsChange}
             onChange={onReplyFormChange}
             onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
             onOpenChange={onReplyOpenChange}
@@ -10819,10 +10874,27 @@ export function App() {
       setMailComposeMessage('');
     }
   };
-  const handleMailComposeFormChange = (field: keyof MailComposeFormState, value: string) => {
+  const handleMailComposeFormChange = (field: MailComposeTextField, value: string) => {
     setMailComposeForm((previous) => ({
       ...previous,
       [field]: value,
+    }));
+    setMailComposeError('');
+  };
+  const handleMailComposeAttachmentsChange = (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+    setMailComposeForm((previous) => ({
+      ...previous,
+      attachments: [...previous.attachments, ...files],
+    }));
+    setMailComposeError('');
+  };
+  const handleMailComposeAttachmentRemove = (index: number) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      attachments: previous.attachments.filter((_, fileIndex) => fileIndex !== index),
     }));
     setMailComposeError('');
   };
@@ -10843,6 +10915,7 @@ export function App() {
     bodyText: form.bodyText.trim(),
     followupId: form.followupId ? Number(form.followupId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
+    attachments: form.attachments,
   });
   const handleMailComposeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -10944,10 +11017,27 @@ export function App() {
       followupId: target?.followup.id ? String(target.followup.id) : previous.followupId,
     }));
   };
-  const handleMailReplyFormChange = (field: keyof MailComposeFormState, value: string) => {
+  const handleMailReplyFormChange = (field: MailComposeTextField, value: string) => {
     setMailReplyForm((previous) => ({
       ...previous,
       [field]: value,
+    }));
+    setMailReplyError('');
+  };
+  const handleMailReplyAttachmentsChange = (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+    setMailReplyForm((previous) => ({
+      ...previous,
+      attachments: [...previous.attachments, ...files],
+    }));
+    setMailReplyError('');
+  };
+  const handleMailReplyAttachmentRemove = (index: number) => {
+    setMailReplyForm((previous) => ({
+      ...previous,
+      attachments: previous.attachments.filter((_, fileIndex) => fileIndex !== index),
     }));
     setMailReplyError('');
   };
@@ -11157,6 +11247,8 @@ export function App() {
             replyOpen={mailReplyOpen}
             replySaving={mailReplySaving}
             onAction={handleMailboxAction}
+            onReplyAttachmentRemove={handleMailReplyAttachmentRemove}
+            onReplyAttachmentsChange={handleMailReplyAttachmentsChange}
             onReplyFormChange={handleMailReplyFormChange}
             onReplyOpenChange={handleMailReplyOpenChange}
             onReplySubmit={handleMailReplySubmit}
@@ -11182,6 +11274,8 @@ export function App() {
           syncing={mailSyncing}
           onAction={handleMailboxAction}
           onBoxChange={handleMailboxBoxChange}
+          onComposeAttachmentRemove={handleMailComposeAttachmentRemove}
+          onComposeAttachmentsChange={handleMailComposeAttachmentsChange}
           onComposeCustomerChange={handleMailComposeCustomerChange}
           onComposeFormChange={handleMailComposeFormChange}
           onComposeOpenChange={handleMailComposeOpenChange}

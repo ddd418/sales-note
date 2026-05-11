@@ -9,6 +9,39 @@
 
 ---
 
+## Current task — React 메일 발송 첨부파일 지원
+
+**목표**: React `/mailbox/`의 새 메일 작성과 `/mailbox/thread/<id>/` 답장에서 첨부파일을 선택해 발송할 수 있게 한다.
+
+### 확인된 상태
+
+- Django 메일 작성/답장 템플릿은 이미 `enctype="multipart/form-data"`와 `attachments` file input을 사용한다.
+- `_handle_email_send()`는 `request.FILES.getlist('attachments')`를 읽어 Gmail API와 SMTP 발송 양쪽에 첨부파일을 전달하고, `EmailLog.attachments_info`에 파일명/크기/MIME 정보를 저장한다.
+- React `MailboxSendPayload`와 `postMailboxForm()`은 현재 `URLSearchParams`만 전송해 파일을 보낼 수 없다.
+- React `MailComposePanel`은 새 메일과 답장에 공통 사용되지만 파일 선택 UI가 없다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- React 메일 작성 상태에 `attachments: File[]`를 추가한다.
+- `MailComposePanel`에 다중 파일 선택 input과 선택 파일 목록/삭제 버튼을 추가한다.
+- 메일 발송/답장 API client가 payload를 `FormData`로 보내고, 각 파일을 `attachments` 필드로 append하게 한다.
+- 발송 성공 후 첨부 상태를 초기화하고, 기존 고객 선택/명함 서명/본문/답장 흐름은 유지한다.
+- Django API 회귀 테스트로 multipart 첨부가 `_handle_email_send()`까지 전달되고 `attachments_info`에 기록되는지 검증한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python -m py_compile reporting\gmail_views.py reporting\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/mailbox/` smoke check
+
+---
+
 ## Current task — React 일정 캘린더 선택일 등록 동선 보강
 
 **목표**: React `/schedules/calendar/`에서 날짜를 선택한 뒤 `일정 등록`을 누르면 Django 화면으로 이동하지 않고 React `/schedules/?create=1&date=YYYY-MM-DD` 빠른 등록 패널이 열리며, 선택한 날짜가 방문 날짜로 자동 입력되게 한다. 기존 Django 일정 등록/개인 일정 등록 fallback은 선택 날짜를 포함해 유지한다.

@@ -1,5 +1,7 @@
 import json
+from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
@@ -294,6 +296,50 @@ class ReactMailboxApiTests(TestCase):
         self.assertTrue(response.json()['success'])
         self.email.refresh_from_db()
         self.assertTrue(self.email.is_starred)
+
+    def test_mailbox_send_api_accepts_attachments(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        uploaded_file = SimpleUploadedFile(
+            'quote.txt',
+            b'quote attachment body',
+            content_type='text/plain',
+        )
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-react-attachment',
+                'thread_id': 'gmail-thread-react-attachment',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '첨부 테스트',
+                    'body_text': '첨부파일 확인 부탁드립니다.',
+                    'selected_followup_id': str(self.followup.id),
+                    'attachments': uploaded_file,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        gmail_service.send_email.assert_called_once()
+        sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
+        self.assertEqual(sent_attachments[0]['filename'], 'quote.txt')
+        self.assertEqual(sent_attachments[0]['content'], b'quote attachment body')
+        self.assertEqual(sent_attachments[0]['mimetype'], 'text/plain')
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-react-attachment')
+        self.assertEqual(email_log.attachments_info[0]['filename'], 'quote.txt')
+        self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
+        self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

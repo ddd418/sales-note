@@ -285,6 +285,7 @@ export type MailboxSendPayload = {
   bodyText: string;
   followupId?: number;
   businessCardId?: number;
+  attachments?: File[];
 };
 
 export type MailboxActionResponse = {
@@ -3181,8 +3182,8 @@ export async function loadMailboxThreadData(threadId: string): Promise<MailboxTh
   }
 }
 
-function mailboxPayloadToBody(payload: MailboxSendPayload): URLSearchParams {
-  const body = new URLSearchParams();
+function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
+  const body = new FormData();
   body.set('to_email', payload.toEmail);
   body.set('subject', payload.subject);
   body.set('body_text', payload.bodyText);
@@ -3190,6 +3191,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): URLSearchParams {
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
   if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
   if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
+  payload.attachments?.forEach((file) => body.append('attachments', file));
   return body;
 }
 
@@ -3200,7 +3202,6 @@ async function postMailboxForm(url: string, payload?: MailboxSendPayload): Promi
     credentials: 'include',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
     body: payload ? mailboxPayloadToBody(payload) : undefined,

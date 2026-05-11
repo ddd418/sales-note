@@ -1,5 +1,80 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — React Mailbox Send Attachments
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 진행 예정
+
+### 요약
+
+React `/mailbox/`의 새 메일 작성과 `/mailbox/thread/<id>/` 답장 폼에서 첨부파일을 선택해 발송할 수 있게 했습니다. React API client는 메일 발송 payload를 `FormData`로 보내며, 기존 Django `_handle_email_send()`의 Gmail/SMTP 첨부 처리와 `EmailLog.attachments_info` 기록을 그대로 사용합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 메일 작성/답장 첨부파일 상태, 파일 선택 UI, 선택 파일 목록/삭제, 발송 payload 연결
+- `frontend/src/api.ts`: `MailboxSendPayload.attachments` 추가 및 메일 발송 POST를 `FormData`로 전환
+- `frontend/src/styles.css`: React 메일 첨부파일 선택 목록 스타일 추가
+- `reporting/tests.py`: React 메일 발송 API multipart 첨부 회귀 테스트 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- `/mailbox/` 메일 작성 폼에서 여러 파일을 선택할 수 있습니다.
+- 선택한 파일명과 크기를 발송 전 확인하고, 개별 파일을 제거할 수 있습니다.
+- 답장 발송에서도 같은 첨부파일 흐름을 사용할 수 있습니다.
+- 발송된 첨부파일 메타데이터는 기존 메일 로그의 `attachments_info`에 기록됩니다.
+
+### 기존 기능 보존
+
+- Django 메일 작성/답장 fallback 화면과 기존 Gmail/SMTP 발송 로직은 유지했습니다.
+- 메일 계정 연결, 고객 권한 범위, CSRF/session 흐름은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-BVsunKYp.js / assets/index-BPeRJO55.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- 실제 Gmail/SMTP 외부 발송은 운영 계정으로 수동 확인이 필요합니다. 로컬 테스트는 GmailService를 mock 처리해 첨부 payload와 DB 기록을 검증했습니다.
+- 첨부 파일 크기/확장자 제한은 기존 Django 메일 발송 로직 기준을 따릅니다. 별도 React 클라이언트 제한은 이번 범위에 추가하지 않았습니다.
+
+### 배포 상태
+
+- Production deployment: pending
+- Production smoke: pending
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/mailbox/`에서 `메일 작성`을 엽니다.
+2. 받는 사람, 제목, 본문을 입력하고 `첨부파일`에서 파일을 1개 이상 선택합니다.
+3. 선택한 파일명/크기가 폼 아래에 보이는지 확인하고, 삭제 버튼으로 제거되는지 확인합니다.
+4. 다시 파일을 첨부한 뒤 발송합니다.
+5. 보낸편지함 또는 해당 스레드에서 메일 발송이 완료됐는지 확인합니다.
+6. 스레드 답장에서도 첨부파일 선택 후 발송이 되는지 확인합니다.
+
+---
+
 ## 2026-05-11 — React Schedule Calendar Selected-Date Create Flow
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능

@@ -5366,6 +5366,57 @@ tbody tr:hover {
   line-height: 1.55;
 }
 
+.mail-attachment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mail-attachment-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.mail-attachment-item span {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-attachment-item small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mail-attachment-item button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mail-attachment-item button:hover {
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
 .mail-compose-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
