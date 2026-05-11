@@ -1,8 +1,102 @@
 # AGENT_REPORT.md
 
-## 2026-05-11 — React Mailbox Send Attachments
+## 2026-05-11 — React Document Generation History
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
+
+### 요약
+
+React `/documents/`에서 최근 서류 생성/다운로드 이력을 확인할 수 있게 했습니다. 기존 `DocumentGenerationLog`를 사용해 거래번호, 서류 종류, 출력 형식, 생성일, 생성자, 연결 일정/고객/부서를 회사 범위 안에서 내려주고, React 오른쪽 패널에 `최근 생성 이력`으로 표시합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: `/reporting/api/documents/`에 `recentGenerations`, 오늘 생성 건수, 생성 이력 총건수 추가
+- `reporting/tests.py`: 서류 생성 이력의 회사 범위 권한, type 필터, payload 회귀 테스트 추가
+- `frontend/src/api.ts`: 서류 생성 이력 타입과 빈 상태/정규화 추가
+- `frontend/src/App.tsx`: `/documents/` 요약 지표와 최근 생성 이력 UI 추가
+- `frontend/src/styles.css`: 서류 생성 이력 카드 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 서류 템플릿 화면에서 최근 생성된 견적서/거래명세서/납품서 이력을 바로 확인할 수 있습니다.
+- 생성 이력 카드에서 연결된 React 일정 상세로 이동할 수 있습니다.
+- 서류 종류 필터를 적용하면 템플릿과 생성 이력이 같은 종류로 함께 제한됩니다.
+
+### 기존 기능 보존
+
+- 기존 일정 상세의 서류 미리보기/다운로드와 Django 서류 생성 로직은 유지했습니다.
+- `/reporting/documents/*` Django fallback과 `/reporting/*` 인증/권한 정책은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-Bmhj4oJQ.js / assets/index-CsWuSGWH.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "feat: show document generation history"
+→ 0f98c24
+
+git push
+→ main pushed to GitHub
+
+railway up --service web --environment production --message "Deploy document generation history 0f98c24" --ci
+→ 280b8be1-c1c0-48cc-80a1-37707d4c9cba SUCCESS
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy document generation history 0f98c24" --ci
+→ 0da257af-9ca9-48b3-bcd5-bfd1767a9bf6 SUCCESS
+```
+
+### 알려진 제한
+
+- 실제 생성 이력 내용 확인은 로그인 세션과 운영 데이터가 필요해 사용자 수동검수가 필요합니다.
+- 이번 범위는 이력 조회/표시이며, 생성 로그 검색/페이지네이션은 추가하지 않았습니다.
+
+### 배포 상태
+
+- Runtime commit: `0f98c24 feat: show document generation history`
+- GitHub push: `main` updated from `bf803e7` to `0f98c24`
+- Railway `web`: `280b8be1-c1c0-48cc-80a1-37707d4c9cba` SUCCESS, message `Deploy document generation history 0f98c24`
+- Railway `sales-note-frontend`: `0da257af-9ca9-48b3-bcd5-bfd1767a9bf6` SUCCESS, message `Deploy document generation history 0f98c24`
+- Production `/documents/` returns 200.
+- Production frontend serves `assets/index-Bmhj4oJQ.js` / `assets/index-CsWuSGWH.css`.
+- Production JS contains `recentGenerations` and `최근 생성 이력`.
+- Production CSS contains `document-generation-card`.
+- Anonymous frontend proxy and backend `/reporting/api/documents/` return `401`.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/documents/`에 접속합니다.
+2. 오른쪽 요약에 `오늘 생성`, `최근 이력` 지표가 보이는지 확인합니다.
+3. `최근 생성 이력`에 거래번호, 서류 종류, 출력 형식, 생성자, 고객/부서가 표시되는지 확인합니다.
+4. 생성 이력 카드를 눌렀을 때 해당 React 일정 상세로 이동하는지 확인합니다.
+5. 상단 서류 종류 필터를 바꿨을 때 템플릿과 최근 생성 이력이 같은 종류로 제한되는지 확인합니다.
+6. 일정 상세에서 서류를 하나 생성한 뒤 `/documents/`로 돌아와 이력이 추가되는지 확인합니다.
+
+---
+
+## 2026-05-11 — React Mailbox Send Attachments
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/사용자 수동검수 완료
 
 ### 요약
 
@@ -86,6 +180,10 @@ railway up frontend --path-as-root --service sales-note-frontend --environment p
 4. 다시 파일을 첨부한 뒤 발송합니다.
 5. 보낸편지함 또는 해당 스레드에서 메일 발송이 완료됐는지 확인합니다.
 6. 스레드 답장에서도 첨부파일 선택 후 발송이 되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 완료: 2026-05-11
 
 ---
 

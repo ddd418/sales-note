@@ -14,106 +14,99 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-AI PainPoint verification memo confirm-only change is implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
+React document generation history is implemented, pushed, deployed, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-b345687 fix: simplify AI painpoint verification
+0f98c24 feat: show document generation history
 ```
 
 Implemented:
 
-- PainPoint verification no longer offers separate `확인` and `부정` choices.
-- React customer detail and Django fallback AI department screen now show one `확인` action for saving a verification memo.
-- The verify API rejects `denied` status and stores verification notes through the confirm-only path.
-- AI prompts and fallback logic no longer interpret stored `confirmed`/`denied` as fixed meaning.
-- Existing stored `confirmed`/`denied` cards are normalized to `검증 메모` in AI memory and React payloads.
-- Reanalysis uses the note text as evidence and asks AI to judge fact, contradiction, or alternate cause from the memo body.
+- `/reporting/api/documents/` now includes recent `DocumentGenerationLog` entries as `recentGenerations`.
+- The API returns document type, transaction number, output format, created date, creator, company, schedule, customer, and department metadata.
+- The API keeps the same company scope as the existing document template API.
+- React `/documents/` right panel now shows `오늘 생성`, `최근 이력`, and a `최근 생성 이력` list.
+- Generation history cards link back to the React schedule detail when the linked schedule still exists.
+- Document type filters apply to both templates and generation history.
 - No DB model or migration changes.
 
 Validation:
 
 ```powershell
-python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\tests.py reporting\views.py reporting\tests.py
-python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
-python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_department_ai_action reporting.tests.PipelineApiTests.test_pipeline_api_includes_department_ai_summary --verbosity=1
-python manage.py test ai_chat.tests --verbosity=1
-python manage.py check
-python manage.py makemigrations --check --dry-run
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+python -m py_compile reporting\views.py reporting\tests.py
 cd frontend; npm run build
 cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
 git diff --check
 ```
 
 Results:
 
-- 3 AI memory tests OK.
-- 2 React customer/pipeline AI payload tests OK.
-- 20 ai_chat tests OK.
-- React build OK: `assets/index-DLXnGDxW.js` / `assets/index-CWzMMK9v.css`.
+- 8 React document API tests OK.
+- React build OK: `assets/index-Bmhj4oJQ.js` / `assets/index-CsWuSGWH.css`.
 - Django check OK.
 - No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
 
 Deployment:
 
-- Railway `web`: `feabc944-2069-4934-977e-27316eb71175` SUCCESS.
-- Railway `sales-note-frontend`: `d807a6c1-d75a-4c99-a3ee-1d0d395869c4` SUCCESS.
-- Production `/customers/1/` returns 200 and serves `assets/index-DLXnGDxW.js` / `assets/index-CWzMMK9v.css`.
-- Frontend JS contains `PainPoint 검증 메모를 저장했습니다.` and does not contain `부정`.
-- Frontend CSS contains `.customer-ai-painpoint.checked`.
-- Anonymous frontend-proxied `/reporting/api/customers/1/` returns `401 Unauthorized`.
-- Anonymous `/ai/department/1/` redirects to `/reporting/login/?next=/ai/department/1/`.
-- Recent checked Railway logs show successful web startup and no new traceback/500.
+- Railway `web`: `280b8be1-c1c0-48cc-80a1-37707d4c9cba` SUCCESS.
+- Railway `sales-note-frontend`: `0da257af-9ca9-48b3-bcd5-bfd1767a9bf6` SUCCESS.
+- Production `/documents/` returns 200 and serves `assets/index-Bmhj4oJQ.js` / `assets/index-CsWuSGWH.css`.
+- Frontend JS contains `recentGenerations` and `최근 생성 이력`.
+- Frontend CSS contains `document-generation-card`.
+- Anonymous frontend-proxied and backend `/reporting/api/documents/` return `401 Unauthorized`.
 
 Manual production test:
 
-1. Open a React customer detail page with AI analysis, such as `https://sales-note-frontend-production.up.railway.app/customers/<customer_id>/`.
-2. Open the PainPoint verification area.
-3. Confirm there is only one `확인` action and no `부정` action.
-4. Enter a verification memo and click `확인`.
-5. Confirm the saved card displays as `검증 메모`.
-6. Re-run department AI analysis.
-7. Confirm the result uses the memo body as evidence and does not force it into a fixed confirmed/denied interpretation.
-8. Confirm Django fallback `/ai/department/<department_id>/` also has no `부정` button.
+1. Open `https://sales-note-frontend-production.up.railway.app/documents/`.
+2. Confirm the right summary shows `오늘 생성` and `최근 이력`.
+3. Confirm `최근 생성 이력` shows transaction number, document type, output format, creator, customer, and department.
+4. Click a generation history card and confirm it opens the linked React schedule detail.
+5. Change the document type filter and confirm both templates and generation history follow the filter.
+6. Generate a schedule document from React schedule detail, then return to `/documents/` and confirm a new history entry appears.
 
 ## Previous Task
 
-React mailbox body linebreak fix.
+React mailbox send attachments.
 
-Implemented locally, push/deploy pending:
+Implemented, pushed, deployed, and user manual production testing completed on 2026-05-11:
 
-- React mailbox thread `bodyText` now preserves original text newlines.
-- HTML email bodies convert `<br>`, paragraph/div/list/table row endings into newlines before tag stripping.
-- Mailbox list `preview` remains compact and single-line.
-- Regression test added to ensure `/reporting/api/mailbox/thread/<thread_id>/` preserves blank lines and line breaks.
+- React `/mailbox/` compose and `/mailbox/thread/<id>/` reply forms can send multiple attachments.
+- Selected file names and sizes are visible before sending, with per-file remove controls.
+- Mailbox send/reply API client now posts `FormData` with `attachments`.
+- Existing Django Gmail/SMTP attachment handling and `EmailLog.attachments_info` logging are reused.
 - DB 변경 없음.
 
 Validation:
 
 ```powershell
-python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=2
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
 python -m py_compile reporting\gmail_views.py reporting\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
 python manage.py check
 python manage.py makemigrations --check --dry-run
-cd frontend; npm run build
 git diff --check
 ```
 
 Results:
 
-- 3 React mailbox API tests OK.
+- 6 React mailbox API tests OK.
 - Django check OK.
 - No migration changes.
-- React build OK.
+- React build OK: `assets/index-BVsunKYp.js` / `assets/index-BPeRJO55.css`.
 - `git diff --check` OK with LF→CRLF warnings only.
 
-Manual production test after deploy:
+Deployment:
 
-1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
-2. Open a thread with multi-line customer email content.
-3. Confirm paragraph breaks and newlines are preserved in `/mailbox/thread/<thread_id>/`.
+- Railway `sales-note-frontend`: `d55ba8c7-62a7-4237-b26e-9b456f7a7787` SUCCESS.
+- Production `/mailbox/` returns 200 and serves `assets/index-BVsunKYp.js` / `assets/index-BPeRJO55.css`.
+- User manually confirmed the attachment workflow on 2026-05-11.
 
 ## Previous Task
 
