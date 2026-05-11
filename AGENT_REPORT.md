@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — AI Workspace Department List Search Limit
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -42,11 +42,36 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: limit AI department list"
+→ c922a6e
+
+git push
+→ main pushed to GitHub
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI department list search c922a6e" --ci
+→ 9a5fbd1a-e93d-436d-abe6-0035ff9e381c SUCCESS
+
+railway deployment list --service web --environment production --limit 2 --json
+→ 06630a88-d4af-482d-82ae-a31c134bb6cd SUCCESS, commit c922a6e
+
+curl -I https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 OK
+
+curl https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required
 ```
 
 ### 배포 상태
 
-- 운영 배포 예정.
+- Runtime commit: `c922a6e feat: limit AI department list`
+- GitHub push: `main` updated from `d637f68` to `c922a6e`
+- Railway `web`: `06630a88-d4af-482d-82ae-a31c134bb6cd` SUCCESS, commit `c922a6e`
+- Railway `sales-note-frontend`: `9a5fbd1a-e93d-436d-abe6-0035ff9e381c` SUCCESS, message `Deploy AI department list search c922a6e`
+- Production `/ai-workspace/` returns 200 and serves `assets/index-D0kCzolk.js` / `assets/index-ChIABZDB.css`
+- Production JS contains the department search placeholder and `최대 5개 표시`.
+- Production CSS contains `ai-department-search`.
+- Anonymous frontend proxy `/reporting/api/ai-workspace/` returns `401 login_required`.
 
 ### 수동 서버 테스트 절차
 
