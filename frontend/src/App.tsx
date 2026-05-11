@@ -153,6 +153,7 @@ import {
   updatePrepayment as updateCustomerPrepayment,
   updateSchedule as updateCustomerSchedule,
   updateScheduleDeliveryItems,
+  updateScheduleStatus,
   uploadNoteFiles,
   uploadScheduleFiles,
   verifyAiPainpoint,
@@ -4030,24 +4031,95 @@ function buildScheduleCalendarDays(monthValue: string, schedules: ScheduleItem[]
   });
 }
 
+function ScheduleCalendarSelectedList({
+  items,
+  statusUpdatingKey,
+  onStatusChange,
+}: {
+  items: ScheduleItem[];
+  statusUpdatingKey: string;
+  onStatusChange: (schedule: ScheduleItem, status: string) => void;
+}) {
+  if (items.length === 0) {
+    return <DashboardEmpty label="선택한 날짜의 일정이 없습니다" />;
+  }
+
+  return (
+    <div className="schedule-calendar-selected-list">
+      {items.map((item) => {
+        const itemKey = `${item.type}-${item.id}`;
+        const statusOptions = item.statusOptions ?? [];
+        const canChangeStatus = item.type === 'customer' && Boolean(item.canEdit && item.statusUpdateHref && statusOptions.length);
+        const isUpdating = statusUpdatingKey === itemKey;
+        return (
+          <article className={`schedule-calendar-selected-card ${item.overdue ? 'urgent' : ''}`} key={itemKey}>
+            <div className="schedule-calendar-selected-main">
+              <div>
+                <strong>{item.company || item.title || item.customer}</strong>
+                <span>{[item.customer, item.department, item.activityLabel, item.owner].filter(Boolean).join(' · ')}</span>
+                {item.notes ? <small>{item.notes}</small> : null}
+              </div>
+              <time>
+                {item.time || '시간 없음'}
+              </time>
+            </div>
+            <ScheduleStatusBadge schedule={item} />
+            <div className="schedule-calendar-selected-actions">
+              <a href={item.href}>상세</a>
+              {item.customerHref ? <a href={item.customerHref}>고객</a> : null}
+              {item.createHistoryHref ? <a href={item.createHistoryHref}>보고</a> : null}
+              {item.djangoHref ? <a href={item.djangoHref}>Django 상세</a> : null}
+              {item.djangoEditHref ? <a href={item.djangoEditHref}>Django 수정</a> : null}
+            </div>
+            {canChangeStatus ? (
+              <div className="schedule-calendar-status-actions" aria-label={`${item.customer || item.title} 상태 변경`}>
+                {statusOptions.map((option) => (
+                  <button
+                    className={option.value === item.status ? 'active' : ''}
+                    disabled={isUpdating || option.value === item.status}
+                    key={option.value}
+                    onClick={() => onStatusChange(item, option.value)}
+                    type="button"
+                  >
+                    {isUpdating && option.value !== item.status ? <Loader2 className="spin-icon" size={13} /> : null}
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function ScheduleCalendarPage({
   data,
   dataFilter,
   filterUser,
   loading,
   month,
+  statusError,
+  statusMessage,
+  statusUpdatingKey,
   onDataFilterChange,
   onFilterUserChange,
   onMonthChange,
+  onStatusChange,
 }: {
   data: ScheduleCalendarData | null;
   dataFilter: string;
   filterUser: string;
   loading: boolean;
   month: string;
+  statusError: string;
+  statusMessage: string;
+  statusUpdatingKey: string;
   onDataFilterChange: (value: string) => void;
   onFilterUserChange: (value: string) => void;
   onMonthChange: (value: string) => void;
+  onStatusChange: (schedule: ScheduleItem, status: string) => void;
 }) {
   const range = useMemo(() => getScheduleCalendarRange(month), [month]);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -4214,7 +4286,13 @@ function ScheduleCalendarPage({
             </div>
             <CalendarDays size={18} />
           </div>
-          <SchedulesCompactList emptyLabel="선택한 날짜의 일정이 없습니다" items={selectedDayItems} />
+          {statusError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{statusError}</span></div> : null}
+          {statusMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{statusMessage}</span></div> : null}
+          <ScheduleCalendarSelectedList
+            items={selectedDayItems}
+            onStatusChange={onStatusChange}
+            statusUpdatingKey={statusUpdatingKey}
+          />
           <div className="dashboard-panel-heading schedules-side-heading">
             <div>
               <span className="eyebrow">Actions</span>
@@ -9827,6 +9905,9 @@ export function App() {
   const [scheduleCalendarMonth, setScheduleCalendarMonth] = useState(getScheduleCalendarMonthParam);
   const [scheduleCalendarDataFilter, setScheduleCalendarDataFilter] = useState(getScheduleCalendarDataFilterParam);
   const [scheduleCalendarFilterUser, setScheduleCalendarFilterUser] = useState(() => new URLSearchParams(window.location.search).get('filter_user') || '');
+  const [scheduleCalendarStatusUpdatingKey, setScheduleCalendarStatusUpdatingKey] = useState('');
+  const [scheduleCalendarStatusError, setScheduleCalendarStatusError] = useState('');
+  const [scheduleCalendarStatusMessage, setScheduleCalendarStatusMessage] = useState('');
   const [scheduleQuery, setScheduleQuery] = useState('');
   const [scheduleOwner, setScheduleOwner] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
@@ -10709,13 +10790,58 @@ export function App() {
     setScheduleDetailData(data);
     return data;
   };
+  const refreshScheduleCalendarData = async () => {
+    const data = await loadScheduleCalendarData({
+      start: scheduleCalendarRange.start,
+      end: scheduleCalendarRange.end,
+      dataFilter: scheduleCalendarDataFilter,
+      filterUser: scheduleCalendarDataFilter === 'user' ? scheduleCalendarFilterUser : '',
+    });
+    setScheduleCalendarData(data);
+    return data;
+  };
   const handleScheduleCalendarMonthChange = (value: string) => {
+    setScheduleCalendarStatusError('');
+    setScheduleCalendarStatusMessage('');
     setScheduleCalendarMonth(value);
   };
   const handleScheduleCalendarDataFilterChange = (value: string) => {
+    setScheduleCalendarStatusError('');
+    setScheduleCalendarStatusMessage('');
     setScheduleCalendarDataFilter(value);
     if (value !== 'user') {
       setScheduleCalendarFilterUser('');
+    }
+  };
+  const handleScheduleCalendarFilterUserChange = (value: string) => {
+    setScheduleCalendarStatusError('');
+    setScheduleCalendarStatusMessage('');
+    setScheduleCalendarFilterUser(value);
+  };
+  const handleScheduleCalendarStatusChange = async (schedule: ScheduleItem, status: string) => {
+    if (status === schedule.status) {
+      return;
+    }
+    if (!schedule.canEdit || !schedule.statusUpdateHref) {
+      setScheduleCalendarStatusError('이 일정의 상태를 변경할 권한이 없습니다.');
+      setScheduleCalendarStatusMessage('');
+      return;
+    }
+
+    const itemKey = `${schedule.type}-${schedule.id}`;
+    setScheduleCalendarStatusUpdatingKey(itemKey);
+    setScheduleCalendarStatusError('');
+    setScheduleCalendarStatusMessage('');
+    try {
+      const result = await updateScheduleStatus(schedule.statusUpdateHref, status);
+      setScheduleCalendarLoading(true);
+      await refreshScheduleCalendarData();
+      setScheduleCalendarStatusMessage(result.message || '일정 상태를 변경했습니다.');
+    } catch (error) {
+      setScheduleCalendarStatusError(error instanceof Error ? error.message : '일정 상태 변경에 실패했습니다.');
+    } finally {
+      setScheduleCalendarStatusUpdatingKey('');
+      setScheduleCalendarLoading(false);
     }
   };
   const handleScheduleCreateOpenChange = (open: boolean) => {
@@ -11232,9 +11358,13 @@ export function App() {
             filterUser={scheduleCalendarFilterUser}
             loading={scheduleCalendarLoading}
             month={scheduleCalendarMonth}
+            statusError={scheduleCalendarStatusError}
+            statusMessage={scheduleCalendarStatusMessage}
+            statusUpdatingKey={scheduleCalendarStatusUpdatingKey}
             onDataFilterChange={handleScheduleCalendarDataFilterChange}
-            onFilterUserChange={setScheduleCalendarFilterUser}
+            onFilterUserChange={handleScheduleCalendarFilterUserChange}
             onMonthChange={handleScheduleCalendarMonthChange}
+            onStatusChange={handleScheduleCalendarStatusChange}
           />
         </AppShell>
       );

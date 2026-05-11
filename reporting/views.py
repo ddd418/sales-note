@@ -3209,11 +3209,11 @@ def customer_detail_summary_api(request, followup_id):
             for note in list(upcoming_actions_qs[:8])
         ],
         'upcomingSchedules': [
-            _schedules_schedule_payload(schedule, today)
+            _schedules_schedule_payload(schedule, today, _schedules_can_edit(request.user, schedule))
             for schedule in list(upcoming_schedules[:8])
         ],
         'recentSchedules': [
-            _schedules_schedule_payload(schedule, today)
+            _schedules_schedule_payload(schedule, today, _schedules_can_edit(request.user, schedule))
             for schedule in list(recent_schedules[:8])
         ],
     })
@@ -4069,9 +4069,11 @@ def notes_create_api(request):
     }, status=201)
 
 
-def _schedules_schedule_payload(schedule, today):
+def _schedules_schedule_payload(schedule, today, can_edit=None):
     followup = schedule.followup
     history_count = getattr(schedule, 'history_count', None)
+    if can_edit is None:
+        can_edit = bool(getattr(schedule, 'can_edit', False))
     return {
         'id': schedule.id,
         'type': 'customer',
@@ -4101,6 +4103,13 @@ def _schedules_schedule_payload(schedule, today):
         'historyCount': history_count if history_count is not None else schedule.histories.count(),
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+        'djangoEditHref': reverse('reporting:schedule_edit', args=[schedule.id]) if can_edit else '',
+        'statusUpdateHref': reverse('reporting:schedule_status_update', args=[schedule.id]) if can_edit else '',
+        'canEdit': bool(can_edit),
+        'statusOptions': [
+            {'value': value, 'label': label}
+            for value, label in _schedules_status_choices_for_activity(schedule.activity_type, schedule.status)
+        ] if can_edit else [],
         'customerHref': f'/customers/{followup.id}/',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
         'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
@@ -4137,15 +4146,23 @@ def _schedules_personal_payload(personal_schedule, today):
         'followupId': None,
         'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'djangoEditHref': '',
+        'statusUpdateHref': '',
+        'canEdit': False,
+        'statusOptions': [],
         'customerHref': '',
         'djangoCustomerHref': '',
         'createHistoryHref': '',
     }
 
 
-def _schedules_combined_items(schedules, personal_schedules, today, limit=80, latest_first=True):
+def _schedules_combined_items(schedules, personal_schedules, today, limit=80, latest_first=True, request_user=None):
     items = [
-        _schedules_schedule_payload(schedule, today)
+        _schedules_schedule_payload(
+            schedule,
+            today,
+            _schedules_can_edit(request_user, schedule) if request_user else None,
+        )
         for schedule in schedules
     ] + [
         _schedules_personal_payload(personal_schedule, today)
@@ -4902,13 +4919,13 @@ def schedules_summary_api(request):
             'activityTypes': _schedules_create_activity_types(request),
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
         },
-        'today': _schedules_combined_items(today_schedules[:20], today_personal_schedules[:20], today, limit=20),
-        'upcoming': _schedules_combined_items(upcoming_schedules[:30], upcoming_personal_schedules[:30], today, limit=30),
+        'today': _schedules_combined_items(today_schedules[:20], today_personal_schedules[:20], today, limit=20, request_user=request.user),
+        'upcoming': _schedules_combined_items(upcoming_schedules[:30], upcoming_personal_schedules[:30], today, limit=30, request_user=request.user),
         'overdue': [
-            _schedules_schedule_payload(schedule, today)
+            _schedules_schedule_payload(schedule, today, _schedules_can_edit(request.user, schedule))
             for schedule in overdue_schedules
         ],
-        'schedules': _schedules_combined_items(schedules[:80], personal_schedules[:80], today, limit=80),
+        'schedules': _schedules_combined_items(schedules[:80], personal_schedules[:80], today, limit=80, request_user=request.user),
     })
 
 
@@ -4988,7 +5005,7 @@ def schedules_calendar_api(request):
             'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
             'weeklyReports': '/weekly-reports/',
         },
-        'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000, latest_first=False),
+        'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000, latest_first=False, request_user=request.user),
     })
 
 
@@ -5070,7 +5087,7 @@ def schedules_create_api(request):
         'scheduleId': schedule.id,
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'schedule': _schedules_schedule_payload(schedule, timezone.localdate()),
+        'schedule': _schedules_schedule_payload(schedule, timezone.localdate(), True),
     }, status=201)
 
 
@@ -5553,7 +5570,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
     can_review = _can_review_notes(user_profile)
     can_edit = _schedules_can_edit(request.user, schedule)
     schedule.history_count = schedule.histories.filter(parent_history__isnull=True).count()
-    schedule_payload = _schedules_schedule_payload(schedule, today)
+    schedule_payload = _schedules_schedule_payload(schedule, today, can_edit)
     followup = schedule.followup
 
     files = [

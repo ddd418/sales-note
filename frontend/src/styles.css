@@ -2934,6 +2934,117 @@ h2 {
   color: var(--muted);
 }
 
+.schedule-calendar-selected-list {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-calendar-selected-card {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.schedule-calendar-selected-card.urgent {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.schedule-calendar-selected-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.schedule-calendar-selected-main div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.schedule-calendar-selected-main strong,
+.schedule-calendar-selected-main span,
+.schedule-calendar-selected-main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.schedule-calendar-selected-main strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.schedule-calendar-selected-main span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.schedule-calendar-selected-main small {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.schedule-calendar-selected-main time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.schedule-calendar-selected-actions,
+.schedule-calendar-status-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schedule-calendar-selected-actions a,
+.schedule-calendar-status-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.schedule-calendar-status-actions button {
+  cursor: pointer;
+}
+
+.schedule-calendar-status-actions button:hover:not(:disabled),
+.schedule-calendar-selected-actions a:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.schedule-calendar-status-actions button.active,
+.schedule-calendar-status-actions button:disabled.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: default;
+}
+
+.schedule-calendar-status-actions button:disabled:not(.active) {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .customer-detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -5122,6 +5233,14 @@ tbody tr:hover {
   .schedule-calendar-day {
     min-height: 96px;
     padding: 7px;
+  }
+
+  .schedule-calendar-selected-main {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-calendar-selected-main time {
+    white-space: normal;
   }
 
   .schedule-prepayment-row,

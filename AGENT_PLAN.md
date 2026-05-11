@@ -9,6 +9,39 @@
 
 ---
 
+## Current task — React 일정 캘린더 선택일 작업 보강
+
+**목표**: React `/schedules/calendar/` 선택일 패널에서 일정 상세 확인, 고객 이동, 보고 작성, Django fallback뿐 아니라 본인 고객 일정의 상태를 바로 변경할 수 있게 해 Django 캘린더에 남아 있던 핵심 운영 동선을 React로 옮긴다.
+
+### 확인된 상태
+
+- React `/schedules/calendar/`는 월간 grid, 데이터 범위 필터, 선택일 일정 목록, 일정 등록/Django fallback 링크를 제공한다.
+- 선택일 목록은 현재 간단한 링크 목록이라 일정 상태 변경이나 관련 작업으로 바로 이어지기 어렵다.
+- 기존 Django `schedule_status_update_api`는 `scheduled/completed/cancelled` 상태 변경, 권한 체크, 견적 일정 완료 차단 로직을 이미 제공한다.
+- React 일정 상세 API는 편집 권한과 상태 선택지를 제공하지만, 캘린더 API payload에는 상태 변경용 메타가 없다.
+- 신규 DB 필드나 migration은 필요하지 않다.
+
+### 구현 계획
+
+- 캘린더/일정 API payload의 고객 일정 항목에 `canEdit`, `statusUpdateHref`, `djangoEditHref`, `statusOptions`를 추가한다.
+- 같은 회사 전체/직원 선택 범위에서도 본인 일정만 `canEdit=true`가 되게 하고, Manager/타인 일정은 읽기 전용으로 유지한다.
+- React API client에 기존 Django 상태 변경 endpoint를 호출하는 `updateScheduleStatus()`를 추가한다.
+- React 캘린더 선택일 패널을 카드형 작업 목록으로 바꾸고, 각 일정에 React 상세, 고객, 보고 작성, Django 상세/수정 fallback, 빠른 상태 버튼을 노출한다.
+- 상태 변경 성공 후 캘린더 데이터를 다시 불러와 지표와 월간 grid를 동기화한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/` smoke check
+
+---
+
 ## Current task — React 서류 생성 이력 노출
 
 **목표**: React `/documents/`에서 서류 템플릿 관리뿐 아니라 최근 서류 생성/다운로드 이력을 확인할 수 있게 해 견적/거래명세서/납품서 생성 workflow의 추적성을 높인다.

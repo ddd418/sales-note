@@ -2773,6 +2773,17 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn(('customer', own.id), ids)
         self.assertIn(('personal', personal.id), ids)
         self.assertNotIn(('customer', outside.id), ids)
+        own_item = next(item for item in payload['schedules'] if item['type'] == 'customer' and item['id'] == own.id)
+        personal_item = next(item for item in payload['schedules'] if item['type'] == 'personal' and item['id'] == personal.id)
+        self.assertTrue(own_item['canEdit'])
+        self.assertEqual(own_item['statusUpdateHref'], reverse('reporting:schedule_status_update', args=[own.id]))
+        self.assertEqual(own_item['djangoEditHref'], reverse('reporting:schedule_edit', args=[own.id]))
+        self.assertEqual(
+            {option['value'] for option in own_item['statusOptions']},
+            {'scheduled', 'completed', 'cancelled'},
+        )
+        self.assertFalse(personal_item['canEdit'])
+        self.assertEqual(personal_item['statusOptions'], [])
         self.assertEqual(payload['filters']['start'], '2026-05-01')
         self.assertEqual(payload['filters']['end'], '2026-05-31')
         self.assertEqual(payload['metrics']['totalSchedules'], 2)
@@ -2800,6 +2811,11 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn(own.id, ids)
         self.assertIn(coworker.id, ids)
         self.assertNotIn(other.id, ids)
+        own_item = next(item for item in payload['schedules'] if item['type'] == 'customer' and item['id'] == own.id)
+        coworker_item = next(item for item in payload['schedules'] if item['type'] == 'customer' and item['id'] == coworker.id)
+        self.assertTrue(own_item['canEdit'])
+        self.assertFalse(coworker_item['canEdit'])
+        self.assertEqual(coworker_item['statusUpdateHref'], '')
         self.assertEqual(payload['scope']['dataFilter'], 'all')
         self.assertTrue(any(option['id'] == self.coworker.id for option in payload['options']['users']))
 

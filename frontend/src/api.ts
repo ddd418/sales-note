@@ -961,6 +961,10 @@ export type ScheduleItem = {
   historyCount: number;
   href: string;
   djangoHref?: string;
+  djangoEditHref?: string;
+  statusUpdateHref?: string;
+  canEdit?: boolean;
+  statusOptions?: Array<{ value: string; label: string }>;
   customerHref: string;
   djangoCustomerHref?: string;
   createHistoryHref: string;
@@ -1567,6 +1571,16 @@ export type ScheduleCreateResponse = {
   scheduleId?: number;
   href?: string;
   schedule?: ScheduleItem;
+};
+
+export type ScheduleStatusUpdateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  new_status?: string;
+  newStatus?: string;
+  status_display?: string;
+  statusDisplay?: string;
 };
 
 export type ScheduleEditPayload = {
@@ -4076,6 +4090,33 @@ export async function createSchedule(payload: ScheduleCreatePayload, submitUrl =
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateScheduleStatus(submitUrl: string, status: string): Promise<ScheduleStatusUpdateResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const formData = new FormData();
+  formData.set('status', status);
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule status API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleStatusUpdateResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule status update failed: ${response.status}`);
   }
   return data;
 }
