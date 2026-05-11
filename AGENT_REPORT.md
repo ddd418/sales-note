@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — AI Deliveries, Latest Lists, Weekly Report Edit Linebreaks
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -55,6 +55,18 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "fix: improve AI deliveries and CRM list defaults"
+→ f1865fe
+
+git push
+→ main pushed to GitHub
+
+railway up --service web --environment production --message "Deploy AI deliveries and CRM list defaults f1865fe" --ci
+→ 8eb7ccda-bb8e-4ad5-9261-13ab02ae6586 SUCCESS
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI deliveries and CRM list defaults f1865fe" --ci
+→ 4f931dd7-3d67-4a7e-a24d-22c611d94c0f SUCCESS
 ```
 
 ### 알려진 제한
@@ -64,11 +76,16 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: 예정
-- GitHub push: 예정
-- Railway `web`: 예정
-- Railway `sales-note-frontend`: 예정
-- Production smoke check: 예정
+- Runtime commit: `f1865fe fix: improve AI deliveries and CRM list defaults`
+- GitHub push: `main` updated from `632851a` to `f1865fe`
+- Railway `web`: `8eb7ccda-bb8e-4ad5-9261-13ab02ae6586` SUCCESS, message `Deploy AI deliveries and CRM list defaults f1865fe`
+- Railway `sales-note-frontend`: `4f931dd7-3d67-4a7e-a24d-22c611d94c0f` SUCCESS, message `Deploy AI deliveries and CRM list defaults f1865fe`
+- Production `/`, `/ai-workspace/?department_id=10`, `/schedules/`, `/customers/`, `/weekly-reports/2/` return 200.
+- Production frontend serves `assets/index-CK647J3B.js` / `assets/index-M9Uvw-6H.css`.
+- Production JS contains `recentDeliveries`, `최근 납품 품목`, and `파이프라인 데이터를 불러오는 중입니다`.
+- Production JS no longer contains `Mock data fallback`.
+- Production CSS contains `customer-ai-delivery-list` and `source-badge.unavailable`.
+- Anonymous frontend proxy `/reporting/api/customers/`, `/reporting/api/schedules/`, `/reporting/api/weekly-reports/`, `/reporting/api/ai-workspace/?department_id=10` return `401`.
 
 ### 수동 서버 테스트 절차
 
