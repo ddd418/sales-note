@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — AI Workspace Prompt Queue Reposition
 
-**상태**: 구현/로컬 검증/푸시 완료, 운영 배포 차단
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -54,16 +54,31 @@ railway up frontend --path-as-root --service sales-note-frontend --environment p
 
 railway deployment list --service web --environment production --limit 2 --json
 → Unauthorized. Please run `railway login` again.
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy AI prompt queue reposition 687c820" --ci
+→ 6694c40f-4f8e-4387-8046-1a83313b0244 SUCCESS
+
+railway deployment list --service web --environment production --limit 1 --json
+→ 5cdc524e-4d6e-4e62-b9c1-fda38e5e3d4d SUCCESS, commit 5f6bcfd
+
+curl -I https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 OK
+
+curl https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required
 ```
 
 ### 배포 상태
 
 - Runtime commit: `687c820 feat: reposition AI prompt queue`
 - GitHub push: `main` updated from `48b1e66` to `687c820`
-- Railway CLI OAuth token expired: `invalid_grant`, `Please run railway login again.`
-- Railway `sales-note-frontend` 배포는 아직 실행되지 않았습니다.
-- Production `/ai-workspace/`는 아직 이전 번들 `assets/index-D0kCzolk.js` / `assets/index-ChIABZDB.css`를 제공합니다.
-- 운영 배포는 Railway 재로그인 후 재시도해야 합니다.
+- Initial Railway CLI deploy attempt failed because the OAuth token had expired; user reauthenticated with `railway login`.
+- Railway `web`: `5cdc524e-4d6e-4e62-b9c1-fda38e5e3d4d` SUCCESS, commit `5f6bcfd`
+- Railway `sales-note-frontend`: `6694c40f-4f8e-4387-8046-1a83313b0244` SUCCESS, message `Deploy AI prompt queue reposition 687c820`
+- Production `/ai-workspace/` returns 200 and serves `assets/index-ChUAhcWz.js` / `assets/index-DAMocjpX.css`
+- Production JS contains `추천 질문` and no longer contains `AI 작업 큐`.
+- Production CSS contains `ai-support-panel`.
+- Anonymous frontend proxy `/reporting/api/ai-workspace/` returns `401 login_required`.
 
 ### 수동 서버 테스트 절차
 
