@@ -9,6 +9,35 @@
 
 ---
 
+## Current task — AI Workspace 작업 큐 보조화
+
+**목표**: React `/ai-workspace/`의 `AI 작업 큐`를 메인 상단에서 내리고, 오른쪽 `Department AI` 결과 패널 중심의 흐름을 유지한다.
+
+### 확인된 상태
+
+- 기존 `AI 작업 큐`는 자동 실행 큐가 아니라 복사해서 활용하는 프롬프트 카드 목록이다.
+- 현재는 지표 바로 아래 상단에 크게 노출되어 오른쪽 AI 결과 패널보다 먼저 보인다.
+- 사용자는 오른쪽 고객형 AI 환경을 선호하고, 부서 분석 대상은 이미 검색/5개 제한으로 정리했다.
+- DB/API 변경은 필요하지 않고 React 배치와 명칭만 조정하면 된다.
+
+### 구현 계획
+
+- 상단의 `AI 작업 큐` 패널을 제거한다.
+- 같은 `AIWorkspacePromptQueue` 기능은 왼쪽 본문 하단의 보조 섹션으로 유지한다.
+- 표시 명칭을 `추천 질문`으로 바꾸어 복사 프롬프트 성격을 분명히 한다.
+- 기존 복사 버튼, 카드 내용, API payload는 유지한다.
+
+### 검증 계획
+
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke check
+
+---
+
 ## Current task — AI Workspace 부서 분석 대상 검색/5개 제한
 
 **목표**: React `/ai-workspace/`의 `Department analysis / 부서 분석 대상` 목록을 화면상 5개로 제한하고 검색으로 필요한 부서를 찾게 한다.

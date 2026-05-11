@@ -8626,23 +8626,6 @@ function AIWorkspacePage({
       </section>
 
       {data.permission.canUseAi ? (
-        <section className="dashboard-panel ai-prompt-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Prompt queue</span>
-              <h2>AI 작업 큐</h2>
-            </div>
-            <Copy size={18} />
-          </div>
-          <AIWorkspacePromptQueue
-            copiedPromptId={copiedPromptId}
-            onCopyPrompt={handleCopyPrompt}
-            targets={data.promptTargets || []}
-          />
-        </section>
-      ) : null}
-
-      {data.permission.canUseAi ? (
         <div className="ai-workspace-layout">
           <div className="ai-workspace-main">
             <section className="dashboard-panel ai-main-panel">
@@ -8666,6 +8649,23 @@ function AIWorkspacePage({
               </div>
               <AIWorkspaceFollowupTargets targets={data.followupTargets} />
             </section>
+
+            {(data.promptTargets || []).length > 0 ? (
+              <section className="dashboard-panel ai-prompt-panel ai-support-panel">
+                <div className="dashboard-panel-heading">
+                  <div>
+                    <span className="eyebrow">Prompt assists</span>
+                    <h2>추천 질문</h2>
+                  </div>
+                  <Copy size={18} />
+                </div>
+                <AIWorkspacePromptQueue
+                  copiedPromptId={copiedPromptId}
+                  onCopyPrompt={handleCopyPrompt}
+                  targets={data.promptTargets || []}
+                />
+              </section>
+            ) : null}
 
             {data.recommendedGoals.length > 0 ? (
               <section className="dashboard-panel ai-goal-panel">

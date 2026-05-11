@@ -3515,6 +3515,11 @@ h2 {
   align-content: start;
 }
 
+.ai-support-panel {
+  border-color: #dbeafe;
+  background: #ffffff;
+}
+
 .ai-featured-customer-chips {
   display: flex;
   flex-wrap: wrap;

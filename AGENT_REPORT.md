@@ -1,5 +1,62 @@
 # AGENT_REPORT.md
 
+## 2026-05-11 — AI Workspace Prompt Queue Reposition
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 예정
+
+### 요약
+
+React `/ai-workspace/`의 상단 `AI 작업 큐`를 제거하고, 같은 프롬프트 복사 기능을 왼쪽 본문 하단의 `추천 질문` 보조 섹션으로 옮겼습니다. 화면의 1차 흐름은 부서 분석 대상과 오른쪽 `Department AI` 결과 패널이 잡도록 정리했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 상단 작업 큐 제거, `추천 질문` 보조 섹션으로 `AIWorkspacePromptQueue` 재배치
+- `frontend/src/styles.css`: 보조 프롬프트 패널 스타일 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- `/ai-workspace/` 진입 시 복사 프롬프트보다 실제 부서 AI 결과 패널이 먼저 보입니다.
+- 기존 프롬프트 복사 기능은 없어지지 않고 보조 섹션으로 유지됩니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/ai-workspace/` payload와 Django `/ai/*` route는 변경하지 않았습니다.
+- 기존 프롬프트 카드, 복사 버튼, PainPoint/고객/부서 프롬프트 데이터는 유지했습니다.
+- DB 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npm run build
+→ OK, assets/index-ChUAhcWz.js / assets/index-DAMocjpX.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- 운영 배포 예정.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 지표 바로 아래에 `AI 작업 큐` 상단 패널이 더 이상 없는지 확인합니다.
+3. 왼쪽 본문 하단에 `추천 질문` 섹션이 있고 기존 프롬프트 카드와 복사 버튼이 유지되는지 확인합니다.
+4. 오른쪽 `Department AI` 패널이 화면 핵심 영역으로 유지되는지 확인합니다.
+
+---
+
 ## 2026-05-11 — AI Workspace Department List Search Limit
 
 **상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
