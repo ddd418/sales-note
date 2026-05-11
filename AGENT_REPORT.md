@@ -2,7 +2,7 @@
 
 ## 2026-05-11 — React Weekly Report Linebreak Display
 
-**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포 완료, 사용자 수동검수 가능
 
 ### 요약
 
@@ -52,9 +52,14 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: pending
-- Railway `sales-note-frontend`: pending
-- 운영 smoke check: pending
+- Runtime commit: `9dbe370 fix: preserve weekly report linebreak display`
+- GitHub push: `main` updated from `840cfba` to `9dbe370`
+- Railway `sales-note-frontend`: `1a9d8cea-bc68-411e-ade6-3ae61ec4b89c` SUCCESS, message `Deploy weekly report linebreak display 9dbe370`
+- Railway `web`: `fcda2346-080c-49eb-8e1d-84fd98c5f800` SUCCESS, commit `9dbe370`
+- Production `/weekly-reports/` returns 200 and serves `assets/index-BQMADz31.js` / `assets/index-C_Dt-dqM.css`.
+- Production CSS contains `weekly-html-content`, `white-space:pre-wrap`, and `weekly-html-section.manager p`.
+- Anonymous frontend proxy `/reporting/api/weekly-reports/` returns `401 login_required`.
+- Recent `web` deployment logs show successful migration check/startup and no traceback/500.
 
 ### 수동 서버 테스트 절차
 
