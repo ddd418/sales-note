@@ -3976,6 +3976,33 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
 
+    def test_document_pdf_layout_helper_sets_a4_fit_to_page(self):
+        import os
+        import tempfile
+        import zipfile
+        from openpyxl import Workbook
+        from reporting.views import _ensure_xlsx_a4_print_layout
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '견적서'
+        sheet['J40'] = 'A4 자동 맞춤 테스트'
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(temp_path) and os.unlink(temp_path))
+        workbook.save(temp_path)
+
+        changed = _ensure_xlsx_a4_print_layout(temp_path)
+
+        self.assertTrue(changed)
+        with zipfile.ZipFile(temp_path, 'r') as archive:
+            sheet_xml = archive.read('xl/worksheets/sheet1.xml').decode('utf-8')
+        self.assertIn('fitToPage="1"', sheet_xml)
+        self.assertIn('paperSize="9"', sheet_xml)
+        self.assertIn('fitToWidth="1"', sheet_xml)
+        self.assertIn('fitToHeight="0"', sheet_xml)
+        self.assertIn('left="0.25"', sheet_xml)
+
 
 class AIWorkspaceSummaryApiTests(TestCase):
     """React AI workspace 읽기 API 검증"""

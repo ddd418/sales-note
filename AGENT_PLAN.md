@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## Current task — 견적서 PDF A4 자동 맞춤
+
+**목표**: 견적서 PDF 다운로드 시 엑셀 템플릿 인쇄 영역이 A4보다 크게 잡혀 PDF가 잘리는 문제를 막는다. PDF 변환 직전 생성된 XLSX의 워크시트 인쇄 설정을 A4, 1페이지 너비 맞춤, 축소 여백으로 보정해 LibreOffice/unoconv 변환 결과가 A4에 맞게 나오도록 한다.
+
+### 확인된 상태
+
+- 서류 다운로드는 업로드된 XLSX 템플릿을 ZIP 레벨에서 변수 치환한 뒤 `unoconv`로 PDF 변환한다.
+- 기존 변환 경로는 템플릿의 인쇄 설정을 그대로 사용하므로, 템플릿에 큰 인쇄 영역/기본 용지/배율이 남아 있으면 PDF가 A4보다 크게 잘릴 수 있다.
+- DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- PDF/엑셀 반환 직전 생성된 XLSX 내부 `xl/worksheets/sheet*.xml`에 A4 인쇄 설정을 적용한다.
+- 각 시트에 `fitToPage=1`, `paperSize=9(A4)`, `fitToWidth=1`, `fitToHeight=0`을 설정하고 기존 `scale`은 제거한다.
+- 인쇄 여백을 줄여 템플릿 내용이 A4 PDF에 안정적으로 들어오게 한다.
+- XML 레벨 보정 helper를 테스트해 PDF 변환 전 XLSX가 A4 맞춤 설정을 갖는지 회귀 검증한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/login/`, `/reporting/api/documents/` 보호 smoke check
+
+---
+
 ## Current task — 견적 할인단가/적요/기타사항, React 서류 변수 복사, AI 추천목표 고객명/우선순위
 
 **목표**: 견적 품목에서 기준단가는 기존처럼 직접 조절할 수 있게 유지하면서, 별도의 할인율 또는 할인단가를 입력해 최종 견적 단가를 계산할 수 있게 한다. 품목별 적요와 전체 견적 기타사항을 저장하고, 새 변수까지 포함한 사용 가능한 서류 템플릿 변수를 React 서류 등록 화면에서 확인/복사할 수 있게 한다. 이어서 React AI Workspace 추천 목표에 명확한 고객명을 포함하고, AI 분석 실행 때마다 AI 판단 결과로 고객 우선순위를 다시 산정한다.

@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote PDF A4 Auto Fit
+
+**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 진행 예정
+
+### 요약
+
+견적서 PDF 다운로드 시 엑셀 템플릿의 인쇄 설정이 A4보다 크게 잡혀 PDF가 잘리는 문제를 수정했습니다. 서류 생성 과정에서 변수 치환과 미디어 복원을 마친 XLSX 파일에 A4 용지, 1페이지 너비 맞춤, 축소 여백을 XML 레벨로 적용한 뒤 PDF 변환을 실행하도록 했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: PDF 변환 전 XLSX 워크시트 인쇄 설정을 A4/1페이지 너비 맞춤으로 보정하는 helper 추가 및 서류 생성 경로에 연결
+- `reporting/tests.py`: 생성 XLSX의 worksheet XML에 A4/fit-to-page 설정이 들어가는지 회귀 테스트 추가
+- `AGENT_PLAN.md`: hotfix 계획 기록
+
+### CRM 개선
+
+- 견적서 PDF가 템플릿의 잘못된 배율/용지 설정 때문에 A4 밖으로 잘리는 위험을 줄였습니다.
+- PDF 변환 실패 시 기존처럼 Excel 파일 fallback은 유지됩니다.
+
+### 기존 기능 보존
+
+- 기존 서류 템플릿 변수 치환, 이미지/미디어 복원, XLSX 다운로드, PDF 변환 흐름은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+- React 프론트엔드 변경은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_pdf_layout_helper_sets_a4_fit_to_page reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 10 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- 로컬 테스트는 XLSX 인쇄 설정 XML을 검증했습니다. 실제 운영 PDF 출력물의 시각 검수는 로그인 세션과 운영 템플릿이 필요합니다.
+- `fitToHeight=0`으로 설정해 가로는 A4 한 페이지 너비에 맞추고, 품목이 많아 세로가 길면 여러 페이지로 이어질 수 있게 했습니다.
+
+### 배포 상태
+
+- Runtime commit: pending
+- Railway `web`: pending
+- Production smoke: pending
+- `sales-note-frontend` 배포 없음: 프론트 코드 변경 없음
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 견적 일정 상세로 이동합니다.
+2. 견적서 PDF 다운로드를 실행합니다.
+3. PDF가 A4 폭 안에 맞고 오른쪽/아래가 잘리지 않는지 확인합니다.
+4. 품목이 많은 견적서는 세로 방향으로 다음 페이지가 생성되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote Discount Variables And AI Priority Goals
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크/사용자 수동검수 완료

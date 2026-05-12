@@ -14,6 +14,58 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+Quote PDF A4 auto-fit hotfix is implemented and locally verified. Commit, Railway backend deployment, production smoke, and user manual PDF output testing remain.
+
+Runtime commit:
+
+```text
+pending
+```
+
+Implemented:
+
+- Generated XLSX files are patched before PDF conversion so each worksheet uses A4 paper size.
+- Worksheet print settings now use fit-to-page with one-page width and unlimited page height.
+- Margins are reduced to keep quotation templates inside the printable A4 area.
+- Existing variable replacement, media restoration, XLSX downloads, and PDF fallback behavior are preserved.
+- No DB model or migration changes.
+- No frontend deployment is needed.
+
+Validation:
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 10 document template tests OK.
+- Python compile OK.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment:
+
+- Pending commit/push/deployment.
+
+Manual production test:
+
+1. Open a quote schedule in production.
+2. Download the quotation PDF.
+3. Confirm the PDF fits A4 width without right-side or bottom clipping.
+4. For a quote with many items, confirm the PDF continues to the next page vertically instead of shrinking unreadably or clipping.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
 Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual production testing is complete.
 
 Runtime commit:
@@ -84,7 +136,7 @@ Manual test result:
 
 - Complete: user confirmed production manual test completion on 2026-05-12 KST.
 
-## Previous Task
+## Older Task
 
 React AI summary, pipeline AI controls, recommended questions, and email context expansion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 

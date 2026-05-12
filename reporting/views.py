@@ -18628,6 +18628,96 @@ def _document_discount_rate_label(value):
     return f"{text}%"
 
 
+def _ensure_xlsx_a4_print_layout(xlsx_path):
+    """PDF 변환 전 XLSX 워크시트를 A4 1페이지 너비에 맞게 인쇄 설정한다."""
+    import os
+    import shutil
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ET.register_namespace('', spreadsheet_ns)
+
+    def qname(name):
+        return f'{{{spreadsheet_ns}}}{name}'
+
+    def ensure_child(parent, name):
+        child = parent.find(qname(name))
+        if child is None:
+            child = ET.Element(qname(name))
+            parent.append(child)
+        return child
+
+    def ensure_sheet_pr(root):
+        child = root.find(qname('sheetPr'))
+        if child is None:
+            child = ET.Element(qname('sheetPr'))
+            root.insert(0, child)
+        return child
+
+    def ensure_root_child(root, name, after_name=None):
+        child = root.find(qname(name))
+        if child is not None:
+            return child
+
+        child = ET.Element(qname(name))
+        insert_index = len(root)
+        if after_name:
+            after = root.find(qname(after_name))
+            if after is not None:
+                insert_index = list(root).index(after) + 1
+        root.insert(insert_index, child)
+        return child
+
+    temp_output = xlsx_path.replace('.xlsx', '_a4_print.xlsx')
+    changed = False
+
+    with zipfile.ZipFile(xlsx_path, 'r') as zip_in:
+        with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+            for item in zip_in.infolist():
+                data = zip_in.read(item.filename)
+
+                if item.filename.startswith('xl/worksheets/sheet') and item.filename.endswith('.xml'):
+                    try:
+                        root = ET.fromstring(data)
+                        sheet_pr = ensure_sheet_pr(root)
+                        page_setup_pr = ensure_child(sheet_pr, 'pageSetUpPr')
+                        page_setup_pr.set('fitToPage', '1')
+
+                        page_margins = ensure_root_child(root, 'pageMargins')
+                        page_margins.set('left', '0.25')
+                        page_margins.set('right', '0.25')
+                        page_margins.set('top', '0.35')
+                        page_margins.set('bottom', '0.35')
+                        page_margins.set('header', '0.2')
+                        page_margins.set('footer', '0.2')
+
+                        page_setup = ensure_root_child(root, 'pageSetup', after_name='pageMargins')
+                        page_setup.set('paperSize', '9')  # A4
+                        page_setup.set('fitToWidth', '1')
+                        page_setup.set('fitToHeight', '0')
+                        page_setup.set('orientation', page_setup.get('orientation') or 'portrait')
+                        page_setup.attrib.pop('scale', None)
+
+                        data = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+                        changed = True
+                    except Exception as sheet_error:
+                        logger.warning(f"[서류생성] A4 인쇄 설정 적용 실패({item.filename}): {sheet_error}")
+
+                zip_out.writestr(item, data)
+
+    if changed:
+        os.unlink(xlsx_path)
+        shutil.move(temp_output, xlsx_path)
+    else:
+        try:
+            os.unlink(temp_output)
+        except OSError:
+            pass
+
+    return changed
+
+
 @login_required
 def get_document_template_data(request, document_type, schedule_id):
     """
@@ -19340,6 +19430,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     os.unlink(temp_path)
                     shutil.move(temp_output, temp_path)
                 
+                try:
+                    _ensure_xlsx_a4_print_layout(temp_path)
+                except Exception as layout_error:
+                    logger.warning(f"[서류생성] A4 PDF 인쇄 설정 보정 실패: {layout_error}")
                 
                 # 파일명에 사용할 정보 준비
                 import pytz
