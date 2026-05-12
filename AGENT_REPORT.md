@@ -74,7 +74,7 @@ git diff --check
 
 - Runtime commit: `fcb7eeb feat: expand react ai workflow`
 - GitHub push: runtime commit `fcb7eeb` is on `main`; deployment report docs were pushed after runtime deploy
-- Railway `web`: `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS
+- Railway `web`: manual runtime deploy `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS; docs-only pushes can create newer web deployment IDs because GitHub autodeploy is enabled
 - Railway `sales-note-frontend`: `72567306-b54f-48c3-a5c2-7b501aab7425` SUCCESS
 - Production `/`, `/pipeline/`, `/ai-workspace/` return 200 and serve `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
 - Production JS contains `추천 질문` and `AI 분석 실행`.
