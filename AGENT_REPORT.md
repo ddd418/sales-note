@@ -2,7 +2,7 @@
 
 ## 2026-05-12 — Quote Discount Variables And AI Priority Goals
 
-**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -72,10 +72,16 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
-- Production smoke: pending
+- Runtime commit: `b09acf7 feat: expand quote discounts and ai goals`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `73d90eea-de63-499a-b19d-a7bcc3da409a` SUCCESS
+- Railway `sales-note-frontend`: `4f2dacfe-792e-447c-ad71-d46944452f53` SUCCESS
+- Production `/documents/`, `/schedules/`, `/ai-workspace/` return 200 and serve `assets/index-DJaKKt6c.js` / `assets/index-DHLL1LUc.css`.
+- Production JS contains `할인단가`, `templateVariableGroups`, `우선순위 갱신`, `추천 목표`.
+- Production CSS contains `document-variable-panel`, `ai-goal-card-meta`, `schedule-quote-extra-notes`.
+- Production `/reporting/login/` returns 200.
+- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` return `401 Unauthorized`.
+- Anonymous frontend-proxied and direct backend `/reporting/api/ai-workspace/` return `401 Unauthorized`.
 
 ### 수동 서버 테스트 절차
 

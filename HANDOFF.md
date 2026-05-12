@@ -14,12 +14,12 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented and locally verified. Commit, Railway deployment, production smoke, and user manual testing remain.
+Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-pending
+b09acf7 feat: expand quote discounts and ai goals
 ```
 
 Implemented:
@@ -59,7 +59,15 @@ Results:
 
 Deployment:
 
-- Pending commit/push/deployment.
+- GitHub push complete: runtime commit `b09acf7` is on `main`; deployment report docs may create a newer web deployment because GitHub autodeploy is enabled.
+- Railway `web`: `73d90eea-de63-499a-b19d-a7bcc3da409a` SUCCESS.
+- Railway `sales-note-frontend`: `4f2dacfe-792e-447c-ad71-d46944452f53` SUCCESS.
+- Production `/documents/`, `/schedules/`, `/ai-workspace/` return 200 and serve `assets/index-DJaKKt6c.js` / `assets/index-DHLL1LUc.css`.
+- Production JS contains `할인단가`, `templateVariableGroups`, `우선순위 갱신`, `추천 목표`.
+- Production CSS contains `document-variable-panel`, `ai-goal-card-meta`, `schedule-quote-extra-notes`.
+- Production `/reporting/login/` returns 200.
+- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` return `401 Unauthorized`.
+- Anonymous frontend-proxied and direct backend `/reporting/api/ai-workspace/` return `401 Unauthorized`.
 
 Manual production test:
 
