@@ -10026,7 +10026,7 @@ function ProductManagementPage({
   ), [deleteResult]);
 
   useEffect(() => {
-    if (!replaceableDeleteRows.length || deleteReplacementOptions.length || deleteReplacementLoading) {
+    if (!replaceableDeleteRows.length || deleteReplacementOptions.length) {
       return;
     }
 
@@ -10065,7 +10065,7 @@ function ProductManagementPage({
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [deleteReplacementLoading, deleteReplacementOptions.length, replaceableDeleteRows.length]);
+  }, [deleteReplacementOptions.length, replaceableDeleteRows.length]);
 
   const handleDeleteReplacementSearch = async () => {
     const search = deleteReplacementSearch.trim();
