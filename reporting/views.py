@@ -18092,7 +18092,6 @@ def _replace_single_product_reference(request, product, reference_type, referenc
             item = (
                 DeliveryItem.objects
                 .select_for_update()
-                .select_related('schedule', 'history')
                 .filter(id=reference_id, product=locked_product)
                 .first()
             )
@@ -18103,8 +18102,15 @@ def _replace_single_product_reference(request, product, reference_type, referenc
                 'referenceId': item.id,
                 'itemName': item.item_name,
             }
-            if item.schedule_id and item.schedule and item.schedule.activity_type == 'delivery':
-                touched_delivery_schedule_id = item.schedule_id
+            if item.schedule_id:
+                schedule_type = (
+                    Schedule.objects
+                    .filter(id=item.schedule_id)
+                    .values_list('activity_type', flat=True)
+                    .first()
+                )
+                if schedule_type == 'delivery':
+                    touched_delivery_schedule_id = item.schedule_id
             if item.history_id:
                 touched_history_id = item.history_id
             item.product = replacement_product
@@ -18198,7 +18204,6 @@ def _replace_product_references_and_delete(request, product, replacement_product
         delivery_items = list(
             DeliveryItem.objects
             .select_for_update()
-            .select_related('schedule')
             .filter(product=product)
             .order_by('id')
         )
@@ -18209,11 +18214,12 @@ def _replace_product_references_and_delete(request, product, replacement_product
             .filter(product=product)
             .order_by('id')
         )
-        touched_delivery_schedule_ids = {
-            item.schedule_id
-            for item in delivery_items
-            if item.schedule_id and item.schedule and item.schedule.activity_type == 'delivery'
-        }
+        delivery_schedule_ids = [item.schedule_id for item in delivery_items if item.schedule_id]
+        touched_delivery_schedule_ids = set(
+            Schedule.objects
+            .filter(id__in=delivery_schedule_ids, activity_type='delivery')
+            .values_list('id', flat=True)
+        )
 
         for item in delivery_items:
             item.product = replacement_product
