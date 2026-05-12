@@ -36,9 +36,17 @@
 
 ### 현재 상태
 
-- 백엔드/React 구현 및 로컬 검증 완료.
+- 백엔드/React 구현, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
 - DB 모델 변경 없음.
-- 커밋/푸시 및 Railway 배포 진행 예정.
+- Runtime commit: `7033da7 feat: auto attach schedule documents in mail`
+- Railway `sales-note-frontend`: `1eb864cd-e715-488b-b13d-2391ee1821a3` SUCCESS
+- Railway `web`: `f29edf24-7a3f-4d91-af7b-4641211bec7e` SUCCESS
+- 운영 smoke OK:
+  - `/mailbox/` 200 with `assets/index-C6-0bFJk.js` / `assets/index-BFbWQzPN.css`
+  - `/schedules/882/` 200 with `assets/index-C6-0bFJk.js` / `assets/index-BFbWQzPN.css`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/882/` 401 login-required JSON
+- 다음 행동: 사용자가 운영에서 일정 메일 발송 수동 검수를 완료한다. 검수 결과 확인 전에는 다음 구현 작업을 시작하지 않는다.
 
 ---
 

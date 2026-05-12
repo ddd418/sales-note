@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Schedule Mail Auto Document Attachments
+
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+일정에서 메일을 보낼 때 자동 첨부되는 문서를 확장했습니다. 견적 일정은 견적서 PDF, 납품 일정은 거래명세서 PDF를 자동 첨부하며, React 메일 작성 화면과 Django 일정 메일 폼에서 자동 첨부 항목을 발송 전에 제외할 수 있습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: 자동첨부 로직을 견적서 전용에서 일정별 문서 타입 기반으로 일반화하고 제외 key 처리 추가
+- `reporting/views.py`: 일정 상세 문서 안내에 납품 일정 거래명세서 자동첨부 문구 추가
+- `reporting/templates/reporting/gmail/compose_from_schedule.html`: legacy 일정 메일 폼에 자동첨부 체크박스 추가
+- `frontend/src/api.ts`: 메일 작성 create payload와 발송 payload에 자동첨부 목록/제외 목록 타입 추가
+- `frontend/src/App.tsx`, `frontend/src/styles.css`: React 메일 작성 패널에서 자동첨부 예정 문서 표시 및 제거 UI 추가
+- `reporting/tests.py`: 견적서/거래명세서 자동첨부, 자동첨부 제외, create payload 회귀 테스트 추가
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 상태 갱신
+
+### CRM 개선
+
+- 납품 일정 메일 발송 시 등록된 거래명세서 PDF가 있으면 자동 첨부됩니다.
+- 등록된 거래명세서 PDF가 없으면 발송 시 새 거래명세서 PDF를 생성해 첨부합니다.
+- 견적서 자동첨부도 동일하게 첨부 예정 목록에서 개별 제거할 수 있습니다.
+- 여러 견적서 구분 PDF가 등록된 경우 문서별로 제외할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` 메일 발송, 메일함, 일정 상세 route는 유지했습니다.
+- Gmail/IMAP 발송 방식과 업로드 첨부파일 처리는 그대로 유지했습니다.
+- 익명 일정 API 접근은 401 로그인 보호를 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 20 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_document_actions_match_activity_type reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_splits_quotation_documents_by_quote_group reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_includes_registered_generated_documents --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-C6-0bFJk.js / assets/index-BFbWQzPN.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK
+
+git commit -m "feat: auto attach schedule documents in mail" && git push origin main
+→ Commit 7033da7 pushed to origin/main
+
+Railway deployments
+→ sales-note-frontend 1eb864cd-e715-488b-b13d-2391ee1821a3 SUCCESS
+→ web f29edf24-7a3f-4d91-af7b-4641211bec7e SUCCESS
+
+Production smoke requests
+→ /mailbox/ 200 with assets/index-C6-0bFJk.js and assets/index-BFbWQzPN.css
+→ /schedules/882/ 200 with assets/index-C6-0bFJk.js and assets/index-BFbWQzPN.css
+→ /reporting/login/ 200
+→ anonymous /reporting/api/schedules/882/ 401 login_required JSON
+```
+
+### 알려진 제한
+
+- 실제 Gmail/IMAP 발송은 로그인된 운영 계정과 메일 연결이 필요하므로 사용자가 운영에서 직접 확인해야 합니다.
+- 거래명세서 템플릿이 없거나 PDF 변환이 실패하면 기존 문서 생성 오류가 메일 발송 오류로 표시됩니다.
+
+### 사용자 수동 검수
+
+1. 운영에서 납품 일정 상세를 열고 `메일 발송`을 누릅니다.
+2. 메일 작성 패널에 거래명세서 PDF 자동첨부 항목이 보이는지 확인합니다.
+3. 자동첨부 항목의 `X` 버튼을 눌러 제외한 뒤 발송하면 거래명세서가 빠지는지 확인합니다.
+4. 다시 납품 일정에서 메일을 열고 자동첨부를 제거하지 않은 상태로 발송해 거래명세서가 첨부되는지 확인합니다.
+5. 견적 일정에서도 견적서 자동첨부 항목이 보이고, 제거 후 발송하면 견적서가 빠지는지 확인합니다.
+
+### 권장 다음 작업
+
+- 수동 검수 완료 후, 다음 CRM 개선 작업으로 넘어갑니다.
+
+---
+
 ## 2026-05-12 — React Quote Import Group Selection
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
