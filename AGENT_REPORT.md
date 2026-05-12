@@ -2,7 +2,7 @@
 
 ## 2026-05-13 — React Personal Schedule Calendar APIs
 
-**상태**: 구현/로컬 검증 완료, 배포 진행 전
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -66,11 +66,31 @@ Local Playwright smoke
 ### 알려진 제한
 
 - 개인 일정 상세 화면 자체는 아직 Django legacy 화면을 사용합니다.
-- 운영 수동 검수는 배포 후 테스트 데이터로 진행해야 합니다.
+- 운영 수동 검수는 테스트 데이터로 진행해야 합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: `a4b30a4 feat: manage personal schedules in calendar`
+- Railway `web`: `391d16e5-dbd8-4d26-a05d-ec18f71ce972` SUCCESS
+- Railway `sales-note-frontend`: `d5230ae9-011f-45db-a5a6-b838e01af236` SUCCESS
+- 운영 smoke:
+  - `/schedules/calendar/` 200, `assets/index-sevkHjR9.js`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/calendar/` 401 login-required JSON
+  - anonymous `/reporting/api/personal-schedules/999999/` 401 login-required JSON
+
+### 운영 수동 검수 절차
+
+1. 운영에서 로그인 후 `/schedules/calendar/`로 이동합니다.
+2. 선택 날짜의 `개인 일정 등록`을 눌러 `CODEx 개인 일정 검수` 같은 테스트 개인 일정을 등록합니다.
+3. 등록 후 월간 일정/개인 일정 수가 1건 증가하고 선택일 카드에 `수정`/`삭제` 버튼이 보이는지 확인합니다.
+4. `수정`으로 제목 또는 내용을 바꾼 뒤 카드에 변경 내용이 반영되는지 확인합니다.
+5. `삭제`를 눌러 확인 모달을 승인하고, 카드와 월간 수가 되돌아가는지 확인합니다.
+6. 검수에 쓴 테스트 개인 일정이 남아 있지 않은지 확인합니다.
 
 ### 권장 다음 작업
 
-- 운영 배포 후 `/schedules/calendar/`에서 개인 일정 등록/수정/삭제를 수동 검수합니다.
+- 운영 수동 검수 결과 확인 후 React 개인 일정 상세 화면 전환 또는 일정 상세 fallback 축소 작업으로 넘어갑니다.
 
 ---
 

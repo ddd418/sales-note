@@ -34,12 +34,20 @@
 
 ### 현재 상태
 
-- 백엔드/React 구현 및 로컬 검증 완료.
+- 백엔드/React 구현, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
 - DB 모델 변경 없음.
+- Runtime commit: `a4b30a4 feat: manage personal schedules in calendar`
+- Railway `web`: `391d16e5-dbd8-4d26-a05d-ec18f71ce972` SUCCESS
+- Railway `sales-note-frontend`: `d5230ae9-011f-45db-a5a6-b838e01af236` SUCCESS
+- 운영 smoke OK:
+  - `/schedules/calendar/` 200 with `assets/index-sevkHjR9.js`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/calendar/` 401 login-required JSON
+  - anonymous `/reporting/api/personal-schedules/999999/` 401 login-required JSON
 - 로컬 브라우저 smoke 완료:
   - 테스트 계정 `codex_calendar_smoke`와 테스트 개인 일정으로 등록/수정/삭제 확인.
   - 로컬 테스트 계정, 회사, 개인 일정 데이터 삭제 완료.
-- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 확인한다.
+- 다음 행동: 사용자가 운영에서 테스트 데이터로 개인 일정 등록/수정/삭제를 수동 검수한다.
 
 ---
 
