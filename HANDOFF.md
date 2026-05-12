@@ -14,12 +14,12 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote PDF A4 auto-fit hotfix is implemented and locally verified. Commit, Railway backend deployment, production smoke, and user manual PDF output testing remain.
+Quote PDF A4 auto-fit hotfix is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual PDF output testing is pending.
 
 Runtime commit:
 
 ```text
-pending
+0c70596 fix: fit document pdf exports to a4
 ```
 
 Implemented:
@@ -51,7 +51,12 @@ Results:
 
 Deployment:
 
-- Pending commit/push/deployment.
+- GitHub push complete: runtime commit `0c70596` is on `main`; deployment report docs may create a newer web deployment because GitHub autodeploy is enabled.
+- Railway `web`: `1cfaeab1-26ef-428e-89b5-67a1a98dfd11` SUCCESS.
+- `sales-note-frontend` deployment not needed because frontend files did not change.
+- Production `/reporting/login/` returns 200.
+- Production `/documents/` returns 200 through the React frontend.
+- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` return `401 Unauthorized`.
 
 Manual production test:
 

@@ -2,7 +2,7 @@
 
 ## 2026-05-12 — Quote PDF A4 Auto Fit
 
-**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -54,9 +54,12 @@ git diff --check
 
 ### 배포 상태
 
-- Runtime commit: pending
-- Railway `web`: pending
-- Production smoke: pending
+- Runtime commit: `0c70596 fix: fit document pdf exports to a4`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `1cfaeab1-26ef-428e-89b5-67a1a98dfd11` SUCCESS
+- Production `/reporting/login/` returns 200.
+- Production `/documents/` returns 200 through the React frontend.
+- Anonymous frontend-proxied and direct backend `/reporting/api/documents/` return `401 Unauthorized`.
 - `sales-note-frontend` 배포 없음: 프론트 코드 변경 없음
 
 ### 수동 서버 테스트 절차
