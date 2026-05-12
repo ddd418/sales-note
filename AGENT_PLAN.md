@@ -1,6 +1,44 @@
 # AGENT_PLAN.md
 
-## Current task — 견적서 PDF A4 자동 맞춤
+## Current task — 일정 견적서 PDF 다중 등록 및 메일 자동 첨부
+
+**목표**: 견적 일정에서 견적서 PDF를 여러 개 등록/보관할 수 있게 하고, 해당 일정에서 메일을 보낼 때 등록된 견적서 PDF만 자동 첨부한다. 거래명세서/납품서나 일반 첨부파일은 자동 첨부 대상에서 제외한다.
+
+### 확인된 상태
+
+- 현재 일정 서류 생성은 `generate_document_pdf()`에서 파일을 즉시 다운로드만 하고, 생성된 PDF를 일정에 보관하지 않는다.
+- `DocumentGenerationLog`는 일정/서류종류/거래번호/출력형식 이력을 이미 저장하지만 실제 생성 파일은 저장하지 않는다.
+- `Schedule`은 하나의 일정에 여러 `DocumentGenerationLog`를 가질 수 있어, 이 로그에 파일 필드를 추가하면 한 일정에 여러 견적서 PDF를 등록할 수 있다.
+- 기존 Django 일정 상세에는 “이메일 발송” 경로가 있고, React 일정 상세에는 서류 다운로드 패널과 메일함이 분리되어 있다.
+- 메일 발송 공통 로직 `_handle_email_send()`는 수동 첨부파일만 처리하며, 일정 기반 자동 첨부는 없다.
+- DB migration이 필요하다.
+
+### 구현 계획
+
+- `DocumentGenerationLog`에 생성 파일, 원본 파일명, 파일 크기 메타를 추가한다.
+- 견적서 PDF 생성 성공 시 생성된 PDF bytes를 `DocumentGenerationLog.file`에 저장해 “등록된 견적서”로 남긴다.
+- 일정 상세 API의 `documents` payload에 해당 일정의 등록된 견적서 PDF 목록과 다운로드 링크를 추가한다.
+- 등록된 견적서 파일 다운로드 전용 인증/권한 보호 endpoint를 추가한다.
+- Django/React 일정 상세의 견적서 PDF 버튼 문구를 “PDF 등록/다운로드” 흐름으로 맞추고, React 일정 상세에서 등록된 견적서 목록을 보여준다.
+- React 일정 상세에서 “메일 발송” 진입을 제공하고, 메일 작성 payload에 `schedule_id`를 함께 보낼 수 있게 한다.
+- `mailbox_api_send`와 Django 일정 메일 발송에서 quote 일정이면 등록된 견적서 PDF만 자동 첨부한다.
+- quote 일정인데 등록된 견적서가 없으면 메일 발송 직전에 견적서 PDF를 한 번 생성/등록한 뒤 첨부한다. PDF 생성이 실패하거나 Excel fallback만 가능하면 메일 발송을 중단하고 오류를 반환한다.
+- 답장 메일에는 기존 동작을 유지하고 자동 견적서 첨부를 적용하지 않는다.
+
+### 검증 계획
+
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
+- `python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py`
+- `python manage.py check`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/`, `/mailbox/`, `/reporting/login/` smoke check
+
+---
+
+## Previous task — 견적서 PDF A4 자동 맞춤
 
 **목표**: 견적서 PDF 다운로드 시 엑셀 템플릿 인쇄 영역이 A4보다 크게 잡혀 PDF가 잘리는 문제를 막는다. PDF 변환 직전 생성된 XLSX의 워크시트 인쇄 설정을 A4, 1페이지 너비 맞춤, 축소 여백으로 보정해 LibreOffice/unoconv 변환 결과가 A4에 맞게 나오도록 한다.
 

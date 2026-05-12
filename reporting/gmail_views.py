@@ -15,7 +15,7 @@ from django.db import transaction
 from django.core.paginator import Paginator
 import json
 
-from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp
+from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp, DocumentGenerationLog
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
 
 
@@ -35,6 +35,118 @@ def _plain_email_body_to_html(value):
     escaped = escape(normalized, quote=False)
     html_body = escaped.replace('\n', '<br>\n')
     return f'<div style="font-family: Arial, sans-serif; line-height: 1.45; margin: 0;">{html_body}</div>'
+
+
+def _uploaded_email_attachments(request):
+    attachments = []
+    for uploaded_file in request.FILES.getlist('attachments'):
+        attachments.append({
+            'filename': uploaded_file.name,
+            'content': uploaded_file.read(),
+            'mimetype': uploaded_file.content_type or 'application/octet-stream',
+            'size': uploaded_file.size,
+            'source': 'uploaded',
+        })
+    return attachments
+
+
+def _quote_document_logs_for_schedule(schedule):
+    return DocumentGenerationLog.objects.filter(
+        schedule=schedule,
+        document_type='quotation',
+        output_format='pdf',
+        file__isnull=False,
+    ).exclude(file='').select_related('user').order_by('created_at', 'id')
+
+
+def _decode_response_filename(response, fallback='quotation.pdf'):
+    from urllib.parse import unquote
+    import re
+
+    encoded = response.get('X-Filename', '') if hasattr(response, 'get') else ''
+    if encoded:
+        try:
+            return unquote(encoded)
+        except Exception:
+            return encoded
+
+    disposition = response.get('Content-Disposition', '') if hasattr(response, 'get') else ''
+    encoded_match = re.search(r"filename\*=UTF-8''([^;]+)", disposition, flags=re.I)
+    if encoded_match:
+        try:
+            return unquote(encoded_match.group(1).strip())
+        except Exception:
+            return encoded_match.group(1).strip()
+    quoted_match = re.search(r'filename="?([^";]+)"?', disposition, flags=re.I)
+    return quoted_match.group(1).strip() if quoted_match else fallback
+
+
+def _json_error_from_document_response(response):
+    try:
+        payload = json.loads(response.content.decode('utf-8') or '{}')
+    except Exception:
+        payload = {}
+    return payload.get('error') or payload.get('message') or '견적서 PDF 생성에 실패했습니다.'
+
+
+def _attachment_from_document_log(log):
+    filename = log.filename or (log.file.name.rsplit('/', 1)[-1] if log.file else 'quotation.pdf')
+    with log.file.open('rb') as file_handle:
+        content = file_handle.read()
+    return {
+        'filename': filename,
+        'content': content,
+        'mimetype': 'application/pdf',
+        'size': log.file_size or len(content),
+        'source': 'quote_document',
+        'documentLogId': log.id,
+    }
+
+
+def _auto_quote_pdf_attachments(request, schedule):
+    if not schedule or schedule.activity_type != 'quote':
+        return []
+
+    logs = list(_quote_document_logs_for_schedule(schedule))
+    if not logs:
+        from .views import generate_document_pdf
+
+        response = generate_document_pdf(request, 'quotation', schedule.id, 'pdf')
+        content_type = (response.get('Content-Type', '') if hasattr(response, 'get') else '').split(';')[0].strip()
+        if content_type == 'application/json':
+            raise Exception(_json_error_from_document_response(response))
+        if getattr(response, 'status_code', 500) >= 400:
+            raise Exception(_json_error_from_document_response(response))
+        if content_type != 'application/pdf':
+            raise Exception('견적서 PDF를 생성하지 못했습니다. PDF 변환 설정을 확인해주세요.')
+
+        logs = list(_quote_document_logs_for_schedule(schedule))
+        if not logs:
+            filename = _decode_response_filename(response)
+            return [{
+                'filename': filename,
+                'content': bytes(response.content),
+                'mimetype': 'application/pdf',
+                'size': len(response.content),
+                'source': 'quote_document',
+                'documentLogId': None,
+            }]
+
+    return [_attachment_from_document_log(log) for log in logs]
+
+
+def _attachment_info(attachment):
+    info = {
+        'filename': attachment['filename'],
+        'size': attachment['size'],
+        'mimetype': attachment['mimetype'],
+    }
+    if attachment.get('source') == 'quote_document':
+        info['source'] = 'quote_document'
+        info['label'] = '자동 첨부 견적서'
+        if attachment.get('documentLogId'):
+            info['documentLogId'] = attachment['documentLogId']
+    return info
 
 
 def _sync_emails_by_days(user, days=1):
@@ -314,10 +426,11 @@ def send_email_from_schedule(request, schedule_id):
         'followup': schedule.followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
+        'quote_document_count': _quote_document_logs_for_schedule(schedule).count() if schedule.activity_type == 'quote' else 0,
     }
     
     if request.method == 'POST':
-        result = _handle_email_send(request, schedule=schedule)
+        result = _handle_email_send(request, schedule=schedule, auto_attach_quote_documents=True)
         # 검증 실패 시 (템플릿 반환)
         if isinstance(result, dict):
             # 디버그: 오류 정보 로깅
@@ -434,7 +547,7 @@ def reply_email(request, email_log_id):
     return render(request, 'reporting/gmail/reply_email.html', context)
 
 
-def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
+def _handle_email_send(request, schedule=None, followup=None, reply_to=None, auto_attach_quote_documents=False):
     """이메일 발송 공통 처리"""
     import logging
     logger = logging.getLogger(__name__)
@@ -506,6 +619,17 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             else:
                 full_body_html = signature_html
         
+        if reply_to:
+            if not followup:
+                followup = reply_to.followup
+            if not schedule:
+                schedule = reply_to.schedule
+
+        attachment_entries = _uploaded_email_attachments(request)
+        if auto_attach_quote_documents and schedule and schedule.activity_type == 'quote':
+            attachment_entries.extend(_auto_quote_pdf_attachments(request, schedule))
+        attachments_info = [_attachment_info(attachment) for attachment in attachment_entries]
+
         # Gmail 또는 IMAP/SMTP로 이메일 발송
         profile = request.user.userprofile
         
@@ -514,21 +638,14 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             gmail_service = GmailService(profile)
             
             # 첨부파일 처리
-            attachments = []
-            attachments_info = []  # 첨부파일 정보 저장용
-            files = request.FILES.getlist('attachments')
-            for uploaded_file in files:
-                attachments.append({
-                    'filename': uploaded_file.name,
-                    'content': uploaded_file.read(),
-                    'mimetype': uploaded_file.content_type
-                })
-                # 첨부파일 정보 저장
-                attachments_info.append({
-                    'filename': uploaded_file.name,
-                    'size': uploaded_file.size,
-                    'mimetype': uploaded_file.content_type
-                })
+            attachments = [
+                {
+                    'filename': attachment['filename'],
+                    'content': attachment['content'],
+                    'mimetype': attachment['mimetype'],
+                }
+                for attachment in attachment_entries
+            ]
             
             # 답장 정보
             in_reply_to = None
@@ -536,10 +653,6 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             if reply_to:
                 in_reply_to = reply_to.gmail_message_id
                 thread_id = reply_to.gmail_thread_id
-                if not followup:
-                    followup = reply_to.followup
-                if not schedule:
-                    schedule = reply_to.schedule
             
             # 이메일 발송
             message_info = gmail_service.send_email(
@@ -568,20 +681,14 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None):
             smtp_service = SMTPEmailService(profile)
             
             # 첨부파일 처리 (SMTP는 다른 형식)
-            attachments = []
-            attachments_info = []
-            files = request.FILES.getlist('attachments')
-            for uploaded_file in files:
-                attachments.append({
-                    'filename': uploaded_file.name,
-                    'content': uploaded_file.read(),
-                    'content_type': uploaded_file.content_type
-                })
-                attachments_info.append({
-                    'filename': uploaded_file.name,
-                    'size': uploaded_file.size,
-                    'mimetype': uploaded_file.content_type
-                })
+            attachments = [
+                {
+                    'filename': attachment['filename'],
+                    'content': attachment['content'],
+                    'content_type': attachment['mimetype'],
+                }
+                for attachment in attachment_entries
+            ]
             
             # SMTP로 이메일 발송
             success = smtp_service.send_email(
@@ -1081,16 +1188,36 @@ def mailbox_api_send(request):
         return JsonResponse({'success': False, 'error': '이메일 계정을 먼저 연결해주세요.'}, status=400)
 
     followup = None
+    schedule = None
+    schedule_id = request.POST.get('schedule_id') or request.POST.get('scheduleId')
+    if schedule_id:
+        try:
+            schedule = Schedule.objects.select_related('user', 'followup', 'followup__user').get(id=schedule_id)
+        except (Schedule.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': '선택한 일정을 찾을 수 없습니다.'}, status=404)
+
+        from .views import can_access_user_data
+        if not can_access_user_data(request.user, schedule.user):
+            return JsonResponse({'success': False, 'error': '일정 메일 발송 권한이 없습니다.'}, status=403)
+        followup = schedule.followup
+
     selected_followup_id = request.POST.get('selected_followup_id') or request.POST.get('followup_id')
-    if selected_followup_id:
+    if selected_followup_id and not followup:
         try:
             followup = FollowUp.objects.select_related('user', 'user__userprofile').get(id=selected_followup_id)
         except (FollowUp.DoesNotExist, ValueError):
             return JsonResponse({'success': False, 'error': '선택한 고객을 찾을 수 없습니다.'}, status=404)
         if not _followup_allowed_for_mail(request.user, followup):
             return JsonResponse({'success': False, 'error': '고객 메일 발송 권한이 없습니다.'}, status=403)
+    elif selected_followup_id and followup and str(followup.id) != str(selected_followup_id):
+        return JsonResponse({'success': False, 'error': '일정과 고객 정보가 일치하지 않습니다.'}, status=400)
 
-    result = _handle_email_send(request, followup=followup)
+    result = _handle_email_send(
+        request,
+        schedule=schedule,
+        followup=followup,
+        auto_attach_quote_documents=bool(schedule),
+    )
     if isinstance(result, dict):
         return JsonResponse({
             'success': False,

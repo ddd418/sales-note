@@ -345,6 +345,13 @@
                     <label for="attachments" class="form-label">첨부파일</label>
                     <input type="file" class="form-control" id="attachments" name="attachments" multiple>
                 </div>
+                {% if schedule.activity_type == 'quote' %}
+                <div class="alert alert-success">
+                    <i class="bi bi-file-earmark-pdf"></i>
+                    등록된 견적서 PDF {{ quote_document_count }}개가 자동 첨부됩니다.
+                    {% if quote_document_count == 0 %}등록된 견적서가 없으면 발송 시 새 견적서 PDF를 생성합니다.{% endif %}
+                </div>
+                {% endif %}
                 
                 <!-- 명함 선택 -->
                 <div class="mb-3">

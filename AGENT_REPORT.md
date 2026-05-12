@@ -1,8 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote PDF Registration And Schedule Mail Auto Attachment
+
+**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 대기
+
+### 요약
+
+견적 일정에서 견적서 PDF를 여러 개 등록할 수 있도록 서류 생성 로그에 생성 파일을 보관하게 했습니다. 견적서 PDF 생성 성공 시 해당 PDF가 일정의 등록된 견적서로 남고, 해당 일정에서 메일을 보낼 때 등록된 견적서 PDF만 자동 첨부됩니다. 등록된 견적서가 없는 quote 일정에서 메일을 보내면 발송 직전에 견적서 PDF를 생성/등록한 뒤 첨부합니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0096_documentgenerationlog_file_and_more.py`: 생성 서류 파일/파일명/파일 크기 필드 추가
+- `reporting/views.py`, `reporting/urls.py`: 견적서 PDF 저장, 등록된 서류 다운로드 endpoint, 일정 상세 문서 payload 확장
+- `reporting/gmail_views.py`: 일정 메일/React 메일 API에서 quote 일정 견적서 PDF 자동 첨부
+- `reporting/templates/reporting/gmail/compose_from_schedule.html`, `reporting/templates/reporting/schedule_detail.html`: Django 일정 메일/견적서 버튼 안내 보강
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: React 일정 상세 등록 견적서 목록, 메일 발송 진입, schedule_id 메일 payload 추가
+- `reporting/tests.py`: 자동 첨부, 자동 생성 fallback, 비견적 일정 제외 테스트 추가
+- `AGENT_PLAN.md`: 작업 계획 갱신
+
+### CRM 개선
+
+- 한 일정에 견적서 PDF를 여러 개 등록/보관할 수 있습니다.
+- React 일정 상세에서 등록된 견적서 목록을 확인하고 다운로드할 수 있습니다.
+- 일정에서 메일 작성으로 이동하면 schedule context가 메일 발송 API에 전달됩니다.
+- 자동 첨부 대상은 quote 일정의 견적서 PDF로 제한됩니다.
+
+### 기존 기능 보존
+
+- 기존 수동 첨부파일, Gmail/IMAP 발송, 답장 메일, 명함 서명, 메일 줄바꿈 정규화는 유지했습니다.
+- 거래명세서/납품서는 자동 첨부하지 않습니다.
+- 답장 메일에는 자동 견적서 첨부를 적용하지 않아 기존 답장 흐름을 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 20 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 28 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-COLHVyxC.js / assets/index-Bmtl8HKb.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected after migration creation
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- 자동 생성은 Excel 템플릿을 PDF로 변환할 수 있어야 동작합니다. PDF 변환 실패로 Excel fallback이 발생하면 메일 발송을 중단하고 오류를 표시합니다.
+- 등록된 견적서가 여러 개 있으면 해당 일정의 견적서 PDF가 모두 자동 첨부됩니다.
+
+### 배포 상태
+
+- 대기 중.
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 quote 일정 상세로 이동합니다.
+2. 견적서 `PDF 등록/다운로드`를 두 번 실행해 등록된 견적서가 여러 개 표시되는지 확인합니다.
+3. 같은 일정에서 `메일 발송`을 열고 수신자/본문을 입력합니다.
+4. 메일을 발송한 뒤 수신 메일에 견적서 PDF만 자동 첨부되었는지 확인합니다.
+5. delivery 일정에서 메일을 보내도 견적서 PDF가 자동 첨부되지 않는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote PDF A4 Auto Fit
 
-**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크/사용자 수동검수 완료
 
 ### 요약
 
@@ -71,7 +153,7 @@ git diff --check
 
 ### 사용자 수동검수 결과
 
-- 대기 중.
+- 완료: 사용자가 2026-05-12 KST에 운영 수동검수 완료를 확인했습니다.
 
 ---
 

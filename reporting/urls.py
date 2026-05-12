@@ -245,6 +245,7 @@ urlpatterns = [
     path('documents/<int:pk>/delete/', views.document_template_delete, name='document_template_delete'),
     path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
     path('documents/<int:pk>/toggle-default/', views.document_template_toggle_default, name='document_template_toggle_default'),
+    path('documents/generated/<int:log_id>/download/', views.generated_document_download, name='generated_document_download'),
     
     # 서류 템플릿 데이터 API (클라이언트 xlwings 처리용)
     path('documents/template-data/<str:document_type>/<int:schedule_id>/', views.get_document_template_data, name='get_document_template_data'),

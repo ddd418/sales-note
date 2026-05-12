@@ -4152,6 +4152,7 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
         'type': 'customer',
         'followupId': followup.id,
         'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'customerEmail': followup.email or '',
         'title': followup.customer_name or followup.manager or '고객 일정',
         'company': followup.company.name if followup.company else '',
         'department': followup.department.name if followup.department else '',
@@ -5673,6 +5674,52 @@ def _schedules_delivery_items_summary(schedule):
     return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
 
 
+def _document_generation_file_name(log):
+    if log.filename:
+        return log.filename
+    if log.file:
+        return os.path.basename(log.file.name)
+    return ''
+
+
+def _document_generation_file_size(log):
+    if log.file_size:
+        return log.file_size
+    if log.file:
+        try:
+            return log.file.size
+        except Exception:
+            return 0
+    return 0
+
+
+def _document_generation_file_payload(log):
+    filename = _document_generation_file_name(log)
+    return {
+        'id': log.id,
+        'filename': filename,
+        'size': _file_size_label(_document_generation_file_size(log)),
+        'fileSize': _document_generation_file_size(log),
+        'transactionNumber': log.transaction_number,
+        'documentType': log.document_type,
+        'documentTypeLabel': log.get_document_type_display(),
+        'outputFormat': log.output_format,
+        'outputFormatLabel': log.get_output_format_display(),
+        'createdAt': _datetime_or_none(log.created_at),
+        'createdBy': _user_display_name(log.user) if log.user else '',
+        'downloadHref': reverse('reporting:generated_document_download', args=[log.id]) if log.file else '',
+    }
+
+
+def _schedule_registered_quote_documents(schedule):
+    return DocumentGenerationLog.objects.filter(
+        schedule=schedule,
+        document_type='quotation',
+        output_format='pdf',
+        file__isnull=False,
+    ).exclude(file='').select_related('user').order_by('-created_at', '-id')
+
+
 def _schedules_document_actions(schedule, user):
     document_configs = {
         'quotation': {
@@ -5694,6 +5741,10 @@ def _schedules_document_actions(schedule, user):
     }
     document_types = activity_documents.get(schedule.activity_type, [])
     company = getattr(getattr(user, 'userprofile', None), 'company', None)
+    registered_quotations = [
+        _document_generation_file_payload(log)
+        for log in _schedule_registered_quote_documents(schedule)
+    ] if schedule.activity_type == 'quote' else []
 
     template_counts = {}
     if company and document_types:
@@ -5710,6 +5761,12 @@ def _schedules_document_actions(schedule, user):
         'canGenerate': bool(document_types),
         'templateManagerHref': '/documents/',
         'djangoTemplateManagerHref': reverse('reporting:document_template_list'),
+        'registeredQuotations': registered_quotations,
+        'registeredQuotationCount': len(registered_quotations),
+        'autoAttachLabel': (
+            f'메일 발송 시 견적서 PDF {len(registered_quotations)}개가 자동 첨부됩니다.'
+            if registered_quotations else '등록된 견적서 PDF가 없으면 메일 발송 시 새 견적서 PDF를 생성해 자동 첨부합니다.'
+        ) if schedule.activity_type == 'quote' else '',
         'items': [
             {
                 'type': document_type,
@@ -5720,7 +5777,7 @@ def _schedules_document_actions(schedule, user):
                 'formats': [
                     {
                         'format': 'pdf',
-                        'label': 'PDF',
+                        'label': 'PDF 등록/다운로드' if document_type == 'quotation' else 'PDF',
                         'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'pdf']),
                     },
                     {
@@ -5853,6 +5910,8 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
+            'sendMail': f'/mailbox/?compose=1&schedule_id={schedule.id}&followup_id={followup.id}',
+            'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
         'documents': _schedules_document_actions(schedule, request.user),
@@ -17957,6 +18016,7 @@ def _document_generation_log_queryset_for_user(user):
 def _document_generation_log_payload(log):
     schedule = log.schedule
     followup = schedule.followup if schedule else None
+    file_payload = _document_generation_file_payload(log) if log.file else None
     return {
         'id': log.id,
         'documentType': log.document_type,
@@ -17964,6 +18024,9 @@ def _document_generation_log_payload(log):
         'transactionNumber': log.transaction_number,
         'outputFormat': log.output_format,
         'outputFormatLabel': log.get_output_format_display(),
+        'filename': file_payload['filename'] if file_payload else '',
+        'fileSize': file_payload['fileSize'] if file_payload else 0,
+        'downloadHref': file_payload['downloadHref'] if file_payload else '',
         'createdAt': _datetime_or_none(log.created_at),
         'createdBy': _user_display_name(log.user) if log.user else '',
         'company': {
@@ -18569,6 +18632,37 @@ def document_template_download(request, pk):
         logger.error(f"파일 다운로드 실패: {e}")
         messages.error(request, '파일 다운로드에 실패했습니다.')
         return django_redirect('reporting:document_template_list')
+
+
+@login_required
+def generated_document_download(request, log_id):
+    """생성/등록된 서류 파일 다운로드."""
+    from urllib.parse import quote
+
+    log = get_object_or_404(
+        DocumentGenerationLog.objects.select_related('company', 'schedule', 'schedule__user'),
+        pk=log_id,
+    )
+
+    if log.schedule:
+        if not can_access_user_data(request.user, log.schedule.user):
+            return HttpResponseForbidden('접근 권한이 없습니다.')
+    elif not request.user.is_superuser:
+        user_profile = get_user_profile(request.user)
+        if not user_profile.company or log.company_id != user_profile.company_id:
+            return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    if not log.file:
+        raise Http404('등록된 파일이 없습니다.')
+
+    filename = _document_generation_file_name(log) or os.path.basename(log.file.name)
+    content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    response = FileResponse(log.file.open('rb'), content_type=content_type)
+    encoded_filename = quote(filename)
+    response['Content-Disposition'] = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}'
+    response['X-Filename'] = encoded_filename
+    response['Access-Control-Expose-Headers'] = 'X-Filename'
+    return response
 
 
 @login_required
@@ -19520,16 +19614,23 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 encoded_filename = quote(file_name)
                 
-                # 서류 생성 로그 저장
+                # 서류 생성 로그 저장. 견적서 PDF는 일정에 등록된 견적서로 재사용한다.
                 from reporting.models import DocumentGenerationLog
-                DocumentGenerationLog.objects.create(
+                from django.core.files.base import ContentFile
+
+                generation_log = DocumentGenerationLog(
                     company=company,
                     document_type=document_type,
                     schedule=schedule,
                     user=request.user,
                     transaction_number=transaction_number,
-                    output_format=output_format
+                    output_format=output_format,
+                    filename=file_name[:255],
+                    file_size=len(output_data),
                 )
+                if document_type == 'quotation' and content_type == 'application/pdf':
+                    generation_log.file.save(f'{transaction_number}_{document_type}.pdf', ContentFile(output_data), save=False)
+                generation_log.save()
                 
                 # 응답
                 response = HttpResponse(

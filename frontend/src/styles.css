@@ -2123,6 +2123,47 @@ h2 {
   min-height: 30px;
 }
 
+.schedule-quote-document-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.schedule-quote-document-list h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.schedule-quote-document-list a {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 4px 7px;
+  align-items: center;
+  padding: 7px 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.schedule-quote-document-list a + a {
+  border-top: 1px solid var(--line);
+}
+
+.schedule-quote-document-list span,
+.schedule-quote-document-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.schedule-quote-document-list small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .schedule-document-preview {
   display: grid;
   gap: 10px;

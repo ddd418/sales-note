@@ -14,7 +14,69 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote PDF A4 auto-fit hotfix is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual PDF output testing is pending.
+Quote PDF registration and schedule mail auto-attachment is implemented and locally verified. Commit, push, and Railway deployment are pending.
+
+Runtime commit:
+
+```text
+pending
+```
+
+Implemented:
+
+- `DocumentGenerationLog` now stores generated file, filename, and file size metadata.
+- Quote PDF generation saves successful PDF output as a registered quotation document for that schedule.
+- One schedule can have multiple registered quotation PDFs.
+- React schedule detail exposes registered quotation PDFs and a schedule-aware mail send link.
+- React mailbox send payload can include `schedule_id`.
+- Django schedule mail send and React mailbox schedule send auto-attach only registered quote PDFs for quote schedules.
+- If a quote schedule has no registered quote PDF, send generates/registers one PDF before sending.
+- Delivery schedules and replies do not auto-attach quotation PDFs.
+- New DB migration: `reporting/migrations/0096_documentgenerationlog_file_and_more.py`.
+
+Validation:
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- Python compile OK.
+- 20 React mailbox/document tests OK.
+- 28 schedules API tests OK.
+- React build OK: `assets/index-COLHVyxC.js` / `assets/index-Bmtl8HKb.css`.
+- Node syntax check OK.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- No migration changes after migration creation.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment:
+
+- Pending.
+
+Manual production test:
+
+1. Open a quote schedule in production.
+2. Click `PDF 등록/다운로드` at least twice and confirm multiple registered quotation PDFs appear.
+3. Click schedule mail send, enter recipient/body, and send.
+4. Confirm the received email contains only the quotation PDF attachments for that schedule.
+5. Send mail from a delivery schedule and confirm quotation PDFs are not auto-attached.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
+Quote PDF A4 auto-fit hotfix is implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual PDF output testing is complete.
 
 Runtime commit:
 
@@ -67,7 +129,7 @@ Manual production test:
 
 Manual test result:
 
-- Pending user confirmation.
+- Complete: user confirmed production manual test completion on 2026-05-12 KST.
 
 ## Previous Task
 

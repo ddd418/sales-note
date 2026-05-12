@@ -263,16 +263,18 @@ type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'qu
 
 type MailComposeFormState = {
   attachments: File[];
+  autoQuoteAttach: boolean;
   bodyText: string;
   businessCardId: string;
   ccEmails: string;
   bccEmails: string;
   followupId: string;
+  scheduleId: string;
   subject: string;
   toEmail: string;
 };
 
-type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments'>;
+type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoQuoteAttach'>;
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -504,14 +506,27 @@ const discountRateFromUnit = (base: number, discountUnit: number) => (
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   attachments: [],
+  autoQuoteAttach: false,
   bodyText: '',
   businessCardId: '',
   ccEmails: '',
   bccEmails: '',
   followupId: '',
+  scheduleId: '',
   subject: '',
   toEmail: '',
 });
+
+const makeInitialMailComposeForm = (): MailComposeFormState => {
+  const form = makeEmptyMailComposeForm();
+  const params = new URLSearchParams(window.location.search);
+  form.followupId = params.get('followup_id') || params.get('followupId') || '';
+  form.scheduleId = params.get('schedule_id') || params.get('scheduleId') || '';
+  form.autoQuoteAttach = params.get('quote') === '1';
+  form.toEmail = params.get('to') || params.get('to_email') || '';
+  form.subject = params.get('subject') || '';
+  return form;
+};
 
 const makeEmptyDocumentTemplateForm = (): DocumentTemplateFormState => ({
   companyId: '',
@@ -4574,6 +4589,26 @@ function ScheduleDocumentsPanel({
         })}
       </div>
 
+      {documents.autoAttachLabel ? (
+        <div className="dashboard-api-alert compact success">
+          <FileText size={16} />
+          <span>{documents.autoAttachLabel}</span>
+        </div>
+      ) : null}
+
+      {documents.registeredQuotations.length > 0 ? (
+        <div className="schedule-quote-document-list">
+          <h4>등록된 견적서</h4>
+          {documents.registeredQuotations.map((document) => (
+            <a href={document.downloadHref} key={document.id}>
+              <FileText size={14} />
+              <span>{document.filename || document.transactionNumber}</span>
+              <small>{[document.size, document.createdAt ? formatDateTimeLabel(document.createdAt) : ''].filter(Boolean).join(' · ')}</small>
+            </a>
+          ))}
+        </div>
+      ) : null}
+
       {previewError ? (
         <div className="dashboard-api-alert compact">
           <AlertTriangle size={16} />
@@ -5255,6 +5290,9 @@ function ScheduleDetailPage({
   const deliveryItems = data.deliveryItems;
   const isQuoteSchedule = schedule.activityType === 'quote';
   const itemPanelLabel = isQuoteSchedule ? '견적 품목' : '납품 품목';
+  const scheduleMailSubject = isQuoteSchedule
+    ? `${schedule.customer || '고객'} 견적서 전달드립니다`
+    : `${schedule.customer || '고객'} 일정 관련 메일드립니다`;
   const prepaymentUsages = schedule.prepaymentUsages ?? [];
   const deliveryTotalAmount = deliveryItems.reduce((total, item) => total + (item.totalPrice || 0), 0);
   const prepaymentBaseAmount = deliveryTotalAmount > 0 ? deliveryTotalAmount : schedule.expectedRevenue;
@@ -5589,6 +5627,11 @@ function ScheduleDetailPage({
           <div className="customers-side-actions note-detail-actions">
             {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
             {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
+            {data.links.sendMail ? (
+              <a href={`${data.links.sendMail}${isQuoteSchedule ? '&quote=1' : ''}${schedule.customerEmail ? `&to=${encodeURIComponent(schedule.customerEmail)}` : ''}&subject=${encodeURIComponent(scheduleMailSubject)}`}>
+                메일 발송
+              </a>
+            ) : data.links.djangoSendMail ? <a href={data.links.djangoSendMail}>메일 발송</a> : null}
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
@@ -7639,6 +7682,12 @@ function MailComposePanel({
                 </button>
               </div>
             ))}
+          </div>
+        ) : null}
+        {form.autoQuoteAttach ? (
+          <div className="dashboard-api-alert compact success">
+            <FileText size={16} />
+            <span>이 일정의 견적서 PDF가 자동 첨부됩니다.</span>
           </div>
         ) : null}
         {create.businessCards.length > 0 ? (
@@ -10325,7 +10374,7 @@ export function App() {
   const [mailComposeOpen, setMailComposeOpen] = useState(
     currentView === 'mail' && !mailboxThreadId && new URLSearchParams(window.location.search).get('compose') === '1',
   );
-  const [mailComposeForm, setMailComposeForm] = useState<MailComposeFormState>(() => makeEmptyMailComposeForm());
+  const [mailComposeForm, setMailComposeForm] = useState<MailComposeFormState>(() => makeInitialMailComposeForm());
   const [mailComposing, setMailComposing] = useState(false);
   const [mailComposeError, setMailComposeError] = useState('');
   const [mailComposeMessage, setMailComposeMessage] = useState('');
@@ -10810,6 +10859,24 @@ export function App() {
       alive = false;
     };
   }, [currentView, mailboxBox, mailboxPage, mailboxQuery, mailboxThreadId]);
+
+  useEffect(() => {
+    if (currentView !== 'mail' || !mailboxData || !mailComposeForm.followupId || mailComposeForm.toEmail) {
+      return;
+    }
+    const customer = mailboxData.create.customers.find((item) => String(item.id) === mailComposeForm.followupId);
+    if (!customer?.email) {
+      return;
+    }
+    setMailComposeForm((previous) => (
+      previous.toEmail
+        ? previous
+        : {
+          ...previous,
+          toEmail: customer.email,
+        }
+    ));
+  }, [currentView, mailboxData, mailComposeForm.followupId, mailComposeForm.toEmail]);
 
   useEffect(() => {
     if (currentView !== 'mail' || !mailboxThreadId) {
@@ -11459,7 +11526,9 @@ export function App() {
     const customer = mailboxData?.create.customers.find((item) => String(item.id) === customerId);
     setMailComposeForm((previous) => ({
       ...previous,
+      autoQuoteAttach: previous.followupId === customerId ? previous.autoQuoteAttach : false,
       followupId: customerId,
+      scheduleId: previous.followupId === customerId ? previous.scheduleId : '',
       toEmail: customer?.email || previous.toEmail,
     }));
     setMailComposeError('');
@@ -11471,6 +11540,7 @@ export function App() {
     subject: form.subject.trim(),
     bodyText: form.bodyText.trim(),
     followupId: form.followupId ? Number(form.followupId) : undefined,
+    scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
     attachments: form.attachments,
   });

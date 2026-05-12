@@ -284,6 +284,7 @@ export type MailboxSendPayload = {
   subject: string;
   bodyText: string;
   followupId?: number;
+  scheduleId?: number;
   businessCardId?: number;
   attachments?: File[];
 };
@@ -972,6 +973,7 @@ export type ScheduleItem = {
   type: 'customer' | 'personal';
   followupId: number | null;
   customer: string;
+  customerEmail?: string;
   title: string;
   company: string;
   department: string;
@@ -1435,10 +1437,28 @@ export type ScheduleDocumentAction = {
   formats: ScheduleDocumentFormatAction[];
 };
 
+export type ScheduleGeneratedDocument = {
+  id: number;
+  filename: string;
+  size: string;
+  fileSize: number;
+  transactionNumber: string;
+  documentType: string;
+  documentTypeLabel: string;
+  outputFormat: string;
+  outputFormatLabel: string;
+  createdAt: string | null;
+  createdBy: string;
+  downloadHref: string;
+};
+
 export type ScheduleDocumentsData = {
   canGenerate: boolean;
   templateManagerHref: string;
   djangoTemplateManagerHref?: string;
+  registeredQuotations: ScheduleGeneratedDocument[];
+  registeredQuotationCount: number;
+  autoAttachLabel: string;
   items: ScheduleDocumentAction[];
 };
 
@@ -1527,6 +1547,9 @@ export type DocumentGenerationItem = {
   transactionNumber: string;
   outputFormat: 'pdf' | 'xlsx' | string;
   outputFormatLabel: string;
+  filename?: string;
+  fileSize?: number;
+  downloadHref?: string;
   createdAt: string | null;
   createdBy: string;
   company: DocumentTemplateCompanyOption;
@@ -1811,6 +1834,8 @@ export type ScheduleDetailData = {
     uploadFiles: string;
     updateDeliveryItems: string;
     prepayments: string;
+    sendMail: string;
+    djangoSendMail: string;
   };
   edit: {
     canEdit: boolean;
@@ -2719,6 +2744,8 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     uploadFiles: '',
     updateDeliveryItems: '',
     prepayments: '',
+    sendMail: '',
+    djangoSendMail: '',
   },
   edit: {
     canEdit: false,
@@ -2735,6 +2762,9 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     canGenerate: false,
     templateManagerHref: '/documents/',
     djangoTemplateManagerHref: '/reporting/documents/',
+    registeredQuotations: [],
+    registeredQuotationCount: 0,
+    autoAttachLabel: '',
     items: [],
   },
 };
@@ -3327,6 +3357,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
   if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
+  if (payload.scheduleId) body.set('schedule_id', String(payload.scheduleId));
   if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
   payload.attachments?.forEach((file) => body.append('attachments', file));
   return body;
@@ -4716,6 +4747,9 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         ...emptyScheduleDetailData.documents,
         ...(payload.documents ?? {}),
         items: payload.documents?.items ?? emptyScheduleDetailData.documents.items,
+        registeredQuotations: payload.documents?.registeredQuotations ?? emptyScheduleDetailData.documents.registeredQuotations,
+        registeredQuotationCount: payload.documents?.registeredQuotationCount ?? emptyScheduleDetailData.documents.registeredQuotationCount,
+        autoAttachLabel: payload.documents?.autoAttachLabel ?? emptyScheduleDetailData.documents.autoAttachLabel,
       },
     };
   } catch (error) {

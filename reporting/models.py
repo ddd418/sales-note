@@ -1814,6 +1814,15 @@ class DocumentGenerationLog(models.Model):
         choices=[('pdf', 'PDF'), ('xlsx', 'Excel')],
         verbose_name="출력 형식"
     )
+    file = models.FileField(
+        upload_to='generated_documents/%Y/%m/',
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="생성 파일"
+    )
+    filename = models.CharField(max_length=255, blank=True, verbose_name="파일명")
+    file_size = models.PositiveIntegerField(default=0, verbose_name="파일 크기 (bytes)")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일", db_index=True)
     
     def __str__(self):
