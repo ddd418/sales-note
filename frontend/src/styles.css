@@ -1068,6 +1068,159 @@ h2 {
   max-width: 980px;
 }
 
+.products-page {
+  display: grid;
+  gap: 16px;
+}
+
+.products-toolbar {
+  grid-template-columns: minmax(260px, 1fr) 150px auto auto auto;
+}
+
+.products-toolbar .route-secondary-action,
+.products-toolbar .route-primary-action {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.product-editor-panel {
+  max-width: 1120px;
+}
+
+.product-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.product-active-row {
+  align-content: center;
+  min-height: 42px;
+}
+
+.products-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+
+.products-main-panel,
+.products-side {
+  min-width: 0;
+}
+
+.products-side {
+  display: grid;
+  gap: 14px;
+}
+
+.products-table {
+  min-width: 1180px;
+}
+
+.products-table td {
+  vertical-align: top;
+}
+
+.products-table td:first-child,
+.products-table td:nth-child(2),
+.products-table td:nth-child(3) {
+  overflow-wrap: anywhere;
+}
+
+.products-table td:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.product-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.product-sort-button.active {
+  color: var(--primary-strong);
+}
+
+.product-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-status.active {
+  background: var(--success-bg);
+  color: #166534;
+}
+
+.product-status.inactive {
+  background: var(--panel-soft);
+  color: #475569;
+}
+
+.product-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.products-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.products-pagination span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.product-bulk-panel textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px;
+}
+
+.product-bulk-summary {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.product-bulk-summary span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.product-bulk-summary small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .prepayment-form-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -5291,6 +5444,9 @@ tbody tr:hover {
   .prepayment-form-grid,
   .prepayment-detail-layout,
   .prepayment-customer-layout,
+  .products-layout,
+  .products-toolbar,
+  .product-form-grid,
   .ai-layout,
   .ai-workspace-layout,
   .ai-followup-grid,

@@ -14,7 +14,61 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React mail rich editor link text hotfix is implemented, frontend-build verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+Product management React migration is implemented and locally verified. Commit/push and Railway deployment are next.
+
+Current implementation:
+
+- React `/products/` screen added to the CRM sidebar.
+- Product list supports search, active/inactive filter, sorting, pagination, Django fallback link, and XLSX export.
+- Product create/edit supports product code, description, specification, unit, standard price, and active status.
+- Ecount/Excel paste upsert supports existing-product updates by product code and new product creation.
+- Paste-based bulk delete deletes unused products and blocks products already used in quote/delivery data.
+- Product promotion settings are removed from React, Django product form/list, Django admin, and schedule product search display.
+- `Product.get_current_price()` and product APIs now return standard price only.
+- No database model changes or migrations.
+
+Validation:
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\tests.py
+python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=2
+python manage.py test reporting.tests.ProductSpecificationSaveTests reporting.tests.ProductManagementReactApiTests reporting.tests.SchedulesSummaryApiTests.test_product_api_list_returns_accessible_product_master_data --verbosity=1
+python manage.py check
+python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+```
+
+Results:
+
+- Product React/API regression tests OK: 10 tests.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- Migration dry-run OK: no changes detected.
+- React build OK: `assets/index-Cvm7UZLA.js` / `assets/index-8S1Oy6zw.css`.
+- Node syntax check OK.
+- Local Playwright smoke OK with mocked product API data: `/products/` renders nav, metrics, product table, paste panels, and create form.
+
+Deployment:
+
+- Pending commit/push and Railway `web`/`sales-note-frontend` deployment.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/products/`.
+2. Confirm product list search, active/inactive filter, sorting, and pagination work.
+3. Create and edit a test product, including specification, unit, and standard price.
+4. Paste Ecount/Excel rows with one existing product code and one new product code, then confirm existing data updates and new data is created.
+5. Download the XLSX export.
+6. Paste a newly created unused product code into bulk delete and confirm it deletes.
+7. Open `/reporting/products/` and confirm the legacy screen still works with promotion UI removed.
+
+Manual test result:
+
+- Pending deployment and user confirmation.
+
+## Previous Task
+
+React mail rich editor link text hotfix is implemented, frontend-build verified, pushed, deployed to production, smoke-tested, and user manual production testing is complete.
 
 Runtime commit:
 
@@ -22,54 +76,15 @@ Runtime commit:
 9fc5522 fix: insert mail links with custom text
 ```
 
-Implemented:
-
-- React `/mailbox/` rich editor link button now asks for display text separately from URL.
-- If text is selected in the editor, that selected text becomes the default display text.
-- After URL input, the saved editor selection is restored and replaced with `<a href="...">display text</a>`.
-- If no text is selected, the user can still insert a custom display text link without exposing the raw URL in the body.
-- Existing rich editor formatting, inline images, URL normalization, and sanitize flow are preserved.
-
-Validation:
-
-```text
-cd frontend; npm run build
-git diff --check
-git commit -m "fix: insert mail links with custom text" && git push origin main
-railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy mail link text hotfix 9fc5522" --ci
-```
-
-Results:
-
-- React build OK: `assets/index-D1nHin0S.js` / `assets/index-DdQNAE3O.css`.
-- `git diff --check` OK with LF→CRLF warnings only.
-- Commit `9fc5522` pushed to `origin/main`.
-- Railway `sales-note-frontend` deployment `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS.
-- Railway `web` automatic deployment `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS.
-- Production deploy logs: web migration check OK / gunicorn startup OK; frontend server startup OK.
-- Production smoke OK: backend `/reporting/login/` 200, frontend `/mailbox/` 200.
-
 Deployment:
 
-- GitHub push complete: runtime commit `9fc5522` is on `main`.
 - Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS.
-- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (automatic deploy).
-- Product management React migration WIP remains stashed:
-  - `stash@{0}: On main: wip-product-management-react-migration-tracked`
-  - `stash@{1}: On main: wip-product-management-react-migration`
-
-Manual production test:
-
-1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
-2. Compose or reply to a test mail.
-3. Type text such as `홈페이지`, select that text, and click the link button.
-4. Confirm the display-text prompt defaults to the selected text.
-5. Enter a URL and confirm the selected text becomes a link instead of inserting the raw URL.
-6. Repeat with no selected text and confirm custom display text + URL insertion works.
+- Railway `web`: `36758e7b-1f37-4d91-a3a1-2585d5a5eb33` SUCCESS (docs commit automatic deploy).
+- Production smoke OK: backend `/reporting/login/` 200, frontend `/mailbox/` 200.
 
 Manual test result:
 
-- Pending user confirmation.
+- Complete: user confirmed production manual test completion on 2026-05-12 KST.
 
 ## Previous Task
 
@@ -86,12 +101,9 @@ Deployment:
 - Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS, later superseded by docs/runtime automatic deployments.
 - Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS, later superseded by `e5f407b8-d513-4dcc-82ca-736e9964cf7f`.
 
-Queued after this manual test is confirmed:
+Next queued after product management is deployed and manually verified:
 
-- Product management Django to React migration.
-- Ecount import/update flow that updates existing products when overlapping product prices/specifications changed.
-- Full product Excel download and paste-based bulk delete.
-- Remove product promotion settings.
+- Continue queued CRM tasks only after the user confirms product management production testing.
 
 ## Previous Task
 

@@ -1,8 +1,91 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — React Product Management Migration
+
+**상태**: 구현/로컬 검증 완료, 커밋·배포 대기
+
+### 요약
+
+제품관리의 주요 업무를 React `/products/` 화면으로 옮겼습니다. 제품 목록 검색/상태 필터/정렬/페이지네이션, 단일 제품 등록·수정, Ecount/Excel 붙여넣기 기반 신규·기존 제품 upsert, 품번 붙여넣기 일괄 삭제, 전체 제품 XLSX 다운로드를 제공합니다. 제품관리의 프로모션 설정은 제거하고, 기존 프로모션 값이 남아 있어도 기준단가만 현재가로 사용하게 했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/styles.css`: React 제품관리 화면/API client/UI 추가
+- `reporting/views.py`, `reporting/urls.py`: 제품관리 JSON API, upsert/delete/export endpoint 추가, 기존 Django 제품 등록/수정의 프로모션 비활성화
+- `reporting/models.py`, `reporting/admin.py`: 현재가 계산과 admin에서 프로모션 설정 제거
+- `reporting/templates/reporting/product_form.html`, `reporting/templates/reporting/product_list.html`, `reporting/templates/reporting/schedule_form.html`: 레거시 Django 제품 화면/일정 제품 검색에서 프로모션 UI 제거
+- `reporting/tests.py`: 제품관리 React API, 기준단가 현재가, 일괄 삭제, XLSX 다운로드 회귀 테스트 추가
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`: 작업 상태 갱신
+
+### CRM 개선
+
+- Ecount에서 가져온 제품 데이터가 기존 품번과 겹치면 규격, 단위, 기준단가, 상태 변경분을 기존 제품에 반영합니다.
+- 설명이 없는 4열 Ecount 행은 기존 제품 설명을 빈 값으로 덮어쓰지 않습니다.
+- 삭제는 붙여넣은 품번 기준으로 처리하되, 견적/납품에 이미 사용된 제품은 삭제하지 않고 차단 결과로 반환합니다.
+- React 사이드바에 `제품` 메뉴가 추가되어 제품 기준데이터 관리를 프론트 CRM 흐름에서 시작할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/products/` Django 화면과 기존 일정 품목 선택 API `/reporting/api/products/`는 유지했습니다.
+- DB 모델 변경과 migration은 없습니다. 기존 프로모션 컬럼은 호환성을 위해 남겼지만 제품관리 UI와 가격 계산에서는 사용하지 않습니다.
+- 기존 제품 규격/단위 저장 회귀 동작은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.ProductSpecificationSaveTests reporting.tests.ProductManagementReactApiTests reporting.tests.SchedulesSummaryApiTests.test_product_api_list_returns_accessible_product_master_data --verbosity=1
+→ Ran 10 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-Cvm7UZLA.js / assets/index-8S1Oy6zw.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+local frontend smoke with Playwright CLI
+→ `/products/` renders product nav, metrics, table, paste panels, and product create form with mocked product API data.
+```
+
+### 알려진 제한
+
+- 운영 로그인 세션이 필요한 실제 `/products/` 등록/수정 클릭 검증은 배포 후 수동 검수로 확인해야 합니다.
+- DB 컬럼 자체의 프로모션 필드는 제거하지 않았습니다. 기존 데이터 호환과 migration 회피를 위해 남겨두고 UI/API에서 사용하지 않게 했습니다.
+
+### 배포 상태
+
+- 커밋/푸시 및 Railway 배포 대기.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/products/`를 엽니다.
+2. 제품 목록이 보이고 검색, 상태 필터, 정렬, 페이지 이동이 동작하는지 확인합니다.
+3. `제품 등록`으로 테스트 제품을 만들고, 다시 수정해서 규격/단위/기준단가가 반영되는지 확인합니다.
+4. Ecount/Excel 붙여넣기 영역에 기존 품번과 신규 품번을 섞어 넣고 `등록/갱신`을 실행해 기존 제품은 수정되고 신규 제품은 등록되는지 확인합니다.
+5. `엑셀` 버튼으로 전체 제품 XLSX가 다운로드되는지 확인합니다.
+6. 품번 일괄 삭제에 방금 만든 미사용 제품 품번을 붙여넣어 삭제되는지 확인하고, 사용 중인 제품은 차단되는지 확인합니다.
+7. `/reporting/products/`에서도 프로모션 설정/현재가 UI가 사라졌고 기존 제품 목록이 계속 열리는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Mail Rich Editor Link Text Hotfix
 
-**상태**: 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+**상태**: 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 수동검수 완료
 
 ### 요약
 
@@ -42,7 +125,7 @@ railway deployment list --service sales-note-frontend --environment production -
 → e5f407b8-d513-4dcc-82ca-736e9964cf7f SUCCESS
 
 railway deployment list --service web --environment production --limit 3 --json
-→ 2ce587ca-22f6-4462-92fb-9aaa6a970d1a SUCCESS (GitHub automatic deploy)
+→ 36758e7b-1f37-4d91-a3a1-2585d5a5eb33 SUCCESS (docs commit automatic deploy)
 
 Production smoke requests
 → /reporting/login/ 200, /mailbox/ 200
@@ -53,7 +136,7 @@ Production smoke requests
 - Runtime commit: `9fc5522 fix: insert mail links with custom text`
 - GitHub push: `main` 반영 완료
 - Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS
-- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (자동 배포)
+- Railway `web`: `36758e7b-1f37-4d91-a3a1-2585d5a5eb33` SUCCESS (문서 커밋 자동 배포)
 - Deploy logs: web migration check OK / gunicorn startup OK, frontend server startup OK
 
 ### 수동 서버 테스트 절차
@@ -66,7 +149,7 @@ Production smoke requests
 
 ### 사용자 수동검수 결과
 
-- 대기 중.
+- 완료: 사용자가 2026-05-12 KST에 운영 수동검수를 완료했다고 확인했습니다.
 
 ---
 

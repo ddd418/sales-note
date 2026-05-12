@@ -81,6 +81,11 @@ import {
   PrepaymentFormPayload,
   PrepaymentsData,
   PrepaymentOption,
+  ProductBulkDeleteResult,
+  ProductBulkUpsertResult,
+  ProductManagementData,
+  ProductManagementItem,
+  ProductMutationPayload,
   ProductOption,
   ScheduleCalendarData,
   SchedulesData,
@@ -107,6 +112,8 @@ import {
   WeeklyReportSchedulesData,
   NoteCreatePayload,
   addNoteReply,
+  bulkDeleteProducts,
+  bulkUpsertProducts,
   cancelPrepayment as cancelCustomerPrepayment,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
@@ -138,6 +145,7 @@ import {
   loadPrepaymentDetailData,
   loadPrepayments,
   loadPrepaymentsData,
+  loadProductManagementData,
   loadProducts,
   loadScheduleCalendarData,
   loadScheduleDocumentPreview,
@@ -168,6 +176,7 @@ import {
   uploadScheduleFiles,
   verifyAiPainpoint,
   replyMailboxEmail,
+  saveProduct,
   saveWeeklyReport,
   saveWeeklyReportManagerComment,
   toggleDocumentTemplateDefault,
@@ -184,6 +193,7 @@ const navItems = [
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
+  { id: 'products', label: '제품', icon: Archive, href: '/products/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
@@ -191,7 +201,7 @@ const navItems = [
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'documents' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -297,6 +307,18 @@ type DocumentTemplateFormState = {
   isDefault: boolean;
   name: string;
 };
+
+type ProductFormState = {
+  description: string;
+  isActive: boolean;
+  productCode: string;
+  specification: string;
+  standardPrice: string;
+  unit: string;
+};
+
+type ProductSortField = 'code' | 'description' | 'specification' | 'unit' | 'price' | 'status' | 'quoteCount' | 'deliveryCount' | 'updatedAt';
+type ProductSortOrder = 'asc' | 'desc';
 
 type CustomerCreateFormState = {
   address: string;
@@ -602,6 +624,113 @@ const makeDocumentTemplateForm = (template: DocumentTemplateItem | null): Docume
   name: template?.name || '',
 });
 
+const makeEmptyProductForm = (): ProductFormState => ({
+  description: '',
+  isActive: true,
+  productCode: '',
+  specification: '',
+  standardPrice: '',
+  unit: 'EA',
+});
+
+const makeProductForm = (product: ProductManagementItem | null): ProductFormState => ({
+  description: product?.description || '',
+  isActive: product ? product.isActive : true,
+  productCode: product?.productCode || '',
+  specification: product?.specification || '',
+  standardPrice: product ? String(product.standardPrice) : '',
+  unit: product?.unit || 'EA',
+});
+
+const normalizeProductPriceInput = (value: string) => value.replace(/[,\s원]/g, '').trim();
+
+const productFormToPayload = (form: ProductFormState): ProductMutationPayload => ({
+  description: form.description.trim(),
+  isActive: form.isActive,
+  productCode: form.productCode.trim(),
+  specification: form.specification.trim(),
+  standardPrice: normalizeProductPriceInput(form.standardPrice) || '0',
+  unit: form.unit.trim() || 'EA',
+});
+
+const splitProductPasteLine = (line: string) => {
+  const trimmed = line.trim();
+  if (!trimmed) return [];
+  if (trimmed.includes('\t')) {
+    return trimmed.split('\t').map((cell) => cell.trim());
+  }
+  return trimmed.split(/\s{2,}/).map((cell) => cell.trim());
+};
+
+const isProductPasteHeader = (cells: string[]) => {
+  const normalizedCells = cells.map((cell) => cell.trim().toLowerCase());
+  const headerText = normalizedCells.join(' ');
+  return (
+    normalizedCells.some((cell) => ['품번', '품목코드', '제품코드', '코드', 'code'].includes(cell)) ||
+    headerText.includes('product code') ||
+    headerText.includes('기준단가') ||
+    headerText.includes('출고단가')
+  );
+};
+
+const parseProductPasteRows = (text: string): ProductMutationPayload[] => {
+  const rows: ProductMutationPayload[] = [];
+  const seenCodes = new Set<string>();
+  text.split(/\r?\n/).forEach((line) => {
+    const cells = splitProductPasteLine(line);
+    if (cells.length < 2 || isProductPasteHeader(cells)) {
+      return;
+    }
+
+    const productCode = cells[0] || '';
+    let description = '';
+    let specification = '';
+    let unit = 'EA';
+    let price = '';
+
+    if (cells.length >= 5) {
+      description = cells[1] || '';
+      specification = cells[2] || '';
+      unit = cells[3] || 'EA';
+      price = cells.slice(4).join('');
+    } else if (cells.length >= 4) {
+      specification = cells[1] || '';
+      unit = cells[2] || 'EA';
+      price = cells.slice(3).join('');
+    } else {
+      specification = cells[1] || '';
+      price = cells[2] || '';
+    }
+
+    const normalizedCode = productCode.trim();
+    if (!normalizedCode || seenCodes.has(normalizedCode)) {
+      return;
+    }
+    seenCodes.add(normalizedCode);
+    rows.push({
+      description: description.trim(),
+      isActive: true,
+      productCode: normalizedCode,
+      specification: specification.trim(),
+      standardPrice: normalizeProductPriceInput(price) || '0',
+      unit: unit.trim() || 'EA',
+    });
+  });
+  return rows;
+};
+
+const parseProductDeleteCodes = (text: string): string[] => {
+  const codes: string[] = [];
+  text.split(/\r?\n/).forEach((line) => {
+    const [firstCell] = line.split(/\t|,|\s{2,}/).map((cell) => cell.trim());
+    if (!firstCell || isProductPasteHeader([firstCell]) || codes.includes(firstCell)) {
+      return;
+    }
+    codes.push(firstCell);
+  });
+  return codes;
+};
+
 const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   address: '',
   companyId: '',
@@ -734,6 +863,18 @@ const routeMeta: Record<
       { label: '일정', href: '/schedules/' },
     ],
   },
+  products: {
+    eyebrow: 'Sales CRM / Products',
+    title: '제품',
+    summary: '제품 기준단가, 규격, 단위, Ecount 반영 데이터를 React CRM에서 관리합니다.',
+    primaryHref: '/products/',
+    primaryLabel: '제품관리 열기',
+    actions: [
+      { label: '제품 등록', href: '/products/?create=1', primary: true },
+      { label: 'Django 제품관리', href: '/reporting/products/' },
+      { label: '엑셀 다운로드', href: '/reporting/api/products/export.xlsx' },
+    ],
+  },
   prepayments: {
     eyebrow: 'Sales CRM / Prepayments',
     title: '선결제',
@@ -769,6 +910,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/mailbox/')) return 'mail';
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/documents/')) return 'documents';
+  if (pathname.startsWith('/products/')) return 'products';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   return 'pipeline';
@@ -823,6 +965,17 @@ function getAIWorkspaceDepartmentIdParam(): number | null {
   const rawValue = params.get('department_id') || params.get('department');
   const id = Number(rawValue);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+const productSortFields: ProductSortField[] = ['code', 'description', 'specification', 'unit', 'price', 'status', 'quoteCount', 'deliveryCount', 'updatedAt'];
+
+function getProductSortParam(): ProductSortField {
+  const value = new URLSearchParams(window.location.search).get('sort') || 'code';
+  return productSortFields.includes(value as ProductSortField) ? value as ProductSortField : 'code';
+}
+
+function getProductOrderParam(): ProductSortOrder {
+  return new URLSearchParams(window.location.search).get('order') === 'desc' ? 'desc' : 'asc';
 }
 
 function getPrepaymentDetailId(): number | null {
@@ -9561,6 +9714,433 @@ function DocumentsPage({
   );
 }
 
+function ProductManagementPage({
+  data,
+  loading,
+  onOrderChange,
+  onPageChange,
+  onQueryChange,
+  onReload,
+  onSortChange,
+  onStatusChange,
+  order,
+  page,
+  query,
+  routeData,
+  sort,
+  status,
+}: {
+  data: ProductManagementData | null;
+  loading: boolean;
+  onOrderChange: (value: ProductSortOrder) => void;
+  onPageChange: (value: number) => void;
+  onQueryChange: (value: string) => void;
+  onReload: () => Promise<ProductManagementData | null>;
+  onSortChange: (value: ProductSortField) => void;
+  onStatusChange: (value: string) => void;
+  order: ProductSortOrder;
+  page: number;
+  query: string;
+  routeData: PipelineData;
+  sort: ProductSortField;
+  status: string;
+}) {
+  const [formOpen, setFormOpen] = useState(() => shouldOpenCreatePanel());
+  const [editingProduct, setEditingProduct] = useState<ProductManagementItem | null>(null);
+  const [form, setForm] = useState<ProductFormState>(() => makeEmptyProductForm());
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formMessage, setFormMessage] = useState('');
+  const [bulkText, setBulkText] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState<ProductBulkUpsertResult | null>(null);
+  const [bulkError, setBulkError] = useState('');
+  const [deleteText, setDeleteText] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<ProductBulkDeleteResult | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+
+  const products = data?.products ?? [];
+  const pagination = data?.pagination;
+  const canManage = Boolean(data?.scope.canManage);
+  const pastedProducts = useMemo(() => parseProductPasteRows(bulkText), [bulkText]);
+  const deleteCodes = useMemo(() => parseProductDeleteCodes(deleteText), [deleteText]);
+
+  const openCreate = () => {
+    setEditingProduct(null);
+    setForm(makeEmptyProductForm());
+    setFormOpen(true);
+    setFormError('');
+    setFormMessage('');
+  };
+
+  const openEdit = (product: ProductManagementItem) => {
+    setEditingProduct(product);
+    setForm(makeProductForm(product));
+    setFormOpen(true);
+    setFormError('');
+    setFormMessage('');
+  };
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditingProduct(null);
+    setFormError('');
+  };
+
+  const handleFormChange = (field: keyof ProductFormState, value: string | boolean) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setFormError('');
+  };
+
+  const handleSort = (field: ProductSortField) => {
+    if (sort === field) {
+      onOrderChange(order === 'asc' ? 'desc' : 'asc');
+    } else {
+      onSortChange(field);
+      onOrderChange(field === 'updatedAt' || field === 'price' ? 'desc' : 'asc');
+    }
+    onPageChange(1);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) return;
+    const payload = productFormToPayload(form);
+    const price = Number(payload.standardPrice);
+    if (!payload.productCode) {
+      setFormError('품번을 입력하세요.');
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setFormError('기준단가는 0 이상 숫자로 입력하세요.');
+      return;
+    }
+
+    setSaving(true);
+    setFormError('');
+    setFormMessage('');
+    try {
+      const result = await saveProduct(payload, editingProduct?.id);
+      setFormMessage(result.message || '제품을 저장했습니다.');
+      setForm(makeEmptyProductForm());
+      setEditingProduct(null);
+      setFormOpen(false);
+      await onReload();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '제품 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkUpsert = async () => {
+    if (bulkSaving) return;
+    if (!pastedProducts.length) {
+      setBulkError('붙여넣은 제품 데이터가 없습니다.');
+      return;
+    }
+    setBulkSaving(true);
+    setBulkError('');
+    setBulkResult(null);
+    try {
+      const result = await bulkUpsertProducts(pastedProducts);
+      setBulkResult(result);
+      if (result.errorCount > 0) {
+        setBulkError(result.message);
+      }
+      await onReload();
+    } catch (error) {
+      setBulkError(error instanceof Error ? error.message : '일괄 반영에 실패했습니다.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (deleteSaving) return;
+    if (!deleteCodes.length) {
+      setDeleteError('삭제할 품번을 붙여넣으세요.');
+      return;
+    }
+    if (!window.confirm(`${deleteCodes.length}개 품번을 삭제 처리할까요? 이미 사용된 제품은 삭제되지 않습니다.`)) {
+      return;
+    }
+    setDeleteSaving(true);
+    setDeleteError('');
+    setDeleteResult(null);
+    try {
+      const result = await bulkDeleteProducts(deleteCodes);
+      setDeleteResult(result);
+      await onReload();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : '일괄 삭제에 실패했습니다.');
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
+  const renderSortButton = (field: ProductSortField, label: string) => (
+    <button
+      className={`product-sort-button ${sort === field ? 'active' : ''}`.trim()}
+      onClick={() => handleSort(field)}
+      type="button"
+    >
+      {label}
+      {sort === field ? <span>{order === 'asc' ? '↑' : '↓'}</span> : null}
+    </button>
+  );
+
+  return (
+    <section className="products-page">
+      <WorkspaceRoutePage data={routeData} view="products" />
+      {data?.source === 'unavailable' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>제품관리 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-metric-grid customers-metric-grid">
+        <DashboardMetricCard label="전체 제품" value={`${formatNumber(data?.metrics.totalProducts ?? 0)}건`} detail={data?.scope.label || '제품 기준'} icon={Archive} tone="blue" />
+        <DashboardMetricCard label="활성" value={`${formatNumber(data?.metrics.activeProducts ?? 0)}건`} detail="견적/납품 선택 가능" icon={CheckCircle2} tone="green" />
+        <DashboardMetricCard label="비활성" value={`${formatNumber(data?.metrics.inactiveProducts ?? 0)}건`} detail="목록 보존" icon={AlertTriangle} tone="amber" />
+        <DashboardMetricCard label="검색 결과" value={`${formatNumber(data?.metrics.filteredProducts ?? 0)}건`} detail="현재 필터" icon={Search} tone="teal" />
+      </div>
+
+      <div className="products-toolbar customers-filter-bar">
+        <label className="customers-search">
+          <Search size={16} />
+          <input
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+              onPageChange(1);
+            }}
+            placeholder="품번, 제품설명, 규격 검색"
+            value={query}
+          />
+        </label>
+        <select
+          value={status}
+          onChange={(event) => {
+            onStatusChange(event.target.value);
+            onPageChange(1);
+          }}
+        >
+          <option value="">전체 상태</option>
+          <option value="active">활성</option>
+          <option value="inactive">비활성</option>
+        </select>
+        <button className="route-secondary-action" onClick={() => void onReload()} type="button">
+          <RefreshCw size={16} />
+          새로고침
+        </button>
+        <a className="route-secondary-action" href={data?.links.excelDownload || '/reporting/api/products/export.xlsx'}>
+          <Download size={16} />
+          엑셀
+        </a>
+        {canManage ? (
+          <button className="route-primary-action" onClick={openCreate} type="button">
+            <Plus size={16} />
+            제품 등록
+          </button>
+        ) : null}
+      </div>
+
+      {formOpen ? (
+        <form className="dashboard-panel notes-create-form product-editor-panel" onSubmit={handleSubmit}>
+          <div className="dashboard-panel-heading">
+            <div>
+              <p className="eyebrow">{editingProduct ? 'Edit' : 'Create'}</p>
+              <h2>{editingProduct ? '제품 수정' : '제품 등록'}</h2>
+            </div>
+            <button aria-label="닫기" className="icon-button" onClick={closeForm} type="button">
+              <X size={17} />
+            </button>
+          </div>
+          <div className="notes-create-grid product-form-grid">
+            <label>
+              <span>품번</span>
+              <input value={form.productCode} onChange={(event) => handleFormChange('productCode', event.target.value)} />
+            </label>
+            <label>
+              <span>제품설명</span>
+              <input value={form.description} onChange={(event) => handleFormChange('description', event.target.value)} />
+            </label>
+            <label>
+              <span>규격</span>
+              <input value={form.specification} onChange={(event) => handleFormChange('specification', event.target.value)} />
+            </label>
+            <label>
+              <span>단위</span>
+              <input value={form.unit} onChange={(event) => handleFormChange('unit', event.target.value)} />
+            </label>
+            <label>
+              <span>기준단가</span>
+              <input inputMode="numeric" value={form.standardPrice} onChange={(event) => handleFormChange('standardPrice', event.target.value)} />
+            </label>
+            <label className="checkbox-row product-active-row">
+              <input checked={form.isActive} onChange={(event) => handleFormChange('isActive', event.target.checked)} type="checkbox" />
+              <span>활성 제품</span>
+            </label>
+          </div>
+          {formError ? <p className="form-error">{formError}</p> : null}
+          {formMessage ? <p className="form-success">{formMessage}</p> : null}
+          <div className="notes-create-actions">
+            <button className="route-secondary-action" onClick={closeForm} type="button">취소</button>
+            <button className="route-primary-action" disabled={saving} type="submit">
+              {saving ? '저장 중' : '저장'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="products-layout">
+        <section className="dashboard-panel products-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <h2>제품 목록</h2>
+              <span>{loading ? '불러오는 중' : `현재 ${formatNumber(products.length)}건 표시`}</span>
+            </div>
+            <a className="route-secondary-action" href={data?.links.djangoList || '/reporting/products/'}>Django 제품관리</a>
+          </div>
+
+          {loading && !data ? (
+            <DashboardEmpty label="제품 데이터를 불러오는 중입니다" />
+          ) : products.length ? (
+            <>
+              <div className="customers-table-wrap products-table-wrap">
+                <table className="customers-table products-table">
+                  <thead>
+                    <tr>
+                      <th>{renderSortButton('code', '품번')}</th>
+                      <th>{renderSortButton('description', '제품설명')}</th>
+                      <th>{renderSortButton('specification', '규격')}</th>
+                      <th>{renderSortButton('unit', '단위')}</th>
+                      <th>{renderSortButton('price', '기준단가')}</th>
+                      <th>{renderSortButton('status', '상태')}</th>
+                      <th>{renderSortButton('quoteCount', '견적')}</th>
+                      <th>{renderSortButton('deliveryCount', '판매')}</th>
+                      <th>{renderSortButton('updatedAt', '수정일')}</th>
+                      <th>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((product) => (
+                      <tr key={product.id}>
+                        <td>
+                          <strong>{product.productCode}</strong>
+                          <small className="customer-muted-cell">{product.createdBy}</small>
+                        </td>
+                        <td>{product.description || '-'}</td>
+                        <td>{product.specification || '-'}</td>
+                        <td>{product.unit || 'EA'}</td>
+                        <td>{formatWon(product.standardPrice)}</td>
+                        <td>
+                          <span className={`product-status ${product.isActive ? 'active' : 'inactive'}`}>{product.isActive ? '활성' : '비활성'}</span>
+                        </td>
+                        <td>{formatNumber(product.quoteCount)}</td>
+                        <td>{formatNumber(product.deliveryCount)}</td>
+                        <td>{product.updatedAt ? formatDateTimeLabel(product.updatedAt) : '-'}</td>
+                        <td>
+                          <div className="product-row-actions">
+                            <button className="route-secondary-action" onClick={() => openEdit(product)} type="button">수정</button>
+                            {product.djangoEditHref ? <a className="icon-button" aria-label="Django 수정" href={product.djangoEditHref}><MoveUpRight size={16} /></a> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="products-pagination">
+                <button className="route-secondary-action" disabled={!pagination?.hasPrevious} onClick={() => onPageChange(Math.max(page - 1, 1))} type="button">
+                  <ChevronLeft size={16} />
+                  이전
+                </button>
+                <span>{formatNumber(pagination?.page ?? page)} / {formatNumber(pagination?.totalPages ?? 1)} 페이지</span>
+                <button className="route-secondary-action" disabled={!pagination?.hasNext} onClick={() => onPageChange(page + 1)} type="button">
+                  다음
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </>
+          ) : (
+            <DashboardEmpty label="조건에 맞는 제품이 없습니다" />
+          )}
+        </section>
+
+        <aside className="products-side">
+          <section className="dashboard-panel product-bulk-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <p className="eyebrow">Ecount / Excel</p>
+                <h2>붙여넣기 반영</h2>
+              </div>
+              <Upload size={18} />
+            </div>
+            <textarea
+              onChange={(event) => {
+                setBulkText(event.target.value);
+                setBulkError('');
+              }}
+              placeholder={'품번\t제품설명\t규격\t단위\t출고단가'}
+              rows={8}
+              value={bulkText}
+            />
+            <div className="product-bulk-summary">
+              <span>인식 {formatNumber(pastedProducts.length)}건</span>
+              {pastedProducts.slice(0, 3).map((item) => (
+                <small key={item.productCode}>{item.productCode} · {item.unit} · {formatWon(Number(item.standardPrice) || 0)}</small>
+              ))}
+            </div>
+            {bulkError ? <p className="form-error">{bulkError}</p> : null}
+            {bulkResult && !bulkError ? <p className="form-success">{bulkResult.message}</p> : null}
+            <button className="route-primary-action" disabled={bulkSaving || !pastedProducts.length} onClick={handleBulkUpsert} type="button">
+              {bulkSaving ? '반영 중' : '등록/갱신'}
+            </button>
+          </section>
+
+          <section className="dashboard-panel product-bulk-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <p className="eyebrow">Bulk Delete</p>
+                <h2>품번 일괄 삭제</h2>
+              </div>
+              <Trash2 size={18} />
+            </div>
+            <textarea
+              onChange={(event) => {
+                setDeleteText(event.target.value);
+                setDeleteError('');
+              }}
+              placeholder={'삭제할 품번을 한 줄에 하나씩 붙여넣기'}
+              rows={7}
+              value={deleteText}
+            />
+            <div className="product-bulk-summary">
+              <span>삭제 대상 {formatNumber(deleteCodes.length)}건</span>
+              {deleteCodes.slice(0, 4).map((code) => <small key={code}>{code}</small>)}
+            </div>
+            {deleteError ? <p className="form-error">{deleteError}</p> : null}
+            {deleteResult ? <p className="form-success">{deleteResult.message}</p> : null}
+            <button className="route-secondary-action danger" disabled={deleteSaving || !deleteCodes.length} onClick={handleBulkDelete} type="button">
+              {deleteSaving ? '삭제 중' : '삭제 실행'}
+            </button>
+          </section>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function AIWorkspacePage({
   data,
   loading,
@@ -10884,6 +11464,13 @@ export function App() {
   const [documentsData, setDocumentsData] = useState<DocumentTemplatesData | null>(null);
   const [documentsLoading, setDocumentsLoading] = useState(currentView === 'documents');
   const [documentTypeFilter, setDocumentTypeFilter] = useState(() => new URLSearchParams(window.location.search).get('type') || '');
+  const [productsData, setProductsData] = useState<ProductManagementData | null>(null);
+  const [productsLoading, setProductsLoading] = useState(currentView === 'products');
+  const [productQuery, setProductQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [productStatus, setProductStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
+  const [productSort, setProductSort] = useState<ProductSortField>(() => getProductSortParam());
+  const [productOrder, setProductOrder] = useState<ProductSortOrder>(() => getProductOrderParam());
+  const [productPage, setProductPage] = useState(() => Number(new URLSearchParams(window.location.search).get('page') || '1') || 1);
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
   const [aiWorkspaceDepartmentId, setAiWorkspaceDepartmentId] = useState<number | null>(() => initialAIWorkspaceDepartmentId);
@@ -11339,6 +11926,42 @@ export function App() {
       alive = false;
     };
   }, [currentView, documentTypeFilter]);
+
+  useEffect(() => {
+    if (currentView !== 'products') {
+      setProductsLoading(false);
+      return;
+    }
+    let alive = true;
+    setProductsLoading(true);
+    loadProductManagementData({
+      order: productOrder,
+      page: productPage,
+      pageSize: 50,
+      q: productQuery,
+      sort: productSort,
+      status: productStatus,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setProductsData(data);
+      setProductsLoading(false);
+    });
+
+    const params = new URLSearchParams();
+    if (productQuery.trim()) params.set('q', productQuery.trim());
+    if (productStatus) params.set('status', productStatus);
+    if (productSort !== 'code') params.set('sort', productSort);
+    if (productOrder !== 'asc') params.set('order', productOrder);
+    if (productPage > 1) params.set('page', String(productPage));
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/products/${queryString ? `?${queryString}` : ''}`);
+
+    return () => {
+      alive = false;
+    };
+  }, [currentView, productOrder, productPage, productQuery, productSort, productStatus]);
 
   useEffect(() => {
     if (currentView !== 'ai') {
@@ -11955,6 +12578,23 @@ export function App() {
     setDocumentsData(data);
     return data;
   };
+  const refreshProductManagementData = async () => {
+    setProductsLoading(true);
+    try {
+      const data = await loadProductManagementData({
+        order: productOrder,
+        page: productPage,
+        pageSize: 50,
+        q: productQuery,
+        sort: productSort,
+        status: productStatus,
+      });
+      setProductsData(data);
+      return data;
+    } finally {
+      setProductsLoading(false);
+    }
+  };
   const refreshAIWorkspaceData = async (params: { departmentId?: number | null } = {}) => {
     const departmentId = params.departmentId !== undefined ? params.departmentId : aiWorkspaceDepartmentId;
     const data = await loadAIWorkspaceData({ departmentId });
@@ -12551,6 +13191,30 @@ export function App() {
           onTypeChange={handleDocumentTypeFilterChange}
           routeData={pipelineData}
           selectedType={documentTypeFilter}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'products') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <ProductManagementPage
+          data={productsData}
+          loading={productsLoading}
+          onOrderChange={setProductOrder}
+          onPageChange={setProductPage}
+          onQueryChange={setProductQuery}
+          onReload={refreshProductManagementData}
+          onSortChange={setProductSort}
+          onStatusChange={setProductStatus}
+          order={productOrder}
+          page={productPage}
+          query={productQuery}
+          routeData={pipelineData}
+          sort={productSort}
+          status={productStatus}
         />
       </AppShell>
     );

@@ -223,6 +223,12 @@ urlpatterns = [
     
     # 제품 API
     path('api/products/', views.product_api_list, name='product_api_list'),
+    path('api/products/manage/', views.products_management_api, name='products_management_api'),
+    path('api/products/save/', views.product_save_api, name='product_save_api'),
+    path('api/products/<int:product_id>/save/', views.product_save_api, name='product_update_api'),
+    path('api/products/bulk-upsert/', views.products_bulk_upsert_api, name='products_bulk_upsert_api'),
+    path('api/products/bulk-delete/', views.products_bulk_delete_api, name='products_bulk_delete_api'),
+    path('api/products/export.xlsx', views.products_excel_export_api, name='products_excel_export_api'),
     
     # 개인 일정 URL들
     path('personal-schedules/create/', personal_schedule_views.personal_schedule_create_view, name='personal_schedule_create'),

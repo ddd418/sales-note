@@ -1081,8 +1081,16 @@ type ProductApiItem = {
   standardPrice?: number | string;
   current_price?: number | string;
   currentPrice?: number | string;
+  is_active?: boolean;
+  isActive?: boolean;
   is_promo?: boolean;
   isPromo?: boolean;
+  quoteCount?: number;
+  deliveryCount?: number;
+  createdBy?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  djangoEditHref?: string;
 };
 
 type ProductsApiResponse = {
@@ -1090,6 +1098,135 @@ type ProductsApiResponse = {
   success?: boolean;
   error?: string;
   message?: string;
+};
+
+export type ProductManagementItem = ProductOption & {
+  product_code: string;
+  standard_price: number;
+  current_price: number;
+  is_active: boolean;
+  isActive: boolean;
+  is_promo: boolean;
+  isPromo: boolean;
+  quoteCount: number;
+  deliveryCount: number;
+  createdBy: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  djangoEditHref: string;
+};
+
+export type ProductManagementData = {
+  success: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    canManage: boolean;
+    label: string;
+  };
+  metrics: {
+    totalProducts: number;
+    activeProducts: number;
+    inactiveProducts: number;
+    filteredProducts: number;
+  };
+  products: ProductManagementItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalCount: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
+  links: {
+    djangoList: string;
+    excelDownload: string;
+    bulkUpsert: string;
+    bulkDelete: string;
+    save: string;
+  };
+};
+
+export type ProductMutationPayload = {
+  productCode: string;
+  description: string;
+  specification: string;
+  unit: string;
+  standardPrice: number | string;
+  isActive: boolean;
+};
+
+export type ProductSaveResult = {
+  success: boolean;
+  created: boolean;
+  updated: boolean;
+  changedFields: string[];
+  product: ProductManagementItem;
+  message: string;
+};
+
+export type ProductBulkResultRow = {
+  row?: number;
+  productCode: string;
+  status: 'created' | 'updated' | 'unchanged' | 'deleted' | 'blocked' | 'missing' | 'error';
+  changedFields?: string[];
+  message?: string;
+  error?: string;
+};
+
+export type ProductBulkUpsertResult = {
+  success: boolean;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  errorCount: number;
+  results: ProductBulkResultRow[];
+  message: string;
+  error?: string;
+};
+
+export type ProductBulkDeleteResult = {
+  success: boolean;
+  deletedCount: number;
+  blockedCount: number;
+  missingCount: number;
+  results: ProductBulkResultRow[];
+  message: string;
+  error?: string;
+};
+
+const emptyProductManagementData: ProductManagementData = {
+  success: false,
+  source: 'unavailable',
+  scope: {
+    canManage: false,
+    label: '',
+  },
+  metrics: {
+    totalProducts: 0,
+    activeProducts: 0,
+    inactiveProducts: 0,
+    filteredProducts: 0,
+  },
+  products: [],
+  pagination: {
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+    totalCount: 0,
+    hasNext: false,
+    hasPrevious: false,
+  },
+  links: {
+    djangoList: '/reporting/products/',
+    excelDownload: '/reporting/api/products/export.xlsx',
+    bulkUpsert: '/reporting/api/products/bulk-upsert/',
+    bulkDelete: '/reporting/api/products/bulk-delete/',
+    save: '/reporting/api/products/save/',
+  },
 };
 
 export type SchedulePrepaymentUsage = {
@@ -4276,6 +4413,164 @@ export async function updateScheduleStatus(submitUrl: string, status: string): P
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule status update failed: ${response.status}`);
+  }
+  return data;
+}
+
+function normalizeProductManagementItem(product: ProductApiItem): ProductManagementItem {
+  const productCode = product.product_code ?? product.productCode ?? product.name ?? '';
+  const standardPrice = Number(product.standard_price ?? product.standardPrice ?? 0);
+  const normalizedStandardPrice = Number.isFinite(standardPrice) ? standardPrice : 0;
+  const currentPrice = Number(product.current_price ?? product.currentPrice ?? normalizedStandardPrice);
+  const normalizedCurrentPrice = Number.isFinite(currentPrice) ? currentPrice : normalizedStandardPrice;
+  const isActive = Boolean(product.is_active ?? product.isActive ?? true);
+
+  return {
+    id: product.id,
+    productCode,
+    product_code: productCode,
+    name: product.name ?? productCode,
+    description: product.description ?? '',
+    unit: product.unit || 'EA',
+    specification: product.specification ?? '',
+    standardPrice: normalizedStandardPrice,
+    standard_price: normalizedStandardPrice,
+    currentPrice: normalizedCurrentPrice,
+    current_price: normalizedCurrentPrice,
+    isActive,
+    is_active: isActive,
+    isPromo: Boolean(product.is_promo ?? product.isPromo),
+    is_promo: Boolean(product.is_promo ?? product.isPromo),
+    quoteCount: Number(product.quoteCount ?? 0),
+    deliveryCount: Number(product.deliveryCount ?? 0),
+    createdBy: product.createdBy ?? '',
+    createdAt: product.createdAt ?? null,
+    updatedAt: product.updatedAt ?? null,
+    djangoEditHref: product.djangoEditHref ?? '',
+  };
+}
+
+export async function loadProductManagementData(params: {
+  q?: string;
+  status?: string;
+  sort?: string;
+  order?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<ProductManagementData> {
+  const query = new URLSearchParams();
+  if (params.q) query.set('q', params.q);
+  if (params.status) query.set('status', params.status);
+  if (params.sort) query.set('sort', params.sort);
+  if (params.order) query.set('order', params.order);
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('page_size', String(params.pageSize));
+
+  try {
+    const response = await fetch(`/reporting/api/products/manage/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Product management API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ProductManagementData> & ProductsApiResponse;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Product management API unavailable: ${response.status}`);
+    }
+
+    return {
+      ...emptyProductManagementData,
+      ...payload,
+      source: 'django',
+      scope: {
+        ...emptyProductManagementData.scope,
+        ...(payload.scope ?? {}),
+      },
+      metrics: {
+        ...emptyProductManagementData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      pagination: {
+        ...emptyProductManagementData.pagination,
+        ...(payload.pagination ?? {}),
+      },
+      links: {
+        ...emptyProductManagementData.links,
+        ...(payload.links ?? {}),
+      },
+      products: (payload.products ?? []).map((product) => normalizeProductManagementItem(product)),
+    };
+  } catch (error) {
+    return {
+      ...emptyProductManagementData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Product management API unavailable',
+    };
+  }
+}
+
+async function postProductJson<T>(url: string, body: unknown): Promise<T> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Product API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as T & { success?: boolean; error?: string; message?: string };
+  redirectIfLoginRequired(response, data);
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `Product API failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function saveProduct(
+  payload: ProductMutationPayload,
+  productId?: number | null,
+): Promise<ProductSaveResult> {
+  const url = productId ? `/reporting/api/products/${productId}/save/` : '/reporting/api/products/save/';
+  const data = await postProductJson<ProductSaveResult>(url, payload);
+  if (data.success === false) {
+    throw new Error(data.message || '제품 저장에 실패했습니다.');
+  }
+  return {
+    ...data,
+    product: normalizeProductManagementItem(data.product),
+  };
+}
+
+export async function bulkUpsertProducts(products: ProductMutationPayload[]): Promise<ProductBulkUpsertResult> {
+  const data = await postProductJson<ProductBulkUpsertResult>('/reporting/api/products/bulk-upsert/', { products });
+  if (!data.results) {
+    data.results = [];
+  }
+  return data;
+}
+
+export async function bulkDeleteProducts(productCodes: string[]): Promise<ProductBulkDeleteResult> {
+  const data = await postProductJson<ProductBulkDeleteResult>('/reporting/api/products/bulk-delete/', { productCodes });
+  if (data.success === false) {
+    throw new Error(data.error || data.message || '제품 삭제에 실패했습니다.');
+  }
+  if (!data.results) {
+    data.results = [];
   }
   return data;
 }

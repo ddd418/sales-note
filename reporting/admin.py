@@ -180,8 +180,8 @@ class DeliveryItemAdmin(admin.ModelAdmin):
 # Product 모델 관리자 설정
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('product_code', 'standard_price', 'is_promo', 'is_active', 'total_quoted', 'total_sold')
-    list_filter = ('is_active', 'is_promo')
+    list_display = ('product_code', 'standard_price', 'is_active', 'total_quoted', 'total_sold')
+    list_filter = ('is_active',)
     search_fields = ('product_code', 'description')
     list_per_page = 20
     
@@ -191,10 +191,6 @@ class ProductAdmin(admin.ModelAdmin):
         }),
         ('가격 정보', {
             'fields': ('standard_price',)
-        }),
-        ('프로모션', {
-            'fields': ('is_promo', 'promo_price', 'promo_start', 'promo_end'),
-            'classes': ('collapse',)
         }),
         ('상태', {
             'fields': ('is_active',)

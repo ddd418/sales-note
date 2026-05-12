@@ -17727,6 +17727,189 @@ def prepayment_transfer_api(request, pk):
 # 제품 관리 뷰
 # ============================================
 
+
+def _product_scope_queryset(request, include_inactive=True):
+    """제품관리 화면에서 현재 사용자가 볼 수 있는 제품 범위."""
+    from reporting.models import Product
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_admin():
+        products = Product.objects.all()
+    elif user_profile.company:
+        accessible_users = get_accessible_users(request.user, request)
+        products = Product.objects.filter(Q(created_by__in=accessible_users) | Q(created_by__isnull=True))
+    else:
+        products = Product.objects.filter(Q(created_by=request.user) | Q(created_by__isnull=True))
+
+    if not include_inactive:
+        products = products.filter(is_active=True)
+    return products
+
+
+def _product_usage_annotations(queryset):
+    from django.db.models import Count, Value
+    from django.db.models.functions import Coalesce
+
+    return queryset.annotate(
+        quote_count=Count(
+            'delivery_items__schedule',
+            distinct=True,
+            filter=Q(
+                delivery_items__schedule__isnull=False,
+                delivery_items__schedule__activity_type='quote',
+            ),
+        ),
+        completed_schedule_count=Count(
+            'delivery_items__schedule',
+            distinct=True,
+            filter=Q(
+                delivery_items__schedule__status='completed',
+                delivery_items__schedule__activity_type='delivery',
+            ),
+        ),
+        history_count=Count(
+            'delivery_items__history',
+            distinct=True,
+            filter=Q(delivery_items__history__isnull=False),
+        ),
+    ).annotate(
+        delivery_count=Coalesce('completed_schedule_count', Value(0)) + Coalesce('history_count', Value(0)),
+    )
+
+
+def _product_can_manage(request, product=None):
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_admin():
+        return True
+    if product is None:
+        return True
+    if product.created_by_id is None:
+        return user_profile.role in ['admin', 'manager']
+    return _product_scope_queryset(request, include_inactive=True).filter(id=product.id).exists()
+
+
+def _product_payload(product):
+    return {
+        'id': product.id,
+        'productCode': product.product_code,
+        'product_code': product.product_code,
+        'name': product.product_code,
+        'description': product.description or '',
+        'unit': product.unit or 'EA',
+        'specification': product.specification or '',
+        'standardPrice': int(product.standard_price or 0),
+        'standard_price': int(product.standard_price or 0),
+        'currentPrice': int(product.standard_price or 0),
+        'current_price': int(product.standard_price or 0),
+        'isActive': product.is_active,
+        'is_active': product.is_active,
+        'isPromo': False,
+        'is_promo': False,
+        'quoteCount': int(getattr(product, 'quote_count', 0) or 0),
+        'deliveryCount': int(getattr(product, 'delivery_count', 0) or 0),
+        'createdBy': _user_display_name(product.created_by) if product.created_by else '공용',
+        'createdAt': _datetime_or_none(product.created_at),
+        'updatedAt': _datetime_or_none(product.updated_at),
+        'djangoEditHref': reverse('reporting:product_edit', args=[product.id]),
+    }
+
+
+def _parse_product_price(value):
+    from decimal import Decimal, InvalidOperation
+
+    normalized = str(value if value is not None else '').replace(',', '').strip()
+    if not normalized:
+        return Decimal('0')
+    try:
+        return Decimal(normalized)
+    except (InvalidOperation, ValueError):
+        raise ValueError('기준단가는 숫자로 입력해야 합니다.')
+
+
+def _product_payload_from_dict(data):
+    product_code = str(data.get('productCode') or data.get('product_code') or data.get('code') or '').strip()
+    if not product_code:
+        raise ValueError('품번은 필수입니다.')
+
+    description = str(
+        data.get('description')
+        or data.get('productName')
+        or data.get('product_name')
+        or data.get('name')
+        or ''
+    ).strip()
+    specification = str(data.get('specification') or data.get('spec') or '').strip()
+    unit = str(data.get('unit') or 'EA').strip() or 'EA'
+    standard_price = _parse_product_price(
+        data.get('standardPrice')
+        if data.get('standardPrice') is not None
+        else data.get('standard_price')
+        if data.get('standard_price') is not None
+        else data.get('price')
+    )
+    is_active = data.get('isActive', data.get('is_active', True))
+    if isinstance(is_active, str):
+        is_active = is_active.strip().lower() not in ['false', '0', 'no', 'off', '비활성']
+
+    return {
+        'product_code': product_code,
+        'description': description,
+        'specification': specification,
+        'unit': unit,
+        'standard_price': standard_price,
+        'is_active': bool(is_active),
+    }
+
+
+def _upsert_product_from_payload(request, payload):
+    from reporting.models import Product
+
+    existing = Product.objects.filter(product_code=payload['product_code']).first()
+    changed_fields = []
+
+    if existing:
+        if not _product_can_manage(request, existing):
+            return None, False, False, ['권한 없음']
+
+        field_map = {
+            'specification': payload['specification'],
+            'unit': payload['unit'],
+            'standard_price': payload['standard_price'],
+            'is_active': payload['is_active'],
+        }
+        if payload['description']:
+            field_map['description'] = payload['description']
+        for field, value in field_map.items():
+            if getattr(existing, field) != value:
+                setattr(existing, field, value)
+                changed_fields.append(field)
+        if existing.is_promo or existing.promo_price or existing.promo_start or existing.promo_end:
+            existing.is_promo = False
+            existing.promo_price = None
+            existing.promo_start = None
+            existing.promo_end = None
+            changed_fields.extend(['is_promo', 'promo_price', 'promo_start', 'promo_end'])
+        if changed_fields:
+            existing.save(update_fields=sorted(set(changed_fields + ['updated_at'])))
+            return existing, False, True, sorted(set(changed_fields))
+        return existing, False, False, []
+
+    product = Product.objects.create(
+        product_code=payload['product_code'],
+        description=payload['description'] or payload['product_code'],
+        specification=payload['specification'],
+        unit=payload['unit'],
+        standard_price=payload['standard_price'],
+        is_active=payload['is_active'],
+        is_promo=False,
+        promo_price=None,
+        promo_start=None,
+        promo_end=None,
+        created_by=request.user,
+    )
+    return product, True, False, ['created']
+
+
 @login_required
 def product_list(request):
     """제품 목록"""
@@ -17817,25 +18000,7 @@ def product_list(request):
     if sort_order == 'desc':
         order_field = '-' + order_field
     
-    # 현재가(프로모션 가격 포함) 정렬은 따로 처리
-    if sort_by == 'promo_price':
-        from django.db.models import Case, When, F
-        if sort_order == 'desc':
-            products = products.order_by(
-                Case(
-                    When(is_promo=True, then=F('promotion_price')),
-                    default=F('standard_price')
-                ).desc()
-            )
-        else:
-            products = products.order_by(
-                Case(
-                    When(is_promo=True, then=F('promotion_price')),
-                    default=F('standard_price')
-                )
-            )
-    else:
-        products = products.order_by(order_field)
+    products = products.order_by(order_field)
     
     # 각 제품의 견적/판매 횟수는 이미 annotate로 계산됨 - 아래 루프 제거
     
@@ -17890,15 +18055,10 @@ def product_create(request):
                 if request.POST.get('unit'):
                     product.unit = request.POST.get('unit')
                 
-                # 프로모션 설정
-                if request.POST.get('is_promo') == 'on':
-                    product.is_promo = True
-                    if request.POST.get('promo_price'):
-                        product.promo_price = Decimal(request.POST.get('promo_price'))
-                    if request.POST.get('promo_start'):
-                        product.promo_start = request.POST.get('promo_start')
-                    if request.POST.get('promo_end'):
-                        product.promo_end = request.POST.get('promo_end')
+                product.is_promo = False
+                product.promo_price = None
+                product.promo_start = None
+                product.promo_end = None
                 
                 product.save()
                 return JsonResponse({
@@ -17950,15 +18110,10 @@ def product_create(request):
             product.specification = request.POST.get('specification', '')
             product.unit = request.POST.get('unit', 'EA') or 'EA'
             
-            # 프로모션 설정
-            if request.POST.get('is_promo') == 'on':
-                product.is_promo = True
-                if request.POST.get('promo_price'):
-                    product.promo_price = Decimal(request.POST.get('promo_price'))
-                if request.POST.get('promo_start'):
-                    product.promo_start = request.POST.get('promo_start')
-                if request.POST.get('promo_end'):
-                    product.promo_end = request.POST.get('promo_end')
+            product.is_promo = False
+            product.promo_price = None
+            product.promo_start = None
+            product.promo_end = None
             
             product.save()
             messages.success(request, f'제품 "{product.product_code}"이(가) 등록되었습니다.')
@@ -17981,9 +18136,6 @@ def product_create(request):
 @require_POST
 def product_bulk_create(request):
     """엑셀 데이터 일괄 제품 등록 (AJAX) - 중복 시 업데이트"""
-    from reporting.models import Product
-    from decimal import Decimal
-    from django.db import IntegrityError
     import json
     
     try:
@@ -18002,57 +18154,22 @@ def product_bulk_create(request):
         errors = []
         
         for item in products_data:
+            product_code = ''
             try:
-                product_code = item.get('product_code', '').strip()
-                product_name = item.get('product_name', '').strip()
-                specification = item.get('specification', '').strip()
-                unit = item.get('unit', 'EA').strip()
-                standard_price = Decimal(str(item.get('standard_price', 0)))
-                
-                # 기존 제품 체크
-                existing = Product.objects.filter(product_code=product_code).first()
-                
-                if existing:
-                    # 데이터가 다르면 업데이트
-                    needs_update = False
-                    if product_name and existing.description != product_name:
-                        existing.description = product_name
-                        needs_update = True
-                    if specification and existing.specification != specification:
-                        existing.specification = specification
-                        needs_update = True
-                    if unit and existing.unit != unit:
-                        existing.unit = unit
-                        needs_update = True
-                    if standard_price and existing.standard_price != standard_price:
-                        existing.standard_price = standard_price
-                        needs_update = True
-                    
-                    if needs_update:
-                        existing.save()
-                        updated_count += 1
-                    else:
-                        skipped_count += 1
-                        errors.append(f'{product_code}: 동일한 데이터 (변경 없음)')
-                else:
-                    # 신규 등록
-                    product = Product(
-                        product_code=product_code,
-                        description=product_name or product_code,
-                        specification=specification,
-                        unit=unit,
-                        standard_price=standard_price,
-                        is_active=True,
-                        created_by=request.user
-                    )
-                    product.save()
+                product_code = str(item.get('product_code') or item.get('productCode') or '').strip()
+                payload = _product_payload_from_dict(item)
+                product, created, updated, _changed_fields = _upsert_product_from_payload(request, payload)
+                if product is None:
+                    raise PermissionError('권한 없음')
+                if created:
                     created_count += 1
-                
-            except IntegrityError as e:
-                skipped_count += 1
-                errors.append(f'{product_code}: 데이터베이스 오류')
-                logger.error(f"제품 등록 실패 ({product_code}): {e}")
+                elif updated:
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+                    errors.append(f'{product_code}: 동일한 데이터 (변경 없음)')
             except Exception as e:
+                skipped_count += 1
                 errors.append(f'{product_code}: {str(e)}')
                 logger.error(f"제품 등록 실패 ({product_code}): {e}")
         
@@ -18106,19 +18223,10 @@ def product_edit(request, product_id):
             product.specification = request.POST.get('specification', '')
             product.unit = request.POST.get('unit', 'EA') or 'EA'
             
-            # 프로모션 설정
-            product.is_promo = request.POST.get('is_promo') == 'on'
-            if product.is_promo:
-                if request.POST.get('promo_price'):
-                    product.promo_price = Decimal(request.POST.get('promo_price'))
-                if request.POST.get('promo_start'):
-                    product.promo_start = request.POST.get('promo_start')
-                if request.POST.get('promo_end'):
-                    product.promo_end = request.POST.get('promo_end')
-            else:
-                product.promo_price = None
-                product.promo_start = None
-                product.promo_end = None
+            product.is_promo = False
+            product.promo_price = None
+            product.promo_start = None
+            product.promo_end = None
             
             product.save()
             messages.success(request, f'제품 "{product.product_code}"이(가) 수정되었습니다.')
@@ -18165,6 +18273,292 @@ def product_delete(request, product_id):
 
 
 @login_required
+def products_management_api(request):
+    """React 제품관리 목록 API."""
+    products = _product_scope_queryset(request, include_inactive=True)
+    search_query = request.GET.get('q') or request.GET.get('search') or ''
+    status = request.GET.get('status') or ''
+
+    total_count = products.count()
+    active_count = products.filter(is_active=True).count()
+    inactive_count = total_count - active_count
+
+    if search_query:
+        products = products.filter(
+            Q(product_code__icontains=search_query)
+            | Q(description__icontains=search_query)
+            | Q(specification__icontains=search_query)
+        )
+    if status == 'active':
+        products = products.filter(is_active=True)
+    elif status == 'inactive':
+        products = products.filter(is_active=False)
+
+    products = _product_usage_annotations(products)
+    filtered_count = products.count()
+
+    sort_by = request.GET.get('sort') or 'code'
+    sort_order = request.GET.get('order') or 'asc'
+    sort_fields = {
+        'code': 'product_code',
+        'description': 'description',
+        'specification': 'specification',
+        'unit': 'unit',
+        'price': 'standard_price',
+        'status': 'is_active',
+        'quoteCount': 'quote_count',
+        'deliveryCount': 'delivery_count',
+        'updatedAt': 'updated_at',
+    }
+    order_field = sort_fields.get(sort_by, 'product_code')
+    if sort_order == 'desc':
+        order_field = f'-{order_field}'
+    products = products.order_by(order_field, 'product_code')
+
+    try:
+        page_size = min(max(int(request.GET.get('page_size', 50)), 10), 200)
+    except (TypeError, ValueError):
+        page_size = 50
+    paginator = Paginator(products, page_size)
+    page_obj = paginator.get_page(request.GET.get('page') or 1)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'scope': {
+            'canManage': True,
+            'label': '전체 제품' if get_user_profile(request.user).is_admin() else '접근 가능 제품',
+        },
+        'metrics': {
+            'totalProducts': total_count,
+            'activeProducts': active_count,
+            'inactiveProducts': inactive_count,
+            'filteredProducts': filtered_count,
+        },
+        'products': [_product_payload(product) for product in page_obj],
+        'pagination': {
+            'page': page_obj.number,
+            'pageSize': page_size,
+            'totalPages': paginator.num_pages,
+            'totalCount': filtered_count,
+            'hasNext': page_obj.has_next(),
+            'hasPrevious': page_obj.has_previous(),
+        },
+        'links': {
+            'djangoList': reverse('reporting:product_list'),
+            'excelDownload': reverse('reporting:products_excel_export_api'),
+            'bulkUpsert': reverse('reporting:products_bulk_upsert_api'),
+            'bulkDelete': reverse('reporting:products_bulk_delete_api'),
+            'save': reverse('reporting:product_save_api'),
+        },
+    })
+
+
+@login_required
+@require_POST
+def product_save_api(request, product_id=None):
+    """React 제품 단일 생성/수정 API."""
+    from reporting.models import Product
+
+    try:
+        payload = _product_payload_from_dict(json.loads(request.body or '{}'))
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': '잘못된 JSON 형식입니다.'}, status=400)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    if product_id is None:
+        product, created, updated, changed_fields = _upsert_product_from_payload(request, payload)
+        if product is None:
+            return JsonResponse({'success': False, 'error': '이 제품을 저장할 권한이 없습니다.'}, status=403)
+    else:
+        product = get_object_or_404(Product, id=product_id)
+        if not _product_can_manage(request, product):
+            return JsonResponse({'success': False, 'error': '이 제품을 수정할 권한이 없습니다.'}, status=403)
+        duplicate = Product.objects.filter(product_code=payload['product_code']).exclude(id=product.id).first()
+        if duplicate:
+            return JsonResponse({'success': False, 'error': f'품번 "{payload["product_code"]}"은(는) 이미 등록되어 있습니다.'}, status=400)
+
+        changed_fields = []
+        for field in ['product_code', 'description', 'specification', 'unit', 'standard_price', 'is_active']:
+            if getattr(product, field) != payload[field]:
+                setattr(product, field, payload[field])
+                changed_fields.append(field)
+        if product.is_promo or product.promo_price or product.promo_start or product.promo_end:
+            product.is_promo = False
+            product.promo_price = None
+            product.promo_start = None
+            product.promo_end = None
+            changed_fields.extend(['is_promo', 'promo_price', 'promo_start', 'promo_end'])
+        if changed_fields:
+            product.save(update_fields=sorted(set(changed_fields + ['updated_at'])))
+        created = False
+        updated = bool(changed_fields)
+
+    product = _product_usage_annotations(Product.objects.filter(id=product.id)).first()
+    return JsonResponse({
+        'success': True,
+        'created': created,
+        'updated': updated,
+        'changedFields': changed_fields,
+        'product': _product_payload(product),
+        'message': '제품이 등록되었습니다.' if created else ('제품이 수정되었습니다.' if updated else '변경된 내용이 없습니다.'),
+    })
+
+
+@login_required
+@require_POST
+def products_bulk_upsert_api(request):
+    """Ecount/Excel 붙여넣기 기반 제품 일괄 등록 및 갱신 API."""
+    try:
+        body = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': '잘못된 JSON 형식입니다.'}, status=400)
+
+    items = body.get('products') or body.get('items') or []
+    if not items:
+        return JsonResponse({'success': False, 'error': '등록할 제품 데이터가 없습니다.'}, status=400)
+
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+    error_count = 0
+    results = []
+
+    for index, item in enumerate(items, start=1):
+        try:
+            payload = _product_payload_from_dict(item)
+            product, created, updated, changed_fields = _upsert_product_from_payload(request, payload)
+            if product is None:
+                raise PermissionError('권한 없음')
+            if created:
+                created_count += 1
+                status = 'created'
+            elif updated:
+                updated_count += 1
+                status = 'updated'
+            else:
+                unchanged_count += 1
+                status = 'unchanged'
+            results.append({
+                'row': index,
+                'productCode': payload['product_code'],
+                'status': status,
+                'changedFields': changed_fields,
+            })
+        except Exception as exc:
+            error_count += 1
+            results.append({
+                'row': index,
+                'productCode': str(item.get('productCode') or item.get('product_code') or item.get('code') or '').strip(),
+                'status': 'error',
+                'error': str(exc),
+            })
+
+    return JsonResponse({
+        'success': error_count == 0,
+        'createdCount': created_count,
+        'updatedCount': updated_count,
+        'unchangedCount': unchanged_count,
+        'errorCount': error_count,
+        'results': results[:200],
+        'message': f'등록 {created_count}건, 수정 {updated_count}건, 변경 없음 {unchanged_count}건, 오류 {error_count}건',
+    }, status=200 if error_count == 0 else 207)
+
+
+@login_required
+@require_POST
+def products_bulk_delete_api(request):
+    """붙여넣은 품번 기준 제품 일괄 삭제 API."""
+    try:
+        body = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': '잘못된 JSON 형식입니다.'}, status=400)
+
+    product_codes = body.get('productCodes') or body.get('product_codes') or []
+    normalized_codes = []
+    for code in product_codes:
+        value = str(code or '').strip()
+        if value and value not in normalized_codes:
+            normalized_codes.append(value)
+    if not normalized_codes:
+        return JsonResponse({'success': False, 'error': '삭제할 품번이 없습니다.'}, status=400)
+
+    scope = _product_scope_queryset(request, include_inactive=True)
+    deleted_count = 0
+    blocked_count = 0
+    missing_count = 0
+    results = []
+
+    for code in normalized_codes:
+        product = scope.filter(product_code=code).first()
+        if not product:
+            missing_count += 1
+            results.append({'productCode': code, 'status': 'missing', 'message': '제품 없음 또는 권한 없음'})
+            continue
+        if not _product_can_manage(request, product):
+            blocked_count += 1
+            results.append({'productCode': code, 'status': 'blocked', 'message': '권한 없음'})
+            continue
+        if product.delivery_items.exists() or product.quoteitems.exists():
+            blocked_count += 1
+            results.append({'productCode': code, 'status': 'blocked', 'message': '견적/납품에 사용된 제품'})
+            continue
+        product.delete()
+        deleted_count += 1
+        results.append({'productCode': code, 'status': 'deleted', 'message': '삭제 완료'})
+
+    return JsonResponse({
+        'success': True,
+        'deletedCount': deleted_count,
+        'blockedCount': blocked_count,
+        'missingCount': missing_count,
+        'results': results[:300],
+        'message': f'삭제 {deleted_count}건, 차단 {blocked_count}건, 없음 {missing_count}건',
+    })
+
+
+@login_required
+def products_excel_export_api(request):
+    """접근 가능한 전체 제품 XLSX 다운로드."""
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    products = _product_usage_annotations(
+        _product_scope_queryset(request, include_inactive=True),
+    ).order_by('product_code')
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'products'
+    headers = ['품번', '제품설명', '규격', '단위', '기준단가', '상태', '견적횟수', '판매횟수', '등록자', '수정일']
+    sheet.append(headers)
+    for product in products:
+        sheet.append([
+            product.product_code,
+            product.description or '',
+            product.specification or '',
+            product.unit or 'EA',
+            int(product.standard_price or 0),
+            '활성' if product.is_active else '비활성',
+            int(getattr(product, 'quote_count', 0) or 0),
+            int(getattr(product, 'delivery_count', 0) or 0),
+            _user_display_name(product.created_by) if product.created_by else '공용',
+            timezone.localtime(product.updated_at).strftime('%Y-%m-%d %H:%M') if product.updated_at else '',
+        ])
+
+    for column_cells in sheet.columns:
+        max_length = max(len(str(cell.value or '')) for cell in column_cells)
+        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 40)
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f"products-{timezone.localdate().strftime('%Y%m%d')}.xlsx"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    workbook.save(response)
+    return response
+
+
+@login_required
 def product_api_list(request):
     """제품 목록 API (AJAX용) - 견적/납품 작성 시 제품 선택"""
     search = request.GET.get('search', '')
@@ -18188,8 +18582,8 @@ def product_api_list(request):
         'unit': p.unit or 'EA',
         'specification': p.specification or '',
         'standard_price': float(p.standard_price),
-        'current_price': float(p.get_current_price()),
-        'is_promo': p.is_promo,
+        'current_price': float(p.standard_price),
+        'is_promo': False,
     } for p in products]
     
     return JsonResponse({'products': products_data})

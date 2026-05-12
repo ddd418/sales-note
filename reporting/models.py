@@ -939,13 +939,7 @@ class Product(models.Model):
         return self.product_code
     
     def get_current_price(self):
-        """현재 적용 가격 반환 (프로모션 고려)"""
-        from datetime import date
-        if self.is_promo and self.promo_price:
-            today = date.today()
-            if self.promo_start and self.promo_end:
-                if self.promo_start <= today <= self.promo_end:
-                    return self.promo_price
+        """현재 적용 가격 반환."""
         return self.standard_price
     
     class Meta:

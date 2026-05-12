@@ -6317,6 +6317,143 @@ class ProductSpecificationSaveTests(TestCase):
         self.assertEqual(product.specification, '새규격')
 
 
+class ProductManagementReactApiTests(TestCase):
+    """React 제품관리 API 회귀 테스트"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='제품React회사')
+        self.salesman = make_user('product-react-sales', role='salesman', company=self.company)
+        self.client.force_login(self.salesman)
+
+    def test_product_bulk_upsert_updates_existing_ecount_overlap_and_disables_promo(self):
+        import json
+        from decimal import Decimal
+        from reporting.models import Product
+
+        existing = Product.objects.create(
+            product_code='ECOUNT-001',
+            description='기존 설명',
+            specification='OLD',
+            unit='EA',
+            standard_price=Decimal('1000'),
+            is_promo=True,
+            promo_price=Decimal('800'),
+            created_by=self.salesman,
+        )
+        no_description_row = Product.objects.create(
+            product_code='ECOUNT-003',
+            description='보존할 설명',
+            specification='OLD-SPEC',
+            unit='EA',
+            standard_price=Decimal('3000'),
+            created_by=self.salesman,
+        )
+
+        response = self.client.post(
+            reverse('reporting:products_bulk_upsert_api'),
+            data=json.dumps({
+                'products': [
+                    {
+                        'productCode': 'ECOUNT-001',
+                        'description': '새 설명',
+                        'specification': 'NEW',
+                        'unit': 'BOX',
+                        'standardPrice': '1500',
+                    },
+                    {
+                        'productCode': 'ECOUNT-002',
+                        'description': '신규 설명',
+                        'specification': 'SPEC',
+                        'unit': 'SET',
+                        'standardPrice': '2500',
+                    },
+                    {
+                        'productCode': 'ECOUNT-003',
+                        'specification': 'NEW-SPEC',
+                        'unit': 'EA',
+                        'standardPrice': '3300',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['createdCount'], 1)
+        self.assertEqual(payload['updatedCount'], 2)
+        existing.refresh_from_db()
+        self.assertEqual(existing.description, '새 설명')
+        self.assertEqual(existing.specification, 'NEW')
+        self.assertEqual(existing.unit, 'BOX')
+        self.assertEqual(existing.standard_price, Decimal('1500'))
+        self.assertFalse(existing.is_promo)
+        self.assertIsNone(existing.promo_price)
+        no_description_row.refresh_from_db()
+        self.assertEqual(no_description_row.description, '보존할 설명')
+        self.assertEqual(no_description_row.specification, 'NEW-SPEC')
+        self.assertEqual(no_description_row.standard_price, Decimal('3300'))
+        created = Product.objects.get(product_code='ECOUNT-002')
+        self.assertEqual(created.created_by, self.salesman)
+
+    def test_product_current_price_ignores_legacy_promotion(self):
+        from decimal import Decimal
+        from reporting.models import Product
+
+        product = Product.objects.create(
+            product_code='PROMO-OFF-001',
+            standard_price=Decimal('1000'),
+            is_promo=True,
+            promo_price=Decimal('700'),
+            created_by=self.salesman,
+        )
+
+        response = self.client.get(reverse('reporting:product_api_list'), {'search': 'PROMO-OFF'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()['products'][0]
+        self.assertEqual(payload['current_price'], 1000.0)
+        self.assertFalse(payload['is_promo'])
+        self.assertEqual(product.get_current_price(), Decimal('1000'))
+
+    def test_product_bulk_delete_deletes_unused_and_blocks_used_product(self):
+        import json
+        from reporting.models import DeliveryItem, Product
+
+        unused = Product.objects.create(product_code='DELETE-UNUSED', standard_price=1000, created_by=self.salesman)
+        used = Product.objects.create(product_code='DELETE-USED', standard_price=2000, created_by=self.salesman)
+        DeliveryItem.objects.create(product=used, item_name='사용 제품', quantity=1, unit_price=2000)
+
+        response = self.client.post(
+            reverse('reporting:products_bulk_delete_api'),
+            data=json.dumps({'productCodes': [unused.product_code, used.product_code, 'DELETE-MISSING']}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['deletedCount'], 1)
+        self.assertEqual(payload['blockedCount'], 1)
+        self.assertEqual(payload['missingCount'], 1)
+        self.assertFalse(Product.objects.filter(product_code=unused.product_code).exists())
+        self.assertTrue(Product.objects.filter(product_code=used.product_code).exists())
+
+    def test_products_excel_export_returns_xlsx(self):
+        from reporting.models import Product
+
+        Product.objects.create(product_code='XLSX-001', description='다운로드', standard_price=1000, created_by=self.salesman)
+
+        response = self.client.get(reverse('reporting:products_excel_export_api'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            response['Content-Type'],
+        )
+        self.assertIn('products-', response['Content-Disposition'])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 8.5: 대시보드 일정 표시 테스트 (Bug 2 & 3)
 # ─────────────────────────────────────────────────────────────────────────────

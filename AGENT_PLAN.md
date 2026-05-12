@@ -1,6 +1,51 @@
 # AGENT_PLAN.md
 
-## Current task — React 메일 리치 에디터 링크 표시 텍스트 핫픽스
+## Current task — 제품관리 React 전환, Ecount upsert, 엑셀 다운로드/일괄삭제, 프로모션 제거
+
+**목표**: 기존 Django 제품관리 화면을 React CRM 화면으로 옮기고, Ecount 제품 데이터를 붙여넣어 신규/기존 제품을 일괄 upsert할 수 있게 한다. 전체 제품 Excel 다운로드와 붙여넣기 기반 일괄 삭제를 제공하고, 제품관리의 프로모션 설정 기능은 제거한다.
+
+### 확인된 상태
+
+- `Product` 모델은 `product_code`, `unit`, `specification`, `standard_price`, `is_active`, `description`, `created_by`를 중심으로 사용한다.
+- 기존 Django 제품관리 URL은 `/reporting/products/`, `/reporting/products/create/`, `/reporting/products/bulk-create/`, `/reporting/products/<id>/edit/`, `/reporting/products/<id>/delete/`다.
+- 기존 React에는 일정 품목 선택용 `loadProducts()`만 있고, 제품관리 전용 React 화면/API는 없다.
+- 기존 `product_bulk_create()`는 중복 제품을 업데이트하려는 의도는 있으나 React 관리 화면에서는 사용할 수 없고, 프로모션 필드도 여전히 노출된다.
+- DB 모델 변경 없이 구현 가능하다. 프로모션 컬럼은 호환성을 위해 남기되 제품관리/가격 계산에서는 사용하지 않게 한다.
+
+### 구현 계획
+
+- 제품관리 전용 API를 추가한다.
+  - 목록/검색/상태/정렬/페이지네이션
+  - 단일 생성/수정
+  - Ecount 붙여넣기 일괄 upsert
+  - 붙여넣기 기반 일괄 삭제
+  - 전체 제품 XLSX 다운로드
+- 중복 제품 upsert는 품번 기준으로 기존 제품을 찾고, 설명/규격/단위/기준단가/활성 상태가 달라졌을 때 업데이트한다.
+- 삭제는 기존 단일 삭제 규칙을 유지해 견적/납품에 사용된 제품은 삭제하지 않고 차단 내역으로 반환한다.
+- `Product.get_current_price()`와 제품 API는 기준단가를 그대로 반환하게 하여 프로모션 가격 기능을 비활성화한다.
+- 기존 Django 제품 폼/목록에서도 프로모션 설정/현재가 표시를 제거한다.
+- React `/products/` 화면과 사이드바 메뉴를 추가하고, 제품 목록/등록/수정/붙여넣기 upsert/붙여넣기 삭제/Excel 다운로드를 한 화면에서 제공한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.ProductSpecificationSaveTests reporting.tests.ProductManagementReactApiTests reporting.tests.SchedulesSummaryApiTests.test_product_api_list_returns_accessible_product_master_data --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/products/`, `/reporting/products/`, `/reporting/api/products/manage/` smoke check
+
+### 현재 상태
+
+- 구현 완료. React `/products/` 화면, 제품관리 API, Ecount/Excel 붙여넣기 upsert, 붙여넣기 삭제, 전체 XLSX 다운로드, 프로모션 설정 제거를 반영했다.
+- 로컬 검증 진행 중이며, 현재 제품 API/기존 제품 저장/일정 제품 API 회귀 테스트와 Django check/migration dry-run/frontend build/node check, mocked product API 기반 Playwright 화면 smoke는 통과했다.
+- 다음 행동: 커밋/푸시, Railway `web`/`sales-note-frontend` 배포, 운영 `/products/` smoke check를 진행한다.
+
+---
+
+## Previous task — React 메일 리치 에디터 링크 표시 텍스트 핫픽스
 
 **목표**: 사용자가 링크 버튼을 누를 때 URL 자체가 본문에 들어가는 것이 아니라, 원하는 표시 문구를 링크 텍스트로 넣을 수 있게 한다. 선택한 본문 텍스트가 있으면 해당 텍스트를 기본 표시 문구로 사용하고, URL 입력 후 선택 영역을 링크로 교체한다.
 
@@ -24,12 +69,12 @@
 
 ### 현재 상태
 
-- 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 운영 수동 검수 대기.
+- 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 운영 수동 검수 완료.
 - Runtime commit: `9fc5522 fix: insert mail links with custom text`
 - Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS
-- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (GitHub 자동 배포)
+- Railway `web`: `36758e7b-1f37-4d91-a3a1-2585d5a5eb33` SUCCESS (문서 커밋 자동 배포)
 - 운영 smoke OK: `/reporting/login/`, `/mailbox/`
-- 다음 행동: 사용자가 운영 `/mailbox/`에서 선택 텍스트 또는 새 표시 문구로 링크가 삽입되는지 수동 검수한다. 검수 전에는 다음 구현 작업을 시작하지 않는다.
+- 수동 검수 결과: 완료. 사용자가 2026-05-12 KST에 확인했다.
 
 ---
 
@@ -119,7 +164,7 @@
 - Runtime commits: `14606a4 fix: repair quote notes and mailbox attachments`, `97513a5 fix: expand quote item note rows`
 - Railway `web`: `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS
 - Railway `sales-note-frontend`: `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS
-- 제품관리 React 전환 WIP는 긴급 핫픽스 처리를 위해 stash에 보관했다.
+- 제품관리 React 전환 WIP는 링크 핫픽스 검수 완료 후 현재 작업으로 적용해 진행 중이다.
 
 ---
 

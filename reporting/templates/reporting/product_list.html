@@ -201,21 +201,6 @@
                                 </a>
                             </th>
                             <th>
-                                <a href="{% url 'reporting:product_list' %}?sort=promo_price&order={% if sort_by == 'promo_price' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}" 
-                                   class="text-decoration-none text-dark">
-                                    현재가
-                                    {% if sort_by == 'promo_price' %}
-                                        {% if sort_order == 'asc' %}
-                                            <i class="fas fa-sort-up"></i>
-                                        {% else %}
-                                            <i class="fas fa-sort-down"></i>
-                                        {% endif %}
-                                    {% else %}
-                                        <i class="fas fa-sort text-muted"></i>
-                                    {% endif %}
-                                </a>
-                            </th>
-                            <th>
                                 <a href="{% url 'reporting:product_list' %}?sort=status&order={% if sort_by == 'status' and sort_order == 'asc' %}desc{% else %}asc{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if is_active %}&is_active={{ is_active }}{% endif %}" 
                                    class="text-decoration-none text-dark">
                                     상태
@@ -278,14 +263,6 @@
                             </td>
                             <td class="text-end">
                                 {{ product.standard_price|floatformat:0|intcomma }}원
-                            </td>
-                            <td class="text-end">
-                                {% if product.is_promo %}
-                                <span class="badge bg-danger">프로모션</span><br>
-                                <strong class="text-danger">{{ product.get_current_price|floatformat:0|intcomma }}원</strong>
-                                {% else %}
-                                {{ product.get_current_price|floatformat:0|intcomma }}원
-                                {% endif %}
                             </td>
                             <td>
                                 {% if product.is_active %}
