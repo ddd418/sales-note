@@ -4229,7 +4229,7 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
     }
 
 
-def _schedules_personal_payload(personal_schedule, today):
+def _schedules_personal_payload(personal_schedule, today, can_edit=False):
     return {
         'id': personal_schedule.id,
         'type': 'personal',
@@ -4260,9 +4260,10 @@ def _schedules_personal_payload(personal_schedule, today):
         'followupId': None,
         'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
-        'djangoEditHref': '',
+        'djangoEditHref': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
         'statusUpdateHref': '',
-        'canEdit': False,
+        'deleteHref': reverse('reporting:personal_schedules_delete_api', args=[personal_schedule.id]) if can_edit else '',
+        'canEdit': bool(can_edit),
         'statusOptions': [],
         'customerHref': '',
         'djangoCustomerHref': '',
@@ -4279,7 +4280,11 @@ def _schedules_combined_items(schedules, personal_schedules, today, limit=80, la
         )
         for schedule in schedules
     ] + [
-        _schedules_personal_payload(personal_schedule, today)
+        _schedules_personal_payload(
+            personal_schedule,
+            today,
+            personal_schedule.user_id == request_user.id if request_user else False,
+        )
         for personal_schedule in personal_schedules
     ]
     items.sort(
@@ -5104,6 +5109,12 @@ def schedules_summary_api(request):
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
+            'personalSchedule': {
+                'canCreate': can_create_schedule,
+                'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
+                'submitUrl': reverse('reporting:personal_schedules_create_api'),
+                'djangoUrl': reverse('reporting:personal_schedule_create'),
+            },
         },
         'today': _schedules_combined_items(today_schedules[:20], today_personal_schedules[:20], today, limit=20, request_user=request.user),
         'upcoming': _schedules_combined_items(upcoming_schedules[:30], upcoming_personal_schedules[:30], today, limit=30, request_user=request.user),
@@ -5206,6 +5217,12 @@ def schedules_calendar_api(request):
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
+            'personalSchedule': {
+                'canCreate': can_create_schedule,
+                'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
+                'submitUrl': reverse('reporting:personal_schedules_create_api'),
+                'djangoUrl': reverse('reporting:personal_schedule_create'),
+            },
         },
         'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000, latest_first=False, request_user=request.user),
     })

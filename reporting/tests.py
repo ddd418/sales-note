@@ -3330,6 +3330,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.url = reverse('reporting:schedules_summary_api')
         self.create_url = reverse('reporting:schedules_create_api')
         self.calendar_url = reverse('reporting:schedules_calendar_api')
+        self.personal_create_url = reverse('reporting:personal_schedules_create_api')
 
     def _create_customer(self, owner, name):
         from reporting.models import Company, Department, FollowUp
@@ -3564,7 +3565,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(own_item['reports'][0]['meetingSituation'], 'PCR 장비 도입 검토 중')
         self.assertEqual(own_item['reports'][0]['meetingConfirmedFacts'], '예산 담당자 확인')
         self.assertEqual(own_item['reports'][0]['nextAction'], '견적서 송부')
-        self.assertFalse(personal_item['canEdit'])
+        self.assertTrue(personal_item['canEdit'])
+        self.assertEqual(personal_item['deleteHref'], reverse('reporting:personal_schedules_delete_api', args=[personal.id]))
+        self.assertEqual(personal_item['djangoEditHref'], reverse('reporting:personal_schedule_edit', args=[personal.id]))
         self.assertEqual(personal_item['statusOptions'], [])
         self.assertEqual(personal_item['reports'], [])
         self.assertEqual(payload['filters']['start'], '2026-05-01')
@@ -3574,6 +3577,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['djangoCalendar'], reverse('reporting:schedule_calendar'))
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['create']['submitUrl'], self.create_url)
+        self.assertEqual(payload['create']['personalSchedule']['submitUrl'], self.personal_create_url)
         self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
 
     def test_schedules_calendar_api_all_filter_uses_same_company_only(self):
@@ -3582,6 +3586,8 @@ class SchedulesSummaryApiTests(TestCase):
         target_date = datetime.date(2026, 5, 10)
         own = self._create_schedule(self.user, '회사내월간일정', visit_date=target_date)
         coworker = self._create_schedule(self.coworker, '동료월간일정', visit_date=target_date)
+        own_personal = self._create_personal_schedule(self.user, '회사내개인월간일정', schedule_date=target_date)
+        coworker_personal = self._create_personal_schedule(self.coworker, '동료개인월간일정', schedule_date=target_date)
         other = self._create_schedule(self.other_user, '타사회사월간일정', visit_date=target_date)
         self.client.force_login(self.user)
 
@@ -3603,6 +3609,12 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertFalse(coworker_item['canEdit'])
         self.assertEqual(coworker_item['statusUpdateHref'], '')
         self.assertEqual(coworker_item['deleteHref'], '')
+        own_personal_item = next(item for item in payload['schedules'] if item['type'] == 'personal' and item['id'] == own_personal.id)
+        coworker_personal_item = next(item for item in payload['schedules'] if item['type'] == 'personal' and item['id'] == coworker_personal.id)
+        self.assertTrue(own_personal_item['canEdit'])
+        self.assertEqual(own_personal_item['deleteHref'], reverse('reporting:personal_schedules_delete_api', args=[own_personal.id]))
+        self.assertFalse(coworker_personal_item['canEdit'])
+        self.assertEqual(coworker_personal_item['deleteHref'], '')
         self.assertEqual(payload['scope']['dataFilter'], 'all')
         self.assertTrue(any(option['id'] == self.coworker.id for option in payload['options']['users']))
 
@@ -3658,6 +3670,123 @@ class SchedulesSummaryApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_personal_schedules_create_api_salesman_creates_own_schedule(self):
+        import json
+        from reporting.models import History, PersonalSchedule
+
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.personal_create_url,
+            data=json.dumps({
+                'title': 'React 개인 일정',
+                'content': 'React 개인 일정 내용',
+                'scheduleDate': '2026-05-10',
+                'scheduleTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        personal_schedule = PersonalSchedule.objects.get(pk=payload['scheduleId'])
+        self.assertEqual(personal_schedule.user, self.user)
+        self.assertEqual(personal_schedule.company, self.company)
+        self.assertEqual(personal_schedule.title, 'React 개인 일정')
+        self.assertEqual(personal_schedule.schedule_date.isoformat(), '2026-05-10')
+        self.assertEqual(personal_schedule.schedule_time.strftime('%H:%M'), '10:30')
+        self.assertEqual(payload['schedule']['id'], personal_schedule.id)
+        self.assertTrue(payload['edit']['canEdit'])
+        self.assertEqual(
+            payload['edit']['submitUrl'],
+            reverse('reporting:personal_schedules_update_api', args=[personal_schedule.id]),
+        )
+        self.assertTrue(History.objects.filter(
+            personal_schedule=personal_schedule,
+            parent_history__isnull=True,
+            content='개인 일정: React 개인 일정',
+        ).exists())
+
+    def test_personal_schedules_create_api_blocks_manager(self):
+        import json
+        from reporting.models import PersonalSchedule
+
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            self.personal_create_url,
+            data=json.dumps({
+                'title': '매니저 개인 일정',
+                'scheduleDate': '2026-05-10',
+                'scheduleTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(PersonalSchedule.objects.filter(title='매니저 개인 일정').exists())
+
+    def test_personal_schedules_update_and_delete_api_are_owner_only(self):
+        import json
+        from reporting.models import History, PersonalSchedule
+
+        personal_schedule = self._create_personal_schedule(self.user, '수정전 개인 일정')
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            personal_schedule=personal_schedule,
+            action_type='memo',
+            content='개인 일정: 수정전 개인 일정',
+            created_by=self.user,
+        )
+        update_url = reverse('reporting:personal_schedules_update_api', args=[personal_schedule.id])
+        delete_url = reverse('reporting:personal_schedules_delete_api', args=[personal_schedule.id])
+
+        self.client.force_login(self.coworker)
+        blocked_update = self.client.post(
+            update_url,
+            data=json.dumps({
+                'title': '동료 수정 시도',
+                'scheduleDate': '2026-05-11',
+                'scheduleTime': '11:30',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(blocked_update.status_code, 403)
+        blocked_delete = self.client.post(delete_url)
+        self.assertEqual(blocked_delete.status_code, 403)
+        self.assertTrue(PersonalSchedule.objects.filter(pk=personal_schedule.id).exists())
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'title': '수정후 개인 일정',
+                'content': '수정된 개인 일정 내용',
+                'scheduleDate': '2026-05-11',
+                'scheduleTime': '11:30',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        personal_schedule.refresh_from_db()
+        self.assertEqual(personal_schedule.title, '수정후 개인 일정')
+        self.assertEqual(personal_schedule.content, '수정된 개인 일정 내용')
+        self.assertEqual(personal_schedule.schedule_date.isoformat(), '2026-05-11')
+        self.assertEqual(personal_schedule.schedule_time.strftime('%H:%M'), '11:30')
+        self.assertEqual(
+            History.objects.get(personal_schedule=personal_schedule, parent_history__isnull=True).content,
+            '개인 일정: 수정후 개인 일정',
+        )
+
+        delete_response = self.client.post(delete_url)
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertTrue(delete_response.json()['success'])
+        self.assertFalse(PersonalSchedule.objects.filter(pk=personal_schedule.id).exists())
 
     def test_schedules_create_api_salesman_creates_own_schedule(self):
         import json

@@ -6,12 +6,195 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib import messages
 from django import forms
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from .models import PersonalSchedule, History, UserProfile
-from datetime import datetime
+from datetime import date, time
+import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _api_login_required_response(request):
+    if request.user.is_authenticated:
+        return None
+    return JsonResponse({
+        'success': False,
+        'error': 'login_required',
+        'message': '로그인이 필요합니다.',
+        'loginUrl': reverse('reporting:login'),
+    }, status=401)
+
+
+def _user_display_name(user):
+    return user.get_full_name() or user.username
+
+
+def _date_or_none(value):
+    return value.isoformat() if value else None
+
+
+def _parse_iso_date_or_none(value):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _parse_time_or_none(value):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    parts = value.split(':')
+    if len(parts) < 2:
+        return None
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+        return time(hour=hour, minute=minute)
+    except (TypeError, ValueError):
+        return None
+
+
+def _personal_schedule_can_view(request_user, personal_schedule, user_profile=None):
+    if personal_schedule.user_id == request_user.id:
+        return True
+    user_profile = user_profile or get_object_or_404(UserProfile, user=request_user)
+    if user_profile.is_admin():
+        return True
+    return bool(
+        user_profile.can_view_all_users()
+        and user_profile.company_id
+        and personal_schedule.company_id == user_profile.company_id
+    )
+
+
+def _personal_schedule_can_edit(request_user, personal_schedule):
+    return personal_schedule.user_id == request_user.id
+
+
+def _personal_schedule_payload(personal_schedule, request_user=None):
+    can_edit = bool(request_user and _personal_schedule_can_edit(request_user, personal_schedule))
+    return {
+        'id': personal_schedule.id,
+        'type': 'personal',
+        'followupId': None,
+        'customer': personal_schedule.title,
+        'title': personal_schedule.title,
+        'company': personal_schedule.company.name if personal_schedule.company else '',
+        'department': '',
+        'owner': _user_display_name(personal_schedule.user),
+        'ownerId': personal_schedule.user_id,
+        'date': _date_or_none(personal_schedule.schedule_date),
+        'time': personal_schedule.schedule_time.strftime('%H:%M') if personal_schedule.schedule_time else '',
+        'activityType': 'personal',
+        'activityLabel': '개인 일정',
+        'status': 'personal',
+        'statusLabel': '개인 일정',
+        'location': '',
+        'notes': (personal_schedule.content or '').strip()[:180],
+        'notesFull': personal_schedule.content or '',
+        'priority': '',
+        'priorityLabel': '',
+        'expectedRevenue': 0,
+        'probability': 0,
+        'expectedCloseDate': None,
+        'purchaseConfirmed': False,
+        'overdue': False,
+        'historyCount': getattr(personal_schedule, 'history_count', 0),
+        'reports': [],
+        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'djangoEditHref': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
+        'statusUpdateHref': '',
+        'deleteHref': reverse('reporting:personal_schedules_delete_api', args=[personal_schedule.id]) if can_edit else '',
+        'canEdit': can_edit,
+        'statusOptions': [],
+        'customerHref': '',
+        'djangoCustomerHref': '',
+        'createHistoryHref': '',
+    }
+
+
+def _personal_schedule_detail_response(request, personal_schedule, message=''):
+    can_edit = _personal_schedule_can_edit(request.user, personal_schedule)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'message': message,
+        'scheduleId': personal_schedule.id,
+        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'schedule': _personal_schedule_payload(personal_schedule, request.user),
+        'links': {
+            'calendar': '/schedules/calendar/',
+            'djangoCalendar': reverse('reporting:schedule_calendar'),
+            'djangoDetail': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+            'djangoEdit': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
+            'deleteSchedule': reverse('reporting:personal_schedules_delete_api', args=[personal_schedule.id]) if can_edit else '',
+        },
+        'edit': {
+            'canEdit': can_edit,
+            'message': '' if can_edit else '본인 개인 일정만 수정할 수 있습니다.',
+            'submitUrl': reverse('reporting:personal_schedules_update_api', args=[personal_schedule.id]) if can_edit else '',
+            'djangoUrl': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
+        },
+    })
+
+
+def _ensure_personal_schedule_history(personal_schedule):
+    updated = History.objects.filter(
+        personal_schedule=personal_schedule,
+        parent_history__isnull=True,
+    ).update(
+        user_id=personal_schedule.user_id,
+        company_id=personal_schedule.company_id,
+        action_type='memo',
+        content=f"개인 일정: {personal_schedule.title}",
+        created_by_id=personal_schedule.user_id,
+    )
+    if updated:
+        return
+    History.objects.create(
+        user=personal_schedule.user,
+        company=personal_schedule.company,
+        personal_schedule=personal_schedule,
+        action_type='memo',
+        content=f"개인 일정: {personal_schedule.title}",
+        created_by=personal_schedule.user,
+    )
+
+
+def _parse_personal_schedule_payload(request):
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    title = str(payload.get('title') or '').strip()[:200]
+    content = str(payload.get('content') or '').strip()
+    schedule_date = _parse_iso_date_or_none(payload.get('scheduleDate') or payload.get('schedule_date'))
+    schedule_time = _parse_time_or_none(payload.get('scheduleTime') or payload.get('schedule_time'))
+
+    if not title:
+        return None, JsonResponse({'success': False, 'error': '일정 제목을 입력하세요.'}, status=400)
+    if not schedule_date:
+        return None, JsonResponse({'success': False, 'error': '일정 날짜를 선택하세요.'}, status=400)
+    if not schedule_time:
+        return None, JsonResponse({'success': False, 'error': '일정 시간을 선택하세요.'}, status=400)
+
+    return {
+        'title': title,
+        'content': content,
+        'schedule_date': schedule_date,
+        'schedule_time': schedule_time,
+    }, None
 
 
 class PersonalScheduleForm(forms.ModelForm):
@@ -86,6 +269,104 @@ def personal_schedule_create_view(request):
         'form': form,
         'title': '새 일정 추가'
     })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def personal_schedules_create_api(request):
+    """React 캘린더용 개인 일정 생성 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_object_or_404(UserProfile, user=request.user)
+    if user_profile.is_manager():
+        return JsonResponse({
+            'success': False,
+            'error': 'Manager는 일정을 직접 생성할 수 없습니다.',
+        }, status=403)
+
+    parsed, error_response = _parse_personal_schedule_payload(request)
+    if error_response:
+        return error_response
+
+    personal_schedule = PersonalSchedule.objects.create(
+        user=request.user,
+        company=user_profile.company,
+        **parsed,
+    )
+    _ensure_personal_schedule_history(personal_schedule)
+
+    response = _personal_schedule_detail_response(request, personal_schedule, '개인 일정을 등록했습니다.')
+    response.status_code = 201
+    return response
+
+
+@never_cache
+@require_http_methods(["GET"])
+def personal_schedules_detail_api(request, pk):
+    """React 캘린더용 개인 일정 상세 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    personal_schedule = get_object_or_404(
+        PersonalSchedule.objects.select_related('user', 'company'),
+        pk=pk,
+    )
+    user_profile = get_object_or_404(UserProfile, user=request.user)
+    if not _personal_schedule_can_view(request.user, personal_schedule, user_profile):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+    return _personal_schedule_detail_response(request, personal_schedule)
+
+
+@never_cache
+@require_http_methods(["POST"])
+def personal_schedules_update_api(request, pk):
+    """React 캘린더용 개인 일정 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    personal_schedule = get_object_or_404(
+        PersonalSchedule.objects.select_related('user', 'company'),
+        pk=pk,
+    )
+    if not _personal_schedule_can_edit(request.user, personal_schedule):
+        return JsonResponse({'success': False, 'error': '본인 개인 일정만 수정할 수 있습니다.'}, status=403)
+
+    parsed, error_response = _parse_personal_schedule_payload(request)
+    if error_response:
+        return error_response
+
+    personal_schedule.title = parsed['title']
+    personal_schedule.content = parsed['content']
+    personal_schedule.schedule_date = parsed['schedule_date']
+    personal_schedule.schedule_time = parsed['schedule_time']
+    personal_schedule.save(update_fields=['title', 'content', 'schedule_date', 'schedule_time', 'updated_at'])
+    _ensure_personal_schedule_history(personal_schedule)
+
+    return _personal_schedule_detail_response(request, personal_schedule, '개인 일정을 수정했습니다.')
+
+
+@never_cache
+@require_http_methods(["POST"])
+def personal_schedules_delete_api(request, pk):
+    """React 캘린더용 개인 일정 삭제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    personal_schedule = get_object_or_404(
+        PersonalSchedule.objects.select_related('user'),
+        pk=pk,
+    )
+    if not _personal_schedule_can_edit(request.user, personal_schedule):
+        return JsonResponse({'success': False, 'error': '본인 개인 일정만 삭제할 수 있습니다.'}, status=403)
+
+    personal_schedule.delete()
+    return JsonResponse({'success': True, 'message': '개인 일정을 삭제했습니다.'})
 
 
 @login_required

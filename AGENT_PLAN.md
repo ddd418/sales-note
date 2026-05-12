@@ -1,6 +1,49 @@
 # AGENT_PLAN.md
 
-## Current task — React 일정 캘린더 고급 조작 parity
+## Current task — React 개인 일정 등록/수정 API 전환
+
+**목표**: React `/schedules/calendar/`에서 개인 일정을 Django 레거시 화면으로 이동하지 않고 등록, 수정, 삭제할 수 있게 한다. 기존 `/reporting/personal-schedules/*` 화면과 `/reporting/*` route는 fallback으로 보존한다.
+
+### 확인된 상태
+
+- React 캘린더는 고객 일정 등록/수정/삭제/상태변경을 이미 처리한다.
+- 개인 일정은 캘린더 목록에 함께 표시되지만 `canEdit=false`로 내려오며, 등록은 Django 링크로 이동한다.
+- 기존 `PersonalSchedule` 모델과 legacy create/edit/delete view가 있으므로 DB 모델 변경은 필요 없다.
+- React 개인 일정 API는 owner-only 조작으로 제한하고, manager/동료는 기존처럼 조회만 가능하게 하는 것이 안전하다.
+
+### 구현 계획
+
+- `/reporting/api/personal-schedules/create/`, detail, update, delete JSON API를 추가한다.
+- 개인 일정 생성 시 기존 legacy 흐름처럼 `History` 메인 기록을 생성한다.
+- 캘린더 payload의 개인 일정 item에 owner-only `canEdit`, `deleteHref`, `djangoEditHref`를 제공한다.
+- 캘린더 `create` payload에 개인 일정 등록 submit URL과 Django fallback URL을 추가한다.
+- React 캘린더 선택일 패널에 개인 일정 등록 폼을 추가한다.
+- 개인 일정 카드의 수정/삭제 버튼을 React API로 연결하고, 저장/삭제 후 월간 데이터를 다시 불러온다.
+- 고객 일정 흐름, 상태 변경, 기존 Django fallback 링크는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\personal_schedule_views.py reporting\tests.py`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/`, `/reporting/login/`, `/reporting/api/schedules/calendar/` smoke check
+
+### 현재 상태
+
+- 백엔드/React 구현 및 로컬 검증 완료.
+- DB 모델 변경 없음.
+- 로컬 브라우저 smoke 완료:
+  - 테스트 계정 `codex_calendar_smoke`와 테스트 개인 일정으로 등록/수정/삭제 확인.
+  - 로컬 테스트 계정, 회사, 개인 일정 데이터 삭제 완료.
+- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 확인한다.
+
+---
+
+## Previous task — React 일정 캘린더 고급 조작 parity
 
 **목표**: React 일정 캘린더에서 고객 일정을 조회만 하지 않고, 선택한 날짜 기준으로 고객 일정 등록, 상세 수정, 삭제, 상태 변경까지 처리할 수 있게 한다. Django 캘린더와 `/reporting/*` 레거시 화면은 fallback으로 보존한다.
 
@@ -51,7 +94,6 @@
   - 테스트 고객 `466`과 테스트 일정 `886`으로 캘린더 고객 일정 등록/수정/삭제를 확인했다.
   - 등록 후 카드와 월간 집계에 반영됐고, 수정 후 카드 메모가 갱신됐으며, 삭제 후 캘린더 API에서 사라지는 것을 확인했다.
   - 테스트 일정 `886`과 테스트 고객 `466`은 삭제 완료.
-- 다음 행동: React 개인 일정 등록/수정 API 추가 작업으로 진행한다.
 
 ---
 

@@ -1,5 +1,79 @@
 # AGENT_REPORT.md
 
+## 2026-05-13 — React Personal Schedule Calendar APIs
+
+**상태**: 구현/로컬 검증 완료, 배포 진행 전
+
+### 요약
+
+React 일정 캘린더에서 개인 일정을 Django 등록 화면으로 이동하지 않고 바로 등록, 수정, 삭제할 수 있게 했습니다. 고객 일정 등록/수정/삭제/상태변경 흐름과 기존 Django 개인 일정 화면은 fallback으로 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/personal_schedule_views.py`: React 개인 일정 create/detail/update/delete JSON API 추가
+- `reporting/urls.py`: `/reporting/api/personal-schedules/*` API route 추가
+- `reporting/views.py`: 캘린더/일정 API의 개인 일정 payload에 owner-only 편집/삭제 링크 추가
+- `reporting/tests.py`: 개인 일정 API와 캘린더 payload 회귀 테스트 추가
+- `frontend/src/api.ts`: 개인 일정 API 타입/호출 함수 추가
+- `frontend/src/App.tsx`: 캘린더 선택일 패널에 개인 일정 등록/수정/삭제 흐름 추가
+- `frontend/src/styles.css`: 일정 작업 버튼 disabled 상태 보강
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 검증 결과 갱신
+
+### CRM 개선
+
+- 캘린더 선택 날짜에서 개인 일정을 즉시 등록할 수 있습니다.
+- 본인 개인 일정 카드에 React `수정`/`삭제` 버튼이 표시됩니다.
+- 개인 일정 생성 시 기존 legacy 흐름처럼 메인 `History` 메모를 생성합니다.
+- 개인 일정 수정 시 메인 History 제목도 같이 갱신됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/personal-schedules/*` legacy 상세/등록/수정/삭제 route는 유지했습니다.
+- Manager/동료는 React API에서 개인 일정 수정/삭제가 차단됩니다.
+- 고객 일정 캘린더 조작, 상태 변경, Django fallback 링크는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\personal_schedule_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 37 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-sevkHjR9.js / assets/index-DAwMfLZL.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Playwright smoke
+→ 테스트 계정 `codex_calendar_smoke`로 로그인
+→ `/schedules/calendar/`에서 개인 일정 등록/수정/삭제 확인
+→ 테스트 계정, 회사, 개인 일정 데이터 삭제 완료
+```
+
+### 알려진 제한
+
+- 개인 일정 상세 화면 자체는 아직 Django legacy 화면을 사용합니다.
+- 운영 수동 검수는 배포 후 테스트 데이터로 진행해야 합니다.
+
+### 권장 다음 작업
+
+- 운영 배포 후 `/schedules/calendar/`에서 개인 일정 등록/수정/삭제를 수동 검수합니다.
+
+---
+
 ## 2026-05-13 — Production Manual Verification For Mail Attachments And Calendar Actions
 
 **상태**: 운영 로그인 세션 기반 수동 검수 완료, 테스트 데이터 삭제 완료

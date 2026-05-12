@@ -117,6 +117,8 @@ import {
   WeeklyReportsData,
   WeeklyReportSchedulesData,
   NoteCreatePayload,
+  PersonalScheduleDetailData,
+  PersonalSchedulePayload,
   addNoteReply,
   bulkDeleteProducts,
   bulkUpsertProducts,
@@ -128,6 +130,7 @@ import {
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
+  createPersonalSchedule,
   deletePrepayment as deleteCustomerPrepayment,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
@@ -154,6 +157,7 @@ import {
   loadPrepaymentsData,
   loadProductManagementData,
   loadProducts,
+  loadPersonalScheduleDetailData,
   loadScheduleCalendarData,
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
@@ -176,6 +180,7 @@ import {
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updatePrepayment as updateCustomerPrepayment,
+  updatePersonalSchedule,
   updateSchedule as updateCustomerSchedule,
   updateScheduleDeliveryItems,
   updateScheduleStatus,
@@ -254,6 +259,13 @@ type ScheduleEditFormState = ScheduleCreateFormState & {
   purchaseConfirmed: boolean;
   status: string;
   usePrepayment: boolean;
+};
+
+type PersonalScheduleFormState = {
+  title: string;
+  content: string;
+  scheduleDate: string;
+  scheduleTime: string;
 };
 
 type SchedulePrepaymentEditRow = PrepaymentOption & {
@@ -480,6 +492,20 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
   visitTime: schedule?.time || '09:00',
 });
 
+const makeEmptyPersonalScheduleForm = (scheduleDate = localDateInputValue()): PersonalScheduleFormState => ({
+  title: '',
+  content: '',
+  scheduleDate,
+  scheduleTime: '09:00',
+});
+
+const makePersonalScheduleEditForm = (schedule: ScheduleItem | null): PersonalScheduleFormState => ({
+  title: schedule?.title || '',
+  content: schedule?.notesFull || schedule?.notes || '',
+  scheduleDate: schedule?.date || localDateInputValue(),
+  scheduleTime: schedule?.time || '09:00',
+});
+
 const makeScheduleCalendarCreateForm = (data: ScheduleCalendarData | null, visitDate: string): ScheduleCreateFormState => {
   const form = makeEmptyScheduleCreateForm(visitDate);
   form.activityType = data?.create.activityTypes[0]?.value || form.activityType;
@@ -512,6 +538,27 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
       probability: form.probability.trim() || undefined,
       visitDate: form.visitDate,
       visitTime: form.visitTime,
+    },
+  };
+};
+
+const personalScheduleFormToPayload = (form: PersonalScheduleFormState): { payload?: PersonalSchedulePayload; error?: string } => {
+  if (!form.title.trim()) {
+    return { error: '일정 제목을 입력하세요.' };
+  }
+  if (!form.scheduleDate) {
+    return { error: '일정 날짜를 선택하세요.' };
+  }
+  if (!form.scheduleTime) {
+    return { error: '일정 시간을 선택하세요.' };
+  }
+
+  return {
+    payload: {
+      title: form.title.trim(),
+      content: form.content.trim() || undefined,
+      scheduleDate: form.scheduleDate,
+      scheduleTime: form.scheduleTime,
     },
   };
 };
@@ -4488,7 +4535,7 @@ function ScheduleCalendarSelectedList({
         const statusOptions = item.statusOptions ?? [];
         const reports = item.reports ?? [];
         const canChangeStatus = item.type === 'customer' && Boolean(item.canEdit && item.statusUpdateHref && statusOptions.length);
-        const canManage = item.type === 'customer' && Boolean(item.canEdit);
+        const canManage = Boolean(item.canEdit);
         const isUpdating = statusUpdatingKey === itemKey;
         const isDeleting = deletingKey === itemKey;
         return (
@@ -4613,6 +4660,12 @@ function ScheduleCalendarPage({
   const [calendarCreateError, setCalendarCreateError] = useState('');
   const [calendarCreateMessage, setCalendarCreateMessage] = useState('');
   const [calendarCreatedDetailHref, setCalendarCreatedDetailHref] = useState('');
+  const [personalCreateOpen, setPersonalCreateOpen] = useState(false);
+  const [personalCreateForm, setPersonalCreateForm] = useState<PersonalScheduleFormState>(() => makeEmptyPersonalScheduleForm());
+  const [personalCreating, setPersonalCreating] = useState(false);
+  const [personalCreateError, setPersonalCreateError] = useState('');
+  const [personalCreateMessage, setPersonalCreateMessage] = useState('');
+  const [personalCreatedDetailHref, setPersonalCreatedDetailHref] = useState('');
   const [calendarEditOpen, setCalendarEditOpen] = useState(false);
   const [calendarEditLoading, setCalendarEditLoading] = useState(false);
   const [calendarEditData, setCalendarEditData] = useState<ScheduleDetailData | null>(null);
@@ -4620,6 +4673,13 @@ function ScheduleCalendarPage({
   const [calendarEditSaving, setCalendarEditSaving] = useState(false);
   const [calendarEditError, setCalendarEditError] = useState('');
   const [calendarEditMessage, setCalendarEditMessage] = useState('');
+  const [personalEditOpen, setPersonalEditOpen] = useState(false);
+  const [personalEditLoading, setPersonalEditLoading] = useState(false);
+  const [personalEditData, setPersonalEditData] = useState<PersonalScheduleDetailData | null>(null);
+  const [personalEditForm, setPersonalEditForm] = useState<PersonalScheduleFormState>(() => makeEmptyPersonalScheduleForm());
+  const [personalEditSaving, setPersonalEditSaving] = useState(false);
+  const [personalEditError, setPersonalEditError] = useState('');
+  const [personalEditMessage, setPersonalEditMessage] = useState('');
   const [calendarDeletingKey, setCalendarDeletingKey] = useState('');
   const [calendarActionError, setCalendarActionError] = useState('');
   const [calendarActionMessage, setCalendarActionMessage] = useState('');
@@ -4651,6 +4711,10 @@ function ScheduleCalendarPage({
     setCalendarCreateMessage('');
     setCalendarEditError('');
     setCalendarEditMessage('');
+    setPersonalCreateError('');
+    setPersonalCreateMessage('');
+    setPersonalEditError('');
+    setPersonalEditMessage('');
   }, [dataFilter, filterUser, month]);
 
   const openCalendarCreatePanel = () => {
@@ -4660,9 +4724,27 @@ function ScheduleCalendarPage({
     setCalendarCreateForm(makeScheduleCalendarCreateForm(data, selectedDate));
     setCalendarCreateOpen(true);
     setCalendarEditOpen(false);
+    setPersonalCreateOpen(false);
+    setPersonalEditOpen(false);
     setCalendarCreateError('');
     setCalendarCreateMessage('');
     setCalendarCreatedDetailHref('');
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+  };
+
+  const openPersonalCreatePanel = () => {
+    if (!data) {
+      return;
+    }
+    setPersonalCreateForm(makeEmptyPersonalScheduleForm(selectedDate));
+    setPersonalCreateOpen(true);
+    setCalendarCreateOpen(false);
+    setCalendarEditOpen(false);
+    setPersonalEditOpen(false);
+    setPersonalCreateError('');
+    setPersonalCreateMessage('');
+    setPersonalCreatedDetailHref('');
     setCalendarActionError('');
     setCalendarActionMessage('');
   };
@@ -4674,6 +4756,15 @@ function ScheduleCalendarPage({
     }));
     setCalendarCreateError('');
     setCalendarCreateMessage('');
+  };
+
+  const handlePersonalCreateFieldChange = (field: keyof PersonalScheduleFormState, value: string) => {
+    setPersonalCreateForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setPersonalCreateError('');
+    setPersonalCreateMessage('');
   };
 
   const handleCalendarCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -4708,6 +4799,39 @@ function ScheduleCalendarPage({
     }
   };
 
+  const handlePersonalCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || personalCreating) {
+      return;
+    }
+    const createConfig = data.create.personalSchedule;
+    if (!createConfig?.canCreate) {
+      setPersonalCreateError(createConfig?.message || '개인 일정 등록 권한이 없습니다.');
+      return;
+    }
+    const { payload, error } = personalScheduleFormToPayload(personalCreateForm);
+    if (!payload) {
+      setPersonalCreateError(error || '개인 일정 등록 정보를 확인하세요.');
+      return;
+    }
+
+    setPersonalCreating(true);
+    setPersonalCreateError('');
+    setPersonalCreateMessage('');
+    setPersonalCreatedDetailHref('');
+    try {
+      const created = await createPersonalSchedule(payload, createConfig.submitUrl);
+      await onRefresh();
+      setPersonalCreateMessage(created.message || '개인 일정을 등록했습니다.');
+      setPersonalCreatedDetailHref(created.href || created.schedule?.href || '');
+      setPersonalCreateForm(makeEmptyPersonalScheduleForm(personalCreateForm.scheduleDate || selectedDate));
+    } catch (error_) {
+      setPersonalCreateError(error_ instanceof Error ? error_.message : '개인 일정 등록에 실패했습니다.');
+    } finally {
+      setPersonalCreating(false);
+    }
+  };
+
   const handleCalendarEditFieldChange = (field: keyof ScheduleEditFormState, value: string | boolean) => {
     setCalendarEditForm((previous) => ({
       ...previous,
@@ -4717,8 +4841,52 @@ function ScheduleCalendarPage({
     setCalendarEditMessage('');
   };
 
+  const handlePersonalEditFieldChange = (field: keyof PersonalScheduleFormState, value: string) => {
+    setPersonalEditForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setPersonalEditError('');
+    setPersonalEditMessage('');
+  };
+
   const handleCalendarEditOpen = async (schedule: ScheduleItem) => {
-    if (calendarEditLoading || calendarEditSaving) {
+    if (calendarEditLoading || calendarEditSaving || personalEditLoading || personalEditSaving) {
+      return;
+    }
+    if (schedule.type === 'personal') {
+      if (!schedule.canEdit) {
+        setCalendarActionError('이 개인 일정의 수정 권한이 없습니다.');
+        setCalendarActionMessage('');
+        return;
+      }
+
+      setCalendarCreateOpen(false);
+      setCalendarEditOpen(false);
+      setPersonalCreateOpen(false);
+      setPersonalEditOpen(true);
+      setPersonalEditLoading(true);
+      setPersonalEditData(null);
+      setPersonalEditError('');
+      setPersonalEditMessage('');
+      setCalendarActionError('');
+      setCalendarActionMessage('');
+      try {
+        const detail = await loadPersonalScheduleDetailData(schedule.id);
+        if (detail.source !== 'django' || !detail.schedule) {
+          throw new Error(detail.error || detail.message || '개인 일정 상세를 불러오지 못했습니다.');
+        }
+        if (!detail.edit.canEdit) {
+          throw new Error(detail.edit.message || '수정 권한이 없습니다.');
+        }
+        setPersonalEditData(detail);
+        setPersonalEditForm(makePersonalScheduleEditForm(detail.schedule));
+      } catch (error_) {
+        setPersonalEditData(null);
+        setPersonalEditError(error_ instanceof Error ? error_.message : '개인 일정 상세를 불러오지 못했습니다.');
+      } finally {
+        setPersonalEditLoading(false);
+      }
       return;
     }
     if (schedule.type !== 'customer' || !schedule.canEdit) {
@@ -4728,6 +4896,8 @@ function ScheduleCalendarPage({
     }
 
     setCalendarCreateOpen(false);
+    setPersonalCreateOpen(false);
+    setPersonalEditOpen(false);
     setCalendarEditOpen(true);
     setCalendarEditLoading(true);
     setCalendarEditData(null);
@@ -4785,23 +4955,64 @@ function ScheduleCalendarPage({
     }
   };
 
+  const handlePersonalEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!personalEditData?.edit || personalEditSaving) {
+      return;
+    }
+    if (!personalEditData.edit.canEdit || !personalEditData.edit.submitUrl) {
+      setPersonalEditError(personalEditData.edit.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const { payload, error } = personalScheduleFormToPayload(personalEditForm);
+    if (!payload) {
+      setPersonalEditError(error || '개인 일정 수정 정보를 확인하세요.');
+      return;
+    }
+
+    setPersonalEditSaving(true);
+    setPersonalEditError('');
+    setPersonalEditMessage('');
+    try {
+      const updated = await updatePersonalSchedule(payload, personalEditData.edit.submitUrl);
+      await onRefresh();
+      setPersonalEditData(updated);
+      setPersonalEditForm(makePersonalScheduleEditForm(updated.schedule));
+      setPersonalEditMessage(updated.message || '개인 일정을 수정했습니다.');
+      setPersonalEditOpen(false);
+    } catch (error_) {
+      setPersonalEditError(error_ instanceof Error ? error_.message : '개인 일정 수정에 실패했습니다.');
+    } finally {
+      setPersonalEditSaving(false);
+    }
+  };
+
   const handleCalendarDelete = async (schedule: ScheduleItem) => {
     if (calendarDeletingKey) {
       return;
     }
-    if (schedule.type !== 'customer' || !schedule.canEdit || !schedule.deleteHref) {
+    if (!schedule.canEdit || !schedule.deleteHref) {
       setCalendarActionError('이 일정의 삭제 권한이 없습니다.');
       setCalendarActionMessage('');
       return;
     }
-    const confirmMessage = [
-      '이 일정을 삭제할까요?',
-      '',
-      `고객: ${schedule.customer || '고객명 미정'}`,
-      `날짜: ${schedule.date ? formatDateLabel(schedule.date) : '날짜 없음'}`,
-      '',
-      '관련 활동 기록도 함께 삭제되며 복구할 수 없습니다.',
-    ].join('\n');
+    const confirmMessage = schedule.type === 'personal'
+      ? [
+        '이 개인 일정을 삭제할까요?',
+        '',
+        `제목: ${schedule.title || '제목 없음'}`,
+        `날짜: ${schedule.date ? formatDateLabel(schedule.date) : '날짜 없음'}`,
+        '',
+        '관련 메모도 함께 삭제되며 복구할 수 없습니다.',
+      ].join('\n')
+      : [
+        '이 일정을 삭제할까요?',
+        '',
+        `고객: ${schedule.customer || '고객명 미정'}`,
+        `날짜: ${schedule.date ? formatDateLabel(schedule.date) : '날짜 없음'}`,
+        '',
+        '관련 활동 기록도 함께 삭제되며 복구할 수 없습니다.',
+      ].join('\n');
     if (!window.confirm(confirmMessage)) {
       return;
     }
@@ -4813,9 +5024,22 @@ function ScheduleCalendarPage({
     try {
       const result = await deleteSchedule(schedule.deleteHref);
       await onRefresh();
-      if (calendarEditData?.schedule?.id === schedule.id) {
+      if (schedule.type === 'customer' && calendarEditData?.schedule?.id === schedule.id) {
         setCalendarEditOpen(false);
         setCalendarEditData(null);
+      }
+      if (schedule.type === 'personal' && personalEditData?.schedule?.id === schedule.id) {
+        setPersonalEditOpen(false);
+        setPersonalEditData(null);
+      }
+      if (schedule.type === 'personal') {
+        setPersonalCreateOpen(false);
+        setPersonalCreateMessage('');
+        setPersonalCreatedDetailHref('');
+        setPersonalEditOpen(false);
+        setPersonalEditData(null);
+        setPersonalEditError('');
+        setPersonalEditMessage('');
       }
       setCalendarActionMessage(result.message || '일정을 삭제했습니다.');
     } catch (error_) {
@@ -4846,7 +5070,8 @@ function ScheduleCalendarPage({
     { label: '지연', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
   const djangoScheduleCreateHref = appendDateQuery(data.links.createSchedule, selectedDate);
-  const personalScheduleCreateHref = appendDateQuery(data.links.createPersonalSchedule, selectedDate);
+  const personalScheduleCreateConfig = data.create.personalSchedule;
+  const personalScheduleCreateBaseHref = personalScheduleCreateConfig?.djangoUrl || data.links.createPersonalSchedule;
 
   return (
     <section className="schedules-page schedule-calendar-page">
@@ -4988,7 +5213,13 @@ function ScheduleCalendarPage({
           </div>
           <div className="customers-side-actions">
             <button onClick={openCalendarCreatePanel} type="button">고객 일정 등록</button>
-            <a href={personalScheduleCreateHref}>개인 일정 등록</a>
+            <button
+              disabled={!personalScheduleCreateConfig?.canCreate}
+              onClick={openPersonalCreatePanel}
+              type="button"
+            >
+              {personalScheduleCreateConfig?.canCreate ? '개인 일정 등록' : '개인 일정 권한 없음'}
+            </button>
             <a href={djangoScheduleCreateHref}>Django 상세 등록</a>
             <a href={data.links.weeklyReports}>주간보고</a>
             <a href={data.links.djangoSchedules}>Django 일정 목록</a>
@@ -5109,6 +5340,80 @@ function ScheduleCalendarPage({
                     </a>
                     <button className="route-primary-action" disabled={calendarCreating} type="submit">
                       {calendarCreating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                      저장
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
+
+          {personalCreateOpen || personalCreateError || personalCreateMessage ? (
+            <div className="schedule-calendar-inline-editor">
+              <div className="schedule-calendar-editor-heading">
+                <div>
+                  <span className="eyebrow">Personal schedule</span>
+                  <h3>개인 일정 등록</h3>
+                </div>
+                <button aria-label="개인 일정 등록 패널 닫기" onClick={() => setPersonalCreateOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+              </div>
+              {personalCreateError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{personalCreateError}</span></div> : null}
+              {personalCreateMessage ? (
+                <div className="dashboard-api-alert compact success">
+                  <CheckCircle2 size={16} />
+                  <span>{personalCreateMessage}</span>
+                  {personalCreatedDetailHref ? <a href={personalCreatedDetailHref}>상세</a> : null}
+                </div>
+              ) : null}
+              {!personalScheduleCreateConfig?.canCreate ? (
+                <DashboardEmpty label={personalScheduleCreateConfig?.message || '개인 일정 등록 권한이 없습니다'} />
+              ) : personalCreateOpen ? (
+                <form className="notes-create-form schedule-calendar-form" onSubmit={handlePersonalCreateSubmit}>
+                  <label>
+                    <span>일정 제목</span>
+                    <input
+                      onChange={(event) => handlePersonalCreateFieldChange('title', event.target.value)}
+                      required
+                      value={personalCreateForm.title}
+                    />
+                  </label>
+                  <div className="notes-create-grid schedules-create-grid">
+                    <label>
+                      <span>날짜</span>
+                      <input
+                        onChange={(event) => handlePersonalCreateFieldChange('scheduleDate', event.target.value)}
+                        required
+                        type="date"
+                        value={personalCreateForm.scheduleDate}
+                      />
+                    </label>
+                    <label>
+                      <span>시간</span>
+                      <input
+                        onChange={(event) => handlePersonalCreateFieldChange('scheduleTime', event.target.value)}
+                        required
+                        type="time"
+                        value={personalCreateForm.scheduleTime}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    <span>내용</span>
+                    <textarea
+                      onChange={(event) => handlePersonalCreateFieldChange('content', event.target.value)}
+                      rows={3}
+                      value={personalCreateForm.content}
+                    />
+                  </label>
+                  <div className="notes-create-actions">
+                    <a className="route-secondary-action" href={appendDateQuery(personalScheduleCreateBaseHref, personalCreateForm.scheduleDate || selectedDate)}>
+                      Django 등록
+                      <MoveUpRight size={15} />
+                    </a>
+                    <button className="route-primary-action" disabled={personalCreating} type="submit">
+                      {personalCreating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
                     </button>
                   </div>
@@ -5255,6 +5560,82 @@ function ScheduleCalendarPage({
                     ) : null}
                     <button className="route-primary-action" disabled={calendarEditSaving} type="submit">
                       {calendarEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                      저장
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
+
+          {personalEditOpen || personalEditError || personalEditMessage ? (
+            <div className="schedule-calendar-inline-editor">
+              <div className="schedule-calendar-editor-heading">
+                <div>
+                  <span className="eyebrow">Edit personal</span>
+                  <h3>개인 일정 수정</h3>
+                </div>
+                <button aria-label="개인 일정 수정 패널 닫기" onClick={() => setPersonalEditOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+              </div>
+              {personalEditError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{personalEditError}</span></div> : null}
+              {personalEditMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{personalEditMessage}</span></div> : null}
+              {personalEditLoading ? (
+                <div className="schedule-calendar-editor-loading">
+                  <Loader2 className="spin-icon" size={16} />
+                  <span>개인 일정 상세를 불러오는 중입니다</span>
+                </div>
+              ) : personalEditOpen && personalEditData?.schedule && personalEditData.edit.canEdit ? (
+                <form className="notes-create-form schedule-calendar-form" onSubmit={handlePersonalEditSubmit}>
+                  <label>
+                    <span>일정 제목</span>
+                    <input
+                      onChange={(event) => handlePersonalEditFieldChange('title', event.target.value)}
+                      required
+                      value={personalEditForm.title}
+                    />
+                  </label>
+                  <div className="notes-create-grid schedules-create-grid">
+                    <label>
+                      <span>날짜</span>
+                      <input
+                        onChange={(event) => handlePersonalEditFieldChange('scheduleDate', event.target.value)}
+                        required
+                        type="date"
+                        value={personalEditForm.scheduleDate}
+                      />
+                    </label>
+                    <label>
+                      <span>시간</span>
+                      <input
+                        onChange={(event) => handlePersonalEditFieldChange('scheduleTime', event.target.value)}
+                        required
+                        type="time"
+                        value={personalEditForm.scheduleTime}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    <span>내용</span>
+                    <textarea
+                      onChange={(event) => handlePersonalEditFieldChange('content', event.target.value)}
+                      rows={3}
+                      value={personalEditForm.content}
+                    />
+                  </label>
+                  <div className="notes-create-actions">
+                    <a className="route-secondary-action" href={personalEditData.schedule.href}>
+                      상세
+                    </a>
+                    {personalEditData.edit.djangoUrl ? (
+                      <a className="route-secondary-action" href={personalEditData.edit.djangoUrl}>
+                        Django 수정
+                        <MoveUpRight size={15} />
+                      </a>
+                    ) : null}
+                    <button className="route-primary-action" disabled={personalEditSaving} type="submit">
+                      {personalEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
                     </button>
                   </div>

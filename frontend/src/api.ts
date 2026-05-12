@@ -844,6 +844,12 @@ export type NoteDetailData = {
       href: string;
       djangoHref?: string;
     }>;
+    personalSchedule?: {
+      canCreate: boolean;
+      message: string;
+      submitUrl: string;
+      djangoUrl: string;
+    };
   };
   comments: {
     canCreate: boolean;
@@ -1919,6 +1925,13 @@ export type ScheduleCreatePayload = {
   visitTime: string;
 };
 
+export type PersonalSchedulePayload = {
+  title: string;
+  content?: string;
+  scheduleDate: string;
+  scheduleTime: string;
+};
+
 export type ScheduleCreateResponse = {
   success: boolean;
   error?: string;
@@ -2025,6 +2038,12 @@ export type SchedulesData = {
       href: string;
       djangoHref?: string;
     }>;
+    personalSchedule?: {
+      canCreate: boolean;
+      message: string;
+      submitUrl: string;
+      djangoUrl: string;
+    };
   };
   today: ScheduleItem[];
   upcoming: ScheduleItem[];
@@ -2094,6 +2113,12 @@ export type ScheduleCalendarData = {
       href: string;
       djangoHref?: string;
     }>;
+    personalSchedule?: {
+      canCreate: boolean;
+      message: string;
+      submitUrl: string;
+      djangoUrl: string;
+    };
   };
   schedules: ScheduleItem[];
 };
@@ -2174,6 +2199,34 @@ export type ScheduleDeleteResponse = {
   success: boolean;
   error?: string;
   message?: string;
+};
+
+export type PersonalScheduleDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  schedule: ScheduleItem | null;
+  links: {
+    calendar: string;
+    djangoCalendar: string;
+    djangoDetail: string;
+    djangoEdit: string;
+    deleteSchedule: string;
+  };
+  edit: {
+    canEdit: boolean;
+    message: string;
+    submitUrl: string;
+    djangoUrl: string;
+  };
+};
+
+export type PersonalScheduleMutationResponse = PersonalScheduleDetailData & {
+  success: boolean;
+  scheduleId?: number;
+  href?: string;
 };
 
 export type AIWorkspaceDepartment = {
@@ -2968,6 +3021,12 @@ const emptySchedulesData: SchedulesData = {
     submitUrl: '/reporting/api/schedules/create/',
     activityTypes: [],
     customers: [],
+    personalSchedule: {
+      canCreate: false,
+      message: '',
+      submitUrl: '/reporting/api/personal-schedules/create/',
+      djangoUrl: '/reporting/personal-schedules/create/',
+    },
   },
   today: [],
   upcoming: [],
@@ -3024,6 +3083,12 @@ const emptyScheduleCalendarData: ScheduleCalendarData = {
     submitUrl: '/reporting/api/schedules/create/',
     activityTypes: [],
     customers: [],
+    personalSchedule: {
+      canCreate: false,
+      message: '',
+      submitUrl: '/reporting/api/personal-schedules/create/',
+      djangoUrl: '/reporting/personal-schedules/create/',
+    },
   },
   schedules: [],
 };
@@ -3077,6 +3142,26 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     registeredQuotationCount: 0,
     autoAttachLabel: '',
     items: [],
+  },
+};
+
+const emptyPersonalScheduleDetailData: PersonalScheduleDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  schedule: null,
+  links: {
+    calendar: '/schedules/calendar/',
+    djangoCalendar: '/reporting/schedules/calendar/',
+    djangoDetail: '',
+    djangoEdit: '',
+    deleteSchedule: '',
+  },
+  edit: {
+    canEdit: false,
+    message: '',
+    submitUrl: '',
+    djangoUrl: '',
   },
 };
 
@@ -4438,6 +4523,12 @@ export async function loadSchedulesData(params: {
       create: {
         ...emptySchedulesData.create,
         ...(payload.create ?? {}),
+        personalSchedule: {
+          canCreate: payload.create?.personalSchedule?.canCreate ?? emptySchedulesData.create.personalSchedule?.canCreate ?? false,
+          message: payload.create?.personalSchedule?.message ?? emptySchedulesData.create.personalSchedule?.message ?? '',
+          submitUrl: payload.create?.personalSchedule?.submitUrl ?? emptySchedulesData.create.personalSchedule?.submitUrl ?? '/reporting/api/personal-schedules/create/',
+          djangoUrl: payload.create?.personalSchedule?.djangoUrl ?? emptySchedulesData.create.personalSchedule?.djangoUrl ?? '/reporting/personal-schedules/create/',
+        },
       },
       statusCounts: payload.statusCounts ?? emptySchedulesData.statusCounts,
       activityCounts: payload.activityCounts ?? emptySchedulesData.activityCounts,
@@ -4510,6 +4601,12 @@ export async function loadScheduleCalendarData(params: {
       create: {
         ...emptyScheduleCalendarData.create,
         ...(payload.create ?? {}),
+        personalSchedule: {
+          canCreate: payload.create?.personalSchedule?.canCreate ?? emptyScheduleCalendarData.create.personalSchedule?.canCreate ?? false,
+          message: payload.create?.personalSchedule?.message ?? emptyScheduleCalendarData.create.personalSchedule?.message ?? '',
+          submitUrl: payload.create?.personalSchedule?.submitUrl ?? emptyScheduleCalendarData.create.personalSchedule?.submitUrl ?? '/reporting/api/personal-schedules/create/',
+          djangoUrl: payload.create?.personalSchedule?.djangoUrl ?? emptyScheduleCalendarData.create.personalSchedule?.djangoUrl ?? '/reporting/personal-schedules/create/',
+        },
       },
       schedules: payload.schedules ?? emptyScheduleCalendarData.schedules,
     };
@@ -4543,6 +4640,34 @@ export async function createSchedule(payload: ScheduleCreatePayload, submitUrl =
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function createPersonalSchedule(
+  payload: PersonalSchedulePayload,
+  submitUrl = '/reporting/api/personal-schedules/create/',
+): Promise<PersonalScheduleMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Personal schedule create API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PersonalScheduleMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Personal schedule create failed: ${response.status}`);
   }
   return data;
 }
@@ -5295,6 +5420,46 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
   }
 }
 
+export async function loadPersonalScheduleDetailData(scheduleId: number): Promise<PersonalScheduleDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/personal-schedules/${scheduleId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Personal schedule detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<PersonalScheduleDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Personal schedule detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyPersonalScheduleDetailData,
+      ...payload,
+      links: {
+        ...emptyPersonalScheduleDetailData.links,
+        ...(payload.links ?? {}),
+      },
+      edit: {
+        ...emptyPersonalScheduleDetailData.edit,
+        ...(payload.edit ?? {}),
+      },
+      schedule: payload.schedule ?? emptyPersonalScheduleDetailData.schedule,
+    };
+  } catch (error) {
+    return {
+      ...emptyPersonalScheduleDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Personal schedule detail API unavailable',
+    };
+  }
+}
+
 const rawRecord = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' ? value as Record<string, unknown> : {}
 );
@@ -5711,6 +5876,34 @@ export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: st
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updatePersonalSchedule(
+  payload: PersonalSchedulePayload,
+  submitUrl: string,
+): Promise<PersonalScheduleMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Personal schedule update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as PersonalScheduleMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Personal schedule update failed: ${response.status}`);
   }
   return data;
 }

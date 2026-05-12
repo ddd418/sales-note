@@ -1826,8 +1826,14 @@ h2 {
   text-decoration: none;
 }
 
+.customers-side-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
 .customers-side-actions a:hover,
-.customers-side-actions button:hover {
+.customers-side-actions button:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary-strong);
 }
