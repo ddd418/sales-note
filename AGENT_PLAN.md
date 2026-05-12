@@ -4,6 +4,8 @@
 
 **목표**: 견적 일정에서 견적서 PDF를 여러 개 등록/보관할 수 있게 하고, 해당 일정에서 메일을 보낼 때 등록된 견적서 PDF만 자동 첨부한다. 거래명세서/납품서나 일반 첨부파일은 자동 첨부 대상에서 제외한다.
 
+**상태**: 구현/로컬 검증/푸시/Railway `web` 및 `sales-note-frontend` 운영 배포/스모크 완료. 사용자 운영 수동검수 대기.
+
 ### 확인된 상태
 
 - 현재 일정 서류 생성은 `generate_document_pdf()`에서 파일을 즉시 다운로드만 하고, 생성된 PDF를 일정에 보관하지 않는다.
@@ -35,6 +37,14 @@
 - `cd frontend; node --check server.mjs`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/`, `/mailbox/`, `/reporting/login/` smoke check
+
+### 완료 상태
+
+- Runtime commit: `95aeec7 feat: auto attach quote pdfs to schedule mail`
+- Railway `web`: `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS
+- Railway `sales-note-frontend`: `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS
+- Production smoke OK: `/schedules/` 200, `/mailbox/` 200, new JS/CSS assets 200, `/reporting/login/` 200, protected API/download unauthenticated responses OK.
+- Next action: user manual production test for quote schedule multiple PDF registration and automatic mail attachment.
 
 ---
 

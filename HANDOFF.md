@@ -14,12 +14,12 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote PDF registration and schedule mail auto-attachment is implemented and locally verified. Commit, push, and Railway deployment are pending.
+Quote PDF registration and schedule mail auto-attachment is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-pending
+95aeec7 feat: auto attach quote pdfs to schedule mail
 ```
 
 Implemented:
@@ -45,6 +45,12 @@ cd frontend; node --check server.mjs
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
+git commit -m "feat: auto attach quote pdfs to schedule mail" && git push origin main
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote pdf auto attachments 95aeec7" --ci
+railway deployment list --service web --environment production --limit 2 --json
+railway deployment list --service sales-note-frontend --environment production --limit 2 --json
+railway logs 2d1dd812-3fe5-4c3b-953e-870ca5c88baf --service web --environment production --deployment --lines 120
+railway logs 05a56e6c-3067-4500-8ae0-6383ff40d91f --service sales-note-frontend --environment production --deployment --lines 80
 ```
 
 Results:
@@ -57,10 +63,19 @@ Results:
 - Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
 - No migration changes after migration creation.
 - `git diff --check` OK with LF→CRLF warnings only.
+- Commit `95aeec7` pushed to `origin/main`.
+- Railway `web` deployment `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS.
+- Railway `sales-note-frontend` deployment `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS.
+- `reporting.0096_documentgenerationlog_file_and_more` migration applied OK in production deploy log.
+- Production smoke OK: `/schedules/` 200, `/mailbox/` 200, new JS/CSS assets 200, `/reporting/login/` 200.
+- Protection smoke OK: unauthenticated `/reporting/api/schedules/` 401 and generated document download 302 to login.
 
 Deployment:
 
-- Pending.
+- GitHub push complete: runtime commit `95aeec7` is on `main`.
+- Railway `web`: `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS.
+- Railway `sales-note-frontend`: `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS.
+- Production deploy logs show migration/startup OK and no traceback during smoke checks.
 
 Manual production test:
 

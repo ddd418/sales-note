@@ -2,7 +2,7 @@
 
 ## 2026-05-12 — Quote PDF Registration And Schedule Mail Auto Attachment
 
-**상태**: 구현/로컬 검증 완료, 푸시/운영 배포 대기
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -57,6 +57,24 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: auto attach quote pdfs to schedule mail" && git push origin main
+→ Commit 95aeec7 pushed to origin/main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote pdf auto attachments 95aeec7" --ci
+→ Deploy complete
+
+railway deployment list --service web --environment production --limit 2 --json
+→ web deployment 2d1dd812-3fe5-4c3b-953e-870ca5c88baf SUCCESS for commit 95aeec7
+
+railway deployment list --service sales-note-frontend --environment production --limit 2 --json
+→ sales-note-frontend deployment 05a56e6c-3067-4500-8ae0-6383ff40d91f SUCCESS
+
+Production smoke requests
+→ /schedules/ 200, /mailbox/ 200, new JS/CSS assets 200, /reporting/login/ 200, /reporting/api/schedules/ 401, generated document download unauthenticated 302
+
+railway logs for latest web/frontend deployments
+→ reporting.0096 migration OK, gunicorn/frontend startup OK, no traceback observed; expected Unauthorized log only from protected API smoke
 ```
 
 ### 알려진 제한
@@ -66,7 +84,14 @@ git diff --check
 
 ### 배포 상태
 
-- 대기 중.
+- Runtime commit: `95aeec7 feat: auto attach quote pdfs to schedule mail`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS, commit `95aeec7`
+- Railway `sales-note-frontend`: `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS, message `Deploy quote pdf auto attachments 95aeec7`
+- Railway `web` deploy log: `reporting.0096_documentgenerationlog_file_and_more` migration applied OK, gunicorn startup OK.
+- Railway `sales-note-frontend` deploy log: frontend server startup OK.
+- Production smoke: `/schedules/` 200, `/mailbox/` 200, `assets/index-COLHVyxC.js` 200, `assets/index-Bmtl8HKb.css` 200.
+- Production smoke: backend `/reporting/login/` 200, unauthenticated `/reporting/api/schedules/` 401, unauthenticated generated document download 302 to login.
 
 ### 수동 서버 테스트 절차
 
