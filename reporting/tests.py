@@ -228,6 +228,42 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(payload['emails'][0]['threadHref'], '/mailbox/thread/gmail-thread-react-1/')
         self.assertEqual(payload['create']['customers'][0]['email'], 'customer@example.com')
 
+    def test_mailbox_api_list_returns_schedule_auto_attachments_for_compose(self):
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='delivery',
+        )
+        log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='transaction_statement',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='TS-CREATE-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('statement-create.pdf', b'%PDF statement', content_type='application/pdf'),
+            filename='statement-create.pdf',
+            file_size=len(b'%PDF statement'),
+        )
+        self.addCleanup(log.file.delete, False)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:mailbox_api_list'), {
+            'box': 'inbox',
+            'schedule_id': str(schedule.id),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        create_payload = response.json()['create']
+        self.assertEqual(create_payload['schedule']['id'], schedule.id)
+        self.assertIn('거래명세서', create_payload['autoAttachLabel'])
+        self.assertEqual(create_payload['autoAttachments'][0]['key'], f'log:{log.id}')
+        self.assertEqual(create_payload['autoAttachments'][0]['documentType'], 'transaction_statement')
+        self.assertFalse(create_payload['autoAttachments'][0]['willGenerate'])
+
     def test_mailbox_thread_api_marks_received_mail_read(self):
         self.client.force_login(self.user)
 
@@ -580,6 +616,69 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['source'], 'quote_document')
         self.assertEqual(email_log.attachments_info[0]['documentLogId'], first_log.id)
 
+    def test_mailbox_send_api_excludes_removed_auto_document_attachment(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='quote',
+        )
+        first_log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='QUOTE-PDF-EXCLUDE-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('excluded-quote.pdf', b'%PDF excluded', content_type='application/pdf'),
+            filename='excluded-quote.pdf',
+            file_size=len(b'%PDF excluded'),
+        )
+        second_log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='QUOTE-PDF-INCLUDED-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('included-quote.pdf', b'%PDF included', content_type='application/pdf'),
+            filename='included-quote.pdf',
+            file_size=len(b'%PDF included'),
+        )
+        self.addCleanup(first_log.file.delete, False)
+        self.addCleanup(second_log.file.delete, False)
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-auto-excluded',
+                'thread_id': 'gmail-thread-auto-excluded',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '견적서 일부 제외',
+                    'body_text': '견적서 확인 부탁드립니다.',
+                    'schedule_id': str(schedule.id),
+                    'excluded_auto_attachment_keys': json.dumps([f'log:{first_log.id}']),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
+        self.assertEqual([item['filename'] for item in sent_attachments], ['included-quote.pdf'])
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-auto-excluded')
+        self.assertEqual([item['documentLogId'] for item in email_log.attachments_info], [second_log.id])
+
     def test_mailbox_send_api_generates_quote_pdf_when_schedule_has_no_registered_pdf(self):
         from django.http import HttpResponse
 
@@ -688,7 +787,9 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(sent_attachments[0]['content'], b'%PDF trade in quote')
         self.assertEqual(sent_attachments[1]['content'], b'%PDF repair quote')
 
-    def test_mailbox_send_api_does_not_auto_attach_for_delivery_schedule(self):
+    def test_mailbox_send_api_generates_transaction_statement_when_delivery_has_no_registered_pdf(self):
+        from django.http import HttpResponse
+
         profile = self.user.userprofile
         profile.gmail_token = {'access_token': 'test-token'}
         profile.gmail_email = 'sales@example.com'
@@ -701,7 +802,61 @@ class ReactMailboxApiTests(TestCase):
             visit_time=timezone.now().time(),
             activity_type='delivery',
         )
-        log = DocumentGenerationLog.objects.create(
+        self.client.force_login(self.user)
+        document_response = HttpResponse(b'%PDF generated statement', content_type='application/pdf')
+        document_response['X-Filename'] = 'generated-statement.pdf'
+
+        with patch('reporting.views.generate_document_pdf', return_value=document_response) as generate_pdf:
+            with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+                gmail_service = gmail_service_class.return_value
+                gmail_service.send_email.return_value = {
+                    'message_id': 'gmail-sent-generated-statement',
+                    'thread_id': 'gmail-thread-generated-statement',
+                }
+
+                response = self.client.post(
+                    reverse('reporting:mailbox_api_send'),
+                    {
+                        'to_email': 'customer@example.com',
+                        'subject': '거래명세서 자동 생성',
+                        'body_text': '거래명세서 확인 부탁드립니다.',
+                        'schedule_id': str(schedule.id),
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        generate_pdf.assert_called_once()
+        self.assertEqual(generate_pdf.call_args.args[1:], ('transaction_statement', schedule.id, 'pdf'))
+        self.assertEqual(generate_pdf.call_args.kwargs, {})
+        sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
+        self.assertEqual(sent_attachments[0]['filename'], 'generated-statement.pdf')
+        self.assertEqual(sent_attachments[0]['content'], b'%PDF generated statement')
+
+    def test_mailbox_send_api_auto_attaches_registered_transaction_statement_for_delivery_schedule(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='delivery',
+        )
+        statement_log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='transaction_statement',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='TS-PDF-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('statement.pdf', b'%PDF statement', content_type='application/pdf'),
+            filename='statement.pdf',
+            file_size=len(b'%PDF statement'),
+        )
+        quote_log = DocumentGenerationLog.objects.create(
             company=self.company,
             document_type='quotation',
             schedule=schedule,
@@ -712,14 +867,15 @@ class ReactMailboxApiTests(TestCase):
             filename='ignored-quote.pdf',
             file_size=len(b'%PDF ignored'),
         )
-        self.addCleanup(log.file.delete, False)
+        self.addCleanup(statement_log.file.delete, False)
+        self.addCleanup(quote_log.file.delete, False)
         self.client.force_login(self.user)
 
         with patch('reporting.gmail_views.GmailService') as gmail_service_class:
             gmail_service = gmail_service_class.return_value
             gmail_service.send_email.return_value = {
-                'message_id': 'gmail-sent-delivery-no-auto',
-                'thread_id': 'gmail-thread-delivery-no-auto',
+                'message_id': 'gmail-sent-delivery-statement',
+                'thread_id': 'gmail-thread-delivery-statement',
             }
 
             response = self.client.post(
@@ -734,7 +890,13 @@ class ReactMailboxApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
-        self.assertEqual(sent_attachments, [])
+        self.assertEqual([item['filename'] for item in sent_attachments], ['statement.pdf'])
+        self.assertEqual(sent_attachments[0]['content'], b'%PDF statement')
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-delivery-statement')
+        self.assertEqual(email_log.attachments_info[0]['source'], 'transaction_statement_document')
+        self.assertEqual(email_log.attachments_info[0]['documentType'], 'transaction_statement')
+        self.assertEqual(email_log.attachments_info[0]['documentLogId'], statement_log.id)
 
     def test_mailbox_send_api_normalizes_plain_text_line_breaks_for_html(self):
         profile = self.user.userprofile
@@ -3621,6 +3783,7 @@ class SchedulesSummaryApiTests(TestCase):
         )
         self.assertEqual(payload['documents']['templateManagerHref'], '/documents/')
         self.assertEqual(payload['documents']['djangoTemplateManagerHref'], reverse('reporting:document_template_list'))
+        self.assertIn('거래명세서 PDF', payload['documents']['autoAttachLabel'])
 
     def test_schedules_detail_api_document_actions_match_activity_type(self):
         quote_schedule = self._create_schedule(self.user, '견적서류', activity_type='quote')
@@ -3636,12 +3799,14 @@ class SchedulesSummaryApiTests(TestCase):
         meeting_payload = meeting_response.json()
         self.assertTrue(quote_payload['documents']['canGenerate'])
         self.assertEqual([item['type'] for item in quote_payload['documents']['items']], ['quotation'])
+        self.assertIn('견적서 PDF', quote_payload['documents']['autoAttachLabel'])
         self.assertEqual(
             quote_payload['documents']['items'][0]['formats'][1]['href'],
             reverse('reporting:generate_document_pdf_format', args=['quotation', quote_schedule.id, 'xlsx']),
         )
         self.assertFalse(meeting_payload['documents']['canGenerate'])
         self.assertEqual(meeting_payload['documents']['items'], [])
+        self.assertEqual(meeting_payload['documents']['autoAttachLabel'], '')
 
     def test_schedules_detail_api_splits_quotation_documents_by_quote_group(self):
         from reporting.models import DeliveryItem

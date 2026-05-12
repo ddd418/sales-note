@@ -142,13 +142,35 @@ def _uploaded_email_attachments(request):
     return attachments
 
 
-def _quote_document_logs_for_schedule(schedule):
+AUTO_MAIL_DOCUMENT_TYPES = {
+    'quote': ['quotation'],
+    'delivery': ['transaction_statement'],
+}
+
+DOCUMENT_TYPE_LABELS = {
+    'quotation': '견적서',
+    'transaction_statement': '거래명세서',
+    'delivery_note': '납품서',
+}
+
+
+def _auto_document_types_for_schedule(schedule):
+    if not schedule:
+        return []
+    return AUTO_MAIL_DOCUMENT_TYPES.get(schedule.activity_type, [])
+
+
+def _document_logs_for_schedule(schedule, document_type):
     return DocumentGenerationLog.objects.filter(
         schedule=schedule,
-        document_type='quotation',
+        document_type=document_type,
         output_format='pdf',
         file__isnull=False,
     ).exclude(file='').select_related('user').order_by('created_at', 'id')
+
+
+def _quote_document_logs_for_schedule(schedule):
+    return _document_logs_for_schedule(schedule, 'quotation')
 
 
 def _quote_group_keys_for_schedule(schedule):
@@ -185,16 +207,37 @@ def _decode_response_filename(response, fallback='quotation.pdf'):
     return quoted_match.group(1).strip() if quoted_match else fallback
 
 
-def _json_error_from_document_response(response):
+def _document_type_label(document_type):
+    return DOCUMENT_TYPE_LABELS.get(document_type, '서류')
+
+
+def _document_attachment_source(document_type):
+    if document_type == 'quotation':
+        return 'quote_document'
+    if document_type == 'transaction_statement':
+        return 'transaction_statement_document'
+    return 'document'
+
+
+def _auto_attachment_log_key(log):
+    return f'log:{log.id}'
+
+
+def _auto_attachment_generate_key(document_type, quote_group=''):
+    return f'generate:{document_type}:{quote_group or ""}'
+
+
+def _json_error_from_document_response(response, document_type='quotation'):
     try:
         payload = json.loads(response.content.decode('utf-8') or '{}')
     except Exception:
         payload = {}
-    return payload.get('error') or payload.get('message') or '견적서 PDF 생성에 실패했습니다.'
+    return payload.get('error') or payload.get('message') or f'{_document_type_label(document_type)} PDF 생성에 실패했습니다.'
 
 
 def _attachment_from_document_log(log):
-    filename = log.filename or (log.file.name.rsplit('/', 1)[-1] if log.file else 'quotation.pdf')
+    document_type = log.document_type or 'quotation'
+    filename = log.filename or (log.file.name.rsplit('/', 1)[-1] if log.file else f'{document_type}.pdf')
     with log.file.open('rb') as file_handle:
         content = file_handle.read()
     return {
@@ -202,43 +245,96 @@ def _attachment_from_document_log(log):
         'content': content,
         'mimetype': 'application/pdf',
         'size': log.file_size or len(content),
-        'source': 'quote_document',
+        'source': _document_attachment_source(document_type),
         'documentLogId': log.id,
+        'documentType': document_type,
+        'documentTypeLabel': _document_type_label(document_type),
+        'autoAttachmentKey': _auto_attachment_log_key(log),
     }
 
 
-def _auto_quote_pdf_attachments(request, schedule):
-    if not schedule or schedule.activity_type != 'quote':
+def _auto_document_generation_targets(schedule, document_type):
+    if document_type == 'quotation':
+        return [
+            {
+                'documentType': document_type,
+                'quoteGroup': quote_group,
+                'key': _auto_attachment_generate_key(document_type, quote_group),
+            }
+            for quote_group in _quote_group_keys_for_schedule(schedule)
+        ]
+    return [{
+        'documentType': document_type,
+        'quoteGroup': '',
+        'key': _auto_attachment_generate_key(document_type),
+    }]
+
+
+def _auto_document_pdf_attachments(request, schedule, document_type, excluded_keys=None):
+    excluded_keys = set(excluded_keys or [])
+    if not schedule or document_type not in _auto_document_types_for_schedule(schedule):
         return []
 
-    logs = list(_quote_document_logs_for_schedule(schedule))
-    if not logs:
+    logs = list(_document_logs_for_schedule(schedule, document_type))
+    if logs:
+        return [
+            _attachment_from_document_log(log)
+            for log in logs
+            if _auto_attachment_log_key(log) not in excluded_keys
+        ]
+
+    generated_fallbacks = []
+    targets = [
+        target
+        for target in _auto_document_generation_targets(schedule, document_type)
+        if target['key'] not in excluded_keys
+    ]
+    if targets:
         from .views import generate_document_pdf
 
-        generated_fallbacks = []
-        for quote_group in _quote_group_keys_for_schedule(schedule):
-            response = generate_document_pdf(request, 'quotation', schedule.id, 'pdf', quote_group=quote_group)
+        for target in targets:
+            quote_group = target.get('quoteGroup') or ''
+            if document_type == 'quotation':
+                response = generate_document_pdf(request, document_type, schedule.id, 'pdf', quote_group=quote_group)
+            else:
+                response = generate_document_pdf(request, document_type, schedule.id, 'pdf')
             content_type = (response.get('Content-Type', '') if hasattr(response, 'get') else '').split(';')[0].strip()
             if content_type == 'application/json':
-                raise Exception(_json_error_from_document_response(response))
+                raise Exception(_json_error_from_document_response(response, document_type))
             if getattr(response, 'status_code', 500) >= 400:
-                raise Exception(_json_error_from_document_response(response))
+                raise Exception(_json_error_from_document_response(response, document_type))
             if content_type != 'application/pdf':
-                raise Exception('견적서 PDF를 생성하지 못했습니다. PDF 변환 설정을 확인해주세요.')
+                raise Exception(f'{_document_type_label(document_type)} PDF를 생성하지 못했습니다. PDF 변환 설정을 확인해주세요.')
             generated_fallbacks.append({
-                'filename': _decode_response_filename(response),
+                'filename': _decode_response_filename(response, fallback=f'{document_type}.pdf'),
                 'content': bytes(response.content),
                 'mimetype': 'application/pdf',
                 'size': len(response.content),
-                'source': 'quote_document',
+                'source': _document_attachment_source(document_type),
                 'documentLogId': None,
+                'documentType': document_type,
+                'documentTypeLabel': _document_type_label(document_type),
+                'autoAttachmentKey': target['key'],
+                'quoteGroup': quote_group,
             })
 
-        logs = list(_quote_document_logs_for_schedule(schedule))
-        if not logs:
-            return generated_fallbacks
+    return generated_fallbacks
 
-    return [_attachment_from_document_log(log) for log in logs]
+
+def _auto_schedule_document_attachments(request, schedule, excluded_keys=None):
+    attachments = []
+    for document_type in _auto_document_types_for_schedule(schedule):
+        attachments.extend(_auto_document_pdf_attachments(
+            request,
+            schedule,
+            document_type,
+            excluded_keys=excluded_keys,
+        ))
+    return attachments
+
+
+def _auto_quote_pdf_attachments(request, schedule):
+    return _auto_document_pdf_attachments(request, schedule, 'quotation')
 
 
 def _attachment_info(attachment):
@@ -247,12 +343,131 @@ def _attachment_info(attachment):
         'size': attachment['size'],
         'mimetype': attachment['mimetype'],
     }
-    if attachment.get('source') == 'quote_document':
-        info['source'] = 'quote_document'
-        info['label'] = '자동 첨부 견적서'
+    if attachment.get('source') in {'quote_document', 'transaction_statement_document', 'document'}:
+        document_type = attachment.get('documentType') or 'quotation'
+        info['source'] = attachment.get('source')
+        info['label'] = f'자동 첨부 {_document_type_label(document_type)}'
+        info['documentType'] = document_type
+        info['documentTypeLabel'] = _document_type_label(document_type)
         if attachment.get('documentLogId'):
             info['documentLogId'] = attachment['documentLogId']
+        if attachment.get('autoAttachmentKey'):
+            info['autoAttachmentKey'] = attachment['autoAttachmentKey']
     return info
+
+
+def _post_json_list(request, *names):
+    values = []
+    for name in names:
+        for raw_value in request.POST.getlist(name):
+            if raw_value in (None, ''):
+                continue
+            if isinstance(raw_value, str) and raw_value.strip().startswith('['):
+                try:
+                    decoded = json.loads(raw_value)
+                except Exception:
+                    decoded = []
+                if isinstance(decoded, list):
+                    values.extend(decoded)
+                    continue
+            values.append(raw_value)
+    return values
+
+
+def _excluded_auto_attachment_keys(request, schedule=None):
+    excluded = {
+        str(value).strip()
+        for value in _post_json_list(
+            request,
+            'excluded_auto_attachment_keys',
+            'excludedAutoAttachmentKeys',
+        )
+        if str(value).strip()
+    }
+    include_mode = request.POST.get('auto_attachment_include_mode') == '1'
+    if include_mode and schedule:
+        included = {
+            str(value).strip()
+            for value in _post_json_list(
+                request,
+                'included_auto_attachment_keys',
+                'includedAutoAttachmentKeys',
+            )
+            if str(value).strip()
+        }
+        all_keys = {
+            candidate['key']
+            for candidate in _auto_document_candidates_for_schedule(schedule)
+            if candidate.get('key')
+        }
+        excluded.update(all_keys - included)
+    return excluded
+
+
+def _auto_document_candidate_from_log(log):
+    return {
+        'key': _auto_attachment_log_key(log),
+        'filename': log.filename or (log.file.name.rsplit('/', 1)[-1] if log.file else f'{log.document_type}.pdf'),
+        'size': log.file_size or 0,
+        'documentLogId': log.id,
+        'documentType': log.document_type,
+        'documentTypeLabel': _document_type_label(log.document_type),
+        'quoteGroup': log.quote_group or '',
+        'quoteGroupLabel': log.quote_group or '',
+        'willGenerate': False,
+        'description': '등록된 PDF가 자동 첨부됩니다.',
+    }
+
+
+def _auto_document_candidate_from_target(target):
+    document_type = target['documentType']
+    quote_group = target.get('quoteGroup') or ''
+    document_label = _document_type_label(document_type)
+    display_label = f'{quote_group} {document_label}' if quote_group else document_label
+    return {
+        'key': target['key'],
+        'filename': f'{display_label} PDF 자동 생성',
+        'size': 0,
+        'documentLogId': None,
+        'documentType': document_type,
+        'documentTypeLabel': document_label,
+        'quoteGroup': quote_group,
+        'quoteGroupLabel': quote_group,
+        'willGenerate': True,
+        'description': '등록된 PDF가 없어 발송 시 새 PDF를 생성합니다.',
+    }
+
+
+def _auto_document_candidates_for_schedule(schedule):
+    candidates = []
+    for document_type in _auto_document_types_for_schedule(schedule):
+        logs = list(_document_logs_for_schedule(schedule, document_type))
+        if logs:
+            candidates.extend(_auto_document_candidate_from_log(log) for log in logs)
+        else:
+            candidates.extend(
+                _auto_document_candidate_from_target(target)
+                for target in _auto_document_generation_targets(schedule, document_type)
+            )
+    return candidates
+
+
+def _auto_document_attach_label(candidates):
+    if not candidates:
+        return ''
+    labels = []
+    for candidate in candidates:
+        label = candidate.get('documentTypeLabel') or '서류'
+        if label not in labels:
+            labels.append(label)
+    count = len(candidates)
+    generated_count = sum(1 for candidate in candidates if candidate.get('willGenerate'))
+    label_text = '/'.join(labels)
+    if generated_count == count:
+        return f'등록된 {label_text} PDF가 없으면 메일 발송 시 새 PDF {count}개를 생성해 자동 첨부합니다.'
+    if generated_count:
+        return f'메일 발송 시 {label_text} PDF {count}개가 자동 첨부되며, 일부는 새로 생성됩니다.'
+    return f'메일 발송 시 {label_text} PDF {count}개가 자동 첨부됩니다.'
 
 
 def _email_address_list(value):
@@ -685,16 +900,19 @@ def send_email_from_schedule(request, schedule_id):
         return redirect('reporting:profile')
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
+    auto_attachments = _auto_document_candidates_for_schedule(schedule)
     context = {
         'schedule': schedule,
         'followup': schedule.followup,
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
         'quote_document_count': _quote_document_logs_for_schedule(schedule).count() if schedule.activity_type == 'quote' else 0,
+        'auto_attachments': auto_attachments,
+        'auto_attach_label': _auto_document_attach_label(auto_attachments),
     }
     
     if request.method == 'POST':
-        result = _handle_email_send(request, schedule=schedule, auto_attach_quote_documents=True)
+        result = _handle_email_send(request, schedule=schedule, auto_attach_schedule_documents=True)
         # 검증 실패 시 (템플릿 반환)
         if isinstance(result, dict):
             # 디버그: 오류 정보 로깅
@@ -811,7 +1029,14 @@ def reply_email(request, email_log_id):
     return render(request, 'reporting/gmail/reply_email.html', context)
 
 
-def _handle_email_send(request, schedule=None, followup=None, reply_to=None, auto_attach_quote_documents=False):
+def _handle_email_send(
+    request,
+    schedule=None,
+    followup=None,
+    reply_to=None,
+    auto_attach_quote_documents=False,
+    auto_attach_schedule_documents=False,
+):
     """이메일 발송 공통 처리"""
     import logging
     logger = logging.getLogger(__name__)
@@ -901,7 +1126,14 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None, aut
         bcc_emails = _email_address_text(bcc_list)
 
         attachment_entries = _uploaded_email_attachments(request)
-        if auto_attach_quote_documents and schedule and schedule.activity_type == 'quote':
+        excluded_auto_keys = _excluded_auto_attachment_keys(request, schedule=schedule)
+        if auto_attach_schedule_documents and schedule:
+            attachment_entries.extend(_auto_schedule_document_attachments(
+                request,
+                schedule,
+                excluded_keys=excluded_auto_keys,
+            ))
+        elif auto_attach_quote_documents and schedule and schedule.activity_type == 'quote':
             attachment_entries.extend(_auto_quote_pdf_attachments(request, schedule))
         attachments_info = [_attachment_info(attachment) for attachment in attachment_entries]
 
@@ -1354,14 +1586,35 @@ def _mailbox_queryset(user, mailbox_type):
     )
 
 
-def _mailbox_create_payload(user):
+def _mail_schedule_for_user(user, schedule_id):
+    if not schedule_id:
+        return None, None
+    try:
+        schedule = Schedule.objects.select_related('user', 'followup', 'followup__user').get(id=schedule_id)
+    except (Schedule.DoesNotExist, ValueError):
+        return None, JsonResponse({'success': False, 'error': '선택한 일정을 찾을 수 없습니다.'}, status=404)
+
+    from .views import can_access_user_data
+    if not can_access_user_data(user, schedule.user):
+        return None, JsonResponse({'success': False, 'error': '일정 메일 발송 권한이 없습니다.'}, status=403)
+    return schedule, None
+
+
+def _mailbox_create_payload(user, schedule=None):
     followups = FollowUp.objects.filter(user=user).select_related('company', 'department').order_by('company__name', 'customer_name')
     business_cards = BusinessCard.objects.filter(user=user, is_active=True).order_by('-is_default', '-created_at')
+    auto_attachments = _auto_document_candidates_for_schedule(schedule) if schedule else []
     return {
         'canSend': True,
         'message': '',
         'submitUrl': reverse('reporting:mailbox_api_send'),
         'djangoUrl': reverse('reporting:send_email_from_mailbox'),
+        'autoAttachments': auto_attachments,
+        'autoAttachLabel': _auto_document_attach_label(auto_attachments),
+        'schedule': {
+            'id': schedule.id,
+            'activityType': schedule.activity_type,
+        } if schedule else None,
         'internalCcEmails': _internal_cc_emails_for_user(user),
         'customers': [
             {
@@ -1430,6 +1683,12 @@ def mailbox_api_list(request):
     paginator = Paginator(emails, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
     profile = request.user.userprofile
+    schedule = None
+    schedule_id = request.GET.get('schedule_id') or request.GET.get('scheduleId')
+    if schedule_id:
+        schedule, schedule_error = _mail_schedule_for_user(request.user, schedule_id)
+        if schedule_error:
+            return schedule_error
 
     return JsonResponse({
         'success': True,
@@ -1460,7 +1719,7 @@ def mailbox_api_list(request):
             'djangoInbox': reverse('reporting:mailbox_inbox'),
             'djangoSent': reverse('reporting:mailbox_sent'),
         },
-        'create': _mailbox_create_payload(request.user),
+        'create': _mailbox_create_payload(request.user, schedule=schedule),
         'emails': [_serialize_email_item(email, mailbox_type) for email in page_obj],
     })
 
@@ -1526,14 +1785,9 @@ def mailbox_api_send(request):
     schedule = None
     schedule_id = request.POST.get('schedule_id') or request.POST.get('scheduleId')
     if schedule_id:
-        try:
-            schedule = Schedule.objects.select_related('user', 'followup', 'followup__user').get(id=schedule_id)
-        except (Schedule.DoesNotExist, ValueError):
-            return JsonResponse({'success': False, 'error': '선택한 일정을 찾을 수 없습니다.'}, status=404)
-
-        from .views import can_access_user_data
-        if not can_access_user_data(request.user, schedule.user):
-            return JsonResponse({'success': False, 'error': '일정 메일 발송 권한이 없습니다.'}, status=403)
+        schedule, schedule_error = _mail_schedule_for_user(request.user, schedule_id)
+        if schedule_error:
+            return schedule_error
         followup = schedule.followup
 
     selected_followup_id = request.POST.get('selected_followup_id') or request.POST.get('followup_id')
@@ -1551,7 +1805,7 @@ def mailbox_api_send(request):
         request,
         schedule=schedule,
         followup=followup,
-        auto_attach_quote_documents=bool(schedule),
+        auto_attach_schedule_documents=bool(schedule),
     )
     if isinstance(result, dict):
         return JsonResponse({

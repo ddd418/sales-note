@@ -5947,6 +5947,22 @@ def _schedules_document_actions(schedule, user):
         _document_generation_file_payload(log, can_delete=can_delete_documents)
         for log in _schedule_registered_quote_documents(schedule)
     ] if schedule.activity_type == 'quote' else []
+    registered_transaction_statements = [
+        _document_generation_file_payload(log, can_delete=can_delete_documents)
+        for log in _schedule_registered_documents(schedule).filter(document_type='transaction_statement')
+    ] if schedule.activity_type == 'delivery' else []
+    if schedule.activity_type == 'quote':
+        auto_attach_label = (
+            f'메일 발송 시 견적서 PDF {len(registered_quotations)}개가 자동 첨부됩니다.'
+            if registered_quotations else '등록된 견적서 PDF가 없으면 메일 발송 시 새 견적서 PDF를 생성해 자동 첨부합니다.'
+        )
+    elif schedule.activity_type == 'delivery':
+        auto_attach_label = (
+            f'메일 발송 시 거래명세서 PDF {len(registered_transaction_statements)}개가 자동 첨부됩니다.'
+            if registered_transaction_statements else '등록된 거래명세서 PDF가 없으면 메일 발송 시 새 거래명세서 PDF를 생성해 자동 첨부합니다.'
+        )
+    else:
+        auto_attach_label = ''
     quote_groups = _schedule_quote_group_summaries(schedule) if schedule.activity_type == 'quote' else []
 
     template_counts = {}
@@ -6023,10 +6039,7 @@ def _schedules_document_actions(schedule, user):
         'registeredDocumentCount': len(registered_documents),
         'registeredQuotations': registered_quotations,
         'registeredQuotationCount': len(registered_quotations),
-        'autoAttachLabel': (
-            f'메일 발송 시 견적서 PDF {len(registered_quotations)}개가 자동 첨부됩니다.'
-            if registered_quotations else '등록된 견적서 PDF가 없으면 메일 발송 시 새 견적서 PDF를 생성해 자동 첨부합니다.'
-        ) if schedule.activity_type == 'quote' else '',
+        'autoAttachLabel': auto_attach_label,
         'items': document_items,
     }
 

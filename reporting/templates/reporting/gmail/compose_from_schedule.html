@@ -345,11 +345,23 @@
                     <label for="attachments" class="form-label">첨부파일</label>
                     <input type="file" class="form-control" id="attachments" name="attachments" multiple>
                 </div>
-                {% if schedule.activity_type == 'quote' %}
+                {% if auto_attachments %}
                 <div class="alert alert-success">
                     <i class="bi bi-file-earmark-pdf"></i>
-                    등록된 견적서 PDF {{ quote_document_count }}개가 자동 첨부됩니다.
-                    {% if quote_document_count == 0 %}등록된 견적서가 없으면 발송 시 새 견적서 PDF를 생성합니다.{% endif %}
+                    {{ auto_attach_label }}
+                    <input type="hidden" name="auto_attachment_include_mode" value="1">
+                    <div class="mt-2">
+                        {% for attachment in auto_attachments %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="included_auto_attachment_keys" id="auto-attachment-{{ forloop.counter }}" value="{{ attachment.key }}" checked>
+                            <label class="form-check-label" for="auto-attachment-{{ forloop.counter }}">
+                                {{ attachment.filename }}
+                                {% if attachment.willGenerate %}<small class="text-muted">발송 시 생성</small>{% endif %}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <small class="d-block mt-2 text-muted">체크를 해제하면 해당 자동 첨부를 제외하고 발송합니다.</small>
                 </div>
                 {% endif %}
                 

@@ -66,6 +66,7 @@ import {
   FollowupQuoteItem,
   FollowupQuoteItemsData,
   FollowupQuoteOption,
+  MailAutoAttachment,
   MailboxData,
   MailboxEmailItem,
   MailboxSendPayload,
@@ -292,12 +293,14 @@ type ScheduleQuoteGroupNoteState = Record<string, string>;
 
 type MailComposeFormState = {
   attachments: File[];
-  autoQuoteAttach: boolean;
+  autoAttachments: MailAutoAttachment[];
+  autoAttachmentSeed: string;
   bodyHtml: string;
   bodyText: string;
   businessCardId: string;
   ccEmails: string;
   bccEmails: string;
+  excludedAutoAttachmentKeys: string[];
   followupId: string;
   includeInternalCc: boolean;
   scheduleId: string;
@@ -305,7 +308,7 @@ type MailComposeFormState = {
   toEmail: string;
 };
 
-type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoQuoteAttach' | 'includeInternalCc'>;
+type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoAttachments' | 'autoAttachmentSeed' | 'excludedAutoAttachmentKeys' | 'includeInternalCc'>;
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -626,12 +629,14 @@ const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => r
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   attachments: [],
-  autoQuoteAttach: false,
+  autoAttachments: [],
+  autoAttachmentSeed: '',
   bodyHtml: '',
   bodyText: '',
   businessCardId: '',
   ccEmails: '',
   bccEmails: '',
+  excludedAutoAttachmentKeys: [],
   followupId: '',
   includeInternalCc: false,
   scheduleId: '',
@@ -644,7 +649,6 @@ const makeInitialMailComposeForm = (): MailComposeFormState => {
   const params = new URLSearchParams(window.location.search);
   form.followupId = params.get('followup_id') || params.get('followupId') || '';
   form.scheduleId = params.get('schedule_id') || params.get('scheduleId') || '';
-  form.autoQuoteAttach = params.get('quote') === '1';
   form.toEmail = params.get('to') || params.get('to_email') || '';
   form.subject = params.get('subject') || '';
   return form;
@@ -5730,7 +5734,7 @@ function ScheduleDetailPage({
   const savedQuoteGroupNotes = schedule.quoteGroupNotes?.filter((item) => item.notes.trim()) ?? [];
   const scheduleMailSubject = isQuoteSchedule
     ? `${schedule.customer || '고객'} 견적서 전달드립니다`
-    : `${schedule.customer || '고객'} 일정 관련 메일드립니다`;
+    : `${schedule.customer || '고객'} 거래명세서 전달드립니다`;
   const prepaymentUsages = schedule.prepaymentUsages ?? [];
   const deliveryTotalAmount = deliveryItems.reduce((total, item) => total + (item.totalPrice || 0), 0);
   const prepaymentBaseAmount = deliveryTotalAmount > 0 ? deliveryTotalAmount : schedule.expectedRevenue;
@@ -6084,7 +6088,7 @@ function ScheduleDetailPage({
             {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
             {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
             {data.links.sendMail ? (
-              <a href={`${data.links.sendMail}${isQuoteSchedule ? '&quote=1' : ''}${schedule.customerEmail ? `&to=${encodeURIComponent(schedule.customerEmail)}` : ''}&subject=${encodeURIComponent(scheduleMailSubject)}`}>
+              <a href={`${data.links.sendMail}${schedule.customerEmail ? `&to=${encodeURIComponent(schedule.customerEmail)}` : ''}&subject=${encodeURIComponent(scheduleMailSubject)}`}>
                 메일 발송
               </a>
             ) : data.links.djangoSendMail ? <a href={data.links.djangoSendMail}>메일 발송</a> : null}
@@ -8473,6 +8477,7 @@ function MailComposePanel({
   error,
   message,
   submitLabel,
+  onAutoAttachmentRemove,
   onAttachmentRemove,
   onAttachmentsChange,
   onBodyChange,
@@ -8489,6 +8494,7 @@ function MailComposePanel({
   error: string;
   message: string;
   submitLabel: string;
+  onAutoAttachmentRemove: (key: string) => void;
   onAttachmentRemove: (index: number) => void;
   onAttachmentsChange: (files: File[]) => void;
   onBodyChange: (bodyText: string, bodyHtml: string) => void;
@@ -8501,6 +8507,7 @@ function MailComposePanel({
   if (!open) {
     return null;
   }
+  const visibleAutoAttachments = form.autoAttachments.filter((attachment) => !form.excludedAutoAttachmentKeys.includes(attachment.key));
 
   return (
     <section className="mail-compose-panel">
@@ -8592,10 +8599,30 @@ function MailComposePanel({
             ))}
           </div>
         ) : null}
-        {form.autoQuoteAttach ? (
-          <div className="dashboard-api-alert compact success">
-            <FileText size={16} />
-            <span>이 일정의 견적서 PDF가 자동 첨부됩니다.</span>
+        {form.autoAttachments.length > 0 ? (
+          <div className="mail-auto-attachments" aria-label="자동 첨부 예정 문서">
+            <div className="dashboard-api-alert compact success">
+              <FileText size={16} />
+              <span>
+                {visibleAutoAttachments.length > 0
+                  ? `자동 첨부 ${visibleAutoAttachments.length}개가 발송에 포함됩니다.`
+                  : '자동 첨부를 모두 제외했습니다.'}
+              </span>
+            </div>
+            {visibleAutoAttachments.length > 0 ? (
+              <div className="mail-attachment-list">
+                {visibleAutoAttachments.map((attachment) => (
+                  <div className="mail-attachment-item auto" key={attachment.key}>
+                    <FileText size={14} />
+                    <span>{attachment.filename}</span>
+                    <small>{attachment.willGenerate ? '발송 시 생성' : attachment.size ? formatFileSize(attachment.size) : attachment.documentTypeLabel}</small>
+                    <button aria-label={`${attachment.filename} 자동 첨부 제외`} onClick={() => onAutoAttachmentRemove(attachment.key)} type="button">
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {create.businessCards.length > 0 ? (
@@ -8638,6 +8665,7 @@ function MailboxPage({
   syncing,
   actioningId,
   onAction,
+  onComposeAutoAttachmentRemove,
   onComposeAttachmentRemove,
   onComposeAttachmentsChange,
   onComposeBodyChange,
@@ -8662,6 +8690,7 @@ function MailboxPage({
   syncing: boolean;
   actioningId: number | null;
   onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onComposeAutoAttachmentRemove: (key: string) => void;
   onComposeAttachmentRemove: (index: number) => void;
   onComposeAttachmentsChange: (files: File[]) => void;
   onComposeBodyChange: (bodyText: string, bodyHtml: string) => void;
@@ -8723,6 +8752,9 @@ function MailboxPage({
           message: '',
           submitUrl: '/reporting/api/mailbox/send/',
           djangoUrl: '/reporting/gmail/send/mailbox/',
+          autoAttachments: [],
+          autoAttachLabel: '',
+          schedule: null,
           internalCcEmails: [],
           customers: [],
           businessCards: [],
@@ -8733,6 +8765,7 @@ function MailboxPage({
         open={composeOpen}
         saving={composing}
         submitLabel="메일 발송"
+        onAutoAttachmentRemove={onComposeAutoAttachmentRemove}
         onAttachmentRemove={onComposeAttachmentRemove}
         onAttachmentsChange={onComposeAttachmentsChange}
         onBodyChange={onComposeBodyChange}
@@ -8883,7 +8916,18 @@ function MailboxThreadPage({
       profileHref: '/reporting/profile/',
     },
     links: { mailbox: '/mailbox/', djangoThread: '', reply: '' },
-    create: { canSend: false, message: '', submitUrl: '', djangoUrl: '', internalCcEmails: [], customers: [], businessCards: [] },
+    create: {
+      canSend: false,
+      message: '',
+      submitUrl: '',
+      djangoUrl: '',
+      autoAttachments: [],
+      autoAttachLabel: '',
+      schedule: null,
+      internalCcEmails: [],
+      customers: [],
+      businessCards: [],
+    },
     emails: [],
   };
   const lastEmail = thread.emails[thread.emails.length - 1];
@@ -8938,6 +8982,7 @@ function MailboxThreadPage({
             open={replyOpen}
             saving={replySaving}
             submitLabel="답장 발송"
+            onAutoAttachmentRemove={() => {}}
             onAttachmentRemove={onReplyAttachmentRemove}
             onAttachmentsChange={onReplyAttachmentsChange}
             onBodyChange={onReplyBodyChange}
@@ -12510,6 +12555,7 @@ export function App() {
       box: mailboxBox,
       q: mailboxQuery,
       page: mailboxPage,
+      scheduleId: mailComposeForm.scheduleId ? Number(mailComposeForm.scheduleId) : undefined,
     }).then((data) => {
       if (!alive) {
         return;
@@ -12520,7 +12566,29 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, mailboxBox, mailboxPage, mailboxQuery, mailboxThreadId]);
+  }, [currentView, mailboxBox, mailboxPage, mailboxQuery, mailboxThreadId, mailComposeForm.scheduleId]);
+
+  useEffect(() => {
+    if (currentView !== 'mail' || mailboxThreadId || !mailboxData || !mailComposeForm.scheduleId) {
+      return;
+    }
+    const autoAttachments = mailboxData.create.autoAttachments ?? [];
+    const seed = [
+      mailComposeForm.scheduleId,
+      ...autoAttachments.map((attachment) => attachment.key),
+    ].join('|');
+    setMailComposeForm((previous) => {
+      if (!previous.scheduleId || previous.autoAttachmentSeed === seed) {
+        return previous;
+      }
+      return {
+        ...previous,
+        autoAttachments,
+        autoAttachmentSeed: seed,
+        excludedAutoAttachmentKeys: [],
+      };
+    });
+  }, [currentView, mailboxData, mailboxThreadId, mailComposeForm.scheduleId]);
 
   useEffect(() => {
     if (currentView !== 'mail' || !mailboxData || !mailComposeForm.followupId || mailComposeForm.toEmail) {
@@ -13153,6 +13221,7 @@ export function App() {
       box: mailboxBox,
       q: mailboxQuery,
       page: mailboxPage,
+      scheduleId: mailComposeForm.scheduleId ? Number(mailComposeForm.scheduleId) : undefined,
     });
     setMailboxData(data);
     return data;
@@ -13216,11 +13285,22 @@ export function App() {
     }));
     setMailComposeError('');
   };
+  const handleMailComposeAutoAttachmentRemove = (key: string) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      excludedAutoAttachmentKeys: previous.excludedAutoAttachmentKeys.includes(key)
+        ? previous.excludedAutoAttachmentKeys
+        : [...previous.excludedAutoAttachmentKeys, key],
+    }));
+    setMailComposeError('');
+  };
   const handleMailComposeCustomerChange = (customerId: string) => {
     const customer = mailboxData?.create.customers.find((item) => String(item.id) === customerId);
     setMailComposeForm((previous) => ({
       ...previous,
-      autoQuoteAttach: previous.followupId === customerId ? previous.autoQuoteAttach : false,
+      autoAttachments: previous.followupId === customerId ? previous.autoAttachments : [],
+      autoAttachmentSeed: previous.followupId === customerId ? previous.autoAttachmentSeed : '',
+      excludedAutoAttachmentKeys: previous.followupId === customerId ? previous.excludedAutoAttachmentKeys : [],
       followupId: customerId,
       scheduleId: previous.followupId === customerId ? previous.scheduleId : '',
       toEmail: customer?.email || previous.toEmail,
@@ -13239,6 +13319,7 @@ export function App() {
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
     includeInternalCc: form.includeInternalCc,
     attachments: form.attachments,
+    excludedAutoAttachmentKeys: form.excludedAutoAttachmentKeys,
   });
   const handleMailComposeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -13618,6 +13699,7 @@ export function App() {
           syncing={mailSyncing}
           onAction={handleMailboxAction}
           onBoxChange={handleMailboxBoxChange}
+          onComposeAutoAttachmentRemove={handleMailComposeAutoAttachmentRemove}
           onComposeAttachmentRemove={handleMailComposeAttachmentRemove}
           onComposeAttachmentsChange={handleMailComposeAttachmentsChange}
           onComposeBodyChange={handleMailComposeBodyChange}

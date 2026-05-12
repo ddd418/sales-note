@@ -1,6 +1,48 @@
 # AGENT_PLAN.md
 
-## Current task — 제품 삭제 차단 품목 개별 대체 처리
+## Current task — 일정 메일 거래명세서 자동첨부 및 자동첨부 제거
+
+**목표**: 일정에서 메일을 보낼 때 견적 일정은 견적서 PDF, 납품 일정은 거래명세서 PDF를 자동 첨부하고, React 메일 작성 화면에서 사용자가 자동 첨부 예정 문서를 발송 전에 제거할 수 있게 한다.
+
+### 확인된 상태
+
+- 현재 `mailbox_api_send`와 Django 일정 메일 발송은 `schedule_id`가 있는 경우에도 견적 일정의 견적서 PDF만 자동 첨부한다.
+- 거래명세서 PDF 생성과 `DocumentGenerationLog` 등록 기능은 이미 존재한다.
+- React 일정 상세의 `메일 발송` 링크는 `/mailbox/?compose=1&schedule_id=...`로 이동하지만 메일 작성 API payload에는 자동 첨부 예정 문서 목록이 없다.
+- 현재 React 메일 작성 화면은 업로드 첨부파일만 제거할 수 있고, 견적서 자동 첨부는 안내 문구만 보여준다.
+- DB 모델 변경 없이 백엔드 자동첨부 타입 확장, create payload 보강, React 제외 목록 전송으로 구현 가능하다.
+
+### 구현 계획
+
+- 백엔드 자동첨부 로직을 문서 타입 단위로 일반화한다.
+  - 견적 일정: `quotation` PDF 자동 첨부
+  - 납품 일정: `transaction_statement` PDF 자동 첨부
+  - 등록 PDF가 있으면 기존 파일을 첨부하고, 없으면 발송 시 PDF를 생성한다.
+- React 메일함 create payload에 `schedule_id` 기준 자동 첨부 예정 목록을 내려준다.
+- React 메일 작성 패널에 자동 첨부 예정 문서 목록을 표시하고, 문서별 제거 버튼을 제공한다.
+- 제거한 자동 첨부는 `excluded_auto_attachment_keys`로 발송 API에 전달해 백엔드가 해당 등록 문서 또는 생성 예정 문서를 제외한다.
+- Django legacy 일정 메일 폼에도 자동 첨부 체크박스를 추가해 견적서/거래명세서 자동첨부를 발송 전에 해제할 수 있게 한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\gmail_views.py reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_documents_for_delivery_and_quote reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_splits_quotation_documents_by_quote_group --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/882/`, `/mailbox/`, `/reporting/login/` smoke check
+
+### 현재 상태
+
+- 백엔드/React 구현 및 로컬 검증 완료.
+- DB 모델 변경 없음.
+- 커밋/푸시 및 Railway 배포 진행 예정.
+
+---
+
+## Previous task — 제품 삭제 차단 품목 개별 대체 처리
 
 **목표**: React 제품관리에서 사용 중인 제품 삭제가 차단됐을 때 제품 하나 전체를 한 번에 대체하지 않고, 견적/납품에 사용된 개별 품목을 사용자에게 보여준 뒤 각 품목마다 어떤 제품으로 대체할지 선택해 하나씩 옮기게 한다. 마지막 참조가 옮겨져 데이터 무결성이 확인되면 원제품을 삭제한다.
 

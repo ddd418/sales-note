@@ -191,11 +191,30 @@ export type MailboxEmailItem = {
   }>;
 };
 
+export type MailAutoAttachment = {
+  key: string;
+  filename: string;
+  size?: number;
+  documentLogId?: number | null;
+  documentType: string;
+  documentTypeLabel: string;
+  quoteGroup?: string;
+  quoteGroupLabel?: string;
+  willGenerate?: boolean;
+  description?: string;
+};
+
 export type MailboxCreateOptions = {
   canSend: boolean;
   message: string;
   submitUrl: string;
   djangoUrl: string;
+  autoAttachments: MailAutoAttachment[];
+  autoAttachLabel: string;
+  schedule: {
+    id: number;
+    activityType: string;
+  } | null;
   internalCcEmails: string[];
   customers: Array<{
     id: number;
@@ -292,6 +311,7 @@ export type MailboxSendPayload = {
   scheduleId?: number;
   businessCardId?: number;
   attachments?: File[];
+  excludedAutoAttachmentKeys?: string[];
 };
 
 export type MailboxActionResponse = {
@@ -2522,6 +2542,9 @@ const emptyMailboxCreateOptions: MailboxCreateOptions = {
   message: '',
   submitUrl: '/reporting/api/mailbox/send/',
   djangoUrl: '/reporting/gmail/send/mailbox/',
+  autoAttachments: [],
+  autoAttachLabel: '',
+  schedule: null,
   internalCcEmails: [],
   customers: [],
   businessCards: [],
@@ -3489,11 +3512,13 @@ export async function loadMailboxData(params: {
   box?: MailboxType;
   q?: string;
   page?: number;
+  scheduleId?: number;
 } = {}): Promise<MailboxData> {
   const query = new URLSearchParams();
   if (params.box) query.set('box', params.box);
   if (params.q) query.set('q', params.q);
   if (params.page && params.page > 1) query.set('page', String(params.page));
+  if (params.scheduleId) query.set('schedule_id', String(params.scheduleId));
 
   try {
     const response = await fetch(`/reporting/api/mailbox/${query.toString() ? `?${query.toString()}` : ''}`, {
@@ -3539,6 +3564,9 @@ export async function loadMailboxData(params: {
       create: {
         ...emptyMailboxCreateOptions,
         ...(payload.create ?? {}),
+        autoAttachments: payload.create?.autoAttachments ?? emptyMailboxCreateOptions.autoAttachments,
+        autoAttachLabel: payload.create?.autoAttachLabel ?? emptyMailboxCreateOptions.autoAttachLabel,
+        schedule: payload.create?.schedule ?? emptyMailboxCreateOptions.schedule,
         internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
@@ -3596,6 +3624,9 @@ export async function loadMailboxThreadData(threadId: string): Promise<MailboxTh
       create: {
         ...emptyMailboxCreateOptions,
         ...(payload.create ?? {}),
+        autoAttachments: payload.create?.autoAttachments ?? emptyMailboxCreateOptions.autoAttachments,
+        autoAttachLabel: payload.create?.autoAttachLabel ?? emptyMailboxCreateOptions.autoAttachLabel,
+        schedule: payload.create?.schedule ?? emptyMailboxCreateOptions.schedule,
         internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
@@ -3627,6 +3658,9 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
   if (payload.scheduleId) body.set('schedule_id', String(payload.scheduleId));
   if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
+  if (payload.excludedAutoAttachmentKeys?.length) {
+    body.set('excluded_auto_attachment_keys', JSON.stringify(payload.excludedAutoAttachmentKeys));
+  }
   payload.attachments?.forEach((file) => body.append('attachments', file));
   return body;
 }

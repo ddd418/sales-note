@@ -6270,6 +6270,11 @@ tbody tr:hover {
   gap: 8px;
 }
 
+.mail-auto-attachments {
+  display: grid;
+  gap: 8px;
+}
+
 .mail-attachment-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -6314,6 +6319,11 @@ tbody tr:hover {
 .mail-attachment-item button:hover {
   border-color: #fecaca;
   color: #991b1b;
+}
+
+.mail-attachment-item.auto {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
 }
 
 .mail-compose-check {
