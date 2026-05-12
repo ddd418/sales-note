@@ -36,9 +36,18 @@
 
 ### 현재 상태
 
-- 구현 및 로컬 검증 완료.
+- 구현/로컬 검증/커밋/푸시/운영 배포/익명 smoke 완료.
 - DB 모델 변경 없음.
-- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행한다.
+- Runtime commit: `f1d7b42 feat: import quote items into deliveries`
+- Railway `web`: `2241be62-11b5-472d-92b6-4f469179f61c` SUCCESS
+- Railway `sales-note-frontend`: `cba176c5-cebc-4ba7-8989-e298b0cbfb1c` SUCCESS
+- 운영 smoke OK:
+  - `/products/` 200 with `assets/index-2OWdxLkM.js` / `assets/index-2AirpMI9.css`
+  - `/schedules/882/` 200
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/products/manage/` 302 login redirect
+  - anonymous `/reporting/api/schedules/882/` 401 login-required JSON
+- 다음 행동: 사용자가 운영에서 수동 검수한다. 검수 결과 확인 전에는 다음 구현 작업을 시작하지 않는다.
 
 ---
 

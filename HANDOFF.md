@@ -14,7 +14,79 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Product management React migration is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+React delivery quote import, schedule delete, product list layout fix, and product replacement delete are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+
+Runtime commit:
+
+```text
+f1d7b42 feat: import quote items into deliveries
+```
+
+Current implementation:
+
+- React delivery schedule details now have a `견적 불러오기` flow that pulls quote items from the same follow-up/customer context into editable delivery item rows.
+- Quote item API now returns React-friendly quote/item data including product linkage, unit, base price, discount rate/unit price, tax invoice flag, quote group, and item notes.
+- React schedule detail now exposes a schedule delete button that calls the existing Django AJAX delete view and then redirects to the schedule list.
+- React `/products/` table layout was adjusted so the list and side panels do not break at production viewport widths.
+- Product bulk delete now supports replacement mapping for blocked products. `DeliveryItem` and legacy `QuoteItem` references move to the replacement product, integrity is checked, then the original product is deleted.
+- No database model changes or migrations.
+
+Validation:
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_manager_read_only_and_other_company_blocked reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_allows_owner_and_removes_related_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_blocks_non_owner reporting.tests.ProductManagementReactApiTests --verbosity=1
+python manage.py check
+python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+git diff --check
+```
+
+Results:
+
+- Targeted schedule/quote/product regression tests OK: 12 tests.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- Migration dry-run OK: no changes detected.
+- React build OK: `assets/index-2OWdxLkM.js` / `assets/index-2AirpMI9.css`.
+- Node syntax check OK.
+- Local Playwright smoke OK with mocked APIs: `/products/` renders table and blocked replacement delete panel; `/schedules/882/` renders delete and quote import controls.
+- `git diff --check` OK.
+
+Deployment:
+
+- GitHub push complete: runtime commit `f1d7b42` is on `main`.
+- Railway `web`: `2241be62-11b5-472d-92b6-4f469179f61c` SUCCESS.
+- Railway `sales-note-frontend`: `cba176c5-cebc-4ba7-8989-e298b0cbfb1c` SUCCESS.
+- Production smoke OK:
+  - `/products/` 200 with latest frontend assets `index-2OWdxLkM.js` / `index-2AirpMI9.css`.
+  - `/schedules/882/` 200.
+  - `/reporting/login/` 200.
+  - Anonymous `/reporting/api/products/manage/` redirects to login.
+  - Anonymous `/reporting/api/schedules/882/` returns 401 login-required JSON.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/882/`.
+2. In the delivery item section, click `견적 불러오기`, choose a quote, and confirm rows import with unit, price, discount, quote group, and notes.
+3. Save the imported delivery rows and confirm they remain after refresh.
+4. Confirm the schedule detail `삭제` button appears. Test actual deletion only with a disposable schedule.
+5. Open `https://sales-note-frontend-production.up.railway.app/products/` and confirm the product table is not visually broken.
+6. Bulk delete an unused test product and confirm normal deletion.
+7. Bulk delete a used test product, confirm it is blocked, choose a replacement product, run replacement delete, and confirm the original product is removed while quote/delivery rows point to the replacement.
+
+Manual test result:
+
+- Pending user confirmation.
+
+Next queued after this task is manually verified:
+
+- Confirm whether quote import is also needed in any separate delivery creation flow beyond the React schedule detail editor.
+- Continue the remaining queued CRM work only after the user confirms production manual testing.
+
+## Previous Task
+
+Product management React migration is implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual production testing was later followed by the delivery/product follow-up work above.
 
 Runtime commit:
 
@@ -22,67 +94,11 @@ Runtime commit:
 126fd3b feat: migrate product management to react
 ```
 
-Current implementation:
-
-- React `/products/` screen added to the CRM sidebar.
-- Product list supports search, active/inactive filter, sorting, pagination, Django fallback link, and XLSX export.
-- Product create/edit supports product code, description, specification, unit, standard price, and active status.
-- Ecount/Excel paste upsert supports existing-product updates by product code and new product creation.
-- Paste-based bulk delete deletes unused products and blocks products already used in quote/delivery data.
-- Product promotion settings are removed from React, Django product form/list, Django admin, and schedule product search display.
-- `Product.get_current_price()` and product APIs now return standard price only.
-- No database model changes or migrations.
-
-Validation:
-
-```text
-python -m py_compile reporting\models.py reporting\views.py reporting\tests.py
-python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=2
-python manage.py test reporting.tests.ProductSpecificationSaveTests reporting.tests.ProductManagementReactApiTests reporting.tests.SchedulesSummaryApiTests.test_product_api_list_returns_accessible_product_master_data --verbosity=1
-python manage.py check
-python manage.py makemigrations --check --dry-run
-cd frontend; npm run build
-cd frontend; node --check server.mjs
-```
-
-Results:
-
-- Product React/API regression tests OK: 10 tests.
-- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- Migration dry-run OK: no changes detected.
-- React build OK: `assets/index-Cvm7UZLA.js` / `assets/index-8S1Oy6zw.css`.
-- Node syntax check OK.
-- Local Playwright smoke OK with mocked product API data: `/products/` renders nav, metrics, product table, paste panels, and create form.
-
 Deployment:
 
-- GitHub push complete: runtime commit `126fd3b` is on `main`.
 - Railway `web`: `c36d7e71-7379-45f2-9dca-3d7af93525de` SUCCESS.
 - Railway `sales-note-frontend`: `3bb14e78-8f7d-4d58-8e76-125bf65d8418` SUCCESS.
-- Production smoke OK:
-  - `/products/` 200 with latest frontend assets `index-Cvm7UZLA.js` / `index-8S1Oy6zw.css`.
-  - `/reporting/login/` 200.
-  - Anonymous `/reporting/api/products/manage/` redirects to login.
-  - Anonymous `/reporting/products/` redirects to login.
-
-Manual production test:
-
-1. Open `https://sales-note-frontend-production.up.railway.app/products/`.
-2. Confirm product list search, active/inactive filter, sorting, and pagination work.
-3. Create and edit a test product, including specification, unit, and standard price.
-4. Paste Ecount/Excel rows with one existing product code and one new product code, then confirm existing data updates and new data is created.
-5. Download the XLSX export.
-6. Paste a newly created unused product code into bulk delete and confirm it deletes.
-7. Open `/reporting/products/` and confirm the legacy screen still works with promotion UI removed.
-
-Manual test result:
-
-- Pending user confirmation.
-
-Next queued after product management is manually verified:
-
-- React delivery creation/editing should be able to pull existing quote items into delivery items.
-- Do not start this implementation until the product management production manual test is confirmed or the user explicitly asks to proceed.
+- Production smoke OK: `/products/` 200, `/reporting/login/` 200, protected product APIs require login.
 
 ## Previous Task
 

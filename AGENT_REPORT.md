@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — React Delivery Quote Import, Schedule Delete, Product Replacement Delete
+
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React 일정 상세에서 납품 일정이 기존 견적 품목을 불러올 수 있게 했습니다. 일정 상세 삭제 버튼을 추가했고, 제품 목록 레이아웃 깨짐을 보정했습니다. 제품 일괄 삭제에서 견적/납품 참조로 차단된 제품은 대체 제품을 선택해 품목 연결을 이동한 뒤 무결성 확인 후 삭제할 수 있습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/styles.css`: 납품 일정 견적 불러오기 UI, 일정 삭제 버튼, 제품 삭제 대체 UI, 제품 목록 레이아웃 수정
+- `reporting/views.py`: 견적 품목 API 응답 보강, 일정 삭제 링크 제공, 제품 참조 대체 후 삭제 처리
+- `reporting/tests.py`: 견적 불러오기 응답, 일정 삭제, 제품 대체 삭제 회귀 테스트 추가
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`: 작업 상태 갱신
+
+### CRM 개선
+
+- 납품 일정에서 같은 부서의 본인 견적 일정 목록을 보고 품목을 가져온 뒤 저장할 수 있습니다.
+- 견적 품목의 제품 연결, 단위, 기준단가, 할인율, 할인단가, 세금계산서 여부, 견적서 구분, 적요가 React 납품 편집 행으로 전달됩니다.
+- React 일정 상세에서 본인 일정 삭제가 가능하며 기존 Django AJAX 삭제 권한/동작을 그대로 사용합니다.
+- 제품 삭제 차단 항목은 대체 제품 선택 후 `DeliveryItem`/레거시 `QuoteItem` 참조를 이동하고, 참조가 남지 않을 때만 원제품이 삭제됩니다.
+- 제품 목록은 운영 화면 폭에서 표와 사이드 패널이 충돌하지 않도록 반응형 배치를 조정했습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 Django 일정 삭제 뷰와 권한 로직을 유지했습니다.
+- 기존 제품 일괄 삭제는 대체 제품이 없으면 계속 차단 결과를 반환합니다.
+- 기존 제품관리/일정/문서/메일 routes는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_manager_read_only_and_other_company_blocked reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_allows_owner_and_removes_related_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_blocks_non_owner reporting.tests.ProductManagementReactApiTests --verbosity=1
+→ Ran 12 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-2OWdxLkM.js / assets/index-2AirpMI9.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+local Playwright smoke with mocked APIs
+→ `/products/` renders product table and blocked replacement panel.
+→ `/schedules/882/` renders delete and quote import controls.
+
+git diff --check
+→ OK
+
+git commit -m "feat: import quote items into deliveries" && git push origin main
+→ Commit f1d7b42 pushed to origin/main
+
+Railway deployments
+→ web 2241be62-11b5-472d-92b6-4f469179f61c SUCCESS
+→ sales-note-frontend cba176c5-cebc-4ba7-8989-e298b0cbfb1c SUCCESS
+
+Production smoke requests
+→ /products/ 200 with assets/index-2OWdxLkM.js and assets/index-2AirpMI9.css
+→ /schedules/882/ 200
+→ /reporting/login/ 200
+→ anonymous /reporting/api/products/manage/ 302 to /reporting/login/
+→ anonymous /reporting/api/schedules/882/ 401 login_required JSON
+```
+
+### 알려진 제한
+
+- 제품 삭제 대체는 선택한 제품으로 참조를 이동하므로 과거 견적/납품 품목명이 새 제품 품번으로 바뀝니다. 사용자가 명시한 “대체 후 삭제” 동작에 맞춘 처리입니다.
+- 로그인 세션이 필요한 실제 데이터 검수는 사용자가 운영에서 직접 확인해야 합니다.
+
+### 사용자 수동 검수
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/882/`에서 납품 품목 영역의 `견적 불러오기` 버튼을 누른다.
+2. 견적 목록에서 견적을 선택하고 품목이 편집 행에 들어오는지 확인한 뒤 저장한다.
+3. 같은 일정 상세에서 `삭제` 버튼이 보이고, 실제 삭제는 테스트 일정으로만 확인한다.
+4. `https://sales-note-frontend-production.up.railway.app/products/`에서 제품 목록 표가 깨지지 않는지 확인한다.
+5. 이미 견적/납품에 쓰인 테스트 제품을 일괄 삭제해 차단되는지 확인하고, 대체 제품을 선택해 참조 이동 후 삭제되는지 확인한다.
+
+### 권장 다음 작업
+
+- 수동 검수 완료 후, 사용자가 대기시킨 “납품할 때 React에서도 견적에서 끌고오기” 후속 흐름 중 생성 화면까지 확장할지 확인한다.
+
+---
+
 ## 2026-05-12 — React Product Management Migration
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
