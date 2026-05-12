@@ -1,5 +1,99 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote Discount Variables And AI Priority Goals
+
+**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+
+### 요약
+
+견적 품목에 기준단가와 별도로 할인율/할인단가를 저장하고, 최종 적용단가 기준으로 금액과 서류 변수가 계산되도록 확장했습니다. 품목별 적요와 전체 견적 기타사항을 저장하며, React `/documents/` 템플릿 등록 화면에서 사용 가능한 변수를 확인하고 복사할 수 있게 했습니다. 추가 요청으로 AI Workspace 추천 목표에는 명확한 고객명을 표시하고, 부서/고객 AI 분석 실행 시 CRM 고객 우선순위를 분석 결과 기준으로 다시 산정하도록 했습니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0095_deliveryitem_discount_rate_and_more.py`: 견적 기타사항, 할인율, 할인단가 필드 및 적용단가 계산 추가
+- `reporting/views.py`: React 일정/서류 API, 문서 변수, 할인 금액 계산, AI Workspace 추천 목표 payload 확장
+- `reporting/templates/reporting/partials/doc_variable_list.html`: Django 변수 도움말에 신규 견적/품목 변수 추가
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 일정 품목 편집, 서류 변수 복사, AI 추천 목표 고객명/우선순위 UI 추가
+- `ai_chat/services.py`, `ai_chat/views.py`, `ai_chat/department_prompt.py`: AI 분석 결과의 고객별 추천목표/우선순위 추천 저장 및 CRM 우선순위 갱신
+- `reporting/tests.py`, `ai_chat/tests.py`: 견적 할인/서류 변수/AI Workspace/AI 우선순위 회귀 테스트 추가
+- `AGENT_PLAN.md`: 작업 계획 갱신
+
+### CRM 개선
+
+- 견적 품목별로 기준단가를 유지하면서 할인율 입력 또는 할인단가 직접 입력을 사용할 수 있습니다.
+- 품목별 `적요`와 전체 견적 `기타사항`을 엑셀/서류 변수로 치환할 수 있습니다.
+- React 서류 템플릿 등록 화면에서 Django와 동일하게 사용 가능한 변수 토큰을 복사할 수 있습니다.
+- AI Workspace 추천 목표 카드가 고객명을 명확히 표시합니다.
+- 부서 AI 분석과 개별 고객 AI 분석 후 고객 우선순위가 AI 판단 결과로 갱신됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` 라우트와 Django 서류 템플릿 화면은 유지했습니다.
+- 기존 기준단가 직접 조절 방식은 유지하고, 할인단가/할인율은 추가 선택지로 붙였습니다.
+- 기존 `DeliveryItem.notes`를 적요로 재사용해 품목 적요용 추가 DB 필드는 만들지 않았습니다.
+- AI 권한(`can_use_ai`)과 담당자별 접근 제한은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.AIWorkspaceSummaryApiTests ai_chat.tests.AIDepartmentPromptLogicTests ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+→ Ran 50 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 37 tests, OK
+
+python manage.py test ai_chat.tests.AIDepartmentPromptLogicTests ai_chat.tests.AIDepartmentAnalysisMemoryTests reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 13 tests, OK
+
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\department_prompt.py reporting\views.py reporting\tests.py ai_chat\tests.py
+→ OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected after migration file creation
+
+cd frontend; npm run build
+→ OK, assets/index-DJaKKt6c.js / assets/index-DHLL1LUc.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 알려진 제한
+
+- 운영에서 실제 로그인 계정으로 견적 품목 저장, 서류 변수 복사, AI 분석 실행 후 우선순위 갱신을 수동 확인해야 합니다.
+- 할인단가가 있으면 최종 적용단가는 할인단가를 우선 사용합니다. 할인율만 입력하면 서버가 할인단가를 계산해 저장합니다.
+- AI가 고객별 우선순위 추천을 명시하지 않으면 고객 단계 컨텍스트와 파이프라인 단계로 보정합니다.
+
+### 배포 상태
+
+- Runtime commit: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- Production smoke: pending
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/`에서 견적 일정 상세로 이동합니다.
+2. 견적 품목 편집에서 기준단가, 할인율, 할인단가, 적요를 입력하고 저장합니다.
+3. 할인율 입력 시 할인단가가 자동 계산되고, 할인단가 직접 입력 시 최종 금액이 할인단가 기준으로 저장되는지 확인합니다.
+4. 전체 견적 기타사항을 입력하고 저장 후 새로고침해 유지되는지 확인합니다.
+5. 해당 일정의 견적서 미리보기/다운로드에서 `품목1_기준단가`, `품목1_할인율`, `품목1_할인단가`, `품목1_적요`, `견적기타사항` 값이 반영되는지 확인합니다.
+6. `https://sales-note-frontend-production.up.railway.app/documents/`에서 템플릿 등록 폼을 열고 변수 목록이 보이는지, 새 변수를 복사할 수 있는지 확인합니다.
+7. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서 추천 목표 카드에 고객명이 표시되는지 확인합니다.
+8. 부서 AI 분석을 실행한 뒤 추천 목표와 고객 우선순위가 갱신되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — React AI Summary Pipeline Questions And Email Context
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

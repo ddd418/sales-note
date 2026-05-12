@@ -809,6 +809,9 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
     def test_run_analysis_preserves_verified_cards_and_skips_memory_duplicates(self):
         user = make_ai_user('ai_memory_run_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
+        followup = FollowUp.objects.get(user=user, department=department)
+        followup.priority = 'long_term'
+        followup.save(update_fields=['priority'])
         analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
         verified = self._create_verified_card(
             analysis,
@@ -829,6 +832,22 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         )
         analysis_result = {
             'department_summary': '재분석 결과',
+            'followup_priority_recommendations': [
+                {
+                    'customer': '테스트 고객',
+                    'priority': 'urgent',
+                    'reason': '고객 답장과 견적 검토 일정 확인이 필요합니다.',
+                },
+            ],
+            'recommended_goals': [
+                {
+                    'customer': '테스트 고객',
+                    'title': '테스트 고객 견적 후속 실행계획 작성',
+                    'description': '긴급 고객의 후속 액션을 정리합니다.',
+                    'reason': 'AI가 긴급 후속 대상으로 판단했습니다.',
+                    'priority': 'urgent',
+                },
+            ],
             'painpoint_cards': [
                 {
                     'category': verified.category,
@@ -872,6 +891,8 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['cards_created'], 1)
         self.assertEqual(payload['cards_preserved'], 1)
+        self.assertEqual(payload['priority_updates'], 1)
+        self.assertEqual(payload['priority_recommendations'], 1)
         self.assertTrue(PainPointCard.objects.filter(id=verified.id).exists())
         self.assertFalse(PainPointCard.objects.filter(id=stale_unverified.id).exists())
         self.assertEqual(
@@ -907,6 +928,20 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
             '검증 메모리 반영' in action['reason']
             for action in analysis.analysis_data['next_actions']
         ))
+        followup.refresh_from_db()
+        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(
+            analysis.analysis_data['followup_priority_recommendations'][0]['customer'],
+            '테스트 고객',
+        )
+        self.assertEqual(
+            analysis.analysis_data['followup_priority_recommendations'][0]['priority'],
+            'urgent',
+        )
+        self.assertIn(
+            '테스트 고객',
+            analysis.analysis_data['recommended_goals'][0]['title'],
+        )
 
     def test_verify_card_uses_confirm_only_and_saves_note_for_ai_judgment(self):
         user = make_ai_user('ai_verify_confirm_only_user', can_use_ai=True)

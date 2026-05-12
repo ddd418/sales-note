@@ -406,6 +406,11 @@ def _goal_from_action(action: dict) -> dict | None:
     if not action_text:
         return None
     reason = sanitize_external_prompt_text(action.get("reason")) or "AI 분석의 추천 액션에 포함되어 있기 때문입니다."
+    customer = sanitize_external_prompt_text(
+        action.get("customer") or
+        action.get("customer_name") or
+        action.get("customerName")
+    )
     title = _truncate(action_text, 46)
     if not any(keyword in title for keyword in ("작성", "정리", "분석", "생성", "계획", "전략")):
         title = f"{title} 실행계획 작성"
@@ -413,31 +418,119 @@ def _goal_from_action(action: dict) -> dict | None:
         "title": title,
         "description": "추천 액션을 바로 실행할 수 있도록 단계, 우선순위, 확인 항목을 정리합니다.",
         "reason": _truncate(reason, 140),
+        "customer": customer,
+        "priority": sanitize_external_prompt_text(action.get("priority")),
         "source": "next_action",
     }
 
 
-def suggest_goals_from_department_analysis(analysis, limit: int = 6) -> list[dict]:
+def _clean_customer_names(customer_names: object) -> list[str]:
+    names = []
+    for name in _as_list(customer_names):
+        text = sanitize_external_prompt_text(name)
+        if text and text not in names:
+            names.append(text)
+    return names
+
+
+def _goal_customer(goal: dict, customer_names: list[str]) -> str:
+    explicit = sanitize_external_prompt_text(
+        goal.get("customer") or
+        goal.get("customer_name") or
+        goal.get("customerName") or
+        goal.get("target_customer") or
+        goal.get("targetCustomer")
+    )
+    if explicit:
+        return explicit
+
+    searchable = " ".join([
+        sanitize_external_prompt_text(goal.get("title")),
+        sanitize_external_prompt_text(goal.get("description")),
+        sanitize_external_prompt_text(goal.get("reason")),
+    ])
+    for name in customer_names:
+        if name and name in searchable:
+            return name
+    return customer_names[0] if customer_names else ""
+
+
+def _goal_from_ai_recommendation(item: dict) -> dict | None:
+    title = sanitize_external_prompt_text(item.get("title") or item.get("goal"))
+    customer = sanitize_external_prompt_text(
+        item.get("customer") or item.get("customer_name") or item.get("customerName")
+    )
+    if not title and customer:
+        title = f"{customer} 후속 실행계획 작성"
+    if not title:
+        return None
+    return {
+        "title": title,
+        "description": sanitize_external_prompt_text(item.get("description")) or "AI 분석이 추천한 고객별 목표입니다.",
+        "reason": sanitize_external_prompt_text(item.get("reason")) or "AI 분석 결과에서 고객별 우선 대응 대상으로 판단되었습니다.",
+        "customer": customer,
+        "priority": sanitize_external_prompt_text(item.get("priority")),
+        "priorityLabel": sanitize_external_prompt_text(item.get("priorityLabel") or item.get("priority_label")),
+        "source": item.get("source", "ai_recommendation"),
+    }
+
+
+def _goal_from_priority_recommendation(item: dict) -> dict | None:
+    customer = sanitize_external_prompt_text(item.get("customer"))
+    if not customer:
+        return None
+    return {
+        "title": f"{customer} 후속 우선순위 실행계획 작성",
+        "description": "AI가 재산정한 CRM 우선순위에 맞춰 연락 방향, 확인 질문, 준비자료를 정리합니다.",
+        "reason": sanitize_external_prompt_text(item.get("reason")) or "AI가 고객별 우선순위 추천에 포함했습니다.",
+        "customer": customer,
+        "priority": sanitize_external_prompt_text(item.get("priority")),
+        "priorityLabel": sanitize_external_prompt_text(item.get("priorityLabel") or item.get("priority_label")),
+        "source": "priority_recommendation",
+    }
+
+
+def suggest_goals_from_department_analysis(analysis, limit: int = 6, customer_names: object = None) -> list[dict]:
     """Create goal cards from PainPointCard, next_actions, and fallbacks."""
     cards: list[dict] = []
     seen: set[str] = set()
+    customer_names = _clean_customer_names(customer_names)
 
     def add_goal(goal: dict):
         title = sanitize_external_prompt_text(goal.get("title"))
-        if not title or title in seen:
+        customer = _goal_customer(goal, customer_names)
+        if customer and customer not in title:
+            title = f"{customer} - {title}"
+        seen_key = f"{customer}|{title}"
+        if not title or seen_key in seen:
             return
-        seen.add(title)
+        seen.add(seen_key)
         cards.append({
             "title": title,
             "description": sanitize_external_prompt_text(goal.get("description")),
             "reason": sanitize_external_prompt_text(goal.get("reason")),
+            "customer": customer,
+            "priority": sanitize_external_prompt_text(goal.get("priority")),
+            "priorityLabel": sanitize_external_prompt_text(goal.get("priorityLabel") or goal.get("priority_label")),
             "source": goal.get("source", "fallback"),
         })
+
+    data = analysis.analysis_data or {}
+    for item in _as_list(data.get("recommended_goals")):
+        if isinstance(item, dict):
+            goal = _goal_from_ai_recommendation(item)
+            if goal:
+                add_goal(goal)
+
+    for item in _as_list(data.get("followup_priority_recommendations")):
+        if isinstance(item, dict):
+            goal = _goal_from_priority_recommendation(item)
+            if goal:
+                add_goal(goal)
 
     for card in analysis.painpoint_cards.order_by("-confidence_score", "-created_at")[:limit]:
         add_goal(_goal_from_painpoint(card))
 
-    data = analysis.analysis_data or {}
     for action in _as_list(data.get("next_actions")):
         if not isinstance(action, dict):
             continue

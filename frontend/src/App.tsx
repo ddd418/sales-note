@@ -253,11 +253,13 @@ type ScheduleDeliveryEditRow = {
   quantity: string;
   unit: string;
   unitPrice: string;
+  discountRate: string;
+  discountUnitPrice: string;
   taxInvoiceIssued: boolean;
   notes: string;
 };
 
-type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'taxInvoiceIssued' | 'notes';
+type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'notes';
 
 type MailComposeFormState = {
   attachments: File[];
@@ -468,6 +470,8 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   quantity: item ? String(item.quantity) : '1',
   unit: item?.unit || 'EA',
   unitPrice: item && item.unitPrice !== undefined && item.unitPrice !== null ? String(item.unitPrice) : '',
+  discountRate: item?.discountRate ? String(item.discountRate) : '',
+  discountUnitPrice: item?.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? String(item.discountUnitPrice) : '',
   taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
   notes: item?.notes || '',
 });
@@ -476,6 +480,26 @@ const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): Sched
   items.length > 0
     ? items.map((item, index) => makeScheduleDeliveryEditRow(item, index))
     : [makeScheduleDeliveryEditRow(undefined, 0)]
+);
+
+const parsePositiveFormNumber = (value: string) => {
+  const parsed = Number(String(value || '').replace(/,/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const moneyInputValue = (value: number) => String(Math.round(value));
+
+const rateInputValue = (value: number) => {
+  if (!Number.isFinite(value)) return '';
+  return String(Math.round(value * 100) / 100);
+};
+
+const discountUnitFromRate = (base: number, rate: number) => (
+  Math.max(Math.round(base * (100 - rate) / 100), 0)
+);
+
+const discountRateFromUnit = (base: number, discountUnit: number) => (
+  base > 0 ? Math.max(Math.min((1 - discountUnit / base) * 100, 100), 0) : 0
 );
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
@@ -4401,7 +4425,7 @@ const scheduleDocumentVariableBuckets: Array<{ label: string; keys: string[] }> 
   { label: '기본 정보', keys: ['년', '월', '일', '거래번호', '일정날짜', '날짜', '발행일'] },
   { label: '고객 정보', keys: ['고객명', '업체명', '학교명', '부서명', '연구실', '담당자', '이메일', '담당자이메일', '연락처', '전화번호'] },
   { label: '영업 담당', keys: ['실무자', '영업담당자', '담당영업', '영업담당자이메일'] },
-  { label: '견적 정보', keys: ['견적번호', '메모'] },
+  { label: '견적 정보', keys: ['견적번호', '메모', '기타사항', '견적기타사항'] },
   { label: '회사 정보', keys: ['회사명'] },
   { label: '금액', keys: ['공급가액', '소계', '부가세액', '부가세', '총액', '합계', '총액한글', '한글금액'] },
 ];
@@ -4605,7 +4629,13 @@ function ScheduleDocumentsPanel({
                   {previewData.items.map((item) => (
                     <div key={item.index}>
                       <strong>{item.name || `품목 ${item.index}`}</strong>
-                      <span>{[`${formatNumber(item.quantity)}${item.unit || ''}`, formatWon(item.unitPrice), formatWon(item.subtotal)].join(' · ')}</span>
+                      <span>{[
+                        `${formatNumber(item.quantity)}${item.unit || ''}`,
+                        item.discountUnitPrice !== null ? `기준 ${formatWon(item.baseUnitPrice)}` : '',
+                        item.discountUnitPrice !== null ? `할인 ${formatWon(item.discountUnitPrice)}` : formatWon(item.unitPrice),
+                        formatWon(item.subtotal),
+                        item.notes,
+                      ].filter(Boolean).join(' · ')}</span>
                     </div>
                   ))}
                 </div>
@@ -4642,6 +4672,7 @@ function ScheduleDetailPage({
   const [fileMessage, setFileMessage] = useState('');
   const [deliveryEditOpen, setDeliveryEditOpen] = useState(false);
   const [deliveryRows, setDeliveryRows] = useState<ScheduleDeliveryEditRow[]>(() => makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
+  const [quoteExtraNotes, setQuoteExtraNotes] = useState(currentSchedule?.quoteExtraNotes || '');
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
@@ -4669,6 +4700,7 @@ function ScheduleDetailPage({
     setFileDeletingId(null);
     setDeliveryEditOpen(false);
     setDeliveryRows(makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
+    setQuoteExtraNotes(data?.schedule?.quoteExtraNotes || '');
     setDeliverySaving(false);
     setDeliveryError('');
     setDeliveryMessage('');
@@ -4974,7 +5006,26 @@ function ScheduleDetailPage({
 
   const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
     setDeliveryRows((rows) => rows.map((row) => (
-      row.rowId === rowId ? { ...row, [field]: value } : row
+      row.rowId === rowId ? (() => {
+        const nextRow = { ...row, [field]: value } as ScheduleDeliveryEditRow;
+        const basePrice = parsePositiveFormNumber(String(field === 'unitPrice' ? value : nextRow.unitPrice));
+        if (field === 'discountRate') {
+          const rate = parsePositiveFormNumber(String(value));
+          nextRow.discountUnitPrice = basePrice !== null && rate !== null ? moneyInputValue(discountUnitFromRate(basePrice, rate)) : '';
+        } else if (field === 'discountUnitPrice') {
+          const discountUnit = parsePositiveFormNumber(String(value));
+          nextRow.discountRate = basePrice !== null && discountUnit !== null ? rateInputValue(discountRateFromUnit(basePrice, discountUnit)) : '';
+        } else if (field === 'unitPrice') {
+          const rate = parsePositiveFormNumber(nextRow.discountRate);
+          const discountUnit = parsePositiveFormNumber(nextRow.discountUnitPrice);
+          if (basePrice !== null && rate !== null && nextRow.discountRate.trim()) {
+            nextRow.discountUnitPrice = moneyInputValue(discountUnitFromRate(basePrice, rate));
+          } else if (basePrice !== null && discountUnit !== null && nextRow.discountUnitPrice.trim()) {
+            nextRow.discountRate = rateInputValue(discountRateFromUnit(basePrice, discountUnit));
+          }
+        }
+        return nextRow;
+      })() : row
     )));
     setDeliveryError('');
     setDeliveryMessage('');
@@ -4999,6 +5050,8 @@ function ScheduleDetailPage({
         itemName: product.productCode,
         unit: product.unit || 'EA',
         unitPrice: unitPrice === '' ? '' : String(unitPrice),
+        discountRate: '',
+        discountUnitPrice: '',
       } : row
     )));
     setDeliveryError('');
@@ -5042,7 +5095,13 @@ function ScheduleDetailPage({
     }
 
     const rowsWithInput = deliveryRows.filter((row) => (
-      row.productId || row.itemName.trim() || row.quantity.trim() || row.unitPrice.trim() || row.notes.trim()
+      row.productId
+      || row.itemName.trim()
+      || row.quantity.trim()
+      || row.unitPrice.trim()
+      || row.discountRate.trim()
+      || row.discountUnitPrice.trim()
+      || row.notes.trim()
     ));
     if (!rowsWithInput.length) {
       setDeliveryError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.');
@@ -5070,6 +5129,28 @@ function ScheduleDetailPage({
         setDeliveryError(`${index + 1}번째 단가는 0 이상이어야 합니다.`);
         return;
       }
+      const discountRate = row.discountRate.trim();
+      if (discountRate && Number.isNaN(Number(discountRate))) {
+        setDeliveryError(`${index + 1}번째 할인율은 숫자로 입력하세요.`);
+        return;
+      }
+      if (discountRate && (Number(discountRate) < 0 || Number(discountRate) > 100)) {
+        setDeliveryError(`${index + 1}번째 할인율은 0부터 100 사이여야 합니다.`);
+        return;
+      }
+      const discountUnitPrice = row.discountUnitPrice.trim();
+      if (discountUnitPrice && Number.isNaN(Number(discountUnitPrice))) {
+        setDeliveryError(`${index + 1}번째 할인단가는 숫자로 입력하세요.`);
+        return;
+      }
+      if (discountUnitPrice && Number(discountUnitPrice) < 0) {
+        setDeliveryError(`${index + 1}번째 할인단가는 0 이상이어야 합니다.`);
+        return;
+      }
+      if (unitPrice && discountUnitPrice && Number(discountUnitPrice) > Number(unitPrice)) {
+        setDeliveryError(`${index + 1}번째 할인단가는 기준단가보다 클 수 없습니다.`);
+        return;
+      }
       payloadItems.push({
         id: row.id,
         productId: row.productId ? Number(row.productId) : null,
@@ -5077,6 +5158,8 @@ function ScheduleDetailPage({
         quantity,
         unit: row.unit.trim() || 'EA',
         unitPrice: unitPrice || null,
+        discountRate: discountRate || null,
+        discountUnitPrice: discountUnitPrice || null,
         taxInvoiceIssued: row.taxInvoiceIssued,
         notes: row.notes.trim(),
       });
@@ -5086,7 +5169,11 @@ function ScheduleDetailPage({
     setDeliveryError('');
     setDeliveryMessage('');
     try {
-      const updated = await updateScheduleDeliveryItems(data.links.updateDeliveryItems, payloadItems);
+      const updated = await updateScheduleDeliveryItems(
+        data.links.updateDeliveryItems,
+        payloadItems,
+        quoteExtraNotes.trim(),
+      );
       const refreshed = await onRefresh();
       setDeliveryRows(makeScheduleDeliveryEditRows(refreshed?.deliveryItems ?? updated.deliveryItems ?? []));
       setDeliveryMessage(updated.message || '납품 품목을 저장했습니다.');
@@ -5166,6 +5253,8 @@ function ScheduleDetailPage({
 
   const schedule = data.schedule;
   const deliveryItems = data.deliveryItems;
+  const isQuoteSchedule = schedule.activityType === 'quote';
+  const itemPanelLabel = isQuoteSchedule ? '견적 품목' : '납품 품목';
   const prepaymentUsages = schedule.prepaymentUsages ?? [];
   const deliveryTotalAmount = deliveryItems.reduce((total, item) => total + (item.totalPrice || 0), 0);
   const prepaymentBaseAmount = deliveryTotalAmount > 0 ? deliveryTotalAmount : schedule.expectedRevenue;
@@ -5515,7 +5604,7 @@ function ScheduleDetailPage({
             previewLoading={documentPreviewLoading}
           />
           <div className="schedule-file-heading schedule-delivery-heading">
-            <h3 className="customer-detail-section-heading">납품 품목</h3>
+            <h3 className="customer-detail-section-heading">{itemPanelLabel}</h3>
             {schedule.canEdit && data.links.updateDeliveryItems ? (
               <button
                 className="customer-row-action schedule-delivery-edit-toggle"
@@ -5550,7 +5639,7 @@ function ScheduleDetailPage({
                           />
                           {row.productId ? (
                             <button
-                              aria-label={`${index + 1}번째 납품 품목 제품 선택 해제`}
+                              aria-label={`${index + 1}번째 ${itemPanelLabel} 제품 선택 해제`}
                               className="schedule-delivery-product-clear"
                               disabled={deliverySaving}
                               onClick={() => handleDeliveryProductClear(row.rowId)}
@@ -5609,13 +5698,35 @@ function ScheduleDetailPage({
                         />
                       </label>
                       <label>
-                        <span>단가</span>
+                        <span>기준단가</span>
                         <input
                           inputMode="numeric"
                           min="0"
                           onChange={(event) => handleDeliveryFieldChange(row.rowId, 'unitPrice', event.target.value)}
                           type="number"
                           value={row.unitPrice}
+                        />
+                      </label>
+                      <label>
+                        <span>할인율(%)</span>
+                        <input
+                          inputMode="decimal"
+                          max="100"
+                          min="0"
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'discountRate', event.target.value)}
+                          step="0.01"
+                          type="number"
+                          value={row.discountRate}
+                        />
+                      </label>
+                      <label>
+                        <span>할인단가</span>
+                        <input
+                          inputMode="numeric"
+                          min="0"
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'discountUnitPrice', event.target.value)}
+                          type="number"
+                          value={row.discountUnitPrice}
                         />
                       </label>
                       <label className="schedule-edit-inline-check schedule-delivery-tax-check">
@@ -5627,14 +5738,14 @@ function ScheduleDetailPage({
                         <span>세금계산서</span>
                       </label>
                       <label className="schedule-delivery-notes-field">
-                        <span>비고</span>
+                        <span>적요</span>
                         <input
                           onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
                           value={row.notes}
                         />
                       </label>
                       <button
-                        aria-label={`${index + 1}번째 납품 품목 삭제`}
+                        aria-label={`${index + 1}번째 ${itemPanelLabel} 삭제`}
                         className="customer-row-action schedule-delivery-remove-button"
                         disabled={deliveryRows.length <= 1 || deliverySaving}
                         onClick={() => handleDeliveryRemoveRow(row.rowId)}
@@ -5647,10 +5758,24 @@ function ScheduleDetailPage({
                   );
                 })}
               </div>
+              {isQuoteSchedule ? (
+                <label className="schedule-quote-extra-notes-field">
+                  <span>전체 견적 기타사항</span>
+                  <textarea
+                    onChange={(event) => {
+                      setQuoteExtraNotes(event.target.value);
+                      setDeliveryError('');
+                      setDeliveryMessage('');
+                    }}
+                    rows={3}
+                    value={quoteExtraNotes}
+                  />
+                </label>
+              ) : null}
               <div className="notes-create-actions schedule-delivery-edit-actions">
                 <button className="route-secondary-action" disabled={deliverySaving} onClick={handleDeliveryAddRow} type="button">
                   <Plus size={15} />
-                  품목 추가
+                  {itemPanelLabel} 추가
                 </button>
                 <button className="route-primary-action" disabled={deliverySaving} type="submit">
                   {deliverySaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
@@ -5659,16 +5784,27 @@ function ScheduleDetailPage({
               </div>
             </form>
           ) : deliveryItems.length === 0 ? (
-            <DashboardEmpty label="등록된 납품 품목이 없습니다" />
+            <DashboardEmpty label={`등록된 ${itemPanelLabel}이 없습니다`} />
           ) : (
             <div className="schedule-delivery-list">
               {deliveryItems.map((item) => (
                 <div key={item.id}>
                   <strong>{item.itemName}</strong>
-                  <span>{[`${formatNumber(item.quantity)}${item.unit}`, item.totalPrice ? formatWon(item.totalPrice) : '', item.taxInvoiceIssued ? '세금계산서 발행' : '미발행'].filter(Boolean).join(' · ')}</span>
+                  <span>{[
+                    `${formatNumber(item.quantity)}${item.unit}`,
+                    item.discountUnitPrice !== null ? `할인단가 ${formatWon(item.discountUnitPrice)}` : '',
+                    item.totalPrice ? formatWon(item.totalPrice) : '',
+                    item.taxInvoiceIssued ? '세금계산서 발행' : '미발행',
+                  ].filter(Boolean).join(' · ')}</span>
                   {item.notes ? <p>{item.notes}</p> : null}
                 </div>
               ))}
+              {isQuoteSchedule && schedule.quoteExtraNotes ? (
+                <div className="schedule-quote-extra-notes">
+                  <span>기타사항</span>
+                  <p>{schedule.quoteExtraNotes}</p>
+                </div>
+              ) : null}
             </div>
           )}
           <div className="schedule-file-heading">
@@ -8437,10 +8573,12 @@ function DocumentsPage({
   const [actionId, setActionId] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
   const [formMessage, setFormMessage] = useState('');
+  const [copiedVariableToken, setCopiedVariableToken] = useState('');
 
   const canCreate = Boolean(data?.create.canCreate);
   const documentTypes = data?.documentTypes ?? [];
   const recentGenerations = data?.recentGenerations ?? [];
+  const templateVariableGroups = data?.templateVariableGroups ?? [];
 
   const openCreate = () => {
     setEditingTemplate(null);
@@ -8473,6 +8611,16 @@ function DocumentsPage({
       [field]: value,
     }));
     setFormError('');
+  };
+
+  const handleVariableCopy = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopiedVariableToken(token);
+      window.setTimeout(() => setCopiedVariableToken(''), 1400);
+    } catch {
+      setCopiedVariableToken('');
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -8744,6 +8892,36 @@ function DocumentsPage({
                 <input accept=".xlsx,.xls" onChange={(event) => setFile(event.target.files?.[0] ?? null)} type="file" />
               </label>
               {editingTemplate?.fileName ? <small>현재 파일: {editingTemplate.fileName}</small> : null}
+              {templateVariableGroups.length > 0 ? (
+                <div className="document-variable-panel">
+                  <div className="section-heading-row compact">
+                    <div>
+                      <p className="eyebrow">Variables</p>
+                      <h3>사용 가능한 템플릿 변수</h3>
+                    </div>
+                  </div>
+                  <div className="document-variable-groups">
+                    {templateVariableGroups.map((group) => (
+                      <div className="document-variable-group" key={group.label}>
+                        <h4>{group.label}</h4>
+                        <div className="document-variable-chip-list">
+                          {group.variables.map((variable) => (
+                            <button
+                              className={copiedVariableToken === variable.token ? 'copied' : ''}
+                              key={variable.token}
+                              onClick={() => handleVariableCopy(variable.token)}
+                              type="button"
+                            >
+                              {copiedVariableToken === variable.token ? <Check size={13} /> : <Copy size={13} />}
+                              <span>{variable.display || variable.token}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <label className="checkbox-row">
                 <input checked={form.isDefault} onChange={(event) => handleFormChange('isDefault', event.target.checked)} type="checkbox" />
                 <span>기본 템플릿으로 설정</span>
@@ -8887,7 +9065,11 @@ function AIWorkspacePage({
       const result = await runAiDepartmentAnalysis(featuredDepartment.runHref);
       await onRefresh({ departmentId: featuredDepartment.departmentId });
       const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
-      setAiPanelMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+      const priorityUpdates = result.priority_updates ?? result.priorityUpdates ?? 0;
+      const messageParts = ['AI 분석을 완료했습니다.'];
+      if (cardCount > 0) messageParts.push(`PainPoint ${formatNumber(cardCount)}건`);
+      if (priorityUpdates > 0) messageParts.push(`우선순위 갱신 ${formatNumber(priorityUpdates)}건`);
+      setAiPanelMessage(messageParts.join(' '));
     } catch (error) {
       setAiPanelError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
     } finally {
@@ -9030,6 +9212,12 @@ function AIWorkspacePage({
                 <div className="ai-goal-grid">
                   {data.recommendedGoals.map((goal) => (
                     <article className="ai-goal-card" key={goal.title}>
+                      {goal.customer || goal.priorityLabel ? (
+                        <div className="ai-goal-card-meta">
+                          {goal.customer ? <em>{goal.customer}</em> : null}
+                          {goal.priorityLabel ? <span>{goal.priorityLabel}</span> : null}
+                        </div>
+                      ) : null}
                       <strong>{goal.title}</strong>
                       <span>{goal.description}</span>
                       {goal.reason ? <small>{goal.reason}</small> : null}

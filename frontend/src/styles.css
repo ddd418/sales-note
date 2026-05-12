@@ -2627,6 +2627,36 @@ h2 {
   grid-template-columns: 1fr 1fr;
 }
 
+.schedule-quote-extra-notes-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.schedule-quote-extra-notes-field textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.schedule-quote-extra-notes {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.schedule-quote-extra-notes > span {
+  color: var(--primary-strong);
+  font-weight: 900;
+}
+
 .schedules-page {
   display: grid;
   gap: 16px;
@@ -4166,8 +4196,34 @@ h2 {
   background: var(--panel-soft);
 }
 
-.ai-goal-card span,
-.ai-goal-card small {
+.ai-goal-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ai-goal-card-meta em,
+.ai-goal-card-meta span {
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #1f5f9f;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.ai-goal-card-meta span {
+  background: #fff1d6;
+  color: #8a5200;
+}
+
+.ai-goal-card > span,
+.ai-goal-card > small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
@@ -6622,6 +6678,65 @@ tbody tr:hover {
 .document-template-form small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.document-variable-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.document-variable-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.document-variable-group {
+  display: grid;
+  gap: 6px;
+}
+
+.document-variable-group h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.document-variable-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.document-variable-chip-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--primary-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.document-variable-chip-list button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.document-variable-chip-list button.copied {
+  border-color: #bbf7d0;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .checkbox-row {

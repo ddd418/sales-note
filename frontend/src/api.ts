@@ -688,6 +688,10 @@ export type AiDepartmentRunResponse = {
   redirectUrl?: string;
   cards_created?: number;
   cardsCreated?: number;
+  priority_updates?: number;
+  priorityUpdates?: number;
+  priority_recommendations?: number;
+  priorityRecommendations?: number;
 };
 
 export type AiPainpointVerifyResponse = {
@@ -1022,6 +1026,9 @@ export type ScheduleDeliveryItem = {
   quantity: number;
   unit: string;
   unitPrice: number;
+  discountRate: number;
+  discountUnitPrice: number | null;
+  effectiveUnitPrice: number;
   totalPrice: number;
   taxInvoiceIssued: boolean;
   notes: string;
@@ -1034,6 +1041,8 @@ export type ScheduleDeliveryItemPayload = {
   quantity: string | number;
   unit: string;
   unitPrice?: string | number | null;
+  discountRate?: string | number | null;
+  discountUnitPrice?: string | number | null;
   taxInvoiceIssued: boolean;
   notes?: string;
 };
@@ -1401,6 +1410,7 @@ export type ScheduleDetailItem = ScheduleItem & {
   createdAt: string | null;
   updatedAt: string | null;
   vatMode: string;
+  quoteExtraNotes: string;
   usePrepayment: boolean;
   prepaymentId: number | null;
   prepaymentAmount: number;
@@ -1452,6 +1462,10 @@ export type ScheduleDocumentPreviewData = {
     quantity: number;
     unit: string;
     unitPrice: number;
+    baseUnitPrice: number;
+    discountRate: number;
+    discountUnitPrice: number | null;
+    notes: string;
     subtotal: number;
   }>;
   itemCount: number;
@@ -1465,6 +1479,17 @@ export type ScheduleDocumentDownloadResult = {
 export type DocumentTemplateTypeOption = {
   value: string;
   label: string;
+};
+
+export type DocumentTemplateVariableItem = {
+  key: string;
+  token: string;
+  display: string;
+};
+
+export type DocumentTemplateVariableGroup = {
+  label: string;
+  variables: DocumentTemplateVariableItem[];
 };
 
 export type DocumentTemplateCompanyOption = {
@@ -1538,6 +1563,7 @@ export type DocumentTemplatesData = {
     type: string;
   };
   documentTypes: DocumentTemplateTypeOption[];
+  templateVariableGroups: DocumentTemplateVariableGroup[];
   summary: {
     totalTemplates: number;
     defaultTemplates: number;
@@ -1960,6 +1986,9 @@ export type AIWorkspaceData = {
     title: string;
     description: string;
     reason: string;
+    customer?: string;
+    priority?: string;
+    priorityLabel?: string;
   }>;
 };
 
@@ -2730,6 +2759,7 @@ const emptyDocumentTemplatesData: DocumentTemplatesData = {
     { value: 'transaction_statement', label: '거래명세서' },
     { value: 'delivery_note', label: '납품서' },
   ],
+  templateVariableGroups: [],
   summary: {
     totalTemplates: 0,
     defaultTemplates: 0,
@@ -4722,6 +4752,13 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       unit?: string;
       unit_price?: number;
       unitPrice?: number;
+      base_unit_price?: number;
+      baseUnitPrice?: number;
+      discount_rate?: number;
+      discountRate?: number;
+      discount_unit_price?: number | null;
+      discountUnitPrice?: number | null;
+      notes?: string;
       subtotal?: number;
     }>;
     itemCount?: number;
@@ -4764,6 +4801,10 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       quantity: item.quantity ?? 0,
       unit: item.unit ?? '',
       unitPrice: item.unitPrice ?? item.unit_price ?? 0,
+      baseUnitPrice: item.baseUnitPrice ?? item.base_unit_price ?? item.unitPrice ?? item.unit_price ?? 0,
+      discountRate: item.discountRate ?? item.discount_rate ?? 0,
+      discountUnitPrice: item.discountUnitPrice ?? item.discount_unit_price ?? null,
+      notes: item.notes ?? '',
       subtotal: item.subtotal ?? 0,
     })),
     itemCount: data.itemCount ?? data.item_count ?? 0,
@@ -4855,6 +4896,7 @@ export async function loadDocumentTemplatesData(type = ''): Promise<DocumentTemp
         ...(payload.filters ?? {}),
       },
       documentTypes: payload.documentTypes ?? emptyDocumentTemplatesData.documentTypes,
+      templateVariableGroups: payload.templateVariableGroups ?? emptyDocumentTemplatesData.templateVariableGroups,
       summary: {
         ...emptyDocumentTemplatesData.summary,
         ...(payload.summary ?? {}),
@@ -4972,6 +5014,7 @@ export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: st
 export async function updateScheduleDeliveryItems(
   submitUrl: string,
   items: ScheduleDeliveryItemPayload[],
+  quoteExtraNotes?: string,
 ): Promise<ScheduleDeliveryItemsUpdateResponse> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(submitUrl, {
@@ -4982,7 +5025,7 @@ export async function updateScheduleDeliveryItems(
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items, quoteExtraNotes: quoteExtraNotes ?? '' }),
   });
   redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';

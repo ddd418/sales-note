@@ -78,6 +78,9 @@ def save_delivery_items(request, instance_obj):
         item_name = item_data.get('name', '').strip()
         quantity = item_data.get('quantity', '').strip()
         unit_price = item_data.get('unit_price', '').strip()
+        discount_rate = item_data.get('discount_rate', '').strip()
+        discount_unit_price = item_data.get('discount_unit_price', '').strip()
+        notes = item_data.get('notes', '').strip()
         product_id = item_data.get('product_id', '').strip()
         
         if item_name and quantity:
@@ -104,14 +107,29 @@ def save_delivery_items(request, instance_obj):
                 
                 # unit_price 저장 (빈 문자열, None이 아니면 0 포함 모든 숫자 허용)
                 if unit_price != '' and unit_price is not None:
-                    from decimal import Decimal
+                    from decimal import Decimal, InvalidOperation
                     try:
                         # "0", "0.0", 0 모두 Decimal로 변환
                         delivery_item.unit_price = Decimal(str(unit_price))
-                    except (ValueError, decimal.InvalidOperation):
+                    except (ValueError, InvalidOperation):
                         # 변환 실패 시 None으로 유지
                         pass
                 # unit_price가 '' 또는 None이면 unit_price 필드는 None으로 유지
+                if discount_rate != '' and discount_rate is not None:
+                    from decimal import Decimal, InvalidOperation
+                    try:
+                        delivery_item.discount_rate = Decimal(str(discount_rate))
+                    except (ValueError, InvalidOperation):
+                        pass
+
+                if discount_unit_price != '' and discount_unit_price is not None:
+                    from decimal import Decimal, InvalidOperation
+                    try:
+                        delivery_item.discount_unit_price = Decimal(str(discount_unit_price))
+                    except (ValueError, InvalidOperation):
+                        pass
+
+                delivery_item.notes = notes
                 
                 delivery_item.save()
                 created_count += 1
@@ -5293,6 +5311,9 @@ def _schedules_delivery_item_payload(item):
         'quantity': item.quantity,
         'unit': item.unit or '',
         'unitPrice': _money_int(item.unit_price),
+        'discountRate': float(item.discount_rate or 0),
+        'discountUnitPrice': _money_int(item.discount_unit_price),
+        'effectiveUnitPrice': _money_int(item.get_effective_unit_price()),
         'totalPrice': _money_int(item.total_price),
         'taxInvoiceIssued': bool(item.tax_invoice_issued),
         'notes': item.notes or '',
@@ -5529,13 +5550,29 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
         unit_price_raw = raw_item.get('unitPrice')
         if unit_price_raw is None:
             unit_price_raw = raw_item.get('unit_price')
+        discount_rate_raw = raw_item.get('discountRate')
+        if discount_rate_raw is None:
+            discount_rate_raw = raw_item.get('discount_rate')
+        discount_unit_price_raw = raw_item.get('discountUnitPrice')
+        if discount_unit_price_raw is None:
+            discount_unit_price_raw = raw_item.get('discount_unit_price')
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         notes = str(raw_item.get('notes') or '').strip()
 
         product_id_text = '' if product_id_raw is None else str(product_id_raw).strip()
         quantity_text = '' if quantity_raw is None else str(quantity_raw).replace(',', '').strip()
         unit_price_text = '' if unit_price_raw is None else str(unit_price_raw).replace(',', '').strip()
-        if not product_id_text and not item_name and not quantity_text and not unit_price_text and not notes:
+        discount_rate_text = '' if discount_rate_raw is None else str(discount_rate_raw).replace(',', '').strip()
+        discount_unit_price_text = '' if discount_unit_price_raw is None else str(discount_unit_price_raw).replace(',', '').strip()
+        if (
+            not product_id_text
+            and not item_name
+            and not quantity_text
+            and not unit_price_text
+            and not discount_rate_text
+            and not discount_unit_price_text
+            and not notes
+        ):
             continue
 
         product = None
@@ -5575,12 +5612,34 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
             if unit_price < 0:
                 raise ValueError(f'{index}번째 단가는 0 이상이어야 합니다.')
 
+        discount_rate = Decimal('0')
+        if discount_rate_text:
+            try:
+                discount_rate = Decimal(discount_rate_text)
+            except (InvalidOperation, ValueError):
+                raise ValueError(f'{index}번째 할인율은 0부터 100 사이의 숫자로 입력하세요.')
+            if discount_rate < 0 or discount_rate > 100:
+                raise ValueError(f'{index}번째 할인율은 0부터 100 사이의 숫자로 입력하세요.')
+
+        discount_unit_price = None
+        if discount_unit_price_text:
+            try:
+                discount_unit_price = Decimal(discount_unit_price_text)
+            except (InvalidOperation, ValueError):
+                raise ValueError(f'{index}번째 할인단가는 0 이상의 숫자로 입력하세요.')
+            if discount_unit_price < 0:
+                raise ValueError(f'{index}번째 할인단가는 0 이상이어야 합니다.')
+            if unit_price is not None and discount_unit_price > unit_price:
+                raise ValueError(f'{index}번째 할인단가는 기준단가보다 클 수 없습니다.')
+
         tax_invoice_issued = raw_item.get('taxInvoiceIssued') in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
         item_data = {
             'item_name': item_name,
             'quantity': quantity,
             'unit': unit,
             'unit_price': unit_price,
+            'discount_rate': discount_rate,
+            'discount_unit_price': discount_unit_price,
             'tax_invoice_issued': tax_invoice_issued,
             'notes': notes,
         }
@@ -5601,7 +5660,7 @@ def _schedules_delivery_items_summary(schedule):
     for item in schedule.delivery_items_set.all().order_by('id'):
         item_total = item.total_price
         if item_total is None and item.unit_price is not None:
-            item_total = item.unit_price * item.quantity * Decimal('1.1')
+            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
         if item_total is not None:
             total_amount += item_total
 
@@ -5759,6 +5818,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
         'createdAt': _datetime_or_none(schedule.created_at),
         'updatedAt': _datetime_or_none(schedule.updated_at),
         'vatMode': schedule.vat_mode,
+        'quoteExtraNotes': schedule.quote_extra_notes or '',
         'usePrepayment': bool(schedule.use_prepayment),
         'prepaymentId': schedule.prepayment_id,
         'prepaymentAmount': _money_int(schedule.prepayment_amount),
@@ -5922,6 +5982,8 @@ def schedules_update_api(request, schedule_id):
     schedule.status = status
     schedule.location = str(payload.get('location') or '').strip()[:200]
     schedule.notes = str(payload.get('notes') or '').strip()
+    if 'quoteExtraNotes' in payload or 'quote_extra_notes' in payload:
+        schedule.quote_extra_notes = str(payload.get('quoteExtraNotes', payload.get('quote_extra_notes')) or '').strip()
     schedule.expected_revenue = expected_revenue
     schedule.probability = probability
     schedule.expected_close_date = expected_close_date
@@ -5938,6 +6000,7 @@ def schedules_update_api(request, schedule_id):
                 'status',
                 'location',
                 'notes',
+                'quote_extra_notes',
                 'expected_revenue',
                 'probability',
                 'expected_close_date',
@@ -5986,10 +6049,12 @@ def schedules_delivery_items_update_api(request, schedule_id):
 
     try:
         with transaction.atomic():
+            if 'quoteExtraNotes' in payload or 'quote_extra_notes' in payload:
+                schedule.quote_extra_notes = str(payload.get('quoteExtraNotes', payload.get('quote_extra_notes')) or '').strip()
             schedule.delivery_items_set.all().delete()
             for item_data in delivery_items:
                 DeliveryItem.objects.create(schedule=schedule, **item_data)
-            schedule.save(update_fields=['updated_at'])
+            schedule.save(update_fields=['quote_extra_notes', 'updated_at'])
             _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
     except Exception as exc:
         logger.error('React 일정 납품 품목 저장 중 오류: %s', exc, exc_info=True)
@@ -6513,7 +6578,10 @@ def ai_workspace_summary_api(request):
     selected_analysis = analysis_map.get(selected_department.id) if selected_department else None
     goals_source_analysis = selected_analysis if selected_department else latest_analysis
     if goals_source_analysis:
-        recommended_goals = suggest_goals_from_department_analysis(goals_source_analysis)[:6]
+        recommended_goals = suggest_goals_from_department_analysis(
+            goals_source_analysis,
+            customer_names=customer_names_by_department.get(goals_source_analysis.department_id, []),
+        )[:6]
 
     featured_department = None
     if selected_department:
@@ -6658,6 +6726,9 @@ def ai_workspace_summary_api(request):
                 'title': goal.get('title', ''),
                 'description': goal.get('description', ''),
                 'reason': goal.get('reason', ''),
+                'customer': goal.get('customer', ''),
+                'priority': goal.get('priority', ''),
+                'priorityLabel': goal.get('priorityLabel', ''),
             }
             for goal in recommended_goals
         ],
@@ -13897,7 +13968,8 @@ def schedule_delivery_items_api(request, schedule_id):
         
         items_data = []
         for item in delivery_items:
-            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+            effective_unit_price = item.get_effective_unit_price() or item.unit_price or 0
+            item_total = item.total_price or (item.quantity * effective_unit_price * 1.1)
             
             # History가 있으면 History 기준, 없으면 Schedule DeliveryItem 기준
             tax_invoice_status = related_history.tax_invoice_issued if related_history else item.tax_invoice_issued
@@ -13906,9 +13978,13 @@ def schedule_delivery_items_api(request, schedule_id):
                 'id': item.id,
                 'item_name': item.item_name,
                 'quantity': item.quantity,
-                'unit_price': float(item.unit_price),
+                'unit_price': float(item.unit_price or 0),
+                'discount_rate': float(item.discount_rate or 0),
+                'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                'effective_unit_price': float(effective_unit_price),
                 'total_price': float(item_total),
                 'tax_invoice_issued': tax_invoice_status,
+                'notes': item.notes or '',
             })
         
         return JsonResponse({
@@ -13956,15 +14032,20 @@ def history_delivery_items_api(request, history_id):
         if delivery_items.exists():
             has_history_items = True
             for item in delivery_items:
-                item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                effective_unit_price = item.get_effective_unit_price() or item.unit_price or 0
+                item_total = item.total_price or (item.quantity * effective_unit_price * 1.1)
                 # History의 세금계산서 상태를 기준으로 함 (동기화)
                 items_data.append({
                     'id': item.id,
                     'item_name': item.item_name,
                     'quantity': item.quantity,
-                    'unit_price': float(item.unit_price),
+                    'unit_price': float(item.unit_price or 0),
+                    'discount_rate': float(item.discount_rate or 0),
+                    'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                    'effective_unit_price': float(effective_unit_price),
                     'total_price': float(item_total),
                     'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
+                    'notes': item.notes or '',
                     'source': 'history'  # 출처 표시
                 })
         else:
@@ -14805,13 +14886,18 @@ def schedule_delivery_items_api(request, schedule_id):
         # DeliveryItem 정보 가져오기
         items = []
         for item in schedule.delivery_items_set.all():
+            effective_unit_price = item.get_effective_unit_price() or item.unit_price or 0
             items.append({
                 'id': item.id,
                 'item_name': item.item_name,
                 'quantity': item.quantity,
-                'unit_price': float(item.unit_price),
-                'total_price': float(item.total_price),
-                'tax_invoice_issued': item.tax_invoice_issued
+                'unit_price': float(item.unit_price or 0),
+                'discount_rate': float(item.discount_rate or 0),
+                'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                'effective_unit_price': float(effective_unit_price),
+                'total_price': float(item.total_price or 0),
+                'tax_invoice_issued': item.tax_invoice_issued,
+                'notes': item.notes or '',
             })
         
         return JsonResponse({
@@ -15230,6 +15316,10 @@ def followup_quote_items_api(request, followup_id):
                     'item_name': item.item_name,
                     'quantity': item.quantity,
                     'unit_price': float(item.unit_price) if item.unit_price else 0,
+                    'discount_rate': float(item.discount_rate or 0),
+                    'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                    'effective_unit_price': float(item.get_effective_unit_price() or item.unit_price or 0),
+                    'notes': item.notes or '',
                 } for item in items]
                 quote_total = sum(
                     item.total_price or (
@@ -17903,6 +17993,51 @@ def _document_template_document_types_payload():
     ]
 
 
+def _document_template_variable_groups_payload():
+    groups = [
+        ('기본 정보', ['년', '월', '일', '거래번호', '발행일', '날짜', '일정날짜', '유효일+30']),
+        ('고객 / 거래처 정보', ['고객명', '담당자', '업체명', '학교명', '부서명', '연구실', '이메일', '담당자이메일', '연락처', '전화번호']),
+        ('영업담당자', ['실무자', '영업담당자', '담당영업', '영업담당자이메일']),
+        ('회사 / 견적 정보', ['회사명', '견적번호', '메모', '기타사항', '견적기타사항']),
+        ('금액', ['공급가액', '소계', '부가세액', '부가세', '총액', '합계', '총액한글', '한글금액']),
+        (
+            '품목 (N = 1, 2, 3 ... 순번)',
+            [
+                '품목N_이름',
+                '품목N_품목명',
+                '품목N_수량',
+                '품목N_단위',
+                '품목N_규격',
+                '품목N_설명',
+                '품목N_적요',
+                '품목N_비고',
+                '품목N_기준단가',
+                '품목N_할인율',
+                '품목N_할인단가',
+                '품목N_단가',
+                '품목N_공급가액',
+                '품목N_부가세액',
+                '품목N_금액',
+                '품목N_총액',
+            ],
+        ),
+    ]
+    return [
+        {
+            'label': label,
+            'variables': [
+                {
+                    'key': key,
+                    'token': '{{' + key.replace('N', '1') + '}}' if key.startswith('품목N_') else '{{' + key + '}}',
+                    'display': '{{' + key + '}}',
+                }
+                for key in keys
+            ],
+        }
+        for label, keys in groups
+    ]
+
+
 def _document_template_can_create_payload(request, user_profile):
     can_manage = request.user.is_superuser or user_profile.role in ['admin', 'manager']
     has_company = request.user.is_superuser or bool(user_profile.company)
@@ -17957,6 +18092,7 @@ def _document_template_api_context(request, templates):
             'type': request.GET.get('type', ''),
         },
         'documentTypes': _document_template_document_types_payload(),
+        'templateVariableGroups': _document_template_variable_groups_payload(),
         'summary': {
             'totalTemplates': base_queryset.count(),
             'defaultTemplates': base_queryset.filter(is_default=True).count(),
@@ -18456,6 +18592,42 @@ def document_template_toggle_default(request, pk):
     })
 
 
+def _document_money(value):
+    return f"{int(value or 0):,}"
+
+
+def _document_item_prices(item):
+    from decimal import Decimal, ROUND_HALF_UP
+
+    base_unit_price = Decimal(str(item.unit_price or 0))
+    effective_unit_price = item.get_effective_unit_price() or base_unit_price
+    discount_rate = Decimal(str(item.discount_rate or 0))
+    if item.discount_unit_price is not None and base_unit_price > 0 and discount_rate <= 0:
+        discount_rate = (
+            (Decimal('1') - (effective_unit_price / base_unit_price)) * Decimal('100')
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    has_discount = (
+        item.discount_unit_price is not None
+        or discount_rate > 0
+        or effective_unit_price < base_unit_price
+    )
+    return {
+        'base_unit_price': base_unit_price,
+        'effective_unit_price': effective_unit_price,
+        'discount_unit_price': effective_unit_price if has_discount else None,
+        'discount_rate': discount_rate if has_discount else Decimal('0'),
+        'has_discount': has_discount,
+    }
+
+
+def _document_discount_rate_label(value):
+    value = value or 0
+    if not value:
+        return ''
+    text = f"{value:.2f}".rstrip('0').rstrip('.')
+    return f"{text}%"
+
+
 @login_required
 def get_document_template_data(request, document_type, schedule_id):
     """
@@ -18521,7 +18693,10 @@ def get_document_template_data(request, document_type, schedule_id):
         delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
         
         # 총액 계산
-        subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
+        subtotal = sum([
+            _document_item_prices(item)['effective_unit_price'] * item.quantity
+            for item in delivery_items
+        ], Decimal('0'))
         tax = subtotal * Decimal('0.1')
         total = subtotal + tax
         
@@ -18630,6 +18805,8 @@ def get_document_template_data(request, document_type, schedule_id):
             # 견적 정보 (자동 채움)
             '견적번호': _quote_number,
             '메모': schedule.notes or '',
+            '기타사항': schedule.quote_extra_notes or '',
+            '견적기타사항': schedule.quote_extra_notes or '',
             
             '회사명': company.name,
             
@@ -18646,7 +18823,8 @@ def get_document_template_data(request, document_type, schedule_id):
         # 품목 데이터 추가
         items_data = []
         for idx, item in enumerate(delivery_items, 1):
-            item_subtotal = item.unit_price * item.quantity
+            price_info = _document_item_prices(item)
+            item_subtotal = price_info['effective_unit_price'] * item.quantity
             item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
             
             item_data = {
@@ -18656,9 +18834,14 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_단위': item_unit,
                 f'품목{idx}_규격': item.product.specification if item.product and item.product.specification else '',
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
+                f'품목{idx}_적요': item.notes or '',
+                f'품목{idx}_비고': item.notes or '',
+                f'품목{idx}_기준단가': _document_money(price_info['base_unit_price']),
+                f'품목{idx}_할인율': _document_discount_rate_label(price_info['discount_rate']),
+                f'품목{idx}_할인단가': _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else '',
                 f'품목{idx}_공급가액': f"{int(item_subtotal):,}",
-                f'품목{idx}_단가': f"{int(item.unit_price):,}",
-                f'품목{idx}_부가세액': f"{int(item.unit_price * item.quantity * Decimal('0.1')):,}",
+                f'품목{idx}_단가': _document_money(price_info['effective_unit_price']),
+                f'품목{idx}_부가세액': f"{int(item_subtotal * Decimal('0.1')):,}",
                 f'품목{idx}_금액': f"{int(item_subtotal):,}",
                 f'품목{idx}_총액': f"{int(item_subtotal * Decimal('1.1')):,}",
             }
@@ -18668,7 +18851,12 @@ def get_document_template_data(request, document_type, schedule_id):
                 'name': item.item_name,
                 'quantity': item.quantity,
                 'unit': item_unit,
-                'unit_price': int(item.unit_price),
+                'unit_price': int(price_info['effective_unit_price']),
+                'unitPrice': int(price_info['effective_unit_price']),
+                'baseUnitPrice': int(price_info['base_unit_price']),
+                'discountUnitPrice': int(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else None,
+                'discountRate': float(price_info['discount_rate']),
+                'notes': item.notes or '',
                 'subtotal': int(item_subtotal)
             })
         
@@ -18849,7 +19037,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 
                 # 총액 계산 (부가세 모드 반영)
-                _raw_subtotal = sum([item.unit_price * item.quantity for item in delivery_items], Decimal('0'))
+                _raw_subtotal = sum([
+                    _document_item_prices(item)['effective_unit_price'] * item.quantity
+                    for item in delivery_items
+                ], Decimal('0'))
                 _vat_mode = getattr(schedule, 'vat_mode', 'excluded') or 'excluded'
 
                 from decimal import ROUND_HALF_UP
@@ -18995,6 +19186,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     # 견적 정보 (자동 채움)
                     '견적번호': _quote_number,
                     '메모': schedule.notes or '',
+                    '기타사항': schedule.quote_extra_notes or '',
+                    '견적기타사항': schedule.quote_extra_notes or '',
                     
                     # 금액 정보
                     '공급가액': f"{int(subtotal):,}",
@@ -19009,7 +19202,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 # 품목 데이터 추가
                 for idx, item in enumerate(delivery_items, 1):
-                    item_subtotal = item.unit_price * item.quantity
+                    price_info = _document_item_prices(item)
+                    item_subtotal = price_info['effective_unit_price'] * item.quantity
                     # 단위 결정: DeliveryItem에 있으면 사용, 없으면 Product에서, 그것도 없으면 'EA'
                     item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
 
@@ -19034,8 +19228,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_단위'] = item_unit
                     data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
+                    data_map[f'품목{idx}_적요'] = item.notes or ''
+                    data_map[f'품목{idx}_비고'] = item.notes or ''
+                    data_map[f'품목{idx}_기준단가'] = _document_money(price_info['base_unit_price'])
+                    data_map[f'품목{idx}_할인율'] = _document_discount_rate_label(price_info['discount_rate'])
+                    data_map[f'품목{idx}_할인단가'] = _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else ''
                     data_map[f'품목{idx}_공급가액'] = f"{int(_item_supply_display):,}"
-                    data_map[f'품목{idx}_단가'] = f"{int(item.unit_price):,}"
+                    data_map[f'품목{idx}_단가'] = _document_money(price_info['effective_unit_price'])
                     data_map[f'품목{idx}_부가세액'] = f"{int(_item_tax):,}"
                     data_map[f'품목{idx}_금액'] = f"{int(_item_supply_display):,}"
                     data_map[f'품목{idx}_총액'] = f"{int(_item_total):,}"

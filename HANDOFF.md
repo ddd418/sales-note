@@ -14,6 +14,70 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented and locally verified. Commit, Railway deployment, production smoke, and user manual testing remain.
+
+Runtime commit:
+
+```text
+pending
+```
+
+Implemented:
+
+- `DeliveryItem.discount_rate` and `DeliveryItem.discount_unit_price` were added.
+- `Schedule.quote_extra_notes` was added for whole-quote extra notes.
+- Quote/delivery item totals and document variables use final effective unit price: discount unit price first, then discount rate, then base unit price.
+- React schedule detail edit UI supports base unit price, discount rate, discount unit price, item note, and quote extra notes.
+- Document variables now include `기타사항`, `견적기타사항`, `품목N_적요`, `품목N_기준단가`, `품목N_할인율`, `품목N_할인단가`.
+- React `/documents/` template registration shows grouped usable variables and copies tokens to the clipboard.
+- AI Workspace recommended goals include an explicit customer name and priority label.
+- Department AI analysis updates each department customer's CRM priority from AI recommendations, with customer-stage fallback.
+- Individual customer AI analysis updates that customer's CRM priority from AI recommendation or risk/probability fallback.
+- New DB migration: `reporting/migrations/0095_deliveryitem_discount_rate_and_more.py`.
+
+Validation:
+
+```text
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.AIWorkspaceSummaryApiTests ai_chat.tests.AIDepartmentPromptLogicTests ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\department_prompt.py reporting\views.py reporting\tests.py ai_chat\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 50 quote/document/AI workspace/AI priority tests OK.
+- Python compile OK.
+- React build OK: `assets/index-DJaKKt6c.js` / `assets/index-DHLL1LUc.css`.
+- Node syntax check OK.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- `makemigrations --check --dry-run` reports no changes after migration file creation.
+- `git diff --check` OK with LF→CRLF warnings only.
+
+Deployment:
+
+- Pending commit/push/deployment.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/` and go to a quote schedule detail.
+2. Edit quote items with base unit price, discount rate, discount unit price, and item note; save and refresh.
+3. Confirm final totals use discount unit price when present, or auto-calculated discount unit price when only discount rate is entered.
+4. Save whole-quote extra notes and confirm they persist after refresh.
+5. Generate or preview quotation document data and confirm the new variables render: `견적기타사항`, `품목1_적요`, `품목1_기준단가`, `품목1_할인율`, `품목1_할인단가`.
+6. Open `https://sales-note-frontend-production.up.railway.app/documents/`, open the template registration form, and copy new variables from the variable panel.
+7. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/` and confirm recommended goal cards show a concrete customer name.
+8. Run department AI analysis and confirm CRM customer priority is recalculated and displayed after refresh.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
 React AI summary, pipeline AI controls, recommended questions, and email context expansion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
@@ -21,8 +85,6 @@ Runtime commit:
 ```text
 fcb7eeb feat: expand react ai workflow
 ```
-
-Implemented:
 
 - Customer detail, AI Workspace, and pipeline AI summaries no longer truncate the top AI summary at 160/180 characters.
 - Pipeline `aiDepartment` payload now includes the full customer AI result payload used by customer detail and AI Workspace.
@@ -33,57 +95,7 @@ Implemented:
 - Same-thread outbound emails are nested under customer replies so the AI evaluates the reply and sent email as a set.
 - No DB model or migration changes.
 
-Validation:
-
-```text
-python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.PipelineApiTests ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=1
-python -m py_compile reporting\views.py reporting\funnel_views.py ai_chat\services.py reporting\tests.py ai_chat\tests.py
-cd frontend; npm run build
-cd frontend; node --check server.mjs
-python manage.py check
-python manage.py makemigrations --check --dry-run
-git diff --check
-```
-
-Results:
-
-- 41 AI/customer/pipeline/mail-context tests OK.
-- Python compile OK.
-- React build OK: `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
-- Node syntax check OK.
-- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes.
-- `git diff --check` OK with LF→CRLF warnings only.
-- Local Playwright smoke opened `/pipeline/` and `/ai-workspace/`; both remained auth-protected. Logged-in visual AI UI still needs production manual testing.
-
-Deployment:
-
-- GitHub push complete: runtime commit `fcb7eeb` is on `main`; deployment report docs were pushed after runtime deploy.
-- Railway `web`: manual runtime deploy `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS; docs-only pushes can create newer web deployment IDs because GitHub autodeploy is enabled.
-- Railway `sales-note-frontend`: `72567306-b54f-48c3-a5c2-7b501aab7425` SUCCESS.
-- Production `/`, `/pipeline/`, `/ai-workspace/` return 200 and serve `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
-- Production JS contains `추천 질문` and `AI 분석 실행`.
-- Production CSS contains `customer-ai-question-item`.
-- Production `/reporting/login/` returns 200.
-- Anonymous backend and frontend-proxied `/reporting/api/ai-workspace/` return `401 Unauthorized`.
-- Anonymous backend and frontend-proxied `/reporting/api/pipeline/` redirect to `/reporting/login/?next=/reporting/api/pipeline/`.
-
-Manual production test:
-
-1. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/`.
-2. Select a department with a long AI summary and confirm the top summary is not cut off.
-3. Confirm `추천 질문` appears and the copy buttons work.
-4. Open `https://sales-note-frontend-production.up.railway.app/pipeline/`.
-5. Select an AI-enabled customer/deal and confirm the detail panel can show full AI result content.
-6. Run `AI 분석 실행` from the pipeline detail panel and confirm the result refreshes.
-7. Save a verification note on an unverified PainPoint and confirm the updated state remains after refresh.
-8. For a customer with recent user-sent mail and customer reply, rerun department AI and confirm the generated next actions/recommended questions reflect the reply and recent sent-mail context.
-
-Manual test result:
-
-- Pending user confirmation.
-
-## Previous Task
+## Older Task
 
 React mailbox email line break normalization is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 

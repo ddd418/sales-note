@@ -576,6 +576,7 @@ class Schedule(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled', verbose_name="상태")
     activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPE_CHOICES, default='customer_meeting', verbose_name="일정 유형")
     notes = models.TextField(blank=True, null=True, verbose_name="메모")
+    quote_extra_notes = models.TextField(blank=True, null=True, verbose_name="견적 기타사항")
     
     # 견적 관련 필드 (펀넬 시스템 연동)
     expected_revenue = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="예상 매출액", help_text="예상되는 거래 금액")
@@ -790,11 +791,35 @@ class DeliveryItem(models.Model):
     quantity = models.PositiveIntegerField(verbose_name="수량")
     unit = models.CharField(max_length=50, default="EA", verbose_name="단위")
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="단가")
+    discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="할인율(%)")
+    discount_unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="할인단가")
     total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행여부")
     notes = models.TextField(blank=True, null=True, verbose_name="비고")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def get_effective_unit_price(self):
+        """견적/납품 계산에 적용할 최종 단가를 반환한다."""
+        from decimal import Decimal, ROUND_HALF_UP
+
+        if self.unit_price is None:
+            return None
+
+        unit_price = Decimal(str(self.unit_price))
+        if self.discount_unit_price is not None:
+            discount_price = Decimal(str(self.discount_unit_price))
+            return max(discount_price, Decimal('0'))
+
+        discount_rate = Decimal(str(self.discount_rate or 0))
+        if discount_rate <= 0:
+            return unit_price
+
+        discount_rate = min(discount_rate, Decimal('100'))
+        return (unit_price * (Decimal('100') - discount_rate) / Decimal('100')).quantize(
+            Decimal('1'),
+            rounding=ROUND_HALF_UP,
+        )
 
     def save(self, *args, **kwargs):
         # product가 선택된 경우 제품 정보로 자동 채우기
@@ -808,12 +833,30 @@ class DeliveryItem(models.Model):
             # 단가가 명시적으로 None인 경우에만 제품 가격 사용 (0 포함 모든 숫자는 유지)
             if self.unit_price is None:
                 self.unit_price = self.product.get_current_price()
+
+        if self.unit_price is not None:
+            from decimal import Decimal, ROUND_HALF_UP
+
+            unit_price = Decimal(str(self.unit_price))
+            discount_rate = Decimal(str(self.discount_rate or 0))
+            if self.discount_unit_price is None and discount_rate > 0:
+                discount_rate = min(discount_rate, Decimal('100'))
+                self.discount_unit_price = (
+                    unit_price * (Decimal('100') - discount_rate) / Decimal('100')
+                ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            elif self.discount_unit_price is not None and discount_rate <= 0 and unit_price > 0:
+                discount_price = Decimal(str(self.discount_unit_price))
+                if discount_price < unit_price:
+                    self.discount_rate = (
+                        (Decimal('1') - (discount_price / unit_price)) * Decimal('100')
+                    ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
         # 총액 자동 계산 (부가세 10% 포함)
         # unit_price가 None이 아니고 quantity가 있을 때만 계산 (0도 유효)
-        if self.unit_price is not None and self.quantity:
+        effective_unit_price = self.get_effective_unit_price()
+        if effective_unit_price is not None and self.quantity:
             from decimal import Decimal
-            subtotal = self.unit_price * self.quantity
+            subtotal = effective_unit_price * self.quantity
             self.total_price = subtotal * Decimal('1.1')  # 부가세 10% 추가
         super().save(*args, **kwargs)
 

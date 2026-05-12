@@ -98,7 +98,10 @@ def department_list(request):
 
     if selected_analysis:
         analysis_summary = summarize_department_analysis(selected_analysis)
-        goal_cards = suggest_goals_from_department_analysis(selected_analysis)
+        goal_cards = suggest_goals_from_department_analysis(
+            selected_analysis,
+            customer_names=customer_names_by_department.get(selected_analysis.department_id, []),
+        )
 
     if request.method == 'POST':
         selected_goal = (request.POST.get('selected_goal') or '').strip()
@@ -191,6 +194,7 @@ def run_analysis(request, department_id):
     """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
     from .services import (
         analyze_department,
+        apply_followup_priority_recommendations,
         apply_verification_memory_to_analysis_result,
         collect_painpoint_verification_memory,
         gather_meeting_data,
@@ -227,6 +231,10 @@ def run_analysis(request, department_id):
             analysis_result,
             verification_memory,
         )
+        priority_recommendations = apply_followup_priority_recommendations(
+            analysis_result,
+            FollowUp.objects.filter(user=request.user, department=department).select_related('company', 'department'),
+        )
 
         # 분석 기간 계산
         period_end = timezone.now().date()
@@ -259,6 +267,8 @@ def run_analysis(request, department_id):
             'redirect_url': f'/ai/department/{department.id}/',
             'cards_created': len(created_cards),
             'cards_preserved': preserved_cards,
+            'priority_updates': len([item for item in priority_recommendations if item.get('changed')]),
+            'priority_recommendations': len(priority_recommendations),
         })
 
     except Exception as e:
@@ -479,7 +489,7 @@ def followup_analysis_view(request, followup_id):
 def run_followup_analysis(request, followup_id):
     """개별 고객 AI 분석 실행 (AJAX POST)"""
     from reporting.views import can_access_followup
-    from .services import analyze_followup
+    from .services import analyze_followup, apply_single_followup_priority_recommendation
 
     followup = get_object_or_404(FollowUp, id=followup_id)
 
@@ -499,6 +509,7 @@ def run_followup_analysis(request, followup_id):
         if not analysis_result:
             return JsonResponse({'error': 'AI 분석 결과를 파싱하지 못했습니다.'}, status=500)
 
+        priority_recommendation = apply_single_followup_priority_recommendation(analysis_result, followup)
         analysis.analysis_data = analysis_result
         analysis.meeting_count = meeting_count
         analysis.token_usage = token_usage
@@ -507,6 +518,8 @@ def run_followup_analysis(request, followup_id):
         return JsonResponse({
             'success': True,
             'redirect_url': '/ai/followup/{}/'.format(followup_id),
+            'priority_updated': bool(priority_recommendation and priority_recommendation.get('changed')),
+            'priority_recommendation': priority_recommendation,
         })
 
     except Exception as e:

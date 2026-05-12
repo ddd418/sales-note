@@ -3011,6 +3011,8 @@ class SchedulesSummaryApiTests(TestCase):
         from reporting.models import DeliveryItem, History, ScheduleFile
 
         schedule = self._create_schedule(self.user, '상세일정', activity_type='delivery')
+        schedule.quote_extra_notes = '전체 견적 기타사항'
+        schedule.save(update_fields=['quote_extra_notes'])
         History.objects.create(
             user=self.user,
             company=self.company,
@@ -3025,6 +3027,8 @@ class SchedulesSummaryApiTests(TestCase):
             quantity=2,
             unit='EA',
             unit_price=100000,
+            discount_rate=10,
+            notes='PCR 적요',
         )
         schedule_file = ScheduleFile.objects.create(
             schedule=schedule,
@@ -3044,10 +3048,16 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['schedule']['href'], f'/schedules/{schedule.id}/')
         self.assertEqual(payload['schedule']['customerHref'], f'/customers/{schedule.followup_id}/')
+        self.assertEqual(payload['schedule']['quoteExtraNotes'], '전체 견적 기타사항')
         self.assertTrue(payload['edit']['canEdit'])
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:schedules_update_api', args=[schedule.id]))
         self.assertEqual(payload['relatedNotes'][0]['id'], schedule.histories.first().id)
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
+        self.assertEqual(payload['deliveryItems'][0]['discountRate'], 10.0)
+        self.assertEqual(payload['deliveryItems'][0]['discountUnitPrice'], 90000)
+        self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
+        self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
+        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
@@ -3441,14 +3451,16 @@ class SchedulesSummaryApiTests(TestCase):
         response = self.client.post(
             reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
             data=json.dumps({
+                'quoteExtraNotes': '견적 전체 기타사항',
                 'items': [
                     {
                         'itemName': 'PCR Kit',
                         'quantity': 2,
                         'unit': 'EA',
                         'unitPrice': '100000',
+                        'discountRate': '10',
                         'taxInvoiceIssued': True,
-                        'notes': '1차 납품',
+                        'notes': 'PCR 적요',
                     },
                     {
                         'itemName': 'Buffer',
@@ -3471,16 +3483,25 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(items[0].quantity, 2)
         self.assertEqual(items[0].unit, 'EA')
         self.assertEqual(int(items[0].unit_price), 100000)
-        self.assertEqual(int(items[0].total_price), 220000)
+        self.assertEqual(float(items[0].discount_rate), 10.0)
+        self.assertEqual(int(items[0].discount_unit_price), 90000)
+        self.assertEqual(int(items[0].get_effective_unit_price()), 90000)
+        self.assertEqual(int(items[0].total_price), 198000)
         self.assertTrue(items[0].tax_invoice_issued)
-        self.assertEqual(items[0].notes, '1차 납품')
+        self.assertEqual(items[0].notes, 'PCR 적요')
         self.assertIsNone(items[1].unit_price)
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.quote_extra_notes, '견적 전체 기타사항')
         history.refresh_from_db()
         self.assertIn('PCR Kit', history.delivery_items)
         self.assertIn('Buffer', history.delivery_items)
-        self.assertEqual(int(history.delivery_amount), 220000)
+        self.assertEqual(int(history.delivery_amount), 198000)
         self.assertEqual(payload['deliveryItems'][0]['itemName'], 'PCR Kit')
-        self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 220000)
+        self.assertEqual(payload['deliveryItems'][0]['discountRate'], 10.0)
+        self.assertEqual(payload['deliveryItems'][0]['discountUnitPrice'], 90000)
+        self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
+        self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
+        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
 
     def test_schedule_delivery_items_update_api_accepts_product_master_selection(self):
         import json
@@ -3749,6 +3770,16 @@ class DocumentTemplatesReactApiTests(TestCase):
         quotation_summary = next(item for item in payload['summary']['byType'] if item['type'] == 'quotation')
         self.assertEqual(quotation_summary['count'], 1)
         self.assertEqual(quotation_summary['defaultCount'], 1)
+        variable_tokens = {
+            variable['token']
+            for group in payload['templateVariableGroups']
+            for variable in group['variables']
+        }
+        self.assertIn('{{견적기타사항}}', variable_tokens)
+        self.assertIn('{{품목1_적요}}', variable_tokens)
+        self.assertIn('{{품목1_기준단가}}', variable_tokens)
+        self.assertIn('{{품목1_할인율}}', variable_tokens)
+        self.assertIn('{{품목1_할인단가}}', variable_tokens)
         self.assertEqual(payload['links']['djangoList'], reverse('reporting:document_template_list'))
 
     def test_document_templates_api_includes_recent_generation_logs_scoped_by_company(self):
@@ -3901,6 +3932,49 @@ class DocumentTemplatesReactApiTests(TestCase):
         old_default.refresh_from_db()
         self.assertTrue(new_template.is_default)
         self.assertFalse(old_default.is_default)
+
+    def test_document_template_data_includes_quote_discount_and_note_variables(self):
+        from reporting.models import DeliveryItem
+
+        self._create_template(self.company, '견적기본', is_default=True)
+        schedule = self._create_schedule(self.manager, name='견적변수', activity_type='quote')
+        schedule.notes = '견적 메모'
+        schedule.quote_extra_notes = '전체 견적 기타사항'
+        schedule.save(update_fields=['notes', 'quote_extra_notes'])
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='PCR Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+            discount_rate=10,
+            notes='품목 적요',
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(reverse('reporting:get_document_template_data', args=['quotation', schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        variables = payload['variables']
+        self.assertEqual(variables['메모'], '견적 메모')
+        self.assertEqual(variables['기타사항'], '전체 견적 기타사항')
+        self.assertEqual(variables['견적기타사항'], '전체 견적 기타사항')
+        self.assertEqual(variables['품목1_적요'], '품목 적요')
+        self.assertEqual(variables['품목1_비고'], '품목 적요')
+        self.assertEqual(variables['품목1_기준단가'], '100,000')
+        self.assertEqual(variables['품목1_할인율'], '10%')
+        self.assertEqual(variables['품목1_할인단가'], '90,000')
+        self.assertEqual(variables['품목1_단가'], '90,000')
+        self.assertEqual(variables['공급가액'], '180,000')
+        self.assertEqual(variables['부가세액'], '18,000')
+        self.assertEqual(variables['총액'], '198,000')
+        self.assertEqual(payload['items'][0]['unitPrice'], 90000)
+        self.assertEqual(payload['items'][0]['baseUnitPrice'], 100000)
+        self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
+        self.assertEqual(payload['items'][0]['discountRate'], 10.0)
+        self.assertEqual(payload['items'][0]['notes'], '품목 적요')
 
 
 class AIWorkspaceSummaryApiTests(TestCase):
@@ -4057,6 +4131,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['featuredDepartment']['painpoints'][0]['verificationStatusLabel'], '미검증')
         self.assertIn('/ai/card/', payload['featuredDepartment']['painpoints'][0]['verifyHref'])
         self.assertTrue(payload['recommendedGoals'])
+        self.assertEqual(payload['recommendedGoals'][0]['customer'], 'PCR핵심 담당자')
+        self.assertIn('PCR핵심 담당자', payload['recommendedGoals'][0]['title'])
         recommended_questions = [item['question'] for item in payload['featuredDepartment']['recommendedQuestions']]
         self.assertIn('납기 기준일을 다시 확인할까요?', recommended_questions)
 

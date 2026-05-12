@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## Current task — 견적 할인단가/적요/기타사항, React 서류 변수 복사, AI 추천목표 고객명/우선순위
+
+**목표**: 견적 품목에서 기준단가는 기존처럼 직접 조절할 수 있게 유지하면서, 별도의 할인율 또는 할인단가를 입력해 최종 견적 단가를 계산할 수 있게 한다. 품목별 적요와 전체 견적 기타사항을 저장하고, 새 변수까지 포함한 사용 가능한 서류 템플릿 변수를 React 서류 등록 화면에서 확인/복사할 수 있게 한다. 이어서 React AI Workspace 추천 목표에 명확한 고객명을 포함하고, AI 분석 실행 때마다 AI 판단 결과로 고객 우선순위를 다시 산정한다.
+
+### 확인된 상태
+
+- 현재 견적/납품 품목은 `DeliveryItem` 모델을 공통으로 사용하며, `unit_price`가 단가와 총액 계산 기준이다.
+- 품목별 비고는 기존 `DeliveryItem.notes`에 저장되고 있으므로 새 DB 필드 없이 React/Django UI에서 `적요`로 노출하고 `품목N_적요` 변수로 연결할 수 있다.
+- 할인 단가/할인율은 별도 저장 필드가 없고, 사용자는 현재 기준단가를 낮추는 방식으로 할인 효과를 내고 있다.
+- 전체 견적 기타사항은 Schedule의 일반 `notes`와 분리된 필드가 없어 새 `Schedule.quote_extra_notes` 필드가 필요하다.
+- React 일정 상세의 서류 변수 미리보기는 특정 일정의 실제 변수값만 보여준다. React `/documents/` 서류 템플릿 등록 화면에는 Django 템플릿처럼 사용 가능한 변수 목록/복사 UI가 없다.
+- 신규 DB migration이 필요하다.
+- AI Workspace 추천 목표는 부서 중심 제목만 내려올 수 있어 실제 실행 대상 고객명이 불명확하다.
+- 부서/고객 AI 분석 결과는 다음 액션을 만들지만 CRM `FollowUp.priority`를 분석 결과 기준으로 다시 저장하지 않는다.
+
+### 구현 계획
+
+- `DeliveryItem`에 `discount_rate`, `discount_unit_price` 필드를 추가하고, 총액 계산은 할인단가가 있으면 할인단가, 없으면 할인율, 둘 다 없으면 기준단가를 사용하도록 정리한다.
+- `Schedule`에 `quote_extra_notes` 필드를 추가한다.
+- React 일정 상세 품목 편집 UI에 기준단가, 할인율, 할인단가, 적요를 표시하고 할인율/할인단가 양방향 입력을 지원한다.
+- React 품목 저장 API payload와 Django `save_delivery_items` 파서를 할인 필드/적요/전체 기타사항까지 저장하도록 확장한다.
+- 서류 데이터 생성/다운로드 변수에 `기타사항`, `견적기타사항`, `품목N_기준단가`, `품목N_할인율`, `품목N_할인단가`, `품목N_적요` 등을 추가하고 기존 `품목N_단가`/금액은 최종 적용단가 기준으로 유지한다.
+- React `/documents/`에 사용 가능한 템플릿 변수 목록과 복사 버튼을 추가하고, Django 변수 도움말 partial에도 새 변수를 추가한다.
+- AI 분석 JSON 스키마에 고객별 추천 목표와 고객별 우선순위 추천을 추가하고, 누락 시 고객 단계 컨텍스트로 보정한다.
+- 부서 AI 분석 실행 후 해당 부서 고객의 `FollowUp.priority`를 `urgent/followup/scheduled/long_term`으로 다시 산정해 저장한다.
+- 개별 고객 AI 분석 실행 후 해당 고객의 우선순위도 AI 결과 또는 거래 가능성/리스크 기준으로 갱신한다.
+- React AI Workspace 추천 목표 카드에 고객명/우선순위 라벨을 표시한다.
+- 관련 API/문서/React 테스트를 보강한다.
+
+### 검증 계획
+
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.AIWorkspaceSummaryApiTests ai_chat.tests.AIDepartmentPromptLogicTests ai_chat.tests.AIDepartmentAnalysisMemoryTests --verbosity=1`
+- `python -m py_compile reporting\models.py reporting\views.py reporting\tests.py ai_chat\services.py ai_chat\views.py ai_chat\department_prompt.py ai_chat\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/documents/`, `/schedules/<id>/`, `/ai-workspace/`/API 보호 smoke check
+
+---
+
 ## Current task — React AI 요약/파이프라인/추천질문/메일 컨텍스트 보강
 
 **목표**: React CRM에서 부서 AI 요약이 중간에 잘리지 않게 하고, 파이프라인 선택 고객 패널에서도 고객 상세/AI Workspace 수준의 AI 실행·결과·PainPoint 검증을 사용할 수 있게 한다. 또한 AI 추천 질문을 React에서 별도 목록으로 모두 확인/복사할 수 있게 하고, AI 분석 입력에 고객 답장과 함께 최근 사용자 발신 메일 맥락을 최대 2건까지 포함한다.

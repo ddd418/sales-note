@@ -815,6 +815,325 @@ def apply_stage_action_context_to_analysis_result(analysis_result, stage_context
     return analysis_result
 
 
+CRM_PRIORITY_LABELS = {
+    'urgent': '긴급',
+    'followup': '팔로업',
+    'scheduled': '예정',
+    'long_term': '장기',
+}
+
+
+def _normalize_customer_key(value):
+    return re.sub(r'\s+', '', str(value or '').strip().lower())
+
+
+def _normalize_ai_priority(value):
+    text = str(value or '').strip().lower()
+    if not text:
+        return ''
+    priority_map = {
+        'urgent': 'urgent',
+        'critical': 'urgent',
+        'high': 'urgent',
+        '긴급': 'urgent',
+        '최우선': 'urgent',
+        'followup': 'followup',
+        'follow-up': 'followup',
+        'medium': 'followup',
+        'med': 'followup',
+        '팔로업': 'followup',
+        '후속': 'followup',
+        'scheduled': 'scheduled',
+        'normal': 'scheduled',
+        'planned': 'scheduled',
+        '예정': 'scheduled',
+        '보통': 'scheduled',
+        'low': 'long_term',
+        'long_term': 'long_term',
+        'long-term': 'long_term',
+        'long': 'long_term',
+        '장기': 'long_term',
+        '낮음': 'long_term',
+    }
+    return priority_map.get(text, '')
+
+
+def _stage_context_priority(stage_context):
+    context_type = stage_context.get('context_type') or ''
+    inbound_count = int(stage_context.get('inbound_email_count') or 0)
+    quote_count = int(stage_context.get('quote_count') or 0)
+    if context_type == 'quote':
+        return 'urgent' if inbound_count > 0 else 'followup'
+    if context_type == 'won_locked':
+        return 'followup'
+    if context_type == 'meeting_only' or quote_count > 0:
+        return 'scheduled'
+    return 'long_term'
+
+
+def _pipeline_stage_priority(followup):
+    stage = followup.pipeline_stage or ''
+    if stage in ('quote', 'negotiation'):
+        return 'followup'
+    if stage == 'won':
+        return 'followup'
+    if stage in ('contact',):
+        return 'scheduled'
+    if stage in ('lost',):
+        return 'long_term'
+    return 'long_term'
+
+
+def _followup_match_maps(followups):
+    by_id = {followup.id: followup for followup in followups}
+    by_name = {}
+    for followup in followups:
+        names = [
+            followup.customer_name,
+            followup.manager,
+            str(followup.company) if followup.company_id else '',
+        ]
+        for name in names:
+            key = _normalize_customer_key(name)
+            if key:
+                by_name.setdefault(key, followup)
+    return by_id, by_name
+
+
+def _resolve_followup_from_ai_item(item, followups, by_id, by_name):
+    raw_id = item.get('followup_id') or item.get('followupId') or item.get('id')
+    try:
+        followup_id = int(raw_id)
+    except (TypeError, ValueError):
+        followup_id = None
+    if followup_id and followup_id in by_id:
+        return by_id[followup_id]
+
+    raw_customer = (
+        item.get('customer') or
+        item.get('customer_name') or
+        item.get('customerName') or
+        item.get('target_customer') or
+        item.get('targetCustomer') or
+        item.get('target') or
+        ''
+    )
+    customer_key = _normalize_customer_key(raw_customer)
+    if customer_key in by_name:
+        return by_name[customer_key]
+
+    for key, followup in by_name.items():
+        if customer_key and (customer_key in key or key in customer_key):
+            return followup
+    return None
+
+
+def _priority_recommendation_sources(analysis_result):
+    if not isinstance(analysis_result, dict):
+        return []
+    for key in (
+        'followup_priority_recommendations',
+        'customer_priority_recommendations',
+        'priority_recommendations',
+        'recommended_targets',
+    ):
+        value = analysis_result.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _append_priority_recommendation(recommendations, followup, priority, reason, source):
+    if not followup or not priority:
+        return
+    if followup.id in recommendations:
+        return
+    recommendations[followup.id] = {
+        'followup': followup,
+        'priority': priority,
+        'reason': _compact_memory_text(reason, 300),
+        'source': source,
+    }
+
+
+def apply_followup_priority_recommendations(analysis_result, followups, stage_contexts=None):
+    """
+    부서 AI 분석 결과를 기준으로 해당 부서 고객들의 CRM 우선순위를 매번 다시 산정한다.
+    GPT가 고객별 우선순위를 반환하면 그대로 쓰고, 빠진 고객은 단계 컨텍스트로 보정한다.
+    """
+    if not isinstance(analysis_result, dict):
+        return []
+
+    followup_list = list(followups)
+    by_id, by_name = _followup_match_maps(followup_list)
+    recommendations = {}
+
+    for item in _priority_recommendation_sources(analysis_result):
+        followup = _resolve_followup_from_ai_item(item, followup_list, by_id, by_name)
+        priority = _normalize_ai_priority(item.get('priority') or item.get('recommended_priority') or item.get('recommendedPriority'))
+        reason = item.get('reason') or item.get('rationale') or item.get('why') or 'AI 분석 결과의 고객별 우선순위 추천입니다.'
+        _append_priority_recommendation(recommendations, followup, priority, reason, 'ai_recommendation')
+
+    action_items = analysis_result.get('next_actions')
+    if isinstance(action_items, list):
+        for action in action_items:
+            if not isinstance(action, dict):
+                continue
+            action_text = ' '.join([
+                str(action.get('action') or ''),
+                str(action.get('reason') or ''),
+            ])
+            priority = _normalize_ai_priority(action.get('priority')) or 'scheduled'
+            for followup in followup_list:
+                names = [followup.customer_name or '', followup.manager or '']
+                if any(name and name in action_text for name in names):
+                    _append_priority_recommendation(
+                        recommendations,
+                        followup,
+                        priority,
+                        action.get('reason') or action.get('action') or 'AI 다음 액션에 포함된 고객입니다.',
+                        'next_action',
+                    )
+
+    context_items = stage_contexts or analysis_result.get('customer_stage_context') or []
+    if isinstance(context_items, list):
+        for item in context_items:
+            if not isinstance(item, dict):
+                continue
+            followup = _resolve_followup_from_ai_item(item, followup_list, by_id, by_name)
+            priority = _stage_context_priority(item)
+            reason = (
+                f"{item.get('context_label') or '고객 단계'} 기준: "
+                f"미팅 {item.get('meeting_count', 0)}건, 견적 {item.get('quote_count', 0)}건, "
+                f"고객 수신 메일 {item.get('inbound_email_count', 0)}건"
+            )
+            _append_priority_recommendation(recommendations, followup, priority, reason, 'stage_context')
+
+    for followup in followup_list:
+        _append_priority_recommendation(
+            recommendations,
+            followup,
+            _pipeline_stage_priority(followup),
+            'AI 분석에 명시 우선순위가 없어 현재 파이프라인 단계로 기본 우선순위를 재산정했습니다.',
+            'pipeline_fallback',
+        )
+
+    normalized = []
+    for recommendation in recommendations.values():
+        followup = recommendation['followup']
+        priority = recommendation['priority']
+        previous_priority = followup.priority
+        changed = previous_priority != priority
+        if changed:
+            followup.priority = priority
+            followup.save(update_fields=['priority', 'updated_at'])
+        normalized.append({
+            'followup_id': followup.id,
+            'followupId': followup.id,
+            'customer': followup.customer_name or followup.manager or '고객명 미정',
+            'company': followup.company.name if followup.company_id else '',
+            'department': followup.department.name if followup.department_id else '',
+            'priority': priority,
+            'priority_label': CRM_PRIORITY_LABELS.get(priority, priority),
+            'priorityLabel': CRM_PRIORITY_LABELS.get(priority, priority),
+            'previous_priority': previous_priority,
+            'previousPriority': previous_priority,
+            'changed': changed,
+            'reason': recommendation['reason'],
+            'source': recommendation['source'],
+        })
+
+    priority_rank = {'urgent': 0, 'followup': 1, 'scheduled': 2, 'long_term': 3}
+    normalized.sort(key=lambda item: (priority_rank.get(item['priority'], 9), item['customer']))
+    analysis_result['followup_priority_recommendations'] = normalized
+
+    recommended_goals = analysis_result.get('recommended_goals')
+    if not isinstance(recommended_goals, list):
+        recommended_goals = []
+    goal_keys = {
+        _compact_memory_text(f"{item.get('customer', '')}|{item.get('title', '')}", 240).lower()
+        for item in recommended_goals
+        if isinstance(item, dict)
+    }
+    for item in normalized:
+        if item['priority'] not in ('urgent', 'followup'):
+            continue
+        title = f"{item['customer']} 후속 우선순위 실행계획 작성"
+        key = _compact_memory_text(f"{item['customer']}|{title}", 240).lower()
+        if key in goal_keys:
+            continue
+        recommended_goals.append({
+            'customer': item['customer'],
+            'title': title,
+            'description': 'AI가 재산정한 우선순위에 따라 다음 연락, 확인 질문, 준비자료를 정리합니다.',
+            'reason': item['reason'],
+            'priority': item['priority'],
+            'priorityLabel': item['priorityLabel'],
+            'source': 'priority_recommendation',
+        })
+        goal_keys.add(key)
+    analysis_result['recommended_goals'] = recommended_goals[:10]
+    return normalized
+
+
+def apply_single_followup_priority_recommendation(analysis_result, followup):
+    """개별 고객 AI 분석 결과를 해당 고객의 CRM 우선순위에 반영한다."""
+    if not isinstance(analysis_result, dict) or not followup:
+        return None
+
+    raw = analysis_result.get('priority_recommendation')
+    if not isinstance(raw, dict):
+        raw = analysis_result.get('followup_priority_recommendation')
+    if not isinstance(raw, dict):
+        raw = {}
+
+    priority = _normalize_ai_priority(raw.get('priority') or raw.get('recommended_priority') or raw.get('recommendedPriority'))
+    reason = raw.get('reason') or raw.get('rationale') or ''
+
+    if not priority:
+        manager_summary = analysis_result.get('manager_summary') or {}
+        risk_level = manager_summary.get('risk_level') if isinstance(manager_summary, dict) else ''
+        probability = analysis_result.get('deal_probability')
+        try:
+            probability = int(probability)
+        except (TypeError, ValueError):
+            probability = None
+        if _normalize_ai_priority(risk_level) == 'urgent':
+            priority = 'urgent'
+            reason = reason or 'AI 고객 분석의 리스크 레벨이 높습니다.'
+        elif probability is not None and probability >= 65:
+            priority = 'followup'
+            reason = reason or f'AI 고객 분석의 거래 가능성이 {probability}%입니다.'
+        elif probability is not None and probability < 30:
+            priority = 'long_term'
+            reason = reason or f'AI 고객 분석의 거래 가능성이 {probability}%로 낮습니다.'
+        else:
+            priority = _pipeline_stage_priority(followup)
+            reason = reason or 'AI 고객 분석에 명시 우선순위가 없어 현재 파이프라인 단계로 재산정했습니다.'
+
+    previous_priority = followup.priority
+    changed = previous_priority != priority
+    if changed:
+        followup.priority = priority
+        followup.save(update_fields=['priority', 'updated_at'])
+
+    normalized = {
+        'followup_id': followup.id,
+        'followupId': followup.id,
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'priority': priority,
+        'priority_label': CRM_PRIORITY_LABELS.get(priority, priority),
+        'priorityLabel': CRM_PRIORITY_LABELS.get(priority, priority),
+        'previous_priority': previous_priority,
+        'previousPriority': previous_priority,
+        'changed': changed,
+        'reason': _compact_memory_text(reason, 300),
+        'source': 'ai_recommendation' if raw else 'analysis_fallback',
+    }
+    analysis_result['priority_recommendation'] = normalized
+    return normalized
+
+
 def apply_followup_stage_context_to_analysis_result(analysis_result, stage_context):
     if not isinstance(analysis_result, dict):
         return analysis_result
@@ -1329,6 +1648,24 @@ PainPoint 카테고리 (고정 8종)
     }
   ],
 
+  "followup_priority_recommendations": [
+    {
+      "customer": "입력 데이터에 있는 정확한 고객명",
+      "priority": "urgent|followup|scheduled|long_term",
+      "reason": "이 고객을 해당 CRM 우선순위로 판단한 근거"
+    }
+  ],
+
+  "recommended_goals": [
+    {
+      "customer": "입력 데이터에 있는 정확한 고객명",
+      "title": "고객명이 포함된 추천 목표 제목",
+      "description": "목표 설명",
+      "reason": "추천 이유",
+      "priority": "urgent|followup|scheduled|long_term"
+    }
+  ],
+
   "missing_info": {
     "items": ["확인 안 된 중요 정보"],
     "questions": ["다음 방문에서 확인할 질문"]
@@ -1347,6 +1684,7 @@ PainPoint 카테고리 (고정 8종)
 5. 기존 검증 질문을 그대로 반복하지 않았는가?
 6. 고객 메일 답장, 특히 고객→영업 수신 메일을 다음 액션 판단에 반영했는가?
 7. 락인/수주, 견적, 미팅만 진행 고객의 단계에 맞는 다음 액션을 각각 보고했는가?
+8. followup_priority_recommendations와 recommended_goals에 입력 데이터의 정확한 고객명이 들어갔는가?
 """
 
 
@@ -1587,6 +1925,11 @@ FOLLOWUP_SYSTEM_PROMPT = """너는 B2B 영업 CRM의 "개별 고객 영업 분�
     "decision_needed": "의사결정 또는 지원 요청 사항 (없으면 null)",
     "risk_level": "high|med|low",
     "expected_impact": "예상 비즈니스 영향 (수주 가능성, 금액 등)"
+  },
+
+  "priority_recommendation": {
+    "priority": "urgent|followup|scheduled|long_term",
+    "reason": "이 고객을 해당 CRM 우선순위로 판단한 근거"
   },
 
   "visit_checklist": {
