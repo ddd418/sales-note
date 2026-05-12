@@ -1,6 +1,39 @@
 # AGENT_PLAN.md
 
-## Current task — React 메일 리치 에디터 및 AI Workspace 상세 추천 스코프
+## Current task — React 메일 리치 에디터 링크 표시 텍스트 핫픽스
+
+**목표**: 사용자가 링크 버튼을 누를 때 URL 자체가 본문에 들어가는 것이 아니라, 원하는 표시 문구를 링크 텍스트로 넣을 수 있게 한다. 선택한 본문 텍스트가 있으면 해당 텍스트를 기본 표시 문구로 사용하고, URL 입력 후 선택 영역을 링크로 교체한다.
+
+### 확인된 상태
+
+- React 메일 리치 에디터의 기존 링크 버튼은 선택 텍스트가 있을 때 `document.execCommand('createLink')`를 사용한다.
+- 선택 텍스트가 없을 때는 URL 문자열 자체를 `<a>` 텍스트로 삽입한다.
+- 사용자가 원하는 동작은 “표시할 텍스트”와 “URL”을 분리해서 입력하는 방식이다.
+
+### 구현 계획
+
+- 에디터 내부 현재 selection range를 저장/복원하는 helper를 추가한다.
+- 링크 버튼 클릭 시 표시할 텍스트를 먼저 입력받고, 선택 텍스트가 있으면 기본값으로 제공한다.
+- URL을 normalize한 뒤 저장한 range를 복원하고 `<a href="...">표시문구</a>`로 삽입한다.
+
+### 검증 계획
+
+- `cd frontend; npm run build`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/mailbox/` smoke check
+
+### 현재 상태
+
+- 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 운영 수동 검수 대기.
+- Runtime commit: `9fc5522 fix: insert mail links with custom text`
+- Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS
+- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (GitHub 자동 배포)
+- 운영 smoke OK: `/reporting/login/`, `/mailbox/`
+- 다음 행동: 사용자가 운영 `/mailbox/`에서 선택 텍스트 또는 새 표시 문구로 링크가 삽입되는지 수동 검수한다. 검수 전에는 다음 구현 작업을 시작하지 않는다.
+
+---
+
+## Previous task — React 메일 리치 에디터 및 AI Workspace 상세 추천 스코프
 
 **목표**: React 메일 작성/답장 본문을 일반 textarea가 아니라 서식 있는 에디터로 전환한다. 볼드, 기울임, 밑줄, 글씨체/크기/색상, 목록, 링크, 사진 삽입을 지원하고, 발송 API는 HTML 본문을 안전하게 sanitize해서 Gmail/SMTP로 발송한다. 동시에 `/ai-workspace/?department_id=...` 상세 페이지에서는 추천 질문/프롬프트가 해당 부서 고객 기준으로만 나오게 제한한다.
 

@@ -14,7 +14,66 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React rich mail editor and AI Workspace detail prompt scoping are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+React mail rich editor link text hotfix is implemented, frontend-build verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+
+Runtime commit:
+
+```text
+9fc5522 fix: insert mail links with custom text
+```
+
+Implemented:
+
+- React `/mailbox/` rich editor link button now asks for display text separately from URL.
+- If text is selected in the editor, that selected text becomes the default display text.
+- After URL input, the saved editor selection is restored and replaced with `<a href="...">display text</a>`.
+- If no text is selected, the user can still insert a custom display text link without exposing the raw URL in the body.
+- Existing rich editor formatting, inline images, URL normalization, and sanitize flow are preserved.
+
+Validation:
+
+```text
+cd frontend; npm run build
+git diff --check
+git commit -m "fix: insert mail links with custom text" && git push origin main
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy mail link text hotfix 9fc5522" --ci
+```
+
+Results:
+
+- React build OK: `assets/index-D1nHin0S.js` / `assets/index-DdQNAE3O.css`.
+- `git diff --check` OK with LF→CRLF warnings only.
+- Commit `9fc5522` pushed to `origin/main`.
+- Railway `sales-note-frontend` deployment `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS.
+- Railway `web` automatic deployment `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS.
+- Production deploy logs: web migration check OK / gunicorn startup OK; frontend server startup OK.
+- Production smoke OK: backend `/reporting/login/` 200, frontend `/mailbox/` 200.
+
+Deployment:
+
+- GitHub push complete: runtime commit `9fc5522` is on `main`.
+- Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS.
+- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (automatic deploy).
+- Product management React migration WIP remains stashed:
+  - `stash@{0}: On main: wip-product-management-react-migration-tracked`
+  - `stash@{1}: On main: wip-product-management-react-migration`
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/mailbox/`.
+2. Compose or reply to a test mail.
+3. Type text such as `홈페이지`, select that text, and click the link button.
+4. Confirm the display-text prompt defaults to the selected text.
+5. Enter a URL and confirm the selected text becomes a link instead of inserting the raw URL.
+6. Repeat with no selected text and confirm custom display text + URL insertion works.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
+React rich mail editor and AI Workspace detail prompt scoping are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing was pending when the link-text hotfix was requested.
 
 Runtime commit:
 
@@ -22,68 +81,10 @@ Runtime commit:
 eb7e0fc feat: add rich mail editor and scope ai prompts
 ```
 
-Implemented:
-
-- React `/mailbox/` compose/reply body now uses a rich contenteditable editor instead of a plain textarea.
-- Editor toolbar supports bold, italic, underline, font family, font size, foreground/background color, ordered/unordered lists, links, uploaded images, pasted/dropped images, and remove formatting.
-- React mail send payload includes `body_html` through `bodyHtml`.
-- Existing `/reporting/upload-image/` endpoint is reused for inline editor images.
-- Frontend HTML is cleaned before storing/sending, and backend outgoing HTML is sanitized again before Gmail/SMTP delivery.
-- Plain text mail fallback remains available; when only safe HTML is present the server derives text from HTML.
-- `/ai-workspace/?department_id=...` now scopes recommended prompt/question candidates to the requested accessible department/customer context.
-- `/ai-workspace/` without a department ID still allows broad recommendation candidates.
-
-Validation:
-
-```text
-python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tests.py
-python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_prompt_targets_to_requested_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_own_ai_operational_data reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_sends_sanitized_rich_html_body reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_normalizes_plain_text_line_breaks_for_html --verbosity=1
-python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
-cd frontend; npm run build
-python manage.py check
-python manage.py makemigrations --check --dry-run
-git diff --check
-git commit -m "feat: add rich mail editor and scope ai prompts" && git push origin main
-railway up --service web --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
-railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
-```
-
-Results:
-
-- Python compile OK.
-- 4 targeted AI Workspace/mailbox tests OK.
-- 24 AI Workspace/mailbox test classes OK.
-- React build OK: `assets/index-Crb-VKbQ.js` / `assets/index-DdQNAE3O.css`.
-- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes.
-- `git diff --check` OK with LF→CRLF warnings only.
-- Commit `eb7e0fc` pushed to `origin/main`.
-- Railway `web` deployment `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS.
-- Railway `sales-note-frontend` deployment `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS.
-- Production deploy logs: web migration check OK / gunicorn startup OK; frontend server startup OK.
-- Production smoke OK: backend `/reporting/login/` 200, frontend `/ai-workspace/` 200, frontend `/ai-workspace/?department_id=81` 200, frontend `/mailbox/` 200.
-
 Deployment:
 
-- GitHub push complete: runtime commit `eb7e0fc` is on `main`.
-- Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS.
-- Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS.
-- Product management React migration WIP remains stashed:
-  - `stash@{0}: On main: wip-product-management-react-migration-tracked`
-  - `stash@{1}: On main: wip-product-management-react-migration`
-
-Manual production test:
-
-1. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=81`.
-2. Confirm recommended questions/prompts are only for the selected department/customer context and do not include unrelated customers or departments.
-3. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/` and confirm broad recommended questions still appear there.
-4. Open `/mailbox/` and compose or reply to a test mail.
-5. Apply bold, font, color, link, and inline image formatting, then send.
-6. Confirm the recipient sees the formatting and no unsafe/raw HTML or script text is exposed.
-
-Manual test result:
-
-- Pending user confirmation.
+- Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS, later superseded by docs/runtime automatic deployments.
+- Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS, later superseded by `e5f407b8-d513-4dcc-82ca-736e9964cf7f`.
 
 Queued after this manual test is confirmed:
 

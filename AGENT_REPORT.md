@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Mail Rich Editor Link Text Hotfix
+
+**상태**: 구현/프론트 빌드/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React 메일 리치 에디터의 링크 버튼을 “표시할 텍스트”와 “URL”을 분리해서 입력하는 방식으로 보정했습니다. 본문에서 텍스트를 선택한 뒤 링크 버튼을 누르면 선택 텍스트가 표시 문구 기본값으로 들어가고, URL 입력 후 해당 선택 영역이 링크로 교체됩니다. 선택 텍스트가 없을 때도 URL 자체가 노출되지 않고 원하는 표시 문구로 링크를 삽입할 수 있습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 에디터 selection range 저장/복원 helper 추가, 링크 삽입을 custom label + URL 방식으로 변경
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`: 핫픽스 검증/배포/수동검수 기록 갱신
+
+### CRM 개선
+
+- 메일 본문에서 `홈페이지`, `견적서 확인`, `자료 다운로드` 같은 원하는 문구를 링크 텍스트로 사용할 수 있습니다.
+- 선택한 텍스트를 그대로 링크로 바꿀 수 있어 메일 작성 흐름이 더 자연스럽습니다.
+
+### 기존 기능 보존
+
+- 기존 리치 에디터의 볼드/글꼴/색상/이미지/목록 기능은 유지했습니다.
+- 링크 URL normalize 및 HTML sanitize 흐름은 기존 보안 처리 위에서 유지됩니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npm run build
+→ OK, assets/index-D1nHin0S.js / assets/index-DdQNAE3O.css
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "fix: insert mail links with custom text" && git push origin main
+→ Commit 9fc5522 pushed to origin/main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy mail link text hotfix 9fc5522" --ci
+→ Deploy complete
+
+railway deployment list --service sales-note-frontend --environment production --limit 3 --json
+→ e5f407b8-d513-4dcc-82ca-736e9964cf7f SUCCESS
+
+railway deployment list --service web --environment production --limit 3 --json
+→ 2ce587ca-22f6-4462-92fb-9aaa6a970d1a SUCCESS (GitHub automatic deploy)
+
+Production smoke requests
+→ /reporting/login/ 200, /mailbox/ 200
+```
+
+### 배포 상태
+
+- Runtime commit: `9fc5522 fix: insert mail links with custom text`
+- GitHub push: `main` 반영 완료
+- Railway `sales-note-frontend`: `e5f407b8-d513-4dcc-82ca-736e9964cf7f` SUCCESS
+- Railway `web`: `2ce587ca-22f6-4462-92fb-9aaa6a970d1a` SUCCESS (자동 배포)
+- Deploy logs: web migration check OK / gunicorn startup OK, frontend server startup OK
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/mailbox/`에서 새 메일 또는 답장을 엽니다.
+2. 본문에 `홈페이지` 같은 텍스트를 입력하고 해당 텍스트를 드래그 선택합니다.
+3. 링크 버튼을 누르면 표시 텍스트 입력창에 선택 텍스트가 기본값으로 들어오는지 확인합니다.
+4. URL을 입력한 뒤 본문에서 선택 텍스트가 링크로 바뀌는지 확인합니다.
+5. 선택 텍스트 없이 링크 버튼을 눌러도 표시 문구와 URL을 따로 입력해 링크가 삽입되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — React Rich Mail Editor And Scoped AI Workspace Prompts
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
