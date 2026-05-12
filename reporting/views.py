@@ -4217,6 +4217,7 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
         'djangoEditHref': reverse('reporting:schedule_edit', args=[schedule.id]) if can_edit else '',
         'statusUpdateHref': reverse('reporting:schedule_status_update', args=[schedule.id]) if can_edit else '',
+        'deleteHref': reverse('reporting:schedule_delete', args=[schedule.id]) if can_edit else '',
         'canEdit': bool(can_edit),
         'statusOptions': [
             {'value': value, 'label': label}
@@ -5163,6 +5164,8 @@ def schedules_calendar_api(request):
     completed_count = base_schedules.filter(status='completed').count()
     cancelled_count = base_schedules.filter(status='cancelled').count()
     overdue_count = base_schedules.filter(visit_date__lt=today, status='scheduled').count()
+    can_create_schedule = not user_profile.is_manager()
+    create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
 
     return JsonResponse({
         'success': True,
@@ -5196,6 +5199,13 @@ def schedules_calendar_api(request):
             'createSchedule': reverse('reporting:schedule_create'),
             'createPersonalSchedule': reverse('reporting:personal_schedule_create'),
             'weeklyReports': '/weekly-reports/',
+        },
+        'create': {
+            'canCreate': can_create_schedule,
+            'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
+            'submitUrl': reverse('reporting:schedules_create_api'),
+            'activityTypes': _schedules_create_activity_types(request),
+            'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
         },
         'schedules': _schedules_combined_items(schedules, personal_schedules, today, limit=1000, latest_first=False, request_user=request.user),
     })

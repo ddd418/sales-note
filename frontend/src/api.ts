@@ -1026,6 +1026,7 @@ export type ScheduleItem = {
   djangoHref?: string;
   djangoEditHref?: string;
   statusUpdateHref?: string;
+  deleteHref?: string;
   canEdit?: boolean;
   statusOptions?: Array<{ value: string; label: string }>;
   customerHref: string;
@@ -2078,6 +2079,22 @@ export type ScheduleCalendarData = {
     createPersonalSchedule: string;
     weeklyReports: string;
   };
+  create: {
+    canCreate: boolean;
+    message: string;
+    submitUrl: string;
+    activityTypes: Array<{ value: string; label: string }>;
+    customers: Array<{
+      id: number;
+      label: string;
+      customer: string;
+      company: string;
+      department: string;
+      priorityLabel: string;
+      href: string;
+      djangoHref?: string;
+    }>;
+  };
   schedules: ScheduleItem[];
 };
 
@@ -3000,6 +3017,13 @@ const emptyScheduleCalendarData: ScheduleCalendarData = {
     createSchedule: '/reporting/schedules/create/',
     createPersonalSchedule: '/reporting/personal-schedules/create/',
     weeklyReports: '/weekly-reports/',
+  },
+  create: {
+    canCreate: false,
+    message: '',
+    submitUrl: '/reporting/api/schedules/create/',
+    activityTypes: [],
+    customers: [],
   },
   schedules: [],
 };
@@ -4482,6 +4506,10 @@ export async function loadScheduleCalendarData(params: {
       links: {
         ...emptyScheduleCalendarData.links,
         ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyScheduleCalendarData.create,
+        ...(payload.create ?? {}),
       },
       schedules: payload.schedules ?? emptyScheduleCalendarData.schedules,
     };

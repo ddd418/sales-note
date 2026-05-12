@@ -1,6 +1,50 @@
 # AGENT_PLAN.md
 
-## Current task — 일정 메일 거래명세서 자동첨부 및 자동첨부 제거
+## Current task — React 일정 캘린더 고급 조작 parity
+
+**목표**: React 일정 캘린더에서 고객 일정을 조회만 하지 않고, 선택한 날짜 기준으로 고객 일정 등록, 상세 수정, 삭제, 상태 변경까지 처리할 수 있게 한다. Django 캘린더와 `/reporting/*` 레거시 화면은 fallback으로 보존한다.
+
+### 확인된 상태
+
+- `/schedules/calendar/` React 화면은 월간 조회, 날짜 선택, 상태 변경, 상세/보고/Django 링크를 제공한다.
+- `/reporting/api/schedules/calendar/`는 일정 목록과 필터 payload를 제공하지만, 빠른 등록에 필요한 `create` 설정은 내려주지 않는다.
+- 고객 일정 등록/수정/삭제 API와 React 상세 화면의 수정 폼 로직은 이미 존재한다.
+- 개인 일정 등록/수정은 아직 Django 레거시 화면을 사용한다. 이번 범위에서는 고객 일정 캘린더 조작을 React 안에서 닫고, 개인 일정은 기존 링크를 유지한다.
+- DB 모델 변경 없이 API payload 보강과 React 캘린더 UI 상태/폼 추가로 구현 가능하다.
+
+### 구현 계획
+
+- 캘린더 API에 고객 일정 빠른 등록 설정을 추가한다.
+  - `canCreate`, `submitUrl`, 활동 유형, 담당 고객 목록을 일정 목록 API와 동일한 권한 기준으로 제공한다.
+- 캘린더 선택 날짜 패널에서 React 고객 일정 등록 폼을 열고, 선택 날짜를 기본 방문일로 채운다.
+- 캘린더 일정 카드에서 본인 고객 일정은 React 수정 패널을 열 수 있게 한다.
+  - 기존 상세 API를 불러와 수정 권한, 상태/활동 유형/고객 옵션, submit URL을 그대로 사용한다.
+  - 수정 저장 후 캘린더 월간 데이터를 다시 불러온다.
+- 캘린더 일정 카드에서 본인 고객 일정은 React 삭제 버튼을 제공한다.
+  - 기존 AJAX 삭제 엔드포인트를 사용하고, 관련 활동 기록 삭제 경고를 유지한다.
+- 상태 변경/등록/수정/삭제 성공 및 오류 메시지를 캘린더 패널 안에서 표시한다.
+- 개인 일정은 이번 단계에서 기존 Django 등록/상세/수정 링크를 fallback으로 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/calendar/`, `/reporting/login/`, `/reporting/api/schedules/calendar/` smoke check
+
+### 현재 상태
+
+- 백엔드/React 구현 및 로컬 검증 완료.
+- 커밋/푸시 및 Railway 운영 배포 예정.
+- DB 모델 변경 예정 없음.
+
+---
+
+## Previous task — 일정 메일 거래명세서 자동첨부 및 자동첨부 제거
 
 **목표**: 일정에서 메일을 보낼 때 견적 일정은 견적서 PDF, 납품 일정은 거래명세서 PDF를 자동 첨부하고, React 메일 작성 화면에서 사용자가 자동 첨부 예정 문서를 발송 전에 제거할 수 있게 한다.
 

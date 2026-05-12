@@ -1,5 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-05-13 — React Schedule Calendar Inline Actions
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+React 일정 캘린더에서 고객 일정을 선택한 날짜 기준으로 바로 등록하고, 본인 고객 일정은 캘린더 안에서 수정/삭제할 수 있게 했습니다. 기존 상태 변경, 상세/고객/보고 링크와 Django fallback 링크는 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 캘린더 API에 빠른 등록 설정과 일정별 삭제 URL 추가
+- `reporting/tests.py`: 캘린더 API의 등록 설정, owner-only 삭제 URL payload 회귀 테스트 추가
+- `frontend/src/api.ts`: 캘린더 `create` payload와 일정 `deleteHref` 타입/기본값 추가
+- `frontend/src/App.tsx`: 캘린더 선택일 패널에 고객 일정 등록/수정/삭제 흐름 추가
+- `frontend/src/styles.css`: 캘린더 카드 버튼과 inline 등록/수정 폼 스타일 추가
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 검증 결과 갱신
+
+### CRM 개선
+
+- 월간 캘린더에서 선택 날짜를 기준으로 고객 일정을 즉시 등록할 수 있습니다.
+- 본인 고객 일정 카드에 React `수정`/`삭제` 버튼이 추가되었습니다.
+- 수정은 기존 상세 API의 권한/옵션/submit URL을 재사용하므로 권한 범위를 우회하지 않습니다.
+- 삭제는 기존 AJAX 삭제 엔드포인트를 사용하며 관련 활동 기록 삭제 경고를 유지합니다.
+- 개인 일정은 기존 Django 등록/상세/수정 링크를 fallback으로 유지합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 일정 목록, 캘린더, 상세, 수정, 삭제 route는 유지했습니다.
+- Manager/동료 일정은 기존처럼 수정/상태변경/삭제 권한이 없습니다.
+- 미로그인 캘린더 API 접근은 `401 login_required` JSON 보호를 유지합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 34 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-BvRdieLP.js / assets/index-DC8BCCea.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK
+
+Local browser smoke
+→ /schedules/calendar/ rendered 2026년 5월 calendar with a customer schedule
+→ selected-day card showed React 수정/삭제 buttons and status actions
+→ 고객 일정 등록 panel opened with selected date 2026-05-13
+→ 일정 수정 panel loaded existing schedule fields through the detail API
+```
+
+### 알려진 제한
+
+- 이번 단계는 고객 일정 inline 조작 범위입니다. 개인 일정 작성/수정은 아직 Django fallback 화면을 사용합니다.
+- 캘린더 inline 수정에서는 선결제/납품 품목 편집은 다루지 않고, 기존 일정 상세 화면에서 계속 처리합니다.
+- 로컬 브라우저 검증은 local SQLite smoke data로 진행했습니다. 운영 실제 데이터 검수는 로그인 계정에서 필요합니다.
+
+### 운영 배포 상태
+
+- 배포 예정.
+
+### 사용자 수동 검수
+
+1. 운영 프론트에서 로그인 후 `/schedules/calendar/`를 엽니다.
+2. 본인 고객 일정이 있는 날짜를 선택하고 카드에 `수정`, `삭제`, 상태 버튼이 보이는지 확인합니다.
+3. `고객 일정 등록`을 눌러 선택한 날짜가 기본 방문일로 들어가는지 확인하고 테스트 일정을 저장합니다.
+4. 새 일정이 캘린더에 나타나고 상세 링크가 열리는지 확인합니다.
+5. 방금 만든 일정을 `수정`으로 열어 장소/메모/상태를 바꾼 뒤 저장해 반영 여부를 확인합니다.
+6. 삭제가 필요한 테스트 일정은 `삭제` 버튼으로 지운 뒤 캘린더에서 사라지는지 확인합니다.
+7. 동료 또는 manager 화면에서는 본인 일정이 아닌 고객 일정의 수정/삭제 버튼이 노출되지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 수동 검수 완료 후, React 개인 일정 등록/수정 API를 추가해 캘린더 fallback을 더 줄입니다.
+
+---
+
 ## 2026-05-12 — Schedule Mail Auto Document Attachments
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

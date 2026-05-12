@@ -3554,6 +3554,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(own_item['canEdit'])
         self.assertEqual(own_item['statusUpdateHref'], reverse('reporting:schedule_status_update', args=[own.id]))
         self.assertEqual(own_item['djangoEditHref'], reverse('reporting:schedule_edit', args=[own.id]))
+        self.assertEqual(own_item['deleteHref'], reverse('reporting:schedule_delete', args=[own.id]))
         self.assertEqual(
             {option['value'] for option in own_item['statusOptions']},
             {'scheduled', 'completed', 'cancelled'},
@@ -3571,6 +3572,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['metrics']['totalSchedules'], 2)
         self.assertEqual(payload['links']['calendar'], '/schedules/calendar/')
         self.assertEqual(payload['links']['djangoCalendar'], reverse('reporting:schedule_calendar'))
+        self.assertTrue(payload['create']['canCreate'])
+        self.assertEqual(payload['create']['submitUrl'], self.create_url)
+        self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
 
     def test_schedules_calendar_api_all_filter_uses_same_company_only(self):
         import datetime
@@ -3598,6 +3602,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(own_item['canEdit'])
         self.assertFalse(coworker_item['canEdit'])
         self.assertEqual(coworker_item['statusUpdateHref'], '')
+        self.assertEqual(coworker_item['deleteHref'], '')
         self.assertEqual(payload['scope']['dataFilter'], 'all')
         self.assertTrue(any(option['id'] == self.coworker.id for option in payload['options']['users']))
 

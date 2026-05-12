@@ -1808,7 +1808,8 @@ h2 {
   gap: 8px;
 }
 
-.customers-side-actions a {
+.customers-side-actions a,
+.customers-side-actions button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1818,12 +1819,15 @@ h2 {
   border-radius: 9px;
   background: var(--panel-soft);
   color: var(--text);
+  cursor: pointer;
+  font: inherit;
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
 }
 
-.customers-side-actions a:hover {
+.customers-side-actions a:hover,
+.customers-side-actions button:hover {
   border-color: var(--primary);
   color: var(--primary-strong);
 }
@@ -3568,16 +3572,19 @@ h2 {
 }
 
 .schedule-calendar-selected-actions a,
+.schedule-calendar-selected-actions button,
 .schedule-calendar-status-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   min-height: 28px;
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel-soft);
   color: var(--text);
+  cursor: pointer;
   font: inherit;
   font-size: 12px;
   font-weight: 800;
@@ -3588,7 +3595,19 @@ h2 {
   cursor: pointer;
 }
 
+.schedule-calendar-selected-actions button.danger {
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+.schedule-calendar-selected-actions button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .schedule-calendar-status-actions button:hover:not(:disabled),
+.schedule-calendar-selected-actions button:hover:not(:disabled),
 .schedule-calendar-selected-actions a:hover {
   border-color: var(--primary);
   color: var(--primary-strong);
@@ -3605,6 +3624,58 @@ h2 {
 .schedule-calendar-status-actions button:disabled:not(.active) {
   opacity: 0.7;
   cursor: wait;
+}
+
+.schedule-calendar-inline-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.schedule-calendar-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.schedule-calendar-editor-heading h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.schedule-calendar-editor-heading button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.schedule-calendar-form .notes-create-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.schedule-calendar-form .notes-create-actions {
+  justify-content: flex-start;
+}
+
+.schedule-calendar-editor-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .customer-detail-layout {

@@ -33,6 +33,7 @@ import {
   MoveUpRight,
   ArrowRightLeft,
   PanelRight,
+  Pencil,
   Plus,
   RefreshCw,
   Reply,
@@ -478,6 +479,77 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
   visitDate: schedule?.date || '',
   visitTime: schedule?.time || '09:00',
 });
+
+const makeScheduleCalendarCreateForm = (data: ScheduleCalendarData | null, visitDate: string): ScheduleCreateFormState => {
+  const form = makeEmptyScheduleCreateForm(visitDate);
+  form.activityType = data?.create.activityTypes[0]?.value || form.activityType;
+  form.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+  return form;
+};
+
+const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?: ScheduleCreatePayload; error?: string } => {
+  const followupId = Number(form.followupId);
+  if (!followupId) {
+    return { error: '고객을 선택하세요.' };
+  }
+  if (!form.activityType) {
+    return { error: '활동 유형을 선택하세요.' };
+  }
+  if (!form.visitDate) {
+    return { error: '방문 날짜를 선택하세요.' };
+  }
+  if (!form.visitTime) {
+    return { error: '방문 시간을 선택하세요.' };
+  }
+
+  return {
+    payload: {
+      activityType: form.activityType,
+      expectedRevenue: form.expectedRevenue.trim() || undefined,
+      followupId,
+      location: form.location.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      probability: form.probability.trim() || undefined,
+      visitDate: form.visitDate,
+      visitTime: form.visitTime,
+    },
+  };
+};
+
+const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: ScheduleEditPayload; error?: string } => {
+  const followupId = Number(form.followupId);
+  if (!followupId) {
+    return { error: '고객을 선택하세요.' };
+  }
+  if (!form.activityType) {
+    return { error: '활동 유형을 선택하세요.' };
+  }
+  if (!form.status) {
+    return { error: '일정 상태를 선택하세요.' };
+  }
+  if (!form.visitDate) {
+    return { error: '방문 날짜를 선택하세요.' };
+  }
+  if (!form.visitTime) {
+    return { error: '방문 시간을 선택하세요.' };
+  }
+
+  return {
+    payload: {
+      activityType: form.activityType,
+      expectedCloseDate: form.expectedCloseDate || undefined,
+      expectedRevenue: form.expectedRevenue.trim() || undefined,
+      followupId,
+      location: form.location.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      probability: form.probability.trim() || undefined,
+      purchaseConfirmed: form.purchaseConfirmed,
+      status: form.status,
+      visitDate: form.visitDate,
+      visitTime: form.visitTime,
+    },
+  };
+};
 
 const makeSchedulePrepaymentRows = (options: PrepaymentOption[] = []): SchedulePrepaymentEditRow[] => (
   options.map((option) => ({
@@ -4391,12 +4463,18 @@ function getScheduleReportPreviewLines(report: NonNullable<ScheduleItem['reports
 }
 
 function ScheduleCalendarSelectedList({
+  deletingKey,
   items,
   statusUpdatingKey,
+  onDelete,
+  onEdit,
   onStatusChange,
 }: {
+  deletingKey: string;
   items: ScheduleItem[];
   statusUpdatingKey: string;
+  onDelete: (schedule: ScheduleItem) => void;
+  onEdit: (schedule: ScheduleItem) => void;
   onStatusChange: (schedule: ScheduleItem, status: string) => void;
 }) {
   if (items.length === 0) {
@@ -4410,7 +4488,9 @@ function ScheduleCalendarSelectedList({
         const statusOptions = item.statusOptions ?? [];
         const reports = item.reports ?? [];
         const canChangeStatus = item.type === 'customer' && Boolean(item.canEdit && item.statusUpdateHref && statusOptions.length);
+        const canManage = item.type === 'customer' && Boolean(item.canEdit);
         const isUpdating = statusUpdatingKey === itemKey;
+        const isDeleting = deletingKey === itemKey;
         return (
           <article className={`schedule-calendar-selected-card ${item.overdue ? 'urgent' : ''}`} key={itemKey}>
             <div className="schedule-calendar-selected-main">
@@ -4452,6 +4532,18 @@ function ScheduleCalendarSelectedList({
               </div>
             ) : null}
             <div className="schedule-calendar-selected-actions">
+              {canManage ? (
+                <button onClick={() => onEdit(item)} type="button">
+                  <Pencil size={13} />
+                  수정
+                </button>
+              ) : null}
+              {canManage ? (
+                <button className="danger" disabled={isDeleting} onClick={() => onDelete(item)} type="button">
+                  {isDeleting ? <Loader2 className="spin-icon" size={13} /> : <Trash2 size={13} />}
+                  삭제
+                </button>
+              ) : null}
               <a href={item.href}>상세</a>
               {item.customerHref ? <a href={item.customerHref}>고객</a> : null}
               {item.createHistoryHref ? <a href={item.createHistoryHref}>보고</a> : null}
@@ -4493,6 +4585,7 @@ function ScheduleCalendarPage({
   onDataFilterChange,
   onFilterUserChange,
   onMonthChange,
+  onRefresh,
   onStatusChange,
 }: {
   data: ScheduleCalendarData | null;
@@ -4506,6 +4599,7 @@ function ScheduleCalendarPage({
   onDataFilterChange: (value: string) => void;
   onFilterUserChange: (value: string) => void;
   onMonthChange: (value: string) => void;
+  onRefresh: () => Promise<ScheduleCalendarData | null>;
   onStatusChange: (schedule: ScheduleItem, status: string) => void;
 }) {
   const range = useMemo(() => getScheduleCalendarRange(month), [month]);
@@ -4513,6 +4607,22 @@ function ScheduleCalendarPage({
     const today = localDateInputValue();
     return today >= range.start && today <= range.end ? today : range.start;
   });
+  const [calendarCreateOpen, setCalendarCreateOpen] = useState(false);
+  const [calendarCreateForm, setCalendarCreateForm] = useState<ScheduleCreateFormState>(() => makeEmptyScheduleCreateForm());
+  const [calendarCreating, setCalendarCreating] = useState(false);
+  const [calendarCreateError, setCalendarCreateError] = useState('');
+  const [calendarCreateMessage, setCalendarCreateMessage] = useState('');
+  const [calendarCreatedDetailHref, setCalendarCreatedDetailHref] = useState('');
+  const [calendarEditOpen, setCalendarEditOpen] = useState(false);
+  const [calendarEditLoading, setCalendarEditLoading] = useState(false);
+  const [calendarEditData, setCalendarEditData] = useState<ScheduleDetailData | null>(null);
+  const [calendarEditForm, setCalendarEditForm] = useState<ScheduleEditFormState>(() => makeScheduleEditForm(null));
+  const [calendarEditSaving, setCalendarEditSaving] = useState(false);
+  const [calendarEditError, setCalendarEditError] = useState('');
+  const [calendarEditMessage, setCalendarEditMessage] = useState('');
+  const [calendarDeletingKey, setCalendarDeletingKey] = useState('');
+  const [calendarActionError, setCalendarActionError] = useState('');
+  const [calendarActionMessage, setCalendarActionMessage] = useState('');
   const schedules = data?.schedules ?? [];
   const days = useMemo(() => buildScheduleCalendarDays(month, schedules), [month, schedules]);
   const selectedDayItems = useMemo(
@@ -4522,7 +4632,6 @@ function ScheduleCalendarPage({
   const monthLabel = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(parseLocalDate(`${month}-01`));
   const todayMonth = localDateInputValue().slice(0, 7);
   const showUserFilter = dataFilter === 'user';
-  const reactScheduleCreateHref = `/schedules/?create=1&date=${encodeURIComponent(selectedDate)}`;
 
   useEffect(() => {
     setSelectedDate((previous) => {
@@ -4534,6 +4643,187 @@ function ScheduleCalendarPage({
       return firstScheduledDate || (today >= range.start && today <= range.end ? today : range.start);
     });
   }, [range.end, range.start, schedules]);
+
+  useEffect(() => {
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+    setCalendarCreateError('');
+    setCalendarCreateMessage('');
+    setCalendarEditError('');
+    setCalendarEditMessage('');
+  }, [dataFilter, filterUser, month]);
+
+  const openCalendarCreatePanel = () => {
+    if (!data) {
+      return;
+    }
+    setCalendarCreateForm(makeScheduleCalendarCreateForm(data, selectedDate));
+    setCalendarCreateOpen(true);
+    setCalendarEditOpen(false);
+    setCalendarCreateError('');
+    setCalendarCreateMessage('');
+    setCalendarCreatedDetailHref('');
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+  };
+
+  const handleCalendarCreateFieldChange = (field: keyof ScheduleCreateFormState, value: string) => {
+    setCalendarCreateForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setCalendarCreateError('');
+    setCalendarCreateMessage('');
+  };
+
+  const handleCalendarCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || calendarCreating) {
+      return;
+    }
+    if (!data.create.canCreate) {
+      setCalendarCreateError(data.create.message || '일정 등록 권한이 없습니다.');
+      return;
+    }
+    const { payload, error } = scheduleCreateFormToPayload(calendarCreateForm);
+    if (!payload) {
+      setCalendarCreateError(error || '일정 등록 정보를 확인하세요.');
+      return;
+    }
+
+    setCalendarCreating(true);
+    setCalendarCreateError('');
+    setCalendarCreateMessage('');
+    setCalendarCreatedDetailHref('');
+    try {
+      const created = await createCustomerSchedule(payload, data.create.submitUrl);
+      await onRefresh();
+      setCalendarCreateMessage(created.message || '일정을 등록했습니다.');
+      setCalendarCreatedDetailHref(created.href || '');
+      setCalendarCreateForm(makeScheduleCalendarCreateForm(data, calendarCreateForm.visitDate || selectedDate));
+    } catch (error_) {
+      setCalendarCreateError(error_ instanceof Error ? error_.message : '일정 등록에 실패했습니다.');
+    } finally {
+      setCalendarCreating(false);
+    }
+  };
+
+  const handleCalendarEditFieldChange = (field: keyof ScheduleEditFormState, value: string | boolean) => {
+    setCalendarEditForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setCalendarEditError('');
+    setCalendarEditMessage('');
+  };
+
+  const handleCalendarEditOpen = async (schedule: ScheduleItem) => {
+    if (calendarEditLoading || calendarEditSaving) {
+      return;
+    }
+    if (schedule.type !== 'customer' || !schedule.canEdit) {
+      setCalendarActionError('이 일정의 수정 권한이 없습니다.');
+      setCalendarActionMessage('');
+      return;
+    }
+
+    setCalendarCreateOpen(false);
+    setCalendarEditOpen(true);
+    setCalendarEditLoading(true);
+    setCalendarEditData(null);
+    setCalendarEditError('');
+    setCalendarEditMessage('');
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+    try {
+      const detail = await loadScheduleDetailData(schedule.id);
+      if (detail.source !== 'django' || !detail.schedule) {
+        throw new Error(detail.error || detail.message || '일정 상세를 불러오지 못했습니다.');
+      }
+      if (!detail.edit.canEdit) {
+        throw new Error(detail.edit.message || '수정 권한이 없습니다.');
+      }
+      setCalendarEditData(detail);
+      setCalendarEditForm(makeScheduleEditForm(detail.schedule));
+    } catch (error_) {
+      setCalendarEditData(null);
+      setCalendarEditError(error_ instanceof Error ? error_.message : '일정 상세를 불러오지 못했습니다.');
+    } finally {
+      setCalendarEditLoading(false);
+    }
+  };
+
+  const handleCalendarEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!calendarEditData?.edit || calendarEditSaving) {
+      return;
+    }
+    if (!calendarEditData.edit.canEdit || !calendarEditData.edit.submitUrl) {
+      setCalendarEditError(calendarEditData.edit.message || '수정 권한이 없습니다.');
+      return;
+    }
+    const { payload, error } = scheduleEditFormToPayload(calendarEditForm);
+    if (!payload) {
+      setCalendarEditError(error || '일정 수정 정보를 확인하세요.');
+      return;
+    }
+
+    setCalendarEditSaving(true);
+    setCalendarEditError('');
+    setCalendarEditMessage('');
+    try {
+      const updated = await updateCustomerSchedule(payload, calendarEditData.edit.submitUrl);
+      await onRefresh();
+      setCalendarEditData(updated);
+      setCalendarEditForm(makeScheduleEditForm(updated.schedule));
+      setCalendarEditMessage(updated.message || '일정을 수정했습니다.');
+      setCalendarEditOpen(false);
+    } catch (error_) {
+      setCalendarEditError(error_ instanceof Error ? error_.message : '일정 수정에 실패했습니다.');
+    } finally {
+      setCalendarEditSaving(false);
+    }
+  };
+
+  const handleCalendarDelete = async (schedule: ScheduleItem) => {
+    if (calendarDeletingKey) {
+      return;
+    }
+    if (schedule.type !== 'customer' || !schedule.canEdit || !schedule.deleteHref) {
+      setCalendarActionError('이 일정의 삭제 권한이 없습니다.');
+      setCalendarActionMessage('');
+      return;
+    }
+    const confirmMessage = [
+      '이 일정을 삭제할까요?',
+      '',
+      `고객: ${schedule.customer || '고객명 미정'}`,
+      `날짜: ${schedule.date ? formatDateLabel(schedule.date) : '날짜 없음'}`,
+      '',
+      '관련 활동 기록도 함께 삭제되며 복구할 수 없습니다.',
+    ].join('\n');
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    const itemKey = `${schedule.type}-${schedule.id}`;
+    setCalendarDeletingKey(itemKey);
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+    try {
+      const result = await deleteSchedule(schedule.deleteHref);
+      await onRefresh();
+      if (calendarEditData?.schedule?.id === schedule.id) {
+        setCalendarEditOpen(false);
+        setCalendarEditData(null);
+      }
+      setCalendarActionMessage(result.message || '일정을 삭제했습니다.');
+    } catch (error_) {
+      setCalendarActionError(error_ instanceof Error ? error_.message : '일정 삭제에 실패했습니다.');
+    } finally {
+      setCalendarDeletingKey('');
+    }
+  };
 
   if (loading && !data) {
     return (
@@ -4584,10 +4874,14 @@ function ScheduleCalendarPage({
           <a className="route-secondary-action" href={data.links.djangoCalendar}>
             Django 캘린더
           </a>
-          <a className="route-primary-action" href={reactScheduleCreateHref}>
-            일정 등록
+          <button
+            className={data.create.canCreate ? 'route-primary-action' : 'route-secondary-action'}
+            onClick={openCalendarCreatePanel}
+            type="button"
+          >
+            {data.create.canCreate ? '일정 등록' : '등록 권한 없음'}
             <Plus size={16} />
-          </a>
+          </button>
         </div>
       </div>
 
@@ -4675,8 +4969,13 @@ function ScheduleCalendarPage({
           </div>
           {statusError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{statusError}</span></div> : null}
           {statusMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{statusMessage}</span></div> : null}
+          {calendarActionError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{calendarActionError}</span></div> : null}
+          {calendarActionMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{calendarActionMessage}</span></div> : null}
           <ScheduleCalendarSelectedList
+            deletingKey={calendarDeletingKey}
             items={selectedDayItems}
+            onDelete={handleCalendarDelete}
+            onEdit={handleCalendarEditOpen}
             onStatusChange={onStatusChange}
             statusUpdatingKey={statusUpdatingKey}
           />
@@ -4688,12 +4987,281 @@ function ScheduleCalendarPage({
             <Plus size={18} />
           </div>
           <div className="customers-side-actions">
-            <a href={reactScheduleCreateHref}>고객 일정 등록</a>
+            <button onClick={openCalendarCreatePanel} type="button">고객 일정 등록</button>
             <a href={personalScheduleCreateHref}>개인 일정 등록</a>
             <a href={djangoScheduleCreateHref}>Django 상세 등록</a>
             <a href={data.links.weeklyReports}>주간보고</a>
             <a href={data.links.djangoSchedules}>Django 일정 목록</a>
           </div>
+
+          {calendarCreateOpen || calendarCreateError || calendarCreateMessage ? (
+            <div className="schedule-calendar-inline-editor">
+              <div className="schedule-calendar-editor-heading">
+                <div>
+                  <span className="eyebrow">Quick schedule</span>
+                  <h3>고객 일정 등록</h3>
+                </div>
+                <button aria-label="등록 패널 닫기" onClick={() => setCalendarCreateOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+              </div>
+              {calendarCreateError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{calendarCreateError}</span></div> : null}
+              {calendarCreateMessage ? (
+                <div className="dashboard-api-alert compact success">
+                  <CheckCircle2 size={16} />
+                  <span>{calendarCreateMessage}</span>
+                  {calendarCreatedDetailHref ? <a href={calendarCreatedDetailHref}>상세</a> : null}
+                </div>
+              ) : null}
+              {!data.create.canCreate ? (
+                <DashboardEmpty label={data.create.message || '일정 등록 권한이 없습니다'} />
+              ) : data.create.customers.length === 0 ? (
+                <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
+              ) : data.create.activityTypes.length === 0 ? (
+                <DashboardEmpty label="등록 가능한 활동 유형이 없습니다" />
+              ) : calendarCreateOpen ? (
+                <form className="notes-create-form schedule-calendar-form" onSubmit={handleCalendarCreateSubmit}>
+                  <div className="notes-create-grid schedules-create-grid">
+                    <div className="form-field">
+                      <span>고객</span>
+                      <SearchableSelect
+                        ariaLabel="고객 선택"
+                        onChange={(nextValue) => handleCalendarCreateFieldChange('followupId', nextValue)}
+                        options={data.create.customers.map(makeCustomerSelectOption)}
+                        placeholder="고객, 회사, 부서 검색"
+                        value={calendarCreateForm.followupId}
+                      />
+                    </div>
+                    <label>
+                      <span>활동 유형</span>
+                      <select
+                        onChange={(event) => handleCalendarCreateFieldChange('activityType', event.target.value)}
+                        required
+                        value={calendarCreateForm.activityType}
+                      >
+                        {data.create.activityTypes.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>방문 날짜</span>
+                      <input
+                        onChange={(event) => handleCalendarCreateFieldChange('visitDate', event.target.value)}
+                        required
+                        type="date"
+                        value={calendarCreateForm.visitDate}
+                      />
+                    </label>
+                    <label>
+                      <span>방문 시간</span>
+                      <input
+                        onChange={(event) => handleCalendarCreateFieldChange('visitTime', event.target.value)}
+                        required
+                        type="time"
+                        value={calendarCreateForm.visitTime}
+                      />
+                    </label>
+                    <label>
+                      <span>장소</span>
+                      <input
+                        onChange={(event) => handleCalendarCreateFieldChange('location', event.target.value)}
+                        placeholder="방문 장소"
+                        value={calendarCreateForm.location}
+                      />
+                    </label>
+                    <label>
+                      <span>예상 매출</span>
+                      <input
+                        inputMode="numeric"
+                        min="0"
+                        onChange={(event) => handleCalendarCreateFieldChange('expectedRevenue', event.target.value)}
+                        placeholder="원"
+                        type="number"
+                        value={calendarCreateForm.expectedRevenue}
+                      />
+                    </label>
+                    <label>
+                      <span>성공 확률</span>
+                      <input
+                        inputMode="numeric"
+                        max="100"
+                        min="0"
+                        onChange={(event) => handleCalendarCreateFieldChange('probability', event.target.value)}
+                        placeholder="0-100"
+                        type="number"
+                        value={calendarCreateForm.probability}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    <span>메모</span>
+                    <textarea
+                      onChange={(event) => handleCalendarCreateFieldChange('notes', event.target.value)}
+                      rows={3}
+                      value={calendarCreateForm.notes}
+                    />
+                  </label>
+                  <div className="notes-create-actions">
+                    <a className="route-secondary-action" href={appendDateQuery(data.links.createSchedule, calendarCreateForm.visitDate || selectedDate)}>
+                      상세 등록
+                      <MoveUpRight size={15} />
+                    </a>
+                    <button className="route-primary-action" disabled={calendarCreating} type="submit">
+                      {calendarCreating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                      저장
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
+
+          {calendarEditOpen || calendarEditError || calendarEditMessage ? (
+            <div className="schedule-calendar-inline-editor">
+              <div className="schedule-calendar-editor-heading">
+                <div>
+                  <span className="eyebrow">Edit schedule</span>
+                  <h3>일정 수정</h3>
+                </div>
+                <button aria-label="수정 패널 닫기" onClick={() => setCalendarEditOpen(false)} type="button">
+                  <X size={16} />
+                </button>
+              </div>
+              {calendarEditError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{calendarEditError}</span></div> : null}
+              {calendarEditMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{calendarEditMessage}</span></div> : null}
+              {calendarEditLoading ? (
+                <div className="schedule-calendar-editor-loading">
+                  <Loader2 className="spin-icon" size={16} />
+                  <span>일정 상세를 불러오는 중입니다</span>
+                </div>
+              ) : calendarEditOpen && calendarEditData?.schedule && calendarEditData.edit.canEdit ? (
+                <form className="notes-create-form schedule-calendar-form" onSubmit={handleCalendarEditSubmit}>
+                  <div className="notes-create-grid schedules-create-grid">
+                    <div className="form-field">
+                      <span>고객</span>
+                      <SearchableSelect
+                        ariaLabel="고객 선택"
+                        onChange={(nextValue) => handleCalendarEditFieldChange('followupId', nextValue)}
+                        options={calendarEditData.edit.customers.map(makeCustomerSelectOption)}
+                        placeholder="고객, 회사, 부서 검색"
+                        value={calendarEditForm.followupId}
+                      />
+                    </div>
+                    <label>
+                      <span>활동 유형</span>
+                      <select
+                        onChange={(event) => handleCalendarEditFieldChange('activityType', event.target.value)}
+                        required
+                        value={calendarEditForm.activityType}
+                      >
+                        {calendarEditData.edit.activityTypes.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>상태</span>
+                      <select
+                        onChange={(event) => handleCalendarEditFieldChange('status', event.target.value)}
+                        required
+                        value={calendarEditForm.status}
+                      >
+                        {calendarEditData.edit.statuses.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>방문 날짜</span>
+                      <input
+                        onChange={(event) => handleCalendarEditFieldChange('visitDate', event.target.value)}
+                        required
+                        type="date"
+                        value={calendarEditForm.visitDate}
+                      />
+                    </label>
+                    <label>
+                      <span>방문 시간</span>
+                      <input
+                        onChange={(event) => handleCalendarEditFieldChange('visitTime', event.target.value)}
+                        required
+                        type="time"
+                        value={calendarEditForm.visitTime}
+                      />
+                    </label>
+                    <label>
+                      <span>장소</span>
+                      <input
+                        onChange={(event) => handleCalendarEditFieldChange('location', event.target.value)}
+                        value={calendarEditForm.location}
+                      />
+                    </label>
+                    <label>
+                      <span>예상 매출</span>
+                      <input
+                        inputMode="numeric"
+                        min="0"
+                        onChange={(event) => handleCalendarEditFieldChange('expectedRevenue', event.target.value)}
+                        type="number"
+                        value={calendarEditForm.expectedRevenue}
+                      />
+                    </label>
+                    <label>
+                      <span>성공 확률</span>
+                      <input
+                        inputMode="numeric"
+                        max="100"
+                        min="0"
+                        onChange={(event) => handleCalendarEditFieldChange('probability', event.target.value)}
+                        type="number"
+                        value={calendarEditForm.probability}
+                      />
+                    </label>
+                    <label>
+                      <span>예상 종료일</span>
+                      <input
+                        onChange={(event) => handleCalendarEditFieldChange('expectedCloseDate', event.target.value)}
+                        type="date"
+                        value={calendarEditForm.expectedCloseDate}
+                      />
+                    </label>
+                  </div>
+                  <label className="schedule-edit-inline-check">
+                    <input
+                      checked={calendarEditForm.purchaseConfirmed}
+                      onChange={(event) => handleCalendarEditFieldChange('purchaseConfirmed', event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>구매 확정</span>
+                  </label>
+                  <label>
+                    <span>메모</span>
+                    <textarea
+                      onChange={(event) => handleCalendarEditFieldChange('notes', event.target.value)}
+                      rows={3}
+                      value={calendarEditForm.notes}
+                    />
+                  </label>
+                  <div className="notes-create-actions">
+                    <a className="route-secondary-action" href={calendarEditData.schedule.href}>
+                      상세
+                    </a>
+                    {calendarEditData.edit.djangoUrl ? (
+                      <a className="route-secondary-action" href={calendarEditData.edit.djangoUrl}>
+                        Django 수정
+                        <MoveUpRight size={15} />
+                      </a>
+                    ) : null}
+                    <button className="route-primary-action" disabled={calendarEditSaving} type="submit">
+                      {calendarEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                      저장
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
         </aside>
       </div>
     </section>
@@ -13606,6 +14174,7 @@ export function App() {
             onDataFilterChange={handleScheduleCalendarDataFilterChange}
             onFilterUserChange={handleScheduleCalendarFilterUserChange}
             onMonthChange={handleScheduleCalendarMonthChange}
+            onRefresh={refreshScheduleCalendarData}
             onStatusChange={handleScheduleCalendarStatusChange}
           />
         </AppShell>
