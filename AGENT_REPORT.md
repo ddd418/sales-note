@@ -14126,10 +14126,46 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- 로컬 구현/검증 완료.
-- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+- Runtime commit: `5c684b0 feat: replace product delete references individually`
+- GitHub push: `main` updated from `834a37b` to `5c684b0`
+- Railway `web`: `dba49924-d667-4a05-9efb-34675bb4c517` SUCCESS, commit `5c684b0`
+- Railway `sales-note-frontend`: `f92f5973-7fd3-43b1-8df0-c236a6180d77` SUCCESS, message `Deploy product reference replacement 5c684b0 retry3`
+- Deployed frontend bundle: `assets/index-D2QtHNzR.js` / `assets/index-DVJixUlj.css`
+- Initial frontend deploy `542578eb-3c3e-4302-8a29-c6191601ab6d` stalled at BUILDING and was superseded by `f92f5973-7fd3-43b1-8df0-c236a6180d77`; two interrupted retry snapshots failed before upload completion.
 
-### 8. Manual Server Test Process
+### 8. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/products/
+→ 200, bundle assets/index-D2QtHNzR.js and assets/index-DVJixUlj.css
+
+GET https://sales-note-frontend-production.up.railway.app/assets/index-D2QtHNzR.js
+→ 200, JS contains /reporting/api/products/replace-reference/ and 차단 품목 개별 대체
+
+GET https://sales-note-frontend-production.up.railway.app/assets/index-DVJixUlj.css
+→ 200, CSS contains product-delete-reference-row
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/products/manage/
+→ 302 redirect to /reporting/login/?next=/reporting/api/products/manage/
+
+GET https://web-production-5096.up.railway.app/reporting/api/products/manage/
+→ 302 redirect to /reporting/login/?next=/reporting/api/products/manage/
+
+GET https://web-production-5096.up.railway.app/reporting/login/
+→ 200, login page title contains 영업 보고 시스템
+
+POST https://web-production-5096.up.railway.app/reporting/api/products/replace-reference/
+→ 403 CSRF without session/token, confirming anonymous write access is blocked
+
+Railway status
+→ web Online, sales-note-frontend Online
+
+Railway logs checked
+→ web migrations completed, gunicorn started, no migration errors
+→ frontend container started
+```
+
+### 9. Manual Server Test Process
 
 1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/products/`
 2. 로그인 후 제품관리 화면이 열리는지 확인합니다.
@@ -14141,6 +14177,6 @@ git diff --check
 8. 대체된 일정 상세 또는 영업노트 상세에서 품목명/단위/납품 금액 요약이 깨지지 않는지 확인합니다.
 9. 기존 Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/products/`도 계속 접근 가능한지 확인합니다.
 
-### 9. Recommended Next Task
+### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 React 제품관리 대량 작업의 다음 보강으로 삭제 차단 참조 검색/필터 또는 대체 처리 진행률 표시를 진행합니다.
