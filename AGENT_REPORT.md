@@ -14236,7 +14236,18 @@ git diff --check
 - 운영 배포 후 실제 로그인 세션에서 대체 제품 검색/선택을 다시 확인해야 합니다.
 - Railway CLI 로그 조회 중 OAuth token refresh가 만료되어 `railway login`이 필요할 수 있습니다.
 
-### 6. Manual Server Test Process
+### 6. Deployment Status
+
+- Hotfix commit: `0f085b0 fix: limit product replacement option loading`
+- GitHub push: `main` updated from `027affb` to `0f085b0`
+- Local build bundle: `assets/index-Bfm6UuAC.js` / `assets/index-nGs5khFg.css`
+- Railway deploy not completed in this session because the CLI token expired:
+  - `railway status` → `Unauthorized. Please run railway login again.`
+  - `railway login --browserless` → non-interactive terminal unsupported; requires `RAILWAY_API_TOKEN` or `RAILWAY_TOKEN`
+- Production currently still serves the previous bundle `assets/index-D2QtHNzR.js` / `assets/index-DVJixUlj.css` at `/products/`.
+- Required next operational action: reauthenticate Railway CLI or provide `RAILWAY_TOKEN`, then deploy `web` and `sales-note-frontend` for commit `0f085b0`.
+
+### 7. Manual Server Test Process
 
 1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/products/`
 2. 사용 중인 제품을 삭제 실행해 차단 품목 개별 대체 패널을 엽니다.
