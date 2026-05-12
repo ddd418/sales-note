@@ -1,6 +1,42 @@
 # AGENT_PLAN.md
 
-## Current task — 견적 구분별 기타사항, 메일 참조 선택, 서류/PDF/메일함 핫픽스
+## Current task — React 메일 리치 에디터 및 AI Workspace 상세 추천 스코프
+
+**목표**: React 메일 작성/답장 본문을 일반 textarea가 아니라 서식 있는 에디터로 전환한다. 볼드, 기울임, 밑줄, 글씨체/크기/색상, 목록, 링크, 사진 삽입을 지원하고, 발송 API는 HTML 본문을 안전하게 sanitize해서 Gmail/SMTP로 발송한다. 동시에 `/ai-workspace/?department_id=...` 상세 페이지에서는 추천 질문/프롬프트가 해당 부서 고객 기준으로만 나오게 제한한다.
+
+### 확인된 상태
+
+- Django 레거시 메일 작성 화면은 Quill 기반 HTML 에디터와 `body_html` hidden input을 이미 사용한다.
+- React 메일 작성/답장 폼은 `textarea`의 plain text만 `body_text`로 전송한다.
+- backend `GmailService.send_email()` 및 SMTP 발송 경로는 이미 `body_html`을 받을 수 있다.
+- React AI Workspace는 `department_id` 요청 시 featured panel과 추천 목표는 선택 부서를 쓰지만, 추천 질문 `promptTargets`는 전체 painpoint/followup/department 후보를 섞어 만들 수 있다.
+
+### 구현 계획
+
+- React `MailComposePanel` 본문을 contenteditable 기반 rich editor로 교체한다.
+- toolbar에 굵게/기울임/밑줄, 글씨체, 크기, 글자색/배경색, 목록, 링크, 이미지, 서식 지우기를 추가한다.
+- 기존 `/reporting/upload-image/` endpoint를 React에서도 사용해 본문 이미지를 업로드 후 `<img>`로 삽입한다.
+- 메일 발송 payload에 `bodyHtml`을 추가하고 `body_html` FormData로 전송한다.
+- server-side HTML sanitize helper를 추가해 script/style/event handler/javascript URL을 제거하고 허용된 이메일 서식만 보낸다.
+- AI Workspace API에서 접근 가능한 `department_id`가 요청된 경우 painpoint, followup, department prompt 후보를 해당 부서로만 제한한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/?department_id=81`, `/ai-workspace/`, `/mailbox/` smoke check
+
+### 현재 상태
+
+- 구현/로컬 검증 완료, 커밋/배포 진행 중.
+
+---
+
+## Previous task — 견적 구분별 기타사항, 메일 참조 선택, 서류/PDF/메일함 핫픽스
 
 **목표**: 운영 검수 중 확인된 견적/메일 문제를 우선 해결한다. 같은 일정의 견적서 구분마다 기타사항을 따로 저장/치환하고, 메일 발송 시 내부 직원 참조 포함 여부를 사용자가 선택하게 한다. 견적서/거래명세서 생성 시 템플릿의 볼드체를 제거하고, 품목 적요가 긴 경우 PDF에서 잘리지 않도록 행 높이를 보정한다. 받은 메일 상세에서는 CSS 잔여 텍스트가 보이지 않게 하며, 상대가 보낸 첨부파일을 React 메일함에서 확인/다운로드할 수 있게 한다.
 

@@ -787,6 +787,52 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.body, sent_kwargs['body_text'])
         self.assertEqual(email_log.body_html.count('<br>'), 3)
 
+    def test_mailbox_send_api_sends_sanitized_rich_html_body(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-rich-html',
+                'thread_id': 'gmail-thread-rich-html',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '리치 본문 테스트',
+                    'body_text': '굵은 안내 링크 사진',
+                    'body_html': (
+                        '<div style="font-family: Arial; color: #123456;" onclick="alert(1)">'
+                        '<strong>굵은 안내</strong> '
+                        '<a href="https://example.com/quote" onclick="alert(2)">링크</a>'
+                        '<img src="https://example.com/photo.png" onerror="alert(3)" style="max-width:100%;height:auto;">'
+                        '<script>alert(4)</script>'
+                        '</div>'
+                    ),
+                    'selected_followup_id': str(self.followup.id),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body_html = gmail_service.send_email.call_args.kwargs['body_html']
+        self.assertIn('<strong>굵은 안내</strong>', body_html)
+        self.assertIn('href="https://example.com/quote"', body_html)
+        self.assertIn('src="https://example.com/photo.png"', body_html)
+        self.assertIn('font-family: Arial', body_html)
+        self.assertNotIn('<script', body_html)
+        self.assertNotIn('onclick', body_html)
+        self.assertNotIn('onerror', body_html)
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-rich-html')
+        self.assertEqual(email_log.body_html, body_html)
+        self.assertIn('<strong>굵은 안내</strong>', email_log.body)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 익명 사용자 URL 차단 테스트
@@ -4859,6 +4905,41 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['featuredDepartment']['departmentId'], first_department.id)
         self.assertEqual(payload['featuredDepartment']['departmentName'], first_department.name)
         self.assertEqual(payload['selectedDepartmentId'], first_department.id)
+
+    def test_ai_workspace_detail_scopes_prompt_targets_to_requested_department(self):
+        from ai_chat.models import AIFollowUpAnalysis
+
+        selected_followup, selected_department = self._create_customer(self.user, '상세선택')
+        other_followup, other_department = self._create_customer(self.user, '다른추천')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        AIFollowUpAnalysis.objects.create(
+            followup=selected_followup,
+            user=self.user,
+            analysis_data={'customer_summary': '상세선택 고객 전용 후속 질문'},
+            meeting_count=1,
+        )
+        AIFollowUpAnalysis.objects.create(
+            followup=other_followup,
+            user=self.user,
+            analysis_data={'customer_summary': '다른추천 고객 질문은 상세 페이지 제외'},
+            meeting_count=1,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': selected_department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['selectedDepartmentId'], selected_department.id)
+        prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
+        prompt_titles = '\n'.join(item['title'] for item in payload['promptTargets'])
+        self.assertTrue(payload['promptTargets'])
+        self.assertIn('상세선택', prompt_text)
+        self.assertIn('상세선택', prompt_titles + prompt_text)
+        self.assertNotIn('다른추천', prompt_text)
+        self.assertNotIn(other_department.name, prompt_text)
+        self.assertEqual({target['department'] for target in payload['followupTargets']}, {selected_department.name})
 
     def test_ai_workspace_summary_api_ignores_inaccessible_requested_department(self):
         _own_followup, own_department = self._create_customer(self.user, '내부서')

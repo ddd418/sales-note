@@ -287,6 +287,7 @@ export type MailboxSendPayload = {
   includeInternalCc?: boolean;
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   followupId?: number;
   scheduleId?: number;
   businessCardId?: number;
@@ -3387,6 +3388,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   body.set('to_email', payload.toEmail);
   body.set('subject', payload.subject);
   body.set('body_text', payload.bodyText);
+  if (payload.bodyHtml) body.set('body_html', payload.bodyHtml);
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
   if (payload.includeInternalCc) body.set('include_internal_cc', '1');
@@ -3441,6 +3443,28 @@ export async function runMailboxSync(syncUrl = '/reporting/api/mailbox/sync/'): 
 
 export async function runMailboxAction(actionUrl: string): Promise<MailboxActionResponse> {
   return postMailboxForm(actionUrl);
+}
+
+export async function uploadMailboxEditorImage(file: File): Promise<{ success?: boolean; url?: string; error?: string }> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new FormData();
+  body.set('image', file);
+  const response = await fetch('/reporting/upload-image/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const data = await response.json() as { success?: boolean; url?: string; error?: string };
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false || !data.url) {
+    throw new Error(data.error || `Image upload failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadCustomersData(params: {

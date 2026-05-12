@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Archive,
   Bell,
+  Bold,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -24,6 +25,9 @@ import {
   LogOut,
   Loader2,
   Inbox,
+  ImagePlus,
+  Italic,
+  Link2,
   Mail,
   MessageSquareText,
   MoveUpRight,
@@ -38,11 +42,13 @@ import {
   Star,
   Target,
   Trash2,
+  Type,
+  Underline,
   Upload,
   Users,
   X,
 } from 'lucide-react';
-import { type ChangeEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -157,6 +163,7 @@ import {
   updateSchedule as updateCustomerSchedule,
   updateScheduleDeliveryItems,
   updateScheduleStatus,
+  uploadMailboxEditorImage,
   uploadNoteFiles,
   uploadScheduleFiles,
   verifyAiPainpoint,
@@ -269,6 +276,7 @@ type ScheduleQuoteGroupNoteState = Record<string, string>;
 type MailComposeFormState = {
   attachments: File[];
   autoQuoteAttach: boolean;
+  bodyHtml: string;
   bodyText: string;
   businessCardId: string;
   ccEmails: string;
@@ -555,6 +563,7 @@ const discountRateFromUnit = (base: number, discountUnit: number) => (
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   attachments: [],
   autoQuoteAttach: false,
+  bodyHtml: '',
   bodyText: '',
   businessCardId: '',
   ccEmails: '',
@@ -7745,6 +7754,279 @@ function MailAttachmentLinks({ attachments }: { attachments: MailboxEmailItem['a
   );
 }
 
+const mailEditorFonts = [
+  { label: '기본', value: 'Arial, sans-serif' },
+  { label: '맑은 고딕', value: '"Malgun Gothic", "Apple SD Gothic Neo", sans-serif' },
+  { label: '나눔고딕', value: '"Nanum Gothic", sans-serif' },
+  { label: '명조', value: 'Georgia, "Times New Roman", serif' },
+  { label: '고정폭', value: '"Courier New", monospace' },
+];
+
+const escapeHtml = (value: string) => (
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+);
+
+const normalizeMailEditorUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/^(https?:|mailto:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return `mailto:${trimmed}`;
+  }
+  return `https://${trimmed}`;
+};
+
+const sanitizeMailEditorHtml = (html: string) => {
+  if (typeof document === 'undefined') {
+    return html;
+  }
+  const container = document.createElement('div');
+  container.innerHTML = html || '';
+  container.querySelectorAll('script, style, iframe, object, embed, form, input, button, textarea, select, meta, link').forEach((node) => node.remove());
+  container.querySelectorAll<HTMLElement>('*').forEach((node) => {
+    Array.from(node.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+      if (name.startsWith('on')) {
+        node.removeAttribute(attribute.name);
+      }
+      if ((name === 'href' || name === 'src') && /^javascript:/i.test(value)) {
+        node.removeAttribute(attribute.name);
+      }
+    });
+    if (node.tagName.toLowerCase() === 'a') {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+    if (node.tagName.toLowerCase() === 'img') {
+      node.setAttribute('style', `${node.getAttribute('style') || ''};max-width:100%;height:auto;`.replace(/^;/, ''));
+    }
+  });
+  return container.innerHTML;
+};
+
+const mailHtmlHasMeaningfulContent = (html: string) => {
+  if (typeof document === 'undefined') {
+    return /<(img|a|strong|b|em|i|u|p|div|span|li|table)\b/i.test(html || '');
+  }
+  const container = document.createElement('div');
+  container.innerHTML = sanitizeMailEditorHtml(html || '');
+  return Boolean(container.textContent?.trim() || container.querySelector('img'));
+};
+
+function MailRichTextEditor({
+  disabled,
+  valueHtml,
+  onChange,
+}: {
+  disabled?: boolean;
+  valueHtml: string;
+  onChange: (bodyText: string, bodyHtml: string) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [empty, setEmpty] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ').replace(/\n{4,}/g, '\n\n\n');
+    const bodyHtml = sanitizeMailEditorHtml(editor.innerHTML || '');
+    setEmpty(!bodyText.trim() && !/<img\b/i.test(bodyHtml));
+    onChange(bodyText, bodyHtml);
+  };
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    const nextHtml = valueHtml || '';
+    if (editor.innerHTML !== nextHtml && (!nextHtml || document.activeElement !== editor)) {
+      editor.innerHTML = nextHtml;
+    }
+    const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ');
+    setEmpty(!bodyText.trim() && !/<img\b/i.test(nextHtml));
+  }, [valueHtml]);
+
+  const focusEditor = () => {
+    editorRef.current?.focus();
+  };
+
+  const applyCommand = (command: string, value?: string) => {
+    if (disabled) {
+      return;
+    }
+    focusEditor();
+    document.execCommand(command, false, value);
+    emitChange();
+  };
+
+  const insertHtml = (html: string) => {
+    if (disabled) {
+      return;
+    }
+    focusEditor();
+    document.execCommand('insertHTML', false, sanitizeMailEditorHtml(html));
+    emitChange();
+  };
+
+  const handleLinkInsert = () => {
+    const rawUrl = window.prompt('링크 URL을 입력하세요.');
+    if (rawUrl === null) {
+      return;
+    }
+    const url = normalizeMailEditorUrl(rawUrl);
+    if (!url) {
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`);
+      return;
+    }
+    applyCommand('createLink', url);
+  };
+
+  const handleImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUploadError('이미지 파일만 넣을 수 있습니다.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError('이미지는 2MB 이하만 넣을 수 있습니다.');
+      return;
+    }
+    setUploadingImage(true);
+    setUploadError('');
+    try {
+      const result = await uploadMailboxEditorImage(file);
+      if (!result.url) {
+        throw new Error('이미지 URL을 받지 못했습니다.');
+      }
+      insertHtml(`<img src="${escapeHtml(result.url)}" alt="${escapeHtml(file.name)}" style="max-width:100%;height:auto;">`);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const imageFile = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
+    if (imageFile) {
+      event.preventDefault();
+      void handleImageFile(imageFile);
+      return;
+    }
+    const html = event.clipboardData.getData('text/html');
+    if (html) {
+      event.preventDefault();
+      insertHtml(html);
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    const imageFile = Array.from(event.dataTransfer.files).find((file) => file.type.startsWith('image/'));
+    if (!imageFile) {
+      return;
+    }
+    event.preventDefault();
+    void handleImageFile(imageFile);
+  };
+
+  return (
+    <div className="mail-rich-editor">
+      <div className="mail-rich-toolbar" aria-label="메일 본문 서식 도구">
+        <button aria-label="굵게" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('bold')} title="굵게" type="button">
+          <Bold size={15} />
+        </button>
+        <button aria-label="기울임" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('italic')} title="기울임" type="button">
+          <Italic size={15} />
+        </button>
+        <button aria-label="밑줄" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('underline')} title="밑줄" type="button">
+          <Underline size={15} />
+        </button>
+        <select aria-label="글씨체" disabled={disabled} onChange={(event) => applyCommand('fontName', event.target.value)} defaultValue={mailEditorFonts[0].value} title="글씨체">
+          {mailEditorFonts.map((font) => (
+            <option key={font.value} value={font.value}>{font.label}</option>
+          ))}
+        </select>
+        <select aria-label="글씨 크기" disabled={disabled} onChange={(event) => applyCommand('fontSize', event.target.value)} defaultValue="3" title="글씨 크기">
+          <option value="2">작게</option>
+          <option value="3">보통</option>
+          <option value="4">크게</option>
+          <option value="5">아주 크게</option>
+        </select>
+        <label className="mail-rich-color" title="글자색">
+          <Type size={14} />
+          <input aria-label="글자색" disabled={disabled} onChange={(event) => applyCommand('foreColor', event.target.value)} type="color" />
+        </label>
+        <label className="mail-rich-color" title="배경색">
+          <span>A</span>
+          <input aria-label="배경색" disabled={disabled} onChange={(event) => applyCommand('hiliteColor', event.target.value)} type="color" />
+        </label>
+        <button aria-label="번호 목록" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('insertOrderedList')} title="번호 목록" type="button">
+          1.
+        </button>
+        <button aria-label="글머리 목록" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('insertUnorderedList')} title="글머리 목록" type="button">
+          •
+        </button>
+        <button aria-label="링크" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={handleLinkInsert} title="링크" type="button">
+          <Link2 size={15} />
+        </button>
+        <button aria-label="사진" disabled={disabled || uploadingImage} onMouseDown={(event) => event.preventDefault()} onClick={() => fileInputRef.current?.click()} title="사진" type="button">
+          {uploadingImage ? <Loader2 className="spin-icon" size={15} /> : <ImagePlus size={15} />}
+        </button>
+        <button aria-label="서식 지우기" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('removeFormat')} title="서식 지우기" type="button">
+          <X size={15} />
+        </button>
+        <input
+          accept="image/*"
+          className="visually-hidden"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) {
+              void handleImageFile(file);
+            }
+            event.currentTarget.value = '';
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+      </div>
+      <div
+        aria-label="메일 본문"
+        className={`mail-rich-editor-surface${empty ? ' empty' : ''}`}
+        contentEditable={!disabled}
+        data-placeholder="메일 본문을 작성하세요"
+        onBlur={emitChange}
+        onDrop={handleDrop}
+        onInput={emitChange}
+        onKeyUp={emitChange}
+        onPaste={handlePaste}
+        ref={editorRef}
+        role="textbox"
+        suppressContentEditableWarning
+      />
+      {uploadError ? <div className="mail-rich-error">{uploadError}</div> : null}
+    </div>
+  );
+}
+
 function MailComposePanel({
   create,
   form,
@@ -7755,6 +8037,7 @@ function MailComposePanel({
   submitLabel,
   onAttachmentRemove,
   onAttachmentsChange,
+  onBodyChange,
   onChange,
   onCustomerChange,
   onInternalCcChange,
@@ -7770,6 +8053,7 @@ function MailComposePanel({
   submitLabel: string;
   onAttachmentRemove: (index: number) => void;
   onAttachmentsChange: (files: File[]) => void;
+  onBodyChange: (bodyText: string, bodyHtml: string) => void;
   onChange: (field: MailComposeTextField, value: string) => void;
   onCustomerChange: (customerId: string) => void;
   onInternalCcChange: (checked: boolean) => void;
@@ -7839,7 +8123,11 @@ function MailComposePanel({
         </label>
         <label>
           <span>본문</span>
-          <textarea value={form.bodyText} onChange={(event) => onChange('bodyText', event.target.value)} rows={8} />
+          <MailRichTextEditor
+            disabled={saving}
+            onChange={onBodyChange}
+            valueHtml={form.bodyHtml}
+          />
         </label>
         <label className="mail-attachment-field">
           <span>첨부파일</span>
@@ -7914,6 +8202,7 @@ function MailboxPage({
   onAction,
   onComposeAttachmentRemove,
   onComposeAttachmentsChange,
+  onComposeBodyChange,
   onBoxChange,
   onComposeCustomerChange,
   onComposeFormChange,
@@ -7937,6 +8226,7 @@ function MailboxPage({
   onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
   onComposeAttachmentRemove: (index: number) => void;
   onComposeAttachmentsChange: (files: File[]) => void;
+  onComposeBodyChange: (bodyText: string, bodyHtml: string) => void;
   onBoxChange: (box: MailboxType) => void;
   onComposeCustomerChange: (customerId: string) => void;
   onComposeFormChange: (field: MailComposeTextField, value: string) => void;
@@ -8007,6 +8297,7 @@ function MailboxPage({
         submitLabel="메일 발송"
         onAttachmentRemove={onComposeAttachmentRemove}
         onAttachmentsChange={onComposeAttachmentsChange}
+        onBodyChange={onComposeBodyChange}
         onChange={onComposeFormChange}
         onCustomerChange={onComposeCustomerChange}
         onInternalCcChange={onComposeInternalCcChange}
@@ -8114,6 +8405,7 @@ function MailboxThreadPage({
   onAction,
   onReplyAttachmentRemove,
   onReplyAttachmentsChange,
+  onReplyBodyChange,
   onReplyFormChange,
   onReplyInternalCcChange,
   onReplyOpenChange,
@@ -8130,6 +8422,7 @@ function MailboxThreadPage({
   onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
   onReplyAttachmentRemove: (index: number) => void;
   onReplyAttachmentsChange: (files: File[]) => void;
+  onReplyBodyChange: (bodyText: string, bodyHtml: string) => void;
   onReplyFormChange: (field: MailComposeTextField, value: string) => void;
   onReplyInternalCcChange: (checked: boolean) => void;
   onReplyOpenChange: (open: boolean) => void;
@@ -8209,6 +8502,7 @@ function MailboxThreadPage({
             submitLabel="답장 발송"
             onAttachmentRemove={onReplyAttachmentRemove}
             onAttachmentsChange={onReplyAttachmentsChange}
+            onBodyChange={onReplyBodyChange}
             onChange={onReplyFormChange}
             onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
             onInternalCcChange={onReplyInternalCcChange}
@@ -11698,6 +11992,14 @@ export function App() {
     }));
     setMailComposeError('');
   };
+  const handleMailComposeBodyChange = (bodyText: string, bodyHtml: string) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      bodyHtml,
+      bodyText,
+    }));
+    setMailComposeError('');
+  };
   const handleMailComposeInternalCcChange = (checked: boolean) => {
     setMailComposeForm((previous) => ({
       ...previous,
@@ -11739,6 +12041,7 @@ export function App() {
     bccEmails: form.bccEmails.trim() || undefined,
     subject: form.subject.trim(),
     bodyText: form.bodyText.trim(),
+    bodyHtml: form.bodyHtml.trim() || undefined,
     followupId: form.followupId ? Number(form.followupId) : undefined,
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
@@ -11751,7 +12054,7 @@ export function App() {
       return;
     }
     const payload = makeMailboxPayload(mailComposeForm);
-    if (!payload.toEmail || !payload.subject || !payload.bodyText) {
+    if (!payload.toEmail || !payload.subject || (!payload.bodyText && !mailHtmlHasMeaningfulContent(payload.bodyHtml || ''))) {
       setMailComposeError('받는 사람, 제목, 본문을 입력하세요.');
       return;
     }
@@ -11852,6 +12155,14 @@ export function App() {
     }));
     setMailReplyError('');
   };
+  const handleMailReplyBodyChange = (bodyText: string, bodyHtml: string) => {
+    setMailReplyForm((previous) => ({
+      ...previous,
+      bodyHtml,
+      bodyText,
+    }));
+    setMailReplyError('');
+  };
   const handleMailReplyInternalCcChange = (checked: boolean) => {
     setMailReplyForm((previous) => ({
       ...previous,
@@ -11882,7 +12193,7 @@ export function App() {
       return;
     }
     const payload = makeMailboxPayload(mailReplyForm);
-    if (!payload.toEmail || !payload.subject || !payload.bodyText) {
+    if (!payload.toEmail || !payload.subject || (!payload.bodyText && !mailHtmlHasMeaningfulContent(payload.bodyHtml || ''))) {
       setMailReplyError('받는 사람, 제목, 본문을 입력하세요.');
       return;
     }
@@ -12088,6 +12399,7 @@ export function App() {
             onAction={handleMailboxAction}
             onReplyAttachmentRemove={handleMailReplyAttachmentRemove}
             onReplyAttachmentsChange={handleMailReplyAttachmentsChange}
+            onReplyBodyChange={handleMailReplyBodyChange}
             onReplyFormChange={handleMailReplyFormChange}
             onReplyInternalCcChange={handleMailReplyInternalCcChange}
             onReplyOpenChange={handleMailReplyOpenChange}
@@ -12116,6 +12428,7 @@ export function App() {
           onBoxChange={handleMailboxBoxChange}
           onComposeAttachmentRemove={handleMailComposeAttachmentRemove}
           onComposeAttachmentsChange={handleMailComposeAttachmentsChange}
+          onComposeBodyChange={handleMailComposeBodyChange}
           onComposeCustomerChange={handleMailComposeCustomerChange}
           onComposeFormChange={handleMailComposeFormChange}
           onComposeInternalCcChange={handleMailComposeInternalCcChange}

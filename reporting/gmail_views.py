@@ -37,6 +37,98 @@ def _plain_email_body_to_html(value):
     return f'<div style="font-family: Arial, sans-serif; line-height: 1.45; margin: 0;">{html_body}</div>'
 
 
+def _sanitize_outgoing_email_html(value):
+    """Allow CRM email formatting while stripping scripts and unsafe attributes."""
+    raw_html = (value or '').strip()
+    if not raw_html:
+        return ''
+
+    import html
+    import re
+    import bleach
+
+    allowed_style_properties = {
+        'background-color',
+        'border',
+        'border-collapse',
+        'color',
+        'font-family',
+        'font-size',
+        'font-style',
+        'font-weight',
+        'height',
+        'line-height',
+        'margin',
+        'margin-bottom',
+        'margin-left',
+        'margin-right',
+        'margin-top',
+        'max-width',
+        'padding',
+        'padding-bottom',
+        'padding-left',
+        'padding-right',
+        'padding-top',
+        'text-align',
+        'text-decoration',
+        'vertical-align',
+        'width',
+    }
+
+    def sanitize_inline_style(style_value):
+        declarations = []
+        for chunk in html.unescape(style_value or '').split(';'):
+            if ':' not in chunk:
+                continue
+            prop, css_value = chunk.split(':', 1)
+            prop = prop.strip().lower()
+            css_value = ' '.join(css_value.strip().split())
+            if prop not in allowed_style_properties or not css_value:
+                continue
+            lowered = css_value.lower()
+            if any(unsafe in lowered for unsafe in ['expression', 'javascript:', 'url(', '<', '>']):
+                continue
+            declarations.append(f'{prop}: {css_value}')
+        return '; '.join(declarations)
+
+    raw_html = re.sub(r'(?is)<(script|style)\b[^>]*>.*?</\1>', '', raw_html)
+
+    def stash_style(match):
+        safe_style = sanitize_inline_style(match.group(2))
+        if not safe_style:
+            return ''
+        return f' data-safe-style="{html.escape(safe_style, quote=True)}"'
+
+    raw_html = re.sub(r'\sstyle=(["\'])(.*?)\1', stash_style, raw_html, flags=re.IGNORECASE | re.DOTALL)
+
+    allowed_tags = [
+        'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'font', 'h1', 'h2', 'h3',
+        'h4', 'hr', 'i', 'img', 'li', 'ol', 'p', 'pre', 's', 'span', 'strike',
+        'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'u', 'ul',
+    ]
+    allowed_attributes = {
+        '*': ['data-safe-style', 'title'],
+        'a': ['href', 'rel', 'target', 'title'],
+        'font': ['color', 'face', 'size'],
+        'img': ['alt', 'height', 'src', 'title', 'width', 'data-safe-style'],
+        'td': ['colspan', 'rowspan', 'data-safe-style'],
+        'th': ['colspan', 'rowspan', 'data-safe-style'],
+    }
+    cleaned = bleach.clean(
+        raw_html,
+        tags=allowed_tags,
+        attributes=allowed_attributes,
+        protocols=['http', 'https', 'mailto', 'tel'],
+        strip=True,
+    )
+    cleaned = re.sub(
+        r'\sdata-safe-style="([^"]*)"',
+        lambda match: f' style="{match.group(1)}"',
+        cleaned,
+    )
+    return cleaned.strip()
+
+
 def _uploaded_email_attachments(request):
     attachments = []
     for uploaded_file in request.FILES.getlist('attachments'):
@@ -733,7 +825,10 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None, aut
         bcc_emails = request.POST.get('bcc_emails', '')
         subject = request.POST.get('subject', '')
         body_text = _normalize_email_body_text(request.POST.get('body_text', ''))
-        body_html = request.POST.get('body_html', '')
+        body_html = _sanitize_outgoing_email_html(request.POST.get('body_html', ''))
+        if not body_text and body_html:
+            from django.utils.html import strip_tags
+            body_text = _normalize_email_body_text(strip_tags(body_html))
         business_card_id = request.POST.get('business_card_id', '')
         
         logger.info(f"Form data: to_email={to_email}, subject={subject}, body_text_len={len(body_text)}, body_html_len={len(body_html)}")

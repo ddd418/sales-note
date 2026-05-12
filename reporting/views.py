@@ -6760,6 +6760,7 @@ def ai_workspace_summary_api(request):
         if requested_department_id
         else None
     )
+    detail_department = selected_department if requested_department_id and selected_department else None
 
     painpoint_counts = {
         item['analysis_id']: item['count']
@@ -6799,12 +6800,17 @@ def ai_workspace_summary_api(request):
         })
 
     painpoint_payload = []
-    painpoint_cards = list(PainPointCard.objects.filter(
+    painpoint_cards_qs = PainPointCard.objects.filter(
         analysis__user=request.user,
         verification_status='unverified',
-    ).select_related('analysis', 'analysis__department', 'analysis__department__company').order_by(
-        '-confidence_score', '-created_at'
-    )[:8])
+    )
+    if detail_department:
+        painpoint_cards_qs = painpoint_cards_qs.filter(analysis__department=detail_department)
+    painpoint_cards = list(
+        painpoint_cards_qs.select_related('analysis', 'analysis__department', 'analysis__department__company').order_by(
+            '-confidence_score', '-created_at'
+        )[:8]
+    )
     for card in painpoint_cards:
         department = card.analysis.department
         painpoint_payload.append({
@@ -6821,14 +6827,22 @@ def ai_workspace_summary_api(request):
             'href': reverse('ai_chat:department_analysis', args=[department.id]),
         })
 
-    followup_analyses = list(AIFollowUpAnalysis.objects.filter(
+    followup_analyses_qs = AIFollowUpAnalysis.objects.filter(
         user=request.user,
-    ).select_related('followup', 'followup__company', 'followup__department').order_by('-updated_at')[:8])
+    )
+    if detail_department:
+        followup_analyses_qs = followup_analyses_qs.filter(followup__department=detail_department)
+    followup_analyses = list(
+        followup_analyses_qs.select_related('followup', 'followup__company', 'followup__department').order_by('-updated_at')[:8]
+    )
     followup_analysis_map = {analysis.followup_id: analysis for analysis in followup_analyses}
     followup_targets = []
-    for followup in FollowUp.objects.filter(
+    followup_targets_qs = FollowUp.objects.filter(
         user=request.user,
-    ).select_related('company', 'department').order_by('-ai_score', '-updated_at')[:10]:
+    )
+    if detail_department:
+        followup_targets_qs = followup_targets_qs.filter(department=detail_department)
+    for followup in followup_targets_qs.select_related('company', 'department').order_by('-ai_score', '-updated_at')[:10]:
         analysis = followup_analysis_map.get(followup.id)
         followup_targets.append({
             'id': followup.id,
@@ -6939,9 +6953,12 @@ def ai_workspace_summary_api(request):
             'prompt': prompt,
             'href': reverse('ai_chat:department_analysis', args=[department.id]),
         })
-    for followup in list(FollowUp.objects.filter(
+    prompt_followups_qs = FollowUp.objects.filter(
         user=request.user,
-    ).select_related('company', 'department').order_by('-ai_score', '-updated_at')[:3]):
+    )
+    if detail_department:
+        prompt_followups_qs = prompt_followups_qs.filter(department=detail_department)
+    for followup in list(prompt_followups_qs.select_related('company', 'department').order_by('-ai_score', '-updated_at')[:3]):
         analysis = followup_analysis_map.get(followup.id)
         context, prompt = _ai_workspace_followup_prompt(followup, analysis, request.user)
         prompt_targets.append({
@@ -6959,7 +6976,10 @@ def ai_workspace_summary_api(request):
             'prompt': prompt,
             'href': reverse('ai_chat:followup_analysis', args=[followup.id]),
         })
-    for department in departments[:3]:
+    prompt_departments = [detail_department] if detail_department else departments[:3]
+    for department in prompt_departments:
+        if department is None:
+            continue
         analysis = analysis_map.get(department.id)
         customer_names = customer_names_by_department.get(department.id, [])
         context, prompt = _ai_workspace_department_prompt(
