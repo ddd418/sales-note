@@ -14057,3 +14057,90 @@ Downloaded JS/CSS bundle
 ### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 React 통합 프론트의 다음 고가치 영역인 견적/문서 생성 workflow 또는 일정 캘린더 고급 조작 parity를 진행합니다.
+
+---
+
+## React Product Delete Reference Replacement — 제품 삭제 차단 품목 개별 대체 처리 (2026-05-12)
+
+### 1. Summary
+
+React 제품관리 `/products/`에서 사용 중인 제품 삭제가 차단될 때, 제품 전체를 한 번에 대체하지 않고 연결된 `DeliveryItem`/`QuoteItem` 참조를 품목별로 확인한 뒤 한 건씩 대체 제품으로 옮기도록 변경했습니다. 마지막 참조가 이동되면 원제품을 삭제합니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 현재 작업 계획과 검증 상태 기록 |
+| `reporting/views.py` | 삭제 차단 참조 payload, 개별 참조 대체 API, 마지막 참조 삭제 처리 추가 |
+| `reporting/urls.py` | `/reporting/api/products/replace-reference/` URL 추가 |
+| `reporting/tests.py` | 제품관리 삭제/대체 회귀 테스트 보강 |
+| `frontend/src/api.ts` | 품목 참조/개별 대체 API 타입과 클라이언트 함수 추가 |
+| `frontend/src/App.tsx` | 차단 제품 대체 UI를 품목별 선택/처리 UI로 변경 |
+| `frontend/src/styles.css` | 품목별 대체 패널 레이아웃/모바일 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 삭제 차단된 제품의 실제 사용처를 품목 단위로 볼 수 있습니다.
+- 같은 원제품이라도 견적/납품 품목마다 서로 다른 대체 제품을 선택할 수 있습니다.
+- 참조 1건 이동 후 남은 참조 목록을 다시 받아 이어서 처리합니다.
+- 일정 연결 납품 품목은 기존 납품 히스토리 요약을 동기화하고, 히스토리 직접 연결 품목도 `delivery_items`/`delivery_amount`를 갱신합니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/products/` Django 제품관리 화면은 유지했습니다.
+- 기존 제품 등록/수정, 엑셀 다운로드, 제품 선택 API는 유지했습니다.
+- 사용 중이지 않은 제품은 기존처럼 일괄 삭제됩니다.
+- 사용 중인 제품은 삭제 전 참조 대체를 요구하므로 견적/납품 데이터 무결성을 보존합니다.
+- 신규 DB 필드와 migration은 없습니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-D2QtHNzR.js / dist/assets/index-DVJixUlj.css generated
+→ Vite chunk size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Known Limitations
+
+- 운영에서 실제 대량 제품 삭제/품목별 대체는 로그인 세션과 실제 운영 데이터가 필요해 사용자 수동검수가 필요합니다.
+- 참조 목록은 차단 응답당 최대 200건까지 내려주며, 초과 시 표시된 항목부터 대체한 뒤 다시 확인해야 합니다.
+
+### 7. Production Deployment Status
+
+- 로컬 구현/검증 완료.
+- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+
+### 8. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/products/`
+2. 로그인 후 제품관리 화면이 열리는지 확인합니다.
+3. 견적/납품에 이미 사용된 제품 품번을 `품번 일괄 삭제`에 입력하고 `삭제 실행`을 누릅니다.
+4. 삭제 차단 패널에 품목별 사용처, 일정/영업노트/견적 번호, 고객/업체/부서, 수량이 표시되는지 확인합니다.
+5. 각 품목 행에서 원제품이 아닌 대체 제품을 선택하고 `이 품목 대체`를 누릅니다.
+6. 한 건 대체 후 남은 참조 목록이 갱신되는지 확인합니다.
+7. 마지막 참조 대체 후 원제품이 제품 목록에서 삭제되는지 확인합니다.
+8. 대체된 일정 상세 또는 영업노트 상세에서 품목명/단위/납품 금액 요약이 깨지지 않는지 확인합니다.
+9. 기존 Django fallback `https://sales-note-frontend-production.up.railway.app/reporting/products/`도 계속 접근 가능한지 확인합니다.
+
+### 9. Recommended Next Task
+
+- 운영 수동검수 완료 후 React 제품관리 대량 작업의 다음 보강으로 삭제 차단 참조 검색/필터 또는 대체 처리 진행률 표시를 진행합니다.

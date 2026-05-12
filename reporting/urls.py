@@ -228,6 +228,7 @@ urlpatterns = [
     path('api/products/<int:product_id>/save/', views.product_save_api, name='product_update_api'),
     path('api/products/bulk-upsert/', views.products_bulk_upsert_api, name='products_bulk_upsert_api'),
     path('api/products/bulk-delete/', views.products_bulk_delete_api, name='products_bulk_delete_api'),
+    path('api/products/replace-reference/', views.product_replace_reference_api, name='product_replace_reference_api'),
     path('api/products/export.xlsx', views.products_excel_export_api, name='products_excel_export_api'),
     
     # 개인 일정 URL들

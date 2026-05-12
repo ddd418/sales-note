@@ -1285,16 +1285,46 @@ h2 {
   gap: 8px;
 }
 
-.product-delete-replacement-list label {
+.product-delete-reference-group {
   display: grid;
-  gap: 5px;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
-.product-delete-replacement-list label > span {
+.product-delete-reference-heading {
   display: grid;
   gap: 2px;
+}
+
+.product-delete-reference-heading strong {
   color: var(--text);
   font-weight: 800;
+}
+
+.product-delete-reference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.8fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.product-delete-reference-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.product-delete-reference-row strong {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .product-delete-replacement-list small {
@@ -1312,6 +1342,12 @@ h2 {
   background: #ffffff;
   color: var(--text);
   font: inherit;
+}
+
+@media (max-width: 920px) {
+  .product-delete-reference-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .prepayment-form-grid {

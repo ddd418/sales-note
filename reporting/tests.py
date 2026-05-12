@@ -6583,10 +6583,13 @@ class ProductManagementReactApiTests(TestCase):
         blocked = next(item for item in payload['results'] if item['productCode'] == used.product_code)
         self.assertTrue(blocked['canReplace'])
         self.assertEqual(blocked['deliveryItemCount'], 1)
+        self.assertEqual(blocked['referenceCount'], 1)
+        self.assertEqual(blocked['references'][0]['referenceType'], 'deliveryItem')
+        self.assertEqual(blocked['references'][0]['itemName'], used.product_code)
         self.assertFalse(Product.objects.filter(product_code=unused.product_code).exists())
         self.assertTrue(Product.objects.filter(product_code=used.product_code).exists())
 
-    def test_product_bulk_delete_can_replace_used_items_before_delete(self):
+    def test_product_delete_replaces_used_items_one_reference_at_a_time(self):
         import datetime
         import json
         from django.utils import timezone
@@ -6643,29 +6646,138 @@ class ProductManagementReactApiTests(TestCase):
             unit_price=2000,
         )
 
-        response = self.client.post(
+        blocked_response = self.client.post(
             reverse('reporting:products_bulk_delete_api'),
             data=json.dumps({
                 'productCodes': [old.product_code],
-                'replacements': {
-                    old.product_code: replacement.id,
-                },
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(blocked_response.status_code, 200)
+        blocked_payload = blocked_response.json()
+        self.assertEqual(blocked_payload['deletedCount'], 0)
+        self.assertEqual(blocked_payload['blockedCount'], 1)
+        blocked = blocked_payload['results'][0]
+        self.assertEqual(blocked['referenceCount'], 2)
+        reference_ids = {(item['referenceType'], item['referenceId']) for item in blocked['references']}
+        self.assertEqual(reference_ids, {('deliveryItem', delivery_item.id), ('quoteItem', quote_item.id)})
+
+        response = self.client.post(
+            reverse('reporting:product_replace_reference_api'),
+            data=json.dumps({
+                'productCode': old.product_code,
+                'referenceType': 'deliveryItem',
+                'referenceId': delivery_item.id,
+                'replacementProductId': replacement.id,
             }),
             content_type='application/json',
         )
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['deletedCount'], 1)
-        self.assertEqual(payload['blockedCount'], 0)
-        self.assertEqual(payload['replacedCount'], 2)
-        self.assertFalse(Product.objects.filter(product_code=old.product_code).exists())
+        self.assertTrue(payload['success'])
+        self.assertFalse(payload['deletedOriginal'])
+        self.assertEqual(payload['replacementProductCode'], replacement.product_code)
+        self.assertEqual(payload['result']['status'], 'blocked')
+        self.assertEqual(payload['result']['referenceCount'], 1)
         delivery_item.refresh_from_db()
-        quote_item.refresh_from_db()
         self.assertEqual(delivery_item.product, replacement)
         self.assertEqual(delivery_item.item_name, replacement.product_code)
         self.assertEqual(delivery_item.unit, 'SET')
+
+        response = self.client.post(
+            reverse('reporting:product_replace_reference_api'),
+            data=json.dumps({
+                'productCode': old.product_code,
+                'referenceType': 'quoteItem',
+                'referenceId': quote_item.id,
+                'replacementProductId': replacement.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['deletedOriginal'])
+        self.assertEqual(payload['result']['status'], 'deleted')
+        self.assertFalse(Product.objects.filter(product_code=old.product_code).exists())
+        quote_item.refresh_from_db()
         self.assertEqual(quote_item.product, replacement)
+
+    def test_product_replace_history_delivery_item_updates_history_summary(self):
+        import json
+        from reporting.models import Company, DeliveryItem, Department, FollowUp, History, Product
+
+        old = Product.objects.create(
+            product_code='DELETE-HISTORY-OLD',
+            unit='EA',
+            standard_price=2000,
+            created_by=self.salesman,
+        )
+        replacement = Product.objects.create(
+            product_code='DELETE-HISTORY-NEW',
+            unit='BOX',
+            standard_price=3000,
+            created_by=self.salesman,
+        )
+        company = Company.objects.create(name='히스토리대체 고객사', created_by=self.salesman)
+        department = Department.objects.create(company=company, name='히스토리대체 부서', created_by=self.salesman)
+        followup = FollowUp.objects.create(
+            user=self.salesman,
+            user_company=self.company,
+            customer_name='히스토리대체 담당자',
+            company=company,
+            department=department,
+        )
+        history = History.objects.create(
+            user=self.salesman,
+            company=self.company,
+            followup=followup,
+            action_type='delivery_schedule',
+            content='납품 기록',
+        )
+        delivery_item = DeliveryItem.objects.create(
+            history=history,
+            product=old,
+            item_name=old.product_code,
+            quantity=3,
+            unit_price=2000,
+        )
+
+        blocked_response = self.client.post(
+            reverse('reporting:products_bulk_delete_api'),
+            data=json.dumps({'productCodes': [old.product_code]}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(blocked_response.status_code, 200)
+        blocked = blocked_response.json()['results'][0]
+        self.assertEqual(blocked['references'][0]['historyId'], history.id)
+
+        response = self.client.post(
+            reverse('reporting:product_replace_reference_api'),
+            data=json.dumps({
+                'productCode': old.product_code,
+                'referenceType': 'deliveryItem',
+                'referenceId': delivery_item.id,
+                'replacementProductId': replacement.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['deletedOriginal'])
+        self.assertFalse(Product.objects.filter(product_code=old.product_code).exists())
+        delivery_item.refresh_from_db()
+        history.refresh_from_db()
+        self.assertEqual(delivery_item.product, replacement)
+        self.assertEqual(delivery_item.item_name, replacement.product_code)
+        self.assertEqual(delivery_item.unit, 'BOX')
+        self.assertIn(replacement.product_code, history.delivery_items)
+        self.assertEqual(int(history.delivery_amount), 6600)
 
     def test_products_excel_export_returns_xlsx(self):
         from reporting.models import Product

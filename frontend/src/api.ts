@@ -1209,6 +1209,27 @@ export type ProductSaveResult = {
   message: string;
 };
 
+export type ProductDeleteReference = {
+  referenceType: 'deliveryItem' | 'quoteItem' | string;
+  referenceId: number;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  quoteGroup?: string;
+  quoteGroupLabel?: string;
+  scheduleId?: number | null;
+  historyId?: number | null;
+  scheduleType?: string;
+  scheduleTypeLabel?: string;
+  scheduleDate?: string;
+  quoteId?: number | null;
+  quoteNumber?: string;
+  customerName?: string;
+  companyName?: string;
+  departmentName?: string;
+};
+
 export type ProductBulkResultRow = {
   row?: number;
   productCode: string;
@@ -1217,10 +1238,25 @@ export type ProductBulkResultRow = {
   canReplace?: boolean;
   deliveryItemCount?: number;
   quoteItemCount?: number;
+  referenceCount?: number;
+  references?: ProductDeleteReference[];
+  hasMoreReferences?: boolean;
   replacementProductId?: number;
   replacementProductCode?: string;
   replacedCount?: number;
   message?: string;
+  error?: string;
+};
+
+export type ProductReplaceReferenceResult = {
+  success: boolean;
+  productCode: string;
+  deletedOriginal: boolean;
+  replacementProductId: number;
+  replacementProductCode: string;
+  replacedReference?: ProductDeleteReference;
+  result: ProductBulkResultRow;
+  message: string;
   error?: string;
 };
 
@@ -4622,14 +4658,26 @@ export async function bulkUpsertProducts(products: ProductMutationPayload[]): Pr
 
 export async function bulkDeleteProducts(
   productCodes: string[],
-  replacements: Record<string, number | string> = {},
 ): Promise<ProductBulkDeleteResult> {
-  const data = await postProductJson<ProductBulkDeleteResult>('/reporting/api/products/bulk-delete/', { productCodes, replacements });
+  const data = await postProductJson<ProductBulkDeleteResult>('/reporting/api/products/bulk-delete/', { productCodes });
   if (data.success === false) {
     throw new Error(data.error || data.message || '제품 삭제에 실패했습니다.');
   }
   if (!data.results) {
     data.results = [];
+  }
+  return data;
+}
+
+export async function replaceProductReference(payload: {
+  productCode: string;
+  referenceType: string;
+  referenceId: number;
+  replacementProductId: number;
+}): Promise<ProductReplaceReferenceResult> {
+  const data = await postProductJson<ProductReplaceReferenceResult>('/reporting/api/products/replace-reference/', payload);
+  if (data.success === false) {
+    throw new Error(data.error || data.message || '품목 대체에 실패했습니다.');
   }
   return data;
 }

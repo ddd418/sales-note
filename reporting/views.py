@@ -17893,6 +17893,123 @@ def _product_delete_usage_counts(product):
     }
 
 
+def _product_delivery_items_summary(items):
+    from decimal import Decimal
+
+    delivery_lines = []
+    total_amount = Decimal('0')
+    for item in items:
+        item_total = item.total_price
+        if item_total is None and item.unit_price is not None:
+            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+        if item_total is not None:
+            total_amount += item_total
+
+        quantity_label = f"{item.quantity}{item.unit or 'EA'}"
+        if item_total is not None:
+            delivery_lines.append(f"{item.item_name}: {quantity_label} ({int(item_total):,}원)")
+        else:
+            delivery_lines.append(f"{item.item_name}: {quantity_label}")
+
+    return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
+
+
+def _product_delete_reference_payloads(product, limit=200):
+    from reporting.models import DeliveryItem, QuoteItem
+
+    references = []
+    delivery_items = (
+        DeliveryItem.objects
+        .select_related(
+            'schedule',
+            'schedule__followup',
+            'schedule__followup__company',
+            'schedule__followup__department',
+            'history',
+            'history__followup',
+            'history__followup__company',
+            'history__followup__department',
+        )
+        .filter(product=product)
+        .order_by('id')[:limit]
+    )
+    for item in delivery_items:
+        schedule = item.schedule
+        history = item.history
+        followup = None
+        if schedule and schedule.followup_id:
+            followup = schedule.followup
+        elif history and history.followup_id:
+            followup = history.followup
+        schedule_date = ''
+        if schedule and schedule.visit_date:
+            schedule_date = schedule.visit_date.strftime('%Y-%m-%d')
+        elif history and history.delivery_date:
+            schedule_date = history.delivery_date.strftime('%Y-%m-%d')
+        elif history and history.meeting_date:
+            schedule_date = history.meeting_date.strftime('%Y-%m-%d')
+        elif history and history.created_at:
+            schedule_date = timezone.localtime(history.created_at).strftime('%Y-%m-%d')
+        schedule_type = schedule.activity_type if schedule else (history.action_type if history else '')
+        schedule_type_label = (
+            schedule.get_activity_type_display()
+            if schedule
+            else (history.get_action_type_display() if history else '납품/견적 품목')
+        )
+        references.append({
+            'referenceType': 'deliveryItem',
+            'referenceId': item.id,
+            'itemName': item.item_name or product.product_code,
+            'quantity': item.quantity,
+            'unit': item.unit or '',
+            'unitPrice': float(item.unit_price or 0),
+            'quoteGroup': item.quote_group or '',
+            'quoteGroupLabel': _quote_group_label(item.quote_group),
+            'scheduleId': schedule.id if schedule else None,
+            'historyId': history.id if history else None,
+            'scheduleType': schedule_type,
+            'scheduleTypeLabel': schedule_type_label,
+            'scheduleDate': schedule_date,
+            'customerName': (followup.customer_name or followup.manager or '') if followup else '',
+            'companyName': followup.company.name if followup and followup.company_id else '',
+            'departmentName': followup.department.name if followup and followup.department_id else '',
+        })
+
+    remaining_limit = max(limit - len(references), 0)
+    if remaining_limit:
+        quote_items = (
+            QuoteItem.objects
+            .select_related('quote', 'quote__followup', 'quote__followup__company', 'quote__followup__department', 'quote__schedule')
+            .filter(product=product)
+            .order_by('id')[:remaining_limit]
+        )
+        for item in quote_items:
+            quote = item.quote
+            followup = quote.followup if quote and quote.followup_id else None
+            schedule = quote.schedule if quote and quote.schedule_id else None
+            references.append({
+                'referenceType': 'quoteItem',
+                'referenceId': item.id,
+                'itemName': product.product_code,
+                'quantity': item.quantity,
+                'unit': product.unit or '',
+                'unitPrice': float(item.unit_price or 0),
+                'quoteGroup': '',
+                'quoteGroupLabel': '',
+                'quoteId': quote.id if quote else None,
+                'quoteNumber': quote.quote_number if quote else '',
+                'scheduleId': schedule.id if schedule else None,
+                'scheduleType': schedule.activity_type if schedule else 'quote',
+                'scheduleTypeLabel': schedule.get_activity_type_display() if schedule else '레거시 견적',
+                'scheduleDate': schedule.visit_date.strftime('%Y-%m-%d') if schedule and schedule.visit_date else '',
+                'customerName': (followup.customer_name or followup.manager or '') if followup else '',
+                'companyName': followup.company.name if followup and followup.company_id else '',
+                'departmentName': followup.department.name if followup and followup.department_id else '',
+            })
+
+    return references
+
+
 def _parse_product_delete_replacements(body):
     raw = body.get('replacements') or body.get('replacementProducts') or body.get('replacement_products') or {}
     replacements = {}
@@ -17932,17 +18049,149 @@ def _parse_product_delete_replacements(body):
 
 def _product_blocked_delete_result(product, message, can_replace=True):
     usage_counts = _product_delete_usage_counts(product)
+    reference_count = usage_counts['deliveryItemCount'] + usage_counts['quoteItemCount']
+    references = _product_delete_reference_payloads(product) if can_replace else []
     return {
         'productCode': product.product_code,
         'status': 'blocked',
         'message': message,
         'canReplace': bool(can_replace),
+        'references': references,
+        'referenceCount': reference_count,
+        'hasMoreReferences': reference_count > len(references),
         **usage_counts,
     }
 
 
+def _resolve_product_replacement(scope, replacement_value):
+    replacement_text = str(replacement_value or '').strip()
+    if not replacement_text:
+        return None
+    try:
+        replacement_id = int(replacement_text)
+    except (TypeError, ValueError):
+        replacement_id = None
+    replacement = scope.filter(id=replacement_id, is_active=True).first() if replacement_id else None
+    if replacement is None:
+        replacement = scope.filter(product_code=replacement_text, is_active=True).first()
+    return replacement
+
+
+def _replace_single_product_reference(request, product, reference_type, reference_id, replacement_product):
+    """제품 참조 1건만 대체 제품으로 이동하고, 남은 참조가 없으면 원제품을 삭제한다."""
+    from reporting.models import DeliveryItem, History, Product, QuoteItem, Schedule
+
+    reference_type = str(reference_type or '').strip()
+    touched_delivery_schedule_id = None
+    touched_history_id = None
+    replaced_reference = None
+
+    with transaction.atomic():
+        locked_product = Product.objects.select_for_update().get(pk=product.pk)
+        if reference_type in ['deliveryItem', 'delivery_item', 'delivery']:
+            item = (
+                DeliveryItem.objects
+                .select_for_update()
+                .select_related('schedule', 'history')
+                .filter(id=reference_id, product=locked_product)
+                .first()
+            )
+            if not item:
+                raise ValueError('대체할 납품/견적 품목을 찾을 수 없습니다.')
+            replaced_reference = {
+                'referenceType': 'deliveryItem',
+                'referenceId': item.id,
+                'itemName': item.item_name,
+            }
+            if item.schedule_id and item.schedule and item.schedule.activity_type == 'delivery':
+                touched_delivery_schedule_id = item.schedule_id
+            if item.history_id:
+                touched_history_id = item.history_id
+            item.product = replacement_product
+            item.item_name = replacement_product.product_code
+            item.unit = replacement_product.unit or item.unit or 'EA'
+            item.save()
+        elif reference_type in ['quoteItem', 'quote_item', 'quote']:
+            item = (
+                QuoteItem.objects
+                .select_for_update()
+                .select_related('quote')
+                .filter(id=reference_id, product=locked_product)
+                .first()
+            )
+            if not item:
+                raise ValueError('대체할 레거시 견적 품목을 찾을 수 없습니다.')
+            replaced_reference = {
+                'referenceType': 'quoteItem',
+                'referenceId': item.id,
+                'itemName': locked_product.product_code,
+            }
+            item.product = replacement_product
+            item.save(update_fields=['product', 'subtotal'])
+        else:
+            raise ValueError('알 수 없는 품목 참조 유형입니다.')
+
+        has_remaining_refs = (
+            DeliveryItem.objects.filter(product=locked_product).exists()
+            or QuoteItem.objects.filter(product=locked_product).exists()
+        )
+        product_code = locked_product.product_code
+        if not has_remaining_refs:
+            locked_product.delete()
+            deleted_original = True
+        else:
+            deleted_original = False
+
+    if touched_delivery_schedule_id:
+        schedule = Schedule.objects.filter(id=touched_delivery_schedule_id).first()
+        if schedule:
+            _schedules_sync_delivery_histories(
+                schedule,
+                request.user,
+                schedule.delivery_items_set.count(),
+            )
+    elif touched_history_id:
+        history = History.objects.filter(id=touched_history_id).first()
+        if history:
+            delivery_text, total_delivery_amount = _product_delivery_items_summary(
+                history.delivery_items_set.all().order_by('id')
+            )
+            history.delivery_items = delivery_text
+            history.delivery_amount = total_delivery_amount if total_delivery_amount > 0 else None
+            history.save(update_fields=['delivery_items', 'delivery_amount'])
+
+    if deleted_original:
+        product_result = {
+            'productCode': product_code,
+            'status': 'deleted',
+            'message': '마지막 품목 대체 후 제품 삭제 완료',
+            'canReplace': False,
+            'deliveryItemCount': 0,
+            'quoteItemCount': 0,
+            'referenceCount': 0,
+            'references': [],
+            'hasMoreReferences': False,
+            'replacedCount': 1,
+        }
+    else:
+        product.refresh_from_db()
+        product_result = _product_blocked_delete_result(product, '품목 1건 대체 완료. 남은 품목을 계속 대체하세요.')
+        product_result['replacedCount'] = 1
+
+    return {
+        'success': True,
+        'productCode': product_code,
+        'deletedOriginal': deleted_original,
+        'replacementProductId': replacement_product.id,
+        'replacementProductCode': replacement_product.product_code,
+        'replacedReference': replaced_reference,
+        'result': product_result,
+        'message': product_result['message'],
+    }
+
+
 def _replace_product_references_and_delete(request, product, replacement_product):
-    """제품 참조를 대체 제품으로 옮긴 뒤 원본 제품 삭제. 참조가 남으면 예외."""
+    """Legacy helper kept for old callers; React uses per-reference replacement."""
     from reporting.models import DeliveryItem, QuoteItem, Schedule
 
     with transaction.atomic():
@@ -18671,7 +18920,6 @@ def products_bulk_delete_api(request):
     if not normalized_codes:
         return JsonResponse({'success': False, 'error': '삭제할 품번이 없습니다.'}, status=400)
 
-    replacements = _parse_product_delete_replacements(body)
     scope = _product_scope_queryset(request, include_inactive=True)
     deleted_count = 0
     blocked_count = 0
@@ -18703,46 +18951,8 @@ def products_bulk_delete_api(request):
             })
             continue
         if product.delivery_items.exists() or product.quoteitems.exists():
-            replacement_value = replacements.get(code)
-            if not replacement_value:
-                blocked_count += 1
-                results.append(_product_blocked_delete_result(product, '견적/납품에 사용된 제품'))
-                continue
-
-            replacement = None
-            try:
-                replacement_id = int(replacement_value)
-            except (TypeError, ValueError):
-                replacement_id = None
-            if replacement_id:
-                replacement = scope.filter(id=replacement_id, is_active=True).first()
-            if replacement is None:
-                replacement = scope.filter(product_code=replacement_value, is_active=True).first()
-
-            if not replacement:
-                blocked_count += 1
-                results.append(_product_blocked_delete_result(product, '대체 제품을 찾을 수 없거나 비활성 상태입니다.'))
-                continue
-            if replacement.id == product.id:
-                blocked_count += 1
-                results.append(_product_blocked_delete_result(product, '삭제할 제품 자신은 대체 제품으로 사용할 수 없습니다.'))
-                continue
-            if replacement.product_code in normalized_codes:
-                blocked_count += 1
-                results.append(_product_blocked_delete_result(product, '같은 삭제 목록에 있는 제품은 대체 제품으로 사용할 수 없습니다.'))
-                continue
-
-            try:
-                result = _replace_product_references_and_delete(request, product, replacement)
-            except Exception as exc:
-                logger.error('제품 참조 대체 후 삭제 실패 (%s -> %s): %s', code, replacement.product_code, exc, exc_info=True)
-                blocked_count += 1
-                results.append(_product_blocked_delete_result(product, f'대체 후 삭제 실패: {exc}'))
-                continue
-
-            deleted_count += 1
-            replaced_count += result.get('replacedCount', 0)
-            results.append(result)
+            blocked_count += 1
+            results.append(_product_blocked_delete_result(product, '견적/납품에 사용된 제품입니다. 아래 품목별로 대체 제품을 선택하세요.'))
             continue
 
         product.delete()
@@ -18766,6 +18976,59 @@ def products_bulk_delete_api(request):
         'results': results[:300],
         'message': f'삭제 {deleted_count}건, 대체 {replaced_count}건, 차단 {blocked_count}건, 없음 {missing_count}건',
     })
+
+
+@login_required
+@require_POST
+def product_replace_reference_api(request):
+    """제품 삭제 차단 참조 1건을 사용자가 선택한 대체 제품으로 이동한다."""
+    try:
+        body = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': '잘못된 JSON 형식입니다.'}, status=400)
+
+    product_code = str(body.get('productCode') or body.get('product_code') or '').strip()
+    reference_type = body.get('referenceType') or body.get('reference_type') or ''
+    reference_id_raw = body.get('referenceId') or body.get('reference_id')
+    replacement_value = (
+        body.get('replacementProductId')
+        or body.get('replacement_product_id')
+        or body.get('replacementProductCode')
+        or body.get('replacement_product_code')
+    )
+    if not product_code:
+        return JsonResponse({'success': False, 'error': '대체할 원제품 품번이 없습니다.'}, status=400)
+    try:
+        reference_id = int(reference_id_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': '대체할 품목을 선택하세요.'}, status=400)
+
+    scope = _product_scope_queryset(request, include_inactive=True)
+    product = scope.filter(product_code=product_code).first()
+    if not product:
+        return JsonResponse({'success': False, 'error': '원제품을 찾을 수 없거나 권한이 없습니다.'}, status=404)
+    if not _product_can_manage(request, product):
+        return JsonResponse({'success': False, 'error': '제품 삭제/대체 권한이 없습니다.'}, status=403)
+
+    replacement = _resolve_product_replacement(scope, replacement_value)
+    if not replacement:
+        return JsonResponse({'success': False, 'error': '대체 제품을 찾을 수 없거나 비활성 상태입니다.'}, status=400)
+    if replacement.id == product.id:
+        return JsonResponse({'success': False, 'error': '삭제할 제품 자신은 대체 제품으로 사용할 수 없습니다.'}, status=400)
+
+    try:
+        result = _replace_single_product_reference(
+            request,
+            product,
+            reference_type,
+            reference_id,
+            replacement,
+        )
+    except Exception as exc:
+        logger.error('제품 참조 1건 대체 실패 (%s -> %s): %s', product_code, replacement.product_code, exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    return JsonResponse(result)
 
 
 @login_required

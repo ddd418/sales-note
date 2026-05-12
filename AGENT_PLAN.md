@@ -1,6 +1,45 @@
 # AGENT_PLAN.md
 
-## Current task — React 납품 견적 불러오기 구분별 선택 보강
+## Current task — 제품 삭제 차단 품목 개별 대체 처리
+
+**목표**: React 제품관리에서 사용 중인 제품 삭제가 차단됐을 때 제품 하나 전체를 한 번에 대체하지 않고, 견적/납품에 사용된 개별 품목을 사용자에게 보여준 뒤 각 품목마다 어떤 제품으로 대체할지 선택해 하나씩 옮기게 한다. 마지막 참조가 옮겨져 데이터 무결성이 확인되면 원제품을 삭제한다.
+
+### 확인된 상태
+
+- 현재 React 제품 삭제는 사용 중인 제품이 차단되면 제품 단위 대체 제품을 하나 선택하고, 서버가 해당 제품의 모든 `DeliveryItem`/`QuoteItem` 참조를 한 번에 이동한다.
+- 참조가 많은 제품은 처리 시간이 길고, 사용자가 품목별로 대체 제품을 다르게 선택할 수 없다.
+- 기존 `products_bulk_delete_api`는 차단 결과에 참조 상세 목록을 내려주지 않는다.
+- DB 모델 변경 없이 차단 payload와 개별 참조 이동 API를 추가하면 된다.
+
+### 구현 계획
+
+- 제품 삭제 차단 결과에 참조 목록을 추가한다.
+  - React 일정 품목(`DeliveryItem`)은 일정 ID, 활동 유형, 고객명, 품목명, 수량, 단위, 견적서 구분을 표시한다.
+  - 레거시 견적 품목(`QuoteItem`)은 견적 ID/번호, 고객명, 품목명, 수량을 표시한다.
+- 제품 단위 전체 대체 삭제 UI를 제거하고, 참조 행별 대체 제품 선택 + `이 품목 대체` 버튼으로 바꾼다.
+- 새 API `/reporting/api/products/replace-reference/`를 추가해 참조 1건만 대체 제품으로 옮긴다.
+- 참조 1건 이동 후 원제품에 참조가 더 남아 있으면 차단 상태를 다시 내려주고, 참조가 없으면 원제품을 삭제한다.
+- 기존 제품 일괄 삭제는 사용 중인 제품을 계속 차단만 하고, 대체 처리는 새 개별 API로만 진행한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/products/`, `/reporting/login/` smoke check
+
+### 현재 상태
+
+- 구현 및 로컬 검증 완료. 커밋/푸시/배포 진행 예정.
+- DB 모델 변경 예정 없음.
+
+---
+
+## Previous task — React 납품 견적 불러오기 구분별 선택 보강
 
 **목표**: React 납품 일정에서 `견적 불러오기`를 사용할 때, 같은 견적 일정 안에 `보상판매`, `수리`처럼 여러 견적서 구분이 있으면 전체 품목을 한 번에 가져오지 않고 사용자가 가져올 견적서를 선택할 수 있게 한다.
 

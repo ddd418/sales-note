@@ -86,6 +86,7 @@ import {
   PrepaymentOption,
   ProductBulkDeleteResult,
   ProductBulkUpsertResult,
+  ProductDeleteReference,
   ProductManagementData,
   ProductManagementItem,
   ProductMutationPayload,
@@ -181,6 +182,7 @@ import {
   uploadScheduleFiles,
   verifyAiPainpoint,
   replyMailboxEmail,
+  replaceProductReference,
   saveProduct,
   saveWeeklyReport,
   saveWeeklyReportManagerComment,
@@ -9999,10 +10001,11 @@ function ProductManagementPage({
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteResult, setDeleteResult] = useState<ProductBulkDeleteResult | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  const [deleteReplacements, setDeleteReplacements] = useState<Record<string, string>>({});
+  const [deleteReferenceReplacements, setDeleteReferenceReplacements] = useState<Record<string, string>>({});
   const [deleteReplacementOptions, setDeleteReplacementOptions] = useState<ProductOption[]>([]);
   const [deleteReplacementLoading, setDeleteReplacementLoading] = useState(false);
   const [deleteReplacementError, setDeleteReplacementError] = useState('');
+  const [replacingReferenceKey, setReplacingReferenceKey] = useState('');
 
   const products = data?.products ?? [];
   const pagination = data?.pagination;
@@ -10148,7 +10151,7 @@ function ProductManagementPage({
     }
     setDeleteSaving(true);
     setDeleteError('');
-    setDeleteReplacements({});
+    setDeleteReferenceReplacements({});
     setDeleteResult(null);
     try {
       const result = await bulkDeleteProducts(deleteCodes);
@@ -10161,49 +10164,78 @@ function ProductManagementPage({
     }
   };
 
-  const handleDeleteReplacementChange = (productCode: string, replacementProductId: string) => {
-    setDeleteReplacements((previous) => ({
+  const productDeleteReferenceKey = (productCode: string, reference: ProductDeleteReference) => (
+    `${productCode}:${reference.referenceType}:${reference.referenceId}`
+  );
+
+  const handleDeleteReferenceReplacementChange = (
+    productCode: string,
+    reference: ProductDeleteReference,
+    replacementProductId: string,
+  ) => {
+    const referenceKey = productDeleteReferenceKey(productCode, reference);
+    setDeleteReferenceReplacements((previous) => ({
       ...previous,
-      [productCode]: replacementProductId,
+      [referenceKey]: replacementProductId,
     }));
     setDeleteError('');
   };
 
-  const handleReplaceBlockedDelete = async () => {
-    if (deleteSaving || !replaceableDeleteRows.length) return;
-    const replacements: Record<string, number> = {};
-    for (const row of replaceableDeleteRows) {
-      const replacementId = Number(deleteReplacements[row.productCode] || 0);
-      if (!replacementId) {
-        setDeleteError(`${row.productCode}의 대체 제품을 선택하세요.`);
-        return;
-      }
-      const replacement = deleteReplacementOptions.find((option) => option.id === replacementId);
-      if (!replacement) {
-        setDeleteError(`${row.productCode}의 대체 제품을 찾을 수 없습니다.`);
-        return;
-      }
-      if (replacement.productCode === row.productCode) {
-        setDeleteError(`${row.productCode} 자신은 대체 제품으로 사용할 수 없습니다.`);
-        return;
-      }
-      replacements[row.productCode] = replacementId;
+  const handleReplaceProductReference = async (productCode: string, reference: ProductDeleteReference) => {
+    if (deleteSaving || replacingReferenceKey) return;
+    const referenceKey = productDeleteReferenceKey(productCode, reference);
+    const replacementId = Number(deleteReferenceReplacements[referenceKey] || 0);
+    if (!replacementId) {
+      setDeleteError(`${productCode}의 ${reference.itemName || '품목'} 대체 제품을 선택하세요.`);
+      return;
+    }
+    const replacement = deleteReplacementOptions.find((option) => option.id === replacementId);
+    if (!replacement) {
+      setDeleteError('대체 제품을 찾을 수 없습니다.');
+      return;
+    }
+    if (replacement.productCode === productCode) {
+      setDeleteError(`${productCode} 자신은 대체 제품으로 사용할 수 없습니다.`);
+      return;
     }
 
-    setDeleteSaving(true);
+    setReplacingReferenceKey(referenceKey);
     setDeleteError('');
     try {
-      const result = await bulkDeleteProducts(
-        replaceableDeleteRows.map((row) => row.productCode),
-        replacements,
-      );
-      setDeleteResult(result);
-      setDeleteReplacements({});
-      await onReload();
+      const result = await replaceProductReference({
+        productCode,
+        referenceType: reference.referenceType,
+        referenceId: reference.referenceId,
+        replacementProductId: replacementId,
+      });
+      setDeleteResult((previous) => {
+        const previousResults = previous?.results ?? [];
+        const hasExistingRow = previousResults.some((row) => row.productCode === result.productCode);
+        const nextResults = hasExistingRow
+          ? previousResults.map((row) => (row.productCode === result.productCode ? result.result : row))
+          : [result.result, ...previousResults];
+        return {
+          success: true,
+          deletedCount: nextResults.filter((row) => row.status === 'deleted').length,
+          blockedCount: nextResults.filter((row) => row.status === 'blocked').length,
+          missingCount: nextResults.filter((row) => row.status === 'missing').length,
+          replacedCount: (previous?.replacedCount ?? 0) + 1,
+          results: nextResults,
+          message: result.message,
+        };
+      });
+      setDeleteReferenceReplacements((previous) => {
+        const next = { ...previous };
+        delete next[referenceKey];
+        return next;
+      });
+      if (result.deletedOriginal) {
+        await onReload();
+      }
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : '대체 후 삭제에 실패했습니다.');
+      setDeleteError(error instanceof Error ? error.message : '품목 대체에 실패했습니다.');
     } finally {
-      setDeleteSaving(false);
+      setReplacingReferenceKey('');
     }
   };
 
@@ -10458,8 +10490,8 @@ function ProductManagementPage({
             {replaceableDeleteRows.length > 0 ? (
               <div className="product-delete-replacement-panel">
                 <div>
-                  <strong>차단 제품 대체 후 삭제</strong>
-                  <span>이미 견적/납품에 사용된 제품은 대체 제품으로 연결을 옮긴 뒤 삭제됩니다.</span>
+                  <strong>차단 품목 개별 대체</strong>
+                  <span>견적/납품에 사용된 품목마다 대체 제품을 선택하고 한 건씩 이동합니다. 마지막 품목이 이동되면 원제품이 삭제됩니다.</span>
                 </div>
                 {deleteReplacementError ? <p className="form-error">{deleteReplacementError}</p> : null}
                 {deleteReplacementLoading ? (
@@ -10472,38 +10504,68 @@ function ProductManagementPage({
                     {replaceableDeleteRows.map((row) => {
                       const replacementOptions = deleteReplacementOptions.filter((option) => (
                         option.productCode !== row.productCode &&
-                        !replaceableDeleteRows.some((blockedRow) => blockedRow.productCode === option.productCode)
+                        !deleteCodes.includes(option.productCode)
                       ));
                       return (
-                        <label key={row.productCode}>
-                          <span>
-                            {row.productCode}
-                            <small>품목 {formatNumber(row.deliveryItemCount ?? 0)}건 · 레거시 견적 {formatNumber(row.quoteItemCount ?? 0)}건</small>
-                          </span>
-                          <select
-                            onChange={(event) => handleDeleteReplacementChange(row.productCode, event.target.value)}
-                            value={deleteReplacements[row.productCode] || ''}
-                          >
-                            <option value="">대체 제품 선택</option>
-                            {replacementOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.productCode} · {option.description || option.specification || option.unit}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <div className="product-delete-reference-group" key={row.productCode}>
+                          <div className="product-delete-reference-heading">
+                            <strong>{row.productCode}</strong>
+                            <span>납품/견적 품목 {formatNumber(row.deliveryItemCount ?? 0)}건 · 레거시 견적 {formatNumber(row.quoteItemCount ?? 0)}건</span>
+                          </div>
+                          {row.hasMoreReferences ? <small>표시된 품목 외 추가 참조가 있습니다. 표시된 항목부터 대체한 뒤 다시 확인하세요.</small> : null}
+                          {(row.references ?? []).length ? (
+                            (row.references ?? []).map((reference) => {
+                              const referenceKey = productDeleteReferenceKey(row.productCode, reference);
+                              const selectedReplacement = deleteReferenceReplacements[referenceKey] || '';
+                              const isReplacing = replacingReferenceKey === referenceKey;
+                              return (
+                                <div className="product-delete-reference-row" key={referenceKey}>
+                                  <div>
+                                    <strong>{reference.itemName || row.productCode}</strong>
+                                    <span>{[
+                                      reference.scheduleTypeLabel || (reference.referenceType === 'quoteItem' ? '레거시 견적' : '품목'),
+                                      reference.scheduleId ? `일정 #${reference.scheduleId}` : '',
+                                      reference.historyId && !reference.scheduleId ? `영업노트 #${reference.historyId}` : '',
+                                      reference.quoteNumber ? `견적 ${reference.quoteNumber}` : '',
+                                      reference.customerName,
+                                      reference.companyName,
+                                      reference.departmentName,
+                                      reference.scheduleDate ? formatDateLabel(reference.scheduleDate) : '',
+                                      reference.quoteGroupLabel,
+                                      `수량 ${formatNumber(reference.quantity)}${reference.unit ? reference.unit : ''}`,
+                                    ].filter(Boolean).join(' · ')}</span>
+                                  </div>
+                                  <select
+                                    disabled={Boolean(replacingReferenceKey)}
+                                    onChange={(event) => handleDeleteReferenceReplacementChange(row.productCode, reference, event.target.value)}
+                                    value={selectedReplacement}
+                                  >
+                                    <option value="">대체 제품 선택</option>
+                                    {replacementOptions.map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.productCode} · {option.description || option.specification || option.unit}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    className="route-secondary-action"
+                                    disabled={deleteSaving || Boolean(replacingReferenceKey) || !selectedReplacement}
+                                    onClick={() => handleReplaceProductReference(row.productCode, reference)}
+                                    type="button"
+                                  >
+                                    {isReplacing ? '처리 중' : '이 품목 대체'}
+                                  </button>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <small>표시할 품목 참조가 없습니다. 다시 삭제 실행으로 상태를 확인하세요.</small>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
                 )}
-                <button
-                  className="route-secondary-action danger"
-                  disabled={deleteSaving || deleteReplacementLoading || Boolean(deleteReplacementError)}
-                  onClick={handleReplaceBlockedDelete}
-                  type="button"
-                >
-                  {deleteSaving ? '처리 중' : '대체 후 삭제'}
-                </button>
               </div>
             ) : null}
             <button className="route-secondary-action danger" disabled={deleteSaving || !deleteCodes.length} onClick={handleBulkDelete} type="button">
