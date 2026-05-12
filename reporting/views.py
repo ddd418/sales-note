@@ -19151,6 +19151,262 @@ def _strip_xlsx_bold_formatting(xlsx_path):
     return changed
 
 
+def _expand_xlsx_item_note_rows(xlsx_path, data_map):
+    """품목 적요/비고 셀이 PDF에서 잘리지 않도록 줄바꿈과 행 높이를 보정한다."""
+    import copy
+    import math
+    import os
+    import re
+    import shutil
+    import unicodedata
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    note_values = {
+        key: str(value or '')
+        for key, value in (data_map or {}).items()
+        if re.fullmatch(r'품목\d+_(적요|비고)', str(key)) and str(value or '').strip()
+    }
+    if not note_values:
+        return False
+
+    spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ET.register_namespace('', spreadsheet_ns)
+
+    def qname(name):
+        return f'{{{spreadsheet_ns}}}{name}'
+
+    note_token_pattern = re.compile(r'\{\{(품목\d+_(?:적요|비고))\}\}')
+    cell_ref_pattern = re.compile(r'^([A-Z]+)(\d+)$')
+
+    def text_content(node):
+        return ''.join(text_node.text or '' for text_node in node.iter(qname('t')))
+
+    def render_note_text(text):
+        matches = note_token_pattern.findall(text or '')
+        if not any(match in note_values for match in matches):
+            return ''
+        return note_token_pattern.sub(lambda match: note_values.get(match.group(1), ''), text or '').strip()
+
+    def split_cell_ref(ref):
+        normalized = str(ref or '').replace('$', '').upper()
+        match = cell_ref_pattern.match(normalized)
+        if not match:
+            return None
+        col_letters, row_text = match.groups()
+        col_idx = 0
+        for char in col_letters:
+            col_idx = col_idx * 26 + (ord(char) - ord('A') + 1)
+        return col_idx, int(row_text)
+
+    def display_width(text):
+        width = 0
+        for char in str(text or ''):
+            width += 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+        return width
+
+    def estimated_row_height(text, width):
+        normalized = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
+        chars_per_line = max(int(width * 1.05), 8)
+        line_count = 0
+        for line in normalized.split('\n') or ['']:
+            line_count += max(1, math.ceil(display_width(line) / chars_per_line))
+        return min(409.0, max(15.0, line_count * 16.5 + 3.0))
+
+    def parse_merge_ref(ref):
+        parts = str(ref or '').split(':')
+        if len(parts) != 2:
+            return None
+        start = split_cell_ref(parts[0])
+        end = split_cell_ref(parts[1])
+        if not start or not end:
+            return None
+        return start[0], start[1], end[0], end[1]
+
+    def sheet_column_widths(root):
+        widths = []
+        cols_node = root.find(qname('cols'))
+        if cols_node is not None:
+            for col in cols_node.findall(qname('col')):
+                try:
+                    widths.append((
+                        int(col.get('min')),
+                        int(col.get('max')),
+                        float(col.get('width') or 8.43),
+                    ))
+                except (TypeError, ValueError):
+                    continue
+        sheet_format = root.find(qname('sheetFormatPr'))
+        try:
+            default_width = float(sheet_format.get('defaultColWidth')) if sheet_format is not None and sheet_format.get('defaultColWidth') else 8.43
+        except ValueError:
+            default_width = 8.43
+
+        def width_for_col(col_idx):
+            for min_col, max_col, width in widths:
+                if min_col <= col_idx <= max_col:
+                    return width
+            return default_width
+
+        return width_for_col
+
+    def sheet_merge_ranges(root):
+        ranges = []
+        merge_cells = root.find(qname('mergeCells'))
+        if merge_cells is not None:
+            for merge_cell in merge_cells.findall(qname('mergeCell')):
+                parsed = parse_merge_ref(merge_cell.get('ref'))
+                if parsed:
+                    ranges.append(parsed)
+        return ranges
+
+    def effective_cell_width(col_idx, row_idx, width_for_col, merge_ranges):
+        for start_col, start_row, end_col, end_row in merge_ranges:
+            if start_col <= col_idx <= end_col and start_row <= row_idx <= end_row:
+                return sum(width_for_col(col) for col in range(start_col, end_col + 1))
+        return width_for_col(col_idx)
+
+    def target_text_for_cell(cell, shared_string_targets):
+        if cell.get('t') == 's':
+            value_node = cell.find(qname('v'))
+            if value_node is not None:
+                return shared_string_targets.get(value_node.text or '')
+        if cell.get('t') == 'inlineStr':
+            return render_note_text(text_content(cell))
+        return ''
+
+    files = {}
+    infos = []
+    with zipfile.ZipFile(xlsx_path, 'r') as zip_in:
+        for item in zip_in.infolist():
+            infos.append(item)
+            files[item.filename] = zip_in.read(item.filename)
+
+    shared_string_targets = {}
+    shared_strings_data = files.get('xl/sharedStrings.xml')
+    if shared_strings_data:
+        try:
+            shared_root = ET.fromstring(shared_strings_data)
+            for index, shared_item in enumerate(shared_root.findall(qname('si'))):
+                rendered = render_note_text(text_content(shared_item))
+                if rendered:
+                    shared_string_targets[str(index)] = rendered
+        except Exception as shared_error:
+            logger.warning(f"[서류생성] 품목 적요 sharedStrings 분석 실패: {shared_error}")
+
+    sheet_targets = {}
+    base_style_ids = set()
+    for filename, data in files.items():
+        if not (filename.startswith('xl/worksheets/sheet') and filename.endswith('.xml')):
+            continue
+        try:
+            root = ET.fromstring(data)
+        except Exception as sheet_error:
+            logger.warning(f"[서류생성] 품목 적요 워크시트 분석 실패({filename}): {sheet_error}")
+            continue
+
+        targets = []
+        for row in root.findall(f'.//{qname("row")}'):
+            for cell in row.findall(qname('c')):
+                rendered_text = target_text_for_cell(cell, shared_string_targets)
+                if not rendered_text:
+                    continue
+                parsed_ref = split_cell_ref(cell.get('r'))
+                if not parsed_ref:
+                    continue
+                try:
+                    style_id = int(cell.get('s') or 0)
+                except ValueError:
+                    style_id = 0
+                base_style_ids.add(style_id)
+                targets.append({
+                    'ref': cell.get('r'),
+                    'row': parsed_ref[1],
+                    'col': parsed_ref[0],
+                    'style': style_id,
+                    'text': rendered_text,
+                })
+        if targets:
+            sheet_targets[filename] = targets
+
+    if not sheet_targets:
+        return False
+
+    style_map = {style_id: style_id for style_id in base_style_ids}
+    styles_data = files.get('xl/styles.xml')
+    if styles_data:
+        try:
+            styles_root = ET.fromstring(styles_data)
+            cell_xfs = styles_root.find(qname('cellXfs'))
+            if cell_xfs is not None:
+                existing_xfs = list(cell_xfs.findall(qname('xf')))
+                for style_id in sorted(base_style_ids):
+                    base_index = style_id if 0 <= style_id < len(existing_xfs) else 0
+                    if not existing_xfs:
+                        continue
+                    wrapped_xf = copy.deepcopy(existing_xfs[base_index])
+                    wrapped_xf.set('applyAlignment', '1')
+                    alignment = wrapped_xf.find(qname('alignment'))
+                    if alignment is None:
+                        alignment = ET.Element(qname('alignment'))
+                        wrapped_xf.append(alignment)
+                    alignment.set('wrapText', '1')
+                    alignment.set('vertical', 'top')
+                    cell_xfs.append(wrapped_xf)
+                    style_map[style_id] = len(cell_xfs.findall(qname('xf'))) - 1
+                cell_xfs.set('count', str(len(cell_xfs.findall(qname('xf')))))
+                files['xl/styles.xml'] = ET.tostring(styles_root, encoding='utf-8', xml_declaration=True)
+        except Exception as style_error:
+            logger.warning(f"[서류생성] 품목 적요 줄바꿈 스타일 생성 실패: {style_error}")
+
+    for filename, targets in sheet_targets.items():
+        try:
+            root = ET.fromstring(files[filename])
+            width_for_col = sheet_column_widths(root)
+            merge_ranges = sheet_merge_ranges(root)
+            targets_by_ref = {target['ref']: target for target in targets}
+            target_heights = {}
+
+            for target in targets:
+                cell_width = effective_cell_width(target['col'], target['row'], width_for_col, merge_ranges)
+                target_heights[target['row']] = max(
+                    target_heights.get(target['row'], 15.0),
+                    estimated_row_height(target['text'], cell_width),
+                )
+
+            for row in root.findall(f'.//{qname("row")}'):
+                try:
+                    row_idx = int(row.get('r') or 0)
+                except ValueError:
+                    row_idx = 0
+                if row_idx in target_heights:
+                    try:
+                        current_height = float(row.get('ht') or 15.0)
+                    except ValueError:
+                        current_height = 15.0
+                    row.set('ht', f"{max(current_height, target_heights[row_idx]):.1f}".rstrip('0').rstrip('.'))
+                    row.set('customHeight', '1')
+
+                for cell in row.findall(qname('c')):
+                    target = targets_by_ref.get(cell.get('r'))
+                    if not target:
+                        continue
+                    cell.set('s', str(style_map.get(target['style'], target['style'])))
+
+            files[filename] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+        except Exception as sheet_error:
+            logger.warning(f"[서류생성] 품목 적요 행 높이 적용 실패({filename}): {sheet_error}")
+
+    temp_output = xlsx_path.replace('.xlsx', '_note_rows.xlsx')
+    with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+        for item in infos:
+            zip_out.writestr(item, files[item.filename])
+
+    os.unlink(xlsx_path)
+    shutil.move(temp_output, xlsx_path)
+    return True
+
+
 @login_required
 def get_document_template_data(request, document_type, schedule_id):
     """
@@ -19793,6 +20049,11 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_부가세액'] = f"{int(_item_tax):,}"
                     data_map[f'품목{idx}_금액'] = f"{int(_item_supply_display):,}"
                     data_map[f'품목{idx}_총액'] = f"{int(_item_total):,}"
+
+                try:
+                    _expand_xlsx_item_note_rows(temp_path, data_map)
+                except Exception as note_layout_error:
+                    logger.warning(f"[서류생성] 품목 적요 행 높이 보정 실패: {note_layout_error}")
                 
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}

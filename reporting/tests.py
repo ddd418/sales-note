@@ -4621,6 +4621,44 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertIn('fitToHeight="0"', sheet_xml)
         self.assertIn('left="0.25"', sheet_xml)
 
+    def test_document_item_note_layout_helper_wraps_and_expands_note_rows(self):
+        import os
+        import tempfile
+        import zipfile
+        from xml.etree import ElementTree as ET
+        from openpyxl import Workbook
+        from reporting.views import _expand_xlsx_item_note_rows
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.column_dimensions['B'].width = 12
+        sheet['B5'] = '{{품목1_적요}}'
+        long_note = (
+            '내부 세척 및 오염 제거 후 정상 볼륨 확인. '
+            '오링 마모가 심해 교체가 필요하며 수리 진행 여부 회신 요청.'
+        )
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(temp_path) and os.unlink(temp_path))
+        workbook.save(temp_path)
+
+        changed = _expand_xlsx_item_note_rows(temp_path, {'품목1_적요': long_note})
+
+        self.assertTrue(changed)
+        with zipfile.ZipFile(temp_path, 'r') as archive:
+            styles_xml = archive.read('xl/styles.xml').decode('utf-8')
+            sheet_root = ET.fromstring(archive.read('xl/worksheets/sheet1.xml'))
+
+        namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        row = sheet_root.find(".//s:row[@r='5']", namespace)
+        cell = sheet_root.find(".//s:c[@r='B5']", namespace)
+        self.assertIsNotNone(row)
+        self.assertIsNotNone(cell)
+        self.assertEqual(row.get('customHeight'), '1')
+        self.assertGreater(float(row.get('ht')), 15.0)
+        self.assertNotEqual(cell.get('s'), '0')
+        self.assertIn('wrapText="1"', styles_xml)
+
     def test_document_bold_strip_helper_removes_bold_styles(self):
         import os
         import tempfile
