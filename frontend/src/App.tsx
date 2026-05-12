@@ -7875,16 +7875,57 @@ function MailRichTextEditor({
     emitChange();
   };
 
-  const insertHtml = (html: string) => {
+  const getEditorSelectionRange = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0) {
+      return null;
+    }
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
+      return null;
+    }
+    return range.cloneRange();
+  };
+
+  const restoreEditorSelection = (range: Range | null) => {
+    if (!range) {
+      focusEditor();
+      return;
+    }
+    const selection = window.getSelection();
+    focusEditor();
+    if (!selection) {
+      return;
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const insertHtml = (html: string, range?: Range | null) => {
     if (disabled) {
       return;
     }
-    focusEditor();
+    if (range !== undefined) {
+      restoreEditorSelection(range);
+    } else {
+      focusEditor();
+    }
     document.execCommand('insertHTML', false, sanitizeMailEditorHtml(html));
     emitChange();
   };
 
   const handleLinkInsert = () => {
+    const range = getEditorSelectionRange();
+    const selectedText = range?.toString().trim() || '';
+    const rawLabel = window.prompt('링크로 표시할 텍스트를 입력하세요.', selectedText);
+    if (rawLabel === null) {
+      return;
+    }
+    const label = rawLabel.trim();
+    if (!label) {
+      return;
+    }
     const rawUrl = window.prompt('링크 URL을 입력하세요.');
     if (rawUrl === null) {
       return;
@@ -7893,12 +7934,7 @@ function MailRichTextEditor({
     if (!url) {
       return;
     }
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) {
-      insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`);
-      return;
-    }
-    applyCommand('createLink', url);
+    insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`, range);
   };
 
   const handleImageFile = async (file: File) => {
