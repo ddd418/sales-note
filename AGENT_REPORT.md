@@ -2,7 +2,7 @@
 
 ## 2026-05-12 — React Product Management Migration
 
-**상태**: 구현/로컬 검증 완료, 커밋·배포 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -56,6 +56,27 @@ cd frontend; node --check server.mjs
 
 local frontend smoke with Playwright CLI
 → `/products/` renders product nav, metrics, table, paste panels, and product create form with mocked product API data.
+
+git commit -m "feat: migrate product management to react" && git push origin main
+→ Commit 126fd3b pushed to origin/main
+
+railway up --service web --environment production --message "Deploy product management react migration 126fd3b" --ci
+→ Deploy complete
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy product management react migration 126fd3b" --ci
+→ Deploy complete
+
+railway deployment list --service web --environment production --limit 5 --json
+→ c36d7e71-7379-45f2-9dca-3d7af93525de SUCCESS
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ 3bb14e78-8f7d-4d58-8e76-125bf65d8418 SUCCESS
+
+Production smoke requests
+→ /products/ 200 with assets/index-Cvm7UZLA.js and assets/index-8S1Oy6zw.css
+→ /reporting/login/ 200
+→ anonymous /reporting/api/products/manage/ 302 to /reporting/login/
+→ anonymous /reporting/products/ 302 to /reporting/login/
 ```
 
 ### 알려진 제한
@@ -65,7 +86,15 @@ local frontend smoke with Playwright CLI
 
 ### 배포 상태
 
-- 커밋/푸시 및 Railway 배포 대기.
+- Runtime commit: `126fd3b feat: migrate product management to react`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `c36d7e71-7379-45f2-9dca-3d7af93525de` SUCCESS
+- Railway `sales-note-frontend`: `3bb14e78-8f7d-4d58-8e76-125bf65d8418` SUCCESS
+- Deploy logs: web migration/gunicorn startup path complete, frontend build/start complete
+
+### 추천 다음 작업
+
+- 제품관리 운영 수동검수가 완료되면, React 납품 생성/수정에서 기존 견적 품목을 끌어와 납품 품목으로 사용할 수 있게 합니다.
 
 ### 수동 서버 테스트 절차
 

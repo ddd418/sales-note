@@ -14,7 +14,13 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Product management React migration is implemented and locally verified. Commit/push and Railway deployment are next.
+Product management React migration is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+
+Runtime commit:
+
+```text
+126fd3b feat: migrate product management to react
+```
 
 Current implementation:
 
@@ -50,7 +56,14 @@ Results:
 
 Deployment:
 
-- Pending commit/push and Railway `web`/`sales-note-frontend` deployment.
+- GitHub push complete: runtime commit `126fd3b` is on `main`.
+- Railway `web`: `c36d7e71-7379-45f2-9dca-3d7af93525de` SUCCESS.
+- Railway `sales-note-frontend`: `3bb14e78-8f7d-4d58-8e76-125bf65d8418` SUCCESS.
+- Production smoke OK:
+  - `/products/` 200 with latest frontend assets `index-Cvm7UZLA.js` / `index-8S1Oy6zw.css`.
+  - `/reporting/login/` 200.
+  - Anonymous `/reporting/api/products/manage/` redirects to login.
+  - Anonymous `/reporting/products/` redirects to login.
 
 Manual production test:
 
@@ -64,7 +77,12 @@ Manual production test:
 
 Manual test result:
 
-- Pending deployment and user confirmation.
+- Pending user confirmation.
+
+Next queued after product management is manually verified:
+
+- React delivery creation/editing should be able to pull existing quote items into delivery items.
+- Do not start this implementation until the product management production manual test is confirmed or the user explicitly asks to proceed.
 
 ## Previous Task
 
@@ -101,7 +119,7 @@ Deployment:
 - Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS, later superseded by docs/runtime automatic deployments.
 - Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS, later superseded by `e5f407b8-d513-4dcc-82ca-736e9964cf7f`.
 
-Next queued after product management is deployed and manually verified:
+Next queued after product management is manually verified:
 
 - Continue queued CRM tasks only after the user confirms product management production testing.
 

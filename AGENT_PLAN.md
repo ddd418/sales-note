@@ -39,9 +39,17 @@
 
 ### 현재 상태
 
-- 구현 완료. React `/products/` 화면, 제품관리 API, Ecount/Excel 붙여넣기 upsert, 붙여넣기 삭제, 전체 XLSX 다운로드, 프로모션 설정 제거를 반영했다.
-- 로컬 검증 진행 중이며, 현재 제품 API/기존 제품 저장/일정 제품 API 회귀 테스트와 Django check/migration dry-run/frontend build/node check, mocked product API 기반 Playwright 화면 smoke는 통과했다.
-- 다음 행동: 커밋/푸시, Railway `web`/`sales-note-frontend` 배포, 운영 `/products/` smoke check를 진행한다.
+- 구현/로컬 검증/커밋/푸시/운영 배포/익명 smoke 완료.
+- Runtime commit: `126fd3b feat: migrate product management to react`
+- Railway `web`: `c36d7e71-7379-45f2-9dca-3d7af93525de` SUCCESS
+- Railway `sales-note-frontend`: `3bb14e78-8f7d-4d58-8e76-125bf65d8418` SUCCESS
+- 운영 smoke OK: `/products/` 200 with latest assets, `/reporting/login/` 200, anonymous `/reporting/api/products/manage/` 302 login redirect, anonymous `/reporting/products/` 302 login redirect.
+- 다음 행동: 사용자가 운영 `/products/`에서 제품관리 수동 검수를 완료한다. 검수 결과 확인 전에는 다음 구현 작업을 시작하지 않는다.
+
+### 다음 대기 작업
+
+- 납품 생성/수정 React 화면에서도 기존 견적 품목을 끌어와 납품 품목으로 사용할 수 있게 한다.
+- 제품관리 운영 검수 완료 후 시작한다.
 
 ---
 
