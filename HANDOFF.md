@@ -58,7 +58,7 @@ Results:
 
 Deployment:
 
-- GitHub push complete: `main` updated to `fcb7eeb`.
+- GitHub push complete: runtime commit `fcb7eeb` is on `main`; deployment report docs were pushed after runtime deploy.
 - Railway `web`: `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS.
 - Railway `sales-note-frontend`: `72567306-b54f-48c3-a5c2-7b501aab7425` SUCCESS.
 - Production `/`, `/pipeline/`, `/ai-workspace/` return 200 and serve `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
