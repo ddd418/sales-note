@@ -1,5 +1,93 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote Notes, Mailbox Attachments, and Document PDF Hotfixes
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+운영 검수 중 확인된 견적서/메일함 문제를 묶어서 수정했습니다. 일정 단위로 통합되어 있던 견적 기타사항을 견적서 구분별로 분리했고, 메일 발송 시 내부 직원 참조 포함 여부를 사용자가 선택하게 했습니다. 견적서/거래명세서 출력의 볼드체를 제거하고, 긴 품목 적요는 PDF에서 잘리지 않도록 셀 줄바꿈과 행 높이를 보정합니다. 받은 메일 본문에 남던 `p{margin-top...}` CSS 조각을 제거하고, 상대가 보낸 Gmail/IMAP 첨부파일을 React 메일함에서 확인/다운로드할 수 있게 했습니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0098_schedule_quote_group_note.py`: 일정+견적서 구분별 기타사항 모델 추가 및 기존 전체 기타사항 이관
+- `reporting/views.py`, `reporting/urls.py`: 구분별 기타사항 API/문서 변수 반영, 서류 볼드 제거, 품목 적요 셀 줄바꿈/행 높이 보정, 다운로드 endpoint 연결
+- `reporting/gmail_utils.py`, `reporting/gmail_views.py`, `reporting/imap_utils.py`, `reporting/imap_views.py`: 받은 메일 본문 정리, 첨부 메타데이터 저장, Gmail/IMAP 첨부 다운로드, 내부 직원 CC 옵션
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 구분별 기타사항 입력/표시, 내부 직원 참조 체크박스, 메일 첨부 표시/다운로드 UI
+- `reporting/tests.py`: 견적 구분별 기타사항, 첨부 다운로드, CSS 본문 정리, 내부 CC 옵션, 볼드 제거, 긴 적요 행 높이 회귀 테스트 추가
+- `AGENT_PLAN.md`: 작업 상태 및 배포 기록 갱신
+
+### CRM 개선
+
+- `/schedules/880/` 같은 일정에서 `보상판매`, `수리` 등 견적서 구분별로 기타사항을 따로 저장하고 각 견적서 PDF 변수에 따로 들어갑니다.
+- 견적서 품목 적요가 길어도 `{{품목N_적요}}`/`{{품목N_비고}}` 셀은 자동 줄바꿈과 행 높이 보정이 적용됩니다.
+- 메일 작성/답장 시 내부 직원 이메일을 CC에 포함할지 체크박스로 선택할 수 있습니다.
+- 받은 메일 상세에서 HTML/CSS 잔여 텍스트가 줄어들고, 받은 첨부파일 다운로드 링크가 표시됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` 라우트, React 일정/메일함, 서류 템플릿 변수 치환, 수동 CC, 수동 첨부파일, 등록 견적서 자동 첨부 흐름은 유지했습니다.
+- 내부 직원 이메일은 체크된 경우에만 서버에서 CC에 병합합니다.
+- 첨부파일 다운로드는 기존 메일 접근 권한 범위 안에서만 허용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\gmail_utils.py reporting\imap_utils.py reporting\imap_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 61 tests, OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 14 tests, OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-DE2wnSQU.js / assets/index-DQPI3AAP.css
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected after migration creation
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 배포 상태
+
+- Runtime commits:
+  - `14606a4 fix: repair quote notes and mailbox attachments`
+  - `97513a5 fix: expand quote item note rows`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS
+- Railway `sales-note-frontend`: `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS
+- Production smoke: `/reporting/login/` 200, frontend `/schedules/880/` 200, frontend `/mailbox/` 200
+- Deploy logs: web migration check OK / gunicorn startup OK, frontend server startup OK
+
+### 알려진 제한
+
+- 운영 로그인 세션 없이 실제 스케줄 880 저장/문서 생성/메일 첨부 다운로드까지 자동 클릭 검증하지는 못했습니다.
+- 과거에 이미 동기화된 Gmail 메일 중 첨부 메타데이터가 비어 있는 건 스레드 상세 열람 시 Gmail detail을 다시 조회해 보강합니다. 그래도 보이지 않으면 메일 동기화를 한 번 실행한 뒤 다시 열어야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/880/`에서 견적 품목 구분별 기타사항을 각각 입력하고 저장 후 새로고침해 분리 유지되는지 확인합니다.
+2. 각 견적 구분의 견적서 PDF를 생성/다운로드해 해당 구분 기타사항만 들어가고, 볼드체가 제거되며, 긴 품목 적요가 잘리지 않고 행이 늘어나는지 확인합니다.
+3. `/mailbox/`에서 `kms@kici.co.kr` 또는 첨부가 있는 받은 메일 스레드를 열어 첨부파일 링크가 보이고 다운로드되는지 확인합니다.
+4. 같은 메일 본문에서 `p{margin-top:0px...}` 같은 CSS 조각이 보이지 않는지 확인합니다.
+5. 메일 작성/답장에서 “내부 직원 참조 포함” 체크박스가 보이고, 체크 여부에 따라 내부 직원 이메일이 CC에 들어가는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote Salesperson Name Order Normalization
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

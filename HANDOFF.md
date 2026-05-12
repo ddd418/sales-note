@@ -14,62 +14,83 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote salesperson name order normalization is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+Quote group notes, mailbox attachment visibility/download, mail internal CC selection, document bold removal, and quote item note row expansion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
-Runtime commit:
+Runtime commits:
 
 ```text
-9b24fcf fix: normalize quote salesperson name order
+14606a4 fix: repair quote notes and mailbox attachments
+97513a5 fix: expand quote item note rows
 ```
 
 Implemented:
 
-- Document template data and PDF generation now use a quote/document-specific salesperson name helper.
-- If a user is correctly stored as `first_name=재현`, `last_name=안`, quote variables render `안재현`.
-- If a legacy user was stored through the old reversed labels as `first_name=안`, `last_name=재현`, quote variables also render `안재현`.
-- The salesperson variables affected are `실무자`, `영업담당자`, and `담당영업`.
-- Admin/manager user create/edit form labels now match Django field semantics: `first_name=이름`, `last_name=성`.
-- Legacy user list/profile name displays were changed to `성+이름` order.
-- No DB model or migration changes.
+- `ScheduleQuoteGroupNote` stores quote extra notes per schedule and quote group.
+- Existing `Schedule.quote_extra_notes` values are copied into the default quote group by migration `0098`.
+- Schedule detail and delivery item update APIs support `quoteGroupNotes`.
+- Document variables `기타사항` and `견적기타사항` use the selected quote group's note.
+- React schedule detail shows one extra-note textarea per quote group and a read-only group-note list.
+- Mail compose/reply supports an "include internal staff CC" option. Internal employee emails are merged into CC only when checked.
+- Received mail body text strips style/script blocks and CSS text artifacts such as `p{margin-top:0px;margin-bottom:0px;}`.
+- Gmail and IMAP received attachment metadata is saved to `EmailLog.attachments_info`.
+- React mailbox thread view shows attachment download links. Gmail messages missing attachment metadata are lazily refreshed when opening the thread.
+- Authenticated mailbox attachment download endpoint serves Gmail attachments, IMAP DB-stored attachments, and generated document attachments.
+- Quotation and transaction statement XLSX/PDF generation removes bold formatting from styles/rich text.
+- Quote item note cells using `{{품목N_적요}}` or `{{품목N_비고}}` get wrap text and expanded row height so long notes are not clipped in PDF.
 
 Validation:
 
 ```text
-python -m py_compile reporting\views.py reporting\tests.py
+python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\gmail_utils.py reporting\imap_utils.py reporting\imap_views.py reporting\tests.py
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
 python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+cd frontend; node --check server.mjs
+cd frontend; npm run build
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
-git commit -m "fix: normalize quote salesperson name order" && git push origin main
-railway deployment list --service web --environment production --limit 2 --json
-railway logs 5d6450fb-896a-4e89-b851-c99b083785bf --service web --environment production --deployment --lines 120
+git commit -m "fix: repair quote notes and mailbox attachments" && git push origin main
+git commit -m "fix: expand quote item note rows" && git push origin main
+railway up --service web --environment production --message "Deploy quote note row expansion 97513a5" --ci
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote notes mailbox frontend 97513a5" --ci
 ```
 
 Results:
 
 - Python compile OK.
-- 12 document template API tests OK.
+- 61 schedule/document/mailbox tests OK.
+- 14 document template tests OK after the quote item note row expansion.
+- React build OK: `assets/index-DE2wnSQU.js` / `assets/index-DQPI3AAP.css`.
+- Node syntax check OK.
 - Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes.
+- No migration changes after migration file creation.
 - `git diff --check` OK with LF→CRLF warnings only.
-- Commit `9b24fcf` pushed to `origin/main`.
-- Railway `web` deployment `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS.
-- Production deploy log: no migrations to apply, gunicorn startup OK.
-- Production smoke OK: backend `/reporting/login/` 200, backend `/reporting/api/documents/` 401, frontend `/documents/` 200, frontend `/schedules/879/` 200.
+- Commits `14606a4` and `97513a5` pushed to `origin/main`.
+- Railway `web` deployment `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS.
+- Railway `sales-note-frontend` deployment `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS.
+- Production deploy logs: web migration check OK / gunicorn startup OK; frontend server startup OK.
+- Production smoke OK: backend `/reporting/login/` 200, frontend `/schedules/880/` 200, frontend `/mailbox/` 200.
 
 Deployment:
 
-- GitHub push complete: runtime commit `9b24fcf` is on `main`.
-- Railway `web`: `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS.
-- Railway `sales-note-frontend`: unchanged; no frontend redeploy needed.
-- Production deploy logs show startup OK and no traceback during smoke checks.
+- GitHub push complete: runtime commit `97513a5` is on `main`.
+- Railway `web`: `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS.
+- Railway `sales-note-frontend`: `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS.
+- Product management React migration WIP remains stashed:
+  - `stash@{0}: On main: wip-product-management-react-migration-tracked`
+  - `stash@{1}: On main: wip-product-management-react-migration`
 
 Manual production test:
 
-1. Confirm the target user profile stores `이름=재현`, `성=안`.
-2. Open a quote schedule in production and register/download the quote PDF again.
-3. Confirm the quote PDF shows `안재현`, not `재현안`, for `실무자`, `영업담당자`, and `담당영업`.
-4. In admin/manager user create/edit screens, confirm the visible labels are `이름` for first name and `성` for last name.
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/880/`.
+2. Save separate quote extra notes for quote groups such as `보상판매` and `수리`; refresh and confirm they remain separated.
+3. Generate/download each quote group PDF and confirm only that group's extra note appears.
+4. In a quotation PDF with a long item note, confirm the `적요` text wraps and the row height expands instead of clipping.
+5. Confirm quotation/transaction statement PDFs no longer keep bold formatting from the template.
+6. Open `/mailbox/`, then open a received thread from `kms@kici.co.kr` or another message with attachments.
+7. Confirm the received mail body does not show `p{margin-top:0px...}` CSS text.
+8. Confirm received attachments are visible and download correctly.
+9. Compose/reply from mailbox or a schedule and confirm the internal staff CC checkbox appears. Unchecked should not add internal CC; checked should add the listed internal staff emails.
 
 Manual test result:
 

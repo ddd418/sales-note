@@ -1,8 +1,8 @@
 # AGENT_PLAN.md
 
-## Current task — 견적 구분별 기타사항, 메일 참조 선택, 서류 볼드 제거, 메일 본문/첨부 표시 핫픽스
+## Current task — 견적 구분별 기타사항, 메일 참조 선택, 서류/PDF/메일함 핫픽스
 
-**목표**: 운영 검수 중 확인된 견적/메일 문제를 우선 해결한다. 같은 일정의 견적서 구분마다 기타사항을 따로 저장/치환하고, 메일 발송 시 내부 직원 참조 포함 여부를 사용자가 선택하게 한다. 견적서/거래명세서 생성 시 템플릿의 볼드체를 제거하고, 받은 메일 상세에서 CSS 잔여 텍스트가 보이지 않게 하며, 상대가 보낸 첨부파일을 React 메일함에서 확인/다운로드할 수 있게 한다.
+**목표**: 운영 검수 중 확인된 견적/메일 문제를 우선 해결한다. 같은 일정의 견적서 구분마다 기타사항을 따로 저장/치환하고, 메일 발송 시 내부 직원 참조 포함 여부를 사용자가 선택하게 한다. 견적서/거래명세서 생성 시 템플릿의 볼드체를 제거하고, 품목 적요가 긴 경우 PDF에서 잘리지 않도록 행 높이를 보정한다. 받은 메일 상세에서는 CSS 잔여 텍스트가 보이지 않게 하며, 상대가 보낸 첨부파일을 React 메일함에서 확인/다운로드할 수 있게 한다.
 
 ### 확인된 상태
 
@@ -12,6 +12,7 @@
 - 받은 메일 본문 표시에서 HTML `<style>` 또는 본문 앞 CSS 조각인 `p{margin-top:0px;margin-bottom:0px;}`가 텍스트로 남을 수 있다.
 - Gmail 동기화는 본문과 기본 헤더만 저장하고 첨부파일 메타데이터/다운로드 식별자를 저장하지 않는다. React 스레드 상세도 `attachments` 목록을 렌더링하지 않는다.
 - 견적서/거래명세서 PDF 생성은 엑셀 템플릿의 볼드 스타일을 그대로 유지한다.
+- 견적서 품목 `적요`가 길면 PDF 변환 시 셀 높이가 늘어나지 않아 텍스트가 잘릴 수 있다.
 - 구분별 기타사항 저장을 위해 DB migration이 필요하다.
 
 ### 구현 계획
@@ -24,11 +25,13 @@
 - Gmail 메시지 상세 파서가 첨부파일 `attachmentId`, 파일명, MIME, 크기를 수집해 `EmailLog.attachments_info`에 저장하게 하고, 인증된 다운로드 API에서 Gmail attachment API로 원본 파일을 내려준다.
 - React 메일 목록/스레드 상세에서 첨부 개수와 다운로드 링크를 표시한다.
 - 견적서/거래명세서 XLSX 생성 후 PDF 변환 전 스타일 XML과 rich text에서 `<b>` 노드를 제거한다.
+- `{{품목N_적요}}`/`{{품목N_비고}}` 셀에는 줄바꿈 스타일과 계산된 행 높이를 적용해 긴 적요가 PDF에서 잘리지 않게 한다.
 
 ### 검증 계획
 
 - `python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\gmail_utils.py reporting\tests.py`
 - `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `cd frontend; npm run build`
@@ -38,7 +41,10 @@
 
 ### 현재 상태
 
-- 구현 진행 중.
+- 구현/로컬 검증/푸시/운영 배포 완료, 사용자 운영 수동 검수 대기.
+- Runtime commits: `14606a4 fix: repair quote notes and mailbox attachments`, `97513a5 fix: expand quote item note rows`
+- Railway `web`: `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS
+- Railway `sales-note-frontend`: `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS
 - 제품관리 React 전환 WIP는 긴급 핫픽스 처리를 위해 stash에 보관했다.
 
 ---
