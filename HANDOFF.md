@@ -14,76 +14,75 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote PDF registration and schedule mail auto-attachment is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+Quote document grouping, generated document registration, automatic quote mail attachment, and registered document deletion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-95aeec7 feat: auto attach quote pdfs to schedule mail
+0384e13 feat: split schedule quote documents by group
 ```
 
 Implemented:
 
-- `DocumentGenerationLog` now stores generated file, filename, and file size metadata.
-- Quote PDF generation saves successful PDF output as a registered quotation document for that schedule.
-- One schedule can have multiple registered quotation PDFs.
-- React schedule detail exposes registered quotation PDFs and a schedule-aware mail send link.
-- React mailbox send payload can include `schedule_id`.
-- Django schedule mail send and React mailbox schedule send auto-attach only registered quote PDFs for quote schedules.
-- If a quote schedule has no registered quote PDF, send generates/registers one PDF before sending.
-- Delivery schedules and replies do not auto-attach quotation PDFs.
-- New DB migration: `reporting/migrations/0096_documentgenerationlog_file_and_more.py`.
+- `DeliveryItem.quote_group` stores which quote set each item belongs to, such as `보상판매` or `수리`.
+- `DocumentGenerationLog.quote_group` stores which generated quote PDF belongs to which quote set.
+- Quote schedule document actions are now split by quote group, so one schedule can register/download separate PDFs like `보상판매 견적서` and `수리 견적서`.
+- Document preview/generation filters quotation items by `quote_group` and adds template variables `견적구분`, `견적명`, `견적제목`.
+- Schedule mail auto-attachment attaches all registered quote PDFs for that schedule; if none exist, it auto-generates one PDF per quote group before sending.
+- Generated PDF files for quotations, transaction statements, and delivery notes appear in the registered document list.
+- React schedule detail can delete registered generated documents when the schedule owner has edit permission.
+- New DB migration: `reporting/migrations/0097_quote_document_groups.py`.
 
 Validation:
 
 ```text
 python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py
-python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
-python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
-cd frontend; npm run build
-cd frontend; node --check server.mjs
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
 python manage.py check
 python manage.py makemigrations --check --dry-run
+cd frontend; npm run build
+cd frontend; node --check server.mjs
 git diff --check
-git commit -m "feat: auto attach quote pdfs to schedule mail" && git push origin main
-railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote pdf auto attachments 95aeec7" --ci
+git commit -m "feat: split schedule quote documents by group" && git push origin main
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote document groups 0384e13" --ci
 railway deployment list --service web --environment production --limit 2 --json
 railway deployment list --service sales-note-frontend --environment production --limit 2 --json
-railway logs 2d1dd812-3fe5-4c3b-953e-870ca5c88baf --service web --environment production --deployment --lines 120
-railway logs 05a56e6c-3067-4500-8ae0-6383ff40d91f --service sales-note-frontend --environment production --deployment --lines 80
+railway logs b191502b-10bc-4e9b-973f-756bb2c5b3c0 --service web --environment production --deployment --lines 160
+railway logs 3fb901ec-e5ec-49f8-aa2d-5d568f018ede --service sales-note-frontend --environment production --deployment --lines 80
 ```
 
 Results:
 
 - Python compile OK.
-- 20 React mailbox/document tests OK.
-- 28 schedules API tests OK.
-- React build OK: `assets/index-COLHVyxC.js` / `assets/index-Bmtl8HKb.css`.
+- 54 React mailbox/document/schedules API tests OK.
+- React build OK: `assets/index-BG4g7IVe.js` / `assets/index-1JjkoDo3.css`.
 - Node syntax check OK.
 - Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes after migration creation.
+- No migration changes after `0097_quote_document_groups` creation.
 - `git diff --check` OK with LF→CRLF warnings only.
-- Commit `95aeec7` pushed to `origin/main`.
-- Railway `web` deployment `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS.
-- Railway `sales-note-frontend` deployment `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS.
-- `reporting.0096_documentgenerationlog_file_and_more` migration applied OK in production deploy log.
-- Production smoke OK: `/schedules/` 200, `/mailbox/` 200, new JS/CSS assets 200, `/reporting/login/` 200.
-- Protection smoke OK: unauthenticated `/reporting/api/schedules/` 401 and generated document download 302 to login.
+- Commit `0384e13` pushed to `origin/main`.
+- Railway `web` deployment `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS.
+- Railway `sales-note-frontend` deployment `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS.
+- `reporting.0097_quote_document_groups` migration applied OK in production deploy log.
+- Production smoke OK: `/schedules/879/` 200, `/mailbox/` 200, `/documents/` 200, new JS/CSS assets 200, `/reporting/login/` 200.
+- Protection smoke OK: unauthenticated `/reporting/api/schedules/879/` 401 and generated document delete POST 403.
 
 Deployment:
 
-- GitHub push complete: runtime commit `95aeec7` is on `main`.
-- Railway `web`: `2d1dd812-3fe5-4c3b-953e-870ca5c88baf` SUCCESS.
-- Railway `sales-note-frontend`: `05a56e6c-3067-4500-8ae0-6383ff40d91f` SUCCESS.
+- GitHub push complete: runtime commit `0384e13` is on `main`.
+- Railway `web`: `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS.
+- Railway `sales-note-frontend`: `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS.
 - Production deploy logs show migration/startup OK and no traceback during smoke checks.
 
 Manual production test:
 
-1. Open a quote schedule in production.
-2. Click `PDF 등록/다운로드` at least twice and confirm multiple registered quotation PDFs appear.
-3. Click schedule mail send, enter recipient/body, and send.
-4. Confirm the received email contains only the quotation PDF attachments for that schedule.
-5. Send mail from a delivery schedule and confirm quotation PDFs are not auto-attached.
+1. Open `https://sales-note-frontend-production.up.railway.app/schedules/879/` or another quote schedule.
+2. Edit quote items and enter different `견적서 구분` values, for example `보상판매` and `수리`; save and refresh.
+3. Confirm the document panel shows separate actions such as `보상판매 견적서` and `수리 견적서`.
+4. Click each quote group's `PDF 등록/다운로드` and confirm separate registered documents appear under `등록된 서류`.
+5. Click the delete button for one registered document and confirm it disappears after confirmation/refresh.
+6. Send mail from that quote schedule and confirm all remaining registered quote PDFs are attached.
+7. For a delivery schedule, generate a transaction statement PDF and confirm it appears in `등록된 서류` and can be deleted, while quote PDFs are not auto-attached to delivery mail.
 
 Manual test result:
 

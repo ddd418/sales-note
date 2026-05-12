@@ -1,5 +1,110 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote Document Groups And Registered Document Deletion
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+같은 quote 일정에서 `보상판매`, `수리`처럼 견적서 구분별 품목 묶음을 만들고, 각 구분의 품목만 담긴 견적서 PDF를 별도로 등록/다운로드할 수 있게 했습니다. 등록된 견적서 PDF는 일정 메일 발송 시 모두 자동 첨부되며, 등록된 생성 서류는 견적서/거래명세서/납품서 모두 일정 상세에서 삭제할 수 있습니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0097_quote_document_groups.py`: 품목/생성 로그에 견적서 구분 필드 추가
+- `reporting/views.py`, `reporting/urls.py`: 구분별 견적서 미리보기/생성, 등록 서류 목록, 등록 서류 삭제 API, PDF 파일 저장 범위 확장
+- `reporting/gmail_views.py`: quote 일정 메일 자동 첨부를 견적서 구분별 PDF 생성/첨부로 보정
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 견적서 구분 입력, 구분별 문서 action, 등록 서류 목록/삭제 버튼 추가
+- `reporting/templates/reporting/partials/doc_variable_list.html`, `reporting/templates/reporting/schedule_detail.html`: 서류 변수 도움말에 견적 구분 변수 추가
+- `reporting/tests.py`: 구분별 문서 action, 구분별 서류 데이터, 자동첨부 fallback, 등록 서류 삭제 권한 테스트 추가
+- `AGENT_PLAN.md`, `HANDOFF.md`: 작업 상태/검증/배포 기록 갱신
+
+### CRM 개선
+
+- 한 일정 안에서 서로 다른 견적서 2부 이상을 품목 묶음별로 관리할 수 있습니다.
+- 견적서 PDF를 여러 번 등록하더라도 각 PDF가 해당 견적 구분의 품목만 포함합니다.
+- 등록된 견적서/거래명세서/납품서 PDF를 일정 상세에서 삭제할 수 있습니다.
+- 메일 자동 첨부는 기존 의도대로 quote 일정의 견적서 PDF만 대상으로 유지됩니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` URL, React 일정 상세, 서류 템플릿, Gmail/메일 발송 흐름은 유지했습니다.
+- 거래명세서/납품서는 등록 및 삭제 대상에는 포함하지만 자동 첨부 대상에는 포함하지 않았습니다.
+- 권한은 일정 소유자 편집 권한 기준으로 제한했습니다. 관리자/동료는 등록 서류 삭제가 차단됩니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 54 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected after migration creation
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+cd frontend; npm run build
+→ OK, assets/index-BG4g7IVe.js / assets/index-1JjkoDo3.css
+
+git commit -m "feat: split schedule quote documents by group" && git push origin main
+→ Commit 0384e13 pushed to origin/main
+
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote document groups 0384e13" --ci
+→ Deploy complete
+
+railway deployment list --service web --environment production --limit 2 --json
+→ web deployment b191502b-10bc-4e9b-973f-756bb2c5b3c0 SUCCESS for commit 0384e13
+
+railway deployment list --service sales-note-frontend --environment production --limit 2 --json
+→ sales-note-frontend deployment 3fb901ec-e5ec-49f8-aa2d-5d568f018ede SUCCESS
+
+Production smoke requests
+→ /schedules/879/ 200, /mailbox/ 200, /documents/ 200, new JS/CSS assets 200, /reporting/login/ 200, /reporting/api/schedules/879/ 401, generated document delete unauthenticated POST 403
+
+railway logs for latest web/frontend deployments
+→ reporting.0097_quote_document_groups migration OK, gunicorn/frontend startup OK
+```
+
+### 알려진 제한
+
+- 운영에서 실제 로그인 계정으로 구분별 품목 저장, PDF 등록/다운로드, 삭제 버튼, 메일 자동첨부를 수동 확인해야 합니다.
+- 등록된 견적서가 하나라도 있으면 메일 발송은 등록된 견적서 PDF 전체를 첨부합니다. 등록된 견적서가 없을 때만 구분별 PDF를 발송 직전에 생성합니다.
+- 브라우저 자동화 도구가 세션에 노출되지 않아 로컬 클릭 검증은 생략했고, TypeScript/Vite 빌드와 운영 smoke로 확인했습니다.
+
+### 배포 상태
+
+- Runtime commit: `0384e13 feat: split schedule quote documents by group`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS
+- Railway `sales-note-frontend`: `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS
+- Production JS/CSS: `assets/index-BG4g7IVe.js`, `assets/index-1JjkoDo3.css`
+- Production deploy log: `reporting.0097_quote_document_groups` migration applied OK
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 `https://sales-note-frontend-production.up.railway.app/schedules/879/` 또는 다른 quote 일정 상세로 이동합니다.
+2. 견적 품목 편집에서 `견적서 구분`을 `보상판매`, `수리`처럼 2개 이상 나눠 저장하고 새로고침 후 유지되는지 확인합니다.
+3. 서류 패널에서 구분별 `보상판매 견적서`, `수리 견적서` action이 표시되는지 확인합니다.
+4. 각 구분의 `PDF 등록/다운로드`를 실행하고 `등록된 서류` 목록에 별도 PDF가 표시되는지 확인합니다.
+5. 등록된 서류 삭제 버튼으로 견적서 또는 거래명세서 PDF를 삭제하고 목록에서 사라지는지 확인합니다.
+6. 같은 quote 일정에서 메일을 발송하고 남아 있는 등록 견적서 PDF들이 자동 첨부되는지 확인합니다.
+7. delivery 일정에서 거래명세서 PDF 등록/삭제가 가능하되, 메일 발송 시 견적서 PDF가 자동 첨부되지 않는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote PDF Registration And Schedule Mail Auto Attachment
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

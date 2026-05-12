@@ -34,6 +34,15 @@
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke check
 
+### 완료 상태
+
+- Runtime commit: `0384e13 feat: split schedule quote documents by group`
+- Railway `web`: `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS
+- Railway `sales-note-frontend`: `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS
+- 운영 migration `reporting.0097_quote_document_groups` 적용 OK.
+- 운영 smoke OK: `/schedules/879/`, `/mailbox/`, `/documents/`, 새 JS/CSS asset, `/reporting/login/`, 보호 API/삭제 POST.
+- 다음 행동: 사용자가 운영에서 구분별 견적서 등록/삭제/메일 자동첨부를 수동 검수한다. 검수 전에는 다음 구현 작업을 시작하지 않는다.
+
 ---
 
 ## Previous task — 일정 견적서 PDF 다중 등록 및 메일 자동 첨부
