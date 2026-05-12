@@ -14272,3 +14272,18 @@ Railway logs checked
 3. `대체 제품 목록을 불러오는 중`이 오래 유지되지 않고, 초기 선택지 또는 검색 입력이 보이는지 확인합니다.
 4. 대체 제품이 목록에 없으면 품번/제품설명/규격 2글자 이상으로 검색합니다.
 5. 검색 결과가 선택지에 추가되고 `이 품목 대체`가 정상 동작하는지 확인합니다.
+
+### 9. Follow-up Search Abort Fix
+
+- Search follow-up commit: `c9ea77f fix: prevent product replacement search abort`
+- Root cause: the initial replacement option loader effect depended on `deleteReplacementLoading`; setting loading to `true` immediately re-ran cleanup and aborted `/reporting/api/products/` requests, producing production `499` logs.
+- Fix: removed `deleteReplacementLoading` from the effect dependency/guard so the initial limited product request is not aborted by its own loading state.
+- Validation:
+  - `cd frontend && npm run build` → OK, `assets/index-BvO4vckD.js` / `assets/index-nGs5khFg.css`
+  - `cd frontend && node --check server.mjs` → OK
+  - `python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=1` → Ran 7 tests, OK
+  - `git diff --check` → OK (LF→CRLF warning only)
+- Deployment:
+  - Railway `sales-note-frontend`: `ba16ad03-58a5-4760-a619-6586afceb00f` SUCCESS, message `Deploy product replacement search abort fix c9ea77f`
+  - Production `/products/` serves `assets/index-BvO4vckD.js` / `assets/index-nGs5khFg.css`
+  - Production JS contains the replacement search UI and timeout text.
