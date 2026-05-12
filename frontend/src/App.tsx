@@ -773,6 +773,13 @@ const parseProductDeleteCodes = (text: string): string[] => {
   return codes;
 };
 
+const mergeProductOptions = (current: ProductOption[], incoming: ProductOption[]) => {
+  const optionsById = new Map<number, ProductOption>();
+  current.forEach((option) => optionsById.set(option.id, option));
+  incoming.forEach((option) => optionsById.set(option.id, option));
+  return Array.from(optionsById.values()).sort((a, b) => a.productCode.localeCompare(b.productCode));
+};
+
 const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   address: '',
   companyId: '',
@@ -10005,6 +10012,8 @@ function ProductManagementPage({
   const [deleteReplacementOptions, setDeleteReplacementOptions] = useState<ProductOption[]>([]);
   const [deleteReplacementLoading, setDeleteReplacementLoading] = useState(false);
   const [deleteReplacementError, setDeleteReplacementError] = useState('');
+  const [deleteReplacementSearch, setDeleteReplacementSearch] = useState('');
+  const [deleteReplacementMessage, setDeleteReplacementMessage] = useState('');
   const [replacingReferenceKey, setReplacingReferenceKey] = useState('');
 
   const products = data?.products ?? [];
@@ -10024,18 +10033,28 @@ function ProductManagementPage({
     let active = true;
     setDeleteReplacementLoading(true);
     setDeleteReplacementError('');
-    loadProducts()
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    loadProducts('', { limit: 80, signal: controller.signal })
       .then((options) => {
         if (active) {
-          setDeleteReplacementOptions(options);
+          setDeleteReplacementOptions((previous) => mergeProductOptions(previous, options));
+          if (!options.length) {
+            setDeleteReplacementError('선택 가능한 활성 제품이 없습니다. 제품을 먼저 등록하거나 활성화하세요.');
+          } else {
+            setDeleteReplacementMessage(`최근 품번 기준 ${formatNumber(options.length)}건을 불러왔습니다. 필요한 제품이 없으면 검색하세요.`);
+          }
         }
       })
       .catch((error) => {
         if (active) {
-          setDeleteReplacementError(error instanceof Error ? error.message : '대체 제품 목록을 불러오지 못했습니다.');
+          setDeleteReplacementError(error instanceof Error && error.name === 'AbortError'
+            ? '대체 제품 목록 조회가 지연되었습니다. 품번/제품명으로 검색하세요.'
+            : error instanceof Error ? error.message : '대체 제품 목록을 불러오지 못했습니다.');
         }
       })
       .finally(() => {
+        window.clearTimeout(timeout);
         if (active) {
           setDeleteReplacementLoading(false);
         }
@@ -10043,8 +10062,40 @@ function ProductManagementPage({
 
     return () => {
       active = false;
+      controller.abort();
+      window.clearTimeout(timeout);
     };
   }, [deleteReplacementLoading, deleteReplacementOptions.length, replaceableDeleteRows.length]);
+
+  const handleDeleteReplacementSearch = async () => {
+    const search = deleteReplacementSearch.trim();
+    if (deleteReplacementLoading) return;
+    if (search.length < 2) {
+      setDeleteReplacementError('품번, 제품설명, 규격 중 2글자 이상 입력하세요.');
+      setDeleteReplacementMessage('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    setDeleteReplacementLoading(true);
+    setDeleteReplacementError('');
+    setDeleteReplacementMessage('');
+    try {
+      const options = await loadProducts(search, { limit: 80, signal: controller.signal });
+      setDeleteReplacementOptions((previous) => mergeProductOptions(previous, options));
+      setDeleteReplacementMessage(options.length
+        ? `"${search}" 검색 결과 ${formatNumber(options.length)}건을 선택지에 추가했습니다.`
+        : `"${search}" 검색 결과가 없습니다.`);
+    } catch (error) {
+      setDeleteReplacementError(error instanceof Error && error.name === 'AbortError'
+        ? '제품 검색이 지연되었습니다. 더 구체적인 품번으로 다시 검색하세요.'
+        : error instanceof Error ? error.message : '제품 검색에 실패했습니다.');
+    } finally {
+      window.clearTimeout(timeout);
+      setDeleteReplacementLoading(false);
+    }
+  };
 
   const openCreate = () => {
     setEditingProduct(null);
@@ -10151,6 +10202,8 @@ function ProductManagementPage({
     }
     setDeleteSaving(true);
     setDeleteError('');
+    setDeleteReplacementError('');
+    setDeleteReplacementMessage('');
     setDeleteReferenceReplacements({});
     setDeleteResult(null);
     try {
@@ -10179,6 +10232,7 @@ function ProductManagementPage({
       [referenceKey]: replacementProductId,
     }));
     setDeleteError('');
+    setDeleteReplacementError('');
   };
 
   const handleReplaceProductReference = async (productCode: string, reference: ProductDeleteReference) => {
@@ -10494,10 +10548,35 @@ function ProductManagementPage({
                   <span>견적/납품에 사용된 품목마다 대체 제품을 선택하고 한 건씩 이동합니다. 마지막 품목이 이동되면 원제품이 삭제됩니다.</span>
                 </div>
                 {deleteReplacementError ? <p className="form-error">{deleteReplacementError}</p> : null}
+                {deleteReplacementMessage ? <p className="form-success">{deleteReplacementMessage}</p> : null}
+                <div className="product-delete-replacement-search">
+                  <input
+                    onChange={(event) => {
+                      setDeleteReplacementSearch(event.target.value);
+                      setDeleteReplacementError('');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void handleDeleteReplacementSearch();
+                      }
+                    }}
+                    placeholder="대체 제품 품번, 설명, 규격 검색"
+                    value={deleteReplacementSearch}
+                  />
+                  <button
+                    className="route-secondary-action"
+                    disabled={deleteReplacementLoading}
+                    onClick={() => void handleDeleteReplacementSearch()}
+                    type="button"
+                  >
+                    검색
+                  </button>
+                </div>
                 {deleteReplacementLoading ? (
                   <div className="product-delete-replacement-loading">
                     <Loader2 className="spin-icon" size={15} />
-                    <span>대체 제품 목록을 불러오는 중</span>
+                    <span>대체 제품 목록을 불러오는 중입니다. 오래 걸리면 품번으로 검색하세요.</span>
                   </div>
                 ) : (
                   <div className="product-delete-replacement-list">

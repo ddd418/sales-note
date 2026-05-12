@@ -14180,3 +14180,66 @@ Railway logs checked
 ### 10. Recommended Next Task
 
 - 운영 수동검수 완료 후 React 제품관리 대량 작업의 다음 보강으로 삭제 차단 참조 검색/필터 또는 대체 처리 진행률 표시를 진행합니다.
+
+---
+
+## Product Replacement Option Loading Hotfix — 대체 제품 목록 로딩 지연 수정 (2026-05-12)
+
+### 1. Summary
+
+운영 `/products/`에서 차단 품목 개별 대체 패널이 `대체 제품 목록을 불러오는 중` 상태로 오래 머무르는 문제를 수정했습니다. 대체 제품 목록을 전체 로딩하지 않고 초기 80건 제한 조회로 바꾸고, 필요한 제품은 품번/제품설명/규격 검색으로 선택지에 추가할 수 있게 했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `reporting/views.py` | `/reporting/api/products/`에 `limit` 응답 제한과 규격 검색 지원 추가 |
+| `reporting/tests.py` | 제품 API limit/규격 검색 회귀 테스트 추가 |
+| `frontend/src/api.ts` | `loadProducts()`에 `limit`, `AbortSignal` 옵션 추가 |
+| `frontend/src/App.tsx` | 대체 제품 초기 제한 로딩, 15초 timeout, 검색 UI, 옵션 병합 추가 |
+| `frontend/src/styles.css` | 대체 제품 검색 입력 레이아웃 추가 |
+
+### 3. CRM Improvements
+
+- 제품 수가 많은 운영 데이터에서도 대체 패널이 전체 제품 로딩에 묶이지 않습니다.
+- 초기 옵션에 원하는 대체 제품이 없으면 바로 검색해서 추가할 수 있습니다.
+- API 지연 시 15초 후 사용자에게 검색 안내를 보여줍니다.
+
+### 4. Commands Run and Results
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+cd frontend && npm run build
+→ OK, dist/assets/index-Bfm6UuAC.js / dist/assets/index-nGs5khFg.css generated
+→ Vite chunk size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Known Limitations
+
+- 운영 배포 후 실제 로그인 세션에서 대체 제품 검색/선택을 다시 확인해야 합니다.
+- Railway CLI 로그 조회 중 OAuth token refresh가 만료되어 `railway login`이 필요할 수 있습니다.
+
+### 6. Manual Server Test Process
+
+1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/products/`
+2. 사용 중인 제품을 삭제 실행해 차단 품목 개별 대체 패널을 엽니다.
+3. `대체 제품 목록을 불러오는 중`이 오래 유지되지 않고, 초기 선택지 또는 검색 입력이 보이는지 확인합니다.
+4. 대체 제품이 목록에 없으면 품번/제품설명/규격 2글자 이상으로 검색합니다.
+5. 검색 결과가 선택지에 추가되고 `이 품목 대체`가 정상 동작하는지 확인합니다.

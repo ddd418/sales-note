@@ -1136,6 +1136,9 @@ type ProductApiItem = {
 
 type ProductsApiResponse = {
   products?: ProductApiItem[];
+  count?: number;
+  totalCount?: number;
+  hasMore?: boolean;
   success?: boolean;
   error?: string;
   message?: string;
@@ -4682,11 +4685,17 @@ export async function replaceProductReference(payload: {
   return data;
 }
 
-export async function loadProducts(search = ''): Promise<ProductOption[]> {
+export async function loadProducts(
+  search = '',
+  options: { limit?: number; signal?: AbortSignal } = {},
+): Promise<ProductOption[]> {
   const params = new URLSearchParams();
   const query = search.trim();
   if (query) {
     params.set('search', query);
+  }
+  if (options.limit && options.limit > 0) {
+    params.set('limit', String(options.limit));
   }
 
   const queryString = params.toString();
@@ -4695,6 +4704,7 @@ export async function loadProducts(search = ''): Promise<ProductOption[]> {
     headers: {
       Accept: 'application/json',
     },
+    signal: options.signal,
   });
   redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';

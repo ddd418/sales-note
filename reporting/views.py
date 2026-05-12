@@ -19080,12 +19080,19 @@ def product_api_list(request):
     if search:
         products = products.filter(
             Q(product_code__icontains=search) |
-            Q(description__icontains=search)
+            Q(description__icontains=search) |
+            Q(specification__icontains=search)
         )
     
-    # 제한 제거 - 모든 제품을 가져와서 클라이언트에서 검색
-    # 성능을 위해 필요시 제한 추가 가능: products = products.order_by('product_code')[:1000]
+    total_count = products.count()
     products = products.order_by('product_code')
+    try:
+        limit = int(request.GET.get('limit') or 0)
+    except (TypeError, ValueError):
+        limit = 0
+    if limit > 0:
+        limit = min(max(limit, 1), 500)
+        products = products[:limit]
     
     products_data = [{
         'id': p.id,
@@ -19099,7 +19106,12 @@ def product_api_list(request):
         'is_promo': False,
     } for p in products]
     
-    return JsonResponse({'products': products_data})
+    return JsonResponse({
+        'products': products_data,
+        'count': len(products_data),
+        'totalCount': total_count,
+        'hasMore': bool(limit and total_count > len(products_data)),
+    })
 
 
 # ============================================================

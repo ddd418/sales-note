@@ -1280,6 +1280,24 @@ h2 {
   gap: 8px;
 }
 
+.product-delete-replacement-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.product-delete-replacement-search input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+}
+
 .product-delete-replacement-list {
   display: grid;
   gap: 8px;
@@ -1345,6 +1363,7 @@ h2 {
 }
 
 @media (max-width: 920px) {
+  .product-delete-replacement-search,
   .product-delete-reference-row {
     grid-template-columns: 1fr;
   }

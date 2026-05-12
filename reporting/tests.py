@@ -6561,6 +6561,40 @@ class ProductManagementReactApiTests(TestCase):
         self.assertFalse(payload['is_promo'])
         self.assertEqual(product.get_current_price(), Decimal('1000'))
 
+    def test_product_api_list_supports_limit_and_specification_search(self):
+        from reporting.models import Product
+
+        for index in range(5):
+            Product.objects.create(
+                product_code=f'LIMIT-SEARCH-{index}',
+                specification='공통규격',
+                standard_price=1000 + index,
+                created_by=self.salesman,
+            )
+        Product.objects.create(
+            product_code='LIMIT-SPEC-ONLY',
+            specification='특수규격',
+            standard_price=2000,
+            created_by=self.salesman,
+        )
+
+        response = self.client.get(reverse('reporting:product_api_list'), {'search': '특수규격', 'limit': '2'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['totalCount'], 1)
+        self.assertFalse(payload['hasMore'])
+        self.assertEqual(payload['products'][0]['product_code'], 'LIMIT-SPEC-ONLY')
+
+        response = self.client.get(reverse('reporting:product_api_list'), {'search': 'LIMIT-SEARCH', 'limit': '2'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['count'], 2)
+        self.assertEqual(payload['totalCount'], 5)
+        self.assertTrue(payload['hasMore'])
+
     def test_product_bulk_delete_deletes_unused_and_blocks_used_product(self):
         import json
         from reporting.models import DeliveryItem, Product
