@@ -2,7 +2,7 @@
 
 ## 2026-05-12 — React AI Summary Pipeline Questions And Email Context
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 준비 중
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -72,9 +72,16 @@ git diff --check
 
 ### 배포 상태
 
-- GitHub push: 대기 중
-- Railway `web`: 대기 중
-- Railway `sales-note-frontend`: 대기 중
+- Runtime commit: `fcb7eeb feat: expand react ai workflow`
+- GitHub push: `main` updated to `fcb7eeb`
+- Railway `web`: `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS
+- Railway `sales-note-frontend`: `72567306-b54f-48c3-a5c2-7b501aab7425` SUCCESS
+- Production `/`, `/pipeline/`, `/ai-workspace/` return 200 and serve `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
+- Production JS contains `추천 질문` and `AI 분석 실행`.
+- Production CSS contains `customer-ai-question-item`.
+- Production `/reporting/login/` returns 200.
+- Anonymous backend and frontend-proxied `/reporting/api/ai-workspace/` return `401 Unauthorized`.
+- Anonymous backend and frontend-proxied `/reporting/api/pipeline/` redirect to `/reporting/login/?next=/reporting/api/pipeline/`.
 
 ### 수동 서버 테스트 절차
 

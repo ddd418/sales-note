@@ -14,7 +14,13 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React AI summary, pipeline AI controls, recommended questions, and email context expansion are implemented and locally verified. Commit, push, production deployment, and user manual testing are still pending.
+React AI summary, pipeline AI controls, recommended questions, and email context expansion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+
+Runtime commit:
+
+```text
+fcb7eeb feat: expand react ai workflow
+```
 
 Implemented:
 
@@ -52,9 +58,15 @@ Results:
 
 Deployment:
 
-- GitHub push: pending.
-- Railway `web`: pending.
-- Railway `sales-note-frontend`: pending.
+- GitHub push complete: `main` updated to `fcb7eeb`.
+- Railway `web`: `019fc8a8-f782-4773-971f-de9f4deb4212` SUCCESS.
+- Railway `sales-note-frontend`: `72567306-b54f-48c3-a5c2-7b501aab7425` SUCCESS.
+- Production `/`, `/pipeline/`, `/ai-workspace/` return 200 and serve `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
+- Production JS contains `추천 질문` and `AI 분석 실행`.
+- Production CSS contains `customer-ai-question-item`.
+- Production `/reporting/login/` returns 200.
+- Anonymous backend and frontend-proxied `/reporting/api/ai-workspace/` return `401 Unauthorized`.
+- Anonymous backend and frontend-proxied `/reporting/api/pipeline/` redirect to `/reporting/login/?next=/reporting/api/pipeline/`.
 
 Manual production test:
 
