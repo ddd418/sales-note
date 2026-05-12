@@ -468,6 +468,70 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(sent_attachments[0]['content'], b'%PDF generated quote')
         self.assertEqual(sent_attachments[0]['mimetype'], 'application/pdf')
 
+    def test_mailbox_send_api_generates_quote_pdf_per_quote_group_when_no_registered_pdf(self):
+        from django.http import HttpResponse
+        from reporting.models import DeliveryItem
+
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='quote',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Trade In Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            quote_group='보상판매',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Repair Service',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+            quote_group='수리',
+        )
+        first_response = HttpResponse(b'%PDF trade in quote', content_type='application/pdf')
+        first_response['X-Filename'] = 'trade-in-quote.pdf'
+        second_response = HttpResponse(b'%PDF repair quote', content_type='application/pdf')
+        second_response['X-Filename'] = 'repair-quote.pdf'
+        self.client.force_login(self.user)
+
+        with patch('reporting.views.generate_document_pdf', side_effect=[first_response, second_response]) as generate_pdf:
+            with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+                gmail_service = gmail_service_class.return_value
+                gmail_service.send_email.return_value = {
+                    'message_id': 'gmail-sent-generated-grouped-quote',
+                    'thread_id': 'gmail-thread-generated-grouped-quote',
+                }
+
+                response = self.client.post(
+                    reverse('reporting:mailbox_api_send'),
+                    {
+                        'to_email': 'customer@example.com',
+                        'subject': '견적서 자동 생성',
+                        'body_text': '견적서 확인 부탁드립니다.',
+                        'schedule_id': str(schedule.id),
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(generate_pdf.call_count, 2)
+        self.assertEqual([call.kwargs['quote_group'] for call in generate_pdf.call_args_list], ['보상판매', '수리'])
+        sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
+        self.assertEqual([item['filename'] for item in sent_attachments], ['trade-in-quote.pdf', 'repair-quote.pdf'])
+        self.assertEqual(sent_attachments[0]['content'], b'%PDF trade in quote')
+        self.assertEqual(sent_attachments[1]['content'], b'%PDF repair quote')
+
     def test_mailbox_send_api_does_not_auto_attach_for_delivery_schedule(self):
         profile = self.user.userprofile
         profile.gmail_token = {'access_token': 'test-token'}
@@ -3273,6 +3337,102 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertFalse(meeting_payload['documents']['canGenerate'])
         self.assertEqual(meeting_payload['documents']['items'], [])
 
+    def test_schedules_detail_api_splits_quotation_documents_by_quote_group(self):
+        from reporting.models import DeliveryItem
+
+        quote_schedule = self._create_schedule(self.user, '복수견적서류', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Trade In Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            quote_group='보상판매',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Repair Service',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+            quote_group='수리',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[quote_schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        actions = response.json()['documents']['items']
+        self.assertEqual([action['quoteGroup'] for action in actions], ['보상판매', '수리'])
+        self.assertEqual([action['label'] for action in actions], ['보상판매 견적서', '수리 견적서'])
+        self.assertIn('quote_group=', actions[0]['previewHref'])
+        self.assertIn('quote_group=', actions[1]['formats'][0]['href'])
+        self.assertEqual(actions[0]['itemCount'], 1)
+
+    def test_schedules_detail_api_includes_registered_generated_documents(self):
+        schedule = self._create_schedule(self.user, '등록서류목록', activity_type='delivery')
+        log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='transaction_statement',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='TS-20260512-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('statement.pdf', b'%PDF statement', content_type='application/pdf'),
+            filename='statement.pdf',
+            file_size=14,
+        )
+        self.addCleanup(log.file.delete, False)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        documents = response.json()['documents']
+        self.assertEqual(documents['registeredDocumentCount'], 1)
+        self.assertEqual(documents['registeredQuotationCount'], 0)
+        registered = documents['registeredDocuments'][0]
+        self.assertEqual(registered['id'], log.id)
+        self.assertEqual(registered['documentType'], 'transaction_statement')
+        self.assertEqual(registered['documentTypeLabel'], '거래명세서')
+        self.assertEqual(registered['downloadHref'], reverse('reporting:generated_document_download', args=[log.id]))
+        self.assertEqual(registered['deleteHref'], reverse('reporting:generated_document_delete', args=[log.id]))
+        self.assertTrue(registered['canDelete'])
+
+    def test_generated_document_delete_api_allows_owner_only(self):
+        schedule = self._create_schedule(self.user, '등록서류삭제', activity_type='quote')
+        log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=schedule,
+            user=self.user,
+            transaction_number='Q-20260512-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('quote.pdf', b'%PDF quote', content_type='application/pdf'),
+            filename='quote.pdf',
+            file_size=10,
+            quote_group='수리',
+        )
+        self.addCleanup(log.file.delete, False)
+        delete_url = reverse('reporting:generated_document_delete', args=[log.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(delete_url)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertTrue(DocumentGenerationLog.objects.filter(pk=log.id).exists())
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(delete_url)
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertTrue(DocumentGenerationLog.objects.filter(pk=log.id).exists())
+
+        self.client.force_login(self.user)
+        response = self.client.post(delete_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertFalse(DocumentGenerationLog.objects.filter(pk=log.id).exists())
+
     def test_schedules_detail_api_manager_read_only_and_other_company_blocked(self):
         schedule = self._create_schedule(self.user, '읽기전용')
         self.client.force_login(self.manager)
@@ -3724,6 +3884,45 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload_item['unitPrice'], 12345)
         self.assertEqual(payload_item['totalPrice'], 27159)
 
+    def test_schedule_delivery_items_update_api_saves_quote_groups(self):
+        import json
+        from reporting.models import DeliveryItem
+
+        schedule = self._create_schedule(self.user, '견적구분저장', activity_type='quote')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'itemName': 'Trade In Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '100000',
+                        'quoteGroup': '보상판매',
+                        'taxInvoiceIssued': False,
+                    },
+                    {
+                        'itemName': 'Repair Service',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                        'quoteGroup': '수리',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = list(DeliveryItem.objects.filter(schedule=schedule).order_by('id'))
+        self.assertEqual([item.quote_group for item in items], ['보상판매', '수리'])
+        payload_items = response.json()['deliveryItems']
+        self.assertEqual([item['quoteGroup'] for item in payload_items], ['보상판매', '수리'])
+        self.assertEqual([item['quoteGroupLabel'] for item in payload_items], ['보상판매', '수리'])
+
     def test_schedule_delivery_items_update_api_blocks_inaccessible_product(self):
         import json
         from reporting.models import DeliveryItem, Product
@@ -3950,6 +4149,9 @@ class DocumentTemplatesReactApiTests(TestCase):
             for variable in group['variables']
         }
         self.assertIn('{{견적기타사항}}', variable_tokens)
+        self.assertIn('{{견적구분}}', variable_tokens)
+        self.assertIn('{{견적명}}', variable_tokens)
+        self.assertIn('{{견적제목}}', variable_tokens)
         self.assertIn('{{품목1_적요}}', variable_tokens)
         self.assertIn('{{품목1_기준단가}}', variable_tokens)
         self.assertIn('{{품목1_할인율}}', variable_tokens)
@@ -4149,6 +4351,46 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
+
+    def test_document_template_data_filters_quotation_items_by_quote_group(self):
+        from reporting.models import DeliveryItem
+
+        self._create_template(self.company, '견적구분기본', is_default=True)
+        schedule = self._create_schedule(self.manager, name='견적구분변수', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Trade In Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            quote_group='보상판매',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Repair Service',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+            quote_group='수리',
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(
+            reverse('reporting:get_document_template_data', args=['quotation', schedule.id]),
+            {'quote_group': '수리'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['quote_group'], '수리')
+        self.assertEqual(payload['quote_group_label'], '수리')
+        self.assertEqual(payload['variables']['견적구분'], '수리')
+        self.assertEqual(payload['variables']['견적제목'], '수리 견적서')
+        self.assertEqual(payload['item_count'], 1)
+        self.assertEqual(payload['items'][0]['name'], 'Repair Service')
+        self.assertEqual(payload['items'][0]['quoteGroup'], '수리')
+        self.assertEqual(payload['variables']['품목1_이름'], 'Repair Service')
+        self.assertNotIn('품목2_이름', payload['variables'])
 
     def test_document_pdf_layout_helper_sets_a4_fit_to_page(self):
         import os

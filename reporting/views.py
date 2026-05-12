@@ -5301,6 +5301,26 @@ def _schedules_edit_config(request, schedule, can_edit):
     }
 
 
+def _quote_group_key(value):
+    return str(value or '').strip()[:100]
+
+
+def _quote_group_label(value):
+    return _quote_group_key(value) or '기본 견적서'
+
+
+def _quote_group_filename_part(value):
+    label = _quote_group_label(value)
+    cleaned = re.sub(r'[\\/:*?"<>|]+', ' ', label).strip()
+    return re.sub(r'\s+', ' ', cleaned)[:80] or '기본 견적서'
+
+
+def _quote_group_query_suffix(value):
+    from urllib.parse import urlencode
+
+    return '?' + urlencode({'quote_group': _quote_group_key(value)})
+
+
 def _schedules_delivery_item_payload(item):
     product = item.product if item.product_id else None
     return {
@@ -5317,6 +5337,8 @@ def _schedules_delivery_item_payload(item):
         'effectiveUnitPrice': _money_int(item.get_effective_unit_price()),
         'totalPrice': _money_int(item.total_price),
         'taxInvoiceIssued': bool(item.tax_invoice_issued),
+        'quoteGroup': item.quote_group or '',
+        'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
     }
 
@@ -5558,6 +5580,7 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
         if discount_unit_price_raw is None:
             discount_unit_price_raw = raw_item.get('discount_unit_price')
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
+        quote_group = str(raw_item.get('quoteGroup') or raw_item.get('quote_group') or '').strip()[:100]
         notes = str(raw_item.get('notes') or '').strip()
 
         product_id_text = '' if product_id_raw is None else str(product_id_raw).strip()
@@ -5642,6 +5665,7 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
             'discount_rate': discount_rate,
             'discount_unit_price': discount_unit_price,
             'tax_invoice_issued': tax_invoice_issued,
+            'quote_group': quote_group,
             'notes': notes,
         }
         if product:
@@ -5674,6 +5698,41 @@ def _schedules_delivery_items_summary(schedule):
     return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
 
 
+def _schedule_quote_group_summaries(schedule):
+    from decimal import Decimal
+
+    groups = {}
+    for item in schedule.delivery_items_set.all().order_by('id'):
+        group_key = _quote_group_key(getattr(item, 'quote_group', ''))
+        if group_key not in groups:
+            groups[group_key] = {
+                'key': group_key,
+                'label': _quote_group_label(group_key),
+                'itemCount': 0,
+                'totalAmount': Decimal('0'),
+            }
+        groups[group_key]['itemCount'] += 1
+        if item.quantity:
+            groups[group_key]['totalAmount'] += _document_item_prices(item)['effective_unit_price'] * item.quantity
+
+    if not groups:
+        groups[''] = {
+            'key': '',
+            'label': _quote_group_label(''),
+            'itemCount': 0,
+            'totalAmount': Decimal('0'),
+        }
+
+    return [
+        {
+            **group,
+            'totalAmount': int(group['totalAmount']),
+            'query': _quote_group_query_suffix(group['key']),
+        }
+        for group in groups.values()
+    ]
+
+
 def _document_generation_file_name(log):
     if log.filename:
         return log.filename
@@ -5693,7 +5752,7 @@ def _document_generation_file_size(log):
     return 0
 
 
-def _document_generation_file_payload(log):
+def _document_generation_file_payload(log, can_delete=False):
     filename = _document_generation_file_name(log)
     return {
         'id': log.id,
@@ -5705,19 +5764,28 @@ def _document_generation_file_payload(log):
         'documentTypeLabel': log.get_document_type_display(),
         'outputFormat': log.output_format,
         'outputFormatLabel': log.get_output_format_display(),
+        'quoteGroup': log.quote_group or '',
+        'quoteGroupLabel': _quote_group_label(log.quote_group),
         'createdAt': _datetime_or_none(log.created_at),
         'createdBy': _user_display_name(log.user) if log.user else '',
         'downloadHref': reverse('reporting:generated_document_download', args=[log.id]) if log.file else '',
+        'deleteHref': reverse('reporting:generated_document_delete', args=[log.id]) if can_delete else '',
+        'canDelete': bool(can_delete),
     }
 
 
-def _schedule_registered_quote_documents(schedule):
+def _schedule_registered_documents(schedule):
     return DocumentGenerationLog.objects.filter(
         schedule=schedule,
-        document_type='quotation',
         output_format='pdf',
         file__isnull=False,
     ).exclude(file='').select_related('user').order_by('-created_at', '-id')
+
+
+def _schedule_registered_quote_documents(schedule):
+    return _schedule_registered_documents(schedule).filter(
+        document_type='quotation',
+    )
 
 
 def _schedules_document_actions(schedule, user):
@@ -5741,10 +5809,16 @@ def _schedules_document_actions(schedule, user):
     }
     document_types = activity_documents.get(schedule.activity_type, [])
     company = getattr(getattr(user, 'userprofile', None), 'company', None)
+    can_delete_documents = _schedules_can_edit(user, schedule)
+    registered_documents = [
+        _document_generation_file_payload(log, can_delete=can_delete_documents)
+        for log in _schedule_registered_documents(schedule)
+    ] if schedule.activity_type in ['quote', 'delivery'] else []
     registered_quotations = [
-        _document_generation_file_payload(log)
+        _document_generation_file_payload(log, can_delete=can_delete_documents)
         for log in _schedule_registered_quote_documents(schedule)
     ] if schedule.activity_type == 'quote' else []
+    quote_groups = _schedule_quote_group_summaries(schedule) if schedule.activity_type == 'quote' else []
 
     template_counts = {}
     if company and document_types:
@@ -5757,38 +5831,74 @@ def _schedules_document_actions(schedule, user):
             ).values('document_type').annotate(count=Count('id'))
         }
 
+    document_items = []
+    for document_type in document_types:
+        if document_type == 'quotation':
+            for group in quote_groups:
+                suffix = group['query'] if group['key'] or len(quote_groups) > 1 else ''
+                group_label = group['label']
+                document_items.append({
+                    'type': document_type,
+                    'label': group_label if group_label.endswith('견적서') else f'{group_label} 견적서',
+                    'description': f'{group_label} 품목 {group["itemCount"]}개를 포함한 견적서를 생성합니다.',
+                    'templateCount': template_counts.get(document_type, 0),
+                    'previewHref': reverse('reporting:get_document_template_data', args=[document_type, schedule.id]) + suffix,
+                    'quoteGroup': group['key'],
+                    'quoteGroupLabel': group_label,
+                    'itemCount': group['itemCount'],
+                    'totalAmount': group['totalAmount'],
+                    'formats': [
+                        {
+                            'format': 'pdf',
+                            'label': 'PDF 등록/다운로드',
+                            'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'pdf']) + suffix,
+                        },
+                        {
+                            'format': 'xlsx',
+                            'label': 'Excel',
+                            'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'xlsx']) + suffix,
+                        },
+                    ],
+                })
+            continue
+
+        document_items.append({
+            'type': document_type,
+            'label': document_configs[document_type]['label'],
+            'description': document_configs[document_type]['description'],
+            'templateCount': template_counts.get(document_type, 0),
+            'previewHref': reverse('reporting:get_document_template_data', args=[document_type, schedule.id]),
+            'quoteGroup': '',
+            'quoteGroupLabel': '',
+            'itemCount': 0,
+            'totalAmount': 0,
+            'formats': [
+                {
+                    'format': 'pdf',
+                    'label': 'PDF',
+                    'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'pdf']),
+                },
+                {
+                    'format': 'xlsx',
+                    'label': 'Excel',
+                    'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'xlsx']),
+                },
+            ],
+        })
+
     return {
         'canGenerate': bool(document_types),
         'templateManagerHref': '/documents/',
         'djangoTemplateManagerHref': reverse('reporting:document_template_list'),
+        'registeredDocuments': registered_documents,
+        'registeredDocumentCount': len(registered_documents),
         'registeredQuotations': registered_quotations,
         'registeredQuotationCount': len(registered_quotations),
         'autoAttachLabel': (
             f'메일 발송 시 견적서 PDF {len(registered_quotations)}개가 자동 첨부됩니다.'
             if registered_quotations else '등록된 견적서 PDF가 없으면 메일 발송 시 새 견적서 PDF를 생성해 자동 첨부합니다.'
         ) if schedule.activity_type == 'quote' else '',
-        'items': [
-            {
-                'type': document_type,
-                'label': document_configs[document_type]['label'],
-                'description': document_configs[document_type]['description'],
-                'templateCount': template_counts.get(document_type, 0),
-                'previewHref': reverse('reporting:get_document_template_data', args=[document_type, schedule.id]),
-                'formats': [
-                    {
-                        'format': 'pdf',
-                        'label': 'PDF 등록/다운로드' if document_type == 'quotation' else 'PDF',
-                        'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'pdf']),
-                    },
-                    {
-                        'format': 'xlsx',
-                        'label': 'Excel',
-                        'href': reverse('reporting:generate_document_pdf_format', args=[document_type, schedule.id, 'xlsx']),
-                    },
-                ],
-            }
-            for document_type in document_types
-        ],
+        'items': document_items,
     }
 
 
@@ -18024,6 +18134,8 @@ def _document_generation_log_payload(log):
         'transactionNumber': log.transaction_number,
         'outputFormat': log.output_format,
         'outputFormatLabel': log.get_output_format_display(),
+        'quoteGroup': log.quote_group or '',
+        'quoteGroupLabel': _quote_group_label(log.quote_group),
         'filename': file_payload['filename'] if file_payload else '',
         'fileSize': file_payload['fileSize'] if file_payload else 0,
         'downloadHref': file_payload['downloadHref'] if file_payload else '',
@@ -18061,7 +18173,7 @@ def _document_template_variable_groups_payload():
         ('기본 정보', ['년', '월', '일', '거래번호', '발행일', '날짜', '일정날짜', '유효일+30']),
         ('고객 / 거래처 정보', ['고객명', '담당자', '업체명', '학교명', '부서명', '연구실', '이메일', '담당자이메일', '연락처', '전화번호']),
         ('영업담당자', ['실무자', '영업담당자', '담당영업', '영업담당자이메일']),
-        ('회사 / 견적 정보', ['회사명', '견적번호', '메모', '기타사항', '견적기타사항']),
+        ('회사 / 견적 정보', ['회사명', '견적번호', '견적구분', '견적명', '견적제목', '메모', '기타사항', '견적기타사항']),
         ('금액', ['공급가액', '소계', '부가세액', '부가세', '총액', '합계', '총액한글', '한글금액']),
         (
             '품목 (N = 1, 2, 3 ... 순번)',
@@ -18667,6 +18779,31 @@ def generated_document_download(request, log_id):
 
 @login_required
 @require_POST
+def generated_document_delete(request, log_id):
+    """일정에 등록된 생성 서류 파일을 삭제한다."""
+    log = get_object_or_404(
+        DocumentGenerationLog.objects.select_related('company', 'schedule', 'schedule__user'),
+        pk=log_id,
+    )
+
+    if not log.schedule or not _schedules_can_edit(request.user, log.schedule):
+        return JsonResponse({'success': False, 'error': '등록 서류 삭제 권한이 없습니다.'}, status=403)
+
+    filename = _document_generation_file_name(log) or '등록 서류'
+    if log.file:
+        try:
+            log.file.delete(save=False)
+        except Exception as exc:
+            logger.warning(f"[서류삭제] 생성 서류 파일 삭제 실패 - log_id={log.id}: {exc}")
+    log.delete()
+    return JsonResponse({
+        'success': True,
+        'message': f'{filename}를 삭제했습니다.',
+    })
+
+
+@login_required
+@require_POST
 def document_template_toggle_default(request, pk):
     """기본 템플릿 설정/해제 (AJAX)"""
     from reporting.models import DocumentTemplate
@@ -18720,6 +18857,27 @@ def _document_discount_rate_label(value):
         return ''
     text = f"{value:.2f}".rstrip('0').rstrip('.')
     return f"{text}%"
+
+
+def _document_quote_group_selection(request, explicit_quote_group=None):
+    if explicit_quote_group is not None:
+        return _quote_group_key(explicit_quote_group), True
+
+    for source in (getattr(request, 'GET', None), getattr(request, 'POST', None)):
+        if not source:
+            continue
+        if 'quote_group' in source:
+            return _quote_group_key(source.get('quote_group')), True
+        if 'quoteGroup' in source:
+            return _quote_group_key(source.get('quoteGroup')), True
+    return '', False
+
+
+def _document_delivery_items_queryset(schedule, document_type, quote_group='', quote_group_selected=False):
+    queryset = DeliveryItem.objects.filter(schedule=schedule).select_related('product').order_by('id')
+    if document_type == 'quotation' and quote_group_selected:
+        queryset = queryset.filter(quote_group=_quote_group_key(quote_group))
+    return queryset
 
 
 def _ensure_xlsx_a4_print_layout(xlsx_path):
@@ -18836,6 +18994,9 @@ def get_document_template_data(request, document_type, schedule_id):
         # 권한 체크
         if not can_access_user_data(request.user, schedule.user):
             return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+        quote_group, quote_group_selected = _document_quote_group_selection(request)
+        quote_group_label = _quote_group_label(quote_group) if quote_group_selected else ''
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
@@ -18873,8 +19034,13 @@ def get_document_template_data(request, document_type, schedule_id):
                 'error': '서류 템플릿 파일을 찾을 수 없습니다.'
             }, status=404)
         
-        # 납품 품목 조회
-        delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
+        # 납품/견적 품목 조회. 견적서는 quote_group query가 있으면 해당 묶음만 출력한다.
+        delivery_items = _document_delivery_items_queryset(
+            schedule,
+            document_type,
+            quote_group=quote_group,
+            quote_group_selected=quote_group_selected,
+        )
         
         # 총액 계산
         subtotal = sum([
@@ -18988,6 +19154,9 @@ def get_document_template_data(request, document_type, schedule_id):
 
             # 견적 정보 (자동 채움)
             '견적번호': _quote_number,
+            '견적구분': quote_group_label,
+            '견적명': quote_group_label,
+            '견적제목': f'{quote_group_label} 견적서' if quote_group_label else '견적서',
             '메모': schedule.notes or '',
             '기타사항': schedule.quote_extra_notes or '',
             '견적기타사항': schedule.quote_extra_notes or '',
@@ -19040,6 +19209,8 @@ def get_document_template_data(request, document_type, schedule_id):
                 'baseUnitPrice': int(price_info['base_unit_price']),
                 'discountUnitPrice': int(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else None,
                 'discountRate': float(price_info['discount_rate']),
+                'quoteGroup': item.quote_group or '',
+                'quoteGroupLabel': _quote_group_label(item.quote_group),
                 'notes': item.notes or '',
                 'subtotal': int(item_subtotal)
             })
@@ -19054,6 +19225,8 @@ def get_document_template_data(request, document_type, schedule_id):
             'delivery_note': '납품서',
         }
         doc_name = doc_type_names.get(document_type, document_template.name)
+        if document_type == 'quotation' and quote_group_label:
+            doc_name = quote_group_label if quote_group_label.endswith('견적서') else f'{quote_group_label} 견적서'
         customer_company = schedule.followup.company.name if schedule.followup.company else schedule.followup.customer_name
         
         return JsonResponse({
@@ -19067,10 +19240,14 @@ def get_document_template_data(request, document_type, schedule_id):
                 'doc_name': doc_name,
                 'today_str': today.strftime('%Y%m%d'),
                 'base_date': base_date,
-                'transaction_number': transaction_number
+                'transaction_number': transaction_number,
+                'quote_group': quote_group,
+                'quote_group_label': quote_group_label,
             },
             'items': items_data,
-            'item_count': len(delivery_items)
+            'item_count': len(delivery_items),
+            'quote_group': quote_group,
+            'quote_group_label': quote_group_label,
         })
         
     except Exception as e:
@@ -19085,7 +19262,7 @@ def get_document_template_data(request, document_type, schedule_id):
 
 @login_required
 @require_http_methods(["GET", "POST"])
-def generate_document_pdf(request, document_type, schedule_id, output_format='xlsx'):
+def generate_document_pdf(request, document_type, schedule_id, output_format='xlsx', quote_group=None):
     """
     일정 기반 서류 생성 및 다운로드
     - 업로드된 서류 템플릿에 실제 데이터를 채워서 다운로드
@@ -19116,6 +19293,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
         if not can_access_user_data(request.user, schedule.user):
             logger.warning(f"[서류생성] 권한 없음 - 사용자: {request.user.username}")
             return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+        quote_group, quote_group_selected = _document_quote_group_selection(request, quote_group)
+        quote_group_label = _quote_group_label(quote_group) if quote_group_selected else ''
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
@@ -19193,8 +19373,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             # FileField - 로컬 파일 경로 사용
             template_file_path = document_template.file.path
         
-        # 납품 품목 조회
-        delivery_items = DeliveryItem.objects.filter(schedule=schedule).select_related('product')
+        # 납품/견적 품목 조회. 견적서는 quote_group query가 있으면 해당 묶음만 출력한다.
+        delivery_items = _document_delivery_items_queryset(
+            schedule,
+            document_type,
+            quote_group=quote_group,
+            quote_group_selected=quote_group_selected,
+        )
         
         # 원본 파일 확장자 확인 (CloudinaryField는 public_id 사용)
         if hasattr(document_template.file, 'public_id'):
@@ -19369,6 +19554,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
 
                     # 견적 정보 (자동 채움)
                     '견적번호': _quote_number,
+                    '견적구분': quote_group_label,
+                    '견적명': quote_group_label,
+                    '견적제목': f'{quote_group_label} 견적서' if quote_group_label else '견적서',
                     '메모': schedule.notes or '',
                     '기타사항': schedule.quote_extra_notes or '',
                     '견적기타사항': schedule.quote_extra_notes or '',
@@ -19543,6 +19731,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     'delivery_note': '납품서',
                 }
                 doc_name = doc_type_names.get(document_type, document_template.name)
+                if document_type == 'quotation' and quote_group_label:
+                    doc_name = quote_group_label if quote_group_label.endswith('견적서') else f'{quote_group_label} 견적서'
                 
                 # 출력 형식에 따라 저장
                 if output_format.lower() == 'pdf':
@@ -19614,7 +19804,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 encoded_filename = quote(file_name)
                 
-                # 서류 생성 로그 저장. 견적서 PDF는 일정에 등록된 견적서로 재사용한다.
+                # 서류 생성 로그 저장. PDF는 일정 상세의 등록 서류 목록에서 재사용한다.
                 from reporting.models import DocumentGenerationLog
                 from django.core.files.base import ContentFile
 
@@ -19627,9 +19817,13 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     output_format=output_format,
                     filename=file_name[:255],
                     file_size=len(output_data),
+                    quote_group=quote_group if quote_group_selected else '',
                 )
-                if document_type == 'quotation' and content_type == 'application/pdf':
-                    generation_log.file.save(f'{transaction_number}_{document_type}.pdf', ContentFile(output_data), save=False)
+                if content_type == 'application/pdf':
+                    storage_name = f'{transaction_number}_{document_type}.pdf'
+                    if document_type == 'quotation' and quote_group_selected:
+                        storage_name = f'{transaction_number}_{_quote_group_filename_part(quote_group)}_{document_type}.pdf'
+                    generation_log.file.save(storage_name, ContentFile(output_data), save=False)
                 generation_log.save()
                 
                 # 응답

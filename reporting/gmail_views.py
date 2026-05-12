@@ -59,6 +59,18 @@ def _quote_document_logs_for_schedule(schedule):
     ).exclude(file='').select_related('user').order_by('created_at', 'id')
 
 
+def _quote_group_keys_for_schedule(schedule):
+    groups = []
+    seen = set()
+    for item in schedule.delivery_items_set.all().order_by('id'):
+        group = (getattr(item, 'quote_group', '') or '').strip()[:100]
+        if group in seen:
+            continue
+        seen.add(group)
+        groups.append(group)
+    return groups or ['']
+
+
 def _decode_response_filename(response, fallback='quotation.pdf'):
     from urllib.parse import unquote
     import re
@@ -111,26 +123,28 @@ def _auto_quote_pdf_attachments(request, schedule):
     if not logs:
         from .views import generate_document_pdf
 
-        response = generate_document_pdf(request, 'quotation', schedule.id, 'pdf')
-        content_type = (response.get('Content-Type', '') if hasattr(response, 'get') else '').split(';')[0].strip()
-        if content_type == 'application/json':
-            raise Exception(_json_error_from_document_response(response))
-        if getattr(response, 'status_code', 500) >= 400:
-            raise Exception(_json_error_from_document_response(response))
-        if content_type != 'application/pdf':
-            raise Exception('견적서 PDF를 생성하지 못했습니다. PDF 변환 설정을 확인해주세요.')
-
-        logs = list(_quote_document_logs_for_schedule(schedule))
-        if not logs:
-            filename = _decode_response_filename(response)
-            return [{
-                'filename': filename,
+        generated_fallbacks = []
+        for quote_group in _quote_group_keys_for_schedule(schedule):
+            response = generate_document_pdf(request, 'quotation', schedule.id, 'pdf', quote_group=quote_group)
+            content_type = (response.get('Content-Type', '') if hasattr(response, 'get') else '').split(';')[0].strip()
+            if content_type == 'application/json':
+                raise Exception(_json_error_from_document_response(response))
+            if getattr(response, 'status_code', 500) >= 400:
+                raise Exception(_json_error_from_document_response(response))
+            if content_type != 'application/pdf':
+                raise Exception('견적서 PDF를 생성하지 못했습니다. PDF 변환 설정을 확인해주세요.')
+            generated_fallbacks.append({
+                'filename': _decode_response_filename(response),
                 'content': bytes(response.content),
                 'mimetype': 'application/pdf',
                 'size': len(response.content),
                 'source': 'quote_document',
                 'documentLogId': None,
-            }]
+            })
+
+        logs = list(_quote_document_logs_for_schedule(schedule))
+        if not logs:
+            return generated_fallbacks
 
     return [_attachment_from_document_log(log) for log in logs]
 

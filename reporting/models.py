@@ -795,6 +795,7 @@ class DeliveryItem(models.Model):
     discount_unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="할인단가")
     total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행여부")
+    quote_group = models.CharField(max_length=100, blank=True, default='', verbose_name="견적서 구분")
     notes = models.TextField(blank=True, null=True, verbose_name="비고")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
@@ -1823,6 +1824,7 @@ class DocumentGenerationLog(models.Model):
     )
     filename = models.CharField(max_length=255, blank=True, verbose_name="파일명")
     file_size = models.PositiveIntegerField(default=0, verbose_name="파일 크기 (bytes)")
+    quote_group = models.CharField(max_length=100, blank=True, default='', verbose_name="견적서 구분")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일", db_index=True)
     
     def __str__(self):

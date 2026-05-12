@@ -84,6 +84,7 @@ import {
   ScheduleDeliveryItemPayload,
   ScheduleDocumentAction,
   ScheduleDocumentFormatAction,
+  ScheduleGeneratedDocument,
   ScheduleDocumentPreviewData,
   ScheduleFileItem,
   ScheduleEditPayload,
@@ -113,6 +114,7 @@ import {
   deleteNoteFile,
   deleteNoteReply,
   deleteScheduleFile,
+  deleteGeneratedDocument,
   deleteDocumentTemplate,
   deleteWeeklyReport,
   downloadScheduleDocument,
@@ -256,10 +258,11 @@ type ScheduleDeliveryEditRow = {
   discountRate: string;
   discountUnitPrice: string;
   taxInvoiceIssued: boolean;
+  quoteGroup: string;
   notes: string;
 };
 
-type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'notes';
+type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'quoteGroup' | 'notes';
 
 type MailComposeFormState = {
   attachments: File[];
@@ -475,6 +478,7 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   discountRate: item?.discountRate ? String(item.discountRate) : '',
   discountUnitPrice: item?.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? String(item.discountUnitPrice) : '',
   taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
+  quoteGroup: item?.quoteGroup || '',
   notes: item?.notes || '',
 });
 
@@ -4503,26 +4507,34 @@ function saveDownloadedBlob(blob: Blob, filename: string) {
 
 function ScheduleDocumentsPanel({
   documents,
+  deletingDocumentKey,
   downloadingKey,
   previewAction,
   previewData,
   previewError,
   previewLoading,
   onClosePreview,
+  onDelete,
   onDownload,
   onPreview,
 }: {
   documents: ScheduleDetailData['documents'];
+  deletingDocumentKey: string;
   downloadingKey: string;
   previewAction: ScheduleDocumentAction | null;
   previewData: ScheduleDocumentPreviewData | null;
   previewError: string;
   previewLoading: boolean;
   onClosePreview: () => void;
+  onDelete: (document: ScheduleGeneratedDocument) => void;
   onDownload: (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction) => void;
   onPreview: (action: ScheduleDocumentAction) => void;
 }) {
-  if (!documents.items.length) {
+  const registeredDocuments = documents.registeredDocuments.length > 0
+    ? documents.registeredDocuments
+    : documents.registeredQuotations;
+
+  if (!documents.items.length && !registeredDocuments.length) {
     return null;
   }
 
@@ -4540,8 +4552,9 @@ function ScheduleDocumentsPanel({
       <div className="schedule-document-list">
         {documents.items.map((action) => {
           const hasTemplate = action.templateCount > 0;
+          const actionListKey = `${action.type}-${action.quoteGroup ?? ''}-${action.previewHref}`;
           return (
-            <div className="schedule-document-card" key={action.type}>
+            <div className="schedule-document-card" key={actionListKey}>
               <div className="schedule-document-card-main">
                 <div>
                   <strong>{action.label}</strong>
@@ -4558,11 +4571,11 @@ function ScheduleDocumentsPanel({
                   onClick={() => onPreview(action)}
                   type="button"
                 >
-                  {previewLoading && previewAction?.type === action.type ? <Loader2 className="spin-icon" size={14} /> : <Eye size={14} />}
+                  {previewLoading && previewAction?.previewHref === action.previewHref ? <Loader2 className="spin-icon" size={14} /> : <Eye size={14} />}
                   <span>미리보기</span>
                 </button>
                 {action.formats.map((formatAction) => {
-                  const actionKey = `${action.type}-${formatAction.format}`;
+                  const actionKey = `${action.type}-${formatAction.format}-${formatAction.href}`;
                   const downloading = downloadingKey === actionKey;
                   return (
                     <button
@@ -4596,15 +4609,34 @@ function ScheduleDocumentsPanel({
         </div>
       ) : null}
 
-      {documents.registeredQuotations.length > 0 ? (
+      {registeredDocuments.length > 0 ? (
         <div className="schedule-quote-document-list">
-          <h4>등록된 견적서</h4>
-          {documents.registeredQuotations.map((document) => (
-            <a href={document.downloadHref} key={document.id}>
-              <FileText size={14} />
-              <span>{document.filename || document.transactionNumber}</span>
-              <small>{[document.size, document.createdAt ? formatDateTimeLabel(document.createdAt) : ''].filter(Boolean).join(' · ')}</small>
-            </a>
+          <h4>등록된 서류</h4>
+          {registeredDocuments.map((document) => (
+            <div className="schedule-quote-document-row" key={document.id}>
+              <a href={document.downloadHref}>
+                <FileText size={14} />
+                <span>
+                  {[
+                    document.documentTypeLabel,
+                    document.quoteGroupLabel && document.documentType === 'quotation' ? document.quoteGroupLabel : '',
+                    document.filename || document.transactionNumber,
+                  ].filter(Boolean).join(' · ')}
+                </span>
+                <small>{[document.size, document.createdAt ? formatDateTimeLabel(document.createdAt) : ''].filter(Boolean).join(' · ')}</small>
+              </a>
+              {document.canDelete && document.deleteHref ? (
+                <button
+                  aria-label={`${document.filename || document.transactionNumber} 삭제`}
+                  className="schedule-quote-document-delete"
+                  disabled={Boolean(deletingDocumentKey)}
+                  onClick={() => onDelete(document)}
+                  type="button"
+                >
+                  {deletingDocumentKey === String(document.id) ? <Loader2 className="spin-icon" size={13} /> : <Trash2 size={13} />}
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}
@@ -4638,6 +4670,7 @@ function ScheduleDocumentsPanel({
               <div className="schedule-document-preview-meta">
                 <span>{previewData.fileInfo.docName || previewAction.label}</span>
                 <span>{previewData.templateFilename || '템플릿 파일명 없음'}</span>
+                {previewData.fileInfo.quoteGroupLabel ? <span>{previewData.fileInfo.quoteGroupLabel}</span> : null}
                 <span>품목 {formatNumber(previewData.itemCount)}개</span>
               </div>
               {variableGroups.length > 0 ? (
@@ -4663,7 +4696,7 @@ function ScheduleDocumentsPanel({
                 <div className="schedule-document-item-list">
                   {previewData.items.map((item) => (
                     <div key={item.index}>
-                      <strong>{item.name || `품목 ${item.index}`}</strong>
+                      <strong>{item.quoteGroupLabel ? `[${item.quoteGroupLabel}] ${item.name || `품목 ${item.index}`}` : item.name || `품목 ${item.index}`}</strong>
                       <span>{[
                         `${formatNumber(item.quantity)}${item.unit || ''}`,
                         item.discountUnitPrice !== null ? `기준 ${formatWon(item.baseUnitPrice)}` : '',
@@ -4719,6 +4752,7 @@ function ScheduleDetailPage({
   const [prepaymentsLoading, setPrepaymentsLoading] = useState(false);
   const [prepaymentsError, setPrepaymentsError] = useState('');
   const [documentDownloadingKey, setDocumentDownloadingKey] = useState('');
+  const [documentDeletingKey, setDocumentDeletingKey] = useState('');
   const [documentPreviewAction, setDocumentPreviewAction] = useState<ScheduleDocumentAction | null>(null);
   const [documentPreviewData, setDocumentPreviewData] = useState<ScheduleDocumentPreviewData | null>(null);
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
@@ -4744,6 +4778,7 @@ function ScheduleDetailPage({
     setPrepaymentsLoading(false);
     setPrepaymentsError('');
     setDocumentDownloadingKey('');
+    setDocumentDeletingKey('');
     setDocumentPreviewAction(null);
     setDocumentPreviewData(null);
     setDocumentPreviewLoading(false);
@@ -5136,6 +5171,7 @@ function ScheduleDetailPage({
       || row.unitPrice.trim()
       || row.discountRate.trim()
       || row.discountUnitPrice.trim()
+      || row.quoteGroup.trim()
       || row.notes.trim()
     ));
     if (!rowsWithInput.length) {
@@ -5196,6 +5232,7 @@ function ScheduleDetailPage({
         discountRate: discountRate || null,
         discountUnitPrice: discountUnitPrice || null,
         taxInvoiceIssued: row.taxInvoiceIssued,
+        quoteGroup: row.quoteGroup.trim(),
         notes: row.notes.trim(),
       });
     }
@@ -5242,7 +5279,7 @@ function ScheduleDetailPage({
     if (documentDownloadingKey) {
       return;
     }
-    const actionKey = `${action.type}-${formatAction.format}`;
+    const actionKey = `${action.type}-${formatAction.format}-${formatAction.href}`;
     setDocumentDownloadingKey(actionKey);
     setDocumentPreviewError('');
     try {
@@ -5252,6 +5289,31 @@ function ScheduleDetailPage({
       setDocumentPreviewError(error instanceof Error ? error.message : `${action.label} 다운로드에 실패했습니다.`);
     } finally {
       setDocumentDownloadingKey('');
+    }
+  };
+
+  const handleGeneratedDocumentDelete = async (document: ScheduleGeneratedDocument) => {
+    if (documentDeletingKey) {
+      return;
+    }
+    if (!currentSchedule?.canEdit || !document.canDelete || !document.deleteHref) {
+      setDocumentPreviewError('등록 서류 삭제 권한이 없습니다.');
+      return;
+    }
+    const filename = document.filename || document.transactionNumber || document.documentTypeLabel;
+    if (!window.confirm(`"${filename}" 등록 서류를 삭제할까요?`)) {
+      return;
+    }
+
+    setDocumentDeletingKey(String(document.id));
+    setDocumentPreviewError('');
+    try {
+      await deleteGeneratedDocument(document.deleteHref);
+      await onRefresh();
+    } catch (error) {
+      setDocumentPreviewError(error instanceof Error ? error.message : '등록 서류 삭제에 실패했습니다.');
+    } finally {
+      setDocumentDeletingKey('');
     }
   };
 
@@ -5637,8 +5699,10 @@ function ScheduleDetailPage({
           </div>
           <ScheduleDocumentsPanel
             documents={data.documents}
+            deletingDocumentKey={documentDeletingKey}
             downloadingKey={documentDownloadingKey}
             onClosePreview={handleDocumentPreviewClose}
+            onDelete={handleGeneratedDocumentDelete}
             onDownload={handleDocumentDownload}
             onPreview={handleDocumentPreview}
             previewAction={documentPreviewAction}
@@ -5722,6 +5786,16 @@ function ScheduleDetailPage({
                           value={row.itemName}
                         />
                       </label>
+                      {isQuoteSchedule ? (
+                        <label>
+                          <span>견적서 구분</span>
+                          <input
+                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'quoteGroup', event.target.value)}
+                            placeholder="예: 보상판매, 수리"
+                            value={row.quoteGroup}
+                          />
+                        </label>
+                      ) : null}
                       <label>
                         <span>수량</span>
                         <input
@@ -5832,7 +5906,7 @@ function ScheduleDetailPage({
             <div className="schedule-delivery-list">
               {deliveryItems.map((item) => (
                 <div key={item.id}>
-                  <strong>{item.itemName}</strong>
+                  <strong>{isQuoteSchedule && item.quoteGroupLabel ? `[${item.quoteGroupLabel}] ${item.itemName}` : item.itemName}</strong>
                   <span>{[
                     `${formatNumber(item.quantity)}${item.unit}`,
                     item.discountUnitPrice !== null ? `할인단가 ${formatWon(item.discountUnitPrice)}` : '',
@@ -9004,7 +9078,7 @@ function DocumentsPage({
                   const cardBody = (
                     <>
                       <div className="document-generation-card-head">
-                        <span>{generation.documentTypeLabel}</span>
+                        <span>{generation.quoteGroupLabel ? `${generation.quoteGroupLabel} ${generation.documentTypeLabel}` : generation.documentTypeLabel}</span>
                         <strong>{generation.transactionNumber}</strong>
                       </div>
                       <div className="document-generation-card-meta">

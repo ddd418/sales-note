@@ -1,6 +1,42 @@
 # AGENT_PLAN.md
 
-## Current task — 일정 견적서 PDF 다중 등록 및 메일 자동 첨부
+## Current task — 일정 내 복수 견적서 구분 등록 및 메일 자동 첨부 보정
+
+**목표**: 한 quote 일정 안에서 `보상판매`, `수리`처럼 서로 다른 견적서 구분을 2개 이상 만들고, 각 구분의 품목만 담은 견적서 PDF를 별도로 등록/다운로드할 수 있게 한다. 일정 메일 발송 시 등록된 견적서 PDF들을 자동 첨부하는 기존 흐름은 유지한다.
+
+### 확인된 상태
+
+- 직전 구현은 `DocumentGenerationLog`에 견적서 PDF 파일을 여러 개 저장할 수 있게 했지만, 모든 PDF가 같은 일정의 전체 품목을 사용한다.
+- 사용자가 요구한 것은 같은 일정에서 “보상판매 견적서 1부”, “수리 견적서 1부”처럼 품목 묶음이 다른 견적서 여러 부를 만드는 기능이다.
+- 현재 React 일정 품목 편집은 `DeliveryItem` 목록을 저장하므로, 여기에 견적서 구분 필드를 추가하면 기존 일정/품목 흐름을 유지하면서 견적서별 품목 분리가 가능하다.
+- 서류 생성 API는 query string으로 견적서 구분을 받아 해당 구분의 품목만 치환하고, 생성 로그에도 구분명을 남겨야 한다.
+- DB migration이 필요하다.
+
+### 구현 계획
+
+- `DeliveryItem.quote_group`을 추가해 각 품목이 속한 견적서 구분명을 저장한다.
+- `DocumentGenerationLog.quote_group`을 추가해 생성/등록된 견적서 PDF가 어떤 구분의 견적서인지 남긴다.
+- 일정 상세 API의 `deliveryItems`, 문서 action, 등록 견적서 payload에 견적서 구분 정보를 포함한다.
+- quote 일정의 문서 action은 전체 견적서 1개가 아니라 견적서 구분별 action으로 내려준다.
+- `get_document_template_data()`와 `generate_document_pdf()`가 `quote_group` query/post 값을 받아 해당 구분 품목만 사용하도록 한다.
+- React 일정 품목 편집 UI에 `견적서 구분` 입력을 추가하고, 문서 패널에서 구분별 `PDF 등록/다운로드` 버튼을 제공한다.
+- 메일 자동 첨부는 등록된 구분별 견적서 PDF를 모두 첨부한다. 등록된 PDF가 하나도 없으면 구분별 PDF를 생성해 첨부한다.
+- 이어서 사용자가 요청한 등록 서류 삭제 기능을 추가한다. 파일로 등록된 생성 서류는 견적서/거래명세서/납품서 모두 일정 상세에서 삭제할 수 있게 하되, 메일 자동 첨부는 견적서 PDF로만 유지한다.
+
+### 검증 계획
+
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py`
+- `python manage.py check`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke check
+
+---
+
+## Previous task — 일정 견적서 PDF 다중 등록 및 메일 자동 첨부
 
 **목표**: 견적 일정에서 견적서 PDF를 여러 개 등록/보관할 수 있게 하고, 해당 일정에서 메일을 보낼 때 등록된 견적서 PDF만 자동 첨부한다. 거래명세서/납품서나 일반 첨부파일은 자동 첨부 대상에서 제외한다.
 

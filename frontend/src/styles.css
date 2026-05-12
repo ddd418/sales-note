@@ -2138,6 +2138,17 @@ h2 {
   font-size: 12px;
 }
 
+.schedule-quote-document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 8px;
+  align-items: center;
+}
+
+.schedule-quote-document-row + .schedule-quote-document-row {
+  border-top: 1px solid var(--line);
+}
+
 .schedule-quote-document-list a {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -2146,10 +2157,6 @@ h2 {
   padding: 7px 0;
   color: var(--text);
   text-decoration: none;
-}
-
-.schedule-quote-document-list a + a {
-  border-top: 1px solid var(--line);
 }
 
 .schedule-quote-document-list span,
@@ -2162,6 +2169,23 @@ h2 {
   grid-column: 2;
   color: var(--muted);
   font-size: 11px;
+}
+
+.schedule-quote-document-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #b91c1c;
+}
+
+.schedule-quote-document-delete:disabled {
+  cursor: wait;
+  opacity: 0.64;
 }
 
 .schedule-document-preview {

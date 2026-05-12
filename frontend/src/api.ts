@@ -1033,6 +1033,8 @@ export type ScheduleDeliveryItem = {
   effectiveUnitPrice: number;
   totalPrice: number;
   taxInvoiceIssued: boolean;
+  quoteGroup: string;
+  quoteGroupLabel: string;
   notes: string;
 };
 
@@ -1046,6 +1048,7 @@ export type ScheduleDeliveryItemPayload = {
   discountRate?: string | number | null;
   discountUnitPrice?: string | number | null;
   taxInvoiceIssued: boolean;
+  quoteGroup?: string;
   notes?: string;
 };
 
@@ -1434,6 +1437,10 @@ export type ScheduleDocumentAction = {
   description: string;
   templateCount: number;
   previewHref: string;
+  quoteGroup?: string;
+  quoteGroupLabel?: string;
+  itemCount?: number;
+  totalAmount?: number;
   formats: ScheduleDocumentFormatAction[];
 };
 
@@ -1447,15 +1454,21 @@ export type ScheduleGeneratedDocument = {
   documentTypeLabel: string;
   outputFormat: string;
   outputFormatLabel: string;
+  quoteGroup: string;
+  quoteGroupLabel: string;
   createdAt: string | null;
   createdBy: string;
   downloadHref: string;
+  deleteHref?: string;
+  canDelete?: boolean;
 };
 
 export type ScheduleDocumentsData = {
   canGenerate: boolean;
   templateManagerHref: string;
   djangoTemplateManagerHref?: string;
+  registeredDocuments: ScheduleGeneratedDocument[];
+  registeredDocumentCount: number;
   registeredQuotations: ScheduleGeneratedDocument[];
   registeredQuotationCount: number;
   autoAttachLabel: string;
@@ -1475,6 +1488,8 @@ export type ScheduleDocumentPreviewData = {
     todayStr?: string;
     baseDate?: string;
     transactionNumber?: string;
+    quoteGroup?: string;
+    quoteGroupLabel?: string;
   };
   items: Array<{
     index: number;
@@ -1485,6 +1500,8 @@ export type ScheduleDocumentPreviewData = {
     baseUnitPrice: number;
     discountRate: number;
     discountUnitPrice: number | null;
+    quoteGroup?: string;
+    quoteGroupLabel?: string;
     notes: string;
     subtotal: number;
   }>;
@@ -1547,6 +1564,8 @@ export type DocumentGenerationItem = {
   transactionNumber: string;
   outputFormat: 'pdf' | 'xlsx' | string;
   outputFormatLabel: string;
+  quoteGroup?: string;
+  quoteGroupLabel?: string;
   filename?: string;
   fileSize?: number;
   downloadHref?: string;
@@ -2762,6 +2781,8 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     canGenerate: false,
     templateManagerHref: '/documents/',
     djangoTemplateManagerHref: '/reporting/documents/',
+    registeredDocuments: [],
+    registeredDocumentCount: 0,
     registeredQuotations: [],
     registeredQuotationCount: 0,
     autoAttachLabel: '',
@@ -4747,6 +4768,8 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         ...emptyScheduleDetailData.documents,
         ...(payload.documents ?? {}),
         items: payload.documents?.items ?? emptyScheduleDetailData.documents.items,
+        registeredDocuments: payload.documents?.registeredDocuments ?? emptyScheduleDetailData.documents.registeredDocuments,
+        registeredDocumentCount: payload.documents?.registeredDocumentCount ?? emptyScheduleDetailData.documents.registeredDocumentCount,
         registeredQuotations: payload.documents?.registeredQuotations ?? emptyScheduleDetailData.documents.registeredQuotations,
         registeredQuotationCount: payload.documents?.registeredQuotationCount ?? emptyScheduleDetailData.documents.registeredQuotationCount,
         autoAttachLabel: payload.documents?.autoAttachLabel ?? emptyScheduleDetailData.documents.autoAttachLabel,
@@ -4778,6 +4801,8 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       today_str?: string;
       base_date?: string;
       transaction_number?: string;
+      quote_group?: string;
+      quote_group_label?: string;
     };
     items?: Array<{
       index?: number;
@@ -4792,6 +4817,10 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       discountRate?: number;
       discount_unit_price?: number | null;
       discountUnitPrice?: number | null;
+      quote_group?: string;
+      quoteGroup?: string;
+      quote_group_label?: string;
+      quoteGroupLabel?: string;
       notes?: string;
       subtotal?: number;
     }>;
@@ -4828,6 +4857,8 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       todayStr: rawFileInfo.todayStr ?? snakeFileInfo.today_str,
       baseDate: rawFileInfo.baseDate ?? snakeFileInfo.base_date,
       transactionNumber: rawFileInfo.transactionNumber ?? snakeFileInfo.transaction_number,
+      quoteGroup: rawFileInfo.quoteGroup ?? snakeFileInfo.quote_group,
+      quoteGroupLabel: rawFileInfo.quoteGroupLabel ?? snakeFileInfo.quote_group_label,
     },
     items: (data.items ?? []).map((item, index) => ({
       index: item.index ?? index + 1,
@@ -4838,6 +4869,8 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       baseUnitPrice: item.baseUnitPrice ?? item.base_unit_price ?? item.unitPrice ?? item.unit_price ?? 0,
       discountRate: item.discountRate ?? item.discount_rate ?? 0,
       discountUnitPrice: item.discountUnitPrice ?? item.discount_unit_price ?? null,
+      quoteGroup: item.quoteGroup ?? item.quote_group ?? '',
+      quoteGroupLabel: item.quoteGroupLabel ?? item.quote_group_label ?? '',
       notes: item.notes ?? '',
       subtotal: item.subtotal ?? 0,
     })),
@@ -4896,6 +4929,29 @@ export async function downloadScheduleDocument(downloadUrl: string): Promise<Sch
     blob: await response.blob(),
     filename: filename || 'document.xlsx',
   };
+}
+
+export async function deleteGeneratedDocument(deleteUrl: string): Promise<ScheduleFileActionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Generated document delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleFileActionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Generated document delete failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadDocumentTemplatesData(type = ''): Promise<DocumentTemplatesData> {
