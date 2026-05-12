@@ -14,7 +14,7 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+Quote discount unit price, item note, quote extra notes, React document variable copy, and AI recommended-goal customer/priority updates are implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual production testing is complete.
 
 Runtime commit:
 
@@ -82,7 +82,7 @@ Manual production test:
 
 Manual test result:
 
-- Pending user confirmation.
+- Complete: user confirmed production manual test completion on 2026-05-12 KST.
 
 ## Previous Task
 
