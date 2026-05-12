@@ -142,6 +142,7 @@ import {
   loadWeeklyReportSchedules,
   loadPipelineData,
   moveDealStage,
+  normalizeCustomerAiDepartment,
   runAiDepartmentAnalysis,
   runMailboxAction,
   runMailboxSync,
@@ -1614,6 +1615,8 @@ function CustomerAiResultPanel({
   const quoteDelivery = aiDepartment.quoteDelivery;
   const quoteInsights = aiDepartment.quoteInsights;
   const missingInfo = aiDepartment.missingInfo;
+  const recommendedQuestions = aiDepartment.recommendedQuestions ?? [];
+  const [copiedQuestionKey, setCopiedQuestionKey] = useState('');
   const periodLabel = [aiDepartment.periodStart, aiDepartment.periodEnd]
     .filter(Boolean)
     .map((value) => formatDateLabel(value))
@@ -1629,6 +1632,16 @@ function CustomerAiResultPanel({
     || quoteDelivery.productStats.length > 0
     || quoteDelivery.recentDeliveries.length > 0
     || quoteInsights.stalledQuotes.length > 0;
+
+  const handleQuestionCopy = async (question: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(question);
+      setCopiedQuestionKey(key);
+      window.setTimeout(() => setCopiedQuestionKey(''), 1400);
+    } catch {
+      setCopiedQuestionKey('');
+    }
+  };
 
   return (
     <div className="customer-ai-result">
@@ -1760,6 +1773,30 @@ function CustomerAiResultPanel({
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      ) : null}
+
+      {recommendedQuestions.length > 0 ? (
+        <section className="customer-ai-section">
+          <h4>추천 질문</h4>
+          <div className="customer-ai-question-list">
+            {recommendedQuestions.map((item, index) => {
+              const key = `${item.source}-${item.question}-${index}`;
+              return (
+                <article className="customer-ai-question-item" key={key}>
+                  <div>
+                    <span className={`customer-ai-priority ${item.priority || 'medium'}`}>{item.sourceLabel || '질문'}</span>
+                    <strong>{item.question}</strong>
+                    {item.context ? <small>{item.context}</small> : null}
+                  </div>
+                  <button onClick={() => handleQuestionCopy(item.question, key)} type="button">
+                    {copiedQuestionKey === key ? <Check size={14} /> : <Copy size={14} />}
+                    {copiedQuestionKey === key ? '복사됨' : '복사'}
+                  </button>
+                </article>
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -9677,6 +9714,7 @@ function DetailPanel({
   moving,
   moveError,
   moveMessage,
+  onRefresh,
   onMoveStage,
 }: {
   deal?: Deal;
@@ -9685,8 +9723,84 @@ function DetailPanel({
   moving: boolean;
   moveError: string;
   moveMessage: string;
+  onRefresh: (preferredDealId?: number | null) => Promise<PipelineData>;
   onMoveStage: (deal: Deal, stage: PipelineStage) => void;
 }) {
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiMessage, setAiMessage] = useState('');
+  const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
+  const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setAiResultOpen(Boolean(deal?.aiDepartment?.hasAnalysis));
+    setAiRunning(false);
+    setAiError('');
+    setAiMessage('');
+    setAiVerificationNotes({});
+    setAiVerifyingId(null);
+  }, [deal?.id, deal?.aiDepartment?.hasAnalysis]);
+
+  const aiDepartment = deal?.aiDepartment
+    ? normalizeCustomerAiDepartment(deal.aiDepartment as Partial<CustomerAiDepartment>)
+    : null;
+
+  const handleAiDepartmentRun = async () => {
+    if (!deal || !aiDepartment?.canAnalyze || !aiDepartment.runHref || aiRunning) {
+      setAiError(aiDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
+      setAiMessage('');
+      return;
+    }
+
+    setAiRunning(true);
+    setAiError('');
+    setAiMessage('');
+    try {
+      const result = await runAiDepartmentAnalysis(aiDepartment.runHref);
+      await onRefresh(deal.id);
+      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
+      setAiMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+      setAiResultOpen(true);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
+    } finally {
+      setAiRunning(false);
+    }
+  };
+
+  const handleAiVerificationNoteChange = (cardId: number, value: string) => {
+    setAiVerificationNotes((previous) => ({
+      ...previous,
+      [cardId]: value,
+    }));
+  };
+
+  const handleAiPainpointVerify = async (card: CustomerAiPainpoint) => {
+    if (!deal || !card.canVerify || !card.verifyHref || aiVerifyingId) {
+      return;
+    }
+
+    setAiVerifyingId(card.id);
+    setAiError('');
+    setAiMessage('');
+    try {
+      await verifyAiPainpoint(card.verifyHref, aiVerificationNotes[card.id] || '');
+      await onRefresh(deal.id);
+      setAiMessage('PainPoint 검증 메모를 저장했습니다.');
+      setAiVerificationNotes((previous) => {
+        const next = { ...previous };
+        delete next[card.id];
+        return next;
+      });
+      setAiResultOpen(true);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
+    } finally {
+      setAiVerifyingId(null);
+    }
+  };
+
   if (!deal) {
     return (
       <aside className="detail-panel empty">
@@ -9699,8 +9813,6 @@ function DetailPanel({
       </aside>
     );
   }
-
-  const aiDepartment = deal.aiDepartment;
 
   return (
     <aside className="detail-panel">
@@ -9789,7 +9901,14 @@ function DetailPanel({
               <span>미검증 PainPoint {formatNumber(aiDepartment.unverifiedPainpointCount)}건</span>
             </div>
           ) : null}
+          {aiError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiError}</span></div> : null}
+          {aiMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiMessage}</span></div> : null}
           <div className="customer-ai-actions">
+            {aiDepartment.hasAnalysis ? (
+              <button className="route-secondary-action" onClick={() => setAiResultOpen((open) => !open)} type="button">
+                {aiResultOpen ? '결과 닫기' : '결과 보기'}
+              </button>
+            ) : null}
             {aiDepartment.href ? (
               <a className="route-secondary-action" href={aiDepartment.href}>
                 AI 결과
@@ -9807,7 +9926,25 @@ function DetailPanel({
                 <MoveUpRight size={15} />
               </a>
             ) : null}
+            <button
+              className="route-primary-action customer-ai-run-button"
+              disabled={!aiDepartment.canAnalyze || !aiDepartment.runHref || aiRunning}
+              onClick={handleAiDepartmentRun}
+              type="button"
+            >
+              {aiRunning ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
+              AI 분석 실행
+            </button>
           </div>
+          {aiDepartment.hasAnalysis && aiResultOpen ? (
+            <CustomerAiResultPanel
+              aiDepartment={aiDepartment}
+              verificationNotes={aiVerificationNotes}
+              verifyingId={aiVerifyingId}
+              onNoteChange={handleAiVerificationNoteChange}
+              onVerify={handleAiPainpointVerify}
+            />
+          ) : null}
         </div>
       ) : null}
       {deal.nextSchedule ? (
@@ -10511,6 +10648,16 @@ export function App() {
     setMoveError('');
     setMoveMessage('');
   };
+  const refreshPipelineData = async (preferredDealId: number | null = selectedDealId) => {
+    const data = await loadPipelineData();
+    setPipelineData(data);
+    setSelectedDealId(
+      preferredDealId && data.deals.some((item) => item.id === preferredDealId)
+        ? preferredDealId
+        : data.deals[0]?.id ?? null,
+    );
+    return data;
+  };
   const handleMoveStage = async (deal: Deal, stage: PipelineStage) => {
     if (pipelineData.source !== 'django' || deal.stage === stage) {
       return;
@@ -10520,9 +10667,7 @@ export function App() {
     setMoveMessage('');
     try {
       await moveDealStage(deal.id, stage);
-      const data = await loadPipelineData();
-      setPipelineData(data);
-      setSelectedDealId(data.deals.some((item) => item.id === deal.id) ? deal.id : data.deals[0]?.id ?? null);
+      await refreshPipelineData(deal.id);
       setMoveMessage('단계가 변경되었습니다.');
     } catch (error) {
       setMoveError(error instanceof Error ? error.message : '단계 변경에 실패했습니다.');
@@ -11741,6 +11886,7 @@ export function App() {
           moving={Boolean(visibleSelectedDeal && movingDealId === visibleSelectedDeal.id)}
           moveError={moveError}
           moveMessage={moveMessage}
+          onRefresh={refreshPipelineData}
           onMoveStage={handleMoveStage}
         />
       </div>

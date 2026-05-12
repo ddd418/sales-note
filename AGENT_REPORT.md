@@ -1,5 +1,98 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — React AI Summary Pipeline Questions And Email Context
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 준비 중
+
+### 요약
+
+React CRM의 부서 AI 요약이 API에서 중간에 잘리지 않도록 고객 상세, AI Workspace, 파이프라인 요약 truncation을 제거했습니다. 파이프라인 선택 고객 패널에서는 부서 AI 분석 실행, 전체 결과 펼침, PainPoint 검증 메모 저장을 React 안에서 사용할 수 있게 했고, AI 추천 질문은 별도 목록으로 모아 복사할 수 있게 했습니다. AI 분석 입력에는 고객이 보낸 답장과 함께 같은 스레드 또는 최근 사용자 발신 메일을 최대 2건까지 포함하도록 보강했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI 요약 truncation 제거, 고객 AI payload에 `recommendedQuestions` 추가
+- `reporting/funnel_views.py`: 파이프라인 AI payload에 전체 고객 AI 결과 payload 포함
+- `ai_chat/services.py`: 고객 답장과 최근 사용자 발신 메일 최대 2건을 AI 메일 컨텍스트에 포함
+- `frontend/src/api.ts`: 고객 AI payload 정규화 helper 및 추천 질문 타입 추가
+- `frontend/src/App.tsx`: 파이프라인 AI 실행/결과/검증 UI와 추천 질문 복사 UI 추가
+- `frontend/src/styles.css`: 추천 질문 목록/복사 버튼 스타일 추가
+- `reporting/tests.py`, `ai_chat/tests.py`: AI 요약/추천 질문/파이프라인/메일 컨텍스트 회귀 테스트 추가
+- `AGENT_PLAN.md`: 현재 작업 계획 기록
+
+### CRM 개선
+
+- 긴 AI 상단 요약이 고객 상세, AI Workspace, 파이프라인에서 잘리지 않고 표시됩니다.
+- 파이프라인에서 고객을 보다가 별도 Django 화면으로 이동하지 않아도 AI 분석 실행과 결과 확인이 가능합니다.
+- missing info, 검증 인사이트, PainPoint 검증 질문을 `추천 질문`으로 모아 고객에게 바로 물어볼 질문을 React에서 복사할 수 있습니다.
+- 고객 답장 분석 시 사용자가 최근 보낸 메일 맥락을 최대 2건까지 함께 보므로 답장의 의도와 이전 제안을 더 잘 해석할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 `reporting` 앱과 `/reporting/*` URL은 유지했습니다.
+- 기존 Django AI 결과 링크, AI 허브 링크, 고객 상세 AI 패널, PainPoint 검증 API는 유지했습니다.
+- AI 권한(`can_use_ai`)과 본인 담당 부서 분석 제한은 유지했습니다.
+- DB 모델 변경 및 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.PipelineApiTests ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=1
+→ Ran 41 tests, OK
+
+python -m py_compile reporting\views.py reporting\funnel_views.py ai_chat\services.py reporting\tests.py ai_chat\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-CAwxcHSb.js / assets/index-BpCNrkRC.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 로컬 화면 확인
+
+- Django dev server와 Vite dev server를 로컬에서 실행했습니다.
+- Playwright Chromium으로 `/pipeline/` 및 `/ai-workspace/`를 열어 인증 보호가 유지되는 것을 확인했습니다.
+- 로컬 인증 세션이 없어 로그인 후 실제 AI 패널 화면은 브라우저로 직접 확인하지 못했습니다. AI payload와 React 빌드는 테스트/빌드로 검증했습니다.
+
+### 알려진 제한
+
+- 사용자 발신 메일은 AI 컨텍스트에 최대 2건만 포함합니다.
+- 메일 컨텍스트는 기존 `EmailLog`가 FollowUp 또는 Schedule에 연결된 데이터만 사용합니다.
+- 운영에서 실제 로그인 계정으로 긴 AI 요약, 파이프라인 AI 실행, 추천 질문 복사, PainPoint 검증 저장을 수동 확인해야 합니다.
+
+### 배포 상태
+
+- GitHub push: 대기 중
+- Railway `web`: 대기 중
+- Railway `sales-note-frontend`: 대기 중
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 긴 AI 요약이 있는 부서를 선택하고 상단 요약이 중간에 잘리지 않는지 확인합니다.
+3. `추천 질문` 섹션이 보이고 질문 복사 버튼이 동작하는지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/pipeline/`에서 AI 분석 가능한 고객을 선택합니다.
+5. 파이프라인 상세 패널에서 AI 결과를 열고 미팅 인사이트, 다음 액션, 추천 질문, PainPoint가 표시되는지 확인합니다.
+6. 파이프라인에서 `AI 분석 실행`을 눌러 실행 후 결과가 갱신되는지 확인합니다.
+7. 미검증 PainPoint에 검증 메모를 저장하고 상태가 갱신되는지 확인합니다.
+8. 같은 고객에게 최근 보낸 메일 1~2건과 고객 답장이 있는 상태에서 부서 AI 분석을 다시 실행해 답장과 발신 메일 맥락이 다음 액션/추천 질문에 반영되는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-11 — Mailbox Email Line Break Normalization
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

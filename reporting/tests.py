@@ -1193,11 +1193,16 @@ class CustomersSummaryApiTests(TestCase):
         profile = self.user.userprofile
         profile.can_use_ai = True
         profile.save(update_fields=['can_use_ai'])
+        long_summary = (
+            'PCR 부서는 구매 프로세스 확인이 필요합니다. '
+            '결재권자 확인, 예산 집행일, 필요 서류를 한 번에 정리해야 합니다. '
+            '반복되는 견적 후속 지연을 줄이려면 다음 연락에서 승인자와 일정 기준을 명확히 확인해야 합니다.'
+        )
         analysis = AIDepartmentAnalysis.objects.create(
             user=self.user,
             department=target.department,
             analysis_data={
-                'department_summary': 'PCR 부서는 구매 프로세스 확인이 필요합니다.',
+                'department_summary': long_summary,
                 'meeting_insights': [{
                     'theme': '구매 승인 지연',
                     'details': '견적 이후 결재권자 확인이 반복적으로 늦어집니다.',
@@ -1292,7 +1297,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(ai_department['canUseAi'])
         self.assertTrue(ai_department['canAnalyze'])
         self.assertTrue(ai_department['hasAnalysis'])
-        self.assertIn('구매 프로세스', ai_department['summary'])
+        self.assertEqual(ai_department['summary'], long_summary)
         self.assertEqual(ai_department['meetingCount'], 3)
         self.assertEqual(ai_department['painpointCount'], 1)
         self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
@@ -1315,6 +1320,10 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn('김박사', ai_department['verificationInsights'][0]['insight'])
         self.assertEqual(ai_department['verificationInsights'][0]['nextVerification'], '6월 예산 집행일과 필요 서류를 확인합니다.')
         self.assertEqual(ai_department['missingInfo']['questions'][0], '결재 최종 승인자는 누구인가요?')
+        recommended_questions = [item['question'] for item in ai_department['recommendedQuestions']]
+        self.assertIn('결재 최종 승인자는 누구인가요?', recommended_questions)
+        self.assertIn('6월 예산 집행일과 필요 서류를 확인합니다.', recommended_questions)
+        self.assertIn('결재 승인자가 누구인지 확인했나요?', recommended_questions)
         self.assertEqual(ai_department['painpoints'][0]['id'], card.id)
         self.assertEqual(ai_department['painpoints'][0]['categoryLabel'], '결재/구매 프로세스')
         self.assertEqual(ai_department['painpoints'][0]['evidence'][0]['typeLabel'], '검증')
@@ -3932,11 +3941,16 @@ class AIWorkspaceSummaryApiTests(TestCase):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard
 
+        summary = (
+            '후속 연락이 지연되고 있어 견적 대응이 필요합니다. '
+            '고객 답장, 견적 기록, 최근 미팅 내용을 함께 확인해야 하며 '
+            '다음 연락에서는 구매 일정과 필요 서류를 구체적으로 물어봐야 합니다.'
+        )
         analysis = AIDepartmentAnalysis.objects.create(
             user=owner,
             department=department,
             analysis_data={
-                'department_summary': '후속 연락이 지연되고 있어 견적 대응이 필요합니다.',
+                'department_summary': summary,
                 'meeting_insights': [
                     {
                         'theme': '후속 견적',
@@ -4036,12 +4050,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(payload['featuredDepartment']['hasAnalysis'])
         self.assertEqual(payload['featuredDepartment']['meetingCount'], 3)
         self.assertEqual(payload['featuredDepartment']['customerCount'], 1)
+        self.assertIn('필요 서류를 구체적으로 물어봐야 합니다', payload['featuredDepartment']['summary'])
         self.assertEqual(payload['featuredDepartment']['meetingInsights'][0]['theme'], '후속 견적')
         self.assertEqual(payload['featuredDepartment']['quoteDelivery']['recentDeliveries'][0]['items'][0]['product'], 'qPCR Reagent')
         self.assertEqual(payload['featuredDepartment']['quoteDelivery']['recentDeliveries'][0]['items'][0]['quantity'], 4)
         self.assertEqual(payload['featuredDepartment']['painpoints'][0]['verificationStatusLabel'], '미검증')
         self.assertIn('/ai/card/', payload['featuredDepartment']['painpoints'][0]['verifyHref'])
         self.assertTrue(payload['recommendedGoals'])
+        recommended_questions = [item['question'] for item in payload['featuredDepartment']['recommendedQuestions']]
+        self.assertIn('납기 기준일을 다시 확인할까요?', recommended_questions)
 
     def test_ai_workspace_summary_api_uses_requested_department_for_featured_panel(self):
         _first_followup, first_department = self._create_customer(self.user, '선택부서')
@@ -4323,10 +4340,20 @@ class PipelineApiTests(TestCase):
         profile.can_use_ai = True
         profile.save(update_fields=['can_use_ai'])
         followup = self._create_pipeline_customer(self.user, 'AI고객')
+        long_summary = (
+            '검수 메모를 반영해야 하는 부서입니다. '
+            '예산 승인 지연 가능성과 납기 조건을 함께 확인해야 하며 '
+            '다음 파이프라인 후속에서는 승인자, 필요 서류, 납품 가능일을 한 번에 정리해야 합니다.'
+        )
         analysis = AIDepartmentAnalysis.objects.create(
             user=self.user,
             department=followup.department,
-            analysis_data={'department_summary': '검수 메모를 반영해야 하는 부서입니다.'},
+            analysis_data={
+                'department_summary': long_summary,
+                'missing_info': {
+                    'questions': ['승인자와 필요 서류를 확인했나요?'],
+                },
+            },
             meeting_count=3,
             quote_count=2,
             delivery_count=1,
@@ -4370,7 +4397,7 @@ class PipelineApiTests(TestCase):
         self.assertTrue(ai_department['canUseAi'])
         self.assertTrue(ai_department['canAnalyze'])
         self.assertTrue(ai_department['hasAnalysis'])
-        self.assertEqual(ai_department['summary'], '검수 메모를 반영해야 하는 부서입니다.')
+        self.assertEqual(ai_department['summary'], long_summary)
         self.assertEqual(ai_department['meetingCount'], 3)
         self.assertEqual(ai_department['quoteCount'], 2)
         self.assertEqual(ai_department['deliveryCount'], 1)
@@ -4378,6 +4405,12 @@ class PipelineApiTests(TestCase):
         self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
         self.assertEqual(ai_department['href'], reverse('ai_chat:department_analysis', args=[followup.department_id]))
         self.assertEqual(ai_department['runHref'], reverse('ai_chat:run_analysis', args=[followup.department_id]))
+        self.assertEqual(ai_department['periodStart'], '2026-04-01')
+        self.assertEqual(ai_department['periodEnd'], '2026-05-01')
+        self.assertEqual(ai_department['painpoints'][0]['hypothesis'], '예산 승인 지연 가능성')
+        recommended_questions = [item['question'] for item in ai_department['recommendedQuestions']]
+        self.assertIn('승인자와 필요 서류를 확인했나요?', recommended_questions)
+        self.assertIn('예산 승인자가 누구인가요?', recommended_questions)
 
     def test_pipeline_api_uses_stage_relevant_quote_amount(self):
         quote_followup = self._create_pipeline_customer(self.user, '견적가격', stage='quote')

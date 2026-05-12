@@ -4442,6 +4442,7 @@ def _customers_empty_ai_result_payload():
             'items': [],
             'questions': [],
         },
+        'recommendedQuestions': [],
         'painpoints': [],
     }
 
@@ -4557,6 +4558,72 @@ def _customers_ai_painpoint_payload(card, can_verify):
     }
 
 
+def _customers_ai_recommended_questions_payload(analysis, data, raw_verification_insights):
+    """React에서 바로 사용할 수 있는 AI 추천 질문 목록을 중복 제거해 만든다."""
+    missing_info = _ai_json_dict(data.get('missing_info'))
+    rows = []
+    seen = set()
+
+    def add_question(question, source, source_label, context='', priority='medium'):
+        text = _ai_payload_text(question, 500)
+        if not text:
+            return
+        key = re.sub(r'\s+', ' ', text).strip().lower()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        rows.append({
+            'question': text,
+            'source': source,
+            'sourceLabel': source_label,
+            'context': _ai_payload_text(context, 260),
+            'priority': priority,
+        })
+
+    for question in _ai_json_list(missing_info.get('questions')):
+        add_question(
+            question,
+            'missing_info',
+            '확인 필요',
+            'AI 분석에서 추가 확인이 필요하다고 판단한 질문',
+            'medium',
+        )
+
+    for item in _ai_json_list(raw_verification_insights):
+        if not isinstance(item, dict):
+            continue
+        add_question(
+            item.get('next_verification'),
+            'verification',
+            '다음 검증',
+            item.get('insight') or item.get('hypothesis') or item.get('impact') or '',
+            'high',
+        )
+
+    for card in analysis.painpoint_cards.order_by('-confidence_score', '-created_at'):
+        priority = 'high' if card.confidence_score >= 70 else 'medium' if card.confidence_score >= 40 else 'low'
+        add_question(
+            card.verification_question,
+            'painpoint',
+            card.get_category_display(),
+            card.hypothesis,
+            priority,
+        )
+
+    for item in _ai_json_list(data.get('painpoint_cards')):
+        if not isinstance(item, dict):
+            continue
+        add_question(
+            item.get('verification_question') or item.get('verificationQuestion'),
+            'painpoint',
+            'PainPoint',
+            item.get('hypothesis') or '',
+            'medium',
+        )
+
+    return rows
+
+
 def _customers_ai_result_payload(analysis, can_verify):
     data = _ai_json_dict(analysis.analysis_data)
     quote_insights = _ai_json_dict(data.get('quote_delivery_insights'))
@@ -4650,6 +4717,11 @@ def _customers_ai_result_payload(analysis, can_verify):
                 for item in _ai_json_list(missing_info.get('questions'))[:6]
             ],
         },
+        'recommendedQuestions': _customers_ai_recommended_questions_payload(
+            analysis,
+            data,
+            raw_verification_insights,
+        ),
         'painpoints': painpoints,
     }
 
@@ -4725,7 +4797,7 @@ def _customers_department_ai_payload(request, followup, user_profile):
         'canAnalyze': can_analyze,
         'hasAnalysis': analysis is not None,
         'message': message,
-        'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+        'summary': _ai_workspace_analysis_summary(analysis) if analysis else '',
         'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
         'meetingCount': analysis.meeting_count if analysis else 0,
         'quoteCount': analysis.quote_count if analysis else 0,
@@ -6196,7 +6268,7 @@ def _ai_workspace_featured_department_payload(
         'canAnalyze': True,
         'hasAnalysis': analysis is not None,
         'message': '' if analysis else '아직 부서 AI 분석이 없습니다.',
-        'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+        'summary': _ai_workspace_analysis_summary(analysis) if analysis else '',
         'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
         'meetingCount': analysis.meeting_count if analysis else 0,
         'quoteCount': analysis.quote_count if analysis else 0,
@@ -6350,7 +6422,7 @@ def ai_workspace_summary_api(request):
             'deliveryCount': analysis.delivery_count if analysis else 0,
             'painpointCount': painpoint_counts.get(analysis.id, 0) if analysis else 0,
             'unverifiedPainpointCount': unverified_counts.get(analysis.id, 0) if analysis else 0,
-            'summary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:180],
+            'summary': _ai_workspace_analysis_summary(analysis) if analysis else '',
             'updatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
             'href': reverse('ai_chat:department_analysis', args=[department.id]),
             'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}",
@@ -6400,7 +6472,7 @@ def ai_workspace_summary_api(request):
             'priorityLabel': followup.get_priority_display(),
             'hasAnalysis': analysis is not None,
             'analysisUpdatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
-            'analysisSummary': (_ai_workspace_analysis_summary(analysis) if analysis else '')[:160],
+            'analysisSummary': _ai_workspace_analysis_summary(analysis) if analysis else '',
             'href': reverse('ai_chat:followup_analysis', args=[followup.id]),
             'customerHref': reverse('reporting:followup_detail', args=[followup.id]),
         })
@@ -6413,7 +6485,7 @@ def ai_workspace_summary_api(request):
             'departmentId': department.id,
             'department': department.name,
             'company': department.company.name if department.company else '',
-            'summary': _ai_workspace_analysis_summary(analysis)[:180],
+            'summary': _ai_workspace_analysis_summary(analysis),
             'meetingCount': analysis.meeting_count,
             'quoteCount': analysis.quote_count,
             'deliveryCount': analysis.delivery_count,
@@ -6430,7 +6502,7 @@ def ai_workspace_summary_api(request):
             'customer': followup.customer_name or followup.manager or '고객명 미정',
             'company': followup.company.name if followup.company else '',
             'department': followup.department.name if followup.department else '',
-            'summary': _ai_workspace_analysis_summary(analysis)[:180],
+            'summary': _ai_workspace_analysis_summary(analysis),
             'meetingCount': analysis.meeting_count,
             'updatedAt': _datetime_or_none(analysis.updated_at),
             'href': reverse('ai_chat:followup_analysis', args=[followup.id]),

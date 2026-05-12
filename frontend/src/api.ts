@@ -564,6 +564,7 @@ export type CustomerAiDepartment = {
   nextActions: CustomerAiNextAction[];
   verificationInsights: CustomerAiVerificationInsight[];
   missingInfo: CustomerAiMissingInfo;
+  recommendedQuestions: CustomerAiRecommendedQuestion[];
   painpoints: CustomerAiPainpoint[];
 };
 
@@ -639,6 +640,14 @@ export type CustomerAiVerificationInsight = {
 export type CustomerAiMissingInfo = {
   items: string[];
   questions: string[];
+};
+
+export type CustomerAiRecommendedQuestion = {
+  question: string;
+  source: string;
+  sourceLabel: string;
+  context: string;
+  priority: string;
 };
 
 export type CustomerAiPainpointEvidence = {
@@ -2414,6 +2423,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
       items: [],
       questions: [],
     },
+    recommendedQuestions: [],
     painpoints: [],
   },
   edit: {
@@ -2433,6 +2443,35 @@ const emptyCustomerDetailData: CustomerDetailData = {
   upcomingSchedules: [],
   recentSchedules: [],
 };
+
+export function normalizeCustomerAiDepartment(payload?: Partial<CustomerAiDepartment> | null): CustomerAiDepartment {
+  return {
+    ...emptyCustomerDetailData.aiDepartment,
+    ...(payload ?? {}),
+    quoteDelivery: {
+      ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
+      ...(payload?.quoteDelivery ?? {}),
+      productStats: payload?.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
+      recentDeliveries: payload?.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
+    },
+    quoteInsights: {
+      ...emptyCustomerDetailData.aiDepartment.quoteInsights,
+      ...(payload?.quoteInsights ?? {}),
+      stalledQuotes: payload?.quoteInsights?.stalledQuotes ?? emptyCustomerDetailData.aiDepartment.quoteInsights.stalledQuotes,
+    },
+    missingInfo: {
+      ...emptyCustomerDetailData.aiDepartment.missingInfo,
+      ...(payload?.missingInfo ?? {}),
+      items: payload?.missingInfo?.items ?? emptyCustomerDetailData.aiDepartment.missingInfo.items,
+      questions: payload?.missingInfo?.questions ?? emptyCustomerDetailData.aiDepartment.missingInfo.questions,
+    },
+    meetingInsights: payload?.meetingInsights ?? emptyCustomerDetailData.aiDepartment.meetingInsights,
+    nextActions: payload?.nextActions ?? emptyCustomerDetailData.aiDepartment.nextActions,
+    verificationInsights: payload?.verificationInsights ?? emptyCustomerDetailData.aiDepartment.verificationInsights,
+    recommendedQuestions: payload?.recommendedQuestions ?? emptyCustomerDetailData.aiDepartment.recommendedQuestions,
+    painpoints: payload?.painpoints ?? emptyCustomerDetailData.aiDepartment.painpoints,
+  };
+}
 
 const emptyNotesData: NotesData = {
   success: false,
@@ -3567,29 +3606,7 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
         },
         recentPrepayments: payload.prepaymentSummary?.recentPrepayments ?? emptyCustomerDetailData.prepaymentSummary.recentPrepayments,
       },
-      aiDepartment: {
-        ...emptyCustomerDetailData.aiDepartment,
-        ...(payload.aiDepartment ?? {}),
-        quoteDelivery: {
-          ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
-          ...(payload.aiDepartment?.quoteDelivery ?? {}),
-          productStats: payload.aiDepartment?.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
-          recentDeliveries: payload.aiDepartment?.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
-        },
-        quoteInsights: {
-          ...emptyCustomerDetailData.aiDepartment.quoteInsights,
-          ...(payload.aiDepartment?.quoteInsights ?? {}),
-          stalledQuotes: payload.aiDepartment?.quoteInsights?.stalledQuotes ?? emptyCustomerDetailData.aiDepartment.quoteInsights.stalledQuotes,
-        },
-        missingInfo: {
-          ...emptyCustomerDetailData.aiDepartment.missingInfo,
-          ...(payload.aiDepartment?.missingInfo ?? {}),
-        },
-        meetingInsights: payload.aiDepartment?.meetingInsights ?? emptyCustomerDetailData.aiDepartment.meetingInsights,
-        nextActions: payload.aiDepartment?.nextActions ?? emptyCustomerDetailData.aiDepartment.nextActions,
-        verificationInsights: payload.aiDepartment?.verificationInsights ?? emptyCustomerDetailData.aiDepartment.verificationInsights,
-        painpoints: payload.aiDepartment?.painpoints ?? emptyCustomerDetailData.aiDepartment.painpoints,
-      },
+      aiDepartment: normalizeCustomerAiDepartment(payload.aiDepartment),
       edit: {
         ...emptyCustomerDetailData.edit,
         ...(payload.edit ?? {}),
@@ -5055,13 +5072,9 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
     }
     const featuredDepartment = payload.featuredDepartment
       ? {
-          ...payload.featuredDepartment,
-          quoteDelivery: {
-            ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
-            ...(payload.featuredDepartment.quoteDelivery ?? {}),
-            productStats: payload.featuredDepartment.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
-            recentDeliveries: payload.featuredDepartment.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
-          },
+          ...normalizeCustomerAiDepartment(payload.featuredDepartment),
+          customerCount: payload.featuredDepartment.customerCount ?? 0,
+          customerPreview: payload.featuredDepartment.customerPreview ?? [],
         }
       : null;
     return {
@@ -5379,8 +5392,15 @@ export async function loadPipelineData(): Promise<PipelineData> {
     if (payload.success === false || !Array.isArray(payload.deals)) {
       throw new Error('Pipeline API returned invalid payload');
     }
+    const deals = payload.deals.map((deal) => ({
+      ...deal,
+      aiDepartment: deal.aiDepartment
+        ? normalizeCustomerAiDepartment(deal.aiDepartment as Partial<CustomerAiDepartment>)
+        : deal.aiDepartment,
+    }));
     return {
       ...payload,
+      deals,
       source: 'django',
     };
   } catch {

@@ -3431,6 +3431,7 @@ h2 {
 .customer-ai-delivery-list,
 .customer-ai-stalled-list,
 .customer-ai-action-list,
+.customer-ai-question-list,
 .customer-ai-verification-list,
 .customer-ai-painpoint-list {
   display: grid;
@@ -3443,6 +3444,7 @@ h2 {
 .customer-ai-delivery-item,
 .customer-ai-stalled-list div,
 .customer-ai-action-list > div,
+.customer-ai-question-item,
 .customer-ai-verification-list article,
 .customer-ai-painpoint {
   display: grid;
@@ -3459,6 +3461,7 @@ h2 {
 .customer-ai-delivery-list strong,
 .customer-ai-stalled-list strong,
 .customer-ai-action-list strong,
+.customer-ai-question-item strong,
 .customer-ai-verification-list strong {
   color: var(--text);
   font-size: 13px;
@@ -3480,6 +3483,7 @@ h2 {
 .customer-ai-delivery-list small,
 .customer-ai-stalled-list small,
 .customer-ai-action-list small,
+.customer-ai-question-item small,
 .customer-ai-verification-list small {
   color: var(--muted);
   font-size: 12px;
@@ -3562,6 +3566,33 @@ h2 {
 .customer-ai-priority.low {
   background: var(--info-bg);
   color: var(--teal);
+}
+
+.customer-ai-question-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.customer-ai-question-item > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.customer-ai-question-item button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 .customer-ai-verification-list article.checked,

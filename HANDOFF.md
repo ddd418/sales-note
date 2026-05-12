@@ -1,6 +1,6 @@
 # Sales Note Handoff
 
-Last updated: 2026-05-11 KST
+Last updated: 2026-05-12 KST
 
 ## Current Goal
 
@@ -14,6 +14,65 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
+React AI summary, pipeline AI controls, recommended questions, and email context expansion are implemented and locally verified. Commit, push, production deployment, and user manual testing are still pending.
+
+Implemented:
+
+- Customer detail, AI Workspace, and pipeline AI summaries no longer truncate the top AI summary at 160/180 characters.
+- Pipeline `aiDepartment` payload now includes the full customer AI result payload used by customer detail and AI Workspace.
+- React pipeline detail panel can run department AI, open the full AI result, and save PainPoint verification notes.
+- React AI result panels show a dedicated `추천 질문` list gathered from missing info, verification insights, and PainPoint verification questions.
+- Recommended questions can be copied from React.
+- AI email context includes customer inbound replies plus at most two user-sent outbound emails.
+- Same-thread outbound emails are nested under customer replies so the AI evaluates the reply and sent email as a set.
+- No DB model or migration changes.
+
+Validation:
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.PipelineApiTests ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=1
+python -m py_compile reporting\views.py reporting\funnel_views.py ai_chat\services.py reporting\tests.py ai_chat\tests.py
+cd frontend; npm run build
+cd frontend; node --check server.mjs
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+```
+
+Results:
+
+- 41 AI/customer/pipeline/mail-context tests OK.
+- Python compile OK.
+- React build OK: `assets/index-CAwxcHSb.js` / `assets/index-BpCNrkRC.css`.
+- Node syntax check OK.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+- Local Playwright smoke opened `/pipeline/` and `/ai-workspace/`; both remained auth-protected. Logged-in visual AI UI still needs production manual testing.
+
+Deployment:
+
+- GitHub push: pending.
+- Railway `web`: pending.
+- Railway `sales-note-frontend`: pending.
+
+Manual production test:
+
+1. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/`.
+2. Select a department with a long AI summary and confirm the top summary is not cut off.
+3. Confirm `추천 질문` appears and the copy buttons work.
+4. Open `https://sales-note-frontend-production.up.railway.app/pipeline/`.
+5. Select an AI-enabled customer/deal and confirm the detail panel can show full AI result content.
+6. Run `AI 분석 실행` from the pipeline detail panel and confirm the result refreshes.
+7. Save a verification note on an unverified PainPoint and confirm the updated state remains after refresh.
+8. For a customer with recent user-sent mail and customer reply, rerun department AI and confirm the generated next actions/recommended questions reflect the reply and recent sent-mail context.
+
+Manual test result:
+
+- Pending user confirmation.
+
+## Previous Task
+
 React mailbox email line break normalization is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
@@ -21,8 +80,6 @@ Runtime commit:
 ```text
 329cb0d fix: normalize mailbox email line breaks
 ```
-
-Implemented:
 
 - `_handle_email_send()` now normalizes `body_text` line endings from `\r\n`/`\r` to `\n` before validation, MIME send, HTML conversion, and EmailLog storage.
 - Plain text → HTML conversion now escapes text and uses `<br>` for line breaks without `white-space: pre-wrap`.

@@ -1424,7 +1424,12 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
 
     if can_analyze:
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard
-        from .views import _ai_workspace_analysis_summary, _datetime_or_none
+        from .views import (
+            _ai_workspace_analysis_summary,
+            _customers_ai_result_payload,
+            _customers_empty_ai_result_payload,
+            _datetime_or_none,
+        )
 
         analysis = AIDepartmentAnalysis.objects.filter(
             user=request.user,
@@ -1436,7 +1441,7 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
                 analysis=analysis,
                 verification_status='unverified',
             ).count()
-            summary = _ai_workspace_analysis_summary(analysis)[:180]
+            summary = _ai_workspace_analysis_summary(analysis)
             updated_at = _datetime_or_none(analysis.updated_at)
         else:
             summary = ''
@@ -1444,6 +1449,7 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
     else:
         summary = ''
         updated_at = None
+        from .views import _customers_empty_ai_result_payload
 
     if not can_use_ai:
         message = 'AI 기능 사용 권한이 없습니다.'
@@ -1453,6 +1459,12 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
         message = ''
     else:
         message = '아직 부서 AI 분석이 없습니다.'
+
+    result_payload = (
+        _customers_ai_result_payload(analysis, can_analyze)
+        if analysis and can_analyze
+        else _customers_empty_ai_result_payload()
+    )
 
     return {
         'departmentId': department.id,
@@ -1472,6 +1484,7 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
         'href': reverse('ai_chat:department_analysis', args=[department.id]) if can_analyze else '',
         'hubHref': f"{reverse('ai_chat:department_list')}?department={department.id}" if can_use_ai else '',
         'runHref': reverse('ai_chat:run_analysis', args=[department.id]) if can_analyze else '',
+        **result_payload,
     }
 
 

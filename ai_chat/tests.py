@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 import json
 import sys
 from unittest.mock import patch
@@ -440,6 +440,55 @@ class AIEmailAndStageActionContextTests(TestCase):
             content='자료 전달 요청',
             meeting_researcher_quote='다음 미팅 전에 제품 자료를 보내주세요.',
         )
+        now = timezone.now()
+        EmailLog.objects.create(
+            user=user,
+            sender=user,
+            followup=quote_followup,
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='customer@example.com',
+            sender_email='sales@example.com',
+            recipient_email='customer@example.com',
+            subject='견적 조건 안내',
+            body='먼저 보낸 견적 조건 안내입니다.',
+            thread_id='thread-quote',
+            sent_at=now - timedelta(minutes=2),
+        )
+        EmailLog.objects.create(
+            user=user,
+            sender=user,
+            followup=meeting_followup,
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='meeting@example.com',
+            sender_email='sales@example.com',
+            recipient_email='meeting@example.com',
+            subject='비교표 전달',
+            body='최근 보낸 제품 비교표입니다.',
+            thread_id='thread-meeting-outbound',
+            sent_at=now - timedelta(minutes=3),
+        )
+        EmailLog.objects.create(
+            user=user,
+            sender=user,
+            followup=meeting_followup,
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='meeting@example.com',
+            sender_email='sales@example.com',
+            recipient_email='meeting@example.com',
+            subject='제외될 세 번째 발신',
+            body='세 번째 발신은 AI 컨텍스트에서 제외되어야 합니다.',
+            thread_id='thread-old-outbound',
+            sent_at=now - timedelta(minutes=4),
+        )
         EmailLog.objects.create(
             user=user,
             followup=quote_followup,
@@ -452,7 +501,8 @@ class AIEmailAndStageActionContextTests(TestCase):
             recipient_email='sales@example.com',
             subject='견적 검토 회신',
             body='가격 조정 가능 여부와 5월 말 납기 가능 여부를 확인 부탁드립니다.',
-            received_at=timezone.now(),
+            thread_id='thread-quote',
+            received_at=now,
         )
         EmailLog.objects.create(
             user=user,
@@ -464,7 +514,7 @@ class AIEmailAndStageActionContextTests(TestCase):
             to_email='sales@example.com',
             subject='미팅 후 자료 요청',
             body='미팅에서 설명한 제품 비교표와 다음 미팅 가능 일정을 보내주세요.',
-            received_at=timezone.now(),
+            received_at=now - timedelta(minutes=1),
         )
         analysis = AIDepartmentAnalysis.objects.create(user=user, department=department)
         captured = {}
@@ -483,11 +533,16 @@ class AIEmailAndStageActionContextTests(TestCase):
         self.assertIn('고객 메일/답장 컨텍스트', prompt)
         self.assertIn('고객→영업', prompt)
         self.assertIn('가격 조정 가능 여부와 5월 말 납기 가능 여부', prompt)
+        self.assertIn('관련 발신 메일', prompt)
+        self.assertIn('먼저 보낸 견적 조건 안내입니다.', prompt)
+        self.assertIn('최근 보낸 제품 비교표입니다.', prompt)
+        self.assertNotIn('세 번째 발신은 AI 컨텍스트에서 제외', prompt)
         self.assertIn('고객 단계별 다음 액션 기준', prompt)
         self.assertIn('락인/수주 고객', prompt)
         self.assertIn('견적 고객', prompt)
         self.assertIn('미팅만 진행 고객', prompt)
         self.assertEqual(result['email_context']['summary']['inbound_count'], 2)
+        self.assertEqual(result['email_context']['summary']['outbound_count'], 2)
         context_types = {
             item['context_type']
             for item in result['customer_stage_context']

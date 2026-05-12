@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## Current task — React AI 요약/파이프라인/추천질문/메일 컨텍스트 보강
+
+**목표**: React CRM에서 부서 AI 요약이 중간에 잘리지 않게 하고, 파이프라인 선택 고객 패널에서도 고객 상세/AI Workspace 수준의 AI 실행·결과·PainPoint 검증을 사용할 수 있게 한다. 또한 AI 추천 질문을 React에서 별도 목록으로 모두 확인/복사할 수 있게 하고, AI 분석 입력에 고객 답장과 함께 최근 사용자 발신 메일 맥락을 최대 2건까지 포함한다.
+
+### 확인된 상태
+
+- 고객 상세, AI Workspace, 파이프라인의 AI 상단 요약은 Django API에서 `[:180]`으로 잘려 내려가는 지점이 있다.
+- React 파이프라인 API의 `aiDepartment` payload는 현재 compact summary/count/link 중심이라, React 파이프라인 안에서 AI 결과 본문, 추천 액션, 추천 질문, PainPoint 검증을 온전히 사용할 수 없다.
+- React `CustomerAiResultPanel`은 missing info 질문과 PainPoint 검증 질문을 일부 보여주지만, 질문을 한 곳에서 모두 확인/복사하는 전용 목록은 없다.
+- AI 프롬프트용 메일 수집은 수신 메일을 우선하고 발신 메일을 보조로 일부 포함할 수 있으나, “고객 답장 + 사용자가 보낸 최근 메일”을 스레드 세트로 명확히 묶지 않는다.
+- 신규 DB 필드나 migration은 필요하지 않다. 기존 `AIDepartmentAnalysis`, `PainPointCard`, `EmailLog` 데이터를 재사용한다.
+
+### 구현 계획
+
+- 고객 상세/AI Workspace/파이프라인 AI top summary payload의 180자 truncation을 제거해 전체 요약을 내려준다.
+- 파이프라인 API의 `aiDepartment`에 기존 고객 상세 AI 결과 payload(`meetingInsights`, `quoteDelivery`, `nextActions`, `missingInfo`, `painpoints` 등)를 포함한다.
+- React 파이프라인 상세 패널에서 AI 분석 실행, 결과 펼침, PainPoint 검증 메모 저장을 지원하고, 실행/검증 후 파이프라인 데이터를 다시 불러온다.
+- AI 결과 payload에 `recommendedQuestions`를 추가해 missing info 질문, 검증 인사이트의 다음 질문, PainPoint 검증 질문을 중복 제거해 전달한다.
+- React `CustomerAiResultPanel`에 추천 질문 섹션과 질문 복사 버튼을 추가해 고객 상세, AI Workspace, 파이프라인에서 공통으로 사용한다.
+- AI 메일 컨텍스트 수집에서 고객 수신 메일은 유지하고, 같은 스레드의 사용자 발신 메일 또는 최근 사용자 발신 메일을 전체 최대 2건까지 포함한다. 고객 답장에는 관련 발신 메일을 nested context로 묶어 프롬프트에 전달한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.PipelineApiTests ai_chat.tests.AIEmailAndStageActionContextTests --verbosity=1`
+- `python -m py_compile reporting\views.py reporting\funnel_views.py ai_chat\services.py reporting\tests.py ai_chat\tests.py`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/`, `/ai-workspace/`, `/reporting/api/pipeline/` 보호/응답 smoke check
+
+---
+
 ## Current task — 메일 발송 줄바꿈 과다 간격 수정
 
 **목표**: React `/mailbox/`에서 메일을 보낼 때 사용자가 입력한 줄바꿈이 실제 수신 메일에서 2~3배로 벌어지지 않게, plain text 본문을 HTML 메일로 변환하는 공통 발송 로직을 정규화한다.

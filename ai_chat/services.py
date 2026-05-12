@@ -441,10 +441,32 @@ def _email_log_is_inbound(email):
     return email.email_type == 'received' or (email.email_type != 'sent' and not email.is_sent)
 
 
+def _email_row_sort_value(row):
+    occurred_at = row.get('_occurred_at')
+    if occurred_at:
+        return occurred_at.timestamp()
+    return 0
+
+
+def _public_email_row(row):
+    public = {
+        key: value
+        for key, value in row.items()
+        if not key.startswith('_')
+    }
+    related_outbound = public.get('related_outbound') or []
+    if related_outbound:
+        public['related_outbound'] = [_public_email_row(item) for item in related_outbound]
+    else:
+        public.pop('related_outbound', None)
+    return public
+
+
 def gather_email_data_for_followups(followups, user, months=6, limit=20):
     """고객과 주고받은 메일을 AI 입력용으로 수집한다.
 
     기존 EmailLog의 FollowUp/Schedule 연결만 사용하며, 고객이 보낸 수신 메일을 우선한다.
+    영업 담당자가 보낸 메일은 고객 답장 스레드 맥락 또는 최근 발신 맥락으로 최대 2건만 포함한다.
     """
     from django.db.models import Q
     from reporting.models import EmailLog
@@ -458,6 +480,7 @@ def gather_email_data_for_followups(followups, user, months=6, limit=20):
                 'total': 0,
                 'inbound_count': 0,
                 'outbound_count': 0,
+                'outbound_limit': 2,
             },
         }
 
@@ -493,7 +516,11 @@ def gather_email_data_for_followups(followups, user, months=6, limit=20):
         subject = _compact_memory_text(email.subject, 180)
         if not subject and not body:
             continue
+        thread_id = _compact_memory_text(email.thread_id or email.gmail_thread_id, 120)
         rows.append({
+            '_email_id': email.id,
+            '_followup_id': linked_followup.id,
+            '_occurred_at': occurred_at,
             'date': timezone.localtime(occurred_at).strftime('%Y-%m-%d') if occurred_at else '',
             'customer': linked_followup.customer_name or '고객명 미정',
             'followup_id': linked_followup.id,
@@ -503,21 +530,70 @@ def gather_email_data_for_followups(followups, user, months=6, limit=20):
             'from_email': _email_log_address(email, 'from_email', 'sender_email'),
             'to_email': _email_log_address(email, 'to_email', 'recipient_email'),
             'body': body,
-            'thread_id': _compact_memory_text(email.thread_id or email.gmail_thread_id, 120),
+            'thread_id': thread_id,
         })
 
     inbound_rows = [row for row in rows if row['direction'] == 'inbound']
     outbound_rows = [row for row in rows if row['direction'] != 'inbound']
     selected_inbound = inbound_rows[:limit]
-    selected = (selected_inbound + outbound_rows[:max(limit - len(selected_inbound), 0)])[:limit]
-    selected.sort(key=lambda row: (row['date'] or ''), reverse=True)
+    outbound_limit = 2
+    used_outbound_ids = set()
+
+    for inbound in selected_inbound:
+        if len(used_outbound_ids) >= outbound_limit:
+            break
+        thread_id = inbound.get('thread_id')
+        if not thread_id:
+            continue
+        inbound_time = inbound.get('_occurred_at')
+        candidates = [
+            outbound
+            for outbound in outbound_rows
+            if outbound.get('_email_id') not in used_outbound_ids
+            and outbound.get('_followup_id') == inbound.get('_followup_id')
+            and outbound.get('thread_id') == thread_id
+            and (
+                not inbound_time
+                or not outbound.get('_occurred_at')
+                or outbound.get('_occurred_at') <= inbound_time
+            )
+        ]
+        candidates.sort(key=_email_row_sort_value, reverse=True)
+        remaining = outbound_limit - len(used_outbound_ids)
+        paired = candidates[:remaining]
+        if paired:
+            inbound['related_outbound'] = paired
+            used_outbound_ids.update(outbound['_email_id'] for outbound in paired)
+
+    remaining_outbound_count = outbound_limit - len(used_outbound_ids)
+    selected_outbound = []
+    if remaining_outbound_count > 0:
+        for outbound in outbound_rows:
+            if outbound.get('_email_id') in used_outbound_ids:
+                continue
+            selected_outbound.append(outbound)
+            used_outbound_ids.add(outbound['_email_id'])
+            if len(selected_outbound) >= remaining_outbound_count:
+                break
+
+    selected = selected_inbound + selected_outbound
+    selected.sort(key=_email_row_sort_value, reverse=True)
+    public_selected = [_public_email_row(row) for row in selected]
+    inbound_count = len([row for row in public_selected if row['direction'] == 'inbound'])
+    standalone_outbound_count = len([row for row in public_selected if row['direction'] != 'inbound'])
+    related_outbound_count = sum(
+        len(row.get('related_outbound') or [])
+        for row in public_selected
+        if row['direction'] == 'inbound'
+    )
 
     return {
-        'emails': selected,
+        'emails': public_selected,
         'summary': {
-            'total': len(selected),
-            'inbound_count': len([row for row in selected if row['direction'] == 'inbound']),
-            'outbound_count': len([row for row in selected if row['direction'] != 'inbound']),
+            'total': len(public_selected),
+            'inbound_count': inbound_count,
+            'outbound_count': standalone_outbound_count + related_outbound_count,
+            'outbound_limit': outbound_limit,
         },
     }
 
@@ -534,8 +610,13 @@ def format_email_context_for_prompt(email_data):
     summary = email_data.get('summary') or {}
     emails = email_data.get('emails') or []
     lines = [
-        f"\n━━━ 고객 메일/답장 컨텍스트 ({summary.get('total', len(emails))}건, 고객 수신 {summary.get('inbound_count', 0)}건) ━━━",
+        (
+            f"\n━━━ 고객 메일/답장 컨텍스트 "
+            f"({summary.get('total', len(emails))}건, 고객 수신 {summary.get('inbound_count', 0)}건, "
+            f"영업 발신 {summary.get('outbound_count', 0)}건/최근 최대 {summary.get('outbound_limit', 2)}건) ━━━"
+        ),
         "고객→영업 수신 메일은 고객이 직접 보낸 최신 의도/장애물/요청이므로 PainPoint와 다음 액션의 우선 근거로 사용하라.",
+        "영업→고객 발신 메일은 최근 최대 2건만 맥락으로 사용하고, 고객 답장과 같은 스레드이면 세트로 함께 판단하라.",
     ]
     if not emails:
         lines.append("(연결된 최근 고객 메일 없음)")
@@ -549,6 +630,15 @@ def format_email_context_for_prompt(email_data):
             lines.append(f"발신/수신: {email.get('from_email') or '-'} → {email.get('to_email') or '-'}")
         if email.get('body'):
             lines.append(f"본문 요약: {email['body']}")
+        related_outbound = email.get('related_outbound') or []
+        if related_outbound:
+            lines.append("관련 발신 메일(최근 최대 2건):")
+            for sent_email in related_outbound:
+                lines.append(
+                    f"  - {sent_email['date']} | 영업→고객 | 제목: {sent_email['subject']}"
+                )
+                if sent_email.get('body'):
+                    lines.append(f"    발신 본문 요약: {sent_email['body']}")
     return lines
 
 
@@ -609,6 +699,9 @@ def build_customer_stage_context(followups, meetings=None, qd_data=None, email_d
             inbound_email_counts[name] = inbound_email_counts.get(name, 0) + 1
         else:
             outbound_email_counts[name] = outbound_email_counts.get(name, 0) + 1
+        for sent_email in email.get('related_outbound') or []:
+            sent_name = sent_email.get('customer') or name
+            outbound_email_counts[sent_name] = outbound_email_counts.get(sent_name, 0) + 1
 
     contexts = []
     for followup in followup_list:
