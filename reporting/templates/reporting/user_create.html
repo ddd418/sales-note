@@ -63,7 +63,7 @@
               <div class="row">
                 <div class="col-md-6">
                   <div class="mb-3">
-                    <label for="id_first_name" class="form-label">성</label>
+                    <label for="id_first_name" class="form-label">이름</label>
                     {{ form.first_name }} {% if form.first_name.errors %}
                     <div class="invalid-feedback d-block">
                       {{ form.first_name.errors.0 }}
@@ -73,7 +73,7 @@
                 </div>
                 <div class="col-md-6">
                   <div class="mb-3">
-                    <label for="id_last_name" class="form-label">이름</label>
+                    <label for="id_last_name" class="form-label">성</label>
                     {{ form.last_name }} {% if form.last_name.errors %}
                     <div class="invalid-feedback d-block">
                       {{ form.last_name.errors.0 }}

@@ -2242,6 +2242,43 @@ def _user_display_name(user):
     return user.get_full_name() or user.username
 
 
+_HANGUL_NAME_PART_RE = re.compile(r'^[가-힣]+$')
+_KOREAN_COMPOUND_SURNAMES = {
+    '남궁', '황보', '제갈', '사공', '선우', '서문', '독고', '동방',
+}
+
+
+def _is_hangul_name_part(value):
+    return bool(value and _HANGUL_NAME_PART_RE.match(value))
+
+
+def _document_salesperson_name(user):
+    first_name = (user.first_name or '').strip()
+    last_name = (user.last_name or '').strip()
+
+    if first_name and last_name:
+        first_looks_like_surname = (
+            _is_hangul_name_part(first_name)
+            and _is_hangul_name_part(last_name)
+            and (len(first_name) == 1 or first_name in _KOREAN_COMPOUND_SURNAMES)
+            and len(last_name) >= 2
+        )
+        last_looks_like_surname = (
+            _is_hangul_name_part(first_name)
+            and _is_hangul_name_part(last_name)
+            and (len(last_name) == 1 or last_name in _KOREAN_COMPOUND_SURNAMES)
+            and len(first_name) >= 2
+        )
+
+        if first_looks_like_surname and not last_looks_like_surname:
+            return f'{first_name}{last_name}'
+        if last_looks_like_surname:
+            return f'{last_name}{first_name}'
+        return f'{last_name}{first_name}'
+
+    return first_name or last_name or user.username
+
+
 def _date_or_none(value):
     return value.isoformat() if value else None
 
@@ -9442,14 +9479,14 @@ class UserCreationForm(forms.Form):
     first_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
+        label='이름'
     )
     last_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
+        label='성'
     )
     
     def clean_password2(self):
@@ -9489,14 +9526,14 @@ class ManagerUserCreationForm(forms.Form):
     first_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
+        label='이름'
     )
     last_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
+        label='성'
     )
     
     def clean_password2(self):
@@ -9539,14 +9576,14 @@ class UserEditForm(forms.Form):
     first_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
+        label='이름'
     )
     last_name = forms.CharField(
         max_length=30,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
+        label='성'
     )
     change_password = forms.BooleanField(
         required=False,
@@ -19119,7 +19156,7 @@ def get_document_template_data(request, document_type, schedule_id):
         transaction_number = f"{today.strftime('%Y')}-{today.strftime('%m')}-{today.strftime('%d')}-{today_count:03d}"
         
         # 담당자 정보
-        salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
+        salesman_name = _document_salesperson_name(schedule.user)
         
         # 연결된 견적번호 자동 채움
         _linked_quote = schedule.quotes.order_by('-created_at').first()
@@ -19514,7 +19551,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 from datetime import timedelta
                 
                 # 담당자(실무자) 정보
-                salesman_name = f"{schedule.user.last_name}{schedule.user.first_name}" if schedule.user.last_name and schedule.user.first_name else schedule.user.username
+                salesman_name = _document_salesperson_name(schedule.user)
                 
                 # 연결된 견적번호 자동 채움
                 _linked_quote = schedule.quotes.order_by('-created_at').first()

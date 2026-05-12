@@ -4312,6 +4312,9 @@ class DocumentTemplatesReactApiTests(TestCase):
     def test_document_template_data_includes_quote_discount_and_note_variables(self):
         from reporting.models import DeliveryItem
 
+        self.manager.first_name = '재현'
+        self.manager.last_name = '안'
+        self.manager.save(update_fields=['first_name', 'last_name'])
         self._create_template(self.company, '견적기본', is_default=True)
         schedule = self._create_schedule(self.manager, name='견적변수', activity_type='quote')
         schedule.notes = '견적 메모'
@@ -4334,6 +4337,9 @@ class DocumentTemplatesReactApiTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['success'])
         variables = payload['variables']
+        self.assertEqual(variables['실무자'], '안재현')
+        self.assertEqual(variables['영업담당자'], '안재현')
+        self.assertEqual(variables['담당영업'], '안재현')
         self.assertEqual(variables['메모'], '견적 메모')
         self.assertEqual(variables['기타사항'], '전체 견적 기타사항')
         self.assertEqual(variables['견적기타사항'], '전체 견적 기타사항')
@@ -4351,6 +4357,22 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
+
+    def test_document_template_data_normalizes_legacy_reversed_korean_salesperson_name(self):
+        self.manager.first_name = '안'
+        self.manager.last_name = '재현'
+        self.manager.save(update_fields=['first_name', 'last_name'])
+        self._create_template(self.company, '견적담당자', is_default=True)
+        schedule = self._create_schedule(self.manager, name='담당자변수', activity_type='quote')
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(reverse('reporting:get_document_template_data', args=['quotation', schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        variables = response.json()['variables']
+        self.assertEqual(variables['실무자'], '안재현')
+        self.assertEqual(variables['영업담당자'], '안재현')
+        self.assertEqual(variables['담당영업'], '안재현')
 
     def test_document_template_data_filters_quotation_items_by_quote_group(self):
         from reporting.models import DeliveryItem

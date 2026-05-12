@@ -111,7 +111,7 @@
                 </div>
 
                 <div class="mb-3">
-                  <label for="{{ form.first_name.id_for_label }}" class="form-label">성</label>
+                  <label for="{{ form.first_name.id_for_label }}" class="form-label">이름</label>
                   {{ form.first_name }}
                   {% if form.first_name.errors %}
                   <div class="invalid-feedback d-block">{{ form.first_name.errors.0 }}</div>
@@ -119,7 +119,7 @@
                 </div>
 
                 <div class="mb-3">
-                  <label for="{{ form.last_name.id_for_label }}" class="form-label">이름</label>
+                  <label for="{{ form.last_name.id_for_label }}" class="form-label">성</label>
                   {{ form.last_name }}
                   {% if form.last_name.errors %}
                   <div class="invalid-feedback d-block">{{ form.last_name.errors.0 }}</div>

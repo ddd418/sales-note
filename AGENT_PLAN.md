@@ -1,6 +1,42 @@
 # AGENT_PLAN.md
 
-## Current task — 일정 내 복수 견적서 구분 등록 및 메일 자동 첨부 보정
+## Current task — 견적서 담당자 이름 순서 보정
+
+**목표**: 사용자 이름이 `이름=재현`, `성=안`으로 설정되어 있으면 견적서 서류 변수/PDF에서 `안재현`으로 표시되게 한다. 과거 사용자 생성/수정 화면의 성/이름 라벨이 Django 필드 의미와 반대로 되어 있던 계정도 문서 생성 시 보정한다.
+
+### 확인된 상태
+
+- 견적서 데이터 생성과 PDF 생성은 `schedule.user.last_name + schedule.user.first_name`을 직접 조합한다.
+- 프로필 수정 폼은 `first_name=이름`, `last_name=성`으로 정상 저장하지만, 관리자/매니저 사용자 생성 및 편집 폼은 `first_name=성`, `last_name=이름`으로 라벨/placeholder가 반대로 되어 있다.
+- 따라서 기존 계정은 필드가 정상이어도, 과거 화면에서 저장된 계정은 필드가 뒤집혀 있을 수 있다.
+- DB 모델 변경은 필요하지 않다.
+
+### 구현 계획
+
+- 문서 생성 전용 담당자명 helper를 추가해 정상 저장(`first_name=재현`, `last_name=안`)과 과거 역저장(`first_name=안`, `last_name=재현`)을 모두 `안재현`으로 보정한다.
+- `get_document_template_data()`와 `generate_document_pdf()`의 담당자 변수(`실무자`, `영업담당자`, `담당영업`)가 해당 helper를 사용하게 한다.
+- 관리자/매니저 사용자 생성/수정 폼의 `first_name`/`last_name` 라벨과 placeholder를 Django 의미에 맞게 `이름`/`성`으로 바로잡아 신규 오입력을 막는다.
+- 문서 템플릿 API 테스트에 정상/역저장 한글 이름 회귀 케이스를 추가한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/login/`, `/reporting/api/documents/` 보호 smoke check
+
+### 이후 대기 작업
+
+- 모든 현재 작업이 끝난 뒤 제품관리 Django 화면을 React로 전환한다.
+- 제품관리 신규 제품 등록 시 Ecount 데이터를 가져오면서 기존 등록 제품과 중복되면 가격/규격 등 변경값을 비교해 기존 제품을 갱신한다.
+- 전체 제품 엑셀 다운로드와 엑셀 데이터 붙여넣기 기반 일괄 삭제를 제공한다.
+- 제품관리의 프로모션 설정 기능을 제거한다.
+
+---
+
+## Previous task — 일정 내 복수 견적서 구분 등록 및 메일 자동 첨부 보정
 
 **목표**: 한 quote 일정 안에서 `보상판매`, `수리`처럼 서로 다른 견적서 구분을 2개 이상 만들고, 각 구분의 품목만 담은 견적서 PDF를 별도로 등록/다운로드할 수 있게 한다. 일정 메일 발송 시 등록된 견적서 PDF들을 자동 첨부하는 기존 흐름은 유지한다.
 
