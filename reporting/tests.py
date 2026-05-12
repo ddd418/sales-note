@@ -1915,7 +1915,7 @@ class QuoteItemsApiTests(TestCase):
             pipeline_stage='quote',
         )
 
-    def _create_quote_schedule(self, followup, owner, item_name, unit_price):
+    def _create_quote_schedule(self, followup, owner, item_name, unit_price, quote_group=''):
         from datetime import time, timedelta
         from django.utils import timezone
         from reporting.models import DeliveryItem, Schedule
@@ -1934,6 +1934,7 @@ class QuoteItemsApiTests(TestCase):
             item_name=item_name,
             quantity=1,
             unit_price=unit_price,
+            quote_group=quote_group,
         )
         return schedule
 
@@ -1958,6 +1959,43 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(schedule_ids, {first.id, second.id})
         customer_names = {item['customer_name'] for item in payload['quotes']}
         self.assertEqual(customer_names, {'대표 고객', '같은 부서 고객'})
+
+    def test_quote_items_api_splits_same_schedule_by_quote_group(self):
+        from reporting.models import DeliveryItem
+
+        target = self._create_followup(self.user, '구분 선택 고객')
+        quote_schedule = self._create_quote_schedule(
+            target,
+            self.user,
+            '보상판매 품목',
+            1000000,
+            quote_group='보상판매',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='수리 품목',
+            quantity=1,
+            unit_price=2000000,
+            quote_group='수리',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['count'], 2)
+        options_by_group = {item['quoteGroup']: item for item in payload['quotes']}
+        self.assertEqual(set(options_by_group), {'보상판매', '수리'})
+        self.assertEqual(options_by_group['보상판매']['optionId'], f'{quote_schedule.id}:보상판매')
+        self.assertEqual(options_by_group['수리']['optionId'], f'{quote_schedule.id}:수리')
+        self.assertEqual(options_by_group['보상판매']['quoteGroupLabel'], '보상판매')
+        self.assertEqual(options_by_group['수리']['quoteGroupLabel'], '수리')
+        self.assertEqual(options_by_group['보상판매']['scheduleId'], quote_schedule.id)
+        self.assertEqual(options_by_group['수리']['scheduleId'], quote_schedule.id)
+        self.assertEqual([item['itemName'] for item in options_by_group['보상판매']['items']], ['보상판매 품목'])
+        self.assertEqual([item['itemName'] for item in options_by_group['수리']['items']], ['수리 품목'])
 
     def test_quote_items_api_returns_react_delivery_import_fields(self):
         from datetime import time, timedelta
@@ -2002,7 +2040,10 @@ class QuoteItemsApiTests(TestCase):
         quote = payload['quotes'][0]
         quote_item = quote['items'][0]
         self.assertEqual(quote['id'], quote_schedule.id)
+        self.assertEqual(quote['optionId'], f'{quote_schedule.id}:수리')
         self.assertEqual(quote['scheduleId'], quote_schedule.id)
+        self.assertEqual(quote['quoteGroup'], '수리')
+        self.assertEqual(quote['quoteGroupLabel'], '수리')
         self.assertEqual(quote['href'], f'/schedules/{quote_schedule.id}/')
         self.assertEqual(quote['djangoHref'], reverse('reporting:schedule_detail', args=[quote_schedule.id]))
         self.assertEqual(quote_item['id'], item.id)

@@ -15637,7 +15637,8 @@ def followup_quote_items_api(request, followup_id):
             items = list(quote_schedule.delivery_items_set.all())
             
             if items:
-                items_data = []
+                grouped_quote_items = {}
+                quote_total = Decimal('0')
                 for item in items:
                     product = item.product if item.product_id else None
                     unit_price = float(item.unit_price) if item.unit_price is not None else 0
@@ -15648,8 +15649,8 @@ def followup_quote_items_api(request, followup_id):
                     )
                     effective_unit_price = float(item.get_effective_unit_price() or item.unit_price or 0)
                     unit = item.unit or (product.unit if product else '') or 'EA'
-                    quote_group = item.quote_group or ''
-                    items_data.append({
+                    quote_group = _quote_group_key(item.quote_group)
+                    item_data = {
                         'id': item.id,
                         'item_name': item.item_name,
                         'itemName': item.item_name,
@@ -15676,39 +15677,69 @@ def followup_quote_items_api(request, followup_id):
                         'quote_group_label': _quote_group_label(quote_group),
                         'quoteGroupLabel': _quote_group_label(quote_group),
                         'notes': item.notes or '',
-                    })
-                quote_total = sum(
-                    item.total_price or (
+                    }
+                    if quote_group not in grouped_quote_items:
+                        grouped_quote_items[quote_group] = {
+                            'label': _quote_group_label(quote_group),
+                            'items': [],
+                            'total': Decimal('0'),
+                        }
+                    grouped_quote_items[quote_group]['items'].append(item_data)
+                    item_total = item.total_price or (
                         (item.unit_price or Decimal('0')) * item.quantity * Decimal('1.1')
                     )
-                    for item in items
-                )
+                    grouped_quote_items[quote_group]['total'] += item_total
+                    quote_total += item_total
+                quote_groups = [
+                    {
+                        'key': group_key,
+                        'label': group_data['label'],
+                        'items': group_data['items'],
+                        'total': group_data['total'],
+                    }
+                    for group_key, group_data in grouped_quote_items.items()
+                ]
             else:
-                items_data = []
                 quote_total = quote_schedule.expected_revenue or Decimal('0')
+                quote_groups = [{
+                    'key': '',
+                    'label': _quote_group_label(''),
+                    'items': [],
+                    'total': quote_total,
+                }]
 
-            if items_data or quote_total > 0:
+            if items or quote_total > 0:
                 quote_followup = quote_schedule.followup
 
-                quote_data = {
-                    'id': quote_schedule.id,
-                    'schedule_id': quote_schedule.id,
-                    'scheduleId': quote_schedule.id,
-                    'quote_date': quote_schedule.visit_date.strftime('%Y-%m-%d'),
-                    'quoteDate': quote_schedule.visit_date.strftime('%Y-%m-%d'),
-                    'expected_revenue': float(quote_total),
-                    'expectedRevenue': float(quote_total),
-                    'customer_name': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
-                    'customerName': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
-                    'company_name': quote_followup.company.name if quote_followup.company else '',
-                    'companyName': quote_followup.company.name if quote_followup.company else '',
-                    'department_name': quote_followup.department.name if quote_followup.department else '',
-                    'departmentName': quote_followup.department.name if quote_followup.department else '',
-                    'href': f'/schedules/{quote_schedule.id}/',
-                    'djangoHref': reverse('reporting:schedule_detail', args=[quote_schedule.id]),
-                    'items': items_data,
-                }
-                quotes_data.append(quote_data)
+                for group_data in quote_groups:
+                    group_key = group_data['key']
+                    group_label = group_data['label']
+                    option_id = f"{quote_schedule.id}:{group_key or 'default'}"
+                    quote_data = {
+                        'id': quote_schedule.id,
+                        'option_id': option_id,
+                        'optionId': option_id,
+                        'schedule_id': quote_schedule.id,
+                        'scheduleId': quote_schedule.id,
+                        'quote_group': group_key,
+                        'quoteGroup': group_key,
+                        'quote_group_label': group_label,
+                        'quoteGroupLabel': group_label,
+                        'quote_date': quote_schedule.visit_date.strftime('%Y-%m-%d'),
+                        'quoteDate': quote_schedule.visit_date.strftime('%Y-%m-%d'),
+                        'expected_revenue': float(group_data['total']),
+                        'expectedRevenue': float(group_data['total']),
+                        'customer_name': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
+                        'customerName': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
+                        'company_name': quote_followup.company.name if quote_followup.company else '',
+                        'companyName': quote_followup.company.name if quote_followup.company else '',
+                        'department_name': quote_followup.department.name if quote_followup.department else '',
+                        'departmentName': quote_followup.department.name if quote_followup.department else '',
+                        'href': f'/schedules/{quote_schedule.id}/',
+                        'djangoHref': reverse('reporting:schedule_detail', args=[quote_schedule.id]),
+                        'items': group_data['items'],
+                    }
+                    quotes_data.append(quote_data)
 
         if not quotes_data:
             return JsonResponse({

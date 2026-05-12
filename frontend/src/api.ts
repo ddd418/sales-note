@@ -1077,7 +1077,10 @@ export type FollowupQuoteItem = {
 
 export type FollowupQuoteOption = {
   id: number;
+  optionId: string;
   scheduleId: number;
+  quoteGroup: string;
+  quoteGroupLabel: string;
   quoteDate: string;
   expectedRevenue: number;
   customerName: string;
@@ -5228,10 +5231,15 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
 const normalizeFollowupQuoteOption = (value: unknown): FollowupQuoteOption => {
   const quote = rawRecord(value);
   const scheduleId = rawNumber(rawValue(quote, 'scheduleId', 'schedule_id') ?? quote.id);
+  const quoteGroup = rawString(rawValue(quote, 'quoteGroup', 'quote_group')).trim();
+  const quoteGroupLabel = rawString(rawValue(quote, 'quoteGroupLabel', 'quote_group_label')) || quoteGroup || '기본 견적서';
   const rawItems = quote.items;
   return {
     id: rawNumber(quote.id, scheduleId),
+    optionId: rawString(rawValue(quote, 'optionId', 'option_id')) || `${scheduleId}:${quoteGroup || 'default'}`,
     scheduleId,
+    quoteGroup,
+    quoteGroupLabel,
     quoteDate: rawString(rawValue(quote, 'quoteDate', 'quote_date')),
     expectedRevenue: rawNumber(rawValue(quote, 'expectedRevenue', 'expected_revenue')),
     customerName: rawString(rawValue(quote, 'customerName', 'customer_name')),

@@ -1,6 +1,44 @@
 # AGENT_PLAN.md
 
-## Current task — React 납품 일정 견적 품목 불러오기, 일정 삭제, 제품 삭제 대체 처리
+## Current task — React 납품 견적 불러오기 구분별 선택 보강
+
+**목표**: React 납품 일정에서 `견적 불러오기`를 사용할 때, 같은 견적 일정 안에 `보상판매`, `수리`처럼 여러 견적서 구분이 있으면 전체 품목을 한 번에 가져오지 않고 사용자가 가져올 견적서를 선택할 수 있게 한다.
+
+### 확인된 상태
+
+- 현재 `/reporting/api/followups/<id>/quote-items/`는 견적 일정 하나를 선택지 하나로 반환한다.
+- 각 품목에는 `quoteGroup`/`quoteGroupLabel`이 이미 내려가지만, 상위 견적 선택지는 구분별로 나뉘지 않는다.
+- React UI는 여러 견적 일정 선택 카드는 표시하지만, 같은 일정 안의 여러 견적서 구분은 한 카드 안에 묶어 표시하고 `적용` 시 모든 품목을 가져온다.
+- DB 모델 변경 없이 API payload와 React 선택 UI만 보강하면 된다.
+
+### 구현 계획
+
+- 견적 품목 API에서 한 견적 일정의 품목을 `quote_group`별로 묶어 선택지를 만든다.
+- 선택지 payload에 `optionId`, `quoteGroup`, `quoteGroupLabel`을 추가하고, 각 선택지의 `items`와 `expectedRevenue`는 해당 구분 품목만 포함한다.
+- React API 타입/정규화 함수에 선택지 식별자와 구분 라벨을 추가한다.
+- React 견적 불러오기 카드에 견적서 구분 라벨과 고객/일정 정보를 함께 표시하고, 같은 일정 안의 여러 구분도 각각 선택할 수 있게 한다.
+- 적용 메시지도 선택한 견적서 구분을 명확히 표시한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/882/`, `/reporting/login/` smoke check
+
+### 현재 상태
+
+- 구현/로컬 검증 완료.
+- DB 모델 변경 예정 없음.
+- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행한다.
+
+---
+
+## Previous task — React 납품 일정 견적 품목 불러오기, 일정 삭제, 제품 삭제 대체 처리
 
 **목표**: React 일정 상세에서 납품 일정이 기존 견적 일정의 품목을 끌어와 납품 품목으로 저장할 수 있게 한다. 같은 화면에서 일정 삭제도 가능하게 하고, React 제품관리 목록 깨짐을 수정한다. 제품 일괄 삭제 시 견적/납품에 사용되어 차단된 제품은 대체 제품으로 품목 연결을 옮긴 뒤 데이터 무결성이 확인되면 삭제되게 한다.
 

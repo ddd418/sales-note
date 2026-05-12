@@ -530,6 +530,11 @@ const normalizeQuoteGroupKey = (value: string) => value.trim().slice(0, 100);
 
 const quoteGroupLabel = (value: string) => normalizeQuoteGroupKey(value) || '기본 견적서';
 
+const quoteImportOptionTitle = (quote: FollowupQuoteOption) => {
+  const label = quote.quoteGroupLabel || quoteGroupLabel(quote.quoteGroup);
+  return label.includes('견적') ? label : `${label} 견적`;
+};
+
 const makeScheduleQuoteGroupNotes = (schedule: ScheduleDetailItem | null): ScheduleQuoteGroupNoteState => {
   const notes: ScheduleQuoteGroupNoteState = {};
   schedule?.quoteGroupNotes?.forEach((item) => {
@@ -592,7 +597,7 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
   quote: FollowupQuoteOption,
   index: number,
 ): ScheduleDeliveryEditRow => ({
-  rowId: `quote-${quote.scheduleId}-${item.id ?? index}-${Date.now()}-${index}`,
+  rowId: `quote-${quote.optionId}-${item.id ?? index}-${Date.now()}-${index}`,
   productId: item.productId ? String(item.productId) : '',
   productQuery: item.productCode || '',
   itemName: item.itemName || item.productCode || '',
@@ -5393,7 +5398,8 @@ function ScheduleDetailPage({
     setQuoteImportOpen(false);
     setQuoteImportError('');
     setDeliveryError('');
-    setDeliveryMessage(`견적 #${quote.scheduleId}의 품목 ${quote.items.length}개를 불러왔습니다. 저장을 눌러 납품 일정에 반영하세요.`);
+    const quoteLabel = quoteImportOptionTitle(quote);
+    setDeliveryMessage(`${quoteLabel} 품목 ${quote.items.length}개를 불러왔습니다. 저장을 눌러 납품 일정에 반영하세요.`);
   };
 
   const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
@@ -6123,7 +6129,7 @@ function ScheduleDetailPage({
               <div className="schedule-quote-import-heading">
                 <div>
                   <strong>견적 품목 불러오기</strong>
-                  <span>같은 부서의 본인 견적 일정에서 납품 품목을 가져옵니다.</span>
+                  <span>같은 부서의 본인 견적 일정에서 가져올 견적서를 선택합니다.</span>
                 </div>
                 <button
                   className="customer-row-action schedule-delivery-edit-toggle"
@@ -6144,13 +6150,15 @@ function ScheduleDetailPage({
               ) : quoteImportData?.quotes.length ? (
                 <div className="schedule-quote-import-list">
                   {quoteImportData.quotes.map((quote) => (
-                    <div className="schedule-quote-import-card" key={quote.scheduleId}>
+                    <div className="schedule-quote-import-card" key={quote.optionId}>
                       <div>
-                        <strong>{quote.customerName || '고객명 미정'} 견적</strong>
+                        <strong>{quoteImportOptionTitle(quote)}</strong>
                         <span>{[
+                          quote.customerName || '고객명 미정',
                           quote.companyName,
                           quote.departmentName,
                           quote.quoteDate ? formatDateLabel(quote.quoteDate) : '',
+                          `일정 #${quote.scheduleId}`,
                           `품목 ${formatNumber(quote.items.length)}개`,
                           quote.expectedRevenue ? formatWon(quote.expectedRevenue) : '',
                         ].filter(Boolean).join(' · ')}</span>
