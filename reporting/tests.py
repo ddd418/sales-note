@@ -1959,6 +1959,67 @@ class QuoteItemsApiTests(TestCase):
         customer_names = {item['customer_name'] for item in payload['quotes']}
         self.assertEqual(customer_names, {'대표 고객', '같은 부서 고객'})
 
+    def test_quote_items_api_returns_react_delivery_import_fields(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Product, Schedule
+
+        target = self._create_followup(self.user, 'React 납품')
+        product = Product.objects.create(
+            product_code='PIP-1000',
+            unit='SET',
+            specification='1000ul',
+            description='피펫',
+            standard_price=150000,
+            created_by=self.user,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            product=product,
+            item_name='PIP-1000',
+            quantity=3,
+            unit_price=120000,
+            discount_rate=5,
+            tax_invoice_issued=True,
+            quote_group='수리',
+            notes='오링 교체',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        quote = payload['quotes'][0]
+        quote_item = quote['items'][0]
+        self.assertEqual(quote['id'], quote_schedule.id)
+        self.assertEqual(quote['scheduleId'], quote_schedule.id)
+        self.assertEqual(quote['href'], f'/schedules/{quote_schedule.id}/')
+        self.assertEqual(quote['djangoHref'], reverse('reporting:schedule_detail', args=[quote_schedule.id]))
+        self.assertEqual(quote_item['id'], item.id)
+        self.assertEqual(quote_item['itemName'], 'PIP-1000')
+        self.assertEqual(quote_item['unit'], 'SET')
+        self.assertEqual(quote_item['unitPrice'], 120000.0)
+        self.assertEqual(quote_item['discountRate'], 5.0)
+        self.assertEqual(quote_item['discountUnitPrice'], 114000.0)
+        self.assertEqual(quote_item['effectiveUnitPrice'], 114000.0)
+        self.assertEqual(quote_item['productId'], product.id)
+        self.assertEqual(quote_item['productCode'], 'PIP-1000')
+        self.assertEqual(quote_item['productDescription'], '피펫')
+        self.assertTrue(quote_item['taxInvoiceIssued'])
+        self.assertEqual(quote_item['quoteGroup'], '수리')
+        self.assertEqual(quote_item['quoteGroupLabel'], '수리')
+        self.assertEqual(quote_item['notes'], '오링 교체')
+
     def test_customer_records_api_includes_quote_schedules_without_quote_model(self):
         target = self._create_followup(self.user, '기록 대표')
         same_department = self._create_followup(self.user, '기록 같은 부서')
@@ -3502,6 +3563,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
+        self.assertEqual(payload['links']['deleteSchedule'], reverse('reporting:schedule_delete', args=[schedule.id]))
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
         document_types = [item['type'] for item in payload['documents']['items']]
@@ -3645,10 +3707,51 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()['edit']['canEdit'])
         self.assertEqual(response.json()['links']['updateDeliveryItems'], '')
+        self.assertEqual(response.json()['links']['deleteSchedule'], '')
 
         self.client.force_login(self.other_user)
         denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
         self.assertEqual(denied.status_code, 403)
+
+    def test_schedule_delete_ajax_allows_owner_and_removes_related_history(self):
+        from reporting.models import History, Schedule
+
+        schedule = self._create_schedule(self.user, '삭제일정', activity_type='delivery')
+        related_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            schedule=schedule,
+            action_type='delivery_schedule',
+            content='삭제될 납품 기록',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedule_delete', args=[schedule.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertFalse(Schedule.objects.filter(pk=schedule.id).exists())
+        self.assertFalse(History.objects.filter(pk=related_history.id).exists())
+
+    def test_schedule_delete_ajax_blocks_non_owner(self):
+        from reporting.models import Schedule
+
+        schedule = self._create_schedule(self.user, '타인삭제차단')
+        self.client.force_login(self.coworker)
+
+        response = self.client.post(
+            reverse('reporting:schedule_delete', args=[schedule.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
+        self.assertTrue(Schedule.objects.filter(pk=schedule.id).exists())
 
     def test_product_api_list_returns_accessible_product_master_data(self):
         from reporting.models import Product
@@ -6436,8 +6539,92 @@ class ProductManagementReactApiTests(TestCase):
         self.assertEqual(payload['deletedCount'], 1)
         self.assertEqual(payload['blockedCount'], 1)
         self.assertEqual(payload['missingCount'], 1)
+        blocked = next(item for item in payload['results'] if item['productCode'] == used.product_code)
+        self.assertTrue(blocked['canReplace'])
+        self.assertEqual(blocked['deliveryItemCount'], 1)
         self.assertFalse(Product.objects.filter(product_code=unused.product_code).exists())
         self.assertTrue(Product.objects.filter(product_code=used.product_code).exists())
+
+    def test_product_bulk_delete_can_replace_used_items_before_delete(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import Company, DeliveryItem, Department, FollowUp, Product, Quote, QuoteItem, Schedule
+
+        old = Product.objects.create(
+            product_code='DELETE-REPLACE-OLD',
+            unit='EA',
+            standard_price=2000,
+            created_by=self.salesman,
+        )
+        replacement = Product.objects.create(
+            product_code='DELETE-REPLACE-NEW',
+            unit='SET',
+            standard_price=3000,
+            created_by=self.salesman,
+        )
+        company = Company.objects.create(name='제품대체 고객사', created_by=self.salesman)
+        department = Department.objects.create(company=company, name='제품대체 연구실', created_by=self.salesman)
+        followup = FollowUp.objects.create(
+            user=self.salesman,
+            user_company=self.company,
+            customer_name='제품대체 담당자',
+            company=company,
+            department=department,
+        )
+        schedule = Schedule.objects.create(
+            user=self.salesman,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        delivery_item = DeliveryItem.objects.create(
+            schedule=schedule,
+            product=old,
+            item_name=old.product_code,
+            quantity=2,
+            unit_price=2000,
+        )
+        quote = Quote.objects.create(
+            quote_number='Q-REPLACE-001',
+            schedule=schedule,
+            followup=followup,
+            user=self.salesman,
+            valid_until=timezone.localdate() + datetime.timedelta(days=30),
+        )
+        quote_item = QuoteItem.objects.create(
+            quote=quote,
+            product=old,
+            quantity=1,
+            unit_price=2000,
+        )
+
+        response = self.client.post(
+            reverse('reporting:products_bulk_delete_api'),
+            data=json.dumps({
+                'productCodes': [old.product_code],
+                'replacements': {
+                    old.product_code: replacement.id,
+                },
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['deletedCount'], 1)
+        self.assertEqual(payload['blockedCount'], 0)
+        self.assertEqual(payload['replacedCount'], 2)
+        self.assertFalse(Product.objects.filter(product_code=old.product_code).exists())
+        delivery_item.refresh_from_db()
+        quote_item.refresh_from_db()
+        self.assertEqual(delivery_item.product, replacement)
+        self.assertEqual(delivery_item.item_name, replacement.product_code)
+        self.assertEqual(delivery_item.unit, 'SET')
+        self.assertEqual(quote_item.product, replacement)
 
     def test_products_excel_export_returns_xlsx(self):
         from reporting.models import Product

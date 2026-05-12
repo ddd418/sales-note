@@ -63,6 +63,9 @@ import {
   DocumentTemplateItem,
   DocumentTemplateMutationPayload,
   DocumentTemplatesData,
+  FollowupQuoteItem,
+  FollowupQuoteItemsData,
+  FollowupQuoteOption,
   MailboxData,
   MailboxEmailItem,
   MailboxSendPayload,
@@ -126,6 +129,7 @@ import {
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
   deleteNoteReply,
+  deleteSchedule,
   deleteScheduleFile,
   deleteGeneratedDocument,
   deleteDocumentTemplate,
@@ -150,6 +154,7 @@ import {
   loadScheduleCalendarData,
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
+  loadFollowupQuoteItems,
   loadSchedulesData,
   loadAIWorkspaceData,
   loadWeeklyReportCreateData,
@@ -581,6 +586,36 @@ const discountUnitFromRate = (base: number, rate: number) => (
 const discountRateFromUnit = (base: number, discountUnit: number) => (
   base > 0 ? Math.max(Math.min((1 - discountUnit / base) * 100, 100), 0) : 0
 );
+
+const makeScheduleDeliveryEditRowFromQuoteItem = (
+  item: FollowupQuoteItem,
+  quote: FollowupQuoteOption,
+  index: number,
+): ScheduleDeliveryEditRow => ({
+  rowId: `quote-${quote.scheduleId}-${item.id ?? index}-${Date.now()}-${index}`,
+  productId: item.productId ? String(item.productId) : '',
+  productQuery: item.productCode || '',
+  itemName: item.itemName || item.productCode || '',
+  quantity: String(item.quantity || 1),
+  unit: item.unit || 'EA',
+  unitPrice: item.unitPrice !== undefined && item.unitPrice !== null ? moneyInputValue(item.unitPrice) : '',
+  discountRate: item.discountRate ? rateInputValue(item.discountRate) : '',
+  discountUnitPrice: item.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? moneyInputValue(item.discountUnitPrice) : '',
+  taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
+  quoteGroup: item.quoteGroup || '',
+  notes: item.notes || '',
+});
+
+const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => rows.some((row) => Boolean(
+  row.id ||
+  row.productId ||
+  row.itemName.trim() ||
+  row.unitPrice.trim() ||
+  row.discountRate.trim() ||
+  row.discountUnitPrice.trim() ||
+  row.quoteGroup.trim() ||
+  row.notes.trim()
+));
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   attachments: [],
@@ -4951,10 +4986,16 @@ function ScheduleDetailPage({
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [quoteImportData, setQuoteImportData] = useState<FollowupQuoteItemsData | null>(null);
+  const [quoteImportOpen, setQuoteImportOpen] = useState(false);
+  const [quoteImportLoading, setQuoteImportLoading] = useState(false);
+  const [quoteImportError, setQuoteImportError] = useState('');
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productError, setProductError] = useState('');
+  const [scheduleDeleting, setScheduleDeleting] = useState(false);
+  const [scheduleDeleteError, setScheduleDeleteError] = useState('');
   const [prepaymentRows, setPrepaymentRows] = useState<SchedulePrepaymentEditRow[]>([]);
   const [prepaymentsLoading, setPrepaymentsLoading] = useState(false);
   const [prepaymentsError, setPrepaymentsError] = useState('');
@@ -4980,7 +5021,13 @@ function ScheduleDetailPage({
     setDeliverySaving(false);
     setDeliveryError('');
     setDeliveryMessage('');
+    setQuoteImportData(null);
+    setQuoteImportOpen(false);
+    setQuoteImportLoading(false);
+    setQuoteImportError('');
     setProductError('');
+    setScheduleDeleting(false);
+    setScheduleDeleteError('');
     setPrepaymentRows([]);
     setPrepaymentsLoading(false);
     setPrepaymentsError('');
@@ -5281,6 +5328,74 @@ function ScheduleDetailPage({
     }
   };
 
+  const loadQuoteImports = async () => {
+    if (!currentSchedule?.followupId) {
+      setQuoteImportError('연결된 고객 정보가 없어 견적을 불러올 수 없습니다.');
+      return;
+    }
+    if (quoteImportLoading) {
+      return;
+    }
+    setQuoteImportLoading(true);
+    setQuoteImportError('');
+    try {
+      const quotes = await loadFollowupQuoteItems(currentSchedule.followupId);
+      setQuoteImportData(quotes);
+      if (!quotes.quotes.length) {
+        setQuoteImportError('불러올 수 있는 견적 품목이 없습니다.');
+      }
+    } catch (error) {
+      setQuoteImportData(null);
+      setQuoteImportError(error instanceof Error ? error.message : '견적 품목을 불러오지 못했습니다.');
+    } finally {
+      setQuoteImportLoading(false);
+    }
+  };
+
+  const handleQuoteImportToggle = () => {
+    if (!currentSchedule?.canEdit || !data?.links.updateDeliveryItems) {
+      setDeliveryError('납품 품목 수정 권한이 없습니다.');
+      setDeliveryMessage('');
+      return;
+    }
+    if (currentSchedule.activityType !== 'delivery') {
+      setDeliveryError('견적 품목 불러오기는 납품 일정에서만 사용할 수 있습니다.');
+      setDeliveryMessage('');
+      return;
+    }
+    if (quoteImportOpen) {
+      setQuoteImportOpen(false);
+      setQuoteImportError('');
+      return;
+    }
+    setDeliveryEditOpen(true);
+    setDeliveryError('');
+    setDeliveryMessage('');
+    setQuoteImportOpen(true);
+    void ensureProductsLoaded();
+    void loadQuoteImports();
+  };
+
+  const handleQuoteImportApply = (quote: FollowupQuoteOption) => {
+    if (!quote.items.length) {
+      setQuoteImportError('선택한 견적에 품목이 없습니다.');
+      return;
+    }
+    if (
+      scheduleDeliveryRowsHaveUserInput(deliveryRows) &&
+      !window.confirm('현재 입력된 납품 품목을 선택한 견적 품목으로 바꿀까요?')
+    ) {
+      return;
+    }
+    const importedRows = quote.items.map((item, index) => makeScheduleDeliveryEditRowFromQuoteItem(item, quote, index));
+    setDeliveryRows(importedRows.length > 0 ? importedRows : [makeScheduleDeliveryEditRow(undefined, 0)]);
+    setDeliveryEditOpen(true);
+    setQuoteImportOpen(false);
+    setQuoteImportError('');
+    setDeliveryError('');
+    setDeliveryMessage(`견적 #${quote.scheduleId}의 품목 ${quote.items.length}개를 불러왔습니다. 저장을 눌러 납품 일정에 반영하세요.`);
+  };
+
   const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
     setDeliveryRows((rows) => rows.map((row) => (
       row.rowId === rowId ? (() => {
@@ -5529,6 +5644,38 @@ function ScheduleDetailPage({
     }
   };
 
+  const handleScheduleDelete = async () => {
+    if (scheduleDeleting) {
+      return;
+    }
+    if (!currentSchedule?.canEdit || !data?.links.deleteSchedule) {
+      setScheduleDeleteError('일정 삭제 권한이 없습니다.');
+      return;
+    }
+    const confirmMessage = [
+      '이 일정을 삭제할까요?',
+      '',
+      `고객: ${currentSchedule.customer || '고객명 미정'}`,
+      `날짜: ${currentSchedule.date ? formatDateLabel(currentSchedule.date) : '날짜 없음'}`,
+      '',
+      '관련 활동 기록도 함께 삭제되며 복구할 수 없습니다.',
+    ].join('\n');
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setScheduleDeleting(true);
+    setScheduleDeleteError('');
+    try {
+      await deleteSchedule(data.links.deleteSchedule);
+      window.location.assign(data.links.schedules || '/schedules/');
+    } catch (error) {
+      setScheduleDeleteError(error instanceof Error ? error.message : '일정 삭제에 실패했습니다.');
+    } finally {
+      setScheduleDeleting(false);
+    }
+  };
+
   const handleDocumentPreviewClose = () => {
     setDocumentPreviewAction(null);
     setDocumentPreviewData(null);
@@ -5614,8 +5761,26 @@ function ScheduleDetailPage({
               <Check size={16} />
             </button>
           ) : null}
+          {schedule.canEdit && data.links.deleteSchedule ? (
+            <button
+              className="route-secondary-action danger schedule-delete-action"
+              disabled={scheduleDeleting}
+              onClick={handleScheduleDelete}
+              type="button"
+            >
+              {scheduleDeleting ? <Loader2 className="spin-icon" size={16} /> : <Trash2 size={16} />}
+              삭제
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {scheduleDeleteError ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>{scheduleDeleteError}</span>
+        </div>
+      ) : null}
 
       <section className="dashboard-metric-grid" aria-label="일정 상세 지표">
         {metrics.map((metric) => (
@@ -5927,19 +6092,86 @@ function ScheduleDetailPage({
           <div className="schedule-file-heading schedule-delivery-heading">
             <h3 className="customer-detail-section-heading">{itemPanelLabel}</h3>
             {schedule.canEdit && data.links.updateDeliveryItems ? (
-              <button
-                className="customer-row-action schedule-delivery-edit-toggle"
-                disabled={deliverySaving}
-                onClick={handleDeliveryEditToggle}
-                type="button"
-              >
-                {deliveryEditOpen ? <ChevronDown size={14} /> : <ListChecks size={14} />}
-                <span>{deliveryEditOpen ? '닫기' : '편집'}</span>
-              </button>
+              <div className="schedule-heading-actions">
+                {!isQuoteSchedule ? (
+                  <button
+                    className="customer-row-action schedule-delivery-edit-toggle"
+                    disabled={deliverySaving || quoteImportLoading}
+                    onClick={handleQuoteImportToggle}
+                    type="button"
+                  >
+                    {quoteImportLoading ? <Loader2 className="spin-icon" size={14} /> : <Copy size={14} />}
+                    <span>{quoteImportOpen ? '불러오기 닫기' : '견적 불러오기'}</span>
+                  </button>
+                ) : null}
+                <button
+                  className="customer-row-action schedule-delivery-edit-toggle"
+                  disabled={deliverySaving}
+                  onClick={handleDeliveryEditToggle}
+                  type="button"
+                >
+                  {deliveryEditOpen ? <ChevronDown size={14} /> : <ListChecks size={14} />}
+                  <span>{deliveryEditOpen ? '닫기' : '편집'}</span>
+                </button>
+              </div>
             ) : null}
           </div>
           {deliveryError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{deliveryError}</span></div> : null}
           {deliveryMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{deliveryMessage}</span></div> : null}
+          {!isQuoteSchedule && quoteImportOpen ? (
+            <div className="schedule-quote-import-panel">
+              <div className="schedule-quote-import-heading">
+                <div>
+                  <strong>견적 품목 불러오기</strong>
+                  <span>같은 부서의 본인 견적 일정에서 납품 품목을 가져옵니다.</span>
+                </div>
+                <button
+                  className="customer-row-action schedule-delivery-edit-toggle"
+                  disabled={quoteImportLoading}
+                  onClick={() => void loadQuoteImports()}
+                  type="button"
+                >
+                  {quoteImportLoading ? <Loader2 className="spin-icon" size={14} /> : <RefreshCw size={14} />}
+                  <span>새로고침</span>
+                </button>
+              </div>
+              {quoteImportError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{quoteImportError}</span></div> : null}
+              {quoteImportLoading ? (
+                <div className="schedule-quote-import-loading">
+                  <Loader2 className="spin-icon" size={16} />
+                  <span>견적을 불러오는 중입니다</span>
+                </div>
+              ) : quoteImportData?.quotes.length ? (
+                <div className="schedule-quote-import-list">
+                  {quoteImportData.quotes.map((quote) => (
+                    <div className="schedule-quote-import-card" key={quote.scheduleId}>
+                      <div>
+                        <strong>{quote.customerName || '고객명 미정'} 견적</strong>
+                        <span>{[
+                          quote.companyName,
+                          quote.departmentName,
+                          quote.quoteDate ? formatDateLabel(quote.quoteDate) : '',
+                          `품목 ${formatNumber(quote.items.length)}개`,
+                          quote.expectedRevenue ? formatWon(quote.expectedRevenue) : '',
+                        ].filter(Boolean).join(' · ')}</span>
+                        <p>{quote.items.map((item) => item.itemName).filter(Boolean).slice(0, 6).join(', ')}</p>
+                      </div>
+                      <button
+                        className="route-secondary-action"
+                        disabled={deliverySaving}
+                        onClick={() => handleQuoteImportApply(quote)}
+                        type="button"
+                      >
+                        적용
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmpty label="불러올 수 있는 견적이 없습니다" />
+              )}
+            </div>
+          ) : null}
           {deliveryEditOpen ? (
             <form className="schedule-delivery-edit-form" onSubmit={handleDeliverySubmit}>
               {productError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{productError}</span></div> : null}
@@ -9759,12 +9991,49 @@ function ProductManagementPage({
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteResult, setDeleteResult] = useState<ProductBulkDeleteResult | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteReplacements, setDeleteReplacements] = useState<Record<string, string>>({});
+  const [deleteReplacementOptions, setDeleteReplacementOptions] = useState<ProductOption[]>([]);
+  const [deleteReplacementLoading, setDeleteReplacementLoading] = useState(false);
+  const [deleteReplacementError, setDeleteReplacementError] = useState('');
 
   const products = data?.products ?? [];
   const pagination = data?.pagination;
   const canManage = Boolean(data?.scope.canManage);
   const pastedProducts = useMemo(() => parseProductPasteRows(bulkText), [bulkText]);
   const deleteCodes = useMemo(() => parseProductDeleteCodes(deleteText), [deleteText]);
+  const replaceableDeleteRows = useMemo(() => (
+    (deleteResult?.results ?? []).filter((row) => row.status === 'blocked' && row.canReplace)
+  ), [deleteResult]);
+
+  useEffect(() => {
+    if (!replaceableDeleteRows.length || deleteReplacementOptions.length || deleteReplacementLoading) {
+      return;
+    }
+
+    let active = true;
+    setDeleteReplacementLoading(true);
+    setDeleteReplacementError('');
+    loadProducts()
+      .then((options) => {
+        if (active) {
+          setDeleteReplacementOptions(options);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setDeleteReplacementError(error instanceof Error ? error.message : '대체 제품 목록을 불러오지 못했습니다.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setDeleteReplacementLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deleteReplacementLoading, deleteReplacementOptions.length, replaceableDeleteRows.length]);
 
   const openCreate = () => {
     setEditingProduct(null);
@@ -9871,6 +10140,7 @@ function ProductManagementPage({
     }
     setDeleteSaving(true);
     setDeleteError('');
+    setDeleteReplacements({});
     setDeleteResult(null);
     try {
       const result = await bulkDeleteProducts(deleteCodes);
@@ -9878,6 +10148,52 @@ function ProductManagementPage({
       await onReload();
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : '일괄 삭제에 실패했습니다.');
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
+  const handleDeleteReplacementChange = (productCode: string, replacementProductId: string) => {
+    setDeleteReplacements((previous) => ({
+      ...previous,
+      [productCode]: replacementProductId,
+    }));
+    setDeleteError('');
+  };
+
+  const handleReplaceBlockedDelete = async () => {
+    if (deleteSaving || !replaceableDeleteRows.length) return;
+    const replacements: Record<string, number> = {};
+    for (const row of replaceableDeleteRows) {
+      const replacementId = Number(deleteReplacements[row.productCode] || 0);
+      if (!replacementId) {
+        setDeleteError(`${row.productCode}의 대체 제품을 선택하세요.`);
+        return;
+      }
+      const replacement = deleteReplacementOptions.find((option) => option.id === replacementId);
+      if (!replacement) {
+        setDeleteError(`${row.productCode}의 대체 제품을 찾을 수 없습니다.`);
+        return;
+      }
+      if (replacement.productCode === row.productCode) {
+        setDeleteError(`${row.productCode} 자신은 대체 제품으로 사용할 수 없습니다.`);
+        return;
+      }
+      replacements[row.productCode] = replacementId;
+    }
+
+    setDeleteSaving(true);
+    setDeleteError('');
+    try {
+      const result = await bulkDeleteProducts(
+        replaceableDeleteRows.map((row) => row.productCode),
+        replacements,
+      );
+      setDeleteResult(result);
+      setDeleteReplacements({});
+      await onReload();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : '대체 후 삭제에 실패했습니다.');
     } finally {
       setDeleteSaving(false);
     }
@@ -10131,6 +10447,57 @@ function ProductManagementPage({
             </div>
             {deleteError ? <p className="form-error">{deleteError}</p> : null}
             {deleteResult ? <p className="form-success">{deleteResult.message}</p> : null}
+            {replaceableDeleteRows.length > 0 ? (
+              <div className="product-delete-replacement-panel">
+                <div>
+                  <strong>차단 제품 대체 후 삭제</strong>
+                  <span>이미 견적/납품에 사용된 제품은 대체 제품으로 연결을 옮긴 뒤 삭제됩니다.</span>
+                </div>
+                {deleteReplacementError ? <p className="form-error">{deleteReplacementError}</p> : null}
+                {deleteReplacementLoading ? (
+                  <div className="product-delete-replacement-loading">
+                    <Loader2 className="spin-icon" size={15} />
+                    <span>대체 제품 목록을 불러오는 중</span>
+                  </div>
+                ) : (
+                  <div className="product-delete-replacement-list">
+                    {replaceableDeleteRows.map((row) => {
+                      const replacementOptions = deleteReplacementOptions.filter((option) => (
+                        option.productCode !== row.productCode &&
+                        !replaceableDeleteRows.some((blockedRow) => blockedRow.productCode === option.productCode)
+                      ));
+                      return (
+                        <label key={row.productCode}>
+                          <span>
+                            {row.productCode}
+                            <small>품목 {formatNumber(row.deliveryItemCount ?? 0)}건 · 레거시 견적 {formatNumber(row.quoteItemCount ?? 0)}건</small>
+                          </span>
+                          <select
+                            onChange={(event) => handleDeleteReplacementChange(row.productCode, event.target.value)}
+                            value={deleteReplacements[row.productCode] || ''}
+                          >
+                            <option value="">대체 제품 선택</option>
+                            {replacementOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.productCode} · {option.description || option.specification || option.unit}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  className="route-secondary-action danger"
+                  disabled={deleteSaving || deleteReplacementLoading || Boolean(deleteReplacementError)}
+                  onClick={handleReplaceBlockedDelete}
+                  type="button"
+                >
+                  {deleteSaving ? '처리 중' : '대체 후 삭제'}
+                </button>
+              </div>
+            ) : null}
             <button className="route-secondary-action danger" disabled={deleteSaving || !deleteCodes.length} onClick={handleBulkDelete} type="button">
               {deleteSaving ? '삭제 중' : '삭제 실행'}
             </button>

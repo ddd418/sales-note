@@ -6147,6 +6147,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'customer': f'/customers/{followup.id}/',
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
             'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+            'deleteSchedule': reverse('reporting:schedule_delete', args=[schedule.id]) if can_edit else '',
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
@@ -15583,12 +15584,13 @@ def followup_quote_items_api(request, followup_id):
             quote_followups = FollowUp.objects.filter(pk=followup.pk)
 
         # 같은 부서의 본인 견적 일정 조회 (납품되지 않은 것만)
+        quote_items_queryset = DeliveryItem.objects.select_related('product').order_by('id')
         quote_schedules = Schedule.objects.filter(
             followup__in=quote_followups,
             activity_type='quote',
             user=request.user,
         ).select_related('followup', 'followup__company', 'followup__department').prefetch_related(
-            'delivery_items_set',
+            Prefetch('delivery_items_set', queryset=quote_items_queryset),
         ).order_by('-visit_date', '-visit_time', '-created_at')
         
         if not quote_schedules.exists():
@@ -15597,7 +15599,6 @@ def followup_quote_items_api(request, followup_id):
             })
         
         # 모든 견적 정보 수집 (납품되지 않은 것만)
-        from reporting.models import DeliveryItem
         quotes_data = []
         
         for quote_schedule in quote_schedules:
@@ -15636,15 +15637,46 @@ def followup_quote_items_api(request, followup_id):
             items = list(quote_schedule.delivery_items_set.all())
             
             if items:
-                items_data = [{
-                    'item_name': item.item_name,
-                    'quantity': item.quantity,
-                    'unit_price': float(item.unit_price) if item.unit_price else 0,
-                    'discount_rate': float(item.discount_rate or 0),
-                    'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
-                    'effective_unit_price': float(item.get_effective_unit_price() or item.unit_price or 0),
-                    'notes': item.notes or '',
-                } for item in items]
+                items_data = []
+                for item in items:
+                    product = item.product if item.product_id else None
+                    unit_price = float(item.unit_price) if item.unit_price is not None else 0
+                    discount_unit_price = (
+                        float(item.discount_unit_price)
+                        if item.discount_unit_price is not None
+                        else None
+                    )
+                    effective_unit_price = float(item.get_effective_unit_price() or item.unit_price or 0)
+                    unit = item.unit or (product.unit if product else '') or 'EA'
+                    quote_group = item.quote_group or ''
+                    items_data.append({
+                        'id': item.id,
+                        'item_name': item.item_name,
+                        'itemName': item.item_name,
+                        'quantity': item.quantity,
+                        'unit': unit,
+                        'unit_price': unit_price,
+                        'unitPrice': unit_price,
+                        'discount_rate': float(item.discount_rate or 0),
+                        'discountRate': float(item.discount_rate or 0),
+                        'discount_unit_price': discount_unit_price,
+                        'discountUnitPrice': discount_unit_price,
+                        'effective_unit_price': effective_unit_price,
+                        'effectiveUnitPrice': effective_unit_price,
+                        'product_id': item.product_id,
+                        'productId': item.product_id,
+                        'product_code': product.product_code if product else '',
+                        'productCode': product.product_code if product else '',
+                        'product_description': (product.description or '') if product else '',
+                        'productDescription': (product.description or '') if product else '',
+                        'tax_invoice_issued': bool(item.tax_invoice_issued),
+                        'taxInvoiceIssued': bool(item.tax_invoice_issued),
+                        'quote_group': quote_group,
+                        'quoteGroup': quote_group,
+                        'quote_group_label': _quote_group_label(quote_group),
+                        'quoteGroupLabel': _quote_group_label(quote_group),
+                        'notes': item.notes or '',
+                    })
                 quote_total = sum(
                     item.total_price or (
                         (item.unit_price or Decimal('0')) * item.quantity * Decimal('1.1')
@@ -15659,12 +15691,21 @@ def followup_quote_items_api(request, followup_id):
                 quote_followup = quote_schedule.followup
 
                 quote_data = {
+                    'id': quote_schedule.id,
                     'schedule_id': quote_schedule.id,
+                    'scheduleId': quote_schedule.id,
                     'quote_date': quote_schedule.visit_date.strftime('%Y-%m-%d'),
+                    'quoteDate': quote_schedule.visit_date.strftime('%Y-%m-%d'),
                     'expected_revenue': float(quote_total),
+                    'expectedRevenue': float(quote_total),
                     'customer_name': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
+                    'customerName': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
                     'company_name': quote_followup.company.name if quote_followup.company else '',
+                    'companyName': quote_followup.company.name if quote_followup.company else '',
                     'department_name': quote_followup.department.name if quote_followup.department else '',
+                    'departmentName': quote_followup.department.name if quote_followup.department else '',
+                    'href': f'/schedules/{quote_schedule.id}/',
+                    'djangoHref': reverse('reporting:schedule_detail', args=[quote_schedule.id]),
                     'items': items_data,
                 }
                 quotes_data.append(quote_data)
@@ -17814,6 +17855,121 @@ def _product_payload(product):
     }
 
 
+def _product_delete_usage_counts(product):
+    return {
+        'deliveryItemCount': product.delivery_items.count(),
+        'quoteItemCount': product.quoteitems.count(),
+    }
+
+
+def _parse_product_delete_replacements(body):
+    raw = body.get('replacements') or body.get('replacementProducts') or body.get('replacement_products') or {}
+    replacements = {}
+
+    def set_replacement(code, value):
+        product_code = str(code or '').strip()
+        if not product_code:
+            return
+        if isinstance(value, dict):
+            replacement_value = (
+                value.get('replacementProductId')
+                or value.get('replacement_product_id')
+                or value.get('replacementId')
+                or value.get('replacement_id')
+                or value.get('productId')
+                or value.get('product_id')
+                or value.get('id')
+            )
+        else:
+            replacement_value = value
+        replacement_text = str(replacement_value or '').strip()
+        if replacement_text:
+            replacements[product_code] = replacement_text
+
+    if isinstance(raw, dict):
+        for code, value in raw.items():
+            set_replacement(code, value)
+    elif isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            code = item.get('productCode') or item.get('product_code') or item.get('code')
+            set_replacement(code, item)
+
+    return replacements
+
+
+def _product_blocked_delete_result(product, message, can_replace=True):
+    usage_counts = _product_delete_usage_counts(product)
+    return {
+        'productCode': product.product_code,
+        'status': 'blocked',
+        'message': message,
+        'canReplace': bool(can_replace),
+        **usage_counts,
+    }
+
+
+def _replace_product_references_and_delete(request, product, replacement_product):
+    """제품 참조를 대체 제품으로 옮긴 뒤 원본 제품 삭제. 참조가 남으면 예외."""
+    from reporting.models import DeliveryItem, QuoteItem, Schedule
+
+    with transaction.atomic():
+        delivery_items = list(
+            DeliveryItem.objects
+            .select_for_update()
+            .select_related('schedule')
+            .filter(product=product)
+            .order_by('id')
+        )
+        quote_items = list(
+            QuoteItem.objects
+            .select_for_update()
+            .select_related('quote')
+            .filter(product=product)
+            .order_by('id')
+        )
+        touched_delivery_schedule_ids = {
+            item.schedule_id
+            for item in delivery_items
+            if item.schedule_id and item.schedule and item.schedule.activity_type == 'delivery'
+        }
+
+        for item in delivery_items:
+            item.product = replacement_product
+            item.item_name = replacement_product.product_code
+            item.unit = replacement_product.unit or item.unit or 'EA'
+            item.save()
+
+        for item in quote_items:
+            item.product = replacement_product
+            item.save(update_fields=['product', 'subtotal'])
+
+        if DeliveryItem.objects.filter(product=product).exists() or QuoteItem.objects.filter(product=product).exists():
+            raise ValueError('제품 참조가 남아 있어 삭제할 수 없습니다.')
+
+        product_code = product.product_code
+        product.delete()
+
+    for schedule in Schedule.objects.filter(id__in=touched_delivery_schedule_ids):
+        _schedules_sync_delivery_histories(
+            schedule,
+            request.user,
+            schedule.delivery_items_set.count(),
+        )
+
+    return {
+        'productCode': product_code,
+        'status': 'deleted',
+        'message': f'{replacement_product.product_code}로 품목 연결 이동 후 삭제 완료',
+        'replacementProductId': replacement_product.id,
+        'replacementProductCode': replacement_product.product_code,
+        'deliveryItemCount': len(delivery_items),
+        'quoteItemCount': len(quote_items),
+        'replacedCount': len(delivery_items) + len(quote_items),
+    }
+
+
 def _parse_product_price(value):
     from decimal import Decimal, InvalidOperation
 
@@ -18484,37 +18640,100 @@ def products_bulk_delete_api(request):
     if not normalized_codes:
         return JsonResponse({'success': False, 'error': '삭제할 품번이 없습니다.'}, status=400)
 
+    replacements = _parse_product_delete_replacements(body)
     scope = _product_scope_queryset(request, include_inactive=True)
     deleted_count = 0
     blocked_count = 0
     missing_count = 0
+    replaced_count = 0
     results = []
 
     for code in normalized_codes:
         product = scope.filter(product_code=code).first()
         if not product:
             missing_count += 1
-            results.append({'productCode': code, 'status': 'missing', 'message': '제품 없음 또는 권한 없음'})
+            results.append({
+                'productCode': code,
+                'status': 'missing',
+                'message': '제품 없음 또는 권한 없음',
+                'canReplace': False,
+                'deliveryItemCount': 0,
+                'quoteItemCount': 0,
+            })
             continue
         if not _product_can_manage(request, product):
             blocked_count += 1
-            results.append({'productCode': code, 'status': 'blocked', 'message': '권한 없음'})
+            results.append({
+                'productCode': code,
+                'status': 'blocked',
+                'message': '권한 없음',
+                'canReplace': False,
+                **_product_delete_usage_counts(product),
+            })
             continue
         if product.delivery_items.exists() or product.quoteitems.exists():
-            blocked_count += 1
-            results.append({'productCode': code, 'status': 'blocked', 'message': '견적/납품에 사용된 제품'})
+            replacement_value = replacements.get(code)
+            if not replacement_value:
+                blocked_count += 1
+                results.append(_product_blocked_delete_result(product, '견적/납품에 사용된 제품'))
+                continue
+
+            replacement = None
+            try:
+                replacement_id = int(replacement_value)
+            except (TypeError, ValueError):
+                replacement_id = None
+            if replacement_id:
+                replacement = scope.filter(id=replacement_id, is_active=True).first()
+            if replacement is None:
+                replacement = scope.filter(product_code=replacement_value, is_active=True).first()
+
+            if not replacement:
+                blocked_count += 1
+                results.append(_product_blocked_delete_result(product, '대체 제품을 찾을 수 없거나 비활성 상태입니다.'))
+                continue
+            if replacement.id == product.id:
+                blocked_count += 1
+                results.append(_product_blocked_delete_result(product, '삭제할 제품 자신은 대체 제품으로 사용할 수 없습니다.'))
+                continue
+            if replacement.product_code in normalized_codes:
+                blocked_count += 1
+                results.append(_product_blocked_delete_result(product, '같은 삭제 목록에 있는 제품은 대체 제품으로 사용할 수 없습니다.'))
+                continue
+
+            try:
+                result = _replace_product_references_and_delete(request, product, replacement)
+            except Exception as exc:
+                logger.error('제품 참조 대체 후 삭제 실패 (%s -> %s): %s', code, replacement.product_code, exc, exc_info=True)
+                blocked_count += 1
+                results.append(_product_blocked_delete_result(product, f'대체 후 삭제 실패: {exc}'))
+                continue
+
+            deleted_count += 1
+            replaced_count += result.get('replacedCount', 0)
+            results.append(result)
             continue
+
         product.delete()
         deleted_count += 1
-        results.append({'productCode': code, 'status': 'deleted', 'message': '삭제 완료'})
+        results.append({
+            'productCode': code,
+            'status': 'deleted',
+            'message': '삭제 완료',
+            'canReplace': False,
+            'deliveryItemCount': 0,
+            'quoteItemCount': 0,
+            'replacedCount': 0,
+        })
 
     return JsonResponse({
         'success': True,
         'deletedCount': deleted_count,
         'blockedCount': blocked_count,
         'missingCount': missing_count,
+        'replacedCount': replaced_count,
         'results': results[:300],
-        'message': f'삭제 {deleted_count}건, 차단 {blocked_count}건, 없음 {missing_count}건',
+        'message': f'삭제 {deleted_count}건, 대체 {replaced_count}건, 차단 {blocked_count}건, 없음 {missing_count}건',
     })
 
 

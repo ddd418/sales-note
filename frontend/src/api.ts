@@ -1057,6 +1057,44 @@ export type ScheduleDeliveryItemPayload = {
   notes?: string;
 };
 
+export type FollowupQuoteItem = {
+  id: number | null;
+  productId?: number | null;
+  productCode?: string;
+  productDescription?: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  discountRate: number;
+  discountUnitPrice: number | null;
+  effectiveUnitPrice: number;
+  taxInvoiceIssued: boolean;
+  quoteGroup: string;
+  quoteGroupLabel: string;
+  notes: string;
+};
+
+export type FollowupQuoteOption = {
+  id: number;
+  scheduleId: number;
+  quoteDate: string;
+  expectedRevenue: number;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  href: string;
+  djangoHref: string;
+  items: FollowupQuoteItem[];
+};
+
+export type FollowupQuoteItemsData = {
+  success?: boolean;
+  error?: string;
+  quotes: FollowupQuoteOption[];
+  count: number;
+};
+
 export type ProductOption = {
   id: number;
   productCode: string;
@@ -1173,6 +1211,12 @@ export type ProductBulkResultRow = {
   productCode: string;
   status: 'created' | 'updated' | 'unchanged' | 'deleted' | 'blocked' | 'missing' | 'error';
   changedFields?: string[];
+  canReplace?: boolean;
+  deliveryItemCount?: number;
+  quoteItemCount?: number;
+  replacementProductId?: number;
+  replacementProductCode?: string;
+  replacedCount?: number;
   message?: string;
   error?: string;
 };
@@ -1193,6 +1237,7 @@ export type ProductBulkDeleteResult = {
   deletedCount: number;
   blockedCount: number;
   missingCount: number;
+  replacedCount?: number;
   results: ProductBulkResultRow[];
   message: string;
   error?: string;
@@ -1997,6 +2042,7 @@ export type ScheduleDetailData = {
     customer: string;
     djangoCustomer: string;
     createNote: string;
+    deleteSchedule: string;
     uploadFiles: string;
     updateDeliveryItems: string;
     prepayments: string;
@@ -2043,6 +2089,12 @@ export type ScheduleFileActionResponse = {
   error?: string;
   message?: string;
   files?: ScheduleFileItem[];
+};
+
+export type ScheduleDeleteResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
 };
 
 export type AIWorkspaceDepartment = {
@@ -2908,6 +2960,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     customer: '',
     djangoCustomer: '',
     createNote: '',
+    deleteSchedule: '',
     uploadFiles: '',
     updateDeliveryItems: '',
     prepayments: '',
@@ -4564,8 +4617,11 @@ export async function bulkUpsertProducts(products: ProductMutationPayload[]): Pr
   return data;
 }
 
-export async function bulkDeleteProducts(productCodes: string[]): Promise<ProductBulkDeleteResult> {
-  const data = await postProductJson<ProductBulkDeleteResult>('/reporting/api/products/bulk-delete/', { productCodes });
+export async function bulkDeleteProducts(
+  productCodes: string[],
+  replacements: Record<string, number | string> = {},
+): Promise<ProductBulkDeleteResult> {
+  const data = await postProductJson<ProductBulkDeleteResult>('/reporting/api/products/bulk-delete/', { productCodes, replacements });
   if (data.success === false) {
     throw new Error(data.error || data.message || '제품 삭제에 실패했습니다.');
   }
@@ -5116,6 +5172,104 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
   }
 }
 
+const rawRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' ? value as Record<string, unknown> : {}
+);
+
+const rawValue = (record: Record<string, unknown>, camelKey: string, snakeKey?: string): unknown => (
+  record[camelKey] ?? (snakeKey ? record[snakeKey] : undefined)
+);
+
+const rawString = (value: unknown): string => (
+  value === undefined || value === null ? '' : String(value)
+);
+
+const rawNumber = (value: unknown, fallback = 0): number => {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const rawNullableNumber = (value: unknown): number | null => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const rawBoolean = (value: unknown): boolean => (
+  value === true || value === 1 || value === '1' || value === 'true' || value === 'True' || value === 'Y' || value === 'yes'
+);
+
+const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
+  const item = rawRecord(value);
+  const unitPrice = rawNumber(rawValue(item, 'unitPrice', 'unit_price'));
+  const quoteGroup = rawString(rawValue(item, 'quoteGroup', 'quote_group')).trim();
+  const productId = rawNullableNumber(rawValue(item, 'productId', 'product_id'));
+  return {
+    id: rawNullableNumber(item.id),
+    productId,
+    productCode: rawString(rawValue(item, 'productCode', 'product_code')),
+    productDescription: rawString(rawValue(item, 'productDescription', 'product_description')),
+    itemName: rawString(rawValue(item, 'itemName', 'item_name')),
+    quantity: Math.max(1, rawNumber(item.quantity, 1)),
+    unit: rawString(item.unit) || 'EA',
+    unitPrice,
+    discountRate: rawNumber(rawValue(item, 'discountRate', 'discount_rate')),
+    discountUnitPrice: rawNullableNumber(rawValue(item, 'discountUnitPrice', 'discount_unit_price')),
+    effectiveUnitPrice: rawNumber(rawValue(item, 'effectiveUnitPrice', 'effective_unit_price'), unitPrice),
+    taxInvoiceIssued: rawBoolean(rawValue(item, 'taxInvoiceIssued', 'tax_invoice_issued')),
+    quoteGroup,
+    quoteGroupLabel: rawString(rawValue(item, 'quoteGroupLabel', 'quote_group_label')) || quoteGroup || '기본 견적서',
+    notes: rawString(item.notes),
+  };
+};
+
+const normalizeFollowupQuoteOption = (value: unknown): FollowupQuoteOption => {
+  const quote = rawRecord(value);
+  const scheduleId = rawNumber(rawValue(quote, 'scheduleId', 'schedule_id') ?? quote.id);
+  const rawItems = quote.items;
+  return {
+    id: rawNumber(quote.id, scheduleId),
+    scheduleId,
+    quoteDate: rawString(rawValue(quote, 'quoteDate', 'quote_date')),
+    expectedRevenue: rawNumber(rawValue(quote, 'expectedRevenue', 'expected_revenue')),
+    customerName: rawString(rawValue(quote, 'customerName', 'customer_name')),
+    companyName: rawString(rawValue(quote, 'companyName', 'company_name')),
+    departmentName: rawString(rawValue(quote, 'departmentName', 'department_name')),
+    href: rawString(quote.href) || (scheduleId ? `/schedules/${scheduleId}/` : ''),
+    djangoHref: rawString(quote.djangoHref),
+    items: Array.isArray(rawItems) ? rawItems.map(normalizeFollowupQuoteItem) : [],
+  };
+};
+
+export async function loadFollowupQuoteItems(followupId: number): Promise<FollowupQuoteItemsData> {
+  const response = await fetch(`/reporting/api/followups/${followupId}/quote-items/`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Quote items API unavailable: ${response.status}`);
+  }
+  const payload = rawRecord(await response.json());
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.error) {
+    throw new Error(rawString(payload.error) || `Quote items API unavailable: ${response.status}`);
+  }
+  const rawQuotes = payload.quotes;
+  const quotes = Array.isArray(rawQuotes) ? rawQuotes.map(normalizeFollowupQuoteOption) : [];
+  return {
+    success: payload.success === undefined ? true : rawBoolean(payload.success),
+    error: rawString(payload.error),
+    quotes,
+    count: rawNumber(payload.count, quotes.length),
+  };
+}
+
 export async function loadScheduleDocumentPreview(previewUrl: string): Promise<ScheduleDocumentPreviewData> {
   type RawScheduleDocumentPreviewData = {
     success?: boolean;
@@ -5508,6 +5662,30 @@ export async function deleteScheduleFile(deleteUrl: string): Promise<ScheduleFil
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule file delete failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteSchedule(deleteUrl: string): Promise<ScheduleDeleteResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleDeleteResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule delete failed: ${response.status}`);
   }
   return data;
 }

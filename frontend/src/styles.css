@@ -1115,21 +1115,47 @@ h2 {
 
 .products-table {
   min-width: 1180px;
+  width: 100%;
+  table-layout: fixed;
 }
 
+.products-table th,
 .products-table td {
   vertical-align: top;
-}
-
-.products-table td:first-child,
-.products-table td:nth-child(2),
-.products-table td:nth-child(3) {
   overflow-wrap: anywhere;
 }
 
-.products-table td:first-child {
-  display: grid;
-  gap: 4px;
+.products-table th:nth-child(1),
+.products-table td:nth-child(1) {
+  width: 150px;
+}
+
+.products-table th:nth-child(4),
+.products-table td:nth-child(4),
+.products-table th:nth-child(7),
+.products-table td:nth-child(7),
+.products-table th:nth-child(8),
+.products-table td:nth-child(8) {
+  width: 76px;
+}
+
+.products-table th:nth-child(5),
+.products-table td:nth-child(5),
+.products-table th:nth-child(6),
+.products-table td:nth-child(6) {
+  width: 104px;
+}
+
+.products-table th:nth-child(9),
+.products-table td:nth-child(9),
+.products-table th:nth-child(10),
+.products-table td:nth-child(10) {
+  width: 128px;
+}
+
+.products-table td:first-child strong,
+.products-table td:first-child small {
+  display: block;
 }
 
 .product-sort-button {
@@ -1171,6 +1197,7 @@ h2 {
 .product-row-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -1219,6 +1246,72 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.product-delete-replacement-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff7f7;
+}
+
+.product-delete-replacement-panel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.product-delete-replacement-panel strong {
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.product-delete-replacement-panel span,
+.product-delete-replacement-loading span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.product-delete-replacement-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.product-delete-replacement-list {
+  display: grid;
+  gap: 8px;
+}
+
+.product-delete-replacement-list label {
+  display: grid;
+  gap: 5px;
+}
+
+.product-delete-replacement-list label > span {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.product-delete-replacement-list small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.product-delete-replacement-list select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
 }
 
 .prepayment-form-grid {
@@ -2684,6 +2777,93 @@ h2 {
 .schedule-delivery-remove-button:disabled {
   cursor: wait;
   opacity: 0.72;
+}
+
+.schedule-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.schedule-delete-action {
+  gap: 8px;
+}
+
+.schedule-quote-import-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.schedule-quote-import-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.schedule-quote-import-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.schedule-quote-import-heading strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-quote-import-heading span,
+.schedule-quote-import-loading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.schedule-quote-import-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: var(--muted);
+}
+
+.schedule-quote-import-list {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-quote-import-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.schedule-quote-import-card > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.schedule-quote-import-card strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-quote-import-card span,
+.schedule-quote-import-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .schedule-delivery-edit-form {
@@ -5418,6 +5598,16 @@ tbody tr:hover {
   box-shadow: var(--shadow-glow);
 }
 
+@media (max-width: 1500px) {
+  .products-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .products-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1260px) {
   .content-grid {
     grid-template-columns: 210px minmax(0, 1fr);
@@ -5583,6 +5773,18 @@ tbody tr:hover {
   .note-reply-delete-button {
     justify-content: center;
     width: 100%;
+  }
+
+  .schedule-heading-actions,
+  .schedule-quote-import-heading,
+  .schedule-quote-import-card,
+  .products-side {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-heading-actions,
+  .schedule-quote-import-heading {
+    display: grid;
   }
 
   .schedule-document-actions,

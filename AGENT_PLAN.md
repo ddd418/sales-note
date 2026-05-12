@@ -1,6 +1,48 @@
 # AGENT_PLAN.md
 
-## Current task — 제품관리 React 전환, Ecount upsert, 엑셀 다운로드/일괄삭제, 프로모션 제거
+## Current task — React 납품 일정 견적 품목 불러오기, 일정 삭제, 제품 삭제 대체 처리
+
+**목표**: React 일정 상세에서 납품 일정이 기존 견적 일정의 품목을 끌어와 납품 품목으로 저장할 수 있게 한다. 같은 화면에서 일정 삭제도 가능하게 하고, React 제품관리 목록 깨짐을 수정한다. 제품 일괄 삭제 시 견적/납품에 사용되어 차단된 제품은 대체 제품으로 품목 연결을 옮긴 뒤 데이터 무결성이 확인되면 삭제되게 한다.
+
+### 확인된 상태
+
+- 기존 Django 일정 폼에는 `/reporting/api/followups/<followup_id>/quote-items/` 기반 견적 품목 불러오기가 있으나 React 일정 상세에는 UI가 없었다.
+- React 일정 상세는 납품/견적 품목 편집과 저장 API는 갖고 있으므로, 견적 품목 조회 API 응답을 React 편집 행으로 매핑하면 DB 모델 변경 없이 구현 가능하다.
+- 기존 `schedule_delete_view()`는 AJAX POST 삭제를 지원하지만 React 상세 payload에는 삭제 URL이 내려오지 않았다.
+- React 제품 목록은 표와 사이드 패널이 한 행에 배치되어 운영 화면 폭에서 표가 좁아지고, 일부 table cell 스타일이 표 렌더링을 흔들 수 있었다.
+- 기존 제품 일괄 삭제 API는 `DeliveryItem`/`QuoteItem` 참조가 있는 제품을 무조건 차단한다.
+
+### 구현 계획
+
+- 견적 품목 API를 React에서 쓰기 좋게 camelCase 필드, 제품 연결값, 할인단가, 견적서 구분, 적요까지 반환하도록 보강한다.
+- React 일정 상세 납품 품목 패널에 `견적 불러오기` 버튼과 견적 선택 패널을 추가한다.
+- 선택한 견적의 품목을 납품 품목 편집 행으로 가져오고, 저장 버튼을 눌러 기존 납품 품목 저장 API에 반영한다.
+- React 일정 상세 payload에 `deleteSchedule` 링크를 추가하고, 삭제 버튼은 기존 Django AJAX 삭제 뷰를 호출한 뒤 일정 목록으로 이동한다.
+- 제품 목록 CSS를 고정 테이블 레이아웃/반응형 사이드 패널 구조로 조정해 운영 화면에서 깨지지 않게 한다.
+- 제품 일괄 삭제 API에 `replacements` payload를 추가해 차단 제품의 `DeliveryItem`/`QuoteItem` 참조를 대체 제품으로 옮긴 뒤 참조가 남아 있지 않을 때만 원제품을 삭제한다.
+- React 제품 삭제 패널에서 차단된 제품별 대체 제품 선택 UI를 제공한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_manager_read_only_and_other_company_blocked reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_allows_owner_and_removes_related_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_blocks_non_owner reporting.tests.ProductManagementReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- 로컬 React UI smoke: `/products/`, `/schedules/882/` 목 API 기반 렌더링 확인
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/products/`, `/schedules/882/`, `/reporting/login/` smoke check
+
+### 현재 상태
+
+- 구현 및 로컬 검증 완료.
+- DB 모델 변경 없음.
+- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행한다.
+
+---
+
+## Previous task — 제품관리 React 전환, Ecount upsert, 엑셀 다운로드/일괄삭제, 프로모션 제거
 
 **목표**: 기존 Django 제품관리 화면을 React CRM 화면으로 옮기고, Ecount 제품 데이터를 붙여넣어 신규/기존 제품을 일괄 upsert할 수 있게 한다. 전체 제품 Excel 다운로드와 붙여넣기 기반 일괄 삭제를 제공하고, 제품관리의 프로모션 설정 기능은 제거한다.
 
