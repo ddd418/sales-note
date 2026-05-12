@@ -32,9 +32,17 @@
 
 ### 현재 상태
 
-- 구현/로컬 검증 완료.
-- DB 모델 변경 예정 없음.
-- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행한다.
+- 구현/로컬 검증/커밋/푸시/운영 배포/익명 smoke 완료.
+- DB 모델 변경 없음.
+- Runtime commit: `6c041e4 fix: split quote imports by group`
+- Railway `web`: `50a1e21c-1197-4a28-83fd-007b3129f740` SUCCESS
+- Railway `sales-note-frontend`: `3fd13701-e681-4fed-8614-5c783993ad10` SUCCESS
+- 운영 smoke OK:
+  - `/schedules/882/` 200 with `assets/index-B6kDhHX8.js` / `assets/index-2AirpMI9.css`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/882/` 401 login-required JSON
+  - anonymous `/reporting/api/followups/1/quote-items/` 302 login redirect
+- 다음 행동: 사용자가 운영에서 수동 검수한다. 검수 결과 확인 전에는 다음 구현 작업을 시작하지 않는다.
 
 ---
 

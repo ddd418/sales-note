@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — React Quote Import Group Selection
+
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React 납품 일정의 `견적 불러오기`에서 같은 견적 일정 안에 여러 견적서 구분이 있을 때, 품목 전체를 한 번에 가져오지 않고 `보상판매 견적`, `수리 견적`처럼 구분별 선택지로 고를 수 있게 했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 견적 품목 API가 `quote_group`별 선택지(`optionId`, `quoteGroup`, `quoteGroupLabel`)를 반환하도록 변경
+- `reporting/tests.py`: 같은 견적 일정의 여러 견적서 구분이 별도 선택지로 내려오는 회귀 테스트 추가
+- `frontend/src/api.ts`: React 견적 선택지 타입/정규화 보강
+- `frontend/src/App.tsx`: 견적 불러오기 카드와 적용 메시지를 견적서 구분 기준으로 표시
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`, `HANDOFF.md`: 작업 상태 갱신
+
+### CRM 개선
+
+- 한 일정에 `보상판매`와 `수리` 견적이 같이 있어도 납품으로 가져올 견적서를 선택할 수 있습니다.
+- 선택한 견적서 구분의 품목만 납품 편집 행으로 들어갑니다.
+- 여러 견적 일정과 여러 견적서 구분이 섞여 있어도 카드별 `optionId`로 충돌 없이 표시됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 로그인/권한/같은 부서 본인 견적 조회 범위는 유지했습니다.
+- 견적 품목의 제품 연결, 할인율, 할인단가, 세금계산서 여부, 적요 매핑은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-B6kDhHX8.js / assets/index-2AirpMI9.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK
+
+git commit -m "fix: split quote imports by group" && git push origin main
+→ Commit 6c041e4 pushed to origin/main
+
+Railway deployments
+→ web 50a1e21c-1197-4a28-83fd-007b3129f740 SUCCESS
+→ sales-note-frontend 3fd13701-e681-4fed-8614-5c783993ad10 SUCCESS
+
+Production smoke requests
+→ /schedules/882/ 200 with assets/index-B6kDhHX8.js and assets/index-2AirpMI9.css
+→ /reporting/login/ 200
+→ anonymous /reporting/api/schedules/882/ 401 login_required JSON
+→ anonymous /reporting/api/followups/1/quote-items/ 302 to login
+```
+
+### 알려진 제한
+
+- 로그인 세션이 필요한 실제 견적 선택/적용은 사용자가 운영에서 직접 확인해야 합니다.
+- 견적서 구분이 비어 있는 품목은 `기본 견적서` 선택지로 표시됩니다.
+
+### 사용자 수동 검수
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/882/`를 로그인 상태로 엽니다.
+2. 납품 품목 영역에서 `견적 불러오기`를 누릅니다.
+3. 같은 견적 일정에 여러 구분이 있으면 `보상판매 견적`, `수리 견적`처럼 별도 카드로 나오는지 확인합니다.
+4. 한 구분만 `적용`하고, 해당 구분 품목만 납품 품목 편집 행에 들어오는지 확인합니다.
+5. 저장 후 새로고침해 선택한 품목만 남아 있는지 확인합니다.
+
+### 권장 다음 작업
+
+- 수동 검수 완료 후, 대기 중인 다음 CRM 작업으로 넘어갑니다.
+
+---
+
 ## 2026-05-12 — React Delivery Quote Import, Schedule Delete, Product Replacement Delete
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

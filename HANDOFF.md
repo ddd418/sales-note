@@ -14,28 +14,28 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-React delivery quote import, schedule delete, product list layout fix, and product replacement delete are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+React delivery quote import group selection is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
 Runtime commit:
 
 ```text
-f1d7b42 feat: import quote items into deliveries
+6c041e4 fix: split quote imports by group
 ```
 
 Current implementation:
 
-- React delivery schedule details now have a `견적 불러오기` flow that pulls quote items from the same follow-up/customer context into editable delivery item rows.
-- Quote item API now returns React-friendly quote/item data including product linkage, unit, base price, discount rate/unit price, tax invoice flag, quote group, and item notes.
-- React schedule detail now exposes a schedule delete button that calls the existing Django AJAX delete view and then redirects to the schedule list.
-- React `/products/` table layout was adjusted so the list and side panels do not break at production viewport widths.
-- Product bulk delete now supports replacement mapping for blocked products. `DeliveryItem` and legacy `QuoteItem` references move to the replacement product, integrity is checked, then the original product is deleted.
+- React delivery schedule `견적 불러오기` now splits quote import options by `quote_group`.
+- If a single quote schedule has `보상판매` and `수리` quote groups, the import panel shows separate cards such as `보상판매 견적` and `수리 견적`.
+- Applying one card imports only that quote group's items into the delivery item edit rows.
+- Quote import option payloads now include `optionId`, `quoteGroup`, and `quoteGroupLabel`.
+- Existing quote item mappings for product, unit, base price, discount rate/unit price, tax invoice flag, and notes are preserved.
 - No database model changes or migrations.
 
 Validation:
 
 ```text
 python -m py_compile reporting\views.py reporting\tests.py
-python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_manager_read_only_and_other_company_blocked reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_allows_owner_and_removes_related_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delete_ajax_blocks_non_owner reporting.tests.ProductManagementReactApiTests --verbosity=1
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
 python manage.py check
 python manage.py makemigrations --check --dry-run
 cd frontend; npm run build
@@ -45,35 +45,31 @@ git diff --check
 
 Results:
 
-- Targeted schedule/quote/product regression tests OK: 12 tests.
+- Quote import API regression tests OK: 4 tests.
 - Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
 - Migration dry-run OK: no changes detected.
-- React build OK: `assets/index-2OWdxLkM.js` / `assets/index-2AirpMI9.css`.
+- React build OK: `assets/index-B6kDhHX8.js` / `assets/index-2AirpMI9.css`.
 - Node syntax check OK.
-- Local Playwright smoke OK with mocked APIs: `/products/` renders table and blocked replacement delete panel; `/schedules/882/` renders delete and quote import controls.
 - `git diff --check` OK.
 
 Deployment:
 
-- GitHub push complete: runtime commit `f1d7b42` is on `main`.
-- Railway `web`: `2241be62-11b5-472d-92b6-4f469179f61c` SUCCESS.
-- Railway `sales-note-frontend`: `cba176c5-cebc-4ba7-8989-e298b0cbfb1c` SUCCESS.
+- GitHub push complete: runtime commit `6c041e4` is on `main`.
+- Railway `web`: `50a1e21c-1197-4a28-83fd-007b3129f740` SUCCESS.
+- Railway `sales-note-frontend`: `3fd13701-e681-4fed-8614-5c783993ad10` SUCCESS.
 - Production smoke OK:
-  - `/products/` 200 with latest frontend assets `index-2OWdxLkM.js` / `index-2AirpMI9.css`.
-  - `/schedules/882/` 200.
+  - `/schedules/882/` 200 with latest frontend assets `index-B6kDhHX8.js` / `index-2AirpMI9.css`.
   - `/reporting/login/` 200.
-  - Anonymous `/reporting/api/products/manage/` redirects to login.
   - Anonymous `/reporting/api/schedules/882/` returns 401 login-required JSON.
+  - Anonymous `/reporting/api/followups/1/quote-items/` redirects to login.
 
 Manual production test:
 
 1. Open `https://sales-note-frontend-production.up.railway.app/schedules/882/`.
-2. In the delivery item section, click `견적 불러오기`, choose a quote, and confirm rows import with unit, price, discount, quote group, and notes.
-3. Save the imported delivery rows and confirm they remain after refresh.
-4. Confirm the schedule detail `삭제` button appears. Test actual deletion only with a disposable schedule.
-5. Open `https://sales-note-frontend-production.up.railway.app/products/` and confirm the product table is not visually broken.
-6. Bulk delete an unused test product and confirm normal deletion.
-7. Bulk delete a used test product, confirm it is blocked, choose a replacement product, run replacement delete, and confirm the original product is removed while quote/delivery rows point to the replacement.
+2. In the delivery item section, click `견적 불러오기`.
+3. If the source quote schedule has multiple groups, confirm separate cards appear, for example `보상판매 견적` and `수리 견적`.
+4. Apply only one quote group and confirm only that group's items appear in the delivery item edit rows.
+5. Save and refresh, then confirm only the selected quote group's items remain.
 
 Manual test result:
 
@@ -81,8 +77,23 @@ Manual test result:
 
 Next queued after this task is manually verified:
 
-- Confirm whether quote import is also needed in any separate delivery creation flow beyond the React schedule detail editor.
 - Continue the remaining queued CRM work only after the user confirms production manual testing.
+
+## Previous Task
+
+React delivery quote import, schedule delete, product list layout fix, and product replacement delete are implemented, locally verified, pushed, deployed to production, and smoke-tested.
+
+Runtime commit:
+
+```text
+f1d7b42 feat: import quote items into deliveries
+```
+
+Deployment:
+
+- Railway `web`: `2241be62-11b5-472d-92b6-4f469179f61c` SUCCESS, later superseded by `50a1e21c-1197-4a28-83fd-007b3129f740`.
+- Railway `sales-note-frontend`: `cba176c5-cebc-4ba7-8989-e298b0cbfb1c` SUCCESS, later superseded by `3fd13701-e681-4fed-8614-5c783993ad10`.
+- Production smoke OK: `/products/`, `/schedules/882/`, `/reporting/login/`, protected APIs require login.
 
 ## Previous Task
 
