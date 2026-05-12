@@ -620,6 +620,31 @@ class Schedule(models.Model):
             models.Index(fields=['followup', 'activity_type'], name='sched_follow_act_idx'),
         ]
 
+
+class ScheduleQuoteGroupNote(models.Model):
+    schedule = models.ForeignKey(
+        Schedule,
+        on_delete=models.CASCADE,
+        related_name='quote_group_notes',
+        verbose_name="일정",
+    )
+    quote_group = models.CharField(max_length=100, blank=True, default='', verbose_name="견적서 구분")
+    notes = models.TextField(blank=True, default='', verbose_name="견적 기타사항")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        label = self.quote_group or '기본 견적서'
+        return f"{self.schedule_id} - {label}"
+
+    class Meta:
+        verbose_name = "견적서 구분별 기타사항"
+        verbose_name_plural = "견적서 구분별 기타사항"
+        unique_together = ('schedule', 'quote_group')
+        indexes = [
+            models.Index(fields=['schedule', 'quote_group'], name='schedule_quote_note_idx'),
+        ]
+
 # 히스토리 (History) 모델
 class History(models.Model):
     ACTION_CHOICES = [

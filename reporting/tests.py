@@ -15,6 +15,7 @@ from reporting.models import (
     EmailLog,
     FollowUp,
     Schedule,
+    ScheduleQuoteGroupNote,
     UserProfile,
     UserCompany,
 )
@@ -287,6 +288,121 @@ class ReactMailboxApiTests(TestCase):
         self.assertIn('두 번째 줄입니다.', body_text)
         self.assertNotIn('이전 메일 HTML 본문입니다.', body_text)
 
+    def test_mailbox_thread_api_strips_css_artifacts_from_display_body(self):
+        self.email.body = ''
+        self.email.body_html = (
+            '<style>p{margin-top:0px;margin-bottom:0px;}</style>'
+            '<p>안녕하십니까.</p>'
+            '<p>요청하신 사업자등록증 전달드립니다.</p>'
+        )
+        self.email.save(update_fields=['body', 'body_html'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        email_payload = response.json()['emails'][0]
+        self.assertIn('안녕하십니까.', email_payload['bodyText'])
+        self.assertIn('사업자등록증', email_payload['preview'])
+        self.assertNotIn('p{margin-top', email_payload['bodyText'])
+        self.assertNotIn('p{margin-top', email_payload['preview'])
+
+    def test_mailbox_thread_api_returns_received_attachment_download_links(self):
+        import base64
+
+        self.email.attachments_info = [
+            {
+                'filename': 'business-license.pdf',
+                'size': 22,
+                'mimetype': 'application/pdf',
+                'source': 'imap',
+                'contentBase64': base64.b64encode(b'%PDF business license').decode('ascii'),
+            }
+        ]
+        self.email.save(update_fields=['attachments_info'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        attachment = response.json()['emails'][0]['attachments'][0]
+        self.assertEqual(attachment['filename'], 'business-license.pdf')
+        self.assertEqual(attachment['downloadHref'], reverse('reporting:mailbox_api_attachment_download', args=[self.email.id, 0]))
+
+        download_response = self.client.get(attachment['downloadHref'])
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(download_response.content, b'%PDF business license')
+        self.assertIn('business-license.pdf', download_response['Content-Disposition'])
+
+    def test_mailbox_thread_api_refreshes_missing_gmail_attachment_metadata(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.email.attachments_info = []
+        self.email.save(update_fields=['attachments_info'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.get_message_detail.return_value = {
+                'id': self.email.gmail_message_id,
+                'attachments': [
+                    {
+                        'filename': 'request-form.xlsx',
+                        'size': 12,
+                        'mimetype': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'source': 'gmail',
+                        'gmailAttachmentId': 'gmail-att-1',
+                    }
+                ],
+            }
+
+            response = self.client.get(
+                reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+            )
+
+        self.assertEqual(response.status_code, 200)
+        attachment = response.json()['emails'][0]['attachments'][0]
+        self.assertEqual(attachment['filename'], 'request-form.xlsx')
+        self.assertTrue(attachment['downloadHref'])
+        self.email.refresh_from_db()
+        self.assertEqual(self.email.attachments_info[0]['gmailAttachmentId'], 'gmail-att-1')
+
+    def test_mailbox_attachment_download_uses_gmail_attachment_api(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.email.attachments_info = [
+            {
+                'filename': 'incoming.pdf',
+                'size': 18,
+                'mimetype': 'application/pdf',
+                'source': 'gmail',
+                'gmailAttachmentId': 'gmail-att-2',
+                'gmailMessageId': self.email.gmail_message_id,
+            }
+        ]
+        self.email.save(update_fields=['attachments_info'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.get_attachment.return_value = b'%PDF incoming file'
+
+            response = self.client.get(
+                reverse('reporting:mailbox_api_attachment_download', args=[self.email.id, 0])
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'%PDF incoming file')
+        gmail_service.get_attachment.assert_called_once_with(self.email.gmail_message_id, 'gmail-att-2')
+
     def test_mailbox_action_api_toggles_star(self):
         self.client.force_login(self.user)
 
@@ -342,6 +458,46 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['filename'], 'quote.txt')
         self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
         self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
+
+    def test_mailbox_send_api_includes_internal_cc_only_when_requested(self):
+        self.user.email = 'sales@example.com'
+        self.user.save(update_fields=['email'])
+        self.other_user.email = 'inside@example.com'
+        self.other_user.save(update_fields=['email'])
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        list_response = self.client.get(reverse('reporting:mailbox_api_list'), {'box': 'inbox'})
+        self.assertEqual(list_response.status_code, 200)
+        self.assertIn('inside@example.com', list_response.json()['create']['internalCcEmails'])
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-internal-cc',
+                'thread_id': 'gmail-thread-internal-cc',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'cc_emails': 'manager@example.com',
+                    'include_internal_cc': '1',
+                    'subject': '참조 테스트',
+                    'body_text': '참조 확인 부탁드립니다.',
+                    'selected_followup_id': str(self.followup.id),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_cc = gmail_service.send_email.call_args.kwargs['cc']
+        self.assertEqual(sent_cc, ['manager@example.com', 'inside@example.com'])
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-internal-cc')
+        self.assertEqual(email_log.cc_emails, 'manager@example.com, inside@example.com')
 
     def test_mailbox_send_api_auto_attaches_registered_quote_pdfs_for_schedule(self):
         profile = self.user.userprofile
@@ -3287,6 +3443,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['href'], f'/schedules/{schedule.id}/')
         self.assertEqual(payload['schedule']['customerHref'], f'/customers/{schedule.followup_id}/')
         self.assertEqual(payload['schedule']['quoteExtraNotes'], '전체 견적 기타사항')
+        self.assertEqual(payload['schedule']['quoteGroupNotes'][0]['notes'], '전체 견적 기타사항')
         self.assertTrue(payload['edit']['canEdit'])
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:schedules_update_api', args=[schedule.id]))
         self.assertEqual(payload['relatedNotes'][0]['id'], schedule.histories.first().id)
@@ -3785,7 +3942,10 @@ class SchedulesSummaryApiTests(TestCase):
         response = self.client.post(
             reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
             data=json.dumps({
-                'quoteExtraNotes': '견적 전체 기타사항',
+                'quoteGroupNotes': {
+                    '보상판매': '보상판매 기타사항',
+                    '수리': '수리 기타사항',
+                },
                 'items': [
                     {
                         'itemName': 'PCR Kit',
@@ -3794,6 +3954,7 @@ class SchedulesSummaryApiTests(TestCase):
                         'unitPrice': '100000',
                         'discountRate': '10',
                         'taxInvoiceIssued': True,
+                        'quoteGroup': '보상판매',
                         'notes': 'PCR 적요',
                     },
                     {
@@ -3802,6 +3963,7 @@ class SchedulesSummaryApiTests(TestCase):
                         'unit': 'BOX',
                         'unitPrice': '',
                         'taxInvoiceIssued': False,
+                        'quoteGroup': '수리',
                     },
                 ],
             }),
@@ -3822,10 +3984,19 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(items[0].get_effective_unit_price()), 90000)
         self.assertEqual(int(items[0].total_price), 198000)
         self.assertTrue(items[0].tax_invoice_issued)
+        self.assertEqual(items[0].quote_group, '보상판매')
         self.assertEqual(items[0].notes, 'PCR 적요')
         self.assertIsNone(items[1].unit_price)
+        self.assertEqual(items[1].quote_group, '수리')
         schedule.refresh_from_db()
-        self.assertEqual(schedule.quote_extra_notes, '견적 전체 기타사항')
+        self.assertEqual(schedule.quote_extra_notes, '')
+        self.assertEqual(
+            {
+                note.quote_group: note.notes
+                for note in ScheduleQuoteGroupNote.objects.filter(schedule=schedule)
+            },
+            {'보상판매': '보상판매 기타사항', '수리': '수리 기타사항'},
+        )
         history.refresh_from_db()
         self.assertIn('PCR Kit', history.delivery_items)
         self.assertIn('Buffer', history.delivery_items)
@@ -3835,7 +4006,12 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['discountUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
+        self.assertEqual(payload['deliveryItems'][0]['quoteGroup'], '보상판매')
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
+        self.assertEqual(
+            {note['quoteGroup']: note['notes'] for note in payload['schedule']['quoteGroupNotes']},
+            {'보상판매': '보상판매 기타사항', '수리': '수리 기타사항'},
+        )
 
     def test_schedule_delivery_items_update_api_accepts_product_master_selection(self):
         import json
@@ -4379,6 +4555,8 @@ class DocumentTemplatesReactApiTests(TestCase):
 
         self._create_template(self.company, '견적구분기본', is_default=True)
         schedule = self._create_schedule(self.manager, name='견적구분변수', activity_type='quote')
+        ScheduleQuoteGroupNote.objects.create(schedule=schedule, quote_group='보상판매', notes='보상판매 조건')
+        ScheduleQuoteGroupNote.objects.create(schedule=schedule, quote_group='수리', notes='수리 조건')
         DeliveryItem.objects.create(
             schedule=schedule,
             item_name='Trade In Kit',
@@ -4408,6 +4586,8 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['quote_group_label'], '수리')
         self.assertEqual(payload['variables']['견적구분'], '수리')
         self.assertEqual(payload['variables']['견적제목'], '수리 견적서')
+        self.assertEqual(payload['variables']['견적기타사항'], '수리 조건')
+        self.assertEqual(payload['variables']['기타사항'], '수리 조건')
         self.assertEqual(payload['item_count'], 1)
         self.assertEqual(payload['items'][0]['name'], 'Repair Service')
         self.assertEqual(payload['items'][0]['quoteGroup'], '수리')
@@ -4440,6 +4620,32 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertIn('fitToWidth="1"', sheet_xml)
         self.assertIn('fitToHeight="0"', sheet_xml)
         self.assertIn('left="0.25"', sheet_xml)
+
+    def test_document_bold_strip_helper_removes_bold_styles(self):
+        import os
+        import tempfile
+        import zipfile
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from reporting.views import _strip_xlsx_bold_formatting
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '견적서'
+        sheet['A1'].font = Font(bold=True)
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(temp_path) and os.unlink(temp_path))
+        workbook.save(temp_path)
+
+        changed = _strip_xlsx_bold_formatting(temp_path)
+
+        self.assertTrue(changed)
+        with zipfile.ZipFile(temp_path, 'r') as archive:
+            styles_xml = archive.read('xl/styles.xml').decode('utf-8')
+        self.assertNotIn('<b ', styles_xml)
+        self.assertNotIn('<b/>', styles_xml)
+        self.assertNotIn('<b>', styles_xml)
 
 
 class AIWorkspaceSummaryApiTests(TestCase):

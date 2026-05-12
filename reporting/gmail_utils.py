@@ -345,49 +345,79 @@ class GmailService:
             for header in message['payload'].get('headers', []):
                 headers[header['name'].lower()] = header['value']
             
-            # 본문 추출 - 재귀적으로 모든 parts 처리
+            def decode_part_data(data):
+                if not data:
+                    return b''
+                padded = data + '=' * (-len(data) % 4)
+                return base64.urlsafe_b64decode(padded.encode('ascii'))
+
+            def decode_filename(value):
+                if not value:
+                    return ''
+                try:
+                    return str(make_header(decode_header(value)))
+                except Exception:
+                    return value
+
+            # 본문/첨부 추출 - 재귀적으로 모든 parts 처리
             def extract_body_parts(parts):
-                """재귀적으로 모든 본문 파트 추출"""
+                """재귀적으로 모든 본문/첨부 파트 추출"""
                 text_parts = []
                 html_parts = []
+                attachments = []
                 
                 for part in parts:
                     mime_type = part.get('mimeType', '')
+                    filename = decode_filename(part.get('filename') or '')
+                    body = part.get('body', {}) or {}
+                    headers_map = {
+                        header.get('name', '').lower(): header.get('value', '')
+                        for header in part.get('headers', [])
+                    }
                     
                     # multipart인 경우 재귀 처리
                     if mime_type.startswith('multipart/') and 'parts' in part:
-                        sub_text, sub_html = extract_body_parts(part['parts'])
+                        sub_text, sub_html, sub_attachments = extract_body_parts(part['parts'])
                         text_parts.extend(sub_text)
                         html_parts.extend(sub_html)
+                        attachments.extend(sub_attachments)
                     # text/plain
-                    elif mime_type == 'text/plain' and 'data' in part.get('body', {}):
+                    elif mime_type == 'text/plain' and 'data' in body and not filename:
                         try:
-                            decoded = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                            decoded = decode_part_data(body['data']).decode('utf-8')
                             text_parts.append(decoded)
                         except Exception as e:
                             print(f'텍스트 디코딩 실패: {e}')
                     # text/html
-                    elif mime_type == 'text/html' and 'data' in part.get('body', {}):
+                    elif mime_type == 'text/html' and 'data' in body and not filename:
                         try:
-                            decoded = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                            decoded = decode_part_data(body['data']).decode('utf-8')
                             html_parts.append(decoded)
                         except Exception as e:
                             print(f'HTML 디코딩 실패: {e}')
+                    elif filename and body.get('attachmentId'):
+                        attachments.append({
+                            'filename': filename,
+                            'size': int(body.get('size') or 0),
+                            'mimetype': mime_type or 'application/octet-stream',
+                            'source': 'gmail',
+                            'gmailAttachmentId': body.get('attachmentId'),
+                            'contentDisposition': headers_map.get('content-disposition', ''),
+                        })
                 
-                return text_parts, html_parts
+                return text_parts, html_parts, attachments
             
             body_text = ''
             body_html = ''
+            attachments = []
             
             if 'parts' in message['payload']:
-                text_parts, html_parts = extract_body_parts(message['payload']['parts'])
+                text_parts, html_parts, attachments = extract_body_parts(message['payload']['parts'])
                 body_text = '\n'.join(text_parts)
                 body_html = ''.join(html_parts)
             elif 'body' in message['payload'] and 'data' in message['payload']['body']:
                 try:
-                    body_text = base64.urlsafe_b64decode(
-                        message['payload']['body']['data']
-                    ).decode('utf-8')
+                    body_text = decode_part_data(message['payload']['body']['data']).decode('utf-8')
                 except Exception as e:
                     print(f'본문 디코딩 실패: {e}')
             
@@ -410,12 +440,32 @@ class GmailService:
                 'body_html': body_html,
                 'labels': message.get('labelIds', []),
                 'snippet': message.get('snippet', ''),
+                'attachments': attachments,
                 'in_reply_to': headers.get('in-reply-to', ''),
                 'references': headers.get('references', ''),
             }
             
         except HttpError as error:
             print(f'Gmail API 오류: {error}')
+            return None
+
+    def get_attachment(self, message_id, attachment_id):
+        """Gmail 원본 첨부파일 bytes를 가져온다."""
+        service = self.get_service()
+        if not service:
+            return None
+
+        try:
+            attachment = service.users().messages().attachments().get(
+                userId='me',
+                messageId=message_id,
+                id=attachment_id,
+            ).execute()
+            data = attachment.get('data') or ''
+            padded = data + '=' * (-len(data) % 4)
+            return base64.urlsafe_b64decode(padded.encode('ascii'))
+        except HttpError as error:
+            print(f'Gmail 첨부파일 API 오류: {error}')
             return None
     
     def mark_as_read(self, message_id):

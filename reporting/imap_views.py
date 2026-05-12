@@ -224,6 +224,7 @@ def sync_imap_emails(request):
                     cc_emails=','.join(email_data['cc_emails']) if email_data['cc_emails'] else '',
                     subject=email_data['subject'],
                     body=email_data['body'],
+                    attachments_info=email_data.get('attachments') or [],
                     sent_at=email_data['date'],
                     is_sent=False,
                     provider='imap',

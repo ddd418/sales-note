@@ -264,6 +264,8 @@ type ScheduleDeliveryEditRow = {
 
 type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'quoteGroup' | 'notes';
 
+type ScheduleQuoteGroupNoteState = Record<string, string>;
+
 type MailComposeFormState = {
   attachments: File[];
   autoQuoteAttach: boolean;
@@ -272,12 +274,13 @@ type MailComposeFormState = {
   ccEmails: string;
   bccEmails: string;
   followupId: string;
+  includeInternalCc: boolean;
   scheduleId: string;
   subject: string;
   toEmail: string;
 };
 
-type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoQuoteAttach'>;
+type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoQuoteAttach' | 'includeInternalCc'>;
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -488,6 +491,47 @@ const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): Sched
     : [makeScheduleDeliveryEditRow(undefined, 0)]
 );
 
+const normalizeQuoteGroupKey = (value: string) => value.trim().slice(0, 100);
+
+const quoteGroupLabel = (value: string) => normalizeQuoteGroupKey(value) || '기본 견적서';
+
+const makeScheduleQuoteGroupNotes = (schedule: ScheduleDetailItem | null): ScheduleQuoteGroupNoteState => {
+  const notes: ScheduleQuoteGroupNoteState = {};
+  schedule?.quoteGroupNotes?.forEach((item) => {
+    notes[normalizeQuoteGroupKey(item.quoteGroup)] = item.notes || '';
+  });
+  if (!notes[''] && schedule?.quoteExtraNotes) {
+    notes[''] = schedule.quoteExtraNotes;
+  }
+  return notes;
+};
+
+const scheduleQuoteGroupsFromRows = (rows: ScheduleDeliveryEditRow[]): string[] => {
+  const seen = new Set<string>();
+  const groups: string[] = [];
+  rows.forEach((row) => {
+    const hasItemInput = Boolean(
+      row.productId ||
+      row.itemName.trim() ||
+      row.quantity.trim() ||
+      row.unitPrice.trim() ||
+      row.discountRate.trim() ||
+      row.discountUnitPrice.trim() ||
+      row.notes.trim(),
+    );
+    if (!hasItemInput && !row.quoteGroup.trim()) {
+      return;
+    }
+    const group = normalizeQuoteGroupKey(row.quoteGroup);
+    if (seen.has(group)) {
+      return;
+    }
+    seen.add(group);
+    groups.push(group);
+  });
+  return groups.length > 0 ? groups : [''];
+};
+
 const parsePositiveFormNumber = (value: string) => {
   const parsed = Number(String(value || '').replace(/,/g, '').trim());
   return Number.isFinite(parsed) ? parsed : null;
@@ -516,6 +560,7 @@ const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   ccEmails: '',
   bccEmails: '',
   followupId: '',
+  includeInternalCc: false,
   scheduleId: '',
   subject: '',
   toEmail: '',
@@ -4740,7 +4785,7 @@ function ScheduleDetailPage({
   const [fileMessage, setFileMessage] = useState('');
   const [deliveryEditOpen, setDeliveryEditOpen] = useState(false);
   const [deliveryRows, setDeliveryRows] = useState<ScheduleDeliveryEditRow[]>(() => makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
-  const [quoteExtraNotes, setQuoteExtraNotes] = useState(currentSchedule?.quoteExtraNotes || '');
+  const [quoteGroupNotes, setQuoteGroupNotes] = useState<ScheduleQuoteGroupNoteState>(() => makeScheduleQuoteGroupNotes(currentSchedule));
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
@@ -4769,7 +4814,7 @@ function ScheduleDetailPage({
     setFileDeletingId(null);
     setDeliveryEditOpen(false);
     setDeliveryRows(makeScheduleDeliveryEditRows(data?.deliveryItems ?? []));
-    setQuoteExtraNotes(data?.schedule?.quoteExtraNotes || '');
+    setQuoteGroupNotes(makeScheduleQuoteGroupNotes(data?.schedule ?? null));
     setDeliverySaving(false);
     setDeliveryError('');
     setDeliveryMessage('');
@@ -5236,6 +5281,10 @@ function ScheduleDetailPage({
         notes: row.notes.trim(),
       });
     }
+    const quoteGroupNotesPayload = scheduleQuoteGroupsFromRows(rowsWithInput).reduce<ScheduleQuoteGroupNoteState>((acc, group) => {
+      acc[group] = (quoteGroupNotes[group] || '').trim();
+      return acc;
+    }, {});
 
     setDeliverySaving(true);
     setDeliveryError('');
@@ -5244,10 +5293,11 @@ function ScheduleDetailPage({
       const updated = await updateScheduleDeliveryItems(
         data.links.updateDeliveryItems,
         payloadItems,
-        quoteExtraNotes.trim(),
+        quoteGroupNotesPayload,
       );
       const refreshed = await onRefresh();
       setDeliveryRows(makeScheduleDeliveryEditRows(refreshed?.deliveryItems ?? updated.deliveryItems ?? []));
+      setQuoteGroupNotes(makeScheduleQuoteGroupNotes(refreshed?.schedule ?? updated.schedule ?? null));
       setDeliveryMessage(updated.message || '납품 품목을 저장했습니다.');
       setDeliveryEditOpen(false);
     } catch (error) {
@@ -5352,6 +5402,8 @@ function ScheduleDetailPage({
   const deliveryItems = data.deliveryItems;
   const isQuoteSchedule = schedule.activityType === 'quote';
   const itemPanelLabel = isQuoteSchedule ? '견적 품목' : '납품 품목';
+  const editableQuoteGroups = scheduleQuoteGroupsFromRows(deliveryRows);
+  const savedQuoteGroupNotes = schedule.quoteGroupNotes?.filter((item) => item.notes.trim()) ?? [];
   const scheduleMailSubject = isQuoteSchedule
     ? `${schedule.customer || '고객'} 견적서 전달드립니다`
     : `${schedule.customer || '고객'} 일정 관련 메일드립니다`;
@@ -5876,18 +5928,25 @@ function ScheduleDetailPage({
                 })}
               </div>
               {isQuoteSchedule ? (
-                <label className="schedule-quote-extra-notes-field">
-                  <span>전체 견적 기타사항</span>
-                  <textarea
-                    onChange={(event) => {
-                      setQuoteExtraNotes(event.target.value);
-                      setDeliveryError('');
-                      setDeliveryMessage('');
-                    }}
-                    rows={3}
-                    value={quoteExtraNotes}
-                  />
-                </label>
+                <div className="schedule-quote-group-notes-grid">
+                  {editableQuoteGroups.map((group) => (
+                    <label className="schedule-quote-extra-notes-field" key={group || 'default'}>
+                      <span>{quoteGroupLabel(group)} 기타사항</span>
+                      <textarea
+                        onChange={(event) => {
+                          setQuoteGroupNotes((previous) => ({
+                            ...previous,
+                            [group]: event.target.value,
+                          }));
+                          setDeliveryError('');
+                          setDeliveryMessage('');
+                        }}
+                        rows={3}
+                        value={quoteGroupNotes[group] || ''}
+                      />
+                    </label>
+                  ))}
+                </div>
               ) : null}
               <div className="notes-create-actions schedule-delivery-edit-actions">
                 <button className="route-secondary-action" disabled={deliverySaving} onClick={handleDeliveryAddRow} type="button">
@@ -5916,10 +5975,14 @@ function ScheduleDetailPage({
                   {item.notes ? <p>{item.notes}</p> : null}
                 </div>
               ))}
-              {isQuoteSchedule && schedule.quoteExtraNotes ? (
-                <div className="schedule-quote-extra-notes">
-                  <span>기타사항</span>
-                  <p>{schedule.quoteExtraNotes}</p>
+              {isQuoteSchedule && savedQuoteGroupNotes.length > 0 ? (
+                <div className="schedule-quote-group-notes-list">
+                  {savedQuoteGroupNotes.map((note) => (
+                    <div className="schedule-quote-extra-notes" key={note.quoteGroup || 'default'}>
+                      <span>{note.quoteGroupLabel || quoteGroupLabel(note.quoteGroup)} 기타사항</span>
+                      <p>{note.notes}</p>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -7652,6 +7715,36 @@ const mailboxTabs: Array<{ id: MailboxType; label: string; icon: typeof Inbox }>
   { id: 'trash', label: '휴지통', icon: Trash2 },
 ];
 
+function MailAttachmentLinks({ attachments }: { attachments: MailboxEmailItem['attachments'] }) {
+  const visibleAttachments = (attachments ?? []).filter((attachment) => attachment.filename);
+  if (visibleAttachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mail-message-attachments">
+      {visibleAttachments.map((attachment, index) => {
+        const content = (
+          <>
+            <Download size={14} />
+            <span>{attachment.filename}</span>
+            {attachment.size ? <small>{formatFileSize(attachment.size)}</small> : null}
+          </>
+        );
+        return attachment.downloadHref ? (
+          <a href={attachment.downloadHref} key={`${attachment.filename}-${index}`}>
+            {content}
+          </a>
+        ) : (
+          <span key={`${attachment.filename}-${index}`}>
+            {content}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function MailComposePanel({
   create,
   form,
@@ -7664,6 +7757,7 @@ function MailComposePanel({
   onAttachmentsChange,
   onChange,
   onCustomerChange,
+  onInternalCcChange,
   onOpenChange,
   onSubmit,
 }: {
@@ -7678,6 +7772,7 @@ function MailComposePanel({
   onAttachmentsChange: (files: File[]) => void;
   onChange: (field: MailComposeTextField, value: string) => void;
   onCustomerChange: (customerId: string) => void;
+  onInternalCcChange: (checked: boolean) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -7725,6 +7820,19 @@ function MailComposePanel({
             <input value={form.bccEmails} onChange={(event) => onChange('bccEmails', event.target.value)} placeholder="쉼표로 구분" />
           </label>
         </div>
+        {create.internalCcEmails.length > 0 ? (
+          <label className="mail-compose-check">
+            <input
+              checked={form.includeInternalCc}
+              onChange={(event) => onInternalCcChange(event.target.checked)}
+              type="checkbox"
+            />
+            <span>
+              내부 직원 참조 포함
+              <small>{create.internalCcEmails.join(', ')}</small>
+            </span>
+          </label>
+        ) : null}
         <label>
           <span>제목</span>
           <input value={form.subject} onChange={(event) => onChange('subject', event.target.value)} placeholder="메일 제목" />
@@ -7809,6 +7917,7 @@ function MailboxPage({
   onBoxChange,
   onComposeCustomerChange,
   onComposeFormChange,
+  onComposeInternalCcChange,
   onComposeOpenChange,
   onComposeSubmit,
   onQueryChange,
@@ -7831,6 +7940,7 @@ function MailboxPage({
   onBoxChange: (box: MailboxType) => void;
   onComposeCustomerChange: (customerId: string) => void;
   onComposeFormChange: (field: MailComposeTextField, value: string) => void;
+  onComposeInternalCcChange: (checked: boolean) => void;
   onComposeOpenChange: (open: boolean) => void;
   onComposeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onQueryChange: (value: string) => void;
@@ -7885,6 +7995,7 @@ function MailboxPage({
           message: '',
           submitUrl: '/reporting/api/mailbox/send/',
           djangoUrl: '/reporting/gmail/send/mailbox/',
+          internalCcEmails: [],
           customers: [],
           businessCards: [],
         }}
@@ -7898,6 +8009,7 @@ function MailboxPage({
         onAttachmentsChange={onComposeAttachmentsChange}
         onChange={onComposeFormChange}
         onCustomerChange={onComposeCustomerChange}
+        onInternalCcChange={onComposeInternalCcChange}
         onOpenChange={onComposeOpenChange}
         onSubmit={onComposeSubmit}
       />
@@ -7940,6 +8052,9 @@ function MailboxPage({
                       <span>{email.contact || email.senderEmail || email.recipientEmail}</span>
                     </div>
                     <p>{email.preview || '본문 미리보기가 없습니다.'}</p>
+                    {(email.attachments ?? []).length > 0 ? (
+                      <small className="mail-row-attachment-count">첨부 {formatNumber(email.attachments.length)}개</small>
+                    ) : null}
                     <small>
                       {email.followup.company ? `${email.followup.company} · ` : ''}
                       {email.followup.customer || email.followup.department || email.typeLabel}
@@ -8000,6 +8115,7 @@ function MailboxThreadPage({
   onReplyAttachmentRemove,
   onReplyAttachmentsChange,
   onReplyFormChange,
+  onReplyInternalCcChange,
   onReplyOpenChange,
   onReplySubmit,
 }: {
@@ -8015,6 +8131,7 @@ function MailboxThreadPage({
   onReplyAttachmentRemove: (index: number) => void;
   onReplyAttachmentsChange: (files: File[]) => void;
   onReplyFormChange: (field: MailComposeTextField, value: string) => void;
+  onReplyInternalCcChange: (checked: boolean) => void;
   onReplyOpenChange: (open: boolean) => void;
   onReplySubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -8035,7 +8152,7 @@ function MailboxThreadPage({
       profileHref: '/reporting/profile/',
     },
     links: { mailbox: '/mailbox/', djangoThread: '', reply: '' },
-    create: { canSend: false, message: '', submitUrl: '', djangoUrl: '', customers: [], businessCards: [] },
+    create: { canSend: false, message: '', submitUrl: '', djangoUrl: '', internalCcEmails: [], customers: [], businessCards: [] },
     emails: [],
   };
   const lastEmail = thread.emails[thread.emails.length - 1];
@@ -8094,6 +8211,7 @@ function MailboxThreadPage({
             onAttachmentsChange={onReplyAttachmentsChange}
             onChange={onReplyFormChange}
             onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
+            onInternalCcChange={onReplyInternalCcChange}
             onOpenChange={onReplyOpenChange}
             onSubmit={onReplySubmit}
           />
@@ -8116,6 +8234,7 @@ function MailboxThreadPage({
                   </div>
                 </div>
                 <div className="mail-message-body">{email.bodyText || email.preview || '본문이 없습니다.'}</div>
+                <MailAttachmentLinks attachments={email.attachments} />
                 {email.followup.href ? (
                   <div className="mail-message-links">
                     <a href={email.followup.href}>{email.followup.company || '고객'} 상세</a>
@@ -11579,6 +11698,13 @@ export function App() {
     }));
     setMailComposeError('');
   };
+  const handleMailComposeInternalCcChange = (checked: boolean) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      includeInternalCc: checked,
+    }));
+    setMailComposeError('');
+  };
   const handleMailComposeAttachmentsChange = (files: File[]) => {
     if (files.length === 0) {
       return;
@@ -11616,6 +11742,7 @@ export function App() {
     followupId: form.followupId ? Number(form.followupId) : undefined,
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
+    includeInternalCc: form.includeInternalCc,
     attachments: form.attachments,
   });
   const handleMailComposeSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -11722,6 +11849,13 @@ export function App() {
     setMailReplyForm((previous) => ({
       ...previous,
       [field]: value,
+    }));
+    setMailReplyError('');
+  };
+  const handleMailReplyInternalCcChange = (checked: boolean) => {
+    setMailReplyForm((previous) => ({
+      ...previous,
+      includeInternalCc: checked,
     }));
     setMailReplyError('');
   };
@@ -11955,6 +12089,7 @@ export function App() {
             onReplyAttachmentRemove={handleMailReplyAttachmentRemove}
             onReplyAttachmentsChange={handleMailReplyAttachmentsChange}
             onReplyFormChange={handleMailReplyFormChange}
+            onReplyInternalCcChange={handleMailReplyInternalCcChange}
             onReplyOpenChange={handleMailReplyOpenChange}
             onReplySubmit={handleMailReplySubmit}
           />
@@ -11983,6 +12118,7 @@ export function App() {
           onComposeAttachmentsChange={handleMailComposeAttachmentsChange}
           onComposeCustomerChange={handleMailComposeCustomerChange}
           onComposeFormChange={handleMailComposeFormChange}
+          onComposeInternalCcChange={handleMailComposeInternalCcChange}
           onComposeOpenChange={handleMailComposeOpenChange}
           onComposeSubmit={handleMailComposeSubmit}
           onQueryChange={setMailboxQuery}

@@ -163,6 +163,150 @@ def _attachment_info(attachment):
     return info
 
 
+def _email_address_list(value):
+    from email.utils import getaddresses
+
+    if not value:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw_values = [str(item or '') for item in value]
+    else:
+        raw_values = [str(value or '')]
+
+    addresses = []
+    seen = set()
+    for _name, address in getaddresses(raw_values):
+        normalized = (address or '').strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        addresses.append(normalized)
+    return addresses
+
+
+def _email_address_text(addresses):
+    cleaned = []
+    seen = set()
+    for address in addresses or []:
+        normalized = str(address or '').strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(normalized)
+    return ', '.join(cleaned)
+
+
+def _internal_cc_requested(request):
+    value = request.POST.get('include_internal_cc') or request.POST.get('includeInternalCc') or ''
+    return str(value).lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
+def _internal_cc_emails_for_user(user, exclude_emails=None):
+    from django.contrib.auth import get_user_model
+
+    try:
+        company_id = user.userprofile.company_id
+    except UserProfile.DoesNotExist:
+        company_id = None
+    if not company_id:
+        return []
+
+    excluded = {email.lower() for email in _email_address_list(exclude_emails or [])}
+    excluded.update(_email_address_list([user.email]))
+    excluded = {email.lower() for email in excluded if email}
+
+    User = get_user_model()
+    emails = []
+    seen = set()
+    users = User.objects.filter(
+        is_active=True,
+        userprofile__company_id=company_id,
+    ).exclude(id=user.id).select_related('userprofile').order_by('username')
+    for teammate in users:
+        profile = getattr(teammate, 'userprofile', None)
+        candidates = [
+            teammate.email,
+            getattr(profile, 'gmail_email', ''),
+            getattr(profile, 'imap_email', ''),
+        ]
+        added_for_user = False
+        for candidate in candidates:
+            for address in _email_address_list(candidate):
+                key = address.lower()
+                if key in excluded or key in seen:
+                    continue
+                seen.add(key)
+                emails.append(address)
+                added_for_user = True
+                break
+            if added_for_user:
+                break
+    return emails
+
+
+def _strip_html_style_blocks(value):
+    import re
+
+    text = str(value or '')
+    text = re.sub(r'(?is)<\s*style\b[^>]*>.*?<\s*/\s*style\s*>', ' ', text)
+    text = re.sub(r'(?is)<\s*script\b[^>]*>.*?<\s*/\s*script\s*>', ' ', text)
+    return text
+
+
+def _strip_css_text_artifacts(value):
+    import re
+
+    text = str(value or '')
+    selector_pattern = r'(?:p|div|span|body|td|table|tr|a|li|ul|ol)'
+    css_prop_pattern = r'(?:margin|padding|font|color|line-height|mso-|text-|background|border|white-space)'
+    text = re.sub(
+        rf'(?im)^\s*{selector_pattern}\s*\{{[^{{}}\n]*{css_prop_pattern}[^{{}}\n]*\}}\s*$',
+        '',
+        text,
+    )
+    text = re.sub(
+        rf'(?i)\b{selector_pattern}\s*\{{[^{{}}]*(?:margin|padding|font|mso-)[^{{}}]*\}}\s*',
+        '',
+        text,
+    )
+    return text
+
+
+def _sanitize_received_attachments(attachments, message_id=''):
+    rows = []
+    for attachment in attachments or []:
+        if not isinstance(attachment, dict):
+            continue
+        filename = str(attachment.get('filename') or '').strip()
+        if not filename:
+            continue
+        try:
+            size = int(attachment.get('size') or 0)
+        except (TypeError, ValueError):
+            size = 0
+        row = {
+            'filename': filename,
+            'size': size,
+            'mimetype': attachment.get('mimetype') or attachment.get('mimeType') or 'application/octet-stream',
+            'source': attachment.get('source') or ('gmail' if attachment.get('gmailAttachmentId') else ''),
+        }
+        if attachment.get('gmailAttachmentId'):
+            row['gmailAttachmentId'] = attachment['gmailAttachmentId']
+            row['gmailMessageId'] = attachment.get('gmailMessageId') or message_id
+        if attachment.get('contentBase64'):
+            row['contentBase64'] = attachment['contentBase64']
+        if attachment.get('documentLogId'):
+            row['documentLogId'] = attachment['documentLogId']
+        rows.append(row)
+    return rows
+
+
 def _sync_emails_by_days(user, days=1):
     """
     지정한 일수만큼 메일 동기화
@@ -217,7 +361,17 @@ def _sync_emails_by_days(user, days=1):
     with transaction.atomic():
         for msg in messages_list:
             # 이미 DB에 있는지 확인 (중복 방지)
-            if EmailLog.objects.filter(gmail_message_id=msg['id']).exists():
+            existing_email = EmailLog.objects.filter(gmail_message_id=msg['id']).first()
+            if existing_email:
+                if not existing_email.attachments_info:
+                    msg_detail = gmail_service.get_message_detail(msg['id'])
+                    attachments_info = _sanitize_received_attachments(
+                        (msg_detail or {}).get('attachments') or [],
+                        (msg_detail or {}).get('id') or msg['id'],
+                    )
+                    if attachments_info:
+                        existing_email.attachments_info = attachments_info
+                        existing_email.save(update_fields=['attachments_info', 'updated_at'])
                 continue
             
             msg_detail = gmail_service.get_message_detail(msg['id'])
@@ -315,6 +469,10 @@ def _sync_emails_by_days(user, days=1):
                 gmail_thread_id=msg_detail['thread_id'],
                 followup=matched_followup,
                 schedule=matched_schedule,
+                attachments_info=_sanitize_received_attachments(
+                    msg_detail.get('attachments') or [],
+                    msg_detail.get('id') or msg['id'],
+                ),
                 is_read=True if is_sent else False,
                 status='sent' if is_sent else 'received',
                 sent_at=email_date if is_sent else None,
@@ -639,6 +797,14 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None, aut
             if not schedule:
                 schedule = reply_to.schedule
 
+        cc_list = _email_address_list(cc_emails)
+        bcc_list = _email_address_list(bcc_emails)
+        if _internal_cc_requested(request):
+            exclude_emails = [to_email, *cc_list, *bcc_list]
+            cc_list = [*cc_list, *_internal_cc_emails_for_user(request.user, exclude_emails=exclude_emails)]
+        cc_emails = _email_address_text(cc_list)
+        bcc_emails = _email_address_text(bcc_list)
+
         attachment_entries = _uploaded_email_attachments(request)
         if auto_attach_quote_documents and schedule and schedule.activity_type == 'quote':
             attachment_entries.extend(_auto_quote_pdf_attachments(request, schedule))
@@ -674,8 +840,8 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None, aut
                 subject=subject,
                 body_text=body_text,
                 body_html=full_body_html,
-                cc=[email.strip() for email in cc_emails.split(',') if email.strip()],
-                bcc=[email.strip() for email in bcc_emails.split(',') if email.strip()],
+                cc=cc_list,
+                bcc=bcc_list,
                 attachments=attachments,
                 in_reply_to=in_reply_to,
                 thread_id=thread_id
@@ -710,8 +876,8 @@ def _handle_email_send(request, schedule=None, followup=None, reply_to=None, aut
                 subject=subject,
                 body=body_text,
                 html_body=full_body_html,
-                cc_emails=[email.strip() for email in cc_emails.split(',') if email.strip()],
-                bcc_emails=[email.strip() for email in bcc_emails.split(',') if email.strip()],
+                cc_emails=cc_list,
+                bcc_emails=bcc_list,
                 attachments=attachments
             )
             
@@ -850,7 +1016,9 @@ def _email_text_preview(email, limit=160):
     from django.utils.html import strip_tags
     from django.utils.text import Truncator
 
-    text = strip_tags(email.body_html or email.body or '').replace('\xa0', ' ')
+    raw = _strip_html_style_blocks(email.body_html or email.body or '')
+    text = strip_tags(raw).replace('\xa0', ' ')
+    text = _strip_css_text_artifacts(text)
     text = ' '.join(text.split())
     return Truncator(text).chars(limit)
 
@@ -863,6 +1031,7 @@ def _email_body_text(email, limit=12000):
 
     raw = email.body_html or email.body or ''
     if email.body_html:
+        raw = _strip_html_style_blocks(raw)
         raw = _strip_quoted_html_for_display(raw)
         text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
         text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table)\s*>', '\n', text)
@@ -872,6 +1041,7 @@ def _email_body_text(email, limit=12000):
         text = raw
 
     text = html.unescape(text).replace('\xa0', ' ')
+    text = _strip_css_text_artifacts(text)
     text = text.replace('\r\n', '\n').replace('\r', '\n')
     lines = [' '.join(line.split()) for line in text.split('\n')]
     normalized = []
@@ -936,6 +1106,58 @@ def _strip_quoted_text_for_display(text):
     return text[:min(cut_positions)].rstrip()
 
 
+def _ensure_gmail_attachment_metadata(email, user):
+    if email.attachments_info:
+        return
+    if not email.gmail_message_id:
+        return
+    try:
+        profile = user.userprofile
+    except UserProfile.DoesNotExist:
+        return
+    if not profile.gmail_token:
+        return
+
+    try:
+        msg_detail = GmailService(profile).get_message_detail(email.gmail_message_id)
+    except Exception:
+        return
+    attachments_info = _sanitize_received_attachments(
+        (msg_detail or {}).get('attachments') or [],
+        (msg_detail or {}).get('id') or email.gmail_message_id,
+    )
+    if attachments_info:
+        email.attachments_info = attachments_info
+        email.save(update_fields=['attachments_info', 'updated_at'])
+
+
+def _email_attachment_payloads(email):
+    rows = []
+    for index, attachment in enumerate(email.attachments_info or []):
+        if not isinstance(attachment, dict):
+            continue
+        filename = str(attachment.get('filename') or '').strip()
+        if not filename:
+            continue
+        try:
+            size = int(attachment.get('size') or 0)
+        except (TypeError, ValueError):
+            size = 0
+        can_download = any([
+            attachment.get('gmailAttachmentId'),
+            attachment.get('contentBase64'),
+            attachment.get('documentLogId'),
+        ])
+        rows.append({
+            'filename': filename,
+            'size': size,
+            'mimetype': attachment.get('mimetype') or 'application/octet-stream',
+            'source': attachment.get('source') or '',
+            'downloadHref': reverse('reporting:mailbox_api_attachment_download', args=[email.id, index]) if can_download else '',
+        })
+    return rows
+
+
 def _serialize_email_item(email, mailbox_type='inbox'):
     thread_id = _email_thread_identifier(email)
     followup = email.followup
@@ -981,7 +1203,7 @@ def _serialize_email_item(email, mailbox_type='inbox'):
             'href': f'/schedules/{schedule.id}/' if schedule else '',
             'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
         },
-        'attachments': email.attachments_info or [],
+        'attachments': _email_attachment_payloads(email),
     }
 
 
@@ -1045,6 +1267,7 @@ def _mailbox_create_payload(user):
         'message': '',
         'submitUrl': reverse('reporting:mailbox_api_send'),
         'djangoUrl': reverse('reporting:send_email_from_mailbox'),
+        'internalCcEmails': _internal_cc_emails_for_user(user),
         'customers': [
             {
                 'id': followup.id,
@@ -1169,6 +1392,9 @@ def mailbox_api_thread(request, thread_id):
     first_email = emails.first()
     last_received_email = emails.filter(email_type='received').order_by('-sent_at', '-received_at', '-created_at').first()
     profile = request.user.userprofile
+    email_rows = list(emails)
+    for email in email_rows:
+        _ensure_gmail_attachment_metadata(email, request.user)
 
     return JsonResponse({
         'success': True,
@@ -1187,7 +1413,7 @@ def mailbox_api_thread(request, thread_id):
             'reply': reverse('reporting:mailbox_api_reply', args=[last_received_email.id]) if last_received_email else '',
         },
         'create': _mailbox_create_payload(request.user),
-        'emails': [_serialize_email_item(email) for email in emails],
+        'emails': [_serialize_email_item(email) for email in email_rows],
     })
 
 
@@ -1310,6 +1536,59 @@ def mailbox_api_restore(request, email_id):
 @login_required
 def mailbox_api_delete(request, email_id):
     return delete_email(request, email_id)
+
+
+@login_required
+def mailbox_api_attachment_download(request, email_id, attachment_index):
+    import base64
+    from urllib.parse import quote
+
+    email = EmailLog.objects.filter(
+        _mailbox_email_q(request.user),
+        id=email_id,
+    ).select_related('user').first()
+    if not email:
+        return JsonResponse({'success': False, 'error': '메일을 찾을 수 없습니다.'}, status=404)
+
+    attachments = email.attachments_info or []
+    try:
+        attachment = attachments[int(attachment_index)]
+    except (IndexError, TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': '첨부파일을 찾을 수 없습니다.'}, status=404)
+    if not isinstance(attachment, dict):
+        return JsonResponse({'success': False, 'error': '첨부파일 정보를 읽을 수 없습니다.'}, status=404)
+
+    filename = str(attachment.get('filename') or 'attachment').strip() or 'attachment'
+    mimetype = attachment.get('mimetype') or 'application/octet-stream'
+    content = None
+
+    if attachment.get('contentBase64'):
+        try:
+            content = base64.b64decode(attachment['contentBase64'])
+        except Exception:
+            content = None
+
+    if content is None and attachment.get('documentLogId'):
+        log = DocumentGenerationLog.objects.filter(id=attachment.get('documentLogId')).first()
+        if log and log.file:
+            with log.file.open('rb') as file_handle:
+                content = file_handle.read()
+            filename = log.filename or filename
+
+    if content is None and attachment.get('gmailAttachmentId'):
+        profile = request.user.userprofile
+        if not profile.gmail_token:
+            return JsonResponse({'success': False, 'error': 'Gmail 연결이 필요합니다.'}, status=400)
+        message_id = attachment.get('gmailMessageId') or email.gmail_message_id
+        content = GmailService(profile).get_attachment(message_id, attachment.get('gmailAttachmentId'))
+
+    if content is None:
+        return JsonResponse({'success': False, 'error': '첨부파일을 다운로드할 수 없습니다.'}, status=404)
+
+    response = HttpResponse(content, content_type=mimetype)
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    return response
+
 
 @login_required
 def mailbox_inbox(request):
@@ -1642,13 +1921,27 @@ def mailbox_thread(request, thread_id):
                                 body_html=msg_detail.get('body_html', ''),
                                 sent_at=msg_detail.get('date'),
                                 email_type=email_type,
-                                labels=msg_detail.get('labels', [])
+                                labels=msg_detail.get('labels', []),
+                                attachments_info=_sanitize_received_attachments(
+                                    msg_detail.get('attachments') or [],
+                                    msg_id,
+                                ),
                             )
                             new_count += 1
                             logger.info(f"새 메시지 저장: {msg_id}")
                         except Exception as e:
                             logger.error(f"메시지 저장 실패 ({msg_id}): {e}")
                             continue
+                    else:
+                        existing_email = EmailLog.objects.filter(gmail_message_id=msg_id).first()
+                        if existing_email and not existing_email.attachments_info:
+                            attachments_info = _sanitize_received_attachments(
+                                msg_detail.get('attachments') or [],
+                                msg_id,
+                            )
+                            if attachments_info:
+                                existing_email.attachments_info = attachments_info
+                                existing_email.save(update_fields=['attachments_info', 'updated_at'])
                 
                 if new_count > 0:
                     logger.info(f"스레드 {thread_id}: {new_count}개 새 메시지 동기화 완료")

@@ -1,6 +1,49 @@
 # AGENT_PLAN.md
 
-## Current task — 견적서 담당자 이름 순서 보정
+## Current task — 견적 구분별 기타사항, 메일 참조 선택, 서류 볼드 제거, 메일 본문/첨부 표시 핫픽스
+
+**목표**: 운영 검수 중 확인된 견적/메일 문제를 우선 해결한다. 같은 일정의 견적서 구분마다 기타사항을 따로 저장/치환하고, 메일 발송 시 내부 직원 참조 포함 여부를 사용자가 선택하게 한다. 견적서/거래명세서 생성 시 템플릿의 볼드체를 제거하고, 받은 메일 상세에서 CSS 잔여 텍스트가 보이지 않게 하며, 상대가 보낸 첨부파일을 React 메일함에서 확인/다운로드할 수 있게 한다.
+
+### 확인된 상태
+
+- 기존 `Schedule.quote_extra_notes`는 일정 단위 1개 필드라 `보상판매`, `수리`처럼 견적서 구분이 여러 개인 경우 기타사항이 통합되어 표시된다.
+- React 일정 상세는 품목별 `quote_group`을 저장하지만, 구분별 기타사항 저장 구조는 없다.
+- 메일 작성/답장 API는 수동 CC만 받으며, 같은 회사 내부 직원 이메일을 CC에 넣을지 선택하는 옵션이 없다.
+- 받은 메일 본문 표시에서 HTML `<style>` 또는 본문 앞 CSS 조각인 `p{margin-top:0px;margin-bottom:0px;}`가 텍스트로 남을 수 있다.
+- Gmail 동기화는 본문과 기본 헤더만 저장하고 첨부파일 메타데이터/다운로드 식별자를 저장하지 않는다. React 스레드 상세도 `attachments` 목록을 렌더링하지 않는다.
+- 견적서/거래명세서 PDF 생성은 엑셀 템플릿의 볼드 스타일을 그대로 유지한다.
+- 구분별 기타사항 저장을 위해 DB migration이 필요하다.
+
+### 구현 계획
+
+- `ScheduleQuoteGroupNote` 모델과 migration을 추가해 일정+견적서 구분별 기타사항을 저장하고, 기존 일정 단위 기타사항은 기본 구분으로 이관한다.
+- 일정 상세/품목 저장 API에 `quoteGroupNotes` payload를 추가하고, 문서 변수 `기타사항`/`견적기타사항`은 선택한 견적서 구분의 기타사항을 사용하게 한다.
+- React 일정 상세 품목 편집에 견적서 구분별 기타사항 입력란을 표시하고, 저장/조회/읽기 전용 표시를 구분별로 나눈다.
+- 같은 회사 활성 사용자 이메일을 메일 작성 옵션으로 내려주고, React 작성/답장 폼에 “내부 직원 참조 포함” 체크박스를 추가한다. 체크된 경우만 서버에서 내부 직원 이메일을 CC에 병합한다.
+- Gmail/IMAP 메일 본문 표시 전에 HTML style/script와 CSS 선언 잔여 텍스트를 제거한다.
+- Gmail 메시지 상세 파서가 첨부파일 `attachmentId`, 파일명, MIME, 크기를 수집해 `EmailLog.attachments_info`에 저장하게 하고, 인증된 다운로드 API에서 Gmail attachment API로 원본 파일을 내려준다.
+- React 메일 목록/스레드 상세에서 첨부 개수와 다운로드 링크를 표시한다.
+- 견적서/거래명세서 XLSX 생성 후 PDF 변환 전 스타일 XML과 rich text에서 `<b>` 노드를 제거한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\gmail_utils.py reporting\tests.py`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/880/`, `/mailbox/`, `/reporting/login/` smoke check
+
+### 현재 상태
+
+- 구현 진행 중.
+- 제품관리 React 전환 WIP는 긴급 핫픽스 처리를 위해 stash에 보관했다.
+
+---
+
+## Previous task — 견적서 담당자 이름 순서 보정
 
 **목표**: 사용자 이름이 `이름=재현`, `성=안`으로 설정되어 있으면 견적서 서류 변수/PDF에서 `안재현`으로 표시되게 한다. 과거 사용자 생성/수정 화면의 성/이름 라벨이 Django 필드 의미와 반대로 되어 있던 계정도 문서 생성 시 보정한다.
 

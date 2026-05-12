@@ -186,6 +186,8 @@ export type MailboxEmailItem = {
     filename?: string;
     size?: number;
     mimetype?: string;
+    source?: string;
+    downloadHref?: string;
   }>;
 };
 
@@ -194,6 +196,7 @@ export type MailboxCreateOptions = {
   message: string;
   submitUrl: string;
   djangoUrl: string;
+  internalCcEmails: string[];
   customers: Array<{
     id: number;
     customer: string;
@@ -281,6 +284,7 @@ export type MailboxSendPayload = {
   toEmail: string;
   ccEmails?: string;
   bccEmails?: string;
+  includeInternalCc?: boolean;
   subject: string;
   bodyText: string;
   followupId?: number;
@@ -1416,6 +1420,11 @@ export type ScheduleDetailItem = ScheduleItem & {
   updatedAt: string | null;
   vatMode: string;
   quoteExtraNotes: string;
+  quoteGroupNotes: Array<{
+    quoteGroup: string;
+    quoteGroupLabel: string;
+    notes: string;
+  }>;
   usePrepayment: boolean;
   prepaymentId: number | null;
   prepaymentAmount: number;
@@ -2281,6 +2290,7 @@ const emptyMailboxCreateOptions: MailboxCreateOptions = {
   message: '',
   submitUrl: '/reporting/api/mailbox/send/',
   djangoUrl: '/reporting/gmail/send/mailbox/',
+  internalCcEmails: [],
   customers: [],
   businessCards: [],
 };
@@ -3296,6 +3306,7 @@ export async function loadMailboxData(params: {
       create: {
         ...emptyMailboxCreateOptions,
         ...(payload.create ?? {}),
+        internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
       },
@@ -3352,6 +3363,7 @@ export async function loadMailboxThreadData(threadId: string): Promise<MailboxTh
       create: {
         ...emptyMailboxCreateOptions,
         ...(payload.create ?? {}),
+        internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
       },
@@ -3377,6 +3389,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   body.set('body_text', payload.bodyText);
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
+  if (payload.includeInternalCc) body.set('include_internal_cc', '1');
   if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
   if (payload.scheduleId) body.set('schedule_id', String(payload.scheduleId));
   if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
@@ -5104,7 +5117,7 @@ export async function updateSchedule(payload: ScheduleEditPayload, submitUrl: st
 export async function updateScheduleDeliveryItems(
   submitUrl: string,
   items: ScheduleDeliveryItemPayload[],
-  quoteExtraNotes?: string,
+  quoteGroupNotes?: Record<string, string>,
 ): Promise<ScheduleDeliveryItemsUpdateResponse> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(submitUrl, {
@@ -5115,7 +5128,7 @@ export async function updateScheduleDeliveryItems(
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
-    body: JSON.stringify({ items, quoteExtraNotes: quoteExtraNotes ?? '' }),
+    body: JSON.stringify({ items, quoteGroupNotes: quoteGroupNotes ?? {} }),
   });
   redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';

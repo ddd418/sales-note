@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -5358,6 +5358,95 @@ def _quote_group_query_suffix(value):
     return '?' + urlencode({'quote_group': _quote_group_key(value)})
 
 
+def _schedule_quote_group_notes_map(schedule):
+    notes = {
+        _quote_group_key(note.quote_group): note.notes or ''
+        for note in schedule.quote_group_notes.all()
+    }
+    if '' not in notes and schedule.quote_extra_notes:
+        notes[''] = schedule.quote_extra_notes or ''
+    return notes
+
+
+def _schedule_quote_group_note_payloads(schedule):
+    notes_map = _schedule_quote_group_notes_map(schedule)
+    group_keys = []
+    seen = set()
+    for item in schedule.delivery_items_set.all().order_by('id'):
+        group_key = _quote_group_key(getattr(item, 'quote_group', ''))
+        if group_key not in seen:
+            seen.add(group_key)
+            group_keys.append(group_key)
+    for group_key in notes_map.keys():
+        if group_key not in seen:
+            seen.add(group_key)
+            group_keys.append(group_key)
+    if not group_keys and schedule.quote_extra_notes:
+        group_keys = ['']
+    return [
+        {
+            'quoteGroup': group_key,
+            'quoteGroupLabel': _quote_group_label(group_key),
+            'notes': notes_map.get(group_key, ''),
+        }
+        for group_key in group_keys
+    ]
+
+
+def _document_quote_extra_notes(schedule, quote_group='', quote_group_selected=False):
+    notes_map = _schedule_quote_group_notes_map(schedule)
+    if quote_group_selected:
+        return notes_map.get(_quote_group_key(quote_group), '')
+    return notes_map.get('', schedule.quote_extra_notes or '')
+
+
+def _parse_quote_group_notes_payload(payload):
+    raw_notes = payload.get('quoteGroupNotes')
+    if raw_notes is None:
+        raw_notes = payload.get('quote_group_notes')
+    if raw_notes is None:
+        return None
+
+    parsed = {}
+    if isinstance(raw_notes, dict):
+        iterable = raw_notes.items()
+        for group, notes in iterable:
+            parsed[_quote_group_key(group)] = str(notes or '').strip()
+        return parsed
+
+    if isinstance(raw_notes, list):
+        for item in raw_notes:
+            if not isinstance(item, dict):
+                continue
+            group = item.get('quoteGroup')
+            if group is None:
+                group = item.get('quote_group')
+            notes = item.get('notes', '')
+            parsed[_quote_group_key(group)] = str(notes or '').strip()
+        return parsed
+
+    raise ValueError('견적 기타사항 형식이 올바르지 않습니다.')
+
+
+def _save_schedule_quote_group_notes(schedule, notes_map):
+    if notes_map is None:
+        return
+
+    schedule.quote_group_notes.all().delete()
+    objects = [
+        ScheduleQuoteGroupNote(
+            schedule=schedule,
+            quote_group=_quote_group_key(group),
+            notes=notes,
+        )
+        for group, notes in notes_map.items()
+        if notes
+    ]
+    if objects:
+        ScheduleQuoteGroupNote.objects.bulk_create(objects)
+    schedule.quote_extra_notes = notes_map.get('', '')
+
+
 def _schedules_delivery_item_payload(item):
     product = item.product if item.product_id else None
     return {
@@ -5739,12 +5828,14 @@ def _schedule_quote_group_summaries(schedule):
     from decimal import Decimal
 
     groups = {}
+    notes_map = _schedule_quote_group_notes_map(schedule)
     for item in schedule.delivery_items_set.all().order_by('id'):
         group_key = _quote_group_key(getattr(item, 'quote_group', ''))
         if group_key not in groups:
             groups[group_key] = {
                 'key': group_key,
                 'label': _quote_group_label(group_key),
+                'notes': notes_map.get(group_key, ''),
                 'itemCount': 0,
                 'totalAmount': Decimal('0'),
             }
@@ -5756,6 +5847,7 @@ def _schedule_quote_group_summaries(schedule):
         groups[''] = {
             'key': '',
             'label': _quote_group_label(''),
+            'notes': notes_map.get('', ''),
             'itemCount': 0,
             'totalAmount': Decimal('0'),
         }
@@ -6022,7 +6114,8 @@ def _schedules_detail_payload(request, schedule, user_profile):
         'createdAt': _datetime_or_none(schedule.created_at),
         'updatedAt': _datetime_or_none(schedule.updated_at),
         'vatMode': schedule.vat_mode,
-        'quoteExtraNotes': schedule.quote_extra_notes or '',
+        'quoteExtraNotes': _document_quote_extra_notes(schedule),
+        'quoteGroupNotes': _schedule_quote_group_note_payloads(schedule),
         'usePrepayment': bool(schedule.use_prepayment),
         'prepaymentId': schedule.prepayment_id,
         'prepaymentAmount': _money_int(schedule.prepayment_amount),
@@ -6079,6 +6172,7 @@ def _schedules_get_detail_schedule(schedule_id):
         ).prefetch_related(
             'files',
             'delivery_items_set',
+            'quote_group_notes',
             Prefetch(
                 'prepayment_usages',
                 queryset=PrepaymentUsage.objects.select_related('prepayment', 'prepayment__customer').order_by('id'),
@@ -6250,16 +6344,20 @@ def schedules_delivery_items_update_api(request, schedule_id):
 
     try:
         delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request)
+        quote_group_notes = _parse_quote_group_notes_payload(payload)
+        if quote_group_notes is None and ('quoteExtraNotes' in payload or 'quote_extra_notes' in payload):
+            quote_group_notes = {
+                '': str(payload.get('quoteExtraNotes', payload.get('quote_extra_notes')) or '').strip(),
+            }
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     try:
         with transaction.atomic():
-            if 'quoteExtraNotes' in payload or 'quote_extra_notes' in payload:
-                schedule.quote_extra_notes = str(payload.get('quoteExtraNotes', payload.get('quote_extra_notes')) or '').strip()
             schedule.delivery_items_set.all().delete()
             for item_data in delivery_items:
                 DeliveryItem.objects.create(schedule=schedule, **item_data)
+            _save_schedule_quote_group_notes(schedule, quote_group_notes)
             schedule.save(update_fields=['quote_extra_notes', 'updated_at'])
             _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
     except Exception as exc:
@@ -19007,6 +19105,52 @@ def _ensure_xlsx_a4_print_layout(xlsx_path):
     return changed
 
 
+def _strip_xlsx_bold_formatting(xlsx_path):
+    """견적/거래명세서 출력물에서는 템플릿의 굵게 서식을 제거한다."""
+    import os
+    import shutil
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ET.register_namespace('', spreadsheet_ns)
+
+    def qname(name):
+        return f'{{{spreadsheet_ns}}}{name}'
+
+    temp_output = xlsx_path.replace('.xlsx', '_no_bold.xlsx')
+    changed = False
+
+    with zipfile.ZipFile(xlsx_path, 'r') as zip_in:
+        with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+            for item in zip_in.infolist():
+                data = zip_in.read(item.filename)
+                if item.filename in {'xl/styles.xml', 'xl/sharedStrings.xml'}:
+                    try:
+                        root = ET.fromstring(data)
+                        parent_map = {child: parent for parent in root.iter() for child in parent}
+                        for bold_node in list(root.iter(qname('b'))):
+                            parent = parent_map.get(bold_node)
+                            if parent is not None:
+                                parent.remove(bold_node)
+                                changed = True
+                        data = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+                    except Exception as bold_error:
+                        logger.warning(f"[서류생성] 굵게 서식 제거 실패({item.filename}): {bold_error}")
+
+                zip_out.writestr(item, data)
+
+    if changed:
+        os.unlink(xlsx_path)
+        shutil.move(temp_output, xlsx_path)
+    else:
+        try:
+            os.unlink(temp_output)
+        except OSError:
+            pass
+    return changed
+
+
 @login_required
 def get_document_template_data(request, document_type, schedule_id):
     """
@@ -19161,6 +19305,7 @@ def get_document_template_data(request, document_type, schedule_id):
         # 연결된 견적번호 자동 채움
         _linked_quote = schedule.quotes.order_by('-created_at').first()
         _quote_number = _linked_quote.quote_number if _linked_quote else ''
+        quote_extra_notes = _document_quote_extra_notes(schedule, quote_group, quote_group_selected)
 
         # 데이터 매핑
         data_map = {
@@ -19195,8 +19340,8 @@ def get_document_template_data(request, document_type, schedule_id):
             '견적명': quote_group_label,
             '견적제목': f'{quote_group_label} 견적서' if quote_group_label else '견적서',
             '메모': schedule.notes or '',
-            '기타사항': schedule.quote_extra_notes or '',
-            '견적기타사항': schedule.quote_extra_notes or '',
+            '기타사항': quote_extra_notes,
+            '견적기타사항': quote_extra_notes,
             
             '회사명': company.name,
             
@@ -19556,6 +19701,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 # 연결된 견적번호 자동 채움
                 _linked_quote = schedule.quotes.order_by('-created_at').first()
                 _quote_number = _linked_quote.quote_number if _linked_quote else ''
+                quote_extra_notes = _document_quote_extra_notes(schedule, quote_group, quote_group_selected)
 
                 data_map = {
                     # 기본 정보
@@ -19595,8 +19741,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     '견적명': quote_group_label,
                     '견적제목': f'{quote_group_label} 견적서' if quote_group_label else '견적서',
                     '메모': schedule.notes or '',
-                    '기타사항': schedule.quote_extra_notes or '',
-                    '견적기타사항': schedule.quote_extra_notes or '',
+                    '기타사항': quote_extra_notes,
+                    '견적기타사항': quote_extra_notes,
                     
                     # 금액 정보
                     '공급가액': f"{int(subtotal):,}",
@@ -19749,6 +19895,12 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     os.unlink(temp_path)
                     shutil.move(temp_output, temp_path)
                 
+                if document_type in ['quotation', 'transaction_statement']:
+                    try:
+                        _strip_xlsx_bold_formatting(temp_path)
+                    except Exception as bold_error:
+                        logger.warning(f"[서류생성] 굵게 서식 제거 실패: {bold_error}")
+
                 try:
                     _ensure_xlsx_a4_print_layout(temp_path)
                 except Exception as layout_error:

@@ -2700,6 +2700,12 @@ h2 {
   font-weight: 800;
 }
 
+.schedule-quote-group-notes-grid,
+.schedule-quote-group-notes-list {
+  display: grid;
+  gap: 10px;
+}
+
 .schedule-quote-extra-notes-field textarea {
   width: 100%;
   min-height: 88px;
@@ -5771,6 +5777,37 @@ tbody tr:hover {
   color: #991b1b;
 }
 
+.mail-compose-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.mail-compose-check input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.mail-compose-check span {
+  display: grid;
+  gap: 3px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mail-compose-check small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .mail-compose-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5970,6 +6007,46 @@ tbody tr:hover {
   white-space: pre-wrap;
   color: #334155;
   line-height: 1.6;
+}
+
+.mail-row-attachment-count {
+  color: var(--primary-strong);
+  font-weight: 900;
+}
+
+.mail-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mail-message-attachments a,
+.mail-message-attachments > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.mail-message-attachments span span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-message-attachments small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .mail-message-links {

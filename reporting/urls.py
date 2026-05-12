@@ -308,6 +308,7 @@ urlpatterns = [
     path('api/mailbox/<int:email_id>/move-to-trash/', lazy_view('reporting.gmail_views.mailbox_api_move_to_trash'), name='mailbox_api_move_to_trash'),
     path('api/mailbox/<int:email_id>/restore/', lazy_view('reporting.gmail_views.mailbox_api_restore'), name='mailbox_api_restore'),
     path('api/mailbox/<int:email_id>/delete/', lazy_view('reporting.gmail_views.mailbox_api_delete'), name='mailbox_api_delete'),
+    path('api/mailbox/<int:email_id>/attachments/<int:attachment_index>/', lazy_view('reporting.gmail_views.mailbox_api_attachment_download'), name='mailbox_api_attachment_download'),
     
     # 명함 관리
     path('business-cards/', lazy_view('reporting.gmail_views.business_card_list'), name='business_card_list'),

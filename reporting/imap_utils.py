@@ -5,6 +5,7 @@ IMAP/SMTP 이메일 통합 유틸리티
 import imaplib
 import smtplib
 import email
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -214,6 +215,7 @@ class IMAPEmailService:
             
             # 본문
             body = self._get_email_body(email_message)
+            attachments = self._get_email_attachments(email_message)
             
             # Message-ID
             message_id = email_message.get('Message-ID', '')
@@ -228,6 +230,7 @@ class IMAPEmailService:
                 'cc_emails': cc_emails,
                 'subject': subject,
                 'body': body,
+                'attachments': attachments,
                 'date': date,
                 'is_sent': False,  # 수신 메일
             }
@@ -341,6 +344,35 @@ class IMAPEmailService:
                 body = str(email_message.get_payload())
         
         return body
+
+    def _get_email_attachments(self, email_message) -> List[dict]:
+        """IMAP 수신 메일 첨부를 JSON 저장 가능한 형태로 추출한다."""
+        attachments = []
+        if not email_message.is_multipart():
+            return attachments
+
+        for part in email_message.walk():
+            content_disposition = str(part.get('Content-Disposition', ''))
+            filename = part.get_filename()
+            if 'attachment' not in content_disposition.lower() and not filename:
+                continue
+
+            if filename:
+                filename = self._decode_header(filename)
+            else:
+                filename = 'attachment'
+
+            content = part.get_payload(decode=True) or b''
+            content_type = part.get_content_type() or 'application/octet-stream'
+            attachments.append({
+                'filename': filename,
+                'size': len(content),
+                'mimetype': content_type,
+                'source': 'imap',
+                'contentBase64': base64.b64encode(content).decode('ascii'),
+            })
+
+        return attachments
 
 
 class SMTPEmailService:
@@ -534,6 +566,7 @@ def save_email_to_db(
     sent_at=None,
     email_type: str = "received",
     labels: List[str] = None,
+    attachments_info: List[dict] = None,
 ):
     """Gmail thread 동기화 메시지를 EmailLog에 저장한다."""
     from .models import EmailLog
@@ -581,6 +614,7 @@ def save_email_to_db(
         subject=(subject or "(제목 없음)")[:500],
         body=body_content,
         body_html=body_html or "",
+        attachments_info=attachments_info or [],
         followup=thread_context.followup if thread_context else None,
         schedule=thread_context.schedule if thread_context else None,
         status=status,
