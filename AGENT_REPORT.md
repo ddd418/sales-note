@@ -14233,21 +14233,39 @@ git diff --check
 
 ### 5. Known Limitations
 
-- 운영 배포 후 실제 로그인 세션에서 대체 제품 검색/선택을 다시 확인해야 합니다.
-- Railway CLI 로그 조회 중 OAuth token refresh가 만료되어 `railway login`이 필요할 수 있습니다.
+- 실제 제품 대체 완료 동작은 로그인 세션과 운영 데이터가 필요해 사용자 수동검수가 필요합니다.
 
 ### 6. Deployment Status
 
 - Hotfix commit: `0f085b0 fix: limit product replacement option loading`
-- GitHub push: `main` updated from `027affb` to `0f085b0`
-- Local build bundle: `assets/index-Bfm6UuAC.js` / `assets/index-nGs5khFg.css`
-- Railway deploy not completed in this session because the CLI token expired:
-  - `railway status` → `Unauthorized. Please run railway login again.`
-  - `railway login --browserless` → non-interactive terminal unsupported; requires `RAILWAY_API_TOKEN` or `RAILWAY_TOKEN`
-- Production currently still serves the previous bundle `assets/index-D2QtHNzR.js` / `assets/index-DVJixUlj.css` at `/products/`.
-- Required next operational action: reauthenticate Railway CLI or provide `RAILWAY_TOKEN`, then deploy `web` and `sales-note-frontend` for commit `0f085b0`.
+- Deployment/report commit: `2d385b7 docs: record product replacement hotfix deploy blocker`
+- GitHub push: `main` updated from `027affb` to `2d385b7`
+- Railway `web`: `dacdc660-caec-48ec-a32d-4f6744c4fd3f` SUCCESS, commit `2d385b7`
+- Railway `sales-note-frontend`: `dce48354-322a-48d2-83f2-20d32b848a14` SUCCESS, message `Deploy product replacement option loading hotfix 0f085b0`
+- Deployed frontend bundle: `assets/index-Bfm6UuAC.js` / `assets/index-nGs5khFg.css`
+- A manual `web` redeploy `110baeba-819c-4059-84e5-fc9bf86c41df` was still BUILDING during the final check, but the already-active `web` deployment `dacdc660-caec-48ec-a32d-4f6744c4fd3f` serves the same commit `2d385b7`.
 
-### 7. Manual Server Test Process
+### 7. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/products/
+→ 200, bundle assets/index-Bfm6UuAC.js and assets/index-nGs5khFg.css
+
+GET https://sales-note-frontend-production.up.railway.app/assets/index-Bfm6UuAC.js
+→ 200, JS contains 대체 제품 품번, 설명, 규격 검색 and limited product loading code
+
+GET https://sales-note-frontend-production.up.railway.app/assets/index-nGs5khFg.css
+→ 200, CSS contains product-delete-replacement-search
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/products/?limit=1
+→ 302 redirect to /reporting/login/?next=/reporting/api/products/%3Flimit%3D1
+
+Railway logs checked
+→ web migrations completed, no migrations to apply, gunicorn started
+→ frontend server started on 8080
+```
+
+### 8. Manual Server Test Process
 
 1. 운영 사이트 접속: `https://sales-note-frontend-production.up.railway.app/products/`
 2. 사용 중인 제품을 삭제 실행해 차단 품목 개별 대체 패널을 엽니다.
