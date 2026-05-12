@@ -2,7 +2,7 @@
 
 ## 2026-05-13 — React Schedule Calendar Inline Actions
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -61,6 +61,19 @@ Local browser smoke
 → selected-day card showed React 수정/삭제 buttons and status actions
 → 고객 일정 등록 panel opened with selected date 2026-05-13
 → 일정 수정 panel loaded existing schedule fields through the detail API
+
+git commit -m "feat: manage schedules from calendar" && git push origin main
+→ Commit 4f3fe64 pushed to origin/main
+
+Railway deployments
+→ web 80ec251c-6984-4563-815d-81be2235a253 SUCCESS
+→ sales-note-frontend 90e461be-5ff3-4617-b6c3-dc499bea6920 SUCCESS
+
+Production smoke requests
+→ /schedules/calendar/ 200 with assets/index-BvRdieLP.js and assets/index-DC8BCCea.css
+→ /reporting/login/ 200
+→ anonymous /reporting/api/schedules/calendar/ 401 login_required JSON
+→ web deployment logs: migrations no-op, gunicorn workers booted
 ```
 
 ### 알려진 제한
@@ -71,7 +84,9 @@ Local browser smoke
 
 ### 운영 배포 상태
 
-- 배포 예정.
+- Runtime commit: `4f3fe64 feat: manage schedules from calendar`
+- Railway `web`: `80ec251c-6984-4563-815d-81be2235a253` SUCCESS
+- Railway `sales-note-frontend`: `90e461be-5ff3-4617-b6c3-dc499bea6920` SUCCESS
 
 ### 사용자 수동 검수
 

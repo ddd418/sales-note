@@ -38,9 +38,16 @@
 
 ### 현재 상태
 
-- 백엔드/React 구현 및 로컬 검증 완료.
-- 커밋/푸시 및 Railway 운영 배포 예정.
-- DB 모델 변경 예정 없음.
+- 백엔드/React 구현, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
+- DB 모델 변경 없음.
+- Runtime commit: `4f3fe64 feat: manage schedules from calendar`
+- Railway `web`: `80ec251c-6984-4563-815d-81be2235a253` SUCCESS
+- Railway `sales-note-frontend`: `90e461be-5ff3-4617-b6c3-dc499bea6920` SUCCESS
+- 운영 smoke OK:
+  - `/schedules/calendar/` 200 with `assets/index-BvRdieLP.js` / `assets/index-DC8BCCea.css`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/calendar/` 401 login-required JSON
+- 다음 행동: 사용자가 운영에서 React 캘린더 등록/수정/삭제 수동 검수를 완료한다. 검수 결과 확인 전에는 다음 구현 작업을 시작하지 않는다.
 
 ---
 
