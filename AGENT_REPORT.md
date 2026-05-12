@@ -1,5 +1,102 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — React Rich Mail Editor And Scoped AI Workspace Prompts
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+React 메일 작성/답장을 서식 있는 에디터로 교체했습니다. 볼드, 기울임, 밑줄, 글씨체/크기/색상, 목록, 링크, 이미지 삽입을 지원하며, 발송 API는 HTML 본문을 서버에서 한 번 더 sanitize해서 Gmail/SMTP로 보냅니다. `/ai-workspace/?department_id=...` 상세 페이지의 추천 질문 후보는 요청된 부서/고객 범위로만 제한했습니다. 전체 `/ai-workspace/`에서는 기존처럼 전체 후보 추천이 가능합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: React 메일 리치 에디터, 본문 HTML 상태/검증, 이미지 업로드/붙여넣기/드롭, AI Workspace 상세 추천 표시 흐름 유지
+- `frontend/src/api.ts`: 메일 발송 payload에 `bodyHtml` 추가, 에디터 이미지 업로드 API 연결
+- `frontend/src/styles.css`: 리치 에디터 툴바/본문/오류 스타일 추가
+- `reporting/gmail_views.py`: outgoing `body_html` sanitize 및 plain text fallback 처리
+- `reporting/views.py`: `department_id`가 요청된 AI Workspace 상세 API의 추천 질문 후보를 해당 부서로 제한
+- `reporting/tests.py`: 리치 HTML 메일 sanitize, AI Workspace 상세 추천 스코프 회귀 테스트 추가
+- `AGENT_PLAN.md`, `HANDOFF.md`: 작업 상태 및 운영 배포 기록 갱신
+
+### CRM 개선
+
+- `/mailbox/`에서 메일 작성/답장 시 굵게, 글꼴, 색상, 링크, 이미지 같은 기본 서식을 사용할 수 있습니다.
+- 첨부 이미지가 아닌 본문 이미지는 기존 `/reporting/upload-image/`를 통해 업로드 후 본문에 삽입됩니다.
+- 상세 AI Workspace URL에서는 다른 고객/부서의 추천 질문이 섞이지 않습니다.
+
+### 기존 기능 보존
+
+- 기존 plain text 메일 발송, 파일 첨부, 답장/일정 메일 흐름은 유지했습니다.
+- 서버는 허용된 이메일 HTML 태그/속성/스타일만 통과시키고 script, event handler, `javascript:` URL은 제거합니다.
+- 부서 ID가 없는 `/ai-workspace/` 전체 화면의 추천 후보 생성 방식은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_prompt_targets_to_requested_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_own_ai_operational_data reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_sends_sanitized_rich_html_body reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_normalizes_plain_text_line_breaks_for_html --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 24 tests, OK
+
+cd frontend; npm run build
+→ OK, assets/index-Crb-VKbQ.js / assets/index-DdQNAE3O.css
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "feat: add rich mail editor and scope ai prompts" && git push origin main
+→ Commit eb7e0fc pushed to origin/main
+
+railway up --service web --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
+→ Deploy complete
+
+railway deployment list --service web --environment production --limit 5 --json
+→ fc0b97e2-b144-4133-8171-2ca1be4375cd SUCCESS
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ 1053e2a3-603d-472c-8aea-159f0a5cf130 SUCCESS
+
+Production smoke requests
+→ /reporting/login/ 200, /ai-workspace/ 200, /ai-workspace/?department_id=81 200, /mailbox/ 200
+```
+
+### 배포 상태
+
+- Runtime commit: `eb7e0fc feat: add rich mail editor and scope ai prompts`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS
+- Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS
+- Deploy logs: web migration check OK / gunicorn startup OK, frontend server startup OK
+
+### 알려진 제한
+
+- 운영 로그인 세션 없이 실제 메일 발송 완료와 수신자 메일함 렌더링까지 자동 검증하지는 못했습니다.
+- contenteditable 기반 에디터라 브라우저 기본 편집 동작을 사용합니다. 내부 CRM 용도로 빠르게 적용했으며, 추후 더 강한 편집기 라이브러리로 교체할 수 있습니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=81`을 열고 추천 질문이 해당 상세 고객/부서 기준으로만 나오는지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서는 전체 추천 질문이 계속 나오는지 확인합니다.
+3. `/mailbox/`에서 새 메일 또는 답장을 열고 볼드/글꼴/색상/링크/이미지를 넣어 테스트 발송합니다.
+4. 발송한 메일의 서식이 유지되고, 이상한 HTML/script 텍스트가 노출되지 않는지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote Notes, Mailbox Attachments, and Document PDF Hotfixes
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기

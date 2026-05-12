@@ -32,7 +32,12 @@
 
 ### 현재 상태
 
-- 구현/로컬 검증 완료, 커밋/배포 진행 중.
+- 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 운영 수동 검수 대기.
+- Runtime commit: `eb7e0fc feat: add rich mail editor and scope ai prompts`
+- Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS
+- Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS
+- 운영 smoke OK: `/reporting/login/`, `/ai-workspace/`, `/ai-workspace/?department_id=81`, `/mailbox/`
+- 다음 행동: 사용자가 운영에서 AI Workspace 상세 추천 질문 스코프와 메일 리치 에디터 발송을 수동 검수한다. 검수 전에는 다음 구현 작업을 시작하지 않는다.
 
 ---
 

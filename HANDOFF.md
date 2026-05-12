@@ -14,83 +14,72 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote group notes, mailbox attachment visibility/download, mail internal CC selection, document bold removal, and quote item note row expansion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+React rich mail editor and AI Workspace detail prompt scoping are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
 
-Runtime commits:
+Runtime commit:
 
 ```text
-14606a4 fix: repair quote notes and mailbox attachments
-97513a5 fix: expand quote item note rows
+eb7e0fc feat: add rich mail editor and scope ai prompts
 ```
 
 Implemented:
 
-- `ScheduleQuoteGroupNote` stores quote extra notes per schedule and quote group.
-- Existing `Schedule.quote_extra_notes` values are copied into the default quote group by migration `0098`.
-- Schedule detail and delivery item update APIs support `quoteGroupNotes`.
-- Document variables `기타사항` and `견적기타사항` use the selected quote group's note.
-- React schedule detail shows one extra-note textarea per quote group and a read-only group-note list.
-- Mail compose/reply supports an "include internal staff CC" option. Internal employee emails are merged into CC only when checked.
-- Received mail body text strips style/script blocks and CSS text artifacts such as `p{margin-top:0px;margin-bottom:0px;}`.
-- Gmail and IMAP received attachment metadata is saved to `EmailLog.attachments_info`.
-- React mailbox thread view shows attachment download links. Gmail messages missing attachment metadata are lazily refreshed when opening the thread.
-- Authenticated mailbox attachment download endpoint serves Gmail attachments, IMAP DB-stored attachments, and generated document attachments.
-- Quotation and transaction statement XLSX/PDF generation removes bold formatting from styles/rich text.
-- Quote item note cells using `{{품목N_적요}}` or `{{품목N_비고}}` get wrap text and expanded row height so long notes are not clipped in PDF.
+- React `/mailbox/` compose/reply body now uses a rich contenteditable editor instead of a plain textarea.
+- Editor toolbar supports bold, italic, underline, font family, font size, foreground/background color, ordered/unordered lists, links, uploaded images, pasted/dropped images, and remove formatting.
+- React mail send payload includes `body_html` through `bodyHtml`.
+- Existing `/reporting/upload-image/` endpoint is reused for inline editor images.
+- Frontend HTML is cleaned before storing/sending, and backend outgoing HTML is sanitized again before Gmail/SMTP delivery.
+- Plain text mail fallback remains available; when only safe HTML is present the server derives text from HTML.
+- `/ai-workspace/?department_id=...` now scopes recommended prompt/question candidates to the requested accessible department/customer context.
+- `/ai-workspace/` without a department ID still allows broad recommendation candidates.
 
 Validation:
 
 ```text
-python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\gmail_utils.py reporting\imap_utils.py reporting\imap_views.py reporting\tests.py
-python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
-python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
-cd frontend; node --check server.mjs
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tests.py
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_prompt_targets_to_requested_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_own_ai_operational_data reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_sends_sanitized_rich_html_body reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_normalizes_plain_text_line_breaks_for_html --verbosity=1
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests reporting.tests.ReactMailboxApiTests --verbosity=1
 cd frontend; npm run build
 python manage.py check
 python manage.py makemigrations --check --dry-run
 git diff --check
-git commit -m "fix: repair quote notes and mailbox attachments" && git push origin main
-git commit -m "fix: expand quote item note rows" && git push origin main
-railway up --service web --environment production --message "Deploy quote note row expansion 97513a5" --ci
-railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote notes mailbox frontend 97513a5" --ci
+git commit -m "feat: add rich mail editor and scope ai prompts" && git push origin main
+railway up --service web --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
+railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy rich mail editor and scoped AI prompts eb7e0fc" --ci
 ```
 
 Results:
 
 - Python compile OK.
-- 61 schedule/document/mailbox tests OK.
-- 14 document template tests OK after the quote item note row expansion.
-- React build OK: `assets/index-DE2wnSQU.js` / `assets/index-DQPI3AAP.css`.
-- Node syntax check OK.
+- 4 targeted AI Workspace/mailbox tests OK.
+- 24 AI Workspace/mailbox test classes OK.
+- React build OK: `assets/index-Crb-VKbQ.js` / `assets/index-DdQNAE3O.css`.
 - Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes after migration file creation.
+- No migration changes.
 - `git diff --check` OK with LF→CRLF warnings only.
-- Commits `14606a4` and `97513a5` pushed to `origin/main`.
-- Railway `web` deployment `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS.
-- Railway `sales-note-frontend` deployment `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS.
+- Commit `eb7e0fc` pushed to `origin/main`.
+- Railway `web` deployment `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS.
+- Railway `sales-note-frontend` deployment `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS.
 - Production deploy logs: web migration check OK / gunicorn startup OK; frontend server startup OK.
-- Production smoke OK: backend `/reporting/login/` 200, frontend `/schedules/880/` 200, frontend `/mailbox/` 200.
+- Production smoke OK: backend `/reporting/login/` 200, frontend `/ai-workspace/` 200, frontend `/ai-workspace/?department_id=81` 200, frontend `/mailbox/` 200.
 
 Deployment:
 
-- GitHub push complete: runtime commit `97513a5` is on `main`.
-- Railway `web`: `f1c117d4-f7cc-41ca-81f1-3630c7238a4e` SUCCESS.
-- Railway `sales-note-frontend`: `a159b40a-4105-4473-bea3-580e69f08e1d` SUCCESS.
+- GitHub push complete: runtime commit `eb7e0fc` is on `main`.
+- Railway `web`: `fc0b97e2-b144-4133-8171-2ca1be4375cd` SUCCESS.
+- Railway `sales-note-frontend`: `1053e2a3-603d-472c-8aea-159f0a5cf130` SUCCESS.
 - Product management React migration WIP remains stashed:
   - `stash@{0}: On main: wip-product-management-react-migration-tracked`
   - `stash@{1}: On main: wip-product-management-react-migration`
 
 Manual production test:
 
-1. Open `https://sales-note-frontend-production.up.railway.app/schedules/880/`.
-2. Save separate quote extra notes for quote groups such as `보상판매` and `수리`; refresh and confirm they remain separated.
-3. Generate/download each quote group PDF and confirm only that group's extra note appears.
-4. In a quotation PDF with a long item note, confirm the `적요` text wraps and the row height expands instead of clipping.
-5. Confirm quotation/transaction statement PDFs no longer keep bold formatting from the template.
-6. Open `/mailbox/`, then open a received thread from `kms@kici.co.kr` or another message with attachments.
-7. Confirm the received mail body does not show `p{margin-top:0px...}` CSS text.
-8. Confirm received attachments are visible and download correctly.
-9. Compose/reply from mailbox or a schedule and confirm the internal staff CC checkbox appears. Unchecked should not add internal CC; checked should add the listed internal staff emails.
+1. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=81`.
+2. Confirm recommended questions/prompts are only for the selected department/customer context and do not include unrelated customers or departments.
+3. Open `https://sales-note-frontend-production.up.railway.app/ai-workspace/` and confirm broad recommended questions still appear there.
+4. Open `/mailbox/` and compose or reply to a test mail.
+5. Apply bold, font, color, link, and inline image formatting, then send.
+6. Confirm the recipient sees the formatting and no unsafe/raw HTML or script text is exposed.
 
 Manual test result:
 
