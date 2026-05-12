@@ -14287,3 +14287,19 @@ Railway logs checked
   - Railway `sales-note-frontend`: `ba16ad03-58a5-4760-a619-6586afceb00f` SUCCESS, message `Deploy product replacement search abort fix c9ea77f`
   - Production `/products/` serves `assets/index-BvO4vckD.js` / `assets/index-nGs5khFg.css`
   - Production JS contains the replacement search UI and timeout text.
+
+### 10. Follow-up FOR UPDATE Nullable Join Fix
+
+- Error reported from production: `FOR UPDATE cannot be applied to the nullable side of an outer join`
+- Root cause: product reference replacement used `select_for_update()` together with `select_related('schedule', 'history')` on nullable `DeliveryItem` foreign keys, causing PostgreSQL to reject row locking across nullable outer joins.
+- Fix commit: `ab08037 fix: avoid locking nullable product reference joins`
+- Fix: lock only the `DeliveryItem` rows, then query related `Schedule` IDs separately when delivery-history synchronization is needed. The legacy whole-product replacement helper was adjusted the same way.
+- Validation:
+  - `python -m py_compile reporting\views.py reporting\tests.py` → OK
+  - `python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=1` → Ran 7 tests, OK
+  - `python manage.py check` → OK
+  - `python manage.py makemigrations --check --dry-run` → No changes detected
+  - `git diff --check` → OK (LF→CRLF warning only)
+- Deployment:
+  - Railway `web`: `d931edd2-6695-4623-aaab-4f0b4c315c67` SUCCESS, commit `ab08037`
+  - Production backend smoke: `/reporting/api/products/?limit=1` redirects anonymous users to login as expected.
