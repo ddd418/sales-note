@@ -27,6 +27,15 @@
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/login/`, `/reporting/api/documents/` 보호 smoke check
 
+### 완료 상태
+
+- Runtime commit: `9b24fcf fix: normalize quote salesperson name order`
+- Railway `web`: `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS
+- `sales-note-frontend`: 변경 없음.
+- 로컬 검증 OK: 문서 템플릿 API 12개 테스트, Django check, migration dry-run, diff check.
+- 운영 smoke OK: `/reporting/login/` 200, `/reporting/api/documents/` 401, `/documents/` 200, `/schedules/879/` 200.
+- 다음 행동: 사용자가 운영에서 견적서 PDF 담당자명이 `안재현`으로 표시되는지 수동 검수한다. 검수 전에는 다음 구현 작업을 시작하지 않는다.
+
 ### 이후 대기 작업
 
 - 모든 현재 작업이 끝난 뒤 제품관리 Django 화면을 React로 전환한다.

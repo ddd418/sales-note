@@ -14,81 +14,83 @@ The long-term goal is to unify the CRM frontend into React while keeping Django 
 
 ## Current Task
 
-Quote document grouping, generated document registration, automatic quote mail attachment, and registered document deletion are implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+Quote salesperson name order normalization is implemented, locally verified, pushed, deployed to production, and smoke-tested. User manual production testing is pending.
+
+Runtime commit:
+
+```text
+9b24fcf fix: normalize quote salesperson name order
+```
+
+Implemented:
+
+- Document template data and PDF generation now use a quote/document-specific salesperson name helper.
+- If a user is correctly stored as `first_name=재현`, `last_name=안`, quote variables render `안재현`.
+- If a legacy user was stored through the old reversed labels as `first_name=안`, `last_name=재현`, quote variables also render `안재현`.
+- The salesperson variables affected are `실무자`, `영업담당자`, and `담당영업`.
+- Admin/manager user create/edit form labels now match Django field semantics: `first_name=이름`, `last_name=성`.
+- Legacy user list/profile name displays were changed to `성+이름` order.
+- No DB model or migration changes.
+
+Validation:
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
+git commit -m "fix: normalize quote salesperson name order" && git push origin main
+railway deployment list --service web --environment production --limit 2 --json
+railway logs 5d6450fb-896a-4e89-b851-c99b083785bf --service web --environment production --deployment --lines 120
+```
+
+Results:
+
+- Python compile OK.
+- 12 document template API tests OK.
+- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
+- No migration changes.
+- `git diff --check` OK with LF→CRLF warnings only.
+- Commit `9b24fcf` pushed to `origin/main`.
+- Railway `web` deployment `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS.
+- Production deploy log: no migrations to apply, gunicorn startup OK.
+- Production smoke OK: backend `/reporting/login/` 200, backend `/reporting/api/documents/` 401, frontend `/documents/` 200, frontend `/schedules/879/` 200.
+
+Deployment:
+
+- GitHub push complete: runtime commit `9b24fcf` is on `main`.
+- Railway `web`: `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS.
+- Railway `sales-note-frontend`: unchanged; no frontend redeploy needed.
+- Production deploy logs show startup OK and no traceback during smoke checks.
+
+Manual production test:
+
+1. Confirm the target user profile stores `이름=재현`, `성=안`.
+2. Open a quote schedule in production and register/download the quote PDF again.
+3. Confirm the quote PDF shows `안재현`, not `재현안`, for `실무자`, `영업담당자`, and `담당영업`.
+4. In admin/manager user create/edit screens, confirm the visible labels are `이름` for first name and `성` for last name.
+
+Manual test result:
+
+- Pending user confirmation.
+
+Queued after this manual test is confirmed:
+
+- Product management Django to React migration.
+- Ecount import/update flow that updates existing products when overlapping product prices/specifications changed.
+- Full product Excel download and paste-based bulk delete.
+- Remove product promotion settings.
+
+## Previous Task
+
+Quote document grouping, generated document registration, automatic quote mail attachment, and registered document deletion are implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual production testing was requested before this hotfix.
 
 Runtime commit:
 
 ```text
 0384e13 feat: split schedule quote documents by group
 ```
-
-Implemented:
-
-- `DeliveryItem.quote_group` stores which quote set each item belongs to, such as `보상판매` or `수리`.
-- `DocumentGenerationLog.quote_group` stores which generated quote PDF belongs to which quote set.
-- Quote schedule document actions are now split by quote group, so one schedule can register/download separate PDFs like `보상판매 견적서` and `수리 견적서`.
-- Document preview/generation filters quotation items by `quote_group` and adds template variables `견적구분`, `견적명`, `견적제목`.
-- Schedule mail auto-attachment attaches all registered quote PDFs for that schedule; if none exist, it auto-generates one PDF per quote group before sending.
-- Generated PDF files for quotations, transaction statements, and delivery notes appear in the registered document list.
-- React schedule detail can delete registered generated documents when the schedule owner has edit permission.
-- New DB migration: `reporting/migrations/0097_quote_document_groups.py`.
-
-Validation:
-
-```text
-python -m py_compile reporting\models.py reporting\views.py reporting\gmail_views.py reporting\tests.py
-python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
-python manage.py check
-python manage.py makemigrations --check --dry-run
-cd frontend; npm run build
-cd frontend; node --check server.mjs
-git diff --check
-git commit -m "feat: split schedule quote documents by group" && git push origin main
-railway up frontend --path-as-root --service sales-note-frontend --environment production --message "Deploy quote document groups 0384e13" --ci
-railway deployment list --service web --environment production --limit 2 --json
-railway deployment list --service sales-note-frontend --environment production --limit 2 --json
-railway logs b191502b-10bc-4e9b-973f-756bb2c5b3c0 --service web --environment production --deployment --lines 160
-railway logs 3fb901ec-e5ec-49f8-aa2d-5d568f018ede --service sales-note-frontend --environment production --deployment --lines 80
-```
-
-Results:
-
-- Python compile OK.
-- 54 React mailbox/document/schedules API tests OK.
-- React build OK: `assets/index-BG4g7IVe.js` / `assets/index-1JjkoDo3.css`.
-- Node syntax check OK.
-- Django check OK with `EMAIL_ENCRYPTION_KEY` warning only.
-- No migration changes after `0097_quote_document_groups` creation.
-- `git diff --check` OK with LF→CRLF warnings only.
-- Commit `0384e13` pushed to `origin/main`.
-- Railway `web` deployment `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS.
-- Railway `sales-note-frontend` deployment `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS.
-- `reporting.0097_quote_document_groups` migration applied OK in production deploy log.
-- Production smoke OK: `/schedules/879/` 200, `/mailbox/` 200, `/documents/` 200, new JS/CSS assets 200, `/reporting/login/` 200.
-- Protection smoke OK: unauthenticated `/reporting/api/schedules/879/` 401 and generated document delete POST 403.
-
-Deployment:
-
-- GitHub push complete: runtime commit `0384e13` is on `main`.
-- Railway `web`: `b191502b-10bc-4e9b-973f-756bb2c5b3c0` SUCCESS.
-- Railway `sales-note-frontend`: `3fb901ec-e5ec-49f8-aa2d-5d568f018ede` SUCCESS.
-- Production deploy logs show migration/startup OK and no traceback during smoke checks.
-
-Manual production test:
-
-1. Open `https://sales-note-frontend-production.up.railway.app/schedules/879/` or another quote schedule.
-2. Edit quote items and enter different `견적서 구분` values, for example `보상판매` and `수리`; save and refresh.
-3. Confirm the document panel shows separate actions such as `보상판매 견적서` and `수리 견적서`.
-4. Click each quote group's `PDF 등록/다운로드` and confirm separate registered documents appear under `등록된 서류`.
-5. Click the delete button for one registered document and confirm it disappears after confirmation/refresh.
-6. Send mail from that quote schedule and confirm all remaining registered quote PDFs are attached.
-7. For a delivery schedule, generate a transaction statement PDF and confirm it appears in `등록된 서류` and can be deleted, while quote PDFs are not auto-attached to delivery mail.
-
-Manual test result:
-
-- Pending user confirmation.
-
-## Previous Task
 
 Quote PDF A4 auto-fit hotfix is implemented, locally verified, pushed, deployed to production, smoke-tested, and user manual PDF output testing is complete.
 

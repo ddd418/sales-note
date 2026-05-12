@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-05-12 — Quote Salesperson Name Order Normalization
+
+**상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
+
+### 요약
+
+견적서 서류 변수와 PDF 생성에서 담당자명이 `이름+성`처럼 `재현안`으로 보이는 문제를 보정했습니다. 정상 저장된 `first_name=재현`, `last_name=안` 계정과, 과거 사용자 생성/수정 화면 라벨 혼동으로 뒤집혀 저장된 `first_name=안`, `last_name=재현` 계정 모두 견적서에는 `안재현`으로 들어갑니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 문서 생성 전용 담당자명 helper 추가, 견적서 변수/PDF 생성에서 helper 사용, 사용자 생성/수정 폼의 성/이름 라벨 보정
+- `reporting/templates/reporting/user_create.html`, `reporting/templates/reporting/user_edit.html`: 관리자 사용자 생성/수정 화면 라벨 보정
+- `reporting/templates/reporting/user_list.html`, `reporting/templates/reporting/manager_user_list.html`, `reporting/templates/reporting/profile.html`: 사용자명 표시를 성+이름 순서로 보정
+- `reporting/tests.py`: 정상 저장/과거 역저장 한글 이름 케이스 회귀 테스트 추가
+- `AGENT_PLAN.md`: 현재 작업 및 이후 제품관리 대기 작업 기록
+
+### CRM 개선
+
+- 견적서의 `실무자`, `영업담당자`, `담당영업` 변수에 한국식 성+이름 순서가 안정적으로 반영됩니다.
+- 사용자 관리 화면의 신규 입력 라벨을 바로잡아 이후 계정 생성/수정 시 성과 이름이 뒤집혀 저장될 가능성을 줄였습니다.
+
+### 기존 기능 보존
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 견적서 변수, 견적서 구분, PDF 등록/다운로드, 메일 자동 첨부 흐름은 유지했습니다.
+- 비한글 이름이나 성/이름 판단이 애매한 경우는 기존 Django 의미인 `last_name + first_name`을 유지합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 12 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "fix: normalize quote salesperson name order" && git push origin main
+→ Commit 9b24fcf pushed to origin/main
+
+railway deployment list --service web --environment production --limit 3 --json
+→ web deployment 5d6450fb-896a-4e89-b851-c99b083785bf SUCCESS for commit 9b24fcf
+
+railway logs 5d6450fb-896a-4e89-b851-c99b083785bf --service web --environment production --deployment --lines 120
+→ No migrations to apply, gunicorn startup OK
+
+Production smoke requests
+→ /reporting/login/ 200, /reporting/api/documents/ 401, frontend /documents/ 200, frontend /schedules/879/ 200
+```
+
+### 알려진 제한
+
+- 운영 로그인 세션 없이 실제 견적서 PDF 안의 이름 텍스트까지 자동 확인하지는 못했습니다.
+- `안재현`처럼 한 글자 성 + 두 글자 이름 형태는 양방향으로 보정하지만, 드문 성명 조합은 기존 `last_name + first_name` 규칙을 따릅니다.
+
+### 배포 상태
+
+- Runtime commit: `9b24fcf fix: normalize quote salesperson name order`
+- GitHub push: `main` 반영 완료
+- Railway `web`: `5d6450fb-896a-4e89-b851-c99b083785bf` SUCCESS
+- Railway `sales-note-frontend`: 변경 없음, 재배포 불필요
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 프로필 또는 사용자 정보가 `이름=재현`, `성=안`인지 확인합니다.
+2. quote 일정에서 견적서 PDF를 다시 등록/다운로드합니다.
+3. 견적서의 `실무자`, `영업담당자`, `담당영업` 위치가 `안재현`으로 표시되는지 확인합니다.
+4. 관리자/매니저 사용자 생성 또는 수정 화면에서 `이름` 입력란과 `성` 입력란 라벨이 올바른지 확인합니다.
+
+### 사용자 수동검수 결과
+
+- 대기 중.
+
+---
+
 ## 2026-05-12 — Quote Document Groups And Registered Document Deletion
 
 **상태**: 구현/로컬 검증/푸시/운영 배포/스모크 완료, 사용자 수동검수 대기
