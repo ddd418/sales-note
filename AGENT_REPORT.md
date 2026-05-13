@@ -15036,3 +15036,93 @@ Railway logs checked
 - Deployment:
   - Railway `web`: `d931edd2-6695-4623-aaab-4f0b4c315c67` SUCCESS, commit `ab08037`
   - Production backend smoke: `/reporting/api/products/?limit=1` redirects anonymous users to login as expected.
+
+---
+
+## M1 Commercial Schedule Consistency Panel — 일정 상세 정합성 패널 (2026-05-13)
+
+### 1. Summary
+
+React 일정 상세 화면에 견적/납품 정합성 패널을 추가했습니다. 기존 `/reporting/api/schedules/<id>/` 응답에 읽기 전용 `commercialChecks` 객체를 추가해 견적 구분별 금액, 납품 반영 금액, 등록 문서, 자동첨부 후보, 납품 노트 금액 불일치, 완료 견적 잔여 품목을 확인할 수 있게 했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | M1 정합성 패널 작업 계획과 no-migration 판단 기록 |
+| `reporting/views.py` | schedule detail API `commercialChecks` serializer 추가 |
+| `reporting/tests.py` | 견적/납품 정합성 payload 회귀 테스트 추가 |
+| `frontend/src/api.ts` | `commercialChecks` 선택 필드 타입과 fallback 추가 |
+| `frontend/src/App.tsx` | React 일정 상세 정합성 패널 렌더링 추가 |
+| `frontend/src/styles.css` | 정합성 패널 desktop/mobile 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 견적 일정에서 견적서 구분별 품목 수, 견적 금액, 납품 반영 금액, 미납 잔액, 등록 견적서 PDF 수를 확인할 수 있습니다.
+- 납품 일정에서 납품 품목 금액, 원본 견적 연결, 등록 서류, 자동첨부 후보 상태를 확인할 수 있습니다.
+- 경고 항목으로 등록 견적서 누락, 자동첨부 후보 없음, 납품 노트 금액 불일치, 완료 견적 잔여 품목을 표시합니다.
+- 기존 품목 저장, 서류 생성, 메일 발송, Django fallback 링크는 유지했습니다.
+
+### 4. Existing Functionality Preserved
+
+- `/reporting/*` routes, Django schedule detail/form fallback, document generation, mail compose links, delivery item editing API를 유지했습니다.
+- 새 DB 필드와 migration은 추가하지 않았습니다.
+- `commercialChecks`는 React 타입에서 선택 필드로 처리해 구버전 API 응답에도 안전하게 동작합니다.
+
+### 5. Commands Run and Results
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 48 tests, OK
+
+cd frontend && npm run build
+→ OK, dist/assets/index-DNlZxWfV.js / dist/assets/index-Cc9yIeCW.css generated
+→ Vite chunk size warning only
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Local Browser Smoke
+
+- Local Django/React servers opened at `127.0.0.1:8000` and `127.0.0.1:5173`.
+- A local smoke schedule was loaded at `/schedules/561/`.
+- Desktop and 390px mobile viewport snapshots showed the 정합성 panel rendering with:
+  - 납품 금액 `₩198,000`
+  - 자동첨부 후보 없음 warning
+  - 납품 노트 금액 `₩1,000 / ₩198,000` mismatch warning
+- Only observed console error was missing local `favicon.ico`.
+
+### 7. Known Limitations
+
+- M1 is read-only diagnostics only. It does not auto-fix stale quote completion, missing documents, or mismatched delivery notes.
+- Production email auto-attachment behavior still needs a real login/session manual test after deployment.
+- The legacy document panel still has its existing auto-generation copy; the new 정합성 panel separately flags missing auto-attach candidates when no registered PDF/template exists.
+
+### 8. Recommended Next Task
+
+M2: 견적 불러오기/부분 납품 방어 강화. The next step should make duplicate quote-item delivery and partial completion rules more explicit in React UI and backend validation.
+
+### 9. Production Deployment Status
+
+- Pending commit, push, Railway deployment, and production smoke check.
+
+### 10. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/schedules/<일정ID>/`
+2. 견적 일정 상세를 열고 `견적/납품 정합성` 패널이 표시되는지 확인합니다.
+3. 견적서 구분별 품목 수, 견적 금액, 납품 반영, 미납 잔액, 등록 견적서 수가 실제 일정 품목과 맞는지 확인합니다.
+4. 납품 일정 상세를 열고 납품 금액, 원본 견적 연결, 자동첨부 후보, 납품 노트 금액 경고가 표시되는지 확인합니다.
+5. 기존 `견적 불러오기`, `편집`, `서류 다운로드`, `메일 발송`, `보고 작성` 링크가 계속 동작하는지 확인합니다.

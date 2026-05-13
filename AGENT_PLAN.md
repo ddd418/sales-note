@@ -3918,3 +3918,30 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 서비스 배포 및 운영 `/reporting/weekly-reports/create/` 수동검수 절차 제공
+
+---
+
+## M1 Commercial Schedule Consistency Panel — 일정 상세 정합성 패널
+
+**목표**: React 일정 상세 화면에서 견적/납품/서류/메일 자동첨부 상태를 한눈에 확인할 수 있는 읽기 전용 정합성 패널을 추가한다.
+
+**작업 범위**:
+
+- 기존 `/reporting/api/schedules/<id>/` 응답에 `commercialChecks` 객체를 추가한다.
+- `commercialChecks`는 기존 `Schedule`, `DeliveryItem`, `DocumentGenerationLog`, `DocumentTemplate`, `EmailLog` 데이터를 읽어 계산한다.
+- 견적 일정은 견적서 구분별 품목 수/금액, 등록 견적서 PDF 수, 자동첨부 후보 상태, 납품 반영 금액/잔여 금액, 완료 견적의 재불러오기 후보 잔류 여부를 표시한다.
+- 납품 일정은 납품 품목 총액, 연결된 원본 견적 수, 등록 거래명세서 PDF, 자동첨부 후보 상태, 납품 노트 금액 불일치 가능성을 표시한다.
+- React 일정 상세에 경고/정상/정보 상태를 표시하는 별도 내부 CRM 패널을 추가한다.
+- 기존 품목 저장, 서류 생성, 메일 발송 링크와 `/reporting/*` legacy fallback은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 모델과 생성 로그/첨부 상태만 읽어 계산한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 API/React 일정 상세 smoke check

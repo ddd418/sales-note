@@ -4113,6 +4113,89 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn('quote_group=', actions[1]['formats'][0]['href'])
         self.assertEqual(actions[0]['itemCount'], 1)
 
+    def test_schedules_detail_api_includes_quote_commercial_checks(self):
+        import datetime
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        quote_schedule = self._create_schedule(
+            self.user,
+            '견적정합성',
+            activity_type='quote',
+            status='completed',
+        )
+        delivered_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Trade In PCR',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+            quote_group='보상판매',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Repair Buffer',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+            quote_group='수리',
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=quote_schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(11, 0),
+            activity_type='delivery',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            source_quote_schedule=quote_schedule,
+            source_quote_item=delivered_item,
+            item_name='Trade In PCR',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            quote_group='보상판매',
+        )
+        log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=quote_schedule,
+            user=self.user,
+            transaction_number='Q-CHECK-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('trade-in-quote.pdf', b'%PDF quote', content_type='application/pdf'),
+            filename='trade-in-quote.pdf',
+            file_size=10,
+            quote_group='보상판매',
+        )
+        self.addCleanup(log.file.delete, False)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[quote_schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        checks = response.json()['commercialChecks']
+        self.assertTrue(checks['applies'])
+        self.assertEqual(checks['kind'], 'quote')
+        self.assertEqual(checks['summary']['quoteGroupCount'], 2)
+        self.assertEqual(checks['summary']['quoteItemCount'], 2)
+        self.assertEqual(checks['summary']['quoteAmount'], 275000)
+        self.assertEqual(checks['summary']['deliveredAmount'], 110000)
+        self.assertEqual(checks['summary']['remainingAmount'], 165000)
+        groups = {group['quoteGroup']: group for group in checks['quoteGroups']}
+        self.assertEqual(groups['보상판매']['registeredQuotationCount'], 1)
+        self.assertEqual(groups['보상판매']['fulfillmentStatus'], 'partial')
+        self.assertEqual(groups['보상판매']['deliveredAmount'], 110000)
+        self.assertEqual(groups['보상판매']['remainingAmount'], 110000)
+        self.assertEqual(groups['수리']['registeredQuotationCount'], 0)
+        codes = [warning['code'] for warning in checks['warnings']]
+        self.assertIn('missing_registered_quotation', codes)
+        self.assertIn('missing_auto_attach_candidate', codes)
+        self.assertIn('completed_quote_still_importable', codes)
+
     def test_schedules_detail_api_includes_registered_generated_documents(self):
         schedule = self._create_schedule(self.user, '등록서류목록', activity_type='delivery')
         log = DocumentGenerationLog.objects.create(
@@ -4142,6 +4225,45 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(registered['downloadHref'], reverse('reporting:generated_document_download', args=[log.id]))
         self.assertEqual(registered['deleteHref'], reverse('reporting:generated_document_delete', args=[log.id]))
         self.assertTrue(registered['canDelete'])
+
+    def test_schedules_detail_api_includes_delivery_commercial_checks(self):
+        from reporting.models import DeliveryItem, History
+
+        schedule = self._create_schedule(self.user, '납품정합성', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='PCR Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+            discount_rate=10,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            schedule=schedule,
+            action_type='delivery_schedule',
+            delivery_items='PCR Kit 2EA',
+            delivery_amount=1000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        checks = response.json()['commercialChecks']
+        self.assertTrue(checks['applies'])
+        self.assertEqual(checks['kind'], 'delivery')
+        self.assertEqual(checks['summary']['deliveryItemCount'], 1)
+        self.assertEqual(checks['summary']['deliveryAmount'], 198000)
+        self.assertFalse(checks['summary']['autoAttachReady'])
+        self.assertEqual(checks['delivery']['autoAttachStatus'], 'missing')
+        self.assertEqual(checks['delivery']['historyAmountMismatches'][0]['noteAmount'], 1000)
+        self.assertEqual(checks['delivery']['historyAmountMismatches'][0]['itemAmount'], 198000)
+        codes = [warning['code'] for warning in checks['warnings']]
+        self.assertIn('missing_auto_attach_candidate', codes)
+        self.assertIn('delivery_note_amount_mismatch', codes)
 
     def test_generated_document_delete_api_allows_owner_only(self):
         schedule = self._create_schedule(self.user, '등록서류삭제', activity_type='quote')

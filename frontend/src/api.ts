@@ -1751,6 +1751,86 @@ export type ScheduleDocumentsData = {
   items: ScheduleDocumentAction[];
 };
 
+export type ScheduleCommercialWarning = {
+  code: string;
+  severity: 'info' | 'warning' | 'error' | string;
+  message: string;
+  context?: Record<string, string | number | boolean | null | undefined>;
+};
+
+export type ScheduleCommercialQuoteGroup = {
+  quoteGroup: string;
+  quoteGroupLabel: string;
+  itemCount: number;
+  quoteAmount: number;
+  deliveredAmount: number;
+  remainingAmount: number;
+  registeredQuotationCount: number;
+  templateCount: number;
+  autoAttachStatus: string;
+  autoAttachLabel: string;
+  fulfillmentStatus: string;
+  fulfillmentLabel: string;
+  status: string;
+  statusLabel: string;
+  warnings: ScheduleCommercialWarning[];
+};
+
+export type ScheduleCommercialSourceQuote = {
+  sourceQuoteScheduleId: number;
+  quoteGroup: string;
+  quoteGroupLabel: string;
+  itemCount: number;
+  amount: number;
+};
+
+export type ScheduleCommercialHistoryMismatch = {
+  historyId: number;
+  noteAmount: number;
+  itemAmount: number;
+  createdAt: string | null;
+};
+
+export type ScheduleCommercialChecks = {
+  applies: boolean;
+  kind: string;
+  status: string;
+  statusLabel: string;
+  summary: {
+    quoteGroupCount: number;
+    quoteItemCount: number;
+    quoteAmount: number;
+    deliveredAmount: number;
+    remainingAmount: number;
+    deliveryItemCount: number;
+    deliveryAmount: number;
+    registeredDocumentCount: number;
+    registeredQuotationCount: number;
+    autoAttachReady: boolean;
+    emailThreadCount: number;
+    warningCount: number;
+  };
+  quoteGroups: ScheduleCommercialQuoteGroup[];
+  delivery: {
+    itemCount: number;
+    totalAmount: number;
+    sourceQuoteCount: number;
+    sourceQuoteItemCount: number;
+    historyAmountMismatches: ScheduleCommercialHistoryMismatch[];
+    sourceQuotes: ScheduleCommercialSourceQuote[];
+    registeredStatementCount?: number;
+    templateCount?: number;
+    autoAttachStatus?: string;
+    autoAttachLabel?: string;
+  };
+  documents: {
+    registeredDocumentCount: number;
+    registeredQuotationCount: number;
+    autoAttachLabel: string;
+  };
+  warnings: ScheduleCommercialWarning[];
+};
+
 export type ScheduleDocumentPreviewData = {
   success?: boolean;
   error?: string;
@@ -2189,6 +2269,7 @@ export type ScheduleDetailData = {
   relatedNotes: NoteItem[];
   deliveryItems: ScheduleDeliveryItem[];
   documents: ScheduleDocumentsData;
+  commercialChecks?: ScheduleCommercialChecks;
 };
 
 export type ScheduleEditResponse = ScheduleDetailData & {
@@ -3159,6 +3240,41 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     registeredQuotationCount: 0,
     autoAttachLabel: '',
     items: [],
+  },
+  commercialChecks: {
+    applies: false,
+    kind: '',
+    status: 'info',
+    statusLabel: '정보',
+    summary: {
+      quoteGroupCount: 0,
+      quoteItemCount: 0,
+      quoteAmount: 0,
+      deliveredAmount: 0,
+      remainingAmount: 0,
+      deliveryItemCount: 0,
+      deliveryAmount: 0,
+      registeredDocumentCount: 0,
+      registeredQuotationCount: 0,
+      autoAttachReady: false,
+      emailThreadCount: 0,
+      warningCount: 0,
+    },
+    quoteGroups: [],
+    delivery: {
+      itemCount: 0,
+      totalAmount: 0,
+      sourceQuoteCount: 0,
+      sourceQuoteItemCount: 0,
+      historyAmountMismatches: [],
+      sourceQuotes: [],
+    },
+    documents: {
+      registeredDocumentCount: 0,
+      registeredQuotationCount: 0,
+      autoAttachLabel: '',
+    },
+    warnings: [],
   },
 };
 
@@ -5430,6 +5546,7 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         registeredQuotationCount: payload.documents?.registeredQuotationCount ?? emptyScheduleDetailData.documents.registeredQuotationCount,
         autoAttachLabel: payload.documents?.autoAttachLabel ?? emptyScheduleDetailData.documents.autoAttachLabel,
       },
+      commercialChecks: payload.commercialChecks ?? emptyScheduleDetailData.commercialChecks,
     };
   } catch (error) {
     return {

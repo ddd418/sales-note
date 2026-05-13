@@ -5723,6 +5723,150 @@ function saveDownloadedBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(objectUrl);
 }
 
+function commercialCheckStatusClass(status?: string) {
+  if (status === 'warning' || status === 'error') return 'warning';
+  if (status === 'ok') return 'ok';
+  return 'info';
+}
+
+function ScheduleCommercialChecksPanel({ checks }: { checks?: ScheduleDetailData['commercialChecks'] }) {
+  if (!checks?.applies) {
+    return null;
+  }
+
+  const statusClass = commercialCheckStatusClass(checks.status);
+  const isQuote = checks.kind === 'quote';
+  const isDelivery = checks.kind === 'delivery';
+  const autoAttachLabel = isDelivery
+    ? checks.delivery.autoAttachLabel || checks.documents.autoAttachLabel
+    : checks.summary.autoAttachReady
+      ? checks.documents.autoAttachLabel
+      : '메일 자동첨부 후보 없음';
+  const metrics = isQuote
+    ? [
+      { label: '견적 품목', value: `${formatNumber(checks.summary.quoteItemCount)}개` },
+      { label: '견적 금액', value: formatWon(checks.summary.quoteAmount) },
+      { label: '납품 반영', value: formatWon(checks.summary.deliveredAmount) },
+      { label: '미납 잔액', value: formatWon(checks.summary.remainingAmount) },
+    ]
+    : [
+      { label: '납품 품목', value: `${formatNumber(checks.summary.deliveryItemCount)}개` },
+      { label: '납품 금액', value: formatWon(checks.summary.deliveryAmount) },
+      { label: '원본 견적', value: `${formatNumber(checks.delivery.sourceQuoteCount)}건` },
+      { label: '등록 서류', value: `${formatNumber(checks.summary.registeredDocumentCount)}개` },
+    ];
+
+  return (
+    <section className={`schedule-commercial-panel ${statusClass}`} aria-label="견적 납품 정합성">
+      <div className="schedule-commercial-heading">
+        <div>
+          <span className="eyebrow">Commercial check</span>
+          <h3 className="customer-detail-section-heading">견적/납품 정합성</h3>
+        </div>
+        <span className={`schedule-commercial-status ${statusClass}`}>
+          {statusClass === 'warning' ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+          {checks.statusLabel}
+        </span>
+      </div>
+
+      <div className="schedule-commercial-metrics">
+        {metrics.map((metric) => (
+          <div key={metric.label}>
+            <span>{metric.label}</span>
+            <strong>{metric.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {autoAttachLabel ? (
+        <div className={`schedule-commercial-auto ${checks.summary.autoAttachReady ? 'ok' : 'warning'}`}>
+          <FileText size={15} />
+          <span>{autoAttachLabel}</span>
+        </div>
+      ) : null}
+
+      {isQuote && checks.quoteGroups.length > 0 ? (
+        <div className="schedule-commercial-group-list">
+          {checks.quoteGroups.map((group) => (
+            <div className={`schedule-commercial-group ${commercialCheckStatusClass(group.status)}`} key={group.quoteGroup || 'default'}>
+              <div>
+                <strong>{group.quoteGroupLabel}</strong>
+                <span>{[
+                  `${formatNumber(group.itemCount)}개 품목`,
+                  group.fulfillmentLabel,
+                  group.autoAttachLabel,
+                ].filter(Boolean).join(' · ')}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>견적</dt>
+                  <dd>{formatWon(group.quoteAmount)}</dd>
+                </div>
+                <div>
+                  <dt>납품</dt>
+                  <dd>{formatWon(group.deliveredAmount)}</dd>
+                </div>
+                <div>
+                  <dt>잔여</dt>
+                  <dd>{formatWon(group.remainingAmount)}</dd>
+                </div>
+                <div>
+                  <dt>등록</dt>
+                  <dd>{formatNumber(group.registeredQuotationCount)}개</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {isDelivery && checks.delivery.sourceQuotes.length > 0 ? (
+        <div className="schedule-commercial-source-list">
+          <h4>연결된 원본 견적</h4>
+          {checks.delivery.sourceQuotes.map((source) => (
+            <div key={`${source.sourceQuoteScheduleId}-${source.quoteGroup}`}>
+              <span>{[
+                `일정 #${source.sourceQuoteScheduleId}`,
+                source.quoteGroupLabel,
+                `${formatNumber(source.itemCount)}개 품목`,
+              ].filter(Boolean).join(' · ')}</span>
+              <strong>{formatWon(source.amount)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {checks.delivery.historyAmountMismatches.length > 0 ? (
+        <div className="schedule-commercial-source-list warning">
+          <h4>납품 노트 금액</h4>
+          {checks.delivery.historyAmountMismatches.slice(0, 3).map((mismatch) => (
+            <div key={mismatch.historyId}>
+              <span>{mismatch.createdAt ? formatDateTimeLabel(mismatch.createdAt) : `보고 #${mismatch.historyId}`}</span>
+              <strong>{formatWon(mismatch.noteAmount)} / {formatWon(mismatch.itemAmount)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {checks.warnings.length > 0 ? (
+        <div className="schedule-commercial-warning-list">
+          {checks.warnings.map((warning, index) => (
+            <div key={`${warning.code}-${index}`}>
+              <AlertTriangle size={14} />
+              <span>{warning.message}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="schedule-commercial-auto ok">
+          <CheckCircle2 size={15} />
+          <span>현재 확인된 정합성 경고가 없습니다.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ScheduleDocumentsPanel({
   documents,
   deletingDocumentKey,
@@ -7061,6 +7205,7 @@ function ScheduleDetailPage({
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
+          <ScheduleCommercialChecksPanel checks={data.commercialChecks} />
           <ScheduleDocumentsPanel
             documents={data.documents}
             deletingDocumentKey={documentDeletingKey}

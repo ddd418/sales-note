@@ -6499,6 +6499,404 @@ def _schedules_document_actions(schedule, user):
     }
 
 
+def _commercial_warning(code, message, severity='warning', context=None):
+    warning = {
+        'code': code,
+        'severity': severity,
+        'message': message,
+    }
+    if context:
+        warning['context'] = context
+    return warning
+
+
+def _commercial_status(warnings):
+    return 'warning' if warnings else 'ok'
+
+
+def _commercial_status_label(status):
+    return {
+        'ok': '정상',
+        'warning': '주의 필요',
+        'info': '정보',
+    }.get(status, status)
+
+
+def _commercial_item_total(item, quantity=None):
+    from decimal import Decimal
+
+    if quantity is None and item.total_price is not None:
+        return Decimal(str(item.total_price or 0))
+    quantity_value = item.quantity if quantity is None else quantity
+    return _schedules_quote_item_total_for_quantity(item, quantity_value)
+
+
+def _commercial_auto_attach_status(registered_count, template_count):
+    if registered_count > 0:
+        return 'registered', '등록 PDF 자동첨부'
+    if template_count > 0:
+        return 'will_generate', '발송 시 생성 가능'
+    return 'missing', '자동첨부 후보 없음'
+
+
+def _commercial_template_counts(user, document_types):
+    company = getattr(getattr(user, 'userprofile', None), 'company', None)
+    if not company or not document_types:
+        return {}
+    return {
+        row['document_type']: row['count']
+        for row in DocumentTemplate.objects.filter(
+            company=company,
+            document_type__in=document_types,
+            is_active=True,
+        ).values('document_type').annotate(count=Count('id'))
+    }
+
+
+def _commercial_registered_quote_counts(schedule):
+    return {
+        _quote_group_key(row['quote_group']): row['count']
+        for row in _schedule_registered_quote_documents(schedule)
+        .values('quote_group')
+        .annotate(count=Count('id'))
+    }
+
+
+def _commercial_quote_checks(schedule, user, documents, email_thread_count):
+    from decimal import Decimal
+
+    items = list(schedule.delivery_items_set.all().order_by('id'))
+    template_count = _commercial_template_counts(user, ['quotation']).get('quotation', 0)
+    registered_quote_counts = _commercial_registered_quote_counts(schedule)
+    registered_total = sum(registered_quote_counts.values())
+    imported_quantities, has_import_activity = _schedules_quote_item_imported_quantities(
+        schedule,
+        items,
+        include_legacy_matches=True,
+    ) if items else ({}, False)
+
+    warnings = []
+    groups = {}
+    total_quote_amount = Decimal('0')
+    total_delivered_amount = Decimal('0')
+    total_remaining_amount = Decimal('0')
+    total_item_count = 0
+
+    for item in items:
+        group_key = _quote_group_key(item.quote_group)
+        if group_key not in groups:
+            groups[group_key] = {
+                'quoteGroup': group_key,
+                'quoteGroupLabel': _quote_group_label(group_key),
+                'itemCount': 0,
+                'quoteAmount': Decimal('0'),
+                'deliveredAmount': Decimal('0'),
+                'remainingAmount': Decimal('0'),
+                'registeredQuotationCount': registered_quote_counts.get(group_key, 0),
+                'templateCount': template_count,
+                'warnings': [],
+            }
+
+        quantity = Decimal(str(item.quantity or 0))
+        imported_quantity = imported_quantities.get(item.id, Decimal('0'))
+        delivered_quantity = min(imported_quantity, quantity)
+        remaining_quantity = max(quantity - delivered_quantity, Decimal('0'))
+
+        item_quote_amount = _commercial_item_total(item)
+        item_delivered_amount = _commercial_item_total(item, delivered_quantity)
+        item_remaining_amount = _commercial_item_total(item, remaining_quantity)
+
+        groups[group_key]['itemCount'] += 1
+        groups[group_key]['quoteAmount'] += item_quote_amount
+        groups[group_key]['deliveredAmount'] += item_delivered_amount
+        groups[group_key]['remainingAmount'] += item_remaining_amount
+        total_item_count += 1
+        total_quote_amount += item_quote_amount
+        total_delivered_amount += item_delivered_amount
+        total_remaining_amount += item_remaining_amount
+
+        if imported_quantity > quantity:
+            groups[group_key]['warnings'].append(_commercial_warning(
+                'quote_item_overdelivered',
+                f'{item.item_name} 납품 수량이 견적 수량보다 큽니다.',
+                context={
+                    'itemId': item.id,
+                    'quotedQuantity': float(quantity),
+                    'deliveredQuantity': float(imported_quantity),
+                },
+            ))
+
+    if not groups and schedule.expected_revenue:
+        total_quote_amount = Decimal(str(schedule.expected_revenue or 0))
+        groups[''] = {
+            'quoteGroup': '',
+            'quoteGroupLabel': _quote_group_label(''),
+            'itemCount': 0,
+            'quoteAmount': total_quote_amount,
+            'deliveredAmount': Decimal('0'),
+            'remainingAmount': total_quote_amount,
+            'registeredQuotationCount': registered_quote_counts.get('', 0),
+            'templateCount': template_count,
+            'warnings': [],
+        }
+
+    for group in groups.values():
+        auto_status, auto_label = _commercial_auto_attach_status(
+            group['registeredQuotationCount'],
+            template_count,
+        )
+        group['autoAttachStatus'] = auto_status
+        group['autoAttachLabel'] = auto_label
+        if group['itemCount'] > 0 and group['registeredQuotationCount'] == 0:
+            group['warnings'].append(_commercial_warning(
+                'missing_registered_quotation',
+                f'{group["quoteGroupLabel"]} 품목은 있지만 등록된 견적서 PDF가 없습니다.',
+                context={'quoteGroup': group['quoteGroup']},
+            ))
+        if group['itemCount'] > 0 and auto_status == 'missing':
+            group['warnings'].append(_commercial_warning(
+                'missing_auto_attach_candidate',
+                f'{group["quoteGroupLabel"]} 메일 자동첨부 후보가 없습니다.',
+                context={'quoteGroup': group['quoteGroup'], 'documentType': 'quotation'},
+            ))
+        if group['deliveredAmount'] > 0 and group['remainingAmount'] > 0:
+            group['fulfillmentStatus'] = 'partial'
+            group['fulfillmentLabel'] = '부분 납품'
+        elif group['itemCount'] > 0 and group['remainingAmount'] <= 0:
+            group['fulfillmentStatus'] = 'completed'
+            group['fulfillmentLabel'] = '납품 반영 완료'
+        elif group['itemCount'] > 0:
+            group['fulfillmentStatus'] = 'pending'
+            group['fulfillmentLabel'] = '미납'
+        else:
+            group['fulfillmentStatus'] = 'info'
+            group['fulfillmentLabel'] = '품목 없음'
+
+        warnings.extend(group['warnings'])
+
+    if schedule.status == 'completed' and total_remaining_amount > 0 and (has_import_activity or total_delivered_amount > 0):
+        warnings.append(_commercial_warning(
+            'completed_quote_still_importable',
+            '완료된 견적에 미납 품목이 남아 견적 불러오기 후보가 될 수 있습니다.',
+            context={
+                'scheduleId': schedule.id,
+                'remainingAmount': int(total_remaining_amount),
+            },
+        ))
+
+    group_payloads = []
+    for group in groups.values():
+        group_warnings = group['warnings']
+        group_status = _commercial_status(group_warnings)
+        group_payloads.append({
+            'quoteGroup': group['quoteGroup'],
+            'quoteGroupLabel': group['quoteGroupLabel'],
+            'itemCount': group['itemCount'],
+            'quoteAmount': int(group['quoteAmount']),
+            'deliveredAmount': int(group['deliveredAmount']),
+            'remainingAmount': int(group['remainingAmount']),
+            'registeredQuotationCount': group['registeredQuotationCount'],
+            'templateCount': group['templateCount'],
+            'autoAttachStatus': group['autoAttachStatus'],
+            'autoAttachLabel': group['autoAttachLabel'],
+            'fulfillmentStatus': group['fulfillmentStatus'],
+            'fulfillmentLabel': group['fulfillmentLabel'],
+            'status': group_status,
+            'statusLabel': _commercial_status_label(group_status),
+            'warnings': group_warnings,
+        })
+
+    status = _commercial_status(warnings)
+    return {
+        'applies': True,
+        'kind': 'quote',
+        'status': status,
+        'statusLabel': _commercial_status_label(status),
+        'summary': {
+            'quoteGroupCount': len(group_payloads),
+            'quoteItemCount': total_item_count,
+            'quoteAmount': int(total_quote_amount),
+            'deliveredAmount': int(total_delivered_amount),
+            'remainingAmount': int(total_remaining_amount),
+            'deliveryItemCount': 0,
+            'deliveryAmount': 0,
+            'registeredDocumentCount': documents.get('registeredDocumentCount', 0),
+            'registeredQuotationCount': registered_total,
+            'autoAttachReady': bool(registered_total or template_count),
+            'emailThreadCount': email_thread_count,
+            'warningCount': len(warnings),
+        },
+        'quoteGroups': group_payloads,
+        'delivery': {
+            'itemCount': 0,
+            'totalAmount': 0,
+            'sourceQuoteCount': 0,
+            'sourceQuoteItemCount': 0,
+            'historyAmountMismatches': [],
+            'sourceQuotes': [],
+        },
+        'documents': {
+            'registeredDocumentCount': documents.get('registeredDocumentCount', 0),
+            'registeredQuotationCount': documents.get('registeredQuotationCount', 0),
+            'autoAttachLabel': documents.get('autoAttachLabel', ''),
+        },
+        'warnings': warnings,
+    }
+
+
+def _commercial_delivery_checks(schedule, user, documents, email_thread_count):
+    from decimal import Decimal
+
+    items = list(schedule.delivery_items_set.all().order_by('id'))
+    template_count = _commercial_template_counts(user, ['transaction_statement']).get('transaction_statement', 0)
+    registered_statement_count = _schedule_registered_documents(schedule).filter(
+        document_type='transaction_statement',
+    ).count()
+    auto_status, auto_label = _commercial_auto_attach_status(registered_statement_count, template_count)
+    total_amount = Decimal('0')
+    source_quotes = {}
+
+    for item in items:
+        item_amount = _commercial_item_total(item)
+        total_amount += item_amount
+        if item.source_quote_schedule_id:
+            key = (item.source_quote_schedule_id, _quote_group_key(item.quote_group))
+            if key not in source_quotes:
+                source_quotes[key] = {
+                    'sourceQuoteScheduleId': item.source_quote_schedule_id,
+                    'quoteGroup': _quote_group_key(item.quote_group),
+                    'quoteGroupLabel': _quote_group_label(item.quote_group),
+                    'itemCount': 0,
+                    'amount': Decimal('0'),
+                }
+            source_quotes[key]['itemCount'] += 1
+            source_quotes[key]['amount'] += item_amount
+
+    history_amount_mismatches = []
+    for history in schedule.histories.filter(
+        action_type='delivery_schedule',
+        delivery_amount__isnull=False,
+    ).order_by('-created_at'):
+        note_amount = _money_int(history.delivery_amount)
+        item_amount = int(total_amount)
+        if note_amount != item_amount:
+            history_amount_mismatches.append({
+                'historyId': history.id,
+                'noteAmount': note_amount,
+                'itemAmount': item_amount,
+                'createdAt': _datetime_or_none(history.created_at),
+            })
+
+    warnings = []
+    if items and auto_status == 'missing':
+        warnings.append(_commercial_warning(
+            'missing_auto_attach_candidate',
+            '거래명세서 메일 자동첨부 후보가 없습니다.',
+            context={'documentType': 'transaction_statement'},
+        ))
+    if history_amount_mismatches:
+        warnings.append(_commercial_warning(
+            'delivery_note_amount_mismatch',
+            '납품 노트 금액과 실제 납품 품목 합계가 일치하지 않습니다.',
+            context={'mismatchCount': len(history_amount_mismatches)},
+        ))
+    if schedule.activity_type == 'delivery' and not items:
+        warnings.append(_commercial_warning(
+            'delivery_without_items',
+            '납품 일정에 등록된 납품 품목이 없습니다.',
+        ))
+
+    source_quote_payloads = [
+        {
+            **source,
+            'amount': int(source['amount']),
+        }
+        for source in source_quotes.values()
+    ]
+    status = _commercial_status(warnings)
+    return {
+        'applies': True,
+        'kind': 'delivery',
+        'status': status,
+        'statusLabel': _commercial_status_label(status),
+        'summary': {
+            'quoteGroupCount': 0,
+            'quoteItemCount': 0,
+            'quoteAmount': 0,
+            'deliveredAmount': 0,
+            'remainingAmount': 0,
+            'deliveryItemCount': len(items),
+            'deliveryAmount': int(total_amount),
+            'registeredDocumentCount': documents.get('registeredDocumentCount', 0),
+            'registeredQuotationCount': documents.get('registeredQuotationCount', 0),
+            'autoAttachReady': auto_status != 'missing',
+            'emailThreadCount': email_thread_count,
+            'warningCount': len(warnings),
+        },
+        'quoteGroups': [],
+        'delivery': {
+            'itemCount': len(items),
+            'totalAmount': int(total_amount),
+            'sourceQuoteCount': len({source['sourceQuoteScheduleId'] for source in source_quote_payloads}),
+            'sourceQuoteItemCount': len([item for item in items if item.source_quote_item_id]),
+            'historyAmountMismatches': history_amount_mismatches,
+            'sourceQuotes': source_quote_payloads,
+            'registeredStatementCount': registered_statement_count,
+            'templateCount': template_count,
+            'autoAttachStatus': auto_status,
+            'autoAttachLabel': auto_label,
+        },
+        'documents': {
+            'registeredDocumentCount': documents.get('registeredDocumentCount', 0),
+            'registeredQuotationCount': documents.get('registeredQuotationCount', 0),
+            'autoAttachLabel': documents.get('autoAttachLabel', ''),
+        },
+        'warnings': warnings,
+    }
+
+
+def _schedules_commercial_checks(schedule, user, documents, email_thread_count):
+    if schedule.activity_type == 'quote':
+        return _commercial_quote_checks(schedule, user, documents, email_thread_count)
+    if schedule.activity_type == 'delivery':
+        return _commercial_delivery_checks(schedule, user, documents, email_thread_count)
+    return {
+        'applies': False,
+        'kind': schedule.activity_type,
+        'status': 'info',
+        'statusLabel': _commercial_status_label('info'),
+        'summary': {
+            'quoteGroupCount': 0,
+            'quoteItemCount': 0,
+            'quoteAmount': 0,
+            'deliveredAmount': 0,
+            'remainingAmount': 0,
+            'deliveryItemCount': 0,
+            'deliveryAmount': 0,
+            'registeredDocumentCount': 0,
+            'registeredQuotationCount': 0,
+            'autoAttachReady': False,
+            'emailThreadCount': email_thread_count,
+            'warningCount': 0,
+        },
+        'quoteGroups': [],
+        'delivery': {
+            'itemCount': 0,
+            'totalAmount': 0,
+            'sourceQuoteCount': 0,
+            'sourceQuoteItemCount': 0,
+            'historyAmountMismatches': [],
+            'sourceQuotes': [],
+        },
+        'documents': {
+            'registeredDocumentCount': 0,
+            'registeredQuotationCount': 0,
+            'autoAttachLabel': '',
+        },
+        'warnings': [],
+    }
+
+
 def _schedules_sync_delivery_histories(schedule, actor, created_count):
     if schedule.activity_type != 'delivery':
         return
@@ -6579,6 +6977,13 @@ def _schedules_detail_payload(request, schedule, user_profile):
         schedule=schedule,
         gmail_thread_id__isnull=False,
     ).exclude(gmail_thread_id='').values('gmail_thread_id').distinct().count()
+    documents = _schedules_document_actions(schedule, request.user)
+    commercial_checks = _schedules_commercial_checks(
+        schedule,
+        request.user,
+        documents,
+        email_thread_count,
+    )
 
     detail = {
         **schedule_payload,
@@ -6626,7 +7031,8 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
-        'documents': _schedules_document_actions(schedule, request.user),
+        'documents': documents,
+        'commercialChecks': commercial_checks,
         'relatedNotes': related_notes,
         'deliveryItems': delivery_items,
     }
