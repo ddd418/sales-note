@@ -15952,6 +15952,9 @@ cd frontend && node --check server.mjs
 git diff --check
 → OK, CRLF normalization warnings only
 
+python manage.py test reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Timed out at 184s, reran the same coverage split by class below
+
 python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
 → Ran 4 tests, OK
 
@@ -15960,6 +15963,32 @@ python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
 
 python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
 → Ran 19 tests, OK
+
+git commit -m "feat: sync AI situation feedback with CRM state"
+git push origin main
+→ Commit 6cae206 pushed to origin/main
+
+railway deployment list --service web --limit 3 --json
+→ 272ceafc-98a7-484c-9f7d-e282378eb339 SUCCESS, commit 6cae206
+
+railway deployment up frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI situation sync 6cae206"
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ e528a8b0-4edd-4a36-a8e0-735384f6b8cf SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-gjBpo90j.js and assets/index-Dztpo0tz.css loaded
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Unauthenticated POST to /reporting/api/ai-workspace/actions/feedback/
+→ 403 CSRF protection
 ```
 
 ### 6. Local Smoke
@@ -15971,7 +16000,19 @@ python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
 
 ### 7. Production Deployment Status
 
-- 대기 중: 런타임 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 smoke 예정.
+- Implementation commit: `6cae206 feat: sync AI situation feedback with CRM state`
+- GitHub push: `main` updated to `6cae206`
+- Railway `web`: `272ceafc-98a7-484c-9f7d-e282378eb339` SUCCESS, commit `6cae206`
+- Railway `sales-note-frontend`: `e528a8b0-4edd-4a36-a8e0-735384f6b8cf` SUCCESS, 배포 메시지 `Deploy AI situation sync 6cae206`
+- Railway service status: `web`, `sales-note-frontend`, and `Postgres` Online.
+- Production frontend smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Served `/assets/index-gjBpo90j.js` and `/assets/index-Dztpo0tz.css`.
+  - JS bundle contains `crmSync` and `intentLabel`.
+- Production API auth smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned 401 JSON `login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/api/ai-workspace/` returned 401 JSON `login_required`.
+  - Unauthenticated POST to feedback API returned CSRF 403.
 
 ### 8. Known Limitations
 

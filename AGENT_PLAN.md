@@ -4211,3 +4211,17 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
 - 로컬 smoke 후 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 및 운영 smoke
+
+**현재 상태 (2026-05-14)**:
+
+- 백엔드/React 구현, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
+- DB 모델 변경 없음.
+- Runtime commit: `6cae206 feat: sync AI situation feedback with CRM state`
+- Railway `web`: `272ceafc-98a7-484c-9f7d-e282378eb339` SUCCESS
+- Railway `sales-note-frontend`: `e528a8b0-4edd-4a36-a8e0-735384f6b8cf` SUCCESS
+- 운영 smoke OK:
+  - `/ai-workspace/` 200 with `assets/index-gjBpo90j.js` / `assets/index-Dztpo0tz.css`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/ai-workspace/` 401 login-required JSON on frontend proxy and backend
+  - anonymous feedback POST 403 CSRF
+- 다음 행동: 사용자가 운영에서 AI 상황 입력 기반 CRM 상태 동기화를 수동 검수한다.
