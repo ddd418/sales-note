@@ -35,7 +35,7 @@
 - 백엔드/React/레거시 템플릿 수정, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
 - DB 모델 변경 없음.
 - Runtime commit: `439fe00 fix: complete imported quote schedules`
-- Railway `web`: `ce21ef49-78ee-47c0-beac-19fad4ca8ff7` SUCCESS
+- Railway `web`: SUCCESS (runtime commit deployed; latest web deployment success verified after docs-only commit)
 - Railway `sales-note-frontend`: `2ae20d51-54bf-415b-b6c4-1a094503e8d2` SUCCESS
 - 운영 smoke OK:
   - `/schedules/calendar/` 200 with `assets/index-5Pldkc-g.js`

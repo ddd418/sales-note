@@ -61,7 +61,7 @@ git commit -m "fix: complete imported quote schedules" && git push origin main
 → Commit 439fe00 pushed to origin/main
 
 Railway deployments
-→ web ce21ef49-78ee-47c0-beac-19fad4ca8ff7 SUCCESS
+→ web SUCCESS (runtime commit deployed; latest web deployment success verified after docs-only commit)
 → sales-note-frontend 2ae20d51-54bf-415b-b6c4-1a094503e8d2 SUCCESS
 
 Production smoke requests
@@ -80,7 +80,7 @@ Production smoke requests
 ### 운영 배포 상태
 
 - Runtime commit: `439fe00 fix: complete imported quote schedules`
-- Railway `web`: `ce21ef49-78ee-47c0-beac-19fad4ca8ff7` SUCCESS
+- Railway `web`: SUCCESS (runtime commit deployed; latest web deployment success verified after docs-only commit)
 - Railway `sales-note-frontend`: `2ae20d51-54bf-415b-b6c4-1a094503e8d2` SUCCESS
 - 운영 smoke:
   - `/schedules/calendar/` 200, `assets/index-5Pldkc-g.js`
