@@ -15645,3 +15645,135 @@ git push origin main
 7. 액션이 사라지지 않고 `다음 액션` 상태/요약이 표시되는지 확인합니다.
 8. 같은 카드의 `메일 초안`, `질문 초안`, `노트 초안`, `고객 보기`, `일정 보기`, `AI 분석` 버튼명이 이해 가능한지 확인합니다.
 9. 기존 AI 분석 실행, PainPoint 검증 메모, 초안 복사, 고객/일정/노트 이동이 계속 동작하는지 확인합니다.
+
+---
+
+## AI Workspace Feedback Performance View — AI 실행 피드백 이력/성과 (2026-05-13)
+
+### 1. Summary
+
+- AI 지휘석에 `AI 실행 피드백` 패널을 추가했습니다.
+- 사용자가 추천실행목록에서 남긴 답변이 누적/최근 30일/종료·제외/다음 액션 전환 지표로 보입니다.
+- 최근 피드백 목록에서 고객, 담당자, 답변, AI 판단, 다음 액션, 기록/고객 링크를 확인할 수 있습니다.
+- 관리자는 기존 회사/조직 범위로 보고, 일반 영업 사용자는 본인이 남긴 피드백만 봅니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | 피드백 이력/성과 뷰 작업 범위와 검증 계획 기록 |
+| `reporting/views.py` | `/reporting/api/ai-workspace/` 응답에 `feedbackHistory` payload 추가 |
+| `reporting/tests.py` | 본인 범위, 관리자 회사 범위, AI 미사용자 빈 payload 회귀 테스트 추가 |
+| `frontend/src/api.ts` | feedback history 타입과 기본값 추가 |
+| `frontend/src/App.tsx` | `AI 실행 피드백` React 패널 추가 |
+| `frontend/src/styles.css` | 피드백 성과 패널/목록/반응형 스타일 추가 |
+| `AGENT_REPORT.md` | 구현/검증/배포 결과 기록 |
+
+### 3. CRM Improvements
+
+- 추천실행목록 답변이 단순 저장에서 끝나지 않고, AI가 실제 영업 행동을 얼마나 정리했는지 볼 수 있게 됐습니다.
+- `고객이 아직 안 산다`, `자료 요청`, `다음달 검토` 같은 현장 답변이 누적되며, 종료 처리와 다음 액션 전환 비율을 바로 확인할 수 있습니다.
+- 관리자 관점에서는 회사 범위 피드백을 모아 팀 사용 현황을 볼 수 있고, 영업 담당자는 자기 피드백 이력만 확인합니다.
+
+### 4. Existing Functionality Preserved
+
+- 신규 DB 필드나 migration은 없습니다.
+- 기존 `/reporting/*`, 인증, CSRF, AI 추천실행목록, feedback 저장 API, 초안 생성 API는 유지했습니다.
+- `can_use_ai=False` 사용자는 기존처럼 AI 지휘석 데이터가 제한되고 `feedbackHistory`도 빈 payload를 받습니다.
+- 완료/판매 견적 제외 로직은 그대로 유지했습니다.
+
+### 5. Commands Run and Results
+
+```text
+git status --short
+→ clean at start
+
+git log --oneline -5
+→ a256a36 docs: record AI workspace feedback deployment
+→ e93534d feat: record AI workspace action feedback
+→ 2d2399f docs: record sold quote AI queue hotfix
+→ aa314b6 fix: exclude sold quotes from AI action queue
+→ a9805b8 docs: record AI workspace action center deployment
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-Bdwg3_zM.js / dist/assets/index-Dztpo0tz.css generated
+→ Vite chunk size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+
+git commit -m "feat: add AI feedback performance view"
+→ 42592ae
+
+git push origin main
+→ main updated to 42592ae
+```
+
+### 6. Local Smoke
+
+- Playwright CLI로 `http://127.0.0.1:5173/ai-workspace/`를 열었습니다.
+- 비로그인 상태에서 `/reporting/api/ai-workspace/`가 401을 반환하고 `/reporting/login/?next=%2Fai-workspace%2F`로 이동하는 것을 확인했습니다.
+- 로컬 콘솔에는 expected `favicon.ico` 404와 비로그인 API 401만 관찰됐습니다.
+
+### 7. Production Deployment Status
+
+- Implementation commit: `42592ae feat: add AI feedback performance view`
+- GitHub push: `main` updated to `42592ae`
+- Railway `web`: `65961f63-39a4-4f17-a79c-20c8496813d3` SUCCESS, commit `42592ae`
+- Railway `sales-note-frontend`: `d46a773a-ec31-4926-a566-1f412dc17b19` SUCCESS, 배포 메시지 `Deploy AI feedback performance 42592ae`
+- Railway service status: `web`, `sales-note-frontend`, and `Postgres` Online.
+- Railway `web` logs checked:
+  - migrations completed with `No migrations to apply`
+  - gunicorn started.
+- Railway `sales-note-frontend` logs checked:
+  - `Frontend server listening on 8080`
+  - proxy target is `https://web-production-5096.up.railway.app`
+- Production frontend smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Served `/assets/index-Bdwg3_zM.js` and `/assets/index-Dztpo0tz.css`.
+  - JS bundle contains `AI 실행 피드백`, `feedbackHistory`, `누적 답변`, `기록 보기`.
+  - CSS bundle contains `ai-feedback-panel`, `ai-feedback-metrics`, `ai-feedback-row`.
+- Production API auth smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned 401 JSON `login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/api/ai-workspace/` returned 401 JSON `login_required`.
+- 후속 문서 전용 commit이 Railway deployment 기록을 추가로 만들 수 있지만, 런타임 구현 배포는 위 commit 기준으로 확인했습니다.
+
+### 8. Known Limitations
+
+- 운영 로그인 세션이 없어 실제 운영 데이터가 들어간 `AI 실행 피드백` 패널의 화면 렌더링은 사용자 수동검수 대상입니다.
+- 이번 작업은 기존 feedback 데이터를 집계해 보여주는 뷰입니다. 피드백 기반 자동 우선순위 재학습이나 담당자별 전환율 차트는 포함하지 않았습니다.
+- 피드백 text 자체는 최대 600자 preview로 내려보냅니다. 더 긴 전문 확인은 연결된 영업기록에서 확인하는 구조입니다.
+
+### 9. Recommended Next Task
+
+M2 견적 불러오기/부분 납품 방어 강화. 견적/판매/납품 상태가 섞인 실제 운영 데이터에서 이미 판매된 건, 일부 납품된 건, 취소/재견적 건이 AI 추천과 일정/고객 이력에 잘못 섞이지 않도록 방어를 넓히는 것이 다음 우선순위입니다.
+
+### 10. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. 로그인 후 `AI 실행 피드백` 패널이 보이는지 확인합니다.
+3. 상단 지표 `누적 답변`, `최근 30일`, `종료/제외`, `다음 액션` 숫자가 표시되는지 확인합니다.
+4. 최근 피드백 목록에서 이전에 `고객이 아직 안산대요`처럼 남긴 답변이 보이는지 확인합니다.
+5. 해당 row의 `기록 보기` 또는 `고객 보기`를 눌러 기존 `/reporting/*` 화면으로 이동하는지 확인합니다.
+6. 일반 영업 계정에서는 본인이 남긴 피드백만 보이는지 확인합니다.
+7. 관리자 계정에서는 회사/조직 범위의 다른 담당자 피드백도 보이는지 확인합니다.
+8. 기존 `AI 추천 실행 목록`에서 새 답변을 남긴 뒤 새로고침하면 `AI 실행 피드백` 최근 목록과 지표에 반영되는지 확인합니다.
+9. 기존 AI 분석 실행, 추천실행목록 버튼, 고객/일정/노트 이동이 계속 동작하는지 확인합니다.
