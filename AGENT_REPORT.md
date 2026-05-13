@@ -16255,3 +16255,111 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/mailbox/
 ### 9. Recommended Next Task
 
 운영 수동검수 후, 중단했던 AI 보고 흐름의 고객 긴급도 세분화 작업을 이어가는 것이 좋습니다.
+
+## 2026-05-14 AI 보고 긴급도 동기화 및 부서별 추천 실행 목록
+
+### 1. Summary
+
+- AI 추천 실행 목록에 남긴 사용자 현장 보고에서 “긴급”, “오늘”, “장기”, “보류”, “급하지 않음”, “다음주 재연락” 같은 고객 긴급도 신호를 감지해 `FollowUp.priority`에 반영하도록 했습니다.
+- AI 판단 결과 JSON에 `prioritySignal`을 저장하고, `crmSync.changes`와 AI 답변 메모에 고객 긴급도 반영 내역을 남깁니다.
+- `/ai-workspace/?department_id=<id>` 상세 컨텍스트에서는 `AI 추천 실행 목록`이 해당 부서의 고객/견적/일정/메일/후속/PainPoint 액션만 보여주도록 제한했습니다.
+- 일반 `/ai-workspace/`는 기존처럼 전체 추천 실행 목록을 유지합니다.
+
+### 2. Files Changed
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- AI에 상황을 보고하면 대시보드, 고객 목록, 파이프라인에서 공통으로 쓰는 고객 긴급도(`FollowUp.priority`)가 함께 갱신됩니다.
+- 긍정 신호라도 “다음주 재연락”처럼 명시된 경우 무조건 `urgent`로 올리지 않고 `followup`으로 반영합니다.
+- “나중에/다음달/급하지 않음/장기 보류”는 기존 `urgent` 고객도 `long_term`으로 낮춰 운영 대시보드 우선 고객 목록에서 과도하게 남지 않게 했습니다.
+- 부서 상세 AI 화면에서는 다른 부서 고객의 추천 액션이 섞이지 않아 상세 분석 맥락이 더 명확해졌습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 기존 라우트와 React `/ai-workspace/` 라우트는 유지했습니다.
+- 인증/CSRF/API 권한 흐름은 변경하지 않았습니다.
+- 부서 파라미터가 없는 AI 워크스페이스 전체 화면은 기존 전체 action queue 동작을 유지합니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 25 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite chunk-size warning only
+
+git commit -m "feat: sync AI feedback priority and department queue"
+git push origin main
+→ Commit 1b88749 pushed
+
+railway deployment up --service web --detach --message "Deploy AI priority and department queue 1b88749"
+railway deployment list --service web --limit 5
+→ e340b84d-73fe-44ad-90b5-c529bcb687e6 SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308
+→ 200
+```
+
+### 6. Known Limitations
+
+- 긴급도 판단은 사용자 입력 문구와 OpenAI 판단 결과를 기반으로 합니다. 애매한 표현은 `needs_human_review`로 남기고 CRM 상태를 자동 변경하지 않습니다.
+- 부서 상세 action queue 필터는 접근 가능한 `department_id`가 선택된 경우에만 적용됩니다. 접근 권한이 없는 부서 ID는 기존처럼 무시됩니다.
+- 운영 로그인 세션이 필요한 실제 `department_id=308` action queue 내용 검수는 사용자의 수동 확인이 필요합니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `1b88749 feat: sync AI feedback priority and department queue`
+- GitHub: `main` pushed
+- Railway `web`: `e340b84d-73fe-44ad-90b5-c529bcb687e6` SUCCESS
+- Railway `sales-note-frontend`: 프론트 코드 변경 없음, 재배포 없음
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API with `department_id=308` returned 401 JSON for anonymous access.
+  - Frontend `/ai-workspace/?department_id=308` returned 200.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`
+2. `AI 추천 실행 목록`에 해당 부서 고객/견적/일정/PainPoint 액션만 보이는지 확인합니다.
+3. 일반 화면 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서는 기존처럼 전체 추천 실행 목록이 보이는지 확인합니다.
+4. 상세 화면의 추천 액션 하나에 `오늘 중 바로 처리해야 하는 긴급 건입니다`처럼 입력하고 저장합니다.
+5. 해당 고객 상세/대시보드에서 고객 긴급도가 `긴급`으로 반영되는지 확인합니다.
+6. 다른 액션에 `다음달에 다시 보기로 했고 급하지 않음, 장기 보류`처럼 입력하고 저장합니다.
+7. 해당 고객 긴급도가 `장기`로 내려가고 대시보드 우선 고객 목록에서 과도하게 남지 않는지 확인합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후, AI action queue의 부서별 액션 수/종류를 화면 상단에 요약해 사용자가 “이 부서에서 지금 처리할 것”을 더 빨리 파악하게 하는 개선을 검토할 수 있습니다.
