@@ -6184,6 +6184,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['departments'], [])
         self.assertEqual(payload['promptTargets'], [])
         self.assertEqual(payload['actionQueue'], [])
+        self.assertEqual(payload['feedbackHistory']['stats']['total'], 0)
         self.assertEqual(payload['dailyBrief']['counts']['totalActions'], 0)
         self.assertIsNone(payload['featuredDepartment'])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
@@ -6235,6 +6236,116 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('납기 기준일을 다시 확인할까요?', recommended_questions)
         self.assertTrue(payload['actionQueue'])
         self.assertEqual(payload['dailyBrief']['counts']['painpointValidations'], 1)
+
+    def test_ai_workspace_summary_api_includes_feedback_history_for_owner_scope(self):
+        from reporting.models import AIWorkspaceActionFeedback, History
+
+        followup, department = self._create_customer(self.user, '피드백이력')
+        self._create_department_analysis(self.user, department)
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='memo',
+            content='[AI 추천 실행 답변] 추가 자료 요청',
+            next_action='요청 자료를 메일로 보내기',
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            history=history,
+            action_id='quote:feedback-owner',
+            action_kind='quote_followup',
+            status='next_action',
+            feedback='고객이 추가 자료를 메일로 보내달래요',
+            ai_result={
+                'summary': '추가 자료 요청으로 판단했습니다.',
+                'nextAction': '요청 자료를 메일로 보내기',
+                'nextActionDate': timezone.localdate().isoformat(),
+                'reason': '자료 요청 신호',
+                'source': 'fallback',
+            },
+            action_snapshot={
+                'title': '피드백이력 견적 후속',
+                'customer': followup.customer_name,
+                'company': followup.company.name,
+                'department': followup.department.name,
+            },
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.coworker,
+            action_id='quote:feedback-coworker',
+            action_kind='quote_followup',
+            status='resolved',
+            feedback='동료 고객은 구매하지 않음',
+            ai_result={'summary': '동료 기록', 'source': 'fallback'},
+            action_snapshot={'title': '동료 기록'},
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        feedback_history = payload['feedbackHistory']
+        self.assertEqual(feedback_history['scope']['label'], self.user.username)
+        self.assertFalse(feedback_history['scope']['canViewAll'])
+        self.assertEqual(feedback_history['stats']['total'], 1)
+        self.assertEqual(feedback_history['stats']['nextActions'], 1)
+        self.assertEqual(feedback_history['stats']['linkedNotes'], 1)
+        self.assertEqual(feedback_history['byKind'][0]['kindLabel'], '견적 후속')
+        self.assertEqual(feedback_history['recent'][0]['actionId'], 'quote:feedback-owner')
+        self.assertEqual(feedback_history['recent'][0]['statusLabel'], '다음 액션')
+        self.assertIn('추가 자료', feedback_history['recent'][0]['feedback'])
+        self.assertIn('/reporting/histories/', feedback_history['recent'][0]['historyHref'])
+        recent_ids = {item['actionId'] for item in feedback_history['recent']}
+        self.assertNotIn('quote:feedback-coworker', recent_ids)
+
+    def test_ai_workspace_summary_api_feedback_history_uses_manager_company_scope(self):
+        from reporting.models import AIWorkspaceActionFeedback
+
+        manager = make_user('ai_workspace_manager', role='manager', can_use_ai=True, company=self.company)
+        outsider = make_user('ai_workspace_outsider', role='salesman', can_use_ai=True, company=self.other_company)
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            action_id='quote:team-owner',
+            action_kind='quote_followup',
+            status='resolved',
+            feedback='고객이 안산대요',
+            ai_result={'summary': '종료', 'source': 'fallback'},
+            action_snapshot={'title': '팀 사용자 기록'},
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.coworker,
+            action_id='followup:team-coworker',
+            action_kind='customer_followup',
+            status='answered',
+            feedback='동료가 답변 기록',
+            ai_result={'summary': '기록', 'source': 'fallback'},
+            action_snapshot={'title': '팀 동료 기록'},
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=outsider,
+            action_id='quote:outside',
+            action_kind='quote_followup',
+            status='resolved',
+            feedback='타사 기록',
+            ai_result={'summary': '타사', 'source': 'fallback'},
+            action_snapshot={'title': '타사 기록'},
+        )
+        self.client.force_login(manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        feedback_history = response.json()['feedbackHistory']
+        self.assertTrue(feedback_history['scope']['canViewAll'])
+        self.assertIn('AI워크스페이스회사', feedback_history['scope']['label'])
+        self.assertEqual(feedback_history['stats']['total'], 2)
+        self.assertEqual(feedback_history['stats']['resolved'], 1)
+        self.assertEqual(feedback_history['stats']['answered'], 1)
+        recent_ids = {item['actionId'] for item in feedback_history['recent']}
+        self.assertEqual(recent_ids, {'quote:team-owner', 'followup:team-coworker'})
 
     def test_ai_workspace_summary_api_uses_requested_department_for_featured_panel(self):
         _first_followup, first_department = self._create_customer(self.user, '선택부서')

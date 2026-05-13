@@ -4064,3 +4064,34 @@ python pre_deployment_check.py
 - `git diff --check`
 - 로컬 브라우저 smoke check 후 커밋/푸시
 - Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/`, feedback API login 보호 smoke check
+
+---
+
+## AI Workspace Feedback Performance View — AI 실행 피드백 이력/성과
+
+**목표**: React `/ai-workspace/`에서 추천 실행 목록에 남긴 현장 답변이 `기록됨`, `종료됨`, `다음 액션 전환됨` 중 어디로 갔는지 볼 수 있게 하고, AI 추천이 실제 영업노트/후속조치로 이어지는 흐름을 확인한다.
+
+**작업 범위**:
+
+- 기존 `AIWorkspaceActionFeedback` 모델만 읽어 계산한다. 신규 DB 필드는 추가하지 않는다.
+- `/reporting/api/ai-workspace/` 응답에 `feedbackHistory` 객체를 추가하고 기존 응답 필드는 유지한다.
+- `feedbackHistory`는 현재 사용자 기준으로 최근 30일/누적 답변 수, 종료/다음 액션/단순 기록/목록 제외 수, 영업노트 연결 수, 액션 유형별 건수를 포함한다.
+- Manager/Admin은 기존 React dashboard scope 규칙을 사용해 접근 가능한 사용자 범위의 feedback을 볼 수 있게 하고, salesman은 본인 feedback만 본다.
+- 최근 feedback 이력에는 담당자, 고객/회사/부서, 액션 유형/제목, 사용자가 남긴 답변, AI 요약, 다음 액션, CRM 메모 링크를 포함한다.
+- React `/ai-workspace/`에 `AI 실행 피드백` 패널을 추가해 성과 지표와 최근 이력을 한 화면에서 볼 수 있게 한다.
+- 기존 action queue, feedback 저장 API, 초안 생성 API, AI 허브, `/reporting/*` 인증/권한 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `AIWorkspaceActionFeedback`, `History`, `FollowUp`, `UserProfile`만 조회한다.
+
+**검증 계획**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 로컬 browser/Playwright smoke check 후 커밋/푸시
+- Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` bundle/API smoke check

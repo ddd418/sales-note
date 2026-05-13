@@ -12230,6 +12230,97 @@ function AIWorkspaceDraftPreview({
   );
 }
 
+function AIWorkspaceFeedbackPerformance({ data }: { data: AIWorkspaceData }) {
+  const feedbackHistory = data.feedbackHistory;
+  const stats = feedbackHistory.stats;
+  const statCards = [
+    { label: '누적 답변', value: `${formatNumber(stats.total)}건`, detail: feedbackHistory.scope.label || data.currentUser.name || '현재 범위', tone: 'blue' },
+    { label: '최근 30일', value: `${formatNumber(stats.recent30Days)}건`, detail: `영업노트 연결 ${formatNumber(stats.linkedNotes)}건`, tone: 'green' },
+    { label: '종료/제외', value: `${formatNumber(stats.resolved + stats.dismissed)}건`, detail: `${formatNumber(stats.hideRate)}% 정리`, tone: 'red' },
+    { label: '다음 액션', value: `${formatNumber(stats.nextActions)}건`, detail: `${formatNumber(stats.nextActionRate)}% 전환`, tone: 'amber' },
+  ];
+
+  return (
+    <section className="dashboard-panel ai-feedback-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Feedback loop</span>
+          <h2>AI 실행 피드백</h2>
+        </div>
+        <ListChecks size={18} />
+      </div>
+      <div className="ai-feedback-scope">
+        <span>{feedbackHistory.scope.label || '현재 사용자'}</span>
+        {feedbackHistory.scope.canViewAll ? <small>{formatNumber(feedbackHistory.scope.userCount)}명 범위</small> : null}
+      </div>
+      <div className="ai-feedback-metrics">
+        {statCards.map((card) => (
+          <div className={`ai-feedback-stat ${card.tone}`} key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.detail}</small>
+          </div>
+        ))}
+      </div>
+      {feedbackHistory.byKind.length > 0 ? (
+        <div className="ai-feedback-kind-strip">
+          {feedbackHistory.byKind.map((kind) => (
+            <span key={`${kind.kind || 'unknown'}-${kind.count}`}>
+              {kind.kindLabel} {formatNumber(kind.count)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {feedbackHistory.recent.length > 0 ? (
+        <div className="ai-feedback-list">
+          {feedbackHistory.recent.map((item) => (
+            <article className={`ai-feedback-row ${item.status}`} key={item.id}>
+              <div className="ai-feedback-row-head">
+                <div>
+                  <span>{item.kindLabel} · {item.statusLabel}</span>
+                  <strong>{item.title}</strong>
+                  <small>{[item.company, item.department, item.customer].filter(Boolean).join(' · ') || '고객 정보 없음'}</small>
+                </div>
+                <div className="ai-feedback-owner">
+                  <span>{item.owner}</span>
+                  <small>{formatDateTimeLabel(item.updatedAt)}</small>
+                </div>
+              </div>
+              <div className="ai-feedback-row-body">
+                {item.feedback ? (
+                  <p>
+                    <b>답변</b>
+                    {item.feedback}
+                  </p>
+                ) : null}
+                {item.summary ? (
+                  <p>
+                    <b>판단</b>
+                    {item.summary}
+                  </p>
+                ) : null}
+                {item.nextAction ? (
+                  <p>
+                    <b>다음 액션</b>
+                    {item.nextAction}
+                    {item.nextActionDate ? ` · ${formatDateLabel(item.nextActionDate)}` : ''}
+                  </p>
+                ) : null}
+              </div>
+              <div className="ai-feedback-links">
+                {item.historyHref ? <a href={item.historyHref}>기록 보기</a> : null}
+                {item.customerHref ? <a href={item.customerHref}>고객 보기</a> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <DashboardEmpty label="아직 기록된 AI 실행 피드백이 없습니다" />
+      )}
+    </section>
+  );
+}
+
 function AIWorkspacePage({
   data,
   loading,
@@ -12510,6 +12601,8 @@ function AIWorkspacePage({
                 onCopy={handleCopyDraft}
               />
             ) : null}
+
+            <AIWorkspaceFeedbackPerformance data={data} />
 
             <section className="dashboard-panel ai-main-panel">
               <div className="dashboard-panel-heading">

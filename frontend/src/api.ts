@@ -2538,6 +2538,61 @@ export type AIWorkspaceActionFeedbackResponse = {
   message?: string;
 };
 
+export type AIWorkspaceFeedbackKindSummary = {
+  kind: AIWorkspaceActionKind | string;
+  kindLabel: string;
+  count: number;
+};
+
+export type AIWorkspaceFeedbackHistoryItem = {
+  id: number;
+  actionId: string;
+  kind: AIWorkspaceActionKind | string;
+  kindLabel: string;
+  status: 'answered' | 'next_action' | 'resolved' | 'dismissed';
+  statusLabel: string;
+  title: string;
+  owner: string;
+  ownerId: number | null;
+  customer: string;
+  company: string;
+  department: string;
+  customerHref: string;
+  djangoCustomerHref: string;
+  feedback: string;
+  summary: string;
+  nextAction: string;
+  nextActionDate: string | null;
+  reason: string;
+  source: 'openai' | 'fallback' | '';
+  historyId: number | null;
+  historyHref: string;
+  updatedAt: string | null;
+  createdAt: string | null;
+};
+
+export type AIWorkspaceFeedbackHistory = {
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    selectedUserId: number | null;
+  };
+  stats: {
+    total: number;
+    recent30Days: number;
+    answered: number;
+    nextActions: number;
+    resolved: number;
+    dismissed: number;
+    linkedNotes: number;
+    hideRate: number;
+    nextActionRate: number;
+  };
+  byKind: AIWorkspaceFeedbackKindSummary[];
+  recent: AIWorkspaceFeedbackHistoryItem[];
+};
+
 export type AIWorkspaceData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -2579,6 +2634,7 @@ export type AIWorkspaceData = {
   };
   dailyBrief: AIWorkspaceDailyBrief;
   actionQueue: AIWorkspaceAction[];
+  feedbackHistory: AIWorkspaceFeedbackHistory;
   departments: AIWorkspaceDepartment[];
   featuredDepartment: AIWorkspaceFeaturedDepartment | null;
   selectedDepartmentId: number | null;
@@ -3707,6 +3763,27 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     suggestedFocus: [],
   },
   actionQueue: [],
+  feedbackHistory: {
+    scope: {
+      label: '',
+      userCount: 0,
+      canViewAll: false,
+      selectedUserId: null,
+    },
+    stats: {
+      total: 0,
+      recent30Days: 0,
+      answered: 0,
+      nextActions: 0,
+      resolved: 0,
+      dismissed: 0,
+      linkedNotes: 0,
+      hideRate: 0,
+      nextActionRate: 0,
+    },
+    byKind: [],
+    recent: [],
+  },
   departments: [],
   featuredDepartment: null,
   selectedDepartmentId: null,
@@ -6365,6 +6442,7 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       selectedDepartmentId: payload.selectedDepartmentId ?? featuredDepartment?.departmentId ?? null,
       promptTargets: payload.promptTargets ?? [],
       actionQueue: payload.actionQueue ?? [],
+      feedbackHistory: payload.feedbackHistory ?? emptyAIWorkspaceData.feedbackHistory,
     };
   } catch (error) {
     return {

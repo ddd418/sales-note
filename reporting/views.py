@@ -8490,6 +8490,162 @@ def _ai_workspace_create_feedback_history(user, user_profile, action, feedback_t
     )
 
 
+def _ai_workspace_empty_feedback_history():
+    return {
+        'scope': {
+            'label': '',
+            'userCount': 0,
+            'canViewAll': False,
+            'selectedUserId': None,
+        },
+        'stats': {
+            'total': 0,
+            'recent30Days': 0,
+            'answered': 0,
+            'nextActions': 0,
+            'resolved': 0,
+            'dismissed': 0,
+            'linkedNotes': 0,
+            'hideRate': 0,
+            'nextActionRate': 0,
+        },
+        'byKind': [],
+        'recent': [],
+    }
+
+
+def _ai_workspace_feedback_title(feedback):
+    snapshot = feedback.action_snapshot or {}
+    return (
+        _ai_workspace_prompt_excerpt(snapshot.get('title'), 140)
+        or _ai_workspace_prompt_excerpt(feedback.action_id, 140)
+    )
+
+
+def _ai_workspace_feedback_identity(feedback):
+    snapshot = feedback.action_snapshot or {}
+    followup = feedback.followup
+    if followup:
+        return {
+            'customer': followup.customer_name or followup.manager or snapshot.get('customer') or '고객명 미정',
+            'company': followup.company.name if followup.company else snapshot.get('company') or '',
+            'department': followup.department.name if followup.department else snapshot.get('department') or '',
+            'customerHref': f'/customers/{followup.id}/',
+            'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        }
+    return {
+        'customer': snapshot.get('customer') or '',
+        'company': snapshot.get('company') or '',
+        'department': snapshot.get('department') or '',
+        'customerHref': (snapshot.get('hrefs') or {}).get('customer') or '',
+        'djangoCustomerHref': (snapshot.get('hrefs') or {}).get('djangoCustomer') or '',
+    }
+
+
+def _ai_workspace_feedback_history_item(feedback):
+    result = feedback.ai_result or {}
+    identity = _ai_workspace_feedback_identity(feedback)
+    return {
+        'id': feedback.id,
+        'actionId': feedback.action_id,
+        'kind': feedback.action_kind,
+        'kindLabel': _ai_workspace_action_kind_label(feedback.action_kind),
+        'status': feedback.status,
+        'statusLabel': _ai_workspace_feedback_status_label(feedback.status),
+        'title': _ai_workspace_feedback_title(feedback),
+        'owner': _user_display_name(feedback.user),
+        'ownerId': feedback.user_id,
+        'customer': identity['customer'],
+        'company': identity['company'],
+        'department': identity['department'],
+        'customerHref': identity['customerHref'],
+        'djangoCustomerHref': identity['djangoCustomerHref'],
+        'feedback': _ai_workspace_prompt_excerpt(feedback.feedback, 260),
+        'summary': _ai_workspace_prompt_excerpt(result.get('summary'), 260),
+        'nextAction': _ai_workspace_prompt_excerpt(result.get('nextAction'), 260),
+        'nextActionDate': result.get('nextActionDate') or None,
+        'reason': _ai_workspace_prompt_excerpt(result.get('reason'), 260),
+        'source': result.get('source') or '',
+        'historyId': feedback.history_id,
+        'historyHref': reverse('reporting:history_detail', args=[feedback.history_id]) if feedback.history_id else '',
+        'updatedAt': _datetime_or_none(feedback.updated_at),
+        'createdAt': _datetime_or_none(feedback.created_at),
+    }
+
+
+def _ai_workspace_feedback_history_payload(request, user_profile):
+    from datetime import timedelta
+
+    if not user_profile:
+        return _ai_workspace_empty_feedback_history()
+
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    scope_user_count = scope_users.count()
+    scope_label = '전체'
+    if selected_user:
+        scope_label = _user_display_name(selected_user)
+    elif not user_profile.can_view_all_users():
+        scope_label = _user_display_name(request.user)
+    elif user_profile.company:
+        scope_label = f'{user_profile.company.name} 팀'
+
+    base_qs = AIWorkspaceActionFeedback.objects.filter(
+        user__in=scope_users,
+    ).select_related(
+        'user',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'history',
+    )
+
+    today = timezone.localdate()
+    recent_start = today - timedelta(days=29)
+    total = base_qs.count()
+    recent_count = base_qs.filter(updated_at__date__gte=recent_start).count()
+    status_counts = {
+        item['status']: item['count']
+        for item in base_qs.values('status').annotate(count=Count('id'))
+    }
+    linked_notes = base_qs.filter(history__isnull=False).count()
+    hide_count = status_counts.get('resolved', 0) + status_counts.get('dismissed', 0)
+    next_action_count = status_counts.get('next_action', 0)
+    by_kind = [
+        {
+            'kind': item['action_kind'] or '',
+            'kindLabel': _ai_workspace_action_kind_label(item['action_kind']),
+            'count': item['count'],
+        }
+        for item in base_qs.values('action_kind').annotate(count=Count('id')).order_by('-count', 'action_kind')[:8]
+    ]
+    recent_feedbacks = list(base_qs.order_by('-updated_at')[:12])
+
+    return {
+        'scope': {
+            'label': scope_label,
+            'userCount': scope_user_count,
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'stats': {
+            'total': total,
+            'recent30Days': recent_count,
+            'answered': status_counts.get('answered', 0),
+            'nextActions': next_action_count,
+            'resolved': status_counts.get('resolved', 0),
+            'dismissed': status_counts.get('dismissed', 0),
+            'linkedNotes': linked_notes,
+            'hideRate': round((hide_count / total) * 100) if total else 0,
+            'nextActionRate': round((next_action_count / total) * 100) if total else 0,
+        },
+        'byKind': by_kind,
+        'recent': [
+            _ai_workspace_feedback_history_item(feedback)
+            for feedback in recent_feedbacks
+        ],
+    }
+
+
 def _ai_workspace_featured_department_payload(
     department,
     analysis,
@@ -8599,6 +8755,7 @@ def ai_workspace_summary_api(request):
             },
             'dailyBrief': _ai_workspace_empty_daily_brief(week_start, week_end),
             'actionQueue': [],
+            'feedbackHistory': _ai_workspace_empty_feedback_history(),
             'departments': [],
             'recentDepartmentAnalyses': [],
             'painpoints': [],
@@ -8895,6 +9052,7 @@ def ai_workspace_summary_api(request):
     month_start = today.replace(day=1)
     action_queue = _ai_workspace_build_action_queue(request.user, week_start, week_end)
     daily_brief = _ai_workspace_daily_brief(action_queue, week_start, week_end)
+    feedback_history = _ai_workspace_feedback_history_payload(request, user_profile)
 
     return JsonResponse({
         'success': True,
@@ -8926,6 +9084,7 @@ def ai_workspace_summary_api(request):
         },
         'dailyBrief': daily_brief,
         'actionQueue': action_queue,
+        'feedbackHistory': feedback_history,
         'departments': department_payload,
         'recentDepartmentAnalyses': recent_department_analyses,
         'painpoints': painpoint_payload,
