@@ -107,8 +107,11 @@ import {
   ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
+  AIWorkspaceAction,
   AIWorkspaceData,
   AIWorkspaceDepartment,
+  AIWorkspaceDraftType,
+  AIWorkspaceActionDraftResponse,
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
@@ -131,6 +134,7 @@ import {
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
+  generateAIWorkspaceActionDraft,
   createPersonalSchedule,
   deletePrepayment as deleteCustomerPrepayment,
   createSchedule as createCustomerSchedule,
@@ -11981,6 +11985,198 @@ function ProductManagementPage({
   );
 }
 
+const aiDraftTypeLabels: Record<AIWorkspaceDraftType, string> = {
+  email: '메일',
+  note: '노트',
+  questions: '질문',
+  weekly_report: '보고',
+};
+
+function formatAIActionDate(value: string | null) {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
+}
+
+function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
+  const brief = data.dailyBrief;
+  const counts = brief.counts;
+  const briefCards = [
+    { label: '추천 액션', value: `${formatNumber(counts.totalActions)}건`, icon: Sparkles },
+    { label: '긴급', value: `${formatNumber(counts.urgentActions)}건`, icon: AlertTriangle },
+    { label: '견적 후속', value: `${formatNumber(counts.quoteFollowups)}건`, icon: CircleDollarSign },
+    { label: '고객 후속', value: `${formatNumber(counts.customerFollowups)}건`, icon: Clock },
+  ];
+
+  return (
+    <section className="dashboard-panel ai-brief-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Daily sales brief</span>
+          <h2>오늘의 AI 영업 지휘석</h2>
+        </div>
+        <Sparkles size={18} />
+      </div>
+      <p className="ai-brief-summary">{brief.summary || 'AI 추천 액션을 계산하는 중입니다.'}</p>
+      <div className="ai-brief-grid">
+        {briefCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div className="ai-brief-card" key={card.label}>
+              <Icon size={17} />
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <div className="ai-brief-columns">
+        <div>
+          <strong>리스크</strong>
+          {brief.risks.length > 0 ? (
+            brief.risks.map((risk) => (
+              <span key={`${risk.kindLabel}-${risk.title}`}>{risk.priorityLabel} · {risk.title}</span>
+            ))
+          ) : (
+            <span>즉시 확인할 리스크가 없습니다</span>
+          )}
+        </div>
+        <div>
+          <strong>기회</strong>
+          {brief.opportunities.length > 0 ? (
+            brief.opportunities.map((opportunity) => (
+              <span key={`${opportunity.kindLabel}-${opportunity.title}`}>
+                {opportunity.kindLabel} · {opportunity.title}
+                {opportunity.moneyImpact ? ` · ${formatWon(opportunity.moneyImpact)}` : ''}
+              </span>
+            ))
+          ) : (
+            <span>견적/PainPoint 기회가 없습니다</span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AIWorkspaceActionQueue({
+  actions,
+  draftLoadingKey,
+  onGenerateDraft,
+}: {
+  actions: AIWorkspaceAction[];
+  draftLoadingKey: string;
+  onGenerateDraft: (action: AIWorkspaceAction, draftType: AIWorkspaceDraftType) => void;
+}) {
+  if (actions.length === 0) {
+    return <DashboardEmpty label="오늘 바로 실행할 AI 추천 액션이 없습니다" />;
+  }
+
+  return (
+    <div className="ai-action-list">
+      {actions.slice(0, 8).map((action) => (
+        <article className={`ai-action-card ${action.kind}`} key={action.id}>
+          <div className="ai-action-card-head">
+            <div>
+              <span>{action.kindLabel}</span>
+              <strong>{action.title}</strong>
+              <small>{[action.company, action.department, action.customer].filter(Boolean).join(' · ')}</small>
+            </div>
+            <div className="ai-action-score">
+              <span>{action.priorityLabel}</span>
+              <strong>{formatNumber(action.priorityScore)}</strong>
+            </div>
+          </div>
+          <p>{action.recommendedAction}</p>
+          <div className="ai-action-meta">
+            {action.moneyImpact ? <span>{formatWon(action.moneyImpact)}</span> : null}
+            {action.dueDate ? <span>기한 {formatAIActionDate(action.dueDate)}</span> : null}
+          </div>
+          {action.evidence.length > 0 ? (
+            <div className="ai-evidence-list">
+              {action.evidence.slice(0, 4).map((item) => (
+                <span key={`${action.id}-${item.label}-${item.value}`}>
+                  <b>{item.label}</b>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="ai-action-buttons">
+            {action.draftTypes.map((draftType) => {
+              const loadingKey = `${action.id}:${draftType}`;
+              return (
+                <button
+                  disabled={draftLoadingKey === loadingKey}
+                  key={draftType}
+                  onClick={() => onGenerateDraft(action, draftType)}
+                  type="button"
+                >
+                  {draftLoadingKey === loadingKey ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
+                  {aiDraftTypeLabels[draftType]}
+                </button>
+              );
+            })}
+            {action.hrefs.customer ? <a href={action.hrefs.customer}>고객</a> : null}
+            {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정</a> : null}
+            {action.hrefs.note ? <a href={action.hrefs.note}>노트</a> : null}
+            {action.hrefs.report ? <a href={action.hrefs.report}>보고</a> : null}
+            {action.hrefs.ai ? <a href={action.hrefs.ai}>AI</a> : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AIWorkspaceDraftPreview({
+  copied,
+  result,
+  onCopy,
+}: {
+  copied: boolean;
+  result: AIWorkspaceActionDraftResponse;
+  onCopy: () => void;
+}) {
+  const draft = result.draft;
+  return (
+    <section className="dashboard-panel ai-draft-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Draft copilot</span>
+          <h2>{aiDraftTypeLabels[result.draftType]} 초안</h2>
+        </div>
+        <MessageSquareText size={18} />
+      </div>
+      <div className="ai-draft-meta">
+        <span>{result.action.title}</span>
+        <span>{result.source === 'openai' ? 'AI 생성' : '기본 초안'}</span>
+        <span>승인 전 저장 안 됨</span>
+      </div>
+      {draft.subject ? <strong className="ai-draft-subject">{draft.subject}</strong> : null}
+      {draft.body ? <pre>{draft.body}</pre> : null}
+      {draft.bullets.length > 0 ? (
+        <ul>
+          {draft.bullets.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="ai-prompt-actions">
+        <button onClick={onCopy} type="button">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          {copied ? '복사됨' : '초안 복사'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function AIWorkspacePage({
   data,
   loading,
@@ -11995,6 +12191,10 @@ function AIWorkspacePage({
   onDepartmentSelect: (department: AIWorkspaceDepartment) => void;
 }) {
   const [copiedPromptId, setCopiedPromptId] = useState('');
+  const [draftLoadingKey, setDraftLoadingKey] = useState('');
+  const [draftResult, setDraftResult] = useState<AIWorkspaceActionDraftResponse | null>(null);
+  const [draftError, setDraftError] = useState('');
+  const [copiedDraft, setCopiedDraft] = useState(false);
   const [featuredVerificationNotes, setFeaturedVerificationNotes] = useState<Record<number, string>>({});
   const [featuredVerifyingId, setFeaturedVerifyingId] = useState<number | null>(null);
   const [featuredRunningId, setFeaturedRunningId] = useState<number | null>(null);
@@ -12008,6 +12208,40 @@ function AIWorkspacePage({
       window.setTimeout(() => setCopiedPromptId(''), 1600);
     } catch {
       setCopiedPromptId('');
+    }
+  };
+
+  const handleGenerateActionDraft = async (action: AIWorkspaceAction, draftType: AIWorkspaceDraftType) => {
+    const loadingKey = `${action.id}:${draftType}`;
+    setDraftLoadingKey(loadingKey);
+    setDraftError('');
+    setCopiedDraft(false);
+    try {
+      const result = await generateAIWorkspaceActionDraft(action.id, draftType);
+      setDraftResult(result);
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : 'AI 초안 생성에 실패했습니다.');
+    } finally {
+      setDraftLoadingKey('');
+    }
+  };
+
+  const handleCopyDraft = async () => {
+    if (!draftResult) {
+      return;
+    }
+    const draft = draftResult.draft;
+    const text = [
+      draft.subject,
+      draft.body,
+      ...(draft.bullets || []).map((item) => `- ${item}`),
+    ].filter(Boolean).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedDraft(true);
+      window.setTimeout(() => setCopiedDraft(false), 1600);
+    } catch {
+      setCopiedDraft(false);
     }
   };
 
@@ -12147,8 +12381,35 @@ function AIWorkspacePage({
       </section>
 
       {data.permission.canUseAi ? (
+        <>
+        <AIWorkspaceDailyBriefPanel data={data} />
+
         <div className="ai-workspace-layout">
           <div className="ai-workspace-main">
+            <section className="dashboard-panel ai-action-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <span className="eyebrow">Action queue</span>
+                  <h2>AI 추천 실행 목록</h2>
+                </div>
+                <Target size={18} />
+              </div>
+              {draftError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{draftError}</span></div> : null}
+              <AIWorkspaceActionQueue
+                actions={data.actionQueue || []}
+                draftLoadingKey={draftLoadingKey}
+                onGenerateDraft={handleGenerateActionDraft}
+              />
+            </section>
+
+            {draftResult ? (
+              <AIWorkspaceDraftPreview
+                copied={copiedDraft}
+                result={draftResult}
+                onCopy={handleCopyDraft}
+              />
+            ) : null}
+
             <section className="dashboard-panel ai-main-panel">
               <div className="dashboard-panel-heading">
                 <div>
@@ -12331,6 +12592,7 @@ function AIWorkspacePage({
             </section>
           </aside>
         </div>
+        </>
       ) : null}
     </section>
   );

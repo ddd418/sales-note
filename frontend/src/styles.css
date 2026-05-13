@@ -4603,6 +4603,251 @@ h2 {
   background: #ffffff;
 }
 
+.ai-brief-panel,
+.ai-action-panel,
+.ai-draft-panel {
+  min-width: 0;
+}
+
+.ai-brief-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.ai-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-brief-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.ai-brief-card svg {
+  color: var(--primary-strong);
+}
+
+.ai-brief-card span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-brief-card strong {
+  grid-column: 1 / -1;
+  color: var(--text);
+  font-size: 20px;
+}
+
+.ai-brief-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-brief-columns > div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ai-brief-columns strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ai-brief-columns span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-action-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.ai-action-card.quote_followup {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.ai-action-card.delivery_risk {
+  border-color: #fed7aa;
+  background: #fffaf4;
+}
+
+.ai-action-card.painpoint_validation {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.ai-action-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-action-card-head > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ai-action-card-head span,
+.ai-action-card-head small,
+.ai-action-card p,
+.ai-action-meta span,
+.ai-evidence-list span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ai-action-card-head strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-action-card p {
+  margin: 0;
+  color: var(--text);
+}
+
+.ai-action-score {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.ai-action-score strong {
+  color: var(--primary-strong);
+  font-size: 20px;
+}
+
+.ai-action-meta,
+.ai-action-buttons,
+.ai-draft-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ai-action-meta span,
+.ai-draft-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.ai-evidence-list {
+  display: grid;
+  gap: 5px;
+}
+
+.ai-evidence-list span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-evidence-list b {
+  margin-right: 6px;
+  color: var(--text);
+}
+
+.ai-action-buttons {
+  justify-content: flex-end;
+}
+
+.ai-action-buttons button,
+.ai-action-buttons a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.ai-action-buttons button {
+  cursor: pointer;
+}
+
+.ai-action-buttons button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.ai-draft-panel pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+}
+
+.ai-draft-subject {
+  color: var(--text);
+}
+
+.ai-draft-panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .ai-featured-customer-chips {
   display: flex;
   flex-wrap: wrap;
@@ -6045,6 +6290,8 @@ tbody tr:hover {
   .product-form-grid,
   .ai-layout,
   .ai-workspace-layout,
+  .ai-brief-grid,
+  .ai-brief-columns,
   .ai-followup-grid,
   .ai-prompt-grid,
   .ai-goal-grid {

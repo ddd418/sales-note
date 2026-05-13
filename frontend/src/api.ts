@@ -2416,6 +2416,95 @@ export type AIWorkspacePromptTarget = {
   href: string;
 };
 
+export type AIWorkspaceDraftType = 'email' | 'note' | 'questions' | 'weekly_report';
+
+export type AIWorkspaceActionKind =
+  | 'quote_followup'
+  | 'delivery_risk'
+  | 'painpoint_validation'
+  | 'customer_followup'
+  | 'weekly_report'
+  | 'data_quality';
+
+export type AIWorkspaceActionEvidence = {
+  label: string;
+  value: string;
+  href?: string;
+};
+
+export type AIWorkspaceAction = {
+  id: string;
+  kind: AIWorkspaceActionKind;
+  kindLabel: string;
+  priorityScore: number;
+  priorityLabel: string;
+  title: string;
+  customer: string;
+  company: string;
+  department: string;
+  moneyImpact: number | null;
+  dueDate: string | null;
+  evidence: AIWorkspaceActionEvidence[];
+  recommendedAction: string;
+  draftTypes: AIWorkspaceDraftType[];
+  hrefs: {
+    customer?: string;
+    schedule?: string;
+    note?: string;
+    report?: string;
+    ai?: string;
+    aiHub?: string;
+    weeklyAiDraft?: string;
+    djangoCustomer?: string;
+    djangoSchedule?: string;
+    djangoNote?: string;
+  };
+};
+
+export type AIWorkspaceDailyBrief = {
+  summary: string;
+  focusDate: string;
+  weekStart: string;
+  weekEnd: string;
+  counts: {
+    totalActions: number;
+    urgentActions: number;
+    quoteFollowups: number;
+    deliveryRisks: number;
+    painpointValidations: number;
+    customerFollowups: number;
+    weeklyReports: number;
+  };
+  risks: Array<{
+    title: string;
+    kindLabel: string;
+    priorityLabel: string;
+  }>;
+  opportunities: Array<{
+    title: string;
+    kindLabel: string;
+    moneyImpact: number | null;
+  }>;
+  suggestedFocus: string[];
+};
+
+export type AIWorkspaceActionDraftResponse = {
+  success?: boolean;
+  source: 'openai' | 'fallback';
+  generatedAt: string;
+  action: AIWorkspaceAction;
+  draftType: AIWorkspaceDraftType;
+  draft: {
+    subject: string;
+    body: string;
+    bullets: string[];
+  };
+  evidence: AIWorkspaceActionEvidence[];
+  requiresHumanApproval: boolean;
+  error?: string;
+  message?: string;
+};
+
 export type AIWorkspaceData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -2455,6 +2544,8 @@ export type AIWorkspaceData = {
     start: string;
     end: string;
   };
+  dailyBrief: AIWorkspaceDailyBrief;
+  actionQueue: AIWorkspaceAction[];
   departments: AIWorkspaceDepartment[];
   featuredDepartment: AIWorkspaceFeaturedDepartment | null;
   selectedDepartmentId: number | null;
@@ -3564,6 +3655,25 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     start: '',
     end: '',
   },
+  dailyBrief: {
+    summary: '',
+    focusDate: '',
+    weekStart: '',
+    weekEnd: '',
+    counts: {
+      totalActions: 0,
+      urgentActions: 0,
+      quoteFollowups: 0,
+      deliveryRisks: 0,
+      painpointValidations: 0,
+      customerFollowups: 0,
+      weeklyReports: 0,
+    },
+    risks: [],
+    opportunities: [],
+    suggestedFocus: [],
+  },
+  actionQueue: [],
   departments: [],
   featuredDepartment: null,
   selectedDepartmentId: null,
@@ -6221,6 +6331,7 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       featuredDepartment,
       selectedDepartmentId: payload.selectedDepartmentId ?? featuredDepartment?.departmentId ?? null,
       promptTargets: payload.promptTargets ?? [],
+      actionQueue: payload.actionQueue ?? [],
     };
   } catch (error) {
     return {
@@ -6229,6 +6340,34 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       error: error instanceof Error ? error.message : 'AI workspace API unavailable',
     };
   }
+}
+
+export async function generateAIWorkspaceActionDraft(
+  actionId: string,
+  draftType: AIWorkspaceDraftType,
+): Promise<AIWorkspaceActionDraftResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/actions/draft/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ actionId, draftType }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI action draft API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceActionDraftResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI action draft failed: ${response.status}`);
+  }
+  return data;
 }
 
 export async function loadWeeklyReportsData(params: {

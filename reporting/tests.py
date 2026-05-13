@@ -6183,6 +6183,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertFalse(payload['permission']['canUseAi'])
         self.assertEqual(payload['departments'], [])
         self.assertEqual(payload['promptTargets'], [])
+        self.assertEqual(payload['actionQueue'], [])
+        self.assertEqual(payload['dailyBrief']['counts']['totalActions'], 0)
         self.assertIsNone(payload['featuredDepartment'])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
 
@@ -6231,6 +6233,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('PCR핵심 담당자', payload['recommendedGoals'][0]['title'])
         recommended_questions = [item['question'] for item in payload['featuredDepartment']['recommendedQuestions']]
         self.assertIn('납기 기준일을 다시 확인할까요?', recommended_questions)
+        self.assertTrue(payload['actionQueue'])
+        self.assertEqual(payload['dailyBrief']['counts']['painpointValidations'], 1)
 
     def test_ai_workspace_summary_api_uses_requested_department_for_featured_panel(self):
         _first_followup, first_department = self._create_customer(self.user, '선택부서')
@@ -6380,6 +6384,115 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn('오래된 상담', prompt_text)
         self.assertIn('열린 견적 1건 / 1,100,000원', prompt_text)
         self.assertIn('수주 금액 1건 / 2,300,000원', prompt_text)
+
+    def test_ai_workspace_summary_api_builds_daily_action_queue_from_sales_signals(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, History, Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '액션큐')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(9, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('2000000'),
+        )
+        Quote.objects.create(
+            quote_number='AI-ACTION-Q-001',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=2),
+            stage='sent',
+            subtotal=Decimal('2000000'),
+            probability=75,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='구매 일정 확인 필요',
+            next_action='결재 담당자와 구매 일정을 확인',
+            next_action_date=today - timedelta(days=1),
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today + timedelta(days=1),
+            visit_time=time(13, 0),
+            status='scheduled',
+            activity_type='delivery',
+            expected_revenue=Decimal('550000'),
+            notes='납품 서류 확인 필요',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='AI 납품 품목',
+            quantity=2,
+            unit_price=Decimal('250000'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        kinds = {item['kind'] for item in payload['actionQueue']}
+        self.assertIn('quote_followup', kinds)
+        self.assertIn('customer_followup', kinds)
+        self.assertIn('delivery_risk', kinds)
+        self.assertIn('painpoint_validation', kinds)
+        self.assertIn('weekly_report', kinds)
+        self.assertGreaterEqual(payload['dailyBrief']['counts']['totalActions'], 5)
+        quote_actions = [item for item in payload['actionQueue'] if item['kind'] == 'quote_followup']
+        self.assertTrue(any(item['moneyImpact'] and item['moneyImpact'] > 0 for item in quote_actions))
+        self.assertTrue(all(item['evidence'] for item in payload['actionQueue']))
+        self.assertTrue(any('email' in item['draftTypes'] for item in payload['actionQueue']))
+
+    def test_ai_workspace_action_draft_api_requires_ai_permission(self):
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_draft_api'),
+            data=json.dumps({'actionId': 'painpoint:1', 'draftType': 'questions'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_draft_api_returns_fallback_without_saving(self, _mock_client):
+        from reporting.models import History, WeeklyReport
+
+        followup, department = self._create_customer(self.user, '초안고객')
+        analysis = self._create_department_analysis(self.user, department)
+        card = analysis.painpoint_cards.first()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_draft_api'),
+            data=json.dumps({'actionId': f'painpoint:{card.id}', 'draftType': 'questions'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['requiresHumanApproval'])
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['draftType'], 'questions')
+        self.assertTrue(payload['draft']['bullets'])
+        self.assertEqual(History.objects.filter(user=self.user).count(), 0)
+        self.assertEqual(WeeklyReport.objects.filter(user=self.user).count(), 0)
 
 
 class PipelineApiTests(TestCase):

@@ -3974,3 +3974,34 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 API/React 일정 상세 smoke check
+
+---
+
+## AI Workspace 2.0 Action Center — AI 영업 지휘석 1단계
+
+**목표**: React `/ai-workspace/`를 단순 AI 분석/프롬프트 허브에서 매일 실행할 영업 우선순위, 근거, AI 초안 생성을 한 화면에서 처리하는 내부 CRM 액션센터로 확장한다.
+
+**작업 범위**:
+
+- 기존 `/reporting/api/ai-workspace/` 응답에 `dailyBrief`와 `actionQueue`를 추가하고 기존 필드는 유지한다.
+- `actionQueue`는 기존 `FollowUp`, `History`, `Schedule`, `Quote`, `DeliveryItem`, `WeeklyReport`, `PainPointCard`만 읽어 계산한다.
+- 우선순위 후보는 미전환 견적 후속, 부분 납품/납품 예정 리스크, 지연 또는 날짜 미정 후속조치, 미검증 PainPoint, 이번 주 주간보고 누락으로 구성한다.
+- 각 액션은 고객/회사/부서, 금액 영향, 기한, 우선순위 점수, 추천 행동, 근거, 관련 React/Django 링크, 생성 가능한 초안 유형을 포함한다.
+- 신규 `POST /reporting/api/ai-workspace/actions/draft/` API를 추가해 action id와 draft type 기준으로 메일/영업노트/질문/주간보고 초안을 생성한다.
+- 초안 API는 사용자가 승인하기 전에는 CRM 데이터를 저장하거나 메일을 발송하지 않는다.
+- OpenAI 호출 실패 또는 키 미설정 시에는 입력 근거 기반의 안전한 로컬 fallback 초안을 반환한다.
+- React `/ai-workspace/` 상단에 Daily Brief와 Action Queue를 추가하고, 액션 카드에서 초안 생성/복사/관련 화면 이동을 지원한다.
+- 기존 Django AI 허브, 부서 분석 실행, PainPoint 검증, `/reporting/*` 인증/권한 정책은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 1단계는 계산형 action queue와 비저장 초안 API만 추가한다. AI 사용 로그/ROI 추적용 `AIActionLog`는 다음 단계에서 별도 migration으로 검토한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/`, `/reporting/api/ai-workspace/`, `/reporting/api/ai-workspace/actions/draft/` smoke check
