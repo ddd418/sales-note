@@ -2218,10 +2218,27 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(quote_item['productId'], product.id)
         self.assertEqual(quote_item['productCode'], 'PIP-1000')
         self.assertEqual(quote_item['productDescription'], '피펫')
+        self.assertEqual(quote_item['sourceQuoteScheduleId'], quote_schedule.id)
         self.assertTrue(quote_item['taxInvoiceIssued'])
         self.assertEqual(quote_item['quoteGroup'], '수리')
         self.assertEqual(quote_item['quoteGroupLabel'], '수리')
         self.assertEqual(quote_item['notes'], '오링 교체')
+
+    def test_quote_items_api_excludes_completed_quote_schedules(self):
+        target = self._create_followup(self.user, '완료 제외 고객')
+        completed = self._create_quote_schedule(target, self.user, '완료된 견적 품목', 1000000)
+        completed.status = 'completed'
+        completed.save(update_fields=['status'])
+        scheduled = self._create_quote_schedule(target, self.user, '진행 중 견적 품목', 2000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        schedule_ids = {item['scheduleId'] for item in payload['quotes']}
+        self.assertEqual(schedule_ids, {scheduled.id})
 
     def test_customer_records_api_includes_quote_schedules_without_quote_model(self):
         target = self._create_followup(self.user, '기록 대표')
@@ -4501,6 +4518,107 @@ class SchedulesSummaryApiTests(TestCase):
             {note['quoteGroup']: note['notes'] for note in payload['schedule']['quoteGroupNotes']},
             {'보상판매': '보상판매 기타사항', '수리': '수리 기타사항'},
         )
+
+    def test_schedule_delivery_items_update_api_marks_imported_quote_completed(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '견적불러오기납품', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Quoted PCR Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'sourceQuoteScheduleIds': [quote_schedule.id],
+                'items': [
+                    {
+                        'sourceQuoteScheduleId': quote_schedule.id,
+                        'itemName': 'Quoted PCR Kit',
+                        'quantity': 2,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['completedQuoteScheduleIds'], [quote_schedule.id])
+        self.assertIn('원본 견적 일정', payload['message'])
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'completed')
+        self.assertEqual(DeliveryItem.objects.get(schedule=schedule).item_name, 'Quoted PCR Kit')
+
+    def test_schedule_delivery_items_update_api_rejects_coworker_source_quote_completion(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '동료견적차단납품', activity_type='delivery')
+        coworker_quote = Schedule.objects.create(
+            user=self.coworker,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=coworker_quote,
+            item_name='Coworker Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=10000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'sourceQuoteScheduleIds': [coworker_quote.id],
+                'items': [
+                    {
+                        'sourceQuoteScheduleId': coworker_quote.id,
+                        'itemName': 'Coworker Quote Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '10000',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('본인이 작성한 견적 일정', response.json()['error'])
+        coworker_quote.refresh_from_db()
+        self.assertEqual(coworker_quote.status, 'scheduled')
+        self.assertFalse(DeliveryItem.objects.filter(schedule=schedule).exists())
 
     def test_schedule_delivery_items_update_api_accepts_product_master_selection(self):
         import json

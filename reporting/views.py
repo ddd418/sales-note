@@ -5830,6 +5830,113 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
     return cleaned
 
 
+def _schedules_source_quote_id_values(raw_value):
+    if raw_value in (None, ''):
+        return []
+    if isinstance(raw_value, str) and ',' in raw_value:
+        return raw_value.split(',')
+    if isinstance(raw_value, (list, tuple, set)):
+        return list(raw_value)
+    return [raw_value]
+
+
+def _schedules_parse_source_quote_schedule_ids(payload):
+    if not isinstance(payload, dict):
+        return []
+
+    raw_values = []
+    for key in (
+        'sourceQuoteScheduleIds',
+        'source_quote_schedule_ids',
+        'sourceQuoteScheduleId',
+        'source_quote_schedule_id',
+        'fromQuoteScheduleId',
+        'from_quote_schedule_id',
+    ):
+        raw_values.extend(_schedules_source_quote_id_values(payload.get(key)))
+
+    raw_items = payload.get('items')
+    if isinstance(raw_items, list):
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            raw_values.extend(_schedules_source_quote_id_values(raw_item.get('sourceQuoteScheduleId')))
+            raw_values.extend(_schedules_source_quote_id_values(raw_item.get('source_quote_schedule_id')))
+
+    source_ids = []
+    seen = set()
+    for raw_id in raw_values:
+        if raw_id in (None, ''):
+            continue
+        try:
+            source_id = int(str(raw_id).strip())
+        except (TypeError, ValueError):
+            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
+        if source_id <= 0:
+            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
+        if source_id not in seen:
+            seen.add(source_id)
+            source_ids.append(source_id)
+    return source_ids
+
+
+def _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
+    if quote_schedule.followup_id == delivery_schedule.followup_id:
+        return True
+    quote_followup = quote_schedule.followup
+    delivery_followup = delivery_schedule.followup
+    return bool(
+        delivery_followup.department_id
+        and quote_followup.department_id
+        and quote_followup.department_id == delivery_followup.department_id
+    )
+
+
+def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, source_quote_schedule_ids):
+    if not source_quote_schedule_ids or delivery_schedule.activity_type != 'delivery':
+        return []
+
+    quote_schedules = Schedule.objects.select_for_update().select_related(
+        'followup',
+        'followup__department',
+    ).filter(
+        id__in=source_quote_schedule_ids,
+        activity_type='quote',
+    )
+    quote_by_id = {quote_schedule.id: quote_schedule for quote_schedule in quote_schedules}
+    missing_ids = [source_id for source_id in source_quote_schedule_ids if source_id not in quote_by_id]
+    if missing_ids:
+        raise ValueError('불러온 원본 견적 일정을 찾을 수 없습니다.')
+
+    completed_ids = []
+    for source_id in source_quote_schedule_ids:
+        quote_schedule = quote_by_id[source_id]
+        if quote_schedule.user_id != actor.id:
+            raise PermissionError('본인이 작성한 견적 일정만 납품 완료 처리할 수 있습니다.')
+        if not _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
+            raise PermissionError('납품 일정과 다른 고객/부서의 견적은 완료 처리할 수 없습니다.')
+        if quote_schedule.status == 'completed':
+            continue
+        quote_schedule.status = 'completed'
+        quote_schedule.save(update_fields=['status', 'updated_at'])
+        completed_ids.append(quote_schedule.id)
+    return completed_ids
+
+
+def _schedules_complete_source_quote_schedules_from_post(request, delivery_schedule):
+    source_quote_schedule_ids = _schedules_parse_source_quote_schedule_ids({
+        'from_quote_schedule_id': request.POST.get('from_quote_schedule_id'),
+    })
+    if not source_quote_schedule_ids:
+        return []
+    with transaction.atomic():
+        return _schedules_mark_source_quote_schedules_completed(
+            delivery_schedule,
+            request.user,
+            source_quote_schedule_ids,
+        )
+
+
 def _schedules_delivery_items_summary(schedule):
     from decimal import Decimal
 
@@ -6385,6 +6492,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
 
     try:
         delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request)
+        source_quote_schedule_ids = _schedules_parse_source_quote_schedule_ids(payload)
         quote_group_notes = _parse_quote_group_notes_payload(payload)
         if quote_group_notes is None and ('quoteExtraNotes' in payload or 'quote_extra_notes' in payload):
             quote_group_notes = {
@@ -6394,6 +6502,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     try:
+        completed_quote_schedule_ids = []
         with transaction.atomic():
             schedule.delivery_items_set.all().delete()
             for item_data in delivery_items:
@@ -6401,14 +6510,27 @@ def schedules_delivery_items_update_api(request, schedule_id):
             _save_schedule_quote_group_notes(schedule, quote_group_notes)
             schedule.save(update_fields=['quote_extra_notes', 'updated_at'])
             _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
+            completed_quote_schedule_ids = _schedules_mark_source_quote_schedules_completed(
+                schedule,
+                request.user,
+                source_quote_schedule_ids,
+            )
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
     except Exception as exc:
         logger.error('React 일정 납품 품목 저장 중 오류: %s', exc, exc_info=True)
         return JsonResponse({'success': False, 'error': '납품 품목 저장 중 오류가 발생했습니다.'}, status=500)
 
     refreshed = _schedules_get_detail_schedule(schedule.id)
+    message = '납품 품목을 저장했습니다.'
+    if completed_quote_schedule_ids:
+        message = '납품 품목을 저장하고 원본 견적 일정을 완료 처리했습니다.'
     return JsonResponse({
         **_schedules_detail_payload(request, refreshed, get_user_profile(request.user)),
-        'message': '납품 품목을 저장했습니다.',
+        'completedQuoteScheduleIds': completed_quote_schedule_ids,
+        'message': message,
     })
 
 
@@ -7498,18 +7620,15 @@ def schedule_create_view(request):
                             break  # 첫 번째 usage만 업데이트
             
             # 견적에서 불러온 납품인 경우, 원본 견적 일정을 완료 처리
-            from_quote_schedule_id = request.POST.get('from_quote_schedule_id')
-            if from_quote_schedule_id and schedule.activity_type == 'delivery':
+            if schedule.activity_type == 'delivery':
                 try:
-                    quote_schedule = Schedule.objects.get(
-                        id=int(from_quote_schedule_id),
-                        activity_type='quote'
-                    )
-                    quote_schedule.status = 'completed'
-                    quote_schedule.save()
-                    messages.info(request, f'견적 일정(ID: {from_quote_schedule_id})이 완료 처리되었습니다.')
-                except (Schedule.DoesNotExist, ValueError):
-                    pass
+                    completed_quote_ids = _schedules_complete_source_quote_schedules_from_post(request, schedule)
+                    if completed_quote_ids:
+                        messages.info(request, f'견적 일정(ID: {", ".join(map(str, completed_quote_ids))})이 완료 처리되었습니다.')
+                except ValueError as exc:
+                    messages.warning(request, str(exc))
+                except PermissionError as exc:
+                    messages.error(request, str(exc))
             
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
@@ -7764,6 +7883,16 @@ def schedule_edit_view(request, pk):
                         usage.quantity = first_item.quantity
                         usage.save()
                         break  # 첫 번째 usage만 업데이트
+
+            if updated_schedule.activity_type == 'delivery':
+                try:
+                    completed_quote_ids = _schedules_complete_source_quote_schedules_from_post(request, updated_schedule)
+                    if completed_quote_ids:
+                        messages.info(request, f'견적 일정(ID: {", ".join(map(str, completed_quote_ids))})이 완료 처리되었습니다.')
+                except ValueError as exc:
+                    messages.warning(request, str(exc))
+                except PermissionError as exc:
+                    messages.error(request, str(exc))
 
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
@@ -15628,6 +15757,7 @@ def followup_quote_items_api(request, followup_id):
         quote_schedules = Schedule.objects.filter(
             followup__in=quote_followups,
             activity_type='quote',
+            status='scheduled',
             user=request.user,
         ).select_related('followup', 'followup__company', 'followup__department').prefetch_related(
             Prefetch('delivery_items_set', queryset=quote_items_queryset),
@@ -15710,6 +15840,8 @@ def followup_quote_items_api(request, followup_id):
                         'productCode': product.product_code if product else '',
                         'product_description': (product.description or '') if product else '',
                         'productDescription': (product.description or '') if product else '',
+                        'source_quote_schedule_id': quote_schedule.id,
+                        'sourceQuoteScheduleId': quote_schedule.id,
                         'tax_invoice_issued': bool(item.tax_invoice_issued),
                         'taxInvoiceIssued': bool(item.tax_invoice_issued),
                         'quote_group': quote_group,

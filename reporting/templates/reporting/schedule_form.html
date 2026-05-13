@@ -3197,8 +3197,9 @@ function loadQuoteItems(quote) {
     
     // 견적 schedule_id를 hidden 필드에 저장 (납품 저장 시 견적 자동 완료 처리용)
     const fromQuoteField = document.getElementById('from-quote-schedule-id');
-    if (fromQuoteField && quote.schedule_id) {
-        fromQuoteField.value = quote.schedule_id;
+    const sourceQuoteScheduleId = quote.schedule_id || quote.scheduleId || quote.id || '';
+    if (fromQuoteField && sourceQuoteScheduleId) {
+        fromQuoteField.value = sourceQuoteScheduleId;
     }
 }
 

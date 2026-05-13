@@ -298,6 +298,7 @@ type ScheduleDeliveryEditRow = {
   taxInvoiceIssued: boolean;
   quoteGroup: string;
   notes: string;
+  sourceQuoteScheduleId: string;
 };
 
 type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'quoteGroup' | 'notes';
@@ -642,6 +643,7 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
   quoteGroup: item?.quoteGroup || '',
   notes: item?.notes || '',
+  sourceQuoteScheduleId: '',
 });
 
 const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): ScheduleDeliveryEditRow[] => (
@@ -733,6 +735,7 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
   taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
   quoteGroup: item.quoteGroup || '',
   notes: item.notes || '',
+  sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
 });
 
 const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => rows.some((row) => Boolean(
@@ -6524,8 +6527,14 @@ function ScheduleDetailPage({
         taxInvoiceIssued: row.taxInvoiceIssued,
         quoteGroup: row.quoteGroup.trim(),
         notes: row.notes.trim(),
+        sourceQuoteScheduleId: row.sourceQuoteScheduleId ? Number(row.sourceQuoteScheduleId) : null,
       });
     }
+    const sourceQuoteScheduleIds = Array.from(new Set(
+      rowsWithInput
+        .map((row) => Number(row.sourceQuoteScheduleId))
+        .filter((sourceId) => Number.isInteger(sourceId) && sourceId > 0),
+    ));
     const quoteGroupNotesPayload = scheduleQuoteGroupsFromRows(rowsWithInput).reduce<ScheduleQuoteGroupNoteState>((acc, group) => {
       acc[group] = (quoteGroupNotes[group] || '').trim();
       return acc;
@@ -6539,6 +6548,7 @@ function ScheduleDetailPage({
         data.links.updateDeliveryItems,
         payloadItems,
         quoteGroupNotesPayload,
+        sourceQuoteScheduleIds,
       );
       const refreshed = await onRefresh();
       setDeliveryRows(makeScheduleDeliveryEditRows(refreshed?.deliveryItems ?? updated.deliveryItems ?? []));

@@ -1082,6 +1082,7 @@ export type ScheduleDeliveryItemPayload = {
   taxInvoiceIssued: boolean;
   quoteGroup?: string;
   notes?: string;
+  sourceQuoteScheduleId?: number | null;
 };
 
 export type FollowupQuoteItem = {
@@ -1089,6 +1090,7 @@ export type FollowupQuoteItem = {
   productId?: number | null;
   productCode?: string;
   productDescription?: string;
+  sourceQuoteScheduleId?: number | null;
   itemName: string;
   quantity: number;
   unit: string;
@@ -2185,6 +2187,7 @@ export type ScheduleEditResponse = ScheduleDetailData & {
 export type ScheduleDeliveryItemsUpdateResponse = ScheduleDetailData & {
   success: boolean;
   error?: string;
+  completedQuoteScheduleIds?: number[];
   message?: string;
 };
 
@@ -5499,6 +5502,7 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
     productId,
     productCode: rawString(rawValue(item, 'productCode', 'product_code')),
     productDescription: rawString(rawValue(item, 'productDescription', 'product_description')),
+    sourceQuoteScheduleId: rawNullableNumber(rawValue(item, 'sourceQuoteScheduleId', 'source_quote_schedule_id')),
     itemName: rawString(rawValue(item, 'itemName', 'item_name')),
     quantity: Math.max(1, rawNumber(item.quantity, 1)),
     unit: rawString(item.unit) || 'EA',
@@ -5912,8 +5916,20 @@ export async function updateScheduleDeliveryItems(
   submitUrl: string,
   items: ScheduleDeliveryItemPayload[],
   quoteGroupNotes?: Record<string, string>,
+  sourceQuoteScheduleIds?: number[],
 ): Promise<ScheduleDeliveryItemsUpdateResponse> {
   const csrfToken = getCookie('csrftoken');
+  const payload: {
+    items: ScheduleDeliveryItemPayload[];
+    quoteGroupNotes: Record<string, string>;
+    sourceQuoteScheduleIds?: number[];
+  } = {
+    items,
+    quoteGroupNotes: quoteGroupNotes ?? {},
+  };
+  if (sourceQuoteScheduleIds?.length) {
+    payload.sourceQuoteScheduleIds = sourceQuoteScheduleIds;
+  }
   const response = await fetch(submitUrl, {
     method: 'POST',
     credentials: 'include',
@@ -5922,7 +5938,7 @@ export async function updateScheduleDeliveryItems(
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
-    body: JSON.stringify({ items, quoteGroupNotes: quoteGroupNotes ?? {} }),
+    body: JSON.stringify(payload),
   });
   redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';

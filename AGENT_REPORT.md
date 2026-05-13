@@ -1,5 +1,87 @@
 # AGENT_REPORT.md
 
+## 2026-05-13 — Delivery Quote Import Auto Completion Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+납품 일정에서 `견적 불러오기`로 품목을 가져와 저장해도 원본 견적 일정이 `완료됨`으로 바뀌지 않는 문제를 수정했습니다. React 일정 상세 화면과 Django 레거시 일정 등록/수정 화면 모두에서 원본 견적 일정 ID를 전달하고, 백엔드가 본인이 작성한 동일 고객 또는 동일 부서/연구실 견적만 완료 처리합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 원본 견적 일정 ID 파싱, 권한/대상 검증, 완료 처리 helper 추가. 납품 품목 저장 API와 legacy 일정 생성/수정에 완료 처리 연결.
+- `reporting/templates/reporting/schedule_form.html`: `schedule_id`, `scheduleId`, `id` fallback으로 원본 견적 일정 hidden field 보강.
+- `reporting/tests.py`: 견적 불러오기 API/납품 품목 저장 API 회귀 테스트 추가.
+- `frontend/src/api.ts`: 견적 품목/납품 저장 payload에 `sourceQuoteScheduleId(s)` 추가.
+- `frontend/src/App.tsx`: React 견적 불러오기 적용 행에 원본 견적 일정 ID를 보존하고 저장 시 전송.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 긴급 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 납품 품목 저장과 동시에 불러온 원본 견적 일정이 자동으로 `완료됨` 처리됩니다.
+- 완료된 견적 일정은 다시 `견적 불러오기` 선택지에 노출되지 않습니다.
+- 동료 견적 또는 다른 고객/부서 견적 ID를 조작해 완료 처리하는 요청은 차단됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 일정 생성/수정/상세 route는 유지했습니다.
+- 납품 품목 가격은 견적에서 불러온 값 그대로 저장되며, 제품 가격 재조회로 덮어쓰지 않습니다.
+- 기존 납품 품목 저장, 견적서 구분, 선결제, History 동기화 흐름을 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests.test_quote_items_api_returns_react_delivery_import_fields reporting.tests.QuoteItemsApiTests.test_quote_items_api_excludes_completed_quote_schedules reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_imported_quote_completed reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_rejects_coworker_source_quote_completion --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 44 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-5Pldkc-g.js / assets/index-DAwMfLZL.css
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 인앱 브라우저 제어용 Node REPL 도구가 노출되지 않아 로컬 브라우저 smoke는 진행하지 못했습니다.
+- 운영 검수는 실제 데이터가 아닌 테스트 고객/테스트 일정으로 진행해야 합니다.
+
+### 운영 배포 상태
+
+- 배포 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 테스트 고객 또는 검수용 고객에 `견적 제출` 일정을 만들고 품목을 1개 이상 저장합니다.
+2. 같은 고객 또는 같은 부서/연구실에 `납품 일정`을 만들고 일정 상세에서 `견적 불러오기`를 누릅니다.
+3. 방금 만든 테스트 견적을 선택하고 `저장`을 누릅니다.
+4. 원본 견적 일정 상세 또는 목록에서 상태가 `완료됨`으로 바뀌었는지 확인합니다.
+5. 다시 납품 일정의 `견적 불러오기`를 열었을 때 완료된 테스트 견적이 선택지에 다시 나오지 않는지 확인합니다.
+6. 검수 후 테스트 납품 일정, 테스트 견적 일정, 테스트 고객을 삭제합니다.
+
+### 권장 다음 작업
+
+- 운영 수동 검수 완료 후 React 일정 상세의 남은 legacy fallback 축소 작업으로 넘어갑니다.
+
+---
+
 ## 2026-05-13 — React Personal Schedule Calendar APIs
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기

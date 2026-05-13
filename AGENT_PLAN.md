@@ -1,6 +1,44 @@
 # AGENT_PLAN.md
 
-## Current task — React 개인 일정 등록/수정 API 전환
+## Current task — 납품 견적 불러오기 후 원 견적 일정 자동 완료 복구
+
+**목표**: 납품 일정에서 `견적 불러오기`로 품목을 가져와 저장하면, 불러온 원본 견적 일정이 자동으로 `완료됨` 상태가 되도록 React 일정 상세 화면과 Django 레거시 일정 등록/수정 화면을 함께 보강한다.
+
+### 확인된 상태
+
+- `/reporting/api/followups/<id>/quote-items/`는 견적 선택지에 `scheduleId`/`schedule_id`를 내려준다.
+- React 납품 품목 저장 요청은 원본 견적 일정 ID를 `/reporting/api/schedules/<id>/delivery-items/update/`로 전달하지 않아 백엔드가 완료 처리 대상을 알 수 없다.
+- Django 레거시 일정 폼에는 `from_quote_schedule_id` 히든 필드가 있으나, 견적 선택 JS가 camelCase `scheduleId` fallback을 보장하지 않아 값이 비는 경로가 있다.
+- 기존 DB 모델로 해결 가능하며 모델/마이그레이션 변경은 필요 없다.
+
+### 구현 계획
+
+- 납품 품목 저장 API가 `sourceQuoteScheduleIds`와 item-level `sourceQuoteScheduleId`를 받아 원본 견적 일정을 완료 처리하게 한다.
+- 완료 처리 대상은 본인이 작성한 견적 일정이며, 납품 일정의 동일 고객 또는 동일 부서/연구실 견적으로 제한한다.
+- React 견적 불러오기 적용 시 각 납품 행에 원본 견적 일정 ID를 보존하고 저장 payload에 함께 보낸다.
+- Django 레거시 일정 폼의 견적 선택 JS가 `schedule_id`, `scheduleId`, `id`를 모두 인식해 히든 필드를 채우게 한다.
+- 견적 불러오기 API는 완료된 견적 일정을 다시 선택지로 노출하지 않도록 `scheduled` 견적만 반환한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/schedules/<id>/`, `/reporting/login/`, 관련 API smoke check
+
+### 현재 상태
+
+- 백엔드/React/레거시 템플릿 수정 및 로컬 검증 완료.
+- DB 모델 변경 예정 없음.
+- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 예정.
+
+---
+
+## Previous task — React 개인 일정 등록/수정 API 전환
 
 **목표**: React `/schedules/calendar/`에서 개인 일정을 Django 레거시 화면으로 이동하지 않고 등록, 수정, 삭제할 수 있게 한다. 기존 `/reporting/personal-schedules/*` 화면과 `/reporting/*` route는 fallback으로 보존한다.
 
