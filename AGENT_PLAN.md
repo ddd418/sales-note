@@ -47,7 +47,8 @@
   - 제공된 `/mailbox/?compose=1&schedule_id=899&followup_id=4...` URL 200, 최신 frontend assets 로드 확인.
   - `/reporting/login/` 200.
   - anonymous `/reporting/api/mailbox/?schedule_id=899` 302 login redirect.
-- 다음 행동: 사용자 운영 수동 검수 대기.
+- 사용자 수동 검수 완료: 2026-05-13 운영 검수 완료 확인.
+- 다음 행동: 사용자가 명시적으로 요청하는 다음 CRM 작업을 진행한다.
 
 ---
 
