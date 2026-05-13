@@ -1170,6 +1170,15 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK (LF→CRLF warning only)
+
+git commit -m "feat: guard quote import delivery quantities"
+→ `2368e8e`
+
+git push origin main
+→ OK, `main` updated to `2368e8e`
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --json --message "Deploy quote import delivery guards 2368e8e"
+→ OK, frontend deployment `d18f2a4a-10c3-40d9-ba33-54685eb2e739`
 ```
 
 ### 배포 상태
@@ -15264,7 +15273,22 @@ M3: 견적/납품 상태 정리 액션. M1/M2로 정합성 확인과 저장 방�
 
 ### 9. Production Deployment Status
 
-- Pending at this report point. Commit, push, Railway `web` and `sales-note-frontend` deployment, production smoke check will be recorded after deployment completes.
+- Implementation/report commit: `2368e8e feat: guard quote import delivery quantities`
+- GitHub push: `main` updated from `bf669ab` to `2368e8e`
+- Railway `web`: `8382e29f-9285-4797-b8f1-196ee1840488` SUCCESS, commit `2368e8e`
+- Railway `sales-note-frontend`: `d18f2a4a-10c3-40d9-ba33-54685eb2e739` SUCCESS, 배포 메시지 `Deploy quote import delivery guards 2368e8e`
+- Railway service status: `web`, `sales-note-frontend`, and `Postgres` Online.
+- Production frontend smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/schedules/` returned 200.
+  - Served `/assets/index-DXrVrnz1.js` and `/assets/index-BHN2Drqn.css`.
+  - JS bundle contains `부분 납품 잔여` and `남은 품목`.
+  - CSS bundle contains `schedule-quote-import-badges`.
+- Production API auth smoke:
+  - `GET https://web-production-5096.up.railway.app/reporting/api/followups/1/quote-items/` returned `302 /reporting/login/?next=/reporting/api/followups/1/quote-items/`.
+  - `GET https://sales-note-frontend-production.up.railway.app/reporting/api/followups/1/quote-items/` returned the same login redirect through the frontend proxy.
+- Railway logs checked:
+  - `web` migrations completed with no migrations to apply; gunicorn started.
+  - `sales-note-frontend` container started.
 
 ### 10. Manual Server Test Process
 
