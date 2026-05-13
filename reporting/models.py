@@ -810,6 +810,24 @@ class DeliveryItem(models.Model):
     # 제품 마스터 연동 (기존 데이터 호환성을 위해 null 허용)
     product = models.ForeignKey('Product', on_delete=models.SET_NULL, null=True, blank=True, 
                                related_name='delivery_items', verbose_name="제품")
+    source_quote_schedule = models.ForeignKey(
+        Schedule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='imported_delivery_items',
+        verbose_name="원본 견적 일정",
+        help_text="견적 품목을 납품으로 불러온 경우 원본 견적 일정입니다.",
+    )
+    source_quote_item = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='delivery_imports',
+        verbose_name="원본 견적 품목",
+        help_text="견적 품목을 납품으로 불러온 경우 원본 견적 품목 라인입니다.",
+    )
     
     # 기존 필드들 (product가 없을 때 직접 입력)
     item_name = models.CharField(max_length=200, verbose_name="품목명")

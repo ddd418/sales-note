@@ -14631,6 +14631,58 @@ Railway logs checked
 
 ---
 
+## Partial Quote Import Sales Accounting Fix — 견적 일부 납품 판매 집계 보정 (2026-05-13)
+
+### 1. Summary
+
+납품 일정에서 견적 품목 일부만 불러온 경우에도 원본 견적 일정 전체가 판매/완료로 해석되던 문제를 수정했습니다. 이제 납품으로 실제 이동된 품목 라인만 판매로 보고, 남은 견적 품목은 계속 견적 불러오기 목록에 남습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `reporting/models.py` / `reporting/migrations/0099_delivery_item_source_quote.py` | 납품 품목에 원본 견적 일정/원본 견적 품목 연결 필드 추가 |
+| `reporting/views.py` | 견적 불러오기/견적 완료 처리/노트 상세 보고/고객 엑셀 판매 합계를 실제 납품 품목 기준으로 보정 |
+| `reporting/signals.py` | 제품 판매수량 및 수주 실제매출 신호가 견적 일정 완료에는 반응하지 않고 납품 일정 완료에만 반응하도록 제한 |
+| `frontend/src/api.ts` / `frontend/src/App.tsx` | React 납품 품목 편집 payload에 원본 견적 품목 ID 보존 및 전송 |
+| `reporting/tests.py` | 부분 견적 불러오기, 남은 견적 품목 재노출, 견적 품목 판매수량 제외, stale 노트 표시 보정 테스트 추가 |
+
+### 3. Behavior
+
+- 견적 일정에 품목/견적 구분이 2개 있고 납품에는 30,000원 품목 1개만 불러온 경우, 보고/노트 상세에는 납품 일정의 실제 품목만 표시됩니다.
+- 일부만 납품된 원본 견적 일정은 `completed`로 고정되지 않고 남은 품목이 있으면 `scheduled`로 유지/복원됩니다.
+- 견적 불러오기 목록은 이미 납품된 원본 견적 품목을 제외하고 남은 품목만 반환합니다.
+- 제품 `total_sold`, Opportunity 실제매출, 고객 엑셀의 납품 합계는 견적 일정 품목을 판매로 세지 않습니다.
+
+### 4. Commands Run and Results
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\signals.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1 --failfast
+→ Ran 42 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-DzX0o0Sd.js / dist/assets/index-DAwMfLZL.css generated
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 5. Deployment Status
+
+- Pending: commit, push, Railway `web` migration/deploy and `sales-note-frontend` deploy.
+
 ## Product Replacement Option Loading Hotfix — 대체 제품 목록 로딩 지연 수정 (2026-05-12)
 
 ### 1. Summary

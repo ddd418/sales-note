@@ -305,7 +305,7 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
     """
     if created and instance.product and instance.schedule:
         # 1. 제품 판매횟수 증가 (납품 완료 시에만)
-        if instance.schedule.status == 'completed':
+        if instance.schedule.activity_type == 'delivery' and instance.schedule.status == 'completed':
             instance.product.total_sold += instance.quantity
             instance.product.save(update_fields=['total_sold'])
     
@@ -317,7 +317,7 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
     elif created and instance.history and instance.history.schedule:
         target_schedule = instance.history.schedule
     
-    if target_schedule:
+    if target_schedule and target_schedule.activity_type == 'delivery':
         # Schedule에 연결된 OpportunityTracking 찾기
         if hasattr(target_schedule, 'opportunity') and target_schedule.opportunity:
             opportunity = target_schedule.opportunity
@@ -385,7 +385,7 @@ def update_product_sales_count_on_delete(sender, instance, **kwargs):
             schedule = Schedule.objects.get(id=instance.schedule_id)
             
             # 납품 완료 상태일 때만 판매횟수 감소
-            if schedule.status == 'completed':
+            if schedule.activity_type == 'delivery' and schedule.status == 'completed':
                 product = Product.objects.get(id=instance.product_id)
                 # 판매횟수가 음수가 되지 않도록 보호
                 product.total_sold = max(0, product.total_sold - instance.quantity)
@@ -409,7 +409,9 @@ def update_product_sales_count_on_delete(sender, instance, **kwargs):
     if target_schedule_id:
         try:
             schedule = Schedule.objects.get(id=target_schedule_id)
-            
+            if schedule.activity_type != 'delivery':
+                return
+
             # Schedule에 연결된 OpportunityTracking 찾기
             if hasattr(schedule, 'opportunity') and schedule.opportunity:
                 opportunity = schedule.opportunity

@@ -3391,6 +3391,7 @@ def _notes_history_payload(history, today, can_review=False):
     review_required = history.action_type in review_required_types
     reviewed_at = history.reviewed_at
     reviewer = history.reviewer
+    delivery_summary_text, _delivery_summary_amount = _history_effective_delivery_summary(history)
 
     return {
         'id': history.id,
@@ -3406,7 +3407,7 @@ def _notes_history_payload(history, today, can_review=False):
         'serviceStatus': history.service_status or '',
         'serviceStatusLabel': history.get_service_status_display() if history.service_status else '',
         'summary': (
-            history.content or history.meeting_situation or history.meeting_next_action or history.delivery_items or ''
+            history.content or history.meeting_situation or history.meeting_next_action or delivery_summary_text or ''
         ).strip()[:180],
         'nextAction': next_action[:160],
         'nextActionDate': _date_or_none(next_action_date),
@@ -3428,6 +3429,19 @@ def _notes_history_payload(history, today, can_review=False):
         'scheduleHref': f'/schedules/{history.schedule_id}/' if history.schedule_id else '',
         'djangoScheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
     }
+
+
+def _history_effective_delivery_summary(history):
+    if (
+        history.action_type == 'delivery_schedule'
+        and history.schedule_id
+        and history.schedule
+        and history.schedule.activity_type == 'delivery'
+    ):
+        delivery_items = list(history.schedule.delivery_items_set.all().order_by('id'))
+        if delivery_items:
+            return _product_delivery_items_summary(delivery_items)
+    return history.delivery_items or '', _money_int(history.delivery_amount)
 
 
 def _can_review_notes(user_profile):
@@ -3587,6 +3601,7 @@ def _notes_detail_payload(request, history, user_profile):
     note_payload = _notes_history_payload(history, today, can_review)
     followup = history.followup
     schedule = history.schedule
+    delivery_summary_text, delivery_summary_amount = _history_effective_delivery_summary(history)
 
     files = [
         {
@@ -3619,8 +3634,8 @@ def _notes_detail_payload(request, history, user_profile):
         'meetingObstacles': history.meeting_obstacles or '',
         'meetingNextAction': history.meeting_next_action or '',
         'deliveryDate': _date_or_none(history.delivery_date),
-        'deliveryAmount': _money_int(history.delivery_amount),
-        'deliveryItems': history.delivery_items or '',
+        'deliveryAmount': delivery_summary_amount,
+        'deliveryItems': delivery_summary_text,
         'taxInvoiceIssued': bool(history.tax_invoice_issued),
         'files': files,
         'replies': replies,
@@ -4144,9 +4159,11 @@ def _schedules_report_payload(history, today):
         or history.meeting_situation
         or history.meeting_confirmed_facts
         or history.meeting_next_action
-        or history.delivery_items
         or ''
     ).strip()
+    delivery_summary_text, delivery_summary_amount = _history_effective_delivery_summary(history)
+    if not summary:
+        summary = delivery_summary_text.strip()
 
     return {
         'id': history.id,
@@ -4159,8 +4176,8 @@ def _schedules_report_payload(history, today):
         'meetingConfirmedFacts': _schedules_report_text(history.meeting_confirmed_facts, 360),
         'meetingObstacles': _schedules_report_text(history.meeting_obstacles, 360),
         'meetingNextAction': _schedules_report_text(history.meeting_next_action, 360),
-        'deliveryItems': _schedules_report_text(history.delivery_items, 480),
-        'deliveryAmount': _money_int(history.delivery_amount),
+        'deliveryItems': _schedules_report_text(delivery_summary_text, 480),
+        'deliveryAmount': delivery_summary_amount,
         'nextAction': _schedules_report_text(next_action, 260),
         'nextActionDate': _date_or_none(history.next_action_date),
         'activityDate': _date_or_none(activity_date),
@@ -5493,6 +5510,8 @@ def _schedules_delivery_item_payload(item):
         'quoteGroup': item.quote_group or '',
         'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
+        'sourceQuoteScheduleId': item.source_quote_schedule_id,
+        'sourceQuoteItemId': item.source_quote_item_id,
     }
 
 
@@ -5704,7 +5723,19 @@ def _schedules_apply_prepayments(schedule, actor, raw_items):
     return total_used
 
 
-def _schedules_parse_delivery_item_inputs(raw_items, request=None):
+def _schedules_parse_positive_id(raw_value, error_message):
+    if raw_value in (None, ''):
+        return None
+    try:
+        parsed = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(error_message)
+    if parsed <= 0:
+        raise ValueError(error_message)
+    return parsed
+
+
+def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedule=None):
     from decimal import Decimal, InvalidOperation
 
     if not isinstance(raw_items, list):
@@ -5732,6 +5763,14 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
         discount_unit_price_raw = raw_item.get('discountUnitPrice')
         if discount_unit_price_raw is None:
             discount_unit_price_raw = raw_item.get('discount_unit_price')
+        source_quote_schedule_id = _schedules_parse_positive_id(
+            raw_item.get('sourceQuoteScheduleId') or raw_item.get('source_quote_schedule_id'),
+            '불러온 원본 견적 일정 정보가 올바르지 않습니다.',
+        )
+        source_quote_item_id = _schedules_parse_positive_id(
+            raw_item.get('sourceQuoteItemId') or raw_item.get('source_quote_item_id'),
+            '불러온 원본 견적 품목 정보가 올바르지 않습니다.',
+        )
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         quote_group = str(raw_item.get('quoteGroup') or raw_item.get('quote_group') or '').strip()[:100]
         notes = str(raw_item.get('notes') or '').strip()
@@ -5823,6 +5862,48 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None):
         }
         if product:
             item_data['product'] = product
+
+        source_quote_schedule = None
+        source_quote_item = None
+        if source_quote_item_id:
+            if request is None:
+                raise ValueError('불러온 원본 견적 품목 정보가 올바르지 않습니다.')
+            source_quote_item = DeliveryItem.objects.select_related(
+                'schedule',
+                'schedule__followup',
+                'schedule__followup__department',
+            ).filter(
+                id=source_quote_item_id,
+                schedule__activity_type='quote',
+            ).first()
+            if not source_quote_item or not source_quote_item.schedule_id:
+                raise ValueError('불러온 원본 견적 품목을 찾을 수 없습니다.')
+            source_quote_schedule = source_quote_item.schedule
+            if source_quote_schedule_id and source_quote_schedule_id != source_quote_schedule.id:
+                raise ValueError('불러온 원본 견적 일정과 품목이 일치하지 않습니다.')
+            source_quote_schedule_id = source_quote_schedule.id
+
+        if source_quote_schedule_id and source_quote_schedule is None:
+            if request is None:
+                raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
+            source_quote_schedule = Schedule.objects.select_related(
+                'followup',
+                'followup__department',
+            ).filter(
+                id=source_quote_schedule_id,
+                activity_type='quote',
+            ).first()
+            if not source_quote_schedule:
+                raise ValueError('불러온 원본 견적 일정을 찾을 수 없습니다.')
+
+        if source_quote_schedule:
+            if source_quote_schedule.user_id != request.user.id:
+                raise PermissionError('본인이 작성한 견적 일정만 납품으로 불러올 수 있습니다.')
+            if target_schedule and not _schedules_quote_matches_delivery_target(source_quote_schedule, target_schedule):
+                raise PermissionError('납품 일정과 다른 고객/부서의 견적은 납품으로 불러올 수 없습니다.')
+            item_data['source_quote_schedule'] = source_quote_schedule
+        if source_quote_item:
+            item_data['source_quote_item'] = source_quote_item
         cleaned.append(item_data)
 
     if not cleaned:
@@ -5892,6 +5973,126 @@ def _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
     )
 
 
+def _schedules_quote_item_identity(item):
+    return (
+        item.product_id or 0,
+        (item.item_name or '').strip().lower(),
+        (item.unit or '').strip().lower(),
+        str(item.unit_price or ''),
+        str(item.discount_rate or ''),
+        str(item.discount_unit_price or ''),
+        _quote_group_key(getattr(item, 'quote_group', '')),
+    )
+
+
+def _schedules_quote_item_total_for_quantity(item, quantity):
+    from decimal import Decimal
+
+    if not quantity:
+        return Decimal('0')
+    unit_price = item.get_effective_unit_price()
+    if unit_price is None:
+        unit_price = item.unit_price
+    if unit_price is None:
+        return Decimal('0')
+    return unit_price * Decimal(str(quantity)) * Decimal('1.1')
+
+
+def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, include_legacy_matches=False):
+    from decimal import Decimal
+
+    quote_item_ids = [item.id for item in quote_items if item.id]
+    imported_quantities = {item.id: Decimal('0') for item in quote_items if item.id}
+    has_import_activity = False
+
+    if quote_item_ids:
+        linked_rows = DeliveryItem.objects.filter(
+            source_quote_item_id__in=quote_item_ids,
+            schedule__activity_type='delivery',
+        ).values('source_quote_item_id').annotate(total=Sum('quantity'))
+        for row in linked_rows:
+            source_item_id = row['source_quote_item_id']
+            if source_item_id in imported_quantities:
+                imported_quantities[source_item_id] += Decimal(str(row['total'] or 0))
+                if row['total']:
+                    has_import_activity = True
+
+    schedule_linked_items = DeliveryItem.objects.filter(
+        source_quote_schedule=quote_schedule,
+        source_quote_item__isnull=True,
+        schedule__activity_type='delivery',
+    ).select_related('schedule')
+    if schedule_linked_items.exists():
+        has_import_activity = True
+        items_by_identity = {}
+        for item in quote_items:
+            items_by_identity.setdefault(_schedules_quote_item_identity(item), []).append(item)
+        for delivered_item in schedule_linked_items:
+            for quote_item in items_by_identity.get(_schedules_quote_item_identity(delivered_item), []):
+                if quote_item.id in imported_quantities:
+                    imported_quantities[quote_item.id] += Decimal(str(delivered_item.quantity or 0))
+                    break
+
+    if include_legacy_matches:
+        legacy_delivery_schedules = Schedule.objects.filter(
+            user_id=quote_schedule.user_id,
+            activity_type='delivery',
+        ).exclude(status='cancelled')
+        if quote_schedule.followup_id:
+            legacy_delivery_schedules = legacy_delivery_schedules.filter(followup_id=quote_schedule.followup_id)
+        legacy_delivery_items = DeliveryItem.objects.filter(
+            schedule__in=legacy_delivery_schedules,
+            source_quote_schedule__isnull=True,
+            source_quote_item__isnull=True,
+        )
+        if legacy_delivery_items.exists():
+            remaining_by_identity = {}
+            for quote_item in quote_items:
+                remaining_by_identity.setdefault(_schedules_quote_item_identity(quote_item), []).append(quote_item)
+            for delivered_item in legacy_delivery_items:
+                candidates = remaining_by_identity.get(_schedules_quote_item_identity(delivered_item), [])
+                for quote_item in candidates:
+                    if quote_item.id not in imported_quantities:
+                        continue
+                    quote_quantity = Decimal(str(quote_item.quantity or 0))
+                    already_imported = imported_quantities[quote_item.id]
+                    if already_imported >= quote_quantity:
+                        continue
+                    imported_quantities[quote_item.id] += Decimal(str(delivered_item.quantity or 0))
+                    has_import_activity = True
+                    break
+
+    return imported_quantities, has_import_activity
+
+
+def _schedules_remaining_quote_item_entries(quote_schedule, include_legacy_matches=False):
+    from decimal import Decimal
+
+    quote_items = list(quote_schedule.delivery_items_set.all().order_by('id'))
+    if not quote_items:
+        return [], False, False
+
+    imported_quantities, has_import_activity = _schedules_quote_item_imported_quantities(
+        quote_schedule,
+        quote_items,
+        include_legacy_matches=include_legacy_matches,
+    )
+    remaining_entries = []
+    has_sold_items = False
+    for item in quote_items:
+        quantity = Decimal(str(item.quantity or 0))
+        imported_quantity = imported_quantities.get(item.id, Decimal('0'))
+        if imported_quantity > 0:
+            has_sold_items = True
+        remaining_quantity = quantity - imported_quantity
+        if remaining_quantity > 0:
+            if remaining_quantity == int(remaining_quantity):
+                remaining_quantity = int(remaining_quantity)
+            remaining_entries.append((item, remaining_quantity))
+
+    return remaining_entries, has_import_activity, has_sold_items
+
+
 def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, source_quote_schedule_ids):
     if not source_quote_schedule_ids or delivery_schedule.activity_type != 'delivery':
         return []
@@ -5915,11 +6116,19 @@ def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, s
             raise PermissionError('본인이 작성한 견적 일정만 납품 완료 처리할 수 있습니다.')
         if not _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
             raise PermissionError('납품 일정과 다른 고객/부서의 견적은 완료 처리할 수 없습니다.')
-        if quote_schedule.status == 'completed':
+        remaining_entries, has_import_activity, _has_sold_items = _schedules_remaining_quote_item_entries(
+            quote_schedule,
+            include_legacy_matches=True,
+        )
+        if remaining_entries:
+            if quote_schedule.status == 'completed' and has_import_activity:
+                quote_schedule.status = 'scheduled'
+                quote_schedule.save(update_fields=['status', 'updated_at'])
             continue
-        quote_schedule.status = 'completed'
-        quote_schedule.save(update_fields=['status', 'updated_at'])
-        completed_ids.append(quote_schedule.id)
+        if quote_schedule.status != 'completed':
+            quote_schedule.status = 'completed'
+            quote_schedule.save(update_fields=['status', 'updated_at'])
+            completed_ids.append(quote_schedule.id)
     return completed_ids
 
 
@@ -6491,8 +6700,12 @@ def schedules_delivery_items_update_api(request, schedule_id):
         return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
 
     try:
-        delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request)
+        delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request, schedule)
         source_quote_schedule_ids = _schedules_parse_source_quote_schedule_ids(payload)
+        for item_data in delivery_items:
+            source_quote_schedule = item_data.get('source_quote_schedule')
+            if source_quote_schedule and source_quote_schedule.id not in source_quote_schedule_ids:
+                source_quote_schedule_ids.append(source_quote_schedule.id)
         quote_group_notes = _parse_quote_group_notes_payload(payload)
         if quote_group_notes is None and ('quoteExtraNotes' in payload or 'quote_extra_notes' in payload):
             quote_group_notes = {
@@ -6500,6 +6713,8 @@ def schedules_delivery_items_update_api(request, schedule_id):
             }
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except PermissionError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=403)
 
     try:
         completed_quote_schedule_ids = []
@@ -13041,7 +13256,8 @@ def followup_excel_download(request):
             
             # Schedule 기반 DeliveryItem도 포함 (모든 Schedule 처리)
             all_schedule_deliveries = followup.schedules.filter(
-                delivery_items_set__isnull=False
+                activity_type='delivery',
+                delivery_items_set__isnull=False,
             ).distinct()
             
             # 모든 Schedule 처리 (History에 품목 정보가 없으면 Schedule에서 가져옴)
@@ -15752,12 +15968,13 @@ def followup_quote_items_api(request, followup_id):
         else:
             quote_followups = FollowUp.objects.filter(pk=followup.pk)
 
-        # 같은 부서의 본인 견적 일정 조회 (납품되지 않은 것만)
+        # 같은 부서의 본인 견적 일정 조회. 완료된 견적이라도 일부 품목만 납품된
+        # 경우에는 남은 품목을 다시 선택할 수 있어야 하므로 품목 단위로 걸러낸다.
         quote_items_queryset = DeliveryItem.objects.select_related('product').order_by('id')
         quote_schedules = Schedule.objects.filter(
             followup__in=quote_followups,
             activity_type='quote',
-            status='scheduled',
+            status__in=['scheduled', 'completed'],
             user=request.user,
         ).select_related('followup', 'followup__company', 'followup__department').prefetch_related(
             Prefetch('delivery_items_set', queryset=quote_items_queryset),
@@ -15773,43 +15990,18 @@ def followup_quote_items_api(request, followup_id):
         
         for quote_schedule in quote_schedules:
             logger.info(f"[QUOTE_ITEMS_API] Schedule ID: {quote_schedule.id}, visit_date: {quote_schedule.visit_date}")
-            
-            # 이미 납품된 견적인지 확인
-            # 이 견적(Schedule)에서 직접 복사된 납품 일정이 있는지 확인
-            has_delivery = Schedule.objects.filter(
-                followup=quote_schedule.followup,
-                activity_type='delivery',
-                notes__icontains=f'견적 ID {quote_schedule.id}'  # 납품 메모에 견적 ID가 포함되어 있는지
-            ).exists()
-            
-            # 또는 DeliveryItem이 완전히 동일한 납품이 있는지 확인
-            if not has_delivery:
-                # 견적 품목 가져오기
-                quote_items = DeliveryItem.objects.filter(schedule=quote_schedule)
-                if quote_items.exists():
-                    # 같은 품목 구성의 완료된 납품이 있는지 확인
-                    for delivery_schedule in Schedule.objects.filter(
-                        followup=quote_schedule.followup,
-                        activity_type='delivery',
-                        status='completed'
-                    ):
-                        delivery_items = DeliveryItem.objects.filter(schedule=delivery_schedule)
-                        # 품목 개수와 품목명이 모두 일치하면 이미 납품된 것으로 간주
-                        if (delivery_items.count() == quote_items.count() and
-                            set(delivery_items.values_list('item_name', flat=True)) == 
-                            set(quote_items.values_list('item_name', flat=True))):
-                            has_delivery = True
-                            break
-            
-            if has_delivery:
+
+            remaining_entries, has_import_activity, has_sold_items = _schedules_remaining_quote_item_entries(
+                quote_schedule,
+                include_legacy_matches=quote_schedule.status == 'completed',
+            )
+            if quote_schedule.status == 'completed' and not (has_import_activity or has_sold_items):
                 continue
-            
-            items = list(quote_schedule.delivery_items_set.all())
-            
-            if items:
+
+            if remaining_entries:
                 grouped_quote_items = {}
                 quote_total = Decimal('0')
-                for item in items:
+                for item, remaining_quantity in remaining_entries:
                     product = item.product if item.product_id else None
                     unit_price = float(item.unit_price) if item.unit_price is not None else 0
                     discount_unit_price = (
@@ -15822,9 +16014,11 @@ def followup_quote_items_api(request, followup_id):
                     quote_group = _quote_group_key(item.quote_group)
                     item_data = {
                         'id': item.id,
+                        'source_quote_item_id': item.id,
+                        'sourceQuoteItemId': item.id,
                         'item_name': item.item_name,
                         'itemName': item.item_name,
-                        'quantity': item.quantity,
+                        'quantity': remaining_quantity,
                         'unit': unit,
                         'unit_price': unit_price,
                         'unitPrice': unit_price,
@@ -15857,9 +16051,7 @@ def followup_quote_items_api(request, followup_id):
                             'total': Decimal('0'),
                         }
                     grouped_quote_items[quote_group]['items'].append(item_data)
-                    item_total = item.total_price or (
-                        (item.unit_price or Decimal('0')) * item.quantity * Decimal('1.1')
-                    )
+                    item_total = _schedules_quote_item_total_for_quantity(item, remaining_quantity)
                     grouped_quote_items[quote_group]['total'] += item_total
                     quote_total += item_total
                 quote_groups = [
@@ -15872,6 +16064,8 @@ def followup_quote_items_api(request, followup_id):
                     for group_key, group_data in grouped_quote_items.items()
                 ]
             else:
+                if quote_schedule.status != 'scheduled':
+                    continue
                 quote_total = quote_schedule.expected_revenue or Decimal('0')
                 quote_groups = [{
                     'key': '',
@@ -15880,7 +16074,7 @@ def followup_quote_items_api(request, followup_id):
                     'total': quote_total,
                 }]
 
-            if items or quote_total > 0:
+            if remaining_entries or quote_total > 0:
                 quote_followup = quote_schedule.followup
 
                 for group_data in quote_groups:

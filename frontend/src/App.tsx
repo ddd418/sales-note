@@ -299,6 +299,7 @@ type ScheduleDeliveryEditRow = {
   quoteGroup: string;
   notes: string;
   sourceQuoteScheduleId: string;
+  sourceQuoteItemId: string;
 };
 
 type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'quoteGroup' | 'notes';
@@ -643,7 +644,8 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
   quoteGroup: item?.quoteGroup || '',
   notes: item?.notes || '',
-  sourceQuoteScheduleId: '',
+  sourceQuoteScheduleId: item?.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : '',
+  sourceQuoteItemId: item?.sourceQuoteItemId ? String(item.sourceQuoteItemId) : '',
 });
 
 const makeScheduleDeliveryEditRows = (items: ScheduleDeliveryItem[] = []): ScheduleDeliveryEditRow[] => (
@@ -736,6 +738,7 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
   quoteGroup: item.quoteGroup || '',
   notes: item.notes || '',
   sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
+  sourceQuoteItemId: item.sourceQuoteItemId ? String(item.sourceQuoteItemId) : String(item.id || ''),
 });
 
 const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => rows.some((row) => Boolean(
@@ -6528,6 +6531,7 @@ function ScheduleDetailPage({
         quoteGroup: row.quoteGroup.trim(),
         notes: row.notes.trim(),
         sourceQuoteScheduleId: row.sourceQuoteScheduleId ? Number(row.sourceQuoteScheduleId) : null,
+        sourceQuoteItemId: row.sourceQuoteItemId ? Number(row.sourceQuoteItemId) : null,
       });
     }
     const sourceQuoteScheduleIds = Array.from(new Set(

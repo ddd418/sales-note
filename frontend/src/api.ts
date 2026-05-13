@@ -1068,6 +1068,8 @@ export type ScheduleDeliveryItem = {
   quoteGroup: string;
   quoteGroupLabel: string;
   notes: string;
+  sourceQuoteScheduleId?: number | null;
+  sourceQuoteItemId?: number | null;
 };
 
 export type ScheduleDeliveryItemPayload = {
@@ -1083,6 +1085,7 @@ export type ScheduleDeliveryItemPayload = {
   quoteGroup?: string;
   notes?: string;
   sourceQuoteScheduleId?: number | null;
+  sourceQuoteItemId?: number | null;
 };
 
 export type FollowupQuoteItem = {
@@ -1091,6 +1094,7 @@ export type FollowupQuoteItem = {
   productCode?: string;
   productDescription?: string;
   sourceQuoteScheduleId?: number | null;
+  sourceQuoteItemId?: number | null;
   itemName: string;
   quantity: number;
   unit: string;
@@ -5503,6 +5507,7 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
     productCode: rawString(rawValue(item, 'productCode', 'product_code')),
     productDescription: rawString(rawValue(item, 'productDescription', 'product_description')),
     sourceQuoteScheduleId: rawNullableNumber(rawValue(item, 'sourceQuoteScheduleId', 'source_quote_schedule_id')),
+    sourceQuoteItemId: rawNullableNumber(rawValue(item, 'sourceQuoteItemId', 'source_quote_item_id')) ?? rawNullableNumber(item.id),
     itemName: rawString(rawValue(item, 'itemName', 'item_name')),
     quantity: Math.max(1, rawNumber(item.quantity, 1)),
     unit: rawString(item.unit) || 'EA',
