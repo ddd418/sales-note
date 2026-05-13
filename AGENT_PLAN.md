@@ -31,10 +31,17 @@
 
 ### 현재 상태
 
-- 구현 및 로컬 검증 완료.
+- 구현, 로컬 검증, 커밋/푸시, Railway `web` 배포 완료.
 - 운영 DB 읽기 전용 계산 확인: `History 741` 보정 결과 `56722: 1EA (33,000원)`.
 - DB 모델 변경 없음.
-- 다음 행동: `AGENT_REPORT.md` 갱신 후 커밋/푸시, Railway `web` 배포 및 운영 smoke 확인.
+- Runtime commit: `7e6a6c5 fix: correct quote-linked delivery note amounts`
+- Railway `web`: `ee0976c6-2542-4c87-b8d8-dcfd58f62dee` SUCCESS
+- Railway `sales-note-frontend`: 변경 없음, 기존 `de5f5a66-4ff8-4558-812c-1b74f39c2eab` SUCCESS 유지
+- 운영 smoke OK:
+  - `/notes/741/` 200
+  - anonymous `/reporting/api/notes/741/` 401 login-required JSON
+  - `/reporting/login/` 200
+- 다음 행동: 사용자가 운영 `/notes/741/`에서 납품 금액/품목 표시를 수동 검수한다.
 
 ---
 

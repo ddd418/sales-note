@@ -2,7 +2,7 @@
 
 ## 2026-05-13 — Quote-Linked Delivery Note Amount Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -69,7 +69,15 @@ Production DB read-only calculation with patched code
 
 ### 운영 배포 상태
 
-- 배포 예정.
+- Runtime commit: `7e6a6c5 fix: correct quote-linked delivery note amounts`
+- GitHub push: `main` updated from `0a19cbe` to `7e6a6c5`
+- Railway `web`: `ee0976c6-2542-4c87-b8d8-dcfd58f62dee` SUCCESS, commit `7e6a6c5`
+- Railway `sales-note-frontend`: 변경 없음, 기존 `de5f5a66-4ff8-4558-812c-1b74f39c2eab` SUCCESS 유지
+- 운영 smoke:
+  - `/notes/741/` 200
+  - anonymous `/reporting/api/notes/741/` 401 login-required JSON
+  - `/reporting/login/` 200
+  - Railway `web`, `sales-note-frontend`, `Postgres` Online
 
 ### 운영 수동 검수 절차
 
