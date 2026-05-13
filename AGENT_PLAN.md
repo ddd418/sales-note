@@ -1,6 +1,6 @@
 # AGENT_PLAN.md
 
-## Current task — 견적서 생성 텍스트 잘림 방지 + 내부직원 참조 선택 UX
+## Completed task — 견적서 생성 텍스트 잘림 방지 + 내부직원 참조 선택 UX
 
 **목표**: 견적서/거래명세서/납품서 생성 시 엑셀 템플릿의 치환 텍스트가 셀 폭보다 길어 PDF 또는 XLSX에서 잘려 보이지 않도록 한다. React 메일 작성 화면의 내부직원 참조는 긴 전체 이메일 목록 노출 대신 검색해서 한 명씩 선택하거나 전체 선택할 수 있게 한다.
 
@@ -38,9 +38,16 @@
 
 ### 현재 상태
 
-- 백엔드/React 구현 및 로컬 검증 완료.
+- 백엔드/React 구현, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
 - DB 모델 변경 없음.
-- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+- Runtime commit: `c498758 fix: wrap quote text and select internal cc`
+- Railway `web`: `65a472f0-5315-49e2-8945-05cb01e82cd8` SUCCESS
+- Railway `sales-note-frontend`: `4c2e3ba7-1b97-4d48-8ac7-9b817b4c9b71` SUCCESS
+- 운영 smoke OK:
+  - 제공된 `/mailbox/?compose=1&schedule_id=899&followup_id=4...` URL 200, 최신 frontend assets 로드 확인.
+  - `/reporting/login/` 200.
+  - anonymous `/reporting/api/mailbox/?schedule_id=899` 302 login redirect.
+- 다음 행동: 사용자 운영 수동 검수 대기.
 
 ---
 

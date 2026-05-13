@@ -2,7 +2,7 @@
 
 ## 2026-05-13 — Quote Document Text Wrap + Mail Internal CC Selection
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -57,6 +57,26 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: wrap quote text and select internal cc"
+git push origin main
+→ pushed c498758 to origin/main
+
+railway deployment list --service web --limit 5 --json
+→ 65a472f0-5315-49e2-8945-05cb01e82cd8 SUCCESS
+
+railway deployment up frontend --path-as-root --service sales-note-frontend --detach --message "Deploy quote text mail cc c498758"
+railway deployment list --service sales-note-frontend --limit 5 --json
+→ 4c2e3ba7-1b97-4d48-8ac7-9b817b4c9b71 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/mailbox/?compose=1...
+→ 200, assets/index-D_tgmwFo.js and assets/index-Eek9rS8p.css loaded
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/mailbox/?schedule_id=899 -MaximumRedirection 0
+→ 302 login redirect for anonymous request
 ```
 
 ### 알려진 제한
@@ -66,7 +86,14 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 진행 전.
+- GitHub: `c498758 fix: wrap quote text and select internal cc` pushed to `origin/main`.
+- Railway `web`: `65a472f0-5315-49e2-8945-05cb01e82cd8` SUCCESS.
+- Railway `sales-note-frontend`: `4c2e3ba7-1b97-4d48-8ac7-9b817b4c9b71` SUCCESS.
+- 운영 smoke OK:
+  - 제공된 `/mailbox/?compose=1&schedule_id=899&followup_id=4...` URL 200.
+  - 최신 frontend assets `index-D_tgmwFo.js`, `index-Eek9rS8p.css` 로드 확인.
+  - `/reporting/login/` 200.
+  - anonymous `/reporting/api/mailbox/?schedule_id=899` 302 login redirect.
 
 ### 운영 수동 검수 절차
 
