@@ -16035,3 +16035,120 @@ Unauthenticated POST to /reporting/api/ai-workspace/actions/feedback/
 7. `메일 보냈는데 아직 답장이 안왔어요`를 저장하고 답장 대기 후속조치가 생기는지 확인합니다.
 8. 실제 메일 발송 로그가 있는 고객은 발신 후 회신 없는 메일이 `메일 답장 대기` action으로 보이는지 확인합니다.
 9. 애매한 답변을 입력했을 때 `검토 필요`로 기록되고 고객/견적 상태가 자동 변경되지 않는지 확인합니다.
+
+## 2026-05-14 레거시 AI 피드백 CRM 소급 동기화
+
+### 1. Summary
+
+- 수정 전 저장된 AI 피드백에도 새 CRM 동기화 규칙을 적용할 수 있는 Django 관리 명령을 추가했습니다.
+- 기본은 dry-run이며 `--apply`를 붙일 때만 운영 CRM 상태를 변경합니다.
+- AI 피드백 소급 처리도 현재 AI 보고 처리와 같은 경로를 사용하므로 고객 상태, 긴급도(`FollowUp.priority`), 파이프라인, 열린 후속조치, 견적/일정 상태가 함께 정리됩니다.
+- 운영에서 홍철화 고객 피드백 `#1`을 소급 적용했습니다.
+
+### 2. Files Changed
+
+- `reporting/management/commands/backfill_ai_feedback_crm_sync.py`
+- `reporting/management/__init__.py`
+- `reporting/management/commands/__init__.py`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- 기존 `AIWorkspaceActionFeedback` 중 `ai_result.intent` / `ai_result.crmSync`가 없는 레거시 기록을 새 구조로 보강합니다.
+- `resolved_no_purchase` 소급 적용 시 열린 `History.next_action`을 검토 완료 처리하고 고객 긴급도를 `long_term`으로 낮춥니다.
+- 긍정/다음액션 소급 적용 시 고객 긴급도를 `urgent` 또는 `followup`으로 조정할 수 있습니다.
+- 홍철화 건 운영 적용 결과:
+  - `History 734` reviewed 처리
+  - `Schedule 870` status `cancelled`
+  - `FollowUp 454` status `paused`, priority `long_term`, pipeline `lost`
+  - 같은 고객의 열린 지연 후속조치 수 `0`
+  - `AIWorkspaceActionFeedback 1`에 `intent=resolved_no_purchase`, `crmSync.applied=true`, `backfillCommand=backfill_ai_feedback_crm_sync` 기록
+
+### 4. Existing Functionality Preserved
+
+- `/reporting/*` 기존 라우트와 React CRM 라우트는 유지했습니다.
+- DB 모델/마이그레이션 변경은 없습니다.
+- 인증/CSRF/API 보호 로직은 변경하지 않았습니다.
+- 프론트엔드 코드는 변경하지 않았습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\management\commands\backfill_ai_feedback_crm_sync.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 22 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors
+
+python manage.py backfill_ai_feedback_crm_sync --limit 5 --json
+→ Local dev SQLite had no reporting_aiworkspaceactionfeedback table; command behavior is covered by test DB and production Postgres execution.
+
+git commit -m "feat: backfill legacy AI CRM sync"
+git push origin main
+→ Commit 2b13ff6 pushed
+
+railway deployment up --service web --detach --message "Deploy legacy AI CRM sync backfill 2b13ff6"
+railway deployment list --service web
+→ d2406c90-8ddd-4fa2-8cb0-a05e9f829f7f SUCCESS
+
+python manage.py backfill_ai_feedback_crm_sync --feedback-id 1 --json
+→ Production dry-run: History 734, Schedule 870, FollowUp 454 would change
+
+python manage.py backfill_ai_feedback_crm_sync --feedback-id 1 --apply --json
+→ Production apply: Hong follow-up reconciled
+
+python manage.py backfill_ai_feedback_crm_sync --limit 200 --json
+→ Production dry-run: feedback #2 remained legacy, needs_human_review/no CRM changes
+
+python manage.py backfill_ai_feedback_crm_sync --limit 200 --apply --json
+→ Production apply: feedback #2 JSON structure synced, no CRM state changes
+
+python manage.py backfill_ai_feedback_crm_sync --limit 200 --json
+→ Production dry-run: processed 0, skipped 2 already_synced
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/dashboard/
+→ 401 login_required JSON
+```
+
+### 6. Known Limitations
+
+- 관리 명령은 자동 예약 작업이 아니라 필요 시 실행하는 소급/정비 도구입니다.
+- `needs_human_review`로 분류된 레거시 피드백은 고객 긴급도나 후속조치를 자동 변경하지 않습니다.
+- 로컬 개발 SQLite에는 현재 운영 테이블이 없어 직접 명령 smoke는 실패했지만, 테스트 DB와 운영 Postgres에서 검증했습니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `2b13ff6 feat: backfill legacy AI CRM sync`
+- GitHub: `main` pushed
+- Railway `web`: `d2406c90-8ddd-4fa2-8cb0-a05e9f829f7f` SUCCESS
+- Railway `sales-note-frontend`: 변경 없음
+- 운영 백필: 완료
+- 임시 Railway SSH 키는 등록 후 원격 명령 방식이 타임아웃되어 사용하지 않았고, 작업 후 Railway 등록 및 로컬 키 파일을 삭제했습니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/dashboard/`
+2. 로그인 후 `Follow-up 지연 후속조치`에서 홍철화 / `견적서 및 비교표 제출` 항목이 사라졌는지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/schedules/870/`에서 상태가 취소 처리되어 보이는지 확인합니다.
+4. 홍철화 고객 상세에서 상태가 보류/장기 추적 성격으로 정리됐는지 확인합니다.
+5. AI 워크스페이스에서 같은 `quote_schedule:870` resolved 피드백이 반복 실행 항목으로 뜨지 않는지 확인합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후, 같은 AI 보고 흐름에서 사용자가 명시적으로 “긴급”, “장기”, “보류”, “다음주 연락”처럼 표현한 긴급도 신호를 더 세밀하게 priority에 반영하는 규칙을 추가하는 것이 좋습니다.
